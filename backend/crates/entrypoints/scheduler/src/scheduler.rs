@@ -11,6 +11,8 @@ use crate::{
         fred::FredIngest,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         prediction::PredictionGrading,
+        strategy_task_reconcile::StrategyTaskReconcile,
+        trigger_evaluation::TriggerEvaluation,
     },
     state::{SchedulerDependencies, SchedulerState},
 };
@@ -49,6 +51,8 @@ impl Scheduler {
             .define_job::<ShortSaleReportIngest>()
             .define_job::<MarginIngest>()
             .define_job::<PredictionGrading>()
+            .define_job::<StrategyTaskReconcile>()
+            .define_job::<TriggerEvaluation>()
             .with_crons(crontabs)
             .init()
             .await
@@ -88,18 +92,22 @@ fn build_crontabs(
         14,
         0,
     )?);
+    crontabs.push(every_minute_cron::<StrategyTaskReconcile>(
+        "strategy_task_reconcile",
+    ));
+    crontabs.push(every_minute_cron::<TriggerEvaluation>("trigger_evaluation"));
     Ok(crontabs)
 }
 
 fn configure_cron<T: TaskHandler>(
     timer: CrontabTimer,
     id: &str,
-    fill: CrontabFill,
+    fill: Option<CrontabFill>,
     queue: Option<&str>,
 ) -> Crontab {
     let mut crontab = Crontab::new(timer, T::IDENTIFIER);
     crontab.options.id = Some(id.to_string());
-    crontab.options.fill = Some(fill);
+    crontab.options.fill = fill;
     crontab.options.max = Some(MAX_ATTEMPTS);
     crontab.options.queue = queue.map(str::to_string);
     crontab
@@ -114,7 +122,7 @@ fn daily_cron<T: TaskHandler>(
     Ok(configure_cron::<T>(
         CrontabTimer::daily_at(utc_hour, utc_minute)?,
         id,
-        CrontabFill::days(3),
+        Some(CrontabFill::days(3)),
         queue,
     ))
 }
@@ -128,9 +136,13 @@ fn weekly_cron<T: TaskHandler>(
     Ok(configure_cron::<T>(
         CrontabTimer::weekly_on(weekday, utc_hour, utc_minute)?,
         id,
-        CrontabFill::weeks(2),
+        Some(CrontabFill::weeks(2)),
         None,
     ))
+}
+
+fn every_minute_cron<T: TaskHandler>(id: &str) -> Crontab {
+    configure_cron::<T>(CrontabTimer::every_minute(), id, None, None)
 }
 
 #[cfg(test)]
@@ -143,14 +155,16 @@ mod tests {
         fred::FredIngest,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         prediction::PredictionGrading,
+        strategy_task_reconcile::StrategyTaskReconcile,
+        trigger_evaluation::TriggerEvaluation,
     };
 
-    use super::{JQUANTS_QUEUE, build_crontabs, configure_cron};
+    use super::{JQUANTS_QUEUE, build_crontabs, configure_cron, every_minute_cron};
 
     fn expected_cron<T: TaskHandler>(
         timer: Option<CrontabTimer>,
         id: &str,
-        fill: CrontabFill,
+        fill: Option<CrontabFill>,
         queue: Option<&str>,
     ) -> Option<Crontab> {
         Some(configure_cron::<T>(timer?, id, fill, queue))
@@ -162,33 +176,37 @@ mod tests {
             expected_cron::<FredIngest>(
                 CrontabTimer::daily_at(11, 30).ok(),
                 "fred_ingest",
-                CrontabFill::days(3),
+                Some(CrontabFill::days(3)),
                 None,
             ),
             expected_cron::<ShortRatioIngest>(
                 CrontabTimer::daily_at(12, 0).ok(),
                 "short_ratio_ingest",
-                CrontabFill::days(3),
+                Some(CrontabFill::days(3)),
                 Some(JQUANTS_QUEUE),
             ),
             expected_cron::<ShortSaleReportIngest>(
                 CrontabTimer::daily_at(12, 15).ok(),
                 "short_sale_report_ingest",
-                CrontabFill::days(3),
+                Some(CrontabFill::days(3)),
                 Some(JQUANTS_QUEUE),
             ),
             expected_cron::<MarginIngest>(
                 CrontabTimer::daily_at(12, 30).ok(),
                 "margin_ingest",
-                CrontabFill::days(3),
+                Some(CrontabFill::days(3)),
                 Some(JQUANTS_QUEUE),
             ),
             expected_cron::<PredictionGrading>(
                 CrontabTimer::weekly_on(Weekday::Sun, 14, 0).ok(),
                 "prediction_grading",
-                CrontabFill::weeks(2),
+                Some(CrontabFill::weeks(2)),
                 None,
             ),
+            Some(every_minute_cron::<StrategyTaskReconcile>(
+                "strategy_task_reconcile",
+            )),
+            Some(every_minute_cron::<TriggerEvaluation>("trigger_evaluation")),
         ]
         .into_iter()
         .collect::<Option<Vec<_>>>();
@@ -245,14 +263,21 @@ mod tests {
                     Some(3),
                     None,
                 ),
+                (
+                    Some("strategy_task_reconcile".to_string()),
+                    None,
+                    Some(3),
+                    None,
+                ),
+                (Some("trigger_evaluation".to_string()), None, Some(3), None,),
             ]),
         );
     }
 
     #[rstest]
-    #[case::neither_source(false, false, vec!["prediction_grading"])]
-    #[case::fred_only(true, false, vec!["fred_ingest", "prediction_grading"])]
-    #[case::jquants_only(false, true, vec!["short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading"])]
+    #[case::neither_source(false, false, vec!["prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::fred_only(true, false, vec!["fred_ingest", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::jquants_only(false, true, vec!["short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
     fn schedules_only_configured_sources(
         #[case] include_fred: bool,
         #[case] include_jquants: bool,

@@ -1,7 +1,7 @@
 //! 戦略タスクの投入 (5 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
-//! watcher による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
+//! scheduler job による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
 //!
-//! 各コンポーネント単体の挙動は `services::strategy_tasks` / `mcp::watcher` /
+//! 各コンポーネント単体の挙動は `services::strategy_tasks` /
 //! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
 //! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
@@ -18,7 +18,6 @@ use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
-use crate::mcp::watcher;
 use crate::services::strategy_tasks::DEFAULT_PURPOSE;
 use crate::services::trigger_worker;
 use crate::services::use_cases::build_use_cases;
@@ -174,7 +173,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
 }
 
 #[backend_test_macros::database_test]
-async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(
+async fn submitted_task_reaches_completed_with_result_text_after_scheduler_reconciles(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let fake = Arc::new(FakeAgentTaskClient::new());
@@ -210,8 +209,12 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
     )
     .await;
 
-    let updated = watcher::run_once(&db, &agent_client).await;
-    assert_eq!(updated, 1);
+    let updated = entrypoint_scheduler::reconcile_in_flight_tasks(
+        &build_use_cases(db.clone()).strategy_tasks(),
+        agent_client.as_ref(),
+    )
+    .await;
+    assert_eq!(updated, Ok(1));
 
     let res = server
         .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))

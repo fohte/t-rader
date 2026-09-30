@@ -210,9 +210,7 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。webhook 受信時の
-    // 即時 polling 誘発用に Notify を watcher と共有する。
-    let agent_task_notify = Arc::new(tokio::sync::Notify::new());
+    // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。
     let agent_task_client: SharedAgentTaskClient = match AgentTaskClientConfig::from_env()
         .map_err(|e| AppError::Config(e.to_string()))?
     {
@@ -222,12 +220,6 @@ async fn main() -> Result<(), AppError> {
             })?;
             tracing::info!("agent task client initialized");
             let arc: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(client);
-            let _watcher = backend::mcp::watcher::spawn(
-                db.clone(),
-                arc.clone(),
-                backend::mcp::watcher::DEFAULT_INTERVAL,
-                agent_task_notify.clone(),
-            );
             arc
         }
         AgentTaskClientConfigSource::Disabled => {
@@ -299,18 +291,6 @@ async fn main() -> Result<(), AppError> {
             None
         }
     };
-
-    // cron trigger を schedule どおりに発火させる worker を起動する。
-    // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
-    tracing::info!(
-        interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
-        "starting cron trigger worker",
-    );
-    let _trigger_worker = backend::services::trigger_worker::spawn(
-        use_cases.triggers(),
-        agent_task_client.clone(),
-        backend::services::trigger_worker::DEFAULT_INTERVAL,
-    );
 
     if let Some(client) = &jquants_ingest_client {
         let _stock_master_sync_poll = backend::services::stock_master_sync::spawn_poll(
@@ -392,6 +372,9 @@ async fn main() -> Result<(), AppError> {
         margins: use_cases.margins(),
         short_selling_source,
         margin_source,
+        strategy_tasks: use_cases.strategy_tasks(),
+        triggers: use_cases.triggers(),
+        agent_task_client: agent_task_client.clone(),
     };
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal_tx = shutdown_tx.clone();
@@ -415,7 +398,6 @@ async fn main() -> Result<(), AppError> {
         daily_bar_source,
         jquants_client,
         agent_task_client,
-        agent_task_notify,
         agent_webhook_token: Arc::from(agent_webhook_token),
         kata_executor,
         llm_gateway_client,

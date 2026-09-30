@@ -9,6 +9,8 @@ use crate::state::SchedulerState;
 pub mod fred;
 pub mod jquants;
 pub mod prediction;
+pub mod strategy_task_reconcile;
+pub mod trigger_evaluation;
 
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);

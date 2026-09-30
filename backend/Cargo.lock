@@ -1383,6 +1383,7 @@ dependencies = [
  "chrono",
  "core-application",
  "core-domain",
+ "futures-util",
  "graphile_worker",
  "rstest",
  "serde",

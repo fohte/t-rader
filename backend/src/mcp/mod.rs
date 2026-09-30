@@ -6,6 +6,7 @@
 mod access_log;
 pub mod mgmt;
 pub mod strategy;
+#[cfg(test)]
 pub mod watcher;
 
 use std::time::Duration;

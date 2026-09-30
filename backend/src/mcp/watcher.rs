@@ -1,19 +1,14 @@
-//! 戦略タスクを polling し、application use case で agent の状態を反映する。
-
-use std::sync::Arc;
-use std::time::Duration;
+//! 戦略タスク照合の既存 DB テストで使う単発 helper。
 
 use chrono::Utc;
-use tokio::sync::Notify;
 
 use crate::agent_client::SharedAgentTaskClient;
 use core_application::strategy_task::StrategyTaskUseCases;
 use gateway_postgres::DatabaseHandle;
 
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_CONCURRENT_STATUS_FETCHES: usize = 8;
 
-/// 1 回分の polling を実行する。失敗した個別 task はログに残して次へ進む。
+/// 1 回分の照合を実行する。失敗した個別 task はログに残して次へ進む。
 pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
 where
     C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
@@ -63,31 +58,6 @@ async fn run_once_with_use_cases(
         }
     }
     updated
-}
-
-/// 定期 polling を開始する。webhook notification は polling の即時実行を誘発する。
-pub fn spawn(
-    db: impl Into<DatabaseHandle>,
-    agent_client: SharedAgentTaskClient,
-    interval: Duration,
-    notify: Arc<Notify>,
-) -> tokio::task::JoinHandle<()> {
-    let strategy_tasks = crate::services::use_cases::build_use_cases(db).strategy_tasks();
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        ticker.tick().await;
-        loop {
-            tokio::select! {
-                _ = ticker.tick() => {}
-                _ = notify.notified() => {}
-            }
-            let updated = run_once_with_use_cases(&strategy_tasks, &agent_client).await;
-            if updated > 0 {
-                tracing::info!(updated, "strategy_task phases reconciled");
-            }
-        }
-    })
 }
 
 #[cfg(test)]

@@ -1,9 +1,7 @@
 //! t-rader-agent からのタスク決着通知 (push notification) を受信する endpoint。
 //!
-//! body は A2A Task オブジェクト全体だが内容は信用しない。正データは watcher が
-//! 内部 API (`GET /internal/tasks/:id`) から取得するため、ここでは認証を検証した上で
-//! watcher の即時 polling を誘発するだけに留める (polling が決着の正経路であり、
-//! この通知は即時性のための最適化に過ぎない)。
+//! body は A2A Task オブジェクト全体だが内容は信用しない。正データは scheduler job が
+//! 内部 API (`GET /internal/tasks/:id`) から取得するため、認証後に照合 job を投入する。
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -33,7 +31,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     tag = "strategies",
     request_body = serde_json::Value,
     responses(
-        (status = 204, description = "受理 (watcher の即時 polling を誘発)"),
+        (status = 204, description = "受理 (戦略タスク照合 job を投入)"),
         (status = 401, description = "トークン不一致", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -49,28 +47,31 @@ pub async fn receive_agent_task_notification(
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
     if !constant_time_eq(presented.as_bytes(), state.agent_webhook_token.as_bytes()) {
-        // 決着自体は polling が担うため沈黙はしないが、トークン誤設定は polling の裏に
-        // 隠れて気づきにくい。運用者が気づけるようログに残す。
+        // トークン誤設定は定期照合の裏に隠れて気づきにくいため、運用者向けに記録する。
         tracing::warn!("agent task notification rejected: token mismatch");
         return Err(AppError::Unauthorized("invalid notification token".into()));
     }
-    state.agent_task_notify.notify_one();
+    state
+        .use_cases
+        .strategy_task_reconcile_job()
+        .enqueue_reconciliation()
+        .await
+        .map_err(|error| AppError::Database(sea_orm::DbErr::Custom(error.to_string())))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use crate::testing::create_test_server_with_state;
     use serde_json::json;
 
     use super::*;
 
     #[backend_test_macros::database_test]
-    async fn valid_token_returns_204_and_notifies_watcher(db: gateway_postgres::DatabaseHandle) {
-        let (state, server) = create_test_server_with_state(db).await;
-        let notified = state.agent_task_notify.notified();
+    async fn valid_token_returns_204_and_enqueues_reconciliation(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (state, server, queue) = create_test_server_with_state(db).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")
@@ -80,33 +81,38 @@ mod tests {
             )
             .json(&json!({"id": "task-1", "status": {"state": "completed"}}))
             .await;
-        res.assert_status(axum::http::StatusCode::NO_CONTENT);
-
-        tokio::time::timeout(Duration::from_millis(200), notified)
-            .await
-            .expect("watcher should have been notified");
+        assert_eq!(
+            (res.status_code(), queue.enqueue_count()),
+            (StatusCode::NO_CONTENT, 1),
+        );
     }
 
     #[backend_test_macros::database_test]
     async fn mismatched_token_returns_401(db: gateway_postgres::DatabaseHandle) {
-        let (_state, server) = create_test_server_with_state(db).await;
+        let (_state, server, queue) = create_test_server_with_state(db).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")
             .add_header(NOTIFICATION_TOKEN_HEADER, "wrong-token")
             .json(&json!({"id": "task-1"}))
             .await;
-        res.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            (res.status_code(), queue.enqueue_count()),
+            (StatusCode::UNAUTHORIZED, 0),
+        );
     }
 
     #[backend_test_macros::database_test]
     async fn missing_token_header_returns_401(db: gateway_postgres::DatabaseHandle) {
-        let (_state, server) = create_test_server_with_state(db).await;
+        let (_state, server, queue) = create_test_server_with_state(db).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")
             .json(&json!({"id": "task-1"}))
             .await;
-        res.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            (res.status_code(), queue.enqueue_count()),
+            (StatusCode::UNAUTHORIZED, 0),
+        );
     }
 }

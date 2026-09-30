@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use core_application::change_history::SharedChangeHistoryPort;
 use core_application::strategy_existence::SharedStrategyExistence;
+use core_application::strategy_task::SharedStrategyTaskReconcileJobQueue;
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
-    DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresUnitOfWork,
+    DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence,
+    PostgresStrategyTaskReconcileJobQueue, PostgresUnitOfWork,
 };
 
 mod account_risk_policy;
@@ -26,6 +28,7 @@ mod short_ratio;
 mod short_sale_report;
 mod strategy;
 mod strategy_task;
+mod strategy_task_reconcile_job;
 mod trade;
 mod trigger;
 mod valuation;
@@ -36,9 +39,20 @@ pub struct UseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) strategy_existence: SharedStrategyExistence,
     pub(super) change_history: SharedChangeHistoryPort,
+    pub(super) strategy_task_reconcile_job_queue: SharedStrategyTaskReconcileJobQueue,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
+    let db = db.into();
+    let strategy_task_reconcile_job_queue: SharedStrategyTaskReconcileJobQueue =
+        Arc::new(PostgresStrategyTaskReconcileJobQueue::new(db.clone()));
+    build_use_cases_with_strategy_task_reconcile_job_queue(db, strategy_task_reconcile_job_queue)
+}
+
+pub fn build_use_cases_with_strategy_task_reconcile_job_queue(
+    db: impl Into<DatabaseHandle>,
+    strategy_task_reconcile_job_queue: SharedStrategyTaskReconcileJobQueue,
+) -> UseCases {
     let db = db.into();
     let unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
@@ -49,5 +63,6 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         unit_of_work,
         strategy_existence,
         change_history,
+        strategy_task_reconcile_job_queue,
     }
 }

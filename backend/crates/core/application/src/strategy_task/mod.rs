@@ -4,6 +4,8 @@ mod resume;
 mod submit;
 
 mod error;
+mod reconcile_job_queue;
+mod reconcile_job_use_cases;
 mod repository;
 mod types;
 
@@ -13,6 +15,11 @@ mod tests;
 pub use error::{
     GetTaskError, ListTasksError, ReconcileTaskError, ResumeTaskError, SubmitTaskError,
 };
+pub use reconcile_job_queue::{
+    SharedStrategyTaskReconcileJobQueue, StrategyTaskReconcileJobQueue,
+    StrategyTaskReconcileJobQueueError,
+};
+pub use reconcile_job_use_cases::StrategyTaskReconcileJobUseCases;
 pub use repository::{
     SharedStrategyTaskRepository, StrategyTaskRepository, StrategyTaskRepositoryError,
 };
