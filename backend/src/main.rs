@@ -140,7 +140,6 @@ async fn main() -> Result<(), AppError> {
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
 
     let app_db = DatabaseHandle::from(db.clone());
-
     let provider_kind = std::env::var("DATA_PROVIDER")
         .ok()
         .map(|s| s.to_lowercase())
@@ -344,7 +343,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
-            db.clone(),
+            use_cases.bars(),
             client.clone(),
             backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
         );

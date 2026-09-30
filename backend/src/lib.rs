@@ -3,7 +3,6 @@ pub mod cli;
 #[cfg(test)]
 pub(crate) mod concurrent;
 pub mod data_provider;
-pub(crate) mod date_utils;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
