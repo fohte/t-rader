@@ -1,6 +1,10 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use core_application::trigger::{
+    CreateTriggerCommand, TriggerKind as ApplicationTriggerKind, TriggerUseCaseError,
+    UpdateTriggerCommand,
+};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -9,7 +13,6 @@ use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
     CreateTriggerRequest, ListTriggersQuery, TriggerKind, TriggerResponse, UpdateTriggerRequest,
 };
-use crate::services::trigger_crud as trigger_crud_svc;
 
 /// 戦略の trigger 一覧
 #[utoipa::path(
@@ -32,7 +35,14 @@ pub async fn list_strategy_triggers(
     JsonPath(id): JsonPath<Uuid>,
     JsonQuery(query): JsonQuery<ListTriggersQuery>,
 ) -> Result<Json<Vec<TriggerResponse>>, AppError> {
-    let items = trigger_crud_svc::list_triggers(&state.db, id, query.kind).await?;
+    let scope = super::strategies::strategy_scope_or_404(&state, id).await?;
+    let kind = query.kind.map(application_kind);
+    let items = state
+        .use_cases
+        .triggers()
+        .list_for_strategy(scope, kind)
+        .await
+        .map_err(map_trigger_use_case_error)?;
     let items = items.into_iter().map(TriggerResponse::from).collect();
     Ok(Json(items))
 }
@@ -59,7 +69,23 @@ pub async fn create_strategy_trigger(
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateTriggerRequest>,
 ) -> Result<(StatusCode, Json<TriggerResponse>), AppError> {
-    let created = trigger_crud_svc::create_trigger(&state.db, strategy_id, payload).await?;
+    let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
+    let created = state
+        .use_cases
+        .triggers()
+        .create(
+            scope,
+            CreateTriggerCommand {
+                kind: application_kind(payload.kind),
+                schedule: payload.schedule,
+                hook_slug: payload.hook_slug,
+                event_match: payload.event_match,
+                prompt_template: payload.prompt_template,
+                enabled: payload.enabled,
+            },
+        )
+        .await
+        .map_err(map_trigger_use_case_error)?;
     Ok((StatusCode::CREATED, Json(created.into())))
 }
 
@@ -80,8 +106,13 @@ pub async fn get_trigger(
     State(state): State<AppState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<Json<TriggerResponse>, AppError> {
-    let model = trigger_crud_svc::get_trigger(&state.db, trigger_id).await?;
-    Ok(Json(model.into()))
+    let trigger = state
+        .use_cases
+        .triggers()
+        .get(trigger_id)
+        .await
+        .map_err(map_trigger_use_case_error)?;
+    Ok(Json(trigger.into()))
 }
 
 /// trigger 更新 (kind / strategy_id は不変)
@@ -106,7 +137,32 @@ pub async fn update_trigger(
     JsonPath(trigger_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateTriggerRequest>,
 ) -> Result<Json<TriggerResponse>, AppError> {
-    let updated = trigger_crud_svc::update_trigger(&state.db, trigger_id, payload).await?;
+    let current = state
+        .use_cases
+        .triggers()
+        .get(trigger_id)
+        .await
+        .map_err(map_trigger_use_case_error)?;
+    let strategy_id = current
+        .strategy_id
+        .ok_or_else(|| AppError::NotFound(format!("trigger {trigger_id} not found")))?;
+    let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
+    let updated = state
+        .use_cases
+        .triggers()
+        .update(
+            scope,
+            trigger_id,
+            UpdateTriggerCommand {
+                schedule: payload.schedule,
+                hook_slug: payload.hook_slug,
+                event_match: payload.event_match,
+                prompt_template: payload.prompt_template,
+                enabled: payload.enabled,
+            },
+        )
+        .await
+        .map_err(map_trigger_use_case_error)?;
     Ok(Json(updated.into()))
 }
 
@@ -127,8 +183,58 @@ pub async fn delete_trigger(
     State(state): State<AppState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    trigger_crud_svc::delete_trigger(&state.db, trigger_id).await?;
+    let current = state
+        .use_cases
+        .triggers()
+        .get(trigger_id)
+        .await
+        .map_err(map_trigger_use_case_error)?;
+    let strategy_id = current
+        .strategy_id
+        .ok_or_else(|| AppError::NotFound(format!("trigger {trigger_id} not found")))?;
+    let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
+    state
+        .use_cases
+        .triggers()
+        .delete(scope, trigger_id)
+        .await
+        .map_err(map_trigger_use_case_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn application_kind(kind: TriggerKind) -> ApplicationTriggerKind {
+    match kind {
+        TriggerKind::Cron => ApplicationTriggerKind::Cron,
+        TriggerKind::Hook => ApplicationTriggerKind::Hook,
+    }
+}
+
+pub(crate) fn map_trigger_use_case_error(error: TriggerUseCaseError) -> AppError {
+    match error {
+        TriggerUseCaseError::Validation(message) => AppError::Validation(message),
+        TriggerUseCaseError::NotFound(id) => AppError::NotFound(format!("trigger {id} not found")),
+        TriggerUseCaseError::HookNotFound(slug) => {
+            AppError::NotFound(format!("hook {slug} not found"))
+        }
+        TriggerUseCaseError::Disabled(id) | TriggerUseCaseError::NoStrategy(id) => {
+            AppError::NotFound(format!("trigger {id} not found"))
+        }
+        TriggerUseCaseError::Submit(error) => super::strategies::map_submit_error(error),
+        TriggerUseCaseError::Repository(
+            core_application::trigger::TriggerRepositoryError::Database(error),
+        )
+        | TriggerUseCaseError::StrategyRepository(
+            core_application::strategy::StrategyRepositoryError::Database(error),
+        )
+        | TriggerUseCaseError::StrategyExistence(
+            core_application::strategy_existence::StrategyExistenceError::Database(error),
+        )
+        | TriggerUseCaseError::UnitOfWork(
+            core_application::unit_of_work::UnitOfWorkError::Begin(error)
+            | core_application::unit_of_work::UnitOfWorkError::Commit(error),
+        ) => error.into(),
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+    }
 }
 
 #[cfg(test)]

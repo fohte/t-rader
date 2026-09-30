@@ -24,5 +24,6 @@ pub mod strategy_existence;
 pub mod strategy_scope;
 pub mod strategy_task;
 pub mod trade;
+pub mod trigger;
 pub mod unit_of_work;
 pub mod valuation_source;

@@ -16,6 +16,7 @@ mod prediction;
 mod strategy;
 mod strategy_task;
 mod trade;
+mod trigger;
 
 #[derive(Clone)]
 pub struct UseCases {
