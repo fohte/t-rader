@@ -277,7 +277,7 @@ impl StrategyServer {
     /// 個々の約定を account-wide (全戦略横断) で返す
     #[tool(
         name = "read_trades",
-        description = "Return individual trade executions (date, symbol, side, qty, price) across the entire account, using the same account-wide scope as read_portfolio (not limited to the connecting strategy; each trade carries its own strategy_id). Optionally filter by symbol and a lower bound on trade date. Use this to inspect the actual fills behind a past decision, newest first.",
+        description = "Return individual trade executions (date, symbol, side, qty, price) across the entire account, using the same account-wide scope as read_portfolio (not limited to the connecting strategy; each trade carries its own strategy_id). Each trade has a notes array of linked note_id/note_version_id pairs; trades without linked notes have an empty array. For trades belonging to the connecting strategy, pass these as note_id/version_id to read_note to inspect the linked version. Optionally filter by symbol and a lower bound on trade date. Use this to inspect the actual fills behind a past decision, newest first.",
         annotations(read_only_hint = true)
     )]
     async fn read_trades(
