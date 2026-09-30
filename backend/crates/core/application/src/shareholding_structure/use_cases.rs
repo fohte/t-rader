@@ -342,6 +342,7 @@ mod tests {
     use rstest::rstest;
 
     use crate::daily_bar_source::DateRange;
+    use crate::persistence::PersistenceError;
     use crate::shareholding_structure::{
         ShareholdingStructureBySymbol, ShareholdingStructureRepository,
         ShareholdingStructureRepositoryError, ShareholdingStructureUseCases,
@@ -431,6 +432,7 @@ mod tests {
     struct FakeRepository {
         large_volume: Mutex<Vec<LargeVolumeShareholdingDocument>>,
         transaction_ids: Mutex<Vec<uuid::Uuid>>,
+        fail_latest_large_volume: bool,
     }
 
     #[async_trait]
@@ -438,6 +440,9 @@ mod tests {
         async fn latest_large_volume_submitted_on(
             &self,
         ) -> Result<Option<NaiveDate>, ShareholdingStructureRepositoryError> {
+            if self.fail_latest_large_volume {
+                return Err(PersistenceError::Database("synthetic failure".into()).into());
+            }
             Ok(None)
         }
 
@@ -589,6 +594,47 @@ mod tests {
                 expected_transaction_count,
                 expected_transaction_count,
                 true,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn ingest_continues_other_endpoints_when_repository_lookup_fails() {
+        let from = date(2021, 7, 1);
+        let to = date(2021, 7, 2);
+        let source = FakeSource {
+            range: Some(DateRange { from, to }),
+            ..FakeSource::default()
+        };
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let repository = Arc::new(FakeRepository {
+            fail_latest_large_volume: true,
+            ..FakeRepository::default()
+        });
+        let unit_of_work_shared: SharedUnitOfWork = unit_of_work.clone();
+        let repository_shared = repository.clone();
+        let use_cases = ShareholdingStructureUseCases::new(unit_of_work_shared, repository_shared);
+
+        let result = use_cases
+            .run_ingest_cycle(&source, to)
+            .await
+            .map_err(|error| error.to_string());
+        let requests = source.requests.lock().await.clone();
+        let begun = unit_of_work.begun.lock().await.clone();
+        let committed = unit_of_work.committed.lock().await.clone();
+
+        assert_eq!(
+            (result, requests, begun, committed),
+            (
+                Err("synthetic failure".into()),
+                vec![
+                    (EndpointKind::CrossShareholding, from),
+                    (EndpointKind::CrossShareholding, to),
+                    (EndpointKind::MajorShareholder, from),
+                    (EndpointKind::MajorShareholder, to),
+                ],
+                vec![],
+                vec![],
             ),
         );
     }

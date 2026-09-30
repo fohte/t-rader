@@ -42,7 +42,7 @@ pub fn spawn_poll(
                     tracing::debug!(?stats, "保有構造の取り込みが完了しました")
                 }
                 Err(error) => {
-                    tracing::warn!(%error, "保有構造の取り込みに失敗しました")
+                    tracing::warn!(%error, "保有構造の取り込みサイクルでエラーが発生しました")
                 }
             }
         }

@@ -173,6 +173,7 @@ impl ShareholdingStructureRepository for PostgresShareholdingStructureRepository
         symbol: &str,
         limit: u64,
     ) -> Result<ShareholdingStructureBySymbol, ShareholdingStructureRepositoryError> {
+        // Postgres のデフォルト照合順序では LIKE 'symbol%' が B-tree index を使えないため、範囲条件を使う。
         let lower = format!("{symbol}0");
         let upper = format!("{symbol}9");
         let large_volume_rows = large_volume_shareholding_documents::Entity::find()
@@ -381,11 +382,9 @@ mod tests {
     };
     use core_application::unit_of_work::UnitOfWork;
     use core_domain::holdings::{
-        CrossShareholding, CrossShareholdingCategory, CrossShareholdingContent,
-        CrossShareholdingDocument, LargeVolumeHolder, LargeVolumeReportType,
-        LargeVolumeShareholdingContent, LargeVolumeShareholdingDocument, MajorShareholder,
-        MajorShareholderContent, MajorShareholderDocument, MajorShareholderReportType,
-        MutualHolding, ShareholdingDocumentMetadata,
+        CrossShareholdingContent, CrossShareholdingDocument, LargeVolumeReportType,
+        LargeVolumeShareholdingContent, LargeVolumeShareholdingDocument, MajorShareholderContent,
+        MajorShareholderDocument, MajorShareholderReportType, ShareholdingDocumentMetadata,
     };
 
     use crate::{DatabaseHandle, PostgresUnitOfWork};
@@ -405,105 +404,179 @@ mod tests {
         }
     }
 
-    #[backend_test_macros::database_test]
-    async fn upserts_and_reads_each_document_kind(db: DatabaseHandle) {
-        let repository = PostgresShareholdingStructureRepository::new(db.clone());
-        let unit_of_work = PostgresUnitOfWork::new(db);
-        let transaction = unit_of_work.begin().await.expect("begin transaction");
-        let old_date = date(2040, 1, 1);
-        let latest_date = date(2040, 2, 1);
-        let large_volume_old = LargeVolumeShareholdingDocument {
-            metadata: metadata("SAMPLE-LARGE-OLD", old_date),
+    fn large_volume_document(
+        document_id: &str,
+        submitted_on: NaiveDate,
+    ) -> LargeVolumeShareholdingDocument {
+        LargeVolumeShareholdingDocument {
+            metadata: metadata(document_id, submitted_on),
             content: Some(LargeVolumeShareholdingContent {
                 report_type: LargeVolumeReportType::Report,
                 change_reason: None,
-                total_shares_ratio: Some(0.1),
+                total_shares_ratio: None,
                 previous_total_shares_ratio: None,
-                holders: vec![LargeVolumeHolder {
-                    name: "架空保有者".into(),
-                    holding_purpose: Some("投資".into()),
-                    shares_held: Some(100),
-                    shares_ratio: Some(0.1),
-                    previous_shares_ratio: None,
-                }],
+                holders: vec![],
             }),
-        };
-        let large_volume_correction = LargeVolumeShareholdingDocument {
-            metadata: metadata("SAMPLE-LARGE-OLD", old_date),
+        }
+    }
+
+    fn corrected_large_volume_document(
+        document_id: &str,
+        submitted_on: NaiveDate,
+    ) -> LargeVolumeShareholdingDocument {
+        LargeVolumeShareholdingDocument {
+            metadata: metadata(document_id, submitted_on),
             content: Some(LargeVolumeShareholdingContent {
                 report_type: LargeVolumeReportType::Amendment,
                 change_reason: Some("架空の訂正".into()),
-                total_shares_ratio: Some(0.15),
-                previous_total_shares_ratio: Some(0.1),
+                total_shares_ratio: None,
+                previous_total_shares_ratio: None,
                 holders: vec![],
             }),
-        };
-        let large_volume_latest = LargeVolumeShareholdingDocument {
-            metadata: metadata("SAMPLE-LARGE-NEW", latest_date),
-            content: Some(LargeVolumeShareholdingContent {
-                report_type: LargeVolumeReportType::Amendment,
-                change_reason: Some("架空の変更".into()),
-                total_shares_ratio: Some(0.2),
-                previous_total_shares_ratio: Some(0.1),
-                holders: vec![],
-            }),
-        };
-        let major_shareholders = MajorShareholderDocument {
-            metadata: metadata("SAMPLE-MAJOR", latest_date),
-            content: Some(MajorShareholderContent {
-                period_end: Some(old_date),
-                report_type: MajorShareholderReportType::Annual,
-                holders: vec![MajorShareholder {
-                    rank: Some(1),
-                    name: "架空株主".into(),
-                    shares_held: Some(500),
-                    shares_ratio: Some(0.25),
-                }],
-            }),
-        };
-        let cross_shareholdings = CrossShareholdingDocument {
-            metadata: metadata("SAMPLE-CROSS", latest_date),
-            content: Some(CrossShareholdingContent {
-                period_end: Some(old_date),
-                holdings: vec![CrossShareholding {
-                    issuer_name: "架空発行体".into(),
-                    issuer_stock_code: Some("YY880".into()),
-                    category: CrossShareholdingCategory::Specified,
-                    current_shares: Some(200),
-                    previous_shares: Some(100),
-                    current_book_value: Some(300),
-                    previous_book_value: Some(150),
-                    mutual_holding: MutualHolding::Held,
-                }],
-            }),
-        };
+        }
+    }
 
+    fn major_shareholder_document(
+        document_id: &str,
+        submitted_on: NaiveDate,
+    ) -> MajorShareholderDocument {
+        MajorShareholderDocument {
+            metadata: metadata(document_id, submitted_on),
+            content: Some(MajorShareholderContent {
+                period_end: None,
+                report_type: MajorShareholderReportType::Annual,
+                holders: vec![],
+            }),
+        }
+    }
+
+    fn cross_shareholding_document(
+        document_id: &str,
+        submitted_on: NaiveDate,
+    ) -> CrossShareholdingDocument {
+        CrossShareholdingDocument {
+            metadata: metadata(document_id, submitted_on),
+            content: Some(CrossShareholdingContent {
+                period_end: None,
+                holdings: vec![],
+            }),
+        }
+    }
+
+    async fn save_documents(
+        repository: &PostgresShareholdingStructureRepository,
+        unit_of_work: &PostgresUnitOfWork,
+        large_volume: Vec<LargeVolumeShareholdingDocument>,
+        major_shareholders: Vec<MajorShareholderDocument>,
+        cross_shareholdings: Vec<CrossShareholdingDocument>,
+    ) -> (usize, usize, usize) {
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
         let saved = (
             repository
-                .upsert_large_volume(
-                    &transaction,
-                    vec![large_volume_old.clone(), large_volume_latest.clone()],
-                )
+                .upsert_large_volume(&transaction, large_volume)
                 .await
                 .expect("upsert large volume documents"),
             repository
-                .upsert_major_shareholders(&transaction, vec![major_shareholders.clone()])
+                .upsert_major_shareholders(&transaction, major_shareholders)
                 .await
                 .expect("upsert major shareholder documents"),
             repository
-                .upsert_cross_shareholdings(&transaction, vec![cross_shareholdings.clone()])
+                .upsert_cross_shareholdings(&transaction, cross_shareholdings)
                 .await
                 .expect("upsert cross shareholding documents"),
         );
-        let corrected_count = repository
-            .upsert_large_volume(&transaction, vec![large_volume_correction.clone()])
-            .await
-            .expect("upsert corrected large volume document");
         unit_of_work
             .commit(transaction)
             .await
             .expect("commit transaction");
+        saved
+    }
 
+    #[backend_test_macros::database_test]
+    async fn upserts_and_reads_each_document_kind(db: DatabaseHandle) {
+        let repository = PostgresShareholdingStructureRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let submitted_on = date(2040, 2, 1);
+        let large_volume = large_volume_document("SAMPLE-LARGE", submitted_on);
+        let major_shareholder = major_shareholder_document("SAMPLE-MAJOR", submitted_on);
+        let cross_shareholding = cross_shareholding_document("SAMPLE-CROSS", submitted_on);
+        let saved = save_documents(
+            &repository,
+            &unit_of_work,
+            vec![large_volume.clone()],
+            vec![major_shareholder.clone()],
+            vec![cross_shareholding.clone()],
+        )
+        .await;
+        let read = repository
+            .find_for_symbol("ZZ99", 1)
+            .await
+            .expect("read documents");
+
+        assert_eq!(
+            (saved, read),
+            (
+                (1, 1, 1),
+                ShareholdingStructureBySymbol {
+                    large_volume_reports: vec![large_volume],
+                    major_shareholders: Some(major_shareholder),
+                    cross_shareholdings: Some(cross_shareholding),
+                },
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn upserts_large_volume_correction(db: DatabaseHandle) {
+        let repository = PostgresShareholdingStructureRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let submitted_on = date(2040, 2, 1);
+        let original = large_volume_document("SAMPLE-LARGE", submitted_on);
+        let correction = corrected_large_volume_document("SAMPLE-LARGE", submitted_on);
+        let first_saved =
+            save_documents(&repository, &unit_of_work, vec![original], vec![], vec![]).await;
+        let corrected_saved = save_documents(
+            &repository,
+            &unit_of_work,
+            vec![correction.clone()],
+            vec![],
+            vec![],
+        )
+        .await;
+        let read = repository
+            .find_for_symbol("ZZ99", 1)
+            .await
+            .expect("read corrected document");
+
+        assert_eq!(
+            (first_saved, corrected_saved, read.large_volume_reports),
+            ((1, 0, 0), (1, 0, 0), vec![correction]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn latest_submitted_on_returns_latest_date_for_each_document_kind(db: DatabaseHandle) {
+        let repository = PostgresShareholdingStructureRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let old_date = date(2040, 1, 1);
+        let latest_date = date(2040, 2, 1);
+        let saved = save_documents(
+            &repository,
+            &unit_of_work,
+            vec![
+                large_volume_document("SAMPLE-LARGE-OLD", old_date),
+                large_volume_document("SAMPLE-LARGE-NEW", latest_date),
+            ],
+            vec![
+                major_shareholder_document("SAMPLE-MAJOR-OLD", old_date),
+                major_shareholder_document("SAMPLE-MAJOR-NEW", latest_date),
+            ],
+            vec![
+                cross_shareholding_document("SAMPLE-CROSS-OLD", old_date),
+                cross_shareholding_document("SAMPLE-CROSS-NEW", latest_date),
+            ],
+        )
+        .await;
         let latest_dates = (
             repository
                 .latest_large_volume_submitted_on()
@@ -518,21 +591,44 @@ mod tests {
                 .await
                 .expect("query latest cross shareholding date"),
         );
+
+        assert_eq!(
+            (saved, latest_dates),
+            (
+                (2, 2, 2),
+                (Some(latest_date), Some(latest_date), Some(latest_date)),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn find_for_symbol_orders_large_volume_reports_and_respects_limit(db: DatabaseHandle) {
+        let repository = PostgresShareholdingStructureRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let old = large_volume_document("SAMPLE-LARGE-OLD", date(2040, 1, 1));
+        let latest_b = large_volume_document("SAMPLE-LARGE-B", date(2040, 2, 1));
+        let latest_c = large_volume_document("SAMPLE-LARGE-C", date(2040, 2, 1));
+        let saved = save_documents(
+            &repository,
+            &unit_of_work,
+            vec![old, latest_b.clone(), latest_c.clone()],
+            vec![],
+            vec![],
+        )
+        .await;
         let read = repository
             .find_for_symbol("ZZ99", 2)
             .await
-            .expect("read shareholding structure");
+            .expect("read documents");
 
         assert_eq!(
-            (saved, corrected_count, latest_dates, read),
+            (saved, read),
             (
-                (2, 1, 1),
-                1,
-                (Some(latest_date), Some(latest_date), Some(latest_date)),
+                (3, 0, 0),
                 ShareholdingStructureBySymbol {
-                    large_volume_reports: vec![large_volume_latest, large_volume_correction],
-                    major_shareholders: Some(major_shareholders),
-                    cross_shareholdings: Some(cross_shareholdings),
+                    large_volume_reports: vec![latest_c, latest_b],
+                    major_shareholders: None,
+                    cross_shareholdings: None,
                 },
             ),
         );

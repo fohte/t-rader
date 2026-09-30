@@ -46,10 +46,6 @@ impl EquityMasterRepository for PostgresEquityMasterRepository {
                 .map_err(repository_error)?;
         }
 
-        if entries.is_empty() {
-            return Ok(0);
-        }
-
         let now = Utc::now().fixed_offset();
         let models = entries.iter().map(|entry| stock::ActiveModel {
             id: Set(entry.id.clone()),
