@@ -36,7 +36,7 @@ pub async fn list_tasks(
 ) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
     let views = state
         .use_cases
-        .strategy_tasks
+        .strategy_tasks()
         .list(TaskListQuery {
             strategy_id: p.strategy_id,
             purpose: p.purpose,

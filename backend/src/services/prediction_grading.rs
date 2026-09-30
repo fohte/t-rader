@@ -1,257 +1,58 @@
-//! 期限到来した予測 (prediction) を日足データで自動採点する。
-//!
-//! target/benchmark それぞれの base_date・due_date 時点の終値からリターンを計算し、
-//! `direction` (outperform/underperform) との整合で的中・不的中を判定する。判定はコードで
-//! 決定的に行い、LLM は関与しない。
+//! 期限到来した予測を採点する poll を起動する。
 
-use std::collections::HashSet;
 use std::time::Duration;
 
-use rust_decimal::Decimal;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect,
-};
-use uuid::Uuid;
-
-use crate::error::AppError;
-use gateway_postgres::entities::{prediction, prediction_grade};
-use gateway_postgres::repositories::bars::find_latest_bar_on_or_before;
+use core_application::prediction::{GradingStats, PredictionUseCaseError, PredictionUseCases};
 
 /// poll task のデフォルト実行間隔。日足の確定を待つだけの処理で緊急性が無いため週次とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
-const DAILY_TIMEFRAME: &str = "1d";
-
-/// 1 サイクル分の採点結果
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct GradingStats {
-    pub graded: usize,
+async fn run_once(
+    predictions: &PredictionUseCases,
+) -> Result<GradingStats, PredictionUseCaseError> {
+    predictions.grade_due_today().await
 }
 
-/// 採点に必要な終値とリターン、的中結果
-struct GradedOutcome {
-    target_base_close: Decimal,
-    target_due_close: Decimal,
-    benchmark_base_close: Decimal,
-    benchmark_due_close: Decimal,
-    target_return: Decimal,
-    benchmark_return: Decimal,
-    correct: bool,
-}
-
-/// `(due_close - base_close) / base_close` を計算する。`base` が 0 の場合は `None`。
-fn compute_return(base: Decimal, due: Decimal) -> Option<Decimal> {
-    (due - base).checked_div(base)
-}
-
-/// 1 件の予測を採点する。終値がまだ揃っていない場合は `Ok(None)` を返し、次回サイクルに
-/// 持ち越す。
-async fn try_grade(
-    db: &impl sea_orm::ConnectionTrait,
-    p: &prediction::Model,
-) -> Result<Option<GradedOutcome>, AppError> {
-    let due_bday = crate::date_utils::latest_business_day(p.due_date);
-
-    let Some(target_due_bar) =
-        find_latest_bar_on_or_before(db, &p.target_stock_id, DAILY_TIMEFRAME, p.due_date).await?
-    else {
-        tracing::debug!(
-            prediction_id = %p.prediction_id,
-            "target の due_date 以前のバーが 1 件も無いためスキップします",
-        );
-        return Ok(None);
-    };
-    let Some(benchmark_due_bar) =
-        find_latest_bar_on_or_before(db, &p.benchmark_stock_id, DAILY_TIMEFRAME, p.due_date)
-            .await?
-    else {
-        tracing::debug!(
-            prediction_id = %p.prediction_id,
-            "benchmark の due_date 以前のバーが 1 件も無いためスキップします",
-        );
-        return Ok(None);
-    };
-
-    // 「due_date 以前で最新」のバーが due_bday より古い場合、期限日の日足がまだ
-    // ingest されていない。古いデータで採点せず次回サイクルに持ち越す。
-    if target_due_bar.timestamp.date_naive() != due_bday
-        || benchmark_due_bar.timestamp.date_naive() != due_bday
-    {
-        tracing::debug!(
-            prediction_id = %p.prediction_id,
-            "due_date の日足がまだ ingest されていないためスキップします",
-        );
-        return Ok(None);
-    }
-
-    // base_date は既に過去の日付であり、当時の終値が今後 ingest されることはないため、
-    // due_date と異なり「取得できたバーが最新か」の鮮度チェックは行わない。
-    // 非営業日の base_date に対する直近営業日へのフォールバックも意図した挙動。
-    let Some(target_base_bar) =
-        find_latest_bar_on_or_before(db, &p.target_stock_id, DAILY_TIMEFRAME, p.base_date).await?
-    else {
-        tracing::debug!(
-            prediction_id = %p.prediction_id,
-            "target の base_date 以前のバーが 1 件も無いためスキップします",
-        );
-        return Ok(None);
-    };
-    let Some(benchmark_base_bar) =
-        find_latest_bar_on_or_before(db, &p.benchmark_stock_id, DAILY_TIMEFRAME, p.base_date)
-            .await?
-    else {
-        tracing::debug!(
-            prediction_id = %p.prediction_id,
-            "benchmark の base_date 以前のバーが 1 件も無いためスキップします",
-        );
-        return Ok(None);
-    };
-
-    let Some(target_return) = compute_return(target_base_bar.close, target_due_bar.close) else {
-        tracing::debug!(
-            prediction_id = %p.prediction_id,
-            "target の base_date 終値が 0 のためリターンを計算できずスキップします",
-        );
-        return Ok(None);
-    };
-    let Some(benchmark_return) = compute_return(benchmark_base_bar.close, benchmark_due_bar.close)
-    else {
-        tracing::debug!(
-            prediction_id = %p.prediction_id,
-            "benchmark の base_date 終値が 0 のためリターンを計算できずスキップします",
-        );
-        return Ok(None);
-    };
-
-    // direction は DB の CHECK 制約で "outperform" / "underperform" のみが保証される。
-    let correct = if p.direction == "outperform" {
-        target_return > benchmark_return
-    } else {
-        target_return < benchmark_return
-    };
-
-    Ok(Some(GradedOutcome {
-        target_base_close: target_base_bar.close,
-        target_due_close: target_due_bar.close,
-        benchmark_base_close: benchmark_base_bar.close,
-        benchmark_due_close: benchmark_due_bar.close,
-        target_return,
-        benchmark_return,
-        correct,
-    }))
-}
-
-/// 期限到来済みかつ未採点の予測をまとめて採点する。全戦略横断で対象を取得する
-/// (個人利用規模のため全件取得で問題ない)。
-pub async fn run_grading_cycle(
-    db: &impl sea_orm::ConnectionTrait,
-) -> Result<GradingStats, AppError> {
-    let today = chrono::Utc::now().date_naive();
-
-    let due_predictions = prediction::Entity::find()
-        .filter(prediction::Column::DueDate.lte(today))
-        .all(db)
-        .await?;
-    if due_predictions.is_empty() {
-        return Ok(GradingStats::default());
-    }
-
-    let graded_ids: HashSet<Uuid> = prediction_grade::Entity::find()
-        .select_only()
-        .column(prediction_grade::Column::PredictionId)
-        .into_tuple::<Uuid>()
-        .all(db)
-        .await?
-        .into_iter()
-        .collect();
-
-    let mut stats = GradingStats::default();
-    for p in due_predictions {
-        if graded_ids.contains(&p.prediction_id) {
-            continue;
-        }
-
-        match try_grade(db, &p).await {
-            Ok(Some(outcome)) => {
-                let insert_result = prediction_grade::ActiveModel {
-                    prediction_id: Set(p.prediction_id),
-                    target_base_close: Set(outcome.target_base_close),
-                    target_due_close: Set(outcome.target_due_close),
-                    benchmark_base_close: Set(outcome.benchmark_base_close),
-                    benchmark_due_close: Set(outcome.benchmark_due_close),
-                    target_return: Set(outcome.target_return),
-                    benchmark_return: Set(outcome.benchmark_return),
-                    correct: Set(outcome.correct),
-                    graded_at: NotSet,
-                }
-                .insert(db)
-                .await;
-                match insert_result {
-                    Ok(_) => stats.graded += 1,
-                    Err(err) => {
-                        tracing::warn!(
-                            error = %err,
-                            prediction_id = %p.prediction_id,
-                            "failed to save prediction grade; will retry next cycle",
-                        );
-                    }
-                }
-            }
-            Ok(None) => {}
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    prediction_id = %p.prediction_id,
-                    "failed to grade prediction; will retry next cycle",
-                );
-            }
-        }
-    }
-
-    Ok(stats)
-}
-
-/// poll task を起動する。未採点かつ期限到来済みの予測だけを扱うため、起動直後の即時実行も
-/// 含めて何度実行しても結果は同じ (べき等)。
-pub fn spawn_poll(db: DatabaseConnection, interval: Duration) -> tokio::task::JoinHandle<()> {
+/// 採点 poll task を起動する。個々の予測は application use case で採点する。
+pub fn spawn_poll(
+    predictions: PredictionUseCases,
+    interval: Duration,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
+            // 採点済みの予測は次回対象から除外されるため、起動直後も実行できる。
             ticker.tick().await;
-            match run_grading_cycle(&db).await {
+            match run_once(&predictions).await {
                 Ok(stats) => {
                     tracing::debug!(graded = stats.graded, "prediction grading cycle completed");
                 }
-                Err(err) => tracing::warn!(error = %err, "prediction grading cycle failed"),
+                Err(error) => tracing::warn!(error = %error, "prediction grading cycle failed"),
             }
         }
     })
 }
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::models::Bar;
     use crate::models::bar::Timeframe;
     use crate::testing::{insert_test_stock, insert_test_strategy};
     use chrono::NaiveDate;
-    use gateway_postgres::entities::instruments;
+    use core_application::prediction::{GradingStats, PredictionUseCaseError};
+    use gateway_postgres::DatabaseHandle;
+    use gateway_postgres::entities::{instruments, prediction, prediction_grade};
     use gateway_postgres::repositories::bars::upsert_bars;
-    use rstest::rstest;
-    use sea_orm::ActiveValue::NotSet;
+    use rust_decimal::Decimal;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ActiveModelTrait, EntityTrait, QuerySelect};
+    use uuid::Uuid;
 
-    #[rstest]
-    #[case::positive_return(Decimal::new(100, 0), Decimal::new(110, 0), Some(Decimal::new(10, 2)))]
-    #[case::negative_return(Decimal::new(100, 0), Decimal::new(90, 0), Some(Decimal::new(-10, 2)))]
-    #[case::zero_base_is_none(Decimal::new(0, 0), Decimal::new(90, 0), None)]
-    fn compute_return_cases(
-        #[case] base: Decimal,
-        #[case] due: Decimal,
-        #[case] expected: Option<Decimal>,
-    ) {
-        assert_eq!(compute_return(base, due), expected);
+    async fn run_grading_cycle(
+        db: &DatabaseHandle,
+    ) -> Result<GradingStats, PredictionUseCaseError> {
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+        super::run_once(&use_cases.predictions()).await
     }
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -338,15 +139,15 @@ mod tests {
         benchmark_base: i64,
         benchmark_due: i64,
     ) {
-        insert_test_target(db, "1000", "target").await;
-        insert_test_target(db, "2000", "benchmark").await;
+        insert_test_target(db, "SAMPLE_TARGET", "target").await;
+        insert_test_target(db, "SAMPLE_BENCHMARK", "benchmark").await;
         upsert_bars(
             db,
             vec![
-                bar("1000", date(2026, 6, 15), target_base),
-                bar("1000", date(2026, 6, 22), target_due),
-                bar("2000", date(2026, 6, 15), benchmark_base),
-                bar("2000", date(2026, 6, 22), benchmark_due),
+                bar("SAMPLE_TARGET", date(2026, 6, 15), target_base),
+                bar("SAMPLE_TARGET", date(2026, 6, 22), target_due),
+                bar("SAMPLE_BENCHMARK", date(2026, 6, 15), benchmark_base),
+                bar("SAMPLE_BENCHMARK", date(2026, 6, 22), benchmark_due),
             ],
         )
         .await
@@ -360,8 +161,8 @@ mod tests {
         let prediction_id = insert_prediction(
             &db,
             strategy_id,
-            "1000",
-            "2000",
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
             "outperform",
             date(2026, 6, 15),
             date(2026, 6, 22),
@@ -398,8 +199,8 @@ mod tests {
         let prediction_id = insert_prediction(
             &db,
             strategy_id,
-            "1000",
-            "2000",
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
             "underperform",
             date(2026, 6, 15),
             date(2026, 6, 22),
@@ -431,17 +232,17 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn skips_when_due_date_bar_is_stale(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
-        insert_test_target(&db, "1000", "target").await;
-        insert_test_target(&db, "2000", "benchmark").await;
+        insert_test_target(&db, "SAMPLE_TARGET", "target").await;
+        insert_test_target(&db, "SAMPLE_BENCHMARK", "benchmark").await;
         // due_date (2026-06-22, 月・平日) の日足がまだ無く、直前 (2026-06-19) までしか
         // ingest されていない状態を再現する。
         upsert_bars(
             &db,
             vec![
-                bar("1000", date(2026, 6, 15), 100),
-                bar("1000", date(2026, 6, 19), 120),
-                bar("2000", date(2026, 6, 15), 100),
-                bar("2000", date(2026, 6, 19), 110),
+                bar("SAMPLE_TARGET", date(2026, 6, 15), 100),
+                bar("SAMPLE_TARGET", date(2026, 6, 19), 120),
+                bar("SAMPLE_BENCHMARK", date(2026, 6, 15), 100),
+                bar("SAMPLE_BENCHMARK", date(2026, 6, 19), 110),
             ],
         )
         .await
@@ -449,8 +250,8 @@ mod tests {
         let prediction_id = insert_prediction(
             &db,
             strategy_id,
-            "1000",
-            "2000",
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
             "outperform",
             date(2026, 6, 15),
             date(2026, 6, 22),
@@ -466,14 +267,14 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn skips_when_base_date_bar_is_missing(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
-        insert_test_target(&db, "1000", "target").await;
-        insert_test_target(&db, "2000", "benchmark").await;
+        insert_test_target(&db, "SAMPLE_TARGET", "target").await;
+        insert_test_target(&db, "SAMPLE_BENCHMARK", "benchmark").await;
         // due 側は揃っているが、base_date 以前のバーが存在しない。
         upsert_bars(
             &db,
             vec![
-                bar("1000", date(2026, 6, 22), 120),
-                bar("2000", date(2026, 6, 22), 110),
+                bar("SAMPLE_TARGET", date(2026, 6, 22), 120),
+                bar("SAMPLE_BENCHMARK", date(2026, 6, 22), 110),
             ],
         )
         .await
@@ -481,8 +282,8 @@ mod tests {
         let prediction_id = insert_prediction(
             &db,
             strategy_id,
-            "1000",
-            "2000",
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
             "outperform",
             date(2026, 6, 15),
             date(2026, 6, 22),
@@ -496,14 +297,37 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn skips_when_base_close_is_zero(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_test_strategy(&db, "test").await;
+        seed_scenario(&db, 0, 120, 100, 110).await;
+        let prediction_id = insert_prediction(
+            &db,
+            strategy_id,
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
+            "outperform",
+            date(2026, 6, 15),
+            date(2026, 6, 22),
+        )
+        .await;
+
+        let result = (
+            run_grading_cycle(&db).await.expect("cycle ok"),
+            find_grade(&db, prediction_id).await,
+        );
+
+        assert_eq!(result, (GradingStats::default(), None));
+    }
+
+    #[backend_test_macros::database_test]
     async fn already_graded_prediction_is_not_regraded(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let prediction_id = insert_prediction(
             &db,
             strategy_id,
-            "1000",
-            "2000",
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
             "outperform",
             date(2026, 6, 15),
             date(2026, 6, 22),
@@ -533,8 +357,8 @@ mod tests {
         let gradable_id = insert_prediction(
             &db,
             strategy_id,
-            "1000",
-            "2000",
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
             "outperform",
             date(2026, 6, 15),
             date(2026, 6, 22),
@@ -545,8 +369,8 @@ mod tests {
         insert_prediction(
             &db,
             strategy_id,
-            "1000",
-            "2000",
+            "SAMPLE_TARGET",
+            "SAMPLE_BENCHMARK",
             "outperform",
             date(2026, 1, 1),
             date(2026, 6, 22),

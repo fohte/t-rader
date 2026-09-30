@@ -111,6 +111,14 @@ pub struct TradeDto {
     pub side: String,
     pub qty: f64,
     pub price: f64,
+    /// 取引に紐付くノートと、紐付け時点で固定されたバージョン。
+    pub notes: Vec<TradeNoteReferenceDto>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct TradeNoteReferenceDto {
+    pub note_id: Uuid,
+    pub note_version_id: Uuid,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]

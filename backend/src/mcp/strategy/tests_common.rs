@@ -2,10 +2,14 @@
 
 use chrono::{DateTime, FixedOffset};
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ActiveModelTrait, EntityTrait, TransactionSession};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionSession,
+};
 use uuid::Uuid;
 
-use gateway_postgres::entities::{annotation, comment, note, note_kind, note_version, strategy};
+use gateway_postgres::entities::{
+    annotation, change_history, comment, note, note_kind, note_version, strategy,
+};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
@@ -63,6 +67,44 @@ pub(super) fn normalize_annotation(mut a: AnnotationDto) -> AnnotationDto {
     a.created_at = ts_sentinel();
     a.updated_at = ts_sentinel();
     a
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) struct ChangeHistoryShape {
+    pub id: Uuid,
+    pub target_kind: String,
+    pub target_id: Uuid,
+    pub actor_kind: String,
+    pub actor_label: String,
+    pub op: String,
+    pub diff_json: serde_json::Value,
+    pub summary: Option<String>,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+pub(super) async fn change_history_for(
+    db: &impl sea_orm::ConnectionTrait,
+    target_id: Uuid,
+) -> Vec<ChangeHistoryShape> {
+    change_history::Entity::find()
+        .filter(change_history::Column::TargetId.eq(target_id))
+        .order_by_asc(change_history::Column::CreatedAt)
+        .all(db)
+        .await
+        .expect("find change history")
+        .into_iter()
+        .map(|row| ChangeHistoryShape {
+            id: Uuid::nil(),
+            target_kind: row.target_kind,
+            target_id: row.target_id,
+            actor_kind: row.actor_kind,
+            actor_label: row.actor_label,
+            op: row.op,
+            diff_json: row.diff_json,
+            summary: row.summary,
+            created_at: ts_sentinel(),
+        })
+        .collect()
 }
 
 /// 現行バージョンの status を直接書き換える (レビュー確定状態からの遷移をテストするため)

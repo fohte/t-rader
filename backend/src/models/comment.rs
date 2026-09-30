@@ -44,6 +44,26 @@ impl From<comment::Model> for CommentResponse {
     }
 }
 
+impl From<core_application::comment::Comment> for CommentResponse {
+    fn from(model: core_application::comment::Comment) -> Self {
+        Self {
+            id: model.id,
+            target_kind: model.target_kind,
+            target_id: model.target_id,
+            parent_id: model.parent_id,
+            body: model.body,
+            author_kind: model.author_kind,
+            author_label: model.author_label,
+            created_at: model.created_at,
+            resolved: model.resolved,
+            anchor_text: model.anchor_text,
+            start_line: model.start_line,
+            end_line: model.end_line,
+            anchor_side: model.anchor_side,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CommentAnchorSide {

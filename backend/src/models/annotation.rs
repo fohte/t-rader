@@ -49,6 +49,27 @@ impl From<annotation::Model> for AnnotationResponse {
     }
 }
 
+impl From<core_application::annotation::Annotation> for AnnotationResponse {
+    fn from(model: core_application::annotation::Annotation) -> Self {
+        Self {
+            id: model.id,
+            strategy_id: model.strategy_id,
+            target_symbol: model.target_symbol,
+            target_kind: model.target_kind,
+            timestamp: model.timestamp,
+            price: model.price,
+            text: model.text,
+            status: model.status,
+            linked_note_id: model.linked_note_id,
+            created_by_kind: model.created_by_kind,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+            execution_step_id: model.execution_step_id,
+            execution_task_id: model.execution_task_id,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateAnnotationRequest {

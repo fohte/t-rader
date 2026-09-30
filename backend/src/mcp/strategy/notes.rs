@@ -3,7 +3,6 @@
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
 use crate::services::graph::GraphDef;
-use crate::services::note_kinds;
 use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
     self, current_note_ids, current_note_ids_with_status, find_current_versions,
@@ -144,9 +143,12 @@ fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
 
 impl StrategyServer {
     pub(crate) async fn list_note_kinds_inner(&self) -> Result<ListNoteKindsResult, McpError> {
-        let note_kinds = note_kinds::list(&self.db)
+        let note_kinds = self
+            .use_cases
+            .note_kinds()
+            .list()
             .await
-            .map_err(app_error_to_mcp)?
+            .map_err(|error| app_error_to_mcp(error.into()))?
             .into_iter()
             .map(|kind| NoteKindDto {
                 key: kind.key,
@@ -177,7 +179,7 @@ impl StrategyServer {
             .transpose()?;
         let result = self
             .use_cases
-            .notes
+            .notes()
             .write(NoteWriteCommand {
                 scope: Some(scope),
                 strategy_id: Some(scope.id()),

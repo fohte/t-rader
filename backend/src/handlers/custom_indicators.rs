@@ -44,7 +44,7 @@ pub async fn list_global_indicators(
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     let items = state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .list_global()
         .await
         .map_err(map_custom_indicator_error)?;
@@ -70,7 +70,7 @@ pub async fn list_strategy_indicators(
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     let items = state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .list_strategy(strategy_id)
         .await
         .map_err(map_custom_indicator_error)?;
@@ -96,7 +96,7 @@ pub async fn get_indicator(
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .get(indicator_id)
         .await
         .map_err(map_custom_indicator_error)?;
@@ -124,7 +124,7 @@ pub async fn create_global_indicator(
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
     let indicator = state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .create(CreateCustomIndicatorCommand {
             name: payload.name,
             strategy_id: None,
@@ -162,7 +162,7 @@ pub async fn create_strategy_indicator(
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
     let indicator = state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .create(CreateCustomIndicatorCommand {
             name: payload.name,
             strategy_id: Some(strategy_id),
@@ -200,7 +200,7 @@ pub async fn update_indicator(
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .update(
             indicator_id,
             UpdateCustomIndicatorCommand {
@@ -235,7 +235,7 @@ pub async fn delete_indicator(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .delete(indicator_id)
         .await
         .map_err(map_custom_indicator_error)?;
@@ -264,7 +264,7 @@ pub async fn get_strategy_indicator(
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
         .use_cases
-        .custom_indicators
+        .custom_indicators()
         .get_strategy_indicator(strategy_id, indicator_id)
         .await
         .map_err(map_custom_indicator_error)?;

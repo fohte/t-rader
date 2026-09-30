@@ -1,0 +1,16 @@
+[package]
+name = "rate-limit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+redis = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lints]
+workspace = true

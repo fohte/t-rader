@@ -250,6 +250,7 @@ impl TradeUseCases {
                 limit: None,
                 order: TradeOrder::DateAscending,
                 include_note_count: false,
+                include_note_references: false,
             })
             .await?;
         Ok(summarize(strategy_id, &rows))
@@ -403,6 +404,7 @@ mod tests {
                 updated_at: chrono::Utc::now().fixed_offset(),
             },
             note_count: 0,
+            note_references: Vec::new(),
         }
     }
 

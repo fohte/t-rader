@@ -144,7 +144,7 @@ pub async fn approve_note_version(
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     let updated = state
         .use_cases
-        .notes
+        .notes()
         .approve_version(note_id, version_no, payload.label)
         .await
         .map_err(crate::handlers::notes::map_note_error)?;
@@ -226,7 +226,7 @@ pub async fn reject_note_version(
 
     let updated = state
         .use_cases
-        .notes
+        .notes()
         .reject_version(note_id, version_no, label, line_comment_count > 0)
         .await
         .map_err(crate::handlers::notes::map_note_error)?;
@@ -256,7 +256,7 @@ pub async fn make_note_version_current(
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     let updated = state
         .use_cases
-        .notes
+        .notes()
         .make_version_current(note_id, version_no)
         .await
         .map_err(crate::handlers::notes::map_note_error)?;

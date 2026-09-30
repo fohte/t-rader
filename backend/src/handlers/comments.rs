@@ -1,13 +1,15 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-    TransactionTrait,
+use core_application::change_history::Actor;
+use core_application::change_history::ChangeHistoryError;
+use core_application::comment::{
+    CommentRepositoryError, CommentUseCaseError, CreateCommentCommand, DeleteCommentCommand,
+    ResolveCommentCommand,
 };
+use core_application::unit_of_work::UnitOfWorkError;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
-use serde_json::json;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
@@ -15,12 +17,9 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
-use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::comment_anchor;
 use gateway_postgres::entities::comment;
 
 const ALLOWED_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
-const ALLOWED_AUTHOR_KIND: [&str; 2] = ["human", "llm"];
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -78,86 +77,27 @@ pub async fn create_comment(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateCommentRequest>,
 ) -> Result<(StatusCode, Json<CommentResponse>), AppError> {
-    if !ALLOWED_TARGET_KIND.contains(&p.target_kind.as_str()) {
-        return Err(AppError::Validation(format!(
-            "invalid target_kind: {}",
-            p.target_kind
-        )));
-    }
-    if p.body.trim().is_empty() {
-        return Err(AppError::Validation("body must not be empty".into()));
-    }
     let author_kind = p.author_kind.as_deref().unwrap_or("human").to_string();
-    if !ALLOWED_AUTHOR_KIND.contains(&author_kind.as_str()) {
-        return Err(AppError::Validation(format!(
-            "invalid author_kind: {author_kind}"
-        )));
-    }
     let author_label = p.author_label.as_deref().unwrap_or("user").to_string();
-
-    // 親コメント指定時は同一 target に属することを確認する (誤った target をまたぐ
-    // 返信スレッドが list_comments で迷子表示されるのを防ぐ)
-    if let Some(parent_id) = p.parent_id {
-        let parent = comment::Entity::find_by_id(parent_id)
-            .one(&state.db)
-            .await?
-            .ok_or_else(|| AppError::Validation(format!("parent comment {parent_id} not found")))?;
-        if parent.target_kind != p.target_kind || parent.target_id != p.target_id {
-            return Err(AppError::Validation(
-                "parent comment belongs to a different target".into(),
-            ));
-        }
-    }
-
-    let (start_line, end_line) = comment_anchor::validate_version_anchor(
-        &state.db,
-        &p.target_kind,
-        p.target_id,
-        p.anchor_side.as_ref().map(|side| side.as_str()),
-        p.start_line,
-        p.end_line,
-    )
-    .await?;
-    let anchor_text = if p.target_kind == "note_version" {
-        p.anchor_text
-    } else {
-        p.anchor_text
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| !text.is_empty())
-            .map(ToOwned::to_owned)
-    };
-
-    let id = Uuid::new_v4();
-    let model = comment::ActiveModel {
-        id: Set(id),
-        target_kind: Set(p.target_kind.clone()),
-        target_id: Set(p.target_id),
-        parent_id: Set(p.parent_id),
-        body: Set(p.body.clone()),
-        author_kind: Set(author_kind),
-        author_label: Set(author_label),
-        resolved: NotSet,
-        created_at: NotSet,
-        anchor_text: Set(anchor_text),
-        anchor_side: Set(p.anchor_side.map(|side| side.as_str().to_string())),
-        start_line: Set(start_line),
-        end_line: Set(end_line),
-    };
-    let txn = state.db.begin().await?;
-    let created = comment::Entity::insert(model)
-        .exec_with_returning(&txn)
-        .await?;
-    change_history::record(
-        &txn,
-        TargetKind::Comment,
-        id,
-        Op::Create,
-        json!({ "target_kind": p.target_kind, "target_id": p.target_id, "parent_id": p.parent_id }),
-        None,
-    )
-    .await?;
-    txn.commit().await?;
+    let created = state
+        .use_cases
+        .comments()
+        .create(CreateCommentCommand {
+            scope: None,
+            actor: Actor::Human,
+            target_kind: p.target_kind,
+            target_id: p.target_id,
+            parent_id: p.parent_id,
+            body: p.body,
+            author_kind,
+            author_label,
+            anchor_text: p.anchor_text,
+            anchor_side: p.anchor_side.map(|side| side.as_str().to_string()),
+            start_line: p.start_line,
+            end_line: p.end_line,
+        })
+        .await
+        .map_err(map_comment_error)?;
 
     Ok((StatusCode::CREATED, Json(created.into())))
 }
@@ -183,29 +123,17 @@ pub async fn update_comment(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateCommentRequest>,
 ) -> Result<Json<CommentResponse>, AppError> {
-    let current = comment::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("comment {id} not found")))?;
-    if current.resolved == payload.resolved {
-        return Ok(Json(current.into()));
-    }
-    let from = current.resolved;
-    let mut active = current.into_active_model();
-    active.resolved = Set(payload.resolved);
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Comment,
-        id,
-        Op::StatusChange,
-        json!({ "from": from, "to": payload.resolved }),
-        None,
-    )
-    .await?;
-    txn.commit().await?;
+    let updated = state
+        .use_cases
+        .comments()
+        .resolve(ResolveCommentCommand {
+            scope: None,
+            actor: Actor::Human,
+            id,
+            resolved: payload.resolved,
+        })
+        .await
+        .map_err(map_comment_error)?;
 
     Ok(Json(updated.into()))
 }
@@ -227,14 +155,30 @@ pub async fn delete_comment(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let txn = state.db.begin().await?;
-    let res = comment::Entity::delete_by_id(id).exec(&txn).await?;
-    if res.rows_affected == 0 {
-        return Err(AppError::NotFound(format!("comment {id} not found")));
-    }
-    change_history::record(&txn, TargetKind::Comment, id, Op::Delete, json!({}), None).await?;
-    txn.commit().await?;
+    state
+        .use_cases
+        .comments()
+        .delete(DeleteCommentCommand {
+            scope: None,
+            actor: Actor::Human,
+            id,
+        })
+        .await
+        .map_err(map_comment_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn map_comment_error(error: CommentUseCaseError) -> AppError {
+    match error {
+        CommentUseCaseError::Validation(message) => AppError::Validation(message),
+        CommentUseCaseError::NotFound(message) => AppError::NotFound(message),
+        CommentUseCaseError::Forbidden(message) => AppError::Validation(message),
+        CommentUseCaseError::Repository(CommentRepositoryError::Database(error))
+        | CommentUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | CommentUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | CommentUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -330,6 +274,45 @@ mod tests {
             .json(&json!({ "resolved": true }))
             .await;
         res.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_comment_rejects_reply_to_reply(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let root = create_note_comment(&server).await;
+        let reply_response = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": root["target_kind"],
+                "target_id": root["target_id"],
+                "parent_id": root["id"],
+                "body": "first reply",
+            }))
+            .await;
+        reply_response.assert_status(StatusCode::CREATED);
+        let reply = reply_response.json::<Value>();
+
+        let nested_response = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": root["target_kind"],
+                "target_id": root["target_id"],
+                "parent_id": reply["id"],
+                "body": "nested reply",
+            }))
+            .await;
+        assert_eq!(
+            (
+                nested_response.status_code(),
+                nested_response.json::<Value>()
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({
+                    "error": "cannot reply to a reply; parent_id must reference a top-level comment",
+                }),
+            ),
+        );
     }
 
     async fn create_note(

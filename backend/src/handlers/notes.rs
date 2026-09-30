@@ -29,16 +29,6 @@ pub struct ListNotesQuery {
     pub kind: Option<String>,
 }
 
-pub(crate) async fn find_note_or_404(
-    db: &impl sea_orm::ConnectionTrait,
-    id: Uuid,
-) -> Result<note::Model, AppError> {
-    note::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
-}
-
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct GetNoteQuery {
@@ -209,7 +199,7 @@ pub async fn create_note(
     let history_title = payload.title.trim().to_string();
     let snapshot = state
         .use_cases
-        .notes
+        .notes()
         .write(NoteWriteCommand {
             scope: None,
             strategy_id,
@@ -266,7 +256,7 @@ pub async fn update_note(
 ) -> Result<Json<NoteResponse>, AppError> {
     let snapshot = state
         .use_cases
-        .notes
+        .notes()
         .update(
             id,
             UpdateNoteCommand {
@@ -302,7 +292,7 @@ pub async fn delete_note(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .notes
+        .notes()
         .delete(id)
         .await
         .map_err(map_note_error)?;

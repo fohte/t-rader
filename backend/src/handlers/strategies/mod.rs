@@ -90,7 +90,7 @@ pub async fn list_strategies(
 ) -> Result<Json<Vec<StrategyResponse>>, AppError> {
     let items = state
         .use_cases
-        .strategies
+        .strategies()
         .list()
         .await
         .map_err(map_strategy_error)?;
@@ -119,7 +119,7 @@ pub async fn get_strategy(
     let scope = strategy_scope_or_404(&state, id).await?;
     let model = state
         .use_cases
-        .strategies
+        .strategies()
         .get(scope)
         .await
         .map_err(map_strategy_error)?;
@@ -146,7 +146,7 @@ pub async fn create_strategy(
 ) -> Result<(StatusCode, Json<StrategyResponse>), AppError> {
     let created = state
         .use_cases
-        .strategies
+        .strategies()
         .create(
             Actor::Human,
             CreateStrategyCommand {
@@ -185,7 +185,7 @@ pub async fn update_strategy(
     let scope = strategy_scope_or_404(&state, id).await?;
     let updated = state
         .use_cases
-        .strategies
+        .strategies()
         .update(
             Actor::Human,
             scope,
@@ -221,7 +221,7 @@ pub async fn delete_strategy(
     let scope = strategy_scope_or_404(&state, id).await?;
     state
         .use_cases
-        .strategies
+        .strategies()
         .delete(Actor::Human, scope)
         .await
         .map_err(map_strategy_error)?;

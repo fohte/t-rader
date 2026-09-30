@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use core_application::trade::{
-    NewTrade, Trade, TradeListItem, TradeOrder, TradeQuery, TradeRepository, TradeRepositoryError,
-    TradeUpdate,
+    NewTrade, Trade, TradeListItem, TradeNoteReference, TradeOrder, TradeQuery, TradeRepository,
+    TradeRepositoryError, TradeUpdate,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
@@ -49,34 +49,64 @@ impl TradeRepository for PostgresTradeRepository {
             select = select.limit(limit);
         }
         let rows = select.all(&self.db).await.map_err(repository_error)?;
-        if !query.include_note_count || rows.is_empty() {
+        if (!query.include_note_count && !query.include_note_references) || rows.is_empty() {
             return Ok(rows
                 .into_iter()
                 .map(|row| TradeListItem {
                     trade: to_domain(row),
                     note_count: 0,
+                    note_references: Vec::new(),
                 })
                 .collect());
         }
 
         let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
-        let note_counts: std::collections::HashMap<Uuid, i64> = trade_note::Entity::find()
-            .select_only()
-            .column(trade_note::Column::TradeId)
-            .column_as(trade_note::Column::TradeId.count(), "note_count")
-            .filter(trade_note::Column::TradeId.is_in(ids))
-            .group_by(trade_note::Column::TradeId)
-            .into_tuple()
-            .all(&self.db)
-            .await
-            .map_err(repository_error)?
-            .into_iter()
-            .collect();
+        let mut note_counts = std::collections::HashMap::new();
+        let mut note_references: std::collections::HashMap<Uuid, Vec<TradeNoteReference>> =
+            std::collections::HashMap::new();
+        if query.include_note_references {
+            let links: Vec<(Uuid, Uuid, Uuid)> = trade_note::Entity::find()
+                .select_only()
+                .column(trade_note::Column::TradeId)
+                .column(trade_note::Column::NoteId)
+                .column(trade_note::Column::NoteVersionId)
+                .filter(trade_note::Column::TradeId.is_in(ids))
+                .order_by_asc(trade_note::Column::CreatedAt)
+                .order_by_asc(trade_note::Column::NoteId)
+                .into_tuple()
+                .all(&self.db)
+                .await
+                .map_err(repository_error)?;
+            for (trade_id, note_id, note_version_id) in links {
+                *note_counts.entry(trade_id).or_default() += 1;
+                note_references
+                    .entry(trade_id)
+                    .or_default()
+                    .push(TradeNoteReference {
+                        note_id,
+                        note_version_id,
+                    });
+            }
+        } else {
+            note_counts = trade_note::Entity::find()
+                .select_only()
+                .column(trade_note::Column::TradeId)
+                .column_as(trade_note::Column::TradeId.count(), "note_count")
+                .filter(trade_note::Column::TradeId.is_in(ids))
+                .group_by(trade_note::Column::TradeId)
+                .into_tuple()
+                .all(&self.db)
+                .await
+                .map_err(repository_error)?
+                .into_iter()
+                .collect();
+        }
 
         Ok(rows
             .into_iter()
             .map(|row| TradeListItem {
                 note_count: note_counts.get(&row.id).copied().unwrap_or_default(),
+                note_references: note_references.remove(&row.id).unwrap_or_default(),
                 trade: to_domain(row),
             })
             .collect())
