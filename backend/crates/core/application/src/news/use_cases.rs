@@ -90,7 +90,7 @@ mod tests {
 
     use crate::news::FakeNewsItemRepository;
     use crate::news::repository::NewsSearchCriteria;
-    use crate::news::types::{AggregationStats, SearchNewsQuery};
+    use crate::news::types::{AggregationStats, NewsArticle, SearchNewsQuery};
     use crate::news_aggregator::{FakeNewsAggregator, NewsItem};
     use crate::rss_feed::{FakeRssFeedRepository, RssFeed};
     use crate::strategy_scope::StrategyScope;
@@ -118,6 +118,11 @@ mod tests {
             news_repository.clone(),
         );
         (use_cases, news_repository)
+    }
+
+    fn normalize_article(mut article: NewsArticle) -> NewsArticle {
+        article.id = Uuid::nil();
+        article
     }
 
     #[tokio::test]
@@ -231,6 +236,55 @@ mod tests {
                 Err("news item batch contains duplicate URLs".into()),
                 Vec::new(),
             ),
+        );
+    }
+
+    #[tokio::test]
+    async fn search_news_returns_articles_saved_by_aggregation_cycle() {
+        let (use_cases, _) = use_cases(vec![feed("feed-alpha", "Alpha publication", true)]);
+        let aggregator = FakeNewsAggregator::new();
+        let item = NewsItem {
+            source: "Alpha publication".into(),
+            url: "https://example.invalid/article".into(),
+            title: "Quarterly headline".into(),
+            body_snippet: Some("Quarterly summary".into()),
+            published_at: DateTime::<Utc>::UNIX_EPOCH,
+        };
+        *aggregator.items.lock().await = vec![item];
+        use_cases
+            .run_aggregation_cycle(&aggregator)
+            .await
+            .expect("aggregation cycle succeeds");
+
+        let result = use_cases
+            .search_news(
+                StrategyScope::from(Uuid::nil()),
+                SearchNewsQuery {
+                    keyword: Some("headline".into()),
+                    from: None,
+                    to: None,
+                    limit: None,
+                },
+            )
+            .await
+            .map(|articles| {
+                articles
+                    .into_iter()
+                    .map(normalize_article)
+                    .collect::<Vec<_>>()
+            })
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            result,
+            Ok(vec![NewsArticle {
+                id: Uuid::nil(),
+                source: "Alpha publication".into(),
+                url: "https://example.invalid/article".into(),
+                title: "Quarterly headline".into(),
+                body_snippet: Some("Quarterly summary".into()),
+                published_at: DateTime::<Utc>::UNIX_EPOCH.fixed_offset(),
+            }]),
         );
     }
 
