@@ -108,7 +108,7 @@ pub async fn create_annotation(
     let created_by = p.created_by_kind.as_deref().unwrap_or("human").to_string();
     let created = state
         .use_cases
-        .annotations
+        .annotations()
         .create(CreateAnnotationCommand {
             scope: None,
             actor: Actor::Human,
@@ -153,7 +153,7 @@ pub async fn update_annotation(
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let updated = state
         .use_cases
-        .annotations
+        .annotations()
         .update(UpdateAnnotationCommand {
             scope: None,
             actor: Actor::Human,
@@ -193,7 +193,7 @@ pub async fn approve_annotation(
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let updated = state
         .use_cases
-        .annotations
+        .annotations()
         .change_status(ChangeAnnotationStatusCommand {
             scope: None,
             actor: Actor::Human,
@@ -257,7 +257,7 @@ pub async fn reject_annotation(
 
     let updated = state
         .use_cases
-        .annotations
+        .annotations()
         .change_status(ChangeAnnotationStatusCommand {
             scope: None,
             actor: Actor::Human,
@@ -289,7 +289,7 @@ pub async fn delete_annotation(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .annotations
+        .annotations()
         .delete(DeleteAnnotationCommand {
             scope: None,
             actor: Actor::Human,

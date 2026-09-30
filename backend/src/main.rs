@@ -238,7 +238,7 @@ async fn main() -> Result<(), AppError> {
             })?;
             let source: Arc<dyn IndicatorObservationSource> = Arc::new(fred_client);
             let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
-                use_cases.indicator_observations.clone(),
+                use_cases.indicator_observations(),
                 source,
                 backend::services::fred_ingest::DEFAULT_INTERVAL,
             );
@@ -279,7 +279,7 @@ async fn main() -> Result<(), AppError> {
 
         let _short_sale_report_ingest_poll =
             backend::services::short_sale_report_ingest::spawn_poll(
-                use_cases.short_sale_reports.clone(),
+                use_cases.short_sale_reports(),
                 client.clone(),
                 backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
             );
@@ -289,7 +289,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
-            use_cases.short_ratios.clone(),
+            use_cases.short_ratios(),
             client.clone(),
             backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
         );
@@ -299,7 +299,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
-            use_cases.margins.clone(),
+            use_cases.margins(),
             client.clone(),
             backend::services::margin_ingest::DEFAULT_INTERVAL,
         );
@@ -363,7 +363,7 @@ async fn main() -> Result<(), AppError> {
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
     let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
-        use_cases.predictions.clone(),
+        use_cases.predictions(),
         backend::services::prediction_grading::DEFAULT_INTERVAL,
     );
     tracing::info!(

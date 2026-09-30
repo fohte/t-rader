@@ -19,7 +19,7 @@ impl MgmtServer {
     pub(super) async fn list_strategies_inner(&self) -> Result<ListStrategiesResult, McpError> {
         let strategies = self
             .use_cases
-            .strategies
+            .strategies()
             .list_summaries()
             .await
             .map_err(map_strategy_use_case_error)?
@@ -40,7 +40,7 @@ impl MgmtServer {
     ) -> Result<SubmitStrategyTaskResult, McpError> {
         let submitted = self
             .use_cases
-            .strategy_tasks
+            .strategy_tasks()
             .submit_task(
                 self.agent_client.as_ref(),
                 params.strategy_id,
@@ -62,7 +62,7 @@ impl MgmtServer {
     ) -> Result<ResumeStrategyTaskResult, McpError> {
         let submitted = self
             .use_cases
-            .strategy_tasks
+            .strategy_tasks()
             .resume(self.agent_client.as_ref(), params.task_id)
             .await
             .map_err(map_resume_error)?;
@@ -78,7 +78,7 @@ impl MgmtServer {
     ) -> Result<GetStrategyTaskStatusResult, McpError> {
         let view = self
             .use_cases
-            .strategy_tasks
+            .strategy_tasks()
             .get_by_a2a_task_id(&params.a2a_task_id)
             .await
             .map_err(map_get_task_error)?

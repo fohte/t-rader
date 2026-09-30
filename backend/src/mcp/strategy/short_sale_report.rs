@@ -51,7 +51,7 @@ impl StrategyServer {
         let (code_from, code_to) = code_range(&params.symbol);
         let rows = self
             .use_cases
-            .short_sale_reports
+            .short_sale_reports()
             .read(
                 scope,
                 ShortSaleReportQuery {
@@ -77,16 +77,14 @@ impl StrategyServer {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use chrono::NaiveDate;
-    use core_application::short_sale_report::{
-        FakeShortSaleReportRepository, ShortSaleReportQuery, ShortSaleReportUseCases,
-    };
+    use core_application::short_sale_report::ShortSaleReportRepository;
     use core_domain::short_sale_report::ShortSaleReport;
     use rstest::rstest;
     use sea_orm::{DatabaseBackend, MockDatabase};
     use uuid::Uuid;
+
+    use gateway_postgres::{DatabaseHandle, PostgresShortSaleReportRepository};
 
     use super::super::dto::{
         ReadShortSaleReportsParams, ReadShortSaleReportsResult, ShortSaleReportDto,
@@ -124,15 +122,6 @@ mod tests {
         }
     }
 
-    fn server(repository: Arc<FakeShortSaleReportRepository>) -> super::super::StrategyServer {
-        let db = gateway_postgres::DatabaseHandle::from(
-            MockDatabase::new(DatabaseBackend::Postgres).into_connection(),
-        );
-        let mut server = build_server(db);
-        server.use_cases.short_sale_reports = ShortSaleReportUseCases::new(repository);
-        server
-    }
-
     #[rstest]
     #[case::blank(String::new(), None)]
     #[case::non_blank("Synthetic value".to_string(), Some("Synthetic value".to_string()))]
@@ -142,8 +131,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_non_four_digit_symbol() {
-        let repository = Arc::new(FakeShortSaleReportRepository::new());
-        let error = server(repository)
+        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
+        let error = build_server(db)
             .read_short_sale_reports_inner(
                 Uuid::new_v4(),
                 ReadShortSaleReportsParams {
@@ -159,37 +148,39 @@ mod tests {
         assert_eq!(error.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[tokio::test]
-    async fn maps_matching_reports_and_preserves_query_range() {
-        let repository = Arc::new(FakeShortSaleReportRepository::new());
-        repository.rows.lock().unwrap().extend([
-            report(
-                ymd(2025, 3, 1),
-                ymd(2025, 2, 26),
-                "00001",
-                "Synthetic A",
-                "0.0153",
-                Some((ymd(2025, 2, 19), "0.0102")),
-            ),
-            report(
-                ymd(2025, 3, 2),
-                ymd(2025, 2, 27),
-                "00009",
-                "Synthetic B",
-                "0.0089",
-                None,
-            ),
-            report(
-                ymd(2025, 3, 2),
-                ymd(2025, 2, 27),
-                "99999",
-                "Unrelated synthetic reporter",
-                "0.0201",
-                None,
-            ),
-        ]);
+    #[backend_test_macros::database_test]
+    async fn maps_matching_reports_and_preserves_query_range(db: DatabaseHandle) {
+        PostgresShortSaleReportRepository::new(db.clone())
+            .upsert(vec![
+                report(
+                    ymd(2025, 3, 1),
+                    ymd(2025, 2, 26),
+                    "00001",
+                    "Synthetic A",
+                    "0.0153",
+                    Some((ymd(2025, 2, 19), "0.0102")),
+                ),
+                report(
+                    ymd(2025, 3, 2),
+                    ymd(2025, 2, 27),
+                    "00009",
+                    "Synthetic B",
+                    "0.0089",
+                    None,
+                ),
+                report(
+                    ymd(2025, 3, 2),
+                    ymd(2025, 2, 27),
+                    "99999",
+                    "Unrelated synthetic reporter",
+                    "0.0201",
+                    None,
+                ),
+            ])
+            .await
+            .expect("seed short sale reports");
 
-        let result = server(repository.clone())
+        let result = build_server(db)
             .read_short_sale_reports_inner(
                 Uuid::new_v4(),
                 ReadShortSaleReportsParams {
@@ -203,85 +194,78 @@ mod tests {
             .expect("read short sale reports");
 
         assert_eq!(
-            (result, repository.queries.lock().unwrap().clone(),),
-            (
-                ReadShortSaleReportsResult {
-                    symbol: "0000".into(),
-                    items: vec![
-                        ShortSaleReportDto {
-                            disc_date: ymd(2025, 3, 2),
-                            calc_date: ymd(2025, 2, 27),
-                            reporter_name: "Synthetic B".into(),
-                            reporter_address: None,
-                            client_name: None,
-                            client_address: None,
-                            fund_name: None,
-                            short_position_ratio: 0.0089,
-                            short_position_shares: 1_000,
-                            short_position_units: 10,
-                            prev_report_date: None,
-                            prev_report_ratio: None,
-                            notes: None,
-                        },
-                        ShortSaleReportDto {
-                            disc_date: ymd(2025, 3, 1),
-                            calc_date: ymd(2025, 2, 26),
-                            reporter_name: "Synthetic A".into(),
-                            reporter_address: None,
-                            client_name: None,
-                            client_address: None,
-                            fund_name: None,
-                            short_position_ratio: 0.0153,
-                            short_position_shares: 1_000,
-                            short_position_units: 10,
-                            prev_report_date: Some(ymd(2025, 2, 19)),
-                            prev_report_ratio: Some(0.0102),
-                            notes: None,
-                        },
-                    ],
-                },
-                vec![ShortSaleReportQuery {
-                    code_from: "00000".into(),
-                    code_to: "00009".into(),
-                    from: Some(ymd(2025, 3, 1)),
-                    to: Some(ymd(2025, 3, 2)),
-                    limit: 10,
-                }],
-            ),
+            result,
+            ReadShortSaleReportsResult {
+                symbol: "0000".into(),
+                items: vec![
+                    ShortSaleReportDto {
+                        disc_date: ymd(2025, 3, 2),
+                        calc_date: ymd(2025, 2, 27),
+                        reporter_name: "Synthetic B".into(),
+                        reporter_address: None,
+                        client_name: None,
+                        client_address: None,
+                        fund_name: None,
+                        short_position_ratio: 0.0089,
+                        short_position_shares: 1_000,
+                        short_position_units: 10,
+                        prev_report_date: None,
+                        prev_report_ratio: None,
+                        notes: None,
+                    },
+                    ShortSaleReportDto {
+                        disc_date: ymd(2025, 3, 1),
+                        calc_date: ymd(2025, 2, 26),
+                        reporter_name: "Synthetic A".into(),
+                        reporter_address: None,
+                        client_name: None,
+                        client_address: None,
+                        fund_name: None,
+                        short_position_ratio: 0.0153,
+                        short_position_shares: 1_000,
+                        short_position_units: 10,
+                        prev_report_date: Some(ymd(2025, 2, 19)),
+                        prev_report_ratio: Some(0.0102),
+                        notes: None,
+                    },
+                ],
+            },
         );
     }
 
-    #[tokio::test]
-    async fn respects_limit_after_report_ordering() {
-        let repository = Arc::new(FakeShortSaleReportRepository::new());
-        repository.rows.lock().unwrap().extend([
-            report(
-                ymd(2025, 1, 1),
-                ymd(2025, 1, 1),
-                "00001",
-                "Synthetic A",
-                "0.01",
-                None,
-            ),
-            report(
-                ymd(2025, 1, 2),
-                ymd(2025, 1, 2),
-                "00001",
-                "Synthetic B",
-                "0.01",
-                None,
-            ),
-            report(
-                ymd(2025, 1, 3),
-                ymd(2025, 1, 3),
-                "00001",
-                "Synthetic C",
-                "0.01",
-                None,
-            ),
-        ]);
+    #[backend_test_macros::database_test]
+    async fn respects_limit_after_report_ordering(db: DatabaseHandle) {
+        PostgresShortSaleReportRepository::new(db.clone())
+            .upsert(vec![
+                report(
+                    ymd(2025, 1, 1),
+                    ymd(2025, 1, 1),
+                    "00001",
+                    "Synthetic A",
+                    "0.01",
+                    None,
+                ),
+                report(
+                    ymd(2025, 1, 2),
+                    ymd(2025, 1, 2),
+                    "00001",
+                    "Synthetic B",
+                    "0.01",
+                    None,
+                ),
+                report(
+                    ymd(2025, 1, 3),
+                    ymd(2025, 1, 3),
+                    "00001",
+                    "Synthetic C",
+                    "0.01",
+                    None,
+                ),
+            ])
+            .await
+            .expect("seed short sale reports");
 
-        let result = server(repository)
+        let result = build_server(db)
             .read_short_sale_reports_inner(
                 Uuid::new_v4(),
                 ReadShortSaleReportsParams {
@@ -295,39 +279,42 @@ mod tests {
             .expect("read short sale reports");
 
         assert_eq!(
-            result.items,
-            vec![
-                ShortSaleReportDto {
-                    disc_date: ymd(2025, 1, 3),
-                    calc_date: ymd(2025, 1, 3),
-                    reporter_name: "Synthetic C".into(),
-                    reporter_address: None,
-                    client_name: None,
-                    client_address: None,
-                    fund_name: None,
-                    short_position_ratio: 0.01,
-                    short_position_shares: 1_000,
-                    short_position_units: 10,
-                    prev_report_date: None,
-                    prev_report_ratio: None,
-                    notes: None,
-                },
-                ShortSaleReportDto {
-                    disc_date: ymd(2025, 1, 2),
-                    calc_date: ymd(2025, 1, 2),
-                    reporter_name: "Synthetic B".into(),
-                    reporter_address: None,
-                    client_name: None,
-                    client_address: None,
-                    fund_name: None,
-                    short_position_ratio: 0.01,
-                    short_position_shares: 1_000,
-                    short_position_units: 10,
-                    prev_report_date: None,
-                    prev_report_ratio: None,
-                    notes: None,
-                },
-            ],
+            result,
+            ReadShortSaleReportsResult {
+                symbol: "0000".into(),
+                items: vec![
+                    ShortSaleReportDto {
+                        disc_date: ymd(2025, 1, 3),
+                        calc_date: ymd(2025, 1, 3),
+                        reporter_name: "Synthetic C".into(),
+                        reporter_address: None,
+                        client_name: None,
+                        client_address: None,
+                        fund_name: None,
+                        short_position_ratio: 0.01,
+                        short_position_shares: 1_000,
+                        short_position_units: 10,
+                        prev_report_date: None,
+                        prev_report_ratio: None,
+                        notes: None,
+                    },
+                    ShortSaleReportDto {
+                        disc_date: ymd(2025, 1, 2),
+                        calc_date: ymd(2025, 1, 2),
+                        reporter_name: "Synthetic B".into(),
+                        reporter_address: None,
+                        client_name: None,
+                        client_address: None,
+                        fund_name: None,
+                        short_position_ratio: 0.01,
+                        short_position_shares: 1_000,
+                        short_position_units: 10,
+                        prev_report_date: None,
+                        prev_report_ratio: None,
+                        notes: None,
+                    },
+                ],
+            },
         );
     }
 }

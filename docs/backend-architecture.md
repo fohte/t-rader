@@ -67,7 +67,9 @@ backend/crates/
 
 ## 集約のユースケース追加
 
-現在の backend では、集約のユースケース container と Postgres 実装の組み立てを `backend/src/services/use_cases.rs` の `UseCases` / `build_use_cases` に集約する。新しい集約を application に移すときは、port とユースケースを `backend/crates/core/application` に、Postgres adapter を `backend/crates/gateways/postgres` に追加し、`UseCases` にフィールドを追加して `build_use_cases` で一度だけ組み立てる。
+`backend/src/services/use_cases.rs` の `UseCases` は、集約をまたいで共有する `DatabaseHandle`、`UnitOfWork`、変更履歴、戦略の存在確認を保持する。各集約のユースケースと Postgres adapter は `backend/src/services/use_cases/<aggregate>.rs` に置き、`impl UseCases` のメソッドで組み立てる。各メソッドは `Arc` に包んだ共通依存を clone して組み立てるため、必要なときに呼び出してよい。集約間の依存がある場合は、同じ `UseCases` のメソッドから組み立てる。
+
+新しい集約を application に移すときは、port とユースケースを `backend/crates/core/application` に、Postgres adapter を `backend/crates/gateways/postgres` に追加し、対応する `services/use_cases/<aggregate>.rs` と `UseCases` のメソッドを実装する。`services/use_cases.rs` には新しい module をアルファベット順で宣言する。利用側はフィールドではなくメソッドを呼び出す。戦略タスクのように単独で必要な場合も、`build_use_cases` から同じメソッドを呼び出して組み立てる。
 
 `core/application` の `lib.rs` には `pub mod` 宣言を置き、型を crate root に再エクスポートしない。利用側は `core_application::trade::...` のように module path から参照する。新しい port や集約を追加するときは、対応する module を `pub mod` で公開する。
 

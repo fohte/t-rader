@@ -156,7 +156,7 @@ impl StrategyServer {
     ) -> Result<ReadMarginResult, McpError> {
         let result = self
             .use_cases
-            .margins
+            .margins()
             .read(
                 scope.into(),
                 MarginQuery {

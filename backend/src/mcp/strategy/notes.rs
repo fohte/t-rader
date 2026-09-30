@@ -91,7 +91,7 @@ impl StrategyServer {
     pub(crate) async fn list_note_kinds_inner(&self) -> Result<ListNoteKindsResult, McpError> {
         let note_kinds = self
             .use_cases
-            .note_kinds
+            .note_kinds()
             .list()
             .await
             .map_err(|error| app_error_to_mcp(error.into()))?
@@ -125,7 +125,7 @@ impl StrategyServer {
             .transpose()?;
         let result = self
             .use_cases
-            .notes
+            .notes()
             .write(NoteWriteCommand {
                 scope: Some(scope),
                 strategy_id: Some(scope.id()),

@@ -43,7 +43,7 @@ pub async fn list_trades(
 ) -> Result<Json<Vec<TradeListItem>>, AppError> {
     let rows = state
         .use_cases
-        .trades
+        .trades()
         .list(TradeQuery {
             strategy_id: p.strategy_id,
             symbol: p.symbol.filter(|symbol| !symbol.is_empty()),
@@ -83,7 +83,7 @@ pub async fn get_trade(
 ) -> Result<Json<TradeResponse>, AppError> {
     let trade = state
         .use_cases
-        .trades
+        .trades()
         .get(id)
         .await
         .map_err(map_trade_error)?;
@@ -110,7 +110,7 @@ pub async fn create_trade(
 ) -> Result<(StatusCode, Json<TradeResponse>), AppError> {
     let created = state
         .use_cases
-        .trades
+        .trades()
         .create(CreateTradeCommand {
             strategy_id: p.strategy_id,
             symbol: p.symbol,
@@ -150,7 +150,7 @@ pub async fn update_trade(
 ) -> Result<Json<TradeResponse>, AppError> {
     let updated = state
         .use_cases
-        .trades
+        .trades()
         .update(
             id,
             TradeUpdateCommand {
@@ -189,7 +189,7 @@ pub async fn delete_trade(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .trades
+        .trades()
         .delete(id)
         .await
         .map_err(map_trade_error)?;
@@ -221,7 +221,7 @@ pub async fn trades_summary(
 ) -> Result<Json<PerformanceSummary>, AppError> {
     let summary = state
         .use_cases
-        .trades
+        .trades()
         .summary(p.strategy_id)
         .await
         .map_err(map_trade_error)?;
