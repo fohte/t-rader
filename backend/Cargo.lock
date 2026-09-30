@@ -1678,6 +1678,7 @@ dependencies = [
  "core-application",
  "indoc",
  "quick-xml",
+ "rate-limit",
  "reqwest",
  "rstest",
  "tokio",
