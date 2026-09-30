@@ -104,9 +104,8 @@ async fn main() -> Result<(), AppError> {
         return Ok(());
     }
 
-    let db_handle = DatabaseHandle::from(db.clone());
-    let use_cases = backend::services::use_cases::build_use_cases(db_handle.clone());
-
+    let app_db = DatabaseHandle::from(db.clone());
+    let use_cases = backend::services::use_cases::build_use_cases(app_db.clone());
     let provider_kind = std::env::var("DATA_PROVIDER")
         .ok()
         .map(|s| s.to_lowercase())
@@ -238,7 +237,7 @@ async fn main() -> Result<(), AppError> {
             })?;
             let source: Arc<dyn IndicatorObservationSource> = Arc::new(fred_client);
             let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
-                db.clone(),
+                use_cases.indicator_observations(),
                 source,
                 backend::services::fred_ingest::DEFAULT_INTERVAL,
             );
@@ -279,7 +278,7 @@ async fn main() -> Result<(), AppError> {
 
         let _short_sale_report_ingest_poll =
             backend::services::short_sale_report_ingest::spawn_poll(
-                db.clone(),
+                use_cases.short_sale_reports(),
                 client.clone(),
                 backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
             );
@@ -289,7 +288,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
-            db.clone(),
+            use_cases.short_ratios(),
             client.clone(),
             backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
         );
@@ -299,7 +298,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
-            db.clone(),
+            use_cases.margins(),
             client.clone(),
             backend::services::margin_ingest::DEFAULT_INTERVAL,
         );
@@ -371,7 +370,7 @@ async fn main() -> Result<(), AppError> {
         "prediction grading poll task started",
     );
     let state = AppState {
-        db: db_handle,
+        db: app_db,
         use_cases,
         daily_bar_source,
         jquants_client,

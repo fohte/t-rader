@@ -9,7 +9,6 @@ pub mod fin_summary_ingest;
 pub mod fred_ingest;
 pub mod graph;
 pub mod import;
-pub mod jquants_daily_ingest;
 pub mod litellm_client;
 pub mod margin_ingest;
 pub mod news;
