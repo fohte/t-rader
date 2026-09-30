@@ -8,6 +8,7 @@ use sea_orm::{
 extern crate self as gateway_postgres;
 
 mod account_risk_policy;
+mod agent_config;
 mod annotation;
 mod change_history;
 mod comment;
@@ -39,6 +40,7 @@ mod unit_of_work;
 mod valuation;
 
 pub use account_risk_policy::PostgresAccountRiskPolicyRepository;
+pub use agent_config::PostgresAgentConfigRepository;
 pub use annotation::PostgresAnnotationRepository;
 pub use change_history::PostgresChangeHistory;
 pub use comment::PostgresCommentRepository;
@@ -48,7 +50,7 @@ pub use financial_summary::PostgresFinancialSummaryRepository;
 pub use indicator_observation::PostgresIndicatorObservationRepository;
 pub use margin::PostgresMarginRepository;
 pub use news::PostgresNewsItemRepository;
-pub use note::PostgresNoteRepository;
+pub use note::{PostgresNoteRepository, supersede_pending_versions_before};
 pub use note_kind::PostgresNoteKindRepository;
 pub use prediction::PostgresPredictionRepository;
 pub use refs::PostgresRefRepository;

@@ -24,7 +24,7 @@ impl JQuantsClient {
 
         tracing::debug!(%url, "J-Quants API から全銘柄マスタを取得中");
 
-        let response = self.get_with_retry(&url, self.current_rate_limit()).await?;
+        let response = self.get_with_retry(&url).await?;
         let body: EquitiesMasterResponse = response
             .json()
             .await
