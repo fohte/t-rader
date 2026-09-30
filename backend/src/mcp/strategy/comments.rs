@@ -4,20 +4,21 @@
 
 use core_application::change_history::Actor;
 use core_application::comment::{CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand};
+use core_application::note::NoteReadUseCases;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
-use gateway_postgres::entities::{comment, note_version};
+use gateway_postgres::entities::comment;
 
 use super::dto::{
     CommentDto, ReadCommentsParams, ReadCommentsResult, ReplyCommentParams, ReplyCommentResult,
     ResolveCommentParams, ResolveCommentResult,
 };
 use super::{
-    STRATEGY_AGENT_ACTOR, StrategyServer, db_error, fetch_annotation_owned_by, fetch_note_owned_by,
-    internal_error, invalid_params,
+    STRATEGY_AGENT_ACTOR, StrategyServer, db_error, fetch_annotation_owned_by, internal_error,
+    invalid_params,
 };
 
 const ALLOWED_COMMENT_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
@@ -61,21 +62,20 @@ fn comment_use_case_to_dto(m: core_application::comment::Comment) -> CommentDto 
 /// comment の target_kind に応じて所有権 (strategy_id 一致) を検査する。
 async fn ensure_comment_target_owned_by(
     db: &impl sea_orm::ConnectionTrait,
+    note_reads: &NoteReadUseCases,
     target_kind: &str,
     target_id: Uuid,
-    expected: Uuid,
+    scope: StrategyScope,
 ) -> Result<(), McpError> {
     match target_kind {
         "note_version" => {
-            let version = note_version::Entity::find_by_id(target_id)
-                .one(db)
+            note_reads
+                .ensure_note_version_scope(target_id, scope)
                 .await
-                .map_err(db_error)?
-                .ok_or_else(|| McpError::resource_not_found("note version not found", None))?;
-            fetch_note_owned_by(db, version.note_id, expected).await?;
+                .map_err(super::notes::note_read_error_to_mcp)?;
         }
         "annotation" => {
-            fetch_annotation_owned_by(db, target_id, expected).await?;
+            fetch_annotation_owned_by(db, target_id, scope.id()).await?;
         }
         other => {
             return Err(internal_error(format!(
@@ -92,7 +92,7 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
-        let session_strategy_id = scope.into().id();
+        let scope = scope.into();
         if !ALLOWED_COMMENT_TARGET_KIND.contains(&params.target_kind.as_str()) {
             return Err(invalid_params(format!(
                 "invalid target_kind: {} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})",
@@ -101,9 +101,10 @@ impl StrategyServer {
         }
         ensure_comment_target_owned_by(
             &self.db,
+            &self.use_cases.note_reads(),
             &params.target_kind,
             params.target_id,
-            session_strategy_id,
+            scope,
         )
         .await?;
 
