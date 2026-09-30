@@ -201,8 +201,8 @@ impl NoteRepository for PostgresNoteRepository {
             transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
         let versions = note_version::Entity::find()
             .filter(note_version::Column::NoteId.is_in(note_ids.iter().copied()))
+            .filter(note_version::Column::VersionNo.eq(1))
             .order_by_asc(note_version::Column::NoteId)
-            .order_by_asc(note_version::Column::VersionNo)
             .all(transaction)
             .await
             .map_err(repository_error)?;

@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use crate::note::NoteSnapshot;
-use crate::note::SharedNoteRepository;
+use crate::note::{NoteSnapshot, NoteUseCases};
 use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::TradeUseCaseError;
@@ -14,19 +13,19 @@ use super::types::NewTradeNoteLink;
 pub struct TradeNoteUseCases {
     unit_of_work: SharedUnitOfWork,
     trade_repository: SharedTradeRepository,
-    note_repository: SharedNoteRepository,
+    note_use_cases: NoteUseCases,
 }
 
 impl TradeNoteUseCases {
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         trade_repository: SharedTradeRepository,
-        note_repository: SharedNoteRepository,
+        note_use_cases: NoteUseCases,
     ) -> Self {
         Self {
             unit_of_work,
             trade_repository,
-            note_repository,
+            note_use_cases,
         }
     }
 
@@ -45,22 +44,22 @@ impl TradeNoteUseCases {
         let note_ids: Vec<Uuid> = links.iter().map(|link| link.note_id).collect();
         let version_ids: Vec<Uuid> = links.iter().map(|link| link.note_version_id).collect();
         let notes = self
-            .note_repository
-            .find_notes_by_ids(&transaction, &note_ids)
+            .note_use_cases
+            .find_notes_by_ids_in_transaction(&transaction, &note_ids)
             .await?
             .into_iter()
             .map(|note| (note.id, note))
             .collect::<HashMap<_, _>>();
         let versions = self
-            .note_repository
-            .find_versions_by_ids(&transaction, &version_ids)
+            .note_use_cases
+            .find_versions_by_ids_in_transaction(&transaction, &version_ids)
             .await?
             .into_iter()
             .map(|version| (version.id, version))
             .collect::<HashMap<_, _>>();
         let creators = self
-            .note_repository
-            .find_initial_created_by_kind_by_note_ids(&transaction, &note_ids)
+            .note_use_cases
+            .find_initial_created_by_kind_by_note_ids_in_transaction(&transaction, &note_ids)
             .await?;
 
         let snapshots = links
@@ -105,8 +104,8 @@ impl TradeNoteUseCases {
         let transaction = self.unit_of_work.begin().await?;
         let trade = self.require_trade(&transaction, trade_id).await?;
         let note = self
-            .note_repository
-            .find_note(&transaction, note_id)
+            .note_use_cases
+            .find_note_in_transaction(&transaction, note_id)
             .await?;
         match note {
             Some(note) if note.strategy_id == Some(trade.strategy_id) => {}
@@ -117,8 +116,8 @@ impl TradeNoteUseCases {
             }
         }
         let version = self
-            .note_repository
-            .find_current_version(&transaction, note_id)
+            .note_use_cases
+            .find_current_version_in_transaction(&transaction, note_id)
             .await?
             .ok_or_else(|| {
                 TradeUseCaseError::ResourceNotFound(format!(

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use core_application::trade::{TradeNoteUseCases, TradeUseCases};
-use gateway_postgres::{PostgresNoteRepository, PostgresTradeRepository};
+use gateway_postgres::PostgresTradeRepository;
 
 use super::UseCases;
 
@@ -19,7 +19,7 @@ impl UseCases {
         TradeNoteUseCases::new(
             self.unit_of_work.clone(),
             Arc::new(PostgresTradeRepository::new(self.db.clone())),
-            Arc::new(PostgresNoteRepository::new()),
+            self.notes(),
         )
     }
 }
