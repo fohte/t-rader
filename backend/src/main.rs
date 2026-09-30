@@ -377,10 +377,10 @@ async fn main() -> Result<(), AppError> {
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
-    let short_selling_source: Option<SharedShortSellingSource> = jquants_client
+    let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
-    let margin_source: Option<SharedMarginSource> = jquants_client
+    let margin_source: Option<SharedMarginSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedMarginSource);
     let dependencies = SchedulerDependencies {
