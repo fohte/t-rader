@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, FixedOffset};
+use core_application::agent_config::AgentConfig;
 use sea_orm::entity::prelude::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
-
-use gateway_postgres::entities::agent_config;
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -65,8 +64,8 @@ pub struct AgentConfigItemResponse {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-impl From<agent_config::Model> for AgentConfigItemResponse {
-    fn from(model: agent_config::Model) -> Self {
+impl From<AgentConfig> for AgentConfigItemResponse {
+    fn from(model: AgentConfig) -> Self {
         Self {
             id: model.id,
             purpose: model.purpose,

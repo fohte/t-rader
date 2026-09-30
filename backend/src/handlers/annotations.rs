@@ -329,8 +329,8 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
+    use crate::testing::agent_config;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client, insert_test_note,
         insert_test_strategy,
