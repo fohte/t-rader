@@ -3,12 +3,13 @@
 # scripts/db-url でポートを解決する (キャッシュしない)。_.file より前に書くことで
 # .env.local による上書きを維持している
 DATABASE_URL = "{{ exec(command=config_root ~ '/scripts/db-url') }}"
+REDIS_URL = "{{ exec(command=config_root ~ '/scripts/redis-url') }}"
 _.file = ['.env', '.env.local']
 # Share target dir across worktrees to avoid full recompilation
 CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tasks.db-up]
-description = "DB を起動する"
+description = "開発用 DB と Redis を起動する"
 file = "scripts/db-up"
 
 [tools]

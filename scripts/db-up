@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# DB (docker-compose.infra.yml) を起動する。ランダム割り当てされた実ポートは
-# scripts/db-url が都度解決するので、ここではポートの記録は行わない。
+# docker-compose.infra.yml の開発用サービスを起動する。ランダム割り当てされた
+# 実ポートは各 URL script が都度解決する。
 #
 # Usage:
 #   mise run db-up
