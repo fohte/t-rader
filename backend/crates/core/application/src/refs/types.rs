@@ -1,4 +1,5 @@
 use chrono::{DateTime, FixedOffset};
+use core_domain::note_reference::ALLOWED_REF_KINDS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefKind {
@@ -23,13 +24,21 @@ impl TryFrom<&str> for RefKind {
     type Error = String;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "stock" => Ok(Self::Stock),
-            "indicator" => Ok(Self::Indicator),
-            "sector" => Ok(Self::Sector),
-            "theme" => Ok(Self::Theme),
-            _ => Err(value.to_string()),
-        }
+        const KINDS_BY_ALLOWED_KIND: [RefKind; ALLOWED_REF_KINDS.len()] = [
+            RefKind::Stock,
+            RefKind::Indicator,
+            RefKind::Sector,
+            RefKind::Theme,
+        ];
+
+        let index = ALLOWED_REF_KINDS
+            .iter()
+            .position(|kind| *kind == value)
+            .ok_or_else(|| value.to_string())?;
+        KINDS_BY_ALLOWED_KIND
+            .get(index)
+            .copied()
+            .ok_or_else(|| value.to_string())
     }
 }
 

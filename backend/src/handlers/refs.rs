@@ -317,3 +317,51 @@ fn map_ref_error(error: RefUseCaseError) -> AppError {
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use crate::testing::{create_test_server_with_db, insert_test_stock};
+
+    fn normalize_stock_timestamps(stocks: &mut Value) {
+        for stock in stocks.as_array_mut().expect("stock list") {
+            stock["created_at"] = json!("normalized timestamp");
+            stock["updated_at"] = json!("normalized timestamp");
+        }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_stocks_filters_by_query(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        insert_test_stock(&db, "MOCK_001", "Mock Alpha").await;
+        insert_test_stock(&db, "MOCK_002", "Mock Beta").await;
+
+        let response = server.get("/api/refs/stocks?q=Alpha").await;
+        response.assert_status_ok();
+        let mut actual = response.json::<Value>();
+        normalize_stock_timestamps(&mut actual);
+
+        assert_eq!(
+            actual,
+            json!([{
+                "id": "MOCK_001",
+                "name": "Mock Alpha",
+                "market": null,
+                "sector_id": null,
+                "created_at": "normalized timestamp",
+                "updated_at": "normalized timestamp",
+                "product_category": null,
+            }]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_stock_returns_404_for_unknown_id(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
+
+        let response = server.get("/api/refs/stocks/UNKNOWN").await;
+
+        response.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+}

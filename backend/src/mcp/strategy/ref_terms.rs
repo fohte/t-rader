@@ -11,7 +11,6 @@
 //! 使わない。
 
 use core_application::refs::{RefRepositoryError, RefUseCaseError};
-use core_application::strategy_scope::StrategyScope;
 use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
@@ -50,18 +49,12 @@ impl StrategyServer {
     /// 別名を追加する。同じ (ref_kind, ref_id, term) が既にあれば idempotent に無視する。
     pub(crate) async fn add_ref_terms_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: AddRefTermsParams,
     ) -> Result<AddRefTermsResult, McpError> {
         let added = self
             .use_cases
             .refs
-            .add_terms(
-                scope.into(),
-                &params.ref_kind,
-                &params.ref_id,
-                &params.terms,
-            )
+            .add_terms(&params.ref_kind, &params.ref_id, &params.terms)
             .await
             .map_err(ref_terms_error)?;
 
@@ -71,18 +64,12 @@ impl StrategyServer {
     /// 別名を削除する。登録されていない語を渡しても idempotent に無視する。
     pub(crate) async fn remove_ref_terms_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: RemoveRefTermsParams,
     ) -> Result<RemoveRefTermsResult, McpError> {
         let removed = self
             .use_cases
             .refs
-            .remove_terms(
-                scope.into(),
-                &params.ref_kind,
-                &params.ref_id,
-                &params.terms,
-            )
+            .remove_terms(&params.ref_kind, &params.ref_id, &params.terms)
             .await
             .map_err(ref_terms_error)?;
 
@@ -91,16 +78,24 @@ impl StrategyServer {
 }
 
 fn ref_terms_error(error: RefUseCaseError) -> McpError {
-    tracing::error!(error = %error, "strategy mcp ref terms failed");
     match error {
         RefUseCaseError::Validation(message) => invalid_params(message),
-        RefUseCaseError::Repository(RefRepositoryError::Database(error))
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
-            internal_error(format!("database error: {error}"))
+        error @ (RefUseCaseError::Repository(RefRepositoryError::Database(_))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(_))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(_))) => {
+            tracing::error!(error = %error, "strategy mcp ref terms failed");
+            match error {
+                RefUseCaseError::Repository(RefRepositoryError::Database(error))
+                | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+                | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+                    internal_error(format!("database error: {error}"))
+                }
+                _ => internal_error("unexpected reference error"),
+            }
         }
-        RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+        error @ (RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction)) => {
+            tracing::error!(error = %error, "strategy mcp ref terms failed");
             internal_error("reference transaction has an unexpected type")
         }
     }
@@ -111,7 +106,6 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
-    use uuid::Uuid;
 
     use super::super::tests_common::build_server;
     use super::{AddRefTermsParams, RemoveRefTermsParams};
@@ -140,14 +134,11 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .add_ref_terms_inner(
-                Uuid::new_v4(),
-                AddRefTermsParams {
-                    ref_kind: "stock".into(),
-                    ref_id: "7203".into(),
-                    terms: vec!["トヨタ".into(), "Toyota".into()],
-                },
-            )
+            .add_ref_terms_inner(AddRefTermsParams {
+                ref_kind: "stock".into(),
+                ref_id: "7203".into(),
+                terms: vec!["トヨタ".into(), "Toyota".into()],
+            })
             .await
             .expect("add_ref_terms");
 
@@ -165,14 +156,11 @@ mod tests {
         seed_term(&db, "stock", "7203", "トヨタ").await;
 
         let result = server
-            .add_ref_terms_inner(
-                Uuid::new_v4(),
-                AddRefTermsParams {
-                    ref_kind: "stock".into(),
-                    ref_id: "7203".into(),
-                    terms: vec!["トヨタ".into(), "  ".into(), "Toyota".into()],
-                },
-            )
+            .add_ref_terms_inner(AddRefTermsParams {
+                ref_kind: "stock".into(),
+                ref_id: "7203".into(),
+                terms: vec!["トヨタ".into(), "  ".into(), "Toyota".into()],
+            })
             .await
             .expect("add_ref_terms");
 
@@ -184,14 +172,11 @@ mod tests {
         let server = build_server(db);
 
         let err = server
-            .add_ref_terms_inner(
-                Uuid::new_v4(),
-                AddRefTermsParams {
-                    ref_kind: "bogus".into(),
-                    ref_id: "7203".into(),
-                    terms: vec!["トヨタ".into()],
-                },
-            )
+            .add_ref_terms_inner(AddRefTermsParams {
+                ref_kind: "bogus".into(),
+                ref_id: "7203".into(),
+                terms: vec!["トヨタ".into()],
+            })
             .await
             .expect_err("invalid kind");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
@@ -202,14 +187,11 @@ mod tests {
         let server = build_server(db);
 
         let err = server
-            .add_ref_terms_inner(
-                Uuid::new_v4(),
-                AddRefTermsParams {
-                    ref_kind: "stock".into(),
-                    ref_id: "  ".into(),
-                    terms: vec!["トヨタ".into()],
-                },
-            )
+            .add_ref_terms_inner(AddRefTermsParams {
+                ref_kind: "stock".into(),
+                ref_id: "  ".into(),
+                terms: vec!["トヨタ".into()],
+            })
             .await
             .expect_err("empty ref_id");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
@@ -223,14 +205,11 @@ mod tests {
         seed_term(&db, "stock", "9984", "トヨタ").await;
 
         let result = server
-            .remove_ref_terms_inner(
-                Uuid::new_v4(),
-                RemoveRefTermsParams {
-                    ref_kind: "stock".into(),
-                    ref_id: "7203".into(),
-                    terms: vec!["トヨタ".into(), "存在しない".into()],
-                },
-            )
+            .remove_ref_terms_inner(RemoveRefTermsParams {
+                ref_kind: "stock".into(),
+                ref_id: "7203".into(),
+                terms: vec!["トヨタ".into(), "存在しない".into()],
+            })
             .await
             .expect("remove_ref_terms");
 
@@ -248,14 +227,11 @@ mod tests {
         let server = build_server(db);
 
         let err = server
-            .remove_ref_terms_inner(
-                Uuid::new_v4(),
-                RemoveRefTermsParams {
-                    ref_kind: "bogus".into(),
-                    ref_id: "7203".into(),
-                    terms: vec!["トヨタ".into()],
-                },
-            )
+            .remove_ref_terms_inner(RemoveRefTermsParams {
+                ref_kind: "bogus".into(),
+                ref_id: "7203".into(),
+                terms: vec!["トヨタ".into()],
+            })
             .await
             .expect_err("invalid kind");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);

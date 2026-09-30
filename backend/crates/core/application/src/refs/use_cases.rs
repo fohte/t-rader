@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::strategy_scope::StrategyScope;
 use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::RefUseCaseError;
@@ -89,7 +88,6 @@ impl RefUseCases {
 
     pub async fn search_all(
         &self,
-        _scope: StrategyScope,
         query: &str,
         limit: u64,
     ) -> Result<Vec<RefSearchMatch>, RefUseCaseError> {
@@ -194,7 +192,6 @@ impl RefUseCases {
 
     pub async fn add_terms(
         &self,
-        _scope: StrategyScope,
         ref_kind: &str,
         ref_id: &str,
         terms: &[String],
@@ -222,7 +219,6 @@ impl RefUseCases {
 
     pub async fn remove_terms(
         &self,
-        _scope: StrategyScope,
         ref_kind: &str,
         ref_id: &str,
         terms: &[String],

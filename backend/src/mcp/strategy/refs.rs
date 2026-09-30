@@ -7,7 +7,6 @@
 //! / `name` の組で返す。
 
 use core_application::refs::{RefRepositoryError, RefSearchMatch, RefUseCaseError};
-use core_application::strategy_scope::StrategyScope;
 use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
@@ -55,13 +54,12 @@ impl StrategyServer {
     /// `session_strategy_id` は使わない。
     pub(crate) async fn search_refs_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: SearchRefsParams,
     ) -> Result<SearchRefsResult, McpError> {
         let refs = self
             .use_cases
             .refs
-            .search_all(scope.into(), &params.query, clamp_limit(params.limit))
+            .search_all(&params.query, clamp_limit(params.limit))
             .await
             .map_err(ref_use_case_error)?
             .into_iter()
@@ -73,16 +71,24 @@ impl StrategyServer {
 }
 
 fn ref_use_case_error(error: RefUseCaseError) -> McpError {
-    tracing::error!(error = %error, "strategy mcp refs failed");
     match error {
         RefUseCaseError::Validation(message) => invalid_params(message),
-        RefUseCaseError::Repository(RefRepositoryError::Database(error))
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
-            internal_error(format!("database error: {error}"))
+        error @ (RefUseCaseError::Repository(RefRepositoryError::Database(_))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(_))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(_))) => {
+            tracing::error!(error = %error, "strategy mcp refs failed");
+            match error {
+                RefUseCaseError::Repository(RefRepositoryError::Database(error))
+                | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+                | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+                    internal_error(format!("database error: {error}"))
+                }
+                _ => internal_error("unexpected reference error"),
+            }
         }
-        RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+        error @ (RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction)) => {
+            tracing::error!(error = %error, "strategy mcp refs failed");
             internal_error("reference transaction has an unexpected type")
         }
     }
@@ -92,7 +98,6 @@ fn ref_use_case_error(error: RefUseCaseError) -> McpError {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use uuid::Uuid;
 
     use super::super::tests_common::build_server;
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
@@ -184,13 +189,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "Alpha".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "Alpha".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -233,13 +235,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "7203".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "7203".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -262,13 +261,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "semicon".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "semicon".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -295,13 +291,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "A_B".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "A_B".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -316,13 +309,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "Match".into(),
-                    limit: Some(2),
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "Match".into(),
+                limit: Some(2),
+            })
             .await
             .expect("search_refs");
 
@@ -354,13 +344,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "Alpha".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "Alpha".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -390,13 +377,10 @@ mod tests {
         let server = build_server(db);
 
         let err = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "   ".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "   ".into(),
+                limit: None,
+            })
             .await
             .expect_err("empty query");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
@@ -410,13 +394,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "Ａｌｐｈａ".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "Ａｌｐｈａ".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -441,13 +422,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "ＵＳＤＪＰＹ".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "ＵＳＤＪＰＹ".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -472,13 +450,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "Ａ＿Ｂ".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "Ａ＿Ｂ".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -492,13 +467,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "motors group".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "motors group".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -524,13 +496,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "Alpha".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "Alpha".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
@@ -555,13 +524,10 @@ mod tests {
         let server = build_server(db);
 
         let result = server
-            .search_refs_inner(
-                Uuid::new_v4(),
-                SearchRefsParams {
-                    query: "Ghost".into(),
-                    limit: None,
-                },
-            )
+            .search_refs_inner(SearchRefsParams {
+                query: "Ghost".into(),
+                limit: None,
+            })
             .await
             .expect("search_refs");
 
