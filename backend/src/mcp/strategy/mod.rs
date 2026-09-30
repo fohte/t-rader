@@ -32,7 +32,7 @@ pub(super) mod valuation;
 pub(super) mod web_search;
 
 #[cfg(test)]
-mod tests_common;
+pub(in crate::mcp) mod tests_common;
 
 use std::collections::BTreeMap;
 

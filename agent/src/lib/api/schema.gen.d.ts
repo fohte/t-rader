@@ -1493,6 +1493,8 @@ export interface components {
       hook_slug?: string | null
       kind: components['schemas']['TriggerKind']
       prompt_template: string
+      /** @description 省略時または `null` 指定時は default の agent 設定を使用する。 */
+      purpose?: string | null
       /** @description kind=cron 時に必須 (UTC の 5 フィールド cron 式) */
       schedule?: string | null
     }
@@ -2009,6 +2011,7 @@ export interface components {
       /** Format: date-time */
       last_fired_at?: string | null
       prompt_template: string
+      purpose?: string | null
       schedule?: string | null
       /** Format: uuid */
       strategy_id?: string | null
@@ -2099,6 +2102,8 @@ export interface components {
       event_match?: unknown
       hook_slug?: string | null
       prompt_template?: string | null
+      /** @description 省略時は変更せず、`null` 指定時は default purpose に戻す。 */
+      purpose?: string | null
       schedule?: string | null
     }
     Value: unknown

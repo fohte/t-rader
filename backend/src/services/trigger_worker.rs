@@ -79,6 +79,7 @@ mod tests {
     #[derive(Debug, PartialEq, Eq)]
     struct TaskShape {
         strategy_id: Uuid,
+        purpose: Option<String>,
         source: String,
         prompt: String,
         phase: StrategyTaskPhase,
@@ -88,6 +89,7 @@ mod tests {
         fn from(row: strategy_task::Model) -> Self {
             Self {
                 strategy_id: row.strategy_id,
+                purpose: row.purpose,
                 source: row.source,
                 prompt: row.prompt,
                 phase: row.phase,
@@ -109,6 +111,7 @@ mod tests {
             true,
             Some(past),
             "{{strategy.name}} morning",
+            None,
         )
         .await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
@@ -129,6 +132,7 @@ mod tests {
                 1,
                 vec![TaskShape {
                     strategy_id,
+                    purpose: Some(DEFAULT_PURPOSE.to_string()),
                     source: "cron".to_string(),
                     prompt: "sample strategy morning".to_string(),
                     phase: StrategyTaskPhase::Running,
@@ -139,10 +143,54 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn fires_due_cron_with_trigger_purpose(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = seed_strategy(&db).await;
+        agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("insert test agent_config");
+        let past = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
+        insert_test_cron_trigger(
+            &db,
+            strategy_id,
+            "* * * * *",
+            true,
+            Some(past),
+            "{{strategy.name}} morning",
+            Some("synthetic-purpose"),
+        )
+        .await;
+
+        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let triggers = build_use_cases(db.clone()).triggers();
+        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let tasks = strategy_task::Entity::find()
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(TaskShape::from)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (attempts, tasks),
+            (
+                1,
+                vec![TaskShape {
+                    strategy_id,
+                    purpose: Some("synthetic-purpose".to_string()),
+                    source: "cron".to_string(),
+                    prompt: "sample strategy morning".to_string(),
+                    phase: StrategyTaskPhase::Running,
+                }],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn skips_disabled_cron(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = seed_strategy(&db).await;
         let past = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
-        insert_test_cron_trigger(&db, strategy_id, "* * * * *", false, Some(past), "x").await;
+        insert_test_cron_trigger(&db, strategy_id, "* * * * *", false, Some(past), "x", None).await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();
@@ -163,7 +211,16 @@ mod tests {
     async fn skips_when_no_slot_after_last_fire(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = seed_strategy(&db).await;
         let just_fired = chrono::Utc::now() - chrono::Duration::seconds(1);
-        insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, Some(just_fired), "x").await;
+        insert_test_cron_trigger(
+            &db,
+            strategy_id,
+            "0 9 * * *",
+            true,
+            Some(just_fired),
+            "x",
+            None,
+        )
+        .await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();

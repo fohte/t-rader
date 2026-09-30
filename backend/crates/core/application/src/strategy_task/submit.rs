@@ -10,6 +10,13 @@ use super::types::{
 use super::{DEADLINE_DURATION, DEFAULT_PURPOSE, StrategyTaskUseCases};
 
 impl StrategyTaskUseCases {
+    pub async fn agent_config_exists(&self, purpose: &str) -> Result<bool, SubmitTaskError> {
+        self.repository
+            .agent_config_exists(purpose)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn submit_task(
         &self,
         agent_client: &dyn AgentTaskClient,
