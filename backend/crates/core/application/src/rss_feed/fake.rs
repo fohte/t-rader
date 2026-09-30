@@ -7,7 +7,7 @@ use crate::persistence::PersistenceError;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{RssFeedRepository, RssFeedRepositoryError};
-use super::types::{NewRssFeed, RssFeed};
+use super::types::{NewRssFeed, RssFeed, UpdateRssFeedPatch};
 
 #[derive(Default)]
 pub struct FakeRssFeedRepository {
@@ -97,21 +97,28 @@ impl RssFeedRepository for FakeRssFeedRepository {
     async fn update(
         &self,
         transaction: &UnitOfWorkTransaction,
-        feed: RssFeed,
+        id: Uuid,
+        patch: UpdateRssFeedPatch,
+        updated_at: chrono::DateTime<chrono::FixedOffset>,
     ) -> Result<RssFeed, RssFeedRepositoryError> {
         self.record_transaction(transaction).await?;
         let mut feeds = self.feeds.lock().await;
-        let Some(existing) = feeds.iter_mut().find(|existing| existing.id == feed.id) else {
+        let Some(existing) = feeds.iter_mut().find(|existing| existing.id == id) else {
             return Err(RssFeedRepositoryError::Persistence(
-                PersistenceError::RecordNotUpdated(format!("rss feed {} was not updated", feed.id)),
+                PersistenceError::RecordNotUpdated(format!("rss feed {id} was not updated")),
             ));
         };
-        let feed = RssFeed {
-            source: existing.source.clone(),
-            ..feed
-        };
-        *existing = feed.clone();
-        Ok(feed)
+        if let Some(display_name) = patch.display_name {
+            existing.display_name = display_name;
+        }
+        if let Some(url) = patch.url {
+            existing.url = url;
+        }
+        if let Some(enabled) = patch.enabled {
+            existing.enabled = enabled;
+        }
+        existing.updated_at = updated_at;
+        Ok(existing.clone())
     }
 
     async fn delete(

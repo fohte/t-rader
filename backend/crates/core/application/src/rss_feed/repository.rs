@@ -1,11 +1,12 @@
 use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{NewRssFeed, RssFeed};
+use super::types::{NewRssFeed, RssFeed, UpdateRssFeedPatch};
 
 #[derive(Debug, Error)]
 pub enum RssFeedRepositoryError {
@@ -34,7 +35,9 @@ pub trait RssFeedRepository: Send + Sync {
     async fn update(
         &self,
         transaction: &UnitOfWorkTransaction,
-        feed: RssFeed,
+        id: Uuid,
+        patch: UpdateRssFeedPatch,
+        updated_at: DateTime<FixedOffset>,
     ) -> Result<RssFeed, RssFeedRepositoryError>;
     async fn delete(
         &self,

@@ -72,22 +72,29 @@ impl RssFeedUseCases {
         patch: UpdateRssFeedPatch,
     ) -> Result<RssFeed, RssFeedUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let mut feed = self
+        if self
             .repository
             .find_by_id_in_transaction(&transaction, id)
             .await?
-            .ok_or(RssFeedUseCaseError::NotFound(id))?;
-        if let Some(display_name) = patch.display_name {
-            feed.display_name = validate_display_name(&display_name)?;
+            .is_none()
+        {
+            return Err(RssFeedUseCaseError::NotFound(id));
         }
-        if let Some(url) = patch.url {
-            feed.url = validate_url(&url, self.url_validator.as_ref())?;
-        }
-        if let Some(enabled) = patch.enabled {
-            feed.enabled = enabled;
-        }
-        feed.updated_at = Utc::now().fixed_offset();
-        let updated = self.repository.update(&transaction, feed).await?;
+        let patch = UpdateRssFeedPatch {
+            display_name: patch
+                .display_name
+                .map(|name| validate_display_name(&name))
+                .transpose()?,
+            url: patch
+                .url
+                .map(|url| validate_url(&url, self.url_validator.as_ref()))
+                .transpose()?,
+            enabled: patch.enabled,
+        };
+        let updated = self
+            .repository
+            .update(&transaction, id, patch, Utc::now().fixed_offset())
+            .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(updated)
     }
@@ -334,7 +341,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_applies_patch_and_preserves_source() {
+    async fn update_applies_patch_and_preserves_unpatched_fields() {
         let existing = feed(
             "feed-alpha",
             "Alpha publication",
@@ -348,19 +355,24 @@ mod tests {
                 id,
                 UpdateRssFeedPatch {
                     display_name: Some("Updated publication".into()),
-                    url: Some("https://feeds.example.invalid/updated.xml".into()),
-                    enabled: Some(false),
+                    url: None,
+                    enabled: None,
                 },
             )
             .await
             .expect("feed updates");
         let listed = repository.list(false).await.expect("feeds list");
+        let transaction_ids = repository.transaction_ids.lock().await.clone();
+        let used_one_transaction = matches!(
+            transaction_ids.as_slice(),
+            [find_transaction, update_transaction] if find_transaction == update_transaction
+        );
         let expected = RssFeed {
             id: Uuid::nil(),
             source: "feed-alpha".into(),
             display_name: "Updated publication".into(),
-            url: "https://feeds.example.invalid/updated.xml".into(),
-            enabled: false,
+            url: "https://feeds.example.invalid/feed-alpha.xml".into(),
+            enabled: true,
             created_at: timestamp(),
             updated_at: timestamp(),
         };
@@ -368,9 +380,10 @@ mod tests {
         assert_eq!(
             (
                 normalize(updated),
-                listed.into_iter().map(normalize).collect::<Vec<_>>()
+                listed.into_iter().map(normalize).collect::<Vec<_>>(),
+                used_one_transaction,
             ),
-            (expected.clone(), vec![expected]),
+            (expected.clone(), vec![expected], true),
         );
     }
 

@@ -1,5 +1,8 @@
 use async_trait::async_trait;
-use core_application::rss_feed::{NewRssFeed, RssFeed, RssFeedRepository, RssFeedRepositoryError};
+use chrono::{DateTime, FixedOffset};
+use core_application::rss_feed::{
+    NewRssFeed, RssFeed, RssFeedRepository, RssFeedRepositoryError, UpdateRssFeedPatch,
+};
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
@@ -87,17 +90,19 @@ impl RssFeedRepository for PostgresRssFeedRepository {
     async fn update(
         &self,
         transaction: &UnitOfWorkTransaction,
-        feed: RssFeed,
+        id: Uuid,
+        patch: UpdateRssFeedPatch,
+        updated_at: DateTime<FixedOffset>,
     ) -> Result<RssFeed, RssFeedRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         let model = rss_feed::ActiveModel {
-            id: Unchanged(feed.id),
-            source: Unchanged(feed.source),
-            display_name: Set(feed.display_name),
-            url: Set(feed.url),
-            enabled: Set(feed.enabled),
-            created_at: Unchanged(feed.created_at),
-            updated_at: Set(feed.updated_at),
+            id: Unchanged(id),
+            source: NotSet,
+            display_name: patch.display_name.map_or(NotSet, Set),
+            url: patch.url.map_or(NotSet, Set),
+            enabled: patch.enabled.map_or(NotSet, Set),
+            created_at: NotSet,
+            updated_at: Set(updated_at),
         };
         model
             .update(transaction)
@@ -146,7 +151,7 @@ fn to_application(model: rss_feed::Model) -> RssFeed {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use core_application::rss_feed::{NewRssFeed, RssFeed, RssFeedRepository};
+    use core_application::rss_feed::{NewRssFeed, RssFeed, RssFeedRepository, UpdateRssFeedPatch};
     use core_application::unit_of_work::UnitOfWork;
     use uuid::Uuid;
 
@@ -274,12 +279,13 @@ mod tests {
         let updated = repository
             .update(
                 &transaction,
-                RssFeed {
-                    display_name: "Updated publication".into(),
-                    enabled: false,
-                    updated_at: Utc::now().fixed_offset(),
-                    ..created.clone()
+                created.id,
+                UpdateRssFeedPatch {
+                    display_name: Some("Updated publication".into()),
+                    url: None,
+                    enabled: Some(false),
                 },
+                Utc::now().fixed_offset(),
             )
             .await
             .expect("feed updates");
@@ -293,6 +299,69 @@ mod tests {
             normalize(RssFeed {
                 display_name: "Updated publication".into(),
                 enabled: false,
+                ..created
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_preserves_concurrent_changes_to_unpatched_fields(db: DatabaseHandle) {
+        let (unit_of_work, repository) = setup(db);
+        let created = create_feed(
+            &unit_of_work,
+            &repository,
+            new_feed("feed-alpha", "Alpha publication", true),
+        )
+        .await;
+        let stale_transaction = unit_of_work.begin().await.expect("transaction begins");
+        repository
+            .find_by_id_in_transaction(&stale_transaction, created.id)
+            .await
+            .expect("feed lookup")
+            .expect("feed exists");
+
+        let concurrent_transaction = unit_of_work.begin().await.expect("transaction begins");
+        repository
+            .update(
+                &concurrent_transaction,
+                created.id,
+                UpdateRssFeedPatch {
+                    display_name: None,
+                    url: Some("https://feeds.example.invalid/concurrent.xml".into()),
+                    enabled: None,
+                },
+                Utc::now().fixed_offset(),
+            )
+            .await
+            .expect("concurrent URL update succeeds");
+        unit_of_work
+            .commit(concurrent_transaction)
+            .await
+            .expect("concurrent transaction commits");
+
+        let updated = repository
+            .update(
+                &stale_transaction,
+                created.id,
+                UpdateRssFeedPatch {
+                    display_name: Some("Updated publication".into()),
+                    url: None,
+                    enabled: None,
+                },
+                Utc::now().fixed_offset(),
+            )
+            .await
+            .expect("partial update succeeds");
+        unit_of_work
+            .commit(stale_transaction)
+            .await
+            .expect("stale transaction commits");
+
+        assert_eq!(
+            normalize(updated),
+            normalize(RssFeed {
+                display_name: "Updated publication".into(),
+                url: "https://feeds.example.invalid/concurrent.xml".into(),
                 ..created
             }),
         );
