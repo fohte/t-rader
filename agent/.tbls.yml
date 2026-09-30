@@ -1,0 +1,9 @@
+name: t-rader agent
+docPath: docs/db
+disableOutputSchema: true
+er:
+  format: mermaid
+exclude:
+  - drizzle.*
+  - _timescaledb_*.*
+  - timescaledb_*.*
