@@ -33,6 +33,7 @@ type strategyTriggerResource struct {
 type strategyTriggerModel struct {
 	ID             types.String  `tfsdk:"id"`
 	StrategyID     types.String  `tfsdk:"strategy_id"`
+	Purpose        types.String  `tfsdk:"purpose"`
 	Kind           types.String  `tfsdk:"kind"`
 	Schedule       types.String  `tfsdk:"schedule"`
 	HookSlug       types.String  `tfsdk:"hook_slug"`
@@ -64,6 +65,10 @@ func (r *strategyTriggerResource) Schema(_ context.Context, _ resource.SchemaReq
 				Required:            true,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				MarkdownDescription: "親となる戦略 UUID。変更時は trigger を再作成します。",
+			},
+			"purpose": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "タスクの投入先となる agent 設定。省略時は default を使用します。",
 			},
 			"kind": schema.StringAttribute{
 				Required:            true,
@@ -140,6 +145,7 @@ func (r *strategyTriggerResource) Create(ctx context.Context, req resource.Creat
 		EventMatch:     eventMatch,
 		HookSlug:       stringAttributeNullable(plan.HookSlug),
 		Kind:           traderapi.TriggerKind(plan.Kind.ValueString()),
+		Purpose:        stringAttributeNullable(plan.Purpose),
 		PromptTemplate: plan.PromptTemplate.ValueString(),
 		Schedule:       stringAttributeNullable(plan.Schedule),
 	})
@@ -207,6 +213,7 @@ func (r *strategyTriggerResource) Update(ctx context.Context, req resource.Updat
 		Enabled:        boolAttributeNullable(plan.Enabled),
 		EventMatch:     eventMatch,
 		HookSlug:       stringAttributeUpdateNullable(plan.HookSlug),
+		Purpose:        stringAttributeUpdateNullable(plan.Purpose),
 		PromptTemplate: stringAttributeUpdateNullable(plan.PromptTemplate),
 		Schedule:       stringAttributeUpdateNullable(plan.Schedule),
 	})
@@ -261,6 +268,7 @@ func modelFromStrategyTrigger(ctx context.Context, trigger traderapi.Trigger) (s
 	return strategyTriggerModel{
 		ID:             types.StringValue(trigger.TriggerId.String()),
 		StrategyID:     strategyID,
+		Purpose:        stringNullableAttribute(trigger.Purpose),
 		Kind:           types.StringValue(trigger.Kind),
 		Schedule:       stringNullableAttribute(trigger.Schedule),
 		HookSlug:       stringNullableAttribute(trigger.HookSlug),

@@ -122,6 +122,7 @@ impl TriggerRepository for FakeTriggerRepository {
         let trigger = Trigger {
             trigger_id: trigger.trigger_id,
             strategy_id: Some(trigger.strategy_id),
+            purpose: trigger.purpose,
             kind: trigger.kind,
             schedule: trigger.schedule,
             hook_slug: trigger.hook_slug,

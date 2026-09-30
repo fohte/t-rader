@@ -19,10 +19,10 @@ use crate::agent_client::{
 };
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
 use crate::mcp::watcher;
-use crate::services::agent_config;
 use crate::services::strategy_tasks::DEFAULT_PURPOSE;
 use crate::services::trigger_worker;
 use crate::services::use_cases::build_use_cases;
+use crate::testing::agent_config;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy,
@@ -66,6 +66,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         true,
         Some(far_past),
         "from cron",
+        None,
     )
     .await;
     let use_cases = build_use_cases(db.clone());

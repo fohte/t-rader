@@ -212,7 +212,8 @@ mod tests {
     async fn get_strategy_config_includes_triggers(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
-            insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "prompt").await;
+            insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "prompt", None)
+                .await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
