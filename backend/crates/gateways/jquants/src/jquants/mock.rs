@@ -30,6 +30,19 @@ impl JQuantsMockServer {
         JQuantsClient::with_base_url(&self.server.uri(), "test-api-key", plan)
     }
 
+    pub fn client_with_plan_and_max_wait(
+        &self,
+        plan: JQuantsPlan,
+        max_wait: std::time::Duration,
+    ) -> Result<JQuantsClient, DataProviderError> {
+        JQuantsClient::with_base_url_and_max_wait(
+            &self.server.uri(),
+            "test-api-key",
+            plan,
+            max_wait,
+        )
+    }
+
     pub fn daily_bars(&self) -> MockDailyBarsBuilder<'_> {
         MockDailyBarsBuilder {
             server: &self.server,
@@ -671,11 +684,19 @@ pub struct MockErrorBuilder<'a> {
 
 impl<'a> MockErrorBuilder<'a> {
     pub async fn rate_limited(self, endpoint_path: &str) {
+        self.rate_limited_with_retry_after(endpoint_path, "0").await;
+    }
+
+    pub async fn rate_limited_with_retry_after(self, endpoint_path: &str, retry_after: &str) {
         Mock::given(method("GET"))
             .and(path(endpoint_path))
-            .respond_with(ResponseTemplate::new(429).set_body_json(json!({
-                "message": "Too Many Requests",
-            })))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", retry_after)
+                    .set_body_json(json!({
+                        "message": "Too Many Requests",
+                    })),
+            )
             .mount(self.server)
             .await;
     }
