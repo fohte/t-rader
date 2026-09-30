@@ -36,9 +36,9 @@ use crate::data_provider::SharedDailyBarSource;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, history, hooks, imports, note_kinds, note_links, note_predictions,
-    note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
-    triggers,
+    custom_indicators, group_axes, history, hooks, imports, note_kinds, note_links,
+    note_predictions, note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks,
+    trade_notes, trades, triggers,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
@@ -110,6 +110,7 @@ impl AppState {
         (name = "triggers", description = "戦略 trigger (cron / hook)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
+        (name = "group_axes", description = "銘柄を分類する軸"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
         (name = "config", description = "frontend 向けランタイム設定値"),
@@ -338,6 +339,16 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(
             note_kinds::update_note_kind,
             note_kinds::delete_note_kind
+        ))
+        // group axes
+        .routes(routes!(
+            group_axes::list_group_axes,
+            group_axes::create_group_axis
+        ))
+        .routes(routes!(
+            group_axes::get_group_axis,
+            group_axes::update_group_axis,
+            group_axes::delete_group_axis
         ))
         // agent options (agent 設定フォームの選択肢)
         .routes(routes!(agent_options::get_agent_models))

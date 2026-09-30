@@ -14,6 +14,7 @@ mod comment;
 mod custom_indicator;
 mod earnings_schedule;
 mod financial_summary;
+mod group_axis;
 mod indicator_observation;
 mod margin;
 mod news;

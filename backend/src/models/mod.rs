@@ -7,6 +7,7 @@ pub mod change_history;
 pub mod comment;
 pub mod config;
 pub mod custom_indicator;
+pub mod group_axis;
 pub mod import;
 pub mod instrument;
 pub mod margin;
@@ -39,6 +40,7 @@ pub use custom_indicator::{
     CreateCustomIndicatorRequest, CustomIndicatorResponse, PreviewIndicatorRequest,
     PreviewIndicatorResponse, UpdateCustomIndicatorRequest,
 };
+pub use group_axis::GroupAxisResponse;
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
     SbiPreviewRow,
