@@ -104,6 +104,9 @@ async fn main() -> Result<(), AppError> {
         return Ok(());
     }
 
+    let db_handle = DatabaseHandle::from(db.clone());
+    let use_cases = backend::services::use_cases::build_use_cases(db_handle.clone());
+
     let provider_kind = std::env::var("DATA_PROVIDER")
         .ok()
         .map(|s| s.to_lowercase())
@@ -336,7 +339,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
-            db.clone(),
+            use_cases.bars.clone(),
             client.clone(),
             backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
         );
@@ -359,8 +362,6 @@ async fn main() -> Result<(), AppError> {
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
-    let db = DatabaseHandle::from(db);
-    let use_cases = backend::services::use_cases::build_use_cases(db.clone());
     let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
         use_cases.predictions.clone(),
         backend::services::prediction_grading::DEFAULT_INTERVAL,
@@ -370,7 +371,7 @@ async fn main() -> Result<(), AppError> {
         "prediction grading poll task started",
     );
     let state = AppState {
-        db: db.clone(),
+        db: db_handle,
         use_cases,
         daily_bar_source,
         jquants_client,

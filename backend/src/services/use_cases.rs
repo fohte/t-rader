@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use core_application::annotation::{AnnotationUseCases, SharedAnnotationRepository};
+use core_application::bars::{BarsUseCases, SharedBarsRepository};
 use core_application::change_history::SharedChangeHistoryPort;
 use core_application::comment::{CommentUseCases, SharedCommentRepository};
 use core_application::custom_indicator::{
@@ -17,17 +18,18 @@ use core_application::strategy_task::{SharedStrategyTaskRepository, StrategyTask
 use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
-    DatabaseHandle, PostgresAnnotationRepository, PostgresChangeHistory, PostgresCommentRepository,
-    PostgresCustomIndicatorRepository, PostgresNoteKindRepository, PostgresNoteRepository,
-    PostgresPredictionRepository, PostgresStrategyExistence, PostgresStrategyRepository,
-    PostgresStrategySummaryQuery, PostgresStrategyTaskRepository, PostgresTradeRepository,
-    PostgresUnitOfWork,
+    DatabaseHandle, PostgresAnnotationRepository, PostgresBarsRepository, PostgresChangeHistory,
+    PostgresCommentRepository, PostgresCustomIndicatorRepository, PostgresNoteKindRepository,
+    PostgresNoteRepository, PostgresPredictionRepository, PostgresStrategyExistence,
+    PostgresStrategyRepository, PostgresStrategySummaryQuery, PostgresStrategyTaskRepository,
+    PostgresTradeRepository, PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
 pub struct UseCases {
     pub annotations: AnnotationUseCases,
     pub comments: CommentUseCases,
+    pub bars: BarsUseCases,
     pub notes: NoteUseCases,
     pub predictions: PredictionUseCases,
     pub strategies: StrategyUseCases,
@@ -42,6 +44,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
     let annotation_repository: SharedAnnotationRepository = Arc::new(PostgresAnnotationRepository);
     let comment_repository: SharedCommentRepository = Arc::new(PostgresCommentRepository);
+    let bars_repository: SharedBarsRepository = Arc::new(PostgresBarsRepository::new(db.clone()));
     let repository: SharedTradeRepository = Arc::new(PostgresTradeRepository::new(db.clone()));
     let custom_indicator_repository: SharedCustomIndicatorRepository =
         Arc::new(PostgresCustomIndicatorRepository::new(db.clone()));
@@ -58,6 +61,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         comment_repository,
         change_history.clone(),
     );
+    let bars = BarsUseCases::new(unit_of_work.clone(), bars_repository);
     let note_repository: SharedNoteRepository = Arc::new(PostgresNoteRepository::new());
     let notes = NoteUseCases::new(
         unit_of_work.clone(),
@@ -105,6 +109,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     UseCases {
         annotations,
         comments,
+        bars,
         notes,
         predictions,
         strategies,

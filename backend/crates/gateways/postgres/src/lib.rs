@@ -8,6 +8,7 @@ use sea_orm::{
 extern crate self as gateway_postgres;
 
 mod annotation;
+mod bars;
 mod change_history;
 mod comment;
 mod custom_indicator;
@@ -27,6 +28,7 @@ mod transaction;
 mod unit_of_work;
 
 pub use annotation::PostgresAnnotationRepository;
+pub use bars::PostgresBarsRepository;
 pub use change_history::PostgresChangeHistory;
 pub use comment::PostgresCommentRepository;
 pub use custom_indicator::PostgresCustomIndicatorRepository;

@@ -15,7 +15,6 @@ use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 use crate::services::account_risk_policy;
-use crate::services::market_price::fetch_latest_prices;
 use gateway_postgres::entities::stock;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
@@ -70,8 +69,11 @@ impl StrategyServer {
         symbols.insert(symbol.clone());
         let symbols: Vec<String> = symbols.into_iter().collect();
 
-        let prices =
-            fetch_latest_prices(&self.db, self.daily_bar_source.as_deref(), &symbols).await;
+        let prices = self
+            .use_cases
+            .bars
+            .fetch_latest_prices(self.daily_bar_source.as_deref(), &symbols)
+            .await;
         let target_price = prices.prices.get(&symbol).copied();
 
         let current_qty = strategy_summary

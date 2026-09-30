@@ -1,6 +1,7 @@
 use axum::Json;
 use axum::extract::State;
 use chrono::NaiveDate;
+use core_application::bars::BarsQuery;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
@@ -8,7 +9,6 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
 use crate::models::BarResponse;
-use gateway_postgres::repositories;
 
 /// バーデータ取得のクエリパラメータ
 #[derive(Debug, Deserialize, IntoParams)]
@@ -74,14 +74,14 @@ pub async fn list_bars(
         .and_then(|d| d.and_hms_opt(23, 59, 59))
         .map(|dt| dt.and_utc().fixed_offset());
 
-    let query = repositories::bars::BarsQuery {
+    let query = BarsQuery {
         instrument_id: params.instrument_id,
         timeframe: params.timeframe,
         from,
         to,
     };
 
-    let bars = repositories::bars::find_bars(&state.db, query).await?;
+    let bars = state.use_cases.bars.find_bars(query).await?;
 
     Ok(Json(bars.into_iter().map(BarResponse::from).collect()))
 }

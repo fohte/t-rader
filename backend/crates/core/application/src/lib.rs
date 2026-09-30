@@ -1,5 +1,6 @@
 pub mod agent_task_client;
 pub mod annotation;
+pub mod bars;
 pub mod change_history;
 pub mod comment;
 pub mod custom_indicator;
