@@ -1,7 +1,7 @@
 [env]
-# db のホストポートはランダム割り当て (全 worktree 共有) のため、mise 実行のたびに
-# scripts/db-url でポートを解決する (キャッシュしない)。_.file より前に書くことで
-# .env.local による上書きを維持している
+# db と redis のホストポートはランダム割り当て (全 worktree 共有) のため、mise 実行のたびに
+# scripts/db-url / scripts/redis-url でそれぞれポートを解決する (キャッシュしない)。
+# _.file より前に書くことで .env.local による上書きを維持している
 DATABASE_URL = "{{ exec(command=config_root ~ '/scripts/db-url') }}"
 REDIS_URL = "{{ exec(command=config_root ~ '/scripts/redis-url') }}"
 _.file = ['.env', '.env.local']

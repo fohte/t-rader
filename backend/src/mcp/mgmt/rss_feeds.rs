@@ -1,8 +1,9 @@
 //! 管理 MCP の RSS フィード CRUD tool。
 
+use core_application::rss_feed::{
+    CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch,
+};
 use rmcp::ErrorData as McpError;
-
-use crate::services::rss_feed as rss_feed_svc;
 
 use super::MgmtServer;
 use super::dto::{
@@ -16,7 +17,10 @@ impl MgmtServer {
         &self,
         params: ListRssFeedsParams,
     ) -> Result<ListRssFeedsResult, McpError> {
-        let rows = rss_feed_svc::list(&self.db, params.enabled_only.unwrap_or(false))
+        let rows = self
+            .use_cases
+            .rss_feeds()
+            .list(params.enabled_only.unwrap_or(false))
             .await
             .map_err(map_rss_feed_error)?;
         Ok(ListRssFeedsResult {
@@ -28,17 +32,17 @@ impl MgmtServer {
         &self,
         params: CreateRssFeedParams,
     ) -> Result<RssFeedSummary, McpError> {
-        let created = rss_feed_svc::create(
-            &self.db,
-            rss_feed_svc::CreateInput {
+        let created = self
+            .use_cases
+            .rss_feeds()
+            .create(CreateRssFeedCommand {
                 source: params.source,
                 display_name: params.display_name,
                 url: params.url,
                 enabled: params.enabled,
-            },
-        )
-        .await
-        .map_err(map_rss_feed_error)?;
+            })
+            .await
+            .map_err(map_rss_feed_error)?;
         Ok(created.into())
     }
 
@@ -46,17 +50,19 @@ impl MgmtServer {
         &self,
         params: UpdateRssFeedParams,
     ) -> Result<RssFeedSummary, McpError> {
-        let updated = rss_feed_svc::update(
-            &self.db,
-            params.id,
-            rss_feed_svc::UpdatePatch {
-                display_name: params.display_name,
-                url: params.url,
-                enabled: params.enabled,
-            },
-        )
-        .await
-        .map_err(map_rss_feed_error)?;
+        let updated = self
+            .use_cases
+            .rss_feeds()
+            .update(
+                params.id,
+                UpdateRssFeedPatch {
+                    display_name: params.display_name,
+                    url: params.url,
+                    enabled: params.enabled,
+                },
+            )
+            .await
+            .map_err(map_rss_feed_error)?;
         Ok(updated.into())
     }
 
@@ -64,23 +70,32 @@ impl MgmtServer {
         &self,
         params: DeleteRssFeedParams,
     ) -> Result<DeleteRssFeedResult, McpError> {
-        rss_feed_svc::delete(&self.db, params.id)
+        self.use_cases
+            .rss_feeds()
+            .delete(params.id)
             .await
             .map_err(map_rss_feed_error)?;
         Ok(DeleteRssFeedResult { id: params.id })
     }
 }
 
-fn map_rss_feed_error(err: rss_feed_svc::RssFeedError) -> McpError {
+fn map_rss_feed_error(err: RssFeedUseCaseError) -> McpError {
     match err {
-        rss_feed_svc::RssFeedError::InvalidSource(_)
-        | rss_feed_svc::RssFeedError::InvalidUrl(_)
-        | rss_feed_svc::RssFeedError::EmptyDisplayName => invalid_params(err.to_string()),
-        rss_feed_svc::RssFeedError::DuplicateSource(_) => invalid_params(err.to_string()),
-        rss_feed_svc::RssFeedError::NotFound(_) => {
-            McpError::resource_not_found(err.to_string(), None)
+        RssFeedUseCaseError::Validation(message) => invalid_params(message),
+        error @ RssFeedUseCaseError::Repository(RssFeedRepositoryError::DuplicateSource(_)) => {
+            invalid_params(error.to_string())
         }
-        rss_feed_svc::RssFeedError::Database(e) => super::db_error(e),
+        error @ RssFeedUseCaseError::NotFound(_) => {
+            McpError::resource_not_found(error.to_string(), None)
+        }
+        RssFeedUseCaseError::Repository(error) => {
+            tracing::error!(error = %error, "mgmt mcp rss feed operation failed");
+            super::internal_error(format!("database error: {error}"))
+        }
+        RssFeedUseCaseError::UnitOfWork(error) => {
+            tracing::error!(error = %error, "mgmt mcp rss feed transaction failed");
+            super::internal_error(format!("database error: {error}"))
+        }
     }
 }
 
@@ -101,9 +116,9 @@ mod tests {
 
         let Json(created) = server
             .create_rss_feed(Parameters(CreateRssFeedParams {
-                source: "bloomberg-jp".into(),
-                display_name: "Bloomberg JP".into(),
-                url: "https://feeds.bloomberg.co.jp/markets.xml".into(),
+                source: "sample-newswire".into(),
+                display_name: "Sample Newswire".into(),
+                url: "https://feeds.example.invalid/markets.xml".into(),
                 enabled: None,
             }))
             .await
@@ -114,9 +129,9 @@ mod tests {
         };
         let expected = RssFeedSummary {
             id: Uuid::nil(),
-            source: "bloomberg-jp".into(),
-            display_name: "Bloomberg JP".into(),
-            url: "https://feeds.bloomberg.co.jp/markets.xml".into(),
+            source: "sample-newswire".into(),
+            display_name: "Sample Newswire".into(),
+            url: "https://feeds.example.invalid/markets.xml".into(),
             enabled: true,
         };
         assert_eq!(
