@@ -54,10 +54,14 @@ where
     F: Future<Output = Result<Stats, String>>,
     Stats: Serialize,
 {
-    let run_id = ingest_run_log
-        .start(task_name)
-        .await
-        .map_err(|error| format!("failed to start ingest run log: {error}"))?;
+    let run_id = match ingest_run_log.start(task_name).await {
+        Ok(run_id) => run_id,
+        Err(error) => {
+            let error = format!("failed to start ingest run log: {error}");
+            tracing::error!(task = task_name, %error, "failed to start scheduled job");
+            return Err(error);
+        }
+    };
 
     let task_result = match timeout(duration, task).await {
         Ok(result) => result,
@@ -69,14 +73,21 @@ where
     });
 
     if let Err(log_error) = ingest_run_log.finish(run_id, recorded_result.clone()).await {
-        let error = match recorded_result {
-            Ok(_) => format!("failed to finish ingest run log: {log_error}"),
-            Err(task_error) => {
-                format!("{task_error}; failed to finish ingest run log: {log_error}")
+        match &recorded_result {
+            Ok(_) => {
+                tracing::error!(
+                    task = task_name,
+                    %log_error,
+                    "scheduled job completed but its ingest run result could not be persisted"
+                );
+                return Ok(());
             }
-        };
-        tracing::error!(task = task_name, %error, "failed to persist scheduled job result");
-        return Err(error);
+            Err(task_error) => {
+                let error = format!("{task_error}; failed to finish ingest run log: {log_error}");
+                tracing::error!(task = task_name, %error, "failed to persist scheduled job result");
+                return Err(error);
+            }
+        }
     }
 
     match recorded_result {
@@ -93,7 +104,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{future::pending, sync::Arc, time::Duration};
+    use std::{
+        future::pending,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::Duration,
+    };
 
     use async_trait::async_trait;
     use core_application::{ingest_run_log::IngestRunLog, persistence::PersistenceError};
@@ -120,6 +138,8 @@ mod tests {
     #[derive(Default)]
     struct FakeIngestRunLog {
         calls: Mutex<Vec<Call>>,
+        fail_start: bool,
+        fail_finish: bool,
     }
 
     #[async_trait]
@@ -128,7 +148,13 @@ mod tests {
             self.calls.lock().await.push(Call::Start {
                 job: job.to_string(),
             });
-            Ok(RUN_ID)
+            if self.fail_start {
+                Err(PersistenceError::Database(
+                    "database unavailable".to_string(),
+                ))
+            } else {
+                Ok(RUN_ID)
+            }
         }
 
         async fn finish(
@@ -140,7 +166,13 @@ mod tests {
                 .lock()
                 .await
                 .push(Call::Finish { run_id, result });
-            Ok(())
+            if self.fail_finish {
+                Err(PersistenceError::Database(
+                    "database unavailable".to_string(),
+                ))
+            } else {
+                Ok(())
+            }
         }
 
         async fn fail_interrupted_before(
@@ -182,6 +214,42 @@ mod tests {
                         result: Ok(json!({ "rows": 3 })),
                     },
                 ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn does_not_run_the_job_when_start_logging_fails() {
+        let log = Arc::new(FakeIngestRunLog {
+            fail_start: true,
+            ..Default::default()
+        });
+        let task_started = Arc::new(AtomicBool::new(false));
+        let task_started_in_future = Arc::clone(&task_started);
+
+        let result = run_with_ingest_run_log(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(1),
+            async move {
+                task_started_in_future.store(true, Ordering::SeqCst);
+                Ok(IngestStats { rows: 3 })
+            },
+        )
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                log.calls.lock().await.clone(),
+                task_started.load(Ordering::SeqCst),
+            ),
+            (
+                Err("failed to start ingest run log: database unavailable".to_string()),
+                vec![Call::Start {
+                    job: "sample_ingest".to_string(),
+                }],
+                false,
             ),
         );
     }
@@ -238,6 +306,38 @@ mod tests {
                     Call::Finish {
                         run_id: RUN_ID,
                         result: Err("sample_ingest timed out after 1ms".to_string()),
+                    },
+                ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn does_not_retry_a_successful_job_when_finish_logging_fails() {
+        let log = Arc::new(FakeIngestRunLog {
+            fail_finish: true,
+            ..Default::default()
+        });
+
+        let result = run_with_ingest_run_log(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(1),
+            async { Ok(IngestStats { rows: 3 }) },
+        )
+        .await;
+
+        assert_eq!(
+            (result, log.calls.lock().await.clone()),
+            (
+                Ok(()),
+                vec![
+                    Call::Start {
+                        job: "sample_ingest".to_string(),
+                    },
+                    Call::Finish {
+                        run_id: RUN_ID,
+                        result: Ok(json!({ "rows": 3 })),
                     },
                 ],
             ),

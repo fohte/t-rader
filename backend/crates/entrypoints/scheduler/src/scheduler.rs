@@ -1,4 +1,4 @@
-use std::future::Future;
+use std::{future::Future, time::Duration};
 
 use chrono::Weekday;
 use graphile_worker::{
@@ -8,6 +8,7 @@ use sqlx::PgPool;
 
 use crate::{
     jobs::{
+        DAILY_TIMEOUT, WEEKLY_TIMEOUT,
         fred::FredIngest,
         ingest_run_recovery::IngestRunRecovery,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
@@ -20,6 +21,13 @@ const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
 const JQUANTS_QUEUE: &str = "jquants";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 5] = [
+    (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (ShortSaleReportIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (MarginIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (PredictionGrading::IDENTIFIER, WEEKLY_TIMEOUT),
+];
 
 pub struct Scheduler {
     worker: Worker,

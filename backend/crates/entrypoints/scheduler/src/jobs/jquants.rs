@@ -90,6 +90,12 @@ async fn ingest_short_sale_reports(
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MarginIngest;
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct MarginIngestStats {
+    interest: core_application::margin::IngestStats,
+    alerts: core_application::margin::IngestStats,
+}
+
 impl TaskHandler for MarginIngest {
     const IDENTIFIER: &'static str = "margin_ingest";
 
@@ -111,19 +117,13 @@ impl TaskHandler for MarginIngest {
 async fn ingest_margin(
     use_cases: &MarginUseCases,
     source: &dyn MarginSource,
-) -> Result<
-    (
-        core_application::margin::IngestStats,
-        core_application::margin::IngestStats,
-    ),
-    String,
-> {
-    let stats = use_cases
+) -> Result<MarginIngestStats, String> {
+    let (interest, alerts) = use_cases
         .ingest(source, Utc::now().date_naive())
         .await
         .map_err(|error| error.to_string())?;
-    tracing::info!(?stats, "margin ingest completed");
-    Ok(stats)
+    tracing::info!(?interest, ?alerts, "margin ingest completed");
+    Ok(MarginIngestStats { interest, alerts })
 }
 
 #[cfg(test)]
@@ -149,7 +149,7 @@ mod tests {
     };
     use rstest::rstest;
 
-    use super::{ingest_margin, ingest_short_ratio, ingest_short_sale_reports};
+    use super::{MarginIngestStats, ingest_margin, ingest_short_ratio, ingest_short_sale_reports};
 
     struct FakeShortSellingSource {
         range: DateRange,
@@ -310,18 +310,18 @@ mod tests {
     }
 
     #[rstest]
-    #[case::repository_accepts_rows(false, Ok((
-        IngestStats { days_fetched: 1, rows_upserted: 1 },
-        IngestStats { days_fetched: 1, rows_upserted: 1 },
-    )))]
-    #[case::repository_failure_is_handled_by_the_use_case(true, Ok((
-        IngestStats { days_fetched: 0, rows_upserted: 0 },
-        IngestStats { days_fetched: 1, rows_upserted: 1 },
-    )))]
+    #[case::repository_accepts_rows(false, Ok(MarginIngestStats {
+        interest: IngestStats { days_fetched: 1, rows_upserted: 1 },
+        alerts: IngestStats { days_fetched: 1, rows_upserted: 1 },
+    }))]
+    #[case::repository_failure_is_handled_by_the_use_case(true, Ok(MarginIngestStats {
+        interest: IngestStats { days_fetched: 0, rows_upserted: 0 },
+        alerts: IngestStats { days_fetched: 1, rows_upserted: 1 },
+    }))]
     #[tokio::test]
     async fn margin_job_uses_the_application_result(
         #[case] fail_interest_upsert: bool,
-        #[case] expected: Result<(IngestStats, IngestStats), ()>,
+        #[case] expected: Result<MarginIngestStats, ()>,
     ) {
         let today = Utc::now().date_naive();
         let repository = Arc::new(FakeMarginRepository::new());

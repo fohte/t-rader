@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use core_application::{ingest_run_log::IngestRunLog, persistence::PersistenceError};
-use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::ActiveValue::{Set, Unchanged};
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
@@ -45,13 +45,12 @@ impl IngestRunLog for PostgresIngestRunLog {
             Err(error) => ("failed", None, Some(error)),
         };
         ingest_run::Entity::update(ingest_run::ActiveModel {
-            id: Set(run_id),
+            id: Unchanged(run_id),
             finished_at: Set(Some(Utc::now().fixed_offset())),
             status: Set(status.to_string()),
             stats: Set(stats),
             error: Set(error),
-            job: NotSet,
-            started_at: NotSet,
+            ..Default::default()
         })
         .exec(&self.db)
         .await
@@ -90,6 +89,21 @@ mod tests {
     use crate::DatabaseHandle;
     use crate::entities::ingest_run;
 
+    fn epoch() -> chrono::DateTime<chrono::FixedOffset> {
+        chrono::DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").expect("valid epoch timestamp")
+    }
+
+    fn normalize_finished_at(mut run: ingest_run::Model) -> ingest_run::Model {
+        run.finished_at = run.finished_at.map(|_| epoch());
+        run
+    }
+
+    fn normalize_timestamps(mut run: ingest_run::Model) -> ingest_run::Model {
+        run.started_at = epoch();
+        run.finished_at = run.finished_at.map(|_| epoch());
+        run
+    }
+
     async fn row(db: &DatabaseHandle, run_id: uuid::Uuid) -> ingest_run::Model {
         ingest_run::Entity::find_by_id(run_id)
             .one(db)
@@ -121,25 +135,21 @@ mod tests {
         let after = (Utc::now() + Duration::seconds(2)).fixed_offset();
 
         let run = row(&db, run_id).await;
+        let started_at_is_current = run.started_at >= before && run.started_at <= after;
 
         assert_eq!(
+            (normalize_timestamps(run), started_at_is_current,),
             (
-                run.id,
-                run.job,
-                run.started_at >= before && run.started_at <= after,
-                run.finished_at.is_some(),
-                run.status,
-                run.stats,
-                run.error,
-            ),
-            (
-                run_id,
-                "sample_ingest".to_string(),
+                ingest_run::Model {
+                    id: run_id,
+                    job: "sample_ingest".to_string(),
+                    started_at: epoch(),
+                    finished_at: None,
+                    status: "running".to_string(),
+                    stats: None,
+                    error: None,
+                },
                 true,
-                false,
-                "running".to_string(),
-                None,
-                None,
             ),
         );
     }
@@ -148,6 +158,7 @@ mod tests {
     async fn finish_stores_stats_for_a_successful_run(db: DatabaseHandle) {
         let log = PostgresIngestRunLog::new(db.clone());
         let run_id = log.start("sample_ingest").await.expect("start run");
+        let started_at = row(&db, run_id).await.started_at;
         let stats = json!({ "rows": 3 });
         log.finish(run_id, Ok(stats.clone()))
             .await
@@ -156,22 +167,16 @@ mod tests {
         let run = row(&db, run_id).await;
 
         assert_eq!(
-            (
-                run.id,
-                run.job,
-                run.status,
-                run.stats,
-                run.error,
-                run.finished_at.is_some()
-            ),
-            (
-                run_id,
-                "sample_ingest".to_string(),
-                "succeeded".to_string(),
-                Some(stats),
-                None,
-                true,
-            ),
+            normalize_finished_at(run),
+            ingest_run::Model {
+                id: run_id,
+                job: "sample_ingest".to_string(),
+                started_at,
+                finished_at: Some(epoch()),
+                status: "succeeded".to_string(),
+                stats: Some(stats),
+                error: None,
+            },
         );
     }
 
@@ -179,6 +184,7 @@ mod tests {
     async fn finish_stores_the_error_for_a_failed_run(db: DatabaseHandle) {
         let log = PostgresIngestRunLog::new(db.clone());
         let run_id = log.start("sample_ingest").await.expect("start run");
+        let started_at = row(&db, run_id).await.started_at;
         log.finish(run_id, Err("operation failed".to_string()))
             .await
             .expect("finish failed run");
@@ -186,22 +192,16 @@ mod tests {
         let run = row(&db, run_id).await;
 
         assert_eq!(
-            (
-                run.id,
-                run.job,
-                run.status,
-                run.stats,
-                run.error,
-                run.finished_at.is_some()
-            ),
-            (
-                run_id,
-                "sample_ingest".to_string(),
-                "failed".to_string(),
-                None,
-                Some("operation failed".to_string()),
-                true,
-            ),
+            normalize_finished_at(run),
+            ingest_run::Model {
+                id: run_id,
+                job: "sample_ingest".to_string(),
+                started_at,
+                finished_at: Some(epoch()),
+                status: "failed".to_string(),
+                stats: None,
+                error: Some("operation failed".to_string()),
+            },
         );
     }
 
@@ -232,35 +232,39 @@ mod tests {
         assert_eq!(
             (
                 updated,
-                (
-                    expired.status,
-                    expired.finished_at.is_some(),
-                    expired.stats,
-                    expired.error
-                ),
-                (
-                    recent.status,
-                    recent.finished_at.is_some(),
-                    recent.stats,
-                    recent.error
-                ),
-                (
-                    other_job.status,
-                    other_job.finished_at.is_some(),
-                    other_job.stats,
-                    other_job.error,
-                ),
+                normalize_finished_at(expired),
+                normalize_finished_at(recent),
+                normalize_finished_at(other_job),
             ),
             (
                 1,
-                (
-                    "failed".to_string(),
-                    true,
-                    None,
-                    Some("interrupted".to_string()),
-                ),
-                ("running".to_string(), false, None, None),
-                ("running".to_string(), false, None, None),
+                ingest_run::Model {
+                    id: expired_id,
+                    job: "sample_ingest".to_string(),
+                    started_at: cutoff - Duration::minutes(1),
+                    finished_at: Some(epoch()),
+                    status: "failed".to_string(),
+                    stats: None,
+                    error: Some("interrupted".to_string()),
+                },
+                ingest_run::Model {
+                    id: recent_id,
+                    job: "sample_ingest".to_string(),
+                    started_at: cutoff + Duration::minutes(1),
+                    finished_at: None,
+                    status: "running".to_string(),
+                    stats: None,
+                    error: None,
+                },
+                ingest_run::Model {
+                    id: other_job_id,
+                    job: "other_ingest".to_string(),
+                    started_at: cutoff - Duration::minutes(1),
+                    finished_at: None,
+                    status: "running".to_string(),
+                    stats: None,
+                    error: None,
+                },
             ),
         );
     }
