@@ -417,6 +417,7 @@ async fn main() -> Result<(), AppError> {
         .await
     });
 
+    // Worker が停止したまま API だけを提供しないよう、どちらかの終了時に両方を停止する。
     tokio::select! {
         result = &mut worker_run => {
             let _ = shutdown_tx.send(true);
@@ -444,6 +445,8 @@ async fn main() -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use std::time::Duration;
+    use tokio::time::timeout;
 
     use super::*;
 
@@ -473,15 +476,24 @@ mod tests {
     #[tokio::test]
     async fn shutdown_signal_reaches_worker_and_server_waiters() {
         let (sender, receiver) = watch::channel(false);
-        let (worker_finished, server_finished, signal_sent) = tokio::join!(
-            wait_for_shutdown(receiver.clone()),
-            wait_for_shutdown(receiver),
-            async move { sender.send(true).is_ok() },
-        );
+        let mut worker_waiter = Box::pin(wait_for_shutdown(receiver.clone()));
+        let mut server_waiter = Box::pin(wait_for_shutdown(receiver));
+        let waiters_are_pending = tokio::select! {
+            biased;
+            _ = &mut worker_waiter => false,
+            _ = &mut server_waiter => false,
+            _ = tokio::task::yield_now() => true,
+        };
+        let signal_sent = sender.send(true).is_ok();
+        let waiters_completed = timeout(Duration::from_secs(1), async {
+            tokio::join!(worker_waiter, server_waiter);
+        })
+        .await
+        .is_ok();
 
         assert_eq!(
-            (worker_finished, server_finished, signal_sent),
-            ((), (), true)
+            (waiters_are_pending, signal_sent, waiters_completed),
+            (true, true, true)
         );
     }
 }

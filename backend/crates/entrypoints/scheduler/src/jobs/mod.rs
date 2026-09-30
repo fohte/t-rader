@@ -13,6 +13,10 @@ pub mod prediction;
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
 
+pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, String> {
+    source.ok_or_else(|| format!("{name} is not configured"))
+}
+
 pub(super) async fn run_with_state<F, Fut>(
     context: WorkerContext,
     task_name: &'static str,

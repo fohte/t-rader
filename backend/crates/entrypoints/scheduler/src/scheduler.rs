@@ -145,7 +145,7 @@ mod tests {
         prediction::PredictionGrading,
     };
 
-    use super::{JQUANTS_QUEUE, MAX_ATTEMPTS, build_crontabs};
+    use super::{JQUANTS_QUEUE, build_crontabs, configure_cron};
 
     fn expected_cron<T: TaskHandler>(
         timer: Option<CrontabTimer>,
@@ -153,12 +153,7 @@ mod tests {
         fill: CrontabFill,
         queue: Option<&str>,
     ) -> Option<Crontab> {
-        let mut crontab = Crontab::new(timer?, T::IDENTIFIER);
-        crontab.options.id = Some(id.to_string());
-        crontab.options.fill = Some(fill);
-        crontab.options.max = Some(MAX_ATTEMPTS);
-        crontab.options.queue = queue.map(str::to_string);
-        Some(crontab)
+        Some(configure_cron::<T>(timer?, id, fill, queue))
     }
 
     #[test]
@@ -199,6 +194,59 @@ mod tests {
         .collect::<Option<Vec<_>>>();
 
         assert_eq!(build_crontabs(true, true).ok(), expected);
+    }
+
+    #[test]
+    fn configures_missed_tick_fill_retry_limit_and_jquants_queue() {
+        let actual = build_crontabs(true, true).ok().map(|crontabs| {
+            crontabs
+                .into_iter()
+                .map(|crontab| {
+                    (
+                        crontab.options.id,
+                        crontab.options.fill,
+                        crontab.options.max,
+                        crontab.options.queue,
+                    )
+                })
+                .collect::<Vec<_>>()
+        });
+
+        assert_eq!(
+            actual,
+            Some(vec![
+                (
+                    Some("fred_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    None,
+                ),
+                (
+                    Some("short_ratio_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    Some("jquants".to_string()),
+                ),
+                (
+                    Some("short_sale_report_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    Some("jquants".to_string()),
+                ),
+                (
+                    Some("margin_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    Some("jquants".to_string()),
+                ),
+                (
+                    Some("prediction_grading".to_string()),
+                    Some(CrontabFill::weeks(2)),
+                    Some(3),
+                    None,
+                ),
+            ]),
+        );
     }
 
     #[rstest]

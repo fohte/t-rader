@@ -2,7 +2,7 @@ use core_application::indicator_observation::IndicatorObservationIngestSeriesRes
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{DAILY_TIMEOUT, run_with_state};
+use super::{DAILY_TIMEOUT, require_source, run_with_state};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FredIngest;
@@ -16,9 +16,7 @@ impl TaskHandler for FredIngest {
             Self::IDENTIFIER,
             DAILY_TIMEOUT,
             |state| async move {
-                let Some(source) = state.dependencies.fred_source else {
-                    return Err("FRED source is not configured".to_string());
-                };
+                let source = require_source(state.dependencies.fred_source, "FRED source")?;
 
                 let result = state
                     .dependencies
