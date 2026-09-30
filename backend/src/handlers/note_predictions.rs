@@ -28,7 +28,7 @@ pub async fn list_note_predictions(
 ) -> Result<Json<Vec<PredictionResponse>>, AppError> {
     let rows = state
         .use_cases
-        .predictions
+        .predictions()
         .list_by_note(note_id)
         .await
         .map_err(map_prediction_error)?;

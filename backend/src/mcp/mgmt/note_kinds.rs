@@ -19,7 +19,7 @@ impl MgmtServer {
     pub(super) async fn list_note_kinds_inner(&self) -> Result<ListNoteKindsResult, McpError> {
         let rows = self
             .use_cases
-            .note_kinds
+            .note_kinds()
             .list()
             .await
             .map_err(map_note_kind_error)?;
@@ -34,7 +34,7 @@ impl MgmtServer {
     ) -> Result<NoteKindSummary, McpError> {
         let created = self
             .use_cases
-            .note_kinds
+            .note_kinds()
             .create(
                 Actor::Llm { label: "mgmt-mcp" },
                 CreateNoteKindCommand {
@@ -56,7 +56,7 @@ impl MgmtServer {
     ) -> Result<NoteKindSummary, McpError> {
         let updated = self
             .use_cases
-            .note_kinds
+            .note_kinds()
             .update(
                 Actor::Llm { label: "mgmt-mcp" },
                 &params.key,
@@ -77,7 +77,7 @@ impl MgmtServer {
         params: DeleteNoteKindParams,
     ) -> Result<DeleteNoteKindResult, McpError> {
         self.use_cases
-            .note_kinds
+            .note_kinds()
             .delete(Actor::Llm { label: "mgmt-mcp" }, &params.key)
             .await
             .map_err(map_note_kind_error)?;

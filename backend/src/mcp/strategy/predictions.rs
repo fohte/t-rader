@@ -76,7 +76,7 @@ impl StrategyServer {
         let probability = f64_to_decimal(params.probability)?;
         let created = self
             .use_cases
-            .predictions
+            .predictions()
             .record(
                 scope.into(),
                 RecordPredictionCommand {
@@ -103,7 +103,7 @@ impl StrategyServer {
     ) -> Result<ListPredictionsResult, McpError> {
         let rows = self
             .use_cases
-            .predictions
+            .predictions()
             .list_by_strategy(
                 scope.into(),
                 PredictionListQuery {

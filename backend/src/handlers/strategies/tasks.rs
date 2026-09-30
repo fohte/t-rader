@@ -108,7 +108,7 @@ pub async fn submit_strategy_chat(
     let requested_purpose = payload.purpose;
     let submitted = state
         .use_cases
-        .strategy_tasks
+        .strategy_tasks()
         .submit_task(
             state.agent_task_client.as_ref(),
             id,
@@ -160,7 +160,7 @@ pub async fn get_strategy_task(
     .await?;
     let view = state
         .use_cases
-        .strategy_tasks
+        .strategy_tasks()
         .get_for_strategy(scope, task_id)
         .await
         .map_err(map_get_task_error)?;
@@ -206,7 +206,7 @@ pub async fn list_strategy_tasks(
     .await?;
     let views = state
         .use_cases
-        .strategy_tasks
+        .strategy_tasks()
         .list_for_strategy(scope, None)
         .await
         .map_err(map_list_task_error)?;

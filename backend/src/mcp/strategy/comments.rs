@@ -130,7 +130,7 @@ impl StrategyServer {
     ) -> Result<ResolveCommentResult, McpError> {
         let updated = self
             .use_cases
-            .comments
+            .comments()
             .resolve(ResolveCommentCommand {
                 scope: Some(scope.into()),
                 actor: Actor::Llm { label: "analyst" },
@@ -151,7 +151,7 @@ impl StrategyServer {
     ) -> Result<ReplyCommentResult, McpError> {
         let created = self
             .use_cases
-            .comments
+            .comments()
             .reply(ReplyCommentCommand {
                 scope: Some(scope.into()),
                 actor: Actor::Llm { label: "analyst" },
