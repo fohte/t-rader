@@ -5,8 +5,8 @@ use serde_json::json;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
-use crate::DataProviderError;
 use crate::jquants::mock::{JQuantsMockServer, MockBar};
+use crate::{DataProviderError, JQuantsPlan};
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -551,6 +551,86 @@ mod error_handling {
         let result = client.fetch_instrument("86970").await;
 
         assert!(matches!(result, Err(DataProviderError::RateLimited { .. })));
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_429_cooldown_longer_than_max_wait_returns_wait_error()
+    -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.error()
+            .rate_limited_with_retry_after("/equities/master", "2")
+            .await;
+
+        let max_wait = std::time::Duration::from_millis(50);
+        let client = mock.client_with_plan_and_max_wait(JQuantsPlan::Premium, max_wait)?;
+        let result = client.fetch_instrument("SAMPLE").await;
+        let received_requests = mock
+            .server_ref()
+            .received_requests()
+            .await
+            .map(|requests| requests.len());
+
+        assert_eq!(
+            (result.err(), received_requests),
+            (
+                Some(DataProviderError::RateLimitWaitExceeded { max_wait }),
+                Some(1),
+            ),
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_429_retries_after_cooldown_when_wait_is_unbounded()
+    -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let instrument_id = "SAMPLE";
+        Mock::given(method("GET"))
+            .and(path("/equities/master"))
+            .and(query_param("code", instrument_id))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "1")
+                    .set_body_json(json!({ "message": "Too Many Requests" })),
+            )
+            .up_to_n_times(1)
+            .mount(mock.server_ref())
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/equities/master"))
+            .and(query_param("code", instrument_id))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{
+                    "Code": instrument_id,
+                    "CoName": "Sample Corporation",
+                    "MktNm": "Sample Market",
+                    "S33Nm": "Sample Industry",
+                }],
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        let client =
+            mock.client_with_plan_and_max_wait(JQuantsPlan::Premium, std::time::Duration::MAX)?;
+        let started = tokio::time::Instant::now();
+        let instrument = client.fetch_instrument(instrument_id).await?;
+        let received_requests = mock
+            .server_ref()
+            .received_requests()
+            .await
+            .map(|requests| requests.len());
+
+        assert_eq!(
+            (
+                instrument.id,
+                received_requests,
+                started.elapsed() >= std::time::Duration::from_millis(900),
+            ),
+            (instrument_id.to_string(), Some(2), true),
+        );
         Ok(())
     }
 }

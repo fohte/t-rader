@@ -10,14 +10,37 @@ const RATE_LIMIT_PERIOD: Duration = Duration::from_secs(60);
 const RATE_LIMIT_SAFETY_FACTOR: usize = 2;
 const FIN_SUMMARY_RATE_LIMIT_PER_MINUTE: usize = 60;
 const FIN_SUMMARY_PATH: &str = "/fins/summary";
-const GLOBAL_QUOTA_KEY: &str = "jquants:all";
-const RATE_LIMIT_COOLDOWN_KEY: &str = "jquants:all";
+const RATE_LIMIT_GLOBAL_KEY: &str = "jquants:all";
 const RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(5 * 60);
+
+enum JQuantsRateLimiter {
+    Shared(RateLimiter),
+    #[cfg(any(test, feature = "test-support"))]
+    TestNoop,
+}
+
+impl JQuantsRateLimiter {
+    async fn acquire(&self, quotas: &[Quota], max_wait: Duration) -> Result<(), RateLimitError> {
+        match self {
+            Self::Shared(rate_limiter) => rate_limiter.acquire(quotas, max_wait).await,
+            #[cfg(any(test, feature = "test-support"))]
+            Self::TestNoop => Ok(()),
+        }
+    }
+
+    async fn penalize(&self, key: &str, duration: Duration) -> Result<(), RateLimitError> {
+        match self {
+            Self::Shared(rate_limiter) => rate_limiter.penalize(key, duration).await,
+            #[cfg(any(test, feature = "test-support"))]
+            Self::TestNoop => Ok(()),
+        }
+    }
+}
 
 /// J-Quants API への送信と共有 quota の取得をまとめる。
 pub(super) struct JQuantsHttpClient {
     client: reqwest::Client,
-    rate_limiter: RateLimiter,
+    rate_limiter: JQuantsRateLimiter,
     plan: JQuantsPlan,
     max_wait: Duration,
 }
@@ -52,7 +75,26 @@ impl JQuantsHttpClient {
 
         Ok(Self {
             client,
-            rate_limiter,
+            rate_limiter: JQuantsRateLimiter::Shared(rate_limiter),
+            plan,
+            max_wait,
+        })
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub(super) fn without_rate_limiter(
+        plan: JQuantsPlan,
+        max_wait: Duration,
+        request_timeout: Duration,
+    ) -> Result<Self, DataProviderError> {
+        let client = reqwest::Client::builder()
+            .timeout(request_timeout)
+            .build()
+            .map_err(|error| DataProviderError::Network(error.to_string()))?;
+
+        Ok(Self {
+            client,
+            rate_limiter: JQuantsRateLimiter::TestNoop,
             plan,
             max_wait,
         })
@@ -64,10 +106,16 @@ impl JQuantsHttpClient {
         api_key: &str,
     ) -> Result<Response, DataProviderError> {
         let quotas = quotas_for_url(url, self.plan);
-        self.rate_limiter
-            .acquire(&quotas, self.max_wait)
-            .await
-            .map_err(map_rate_limit_error)?;
+        let acquire_started = std::time::Instant::now();
+        let acquire_result = self.rate_limiter.acquire(&quotas, self.max_wait).await;
+        let acquire_duration = acquire_started.elapsed();
+        if acquire_duration >= Duration::from_millis(100) {
+            tracing::info!(
+                wait_ms = acquire_duration.as_millis() as u64,
+                "J-Quants の共有 rate limit 取得に時間がかかりました"
+            );
+        }
+        acquire_result.map_err(map_rate_limit_error)?;
 
         let response = self
             .client
@@ -85,7 +133,7 @@ impl JQuantsHttpClient {
                     .and_then(|value| value.to_str().ok()),
             );
             self.rate_limiter
-                .penalize(RATE_LIMIT_COOLDOWN_KEY, retry_after)
+                .penalize(RATE_LIMIT_GLOBAL_KEY, retry_after)
                 .await
                 .map_err(map_rate_limit_error)?;
         }
@@ -103,7 +151,7 @@ fn quotas_for_url(url: &Url, plan: JQuantsPlan) -> Vec<Quota> {
 
 fn quota_limits_for_url(url: &Url, plan: JQuantsPlan) -> Vec<(&'static str, u32)> {
     let global_limit = (plan.rate_limit_per_minute() / RATE_LIMIT_SAFETY_FACTOR).max(1) as u32;
-    let mut quotas = vec![(GLOBAL_QUOTA_KEY, global_limit)];
+    let mut quotas = vec![(RATE_LIMIT_GLOBAL_KEY, global_limit)];
 
     if url.path().ends_with(FIN_SUMMARY_PATH) {
         let fin_summary_limit =

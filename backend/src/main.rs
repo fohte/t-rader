@@ -159,8 +159,9 @@ async fn main() -> Result<(), AppError> {
                         ))
                     })?,
                 );
+                // `Duration::ZERO` は quota 不足時に即時エラーになるため、取り込み側は最大値を渡す。
                 let ingest_client = Arc::new(
-                    JQuantsClient::new(&redis_url, api_key, plan, std::time::Duration::ZERO)
+                    JQuantsClient::new(&redis_url, api_key, plan, std::time::Duration::MAX)
                         .map_err(|error| {
                             AppError::Config(format!(
                                 "failed to initialize J-Quants ingest client: {error}"

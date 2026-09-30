@@ -77,6 +77,25 @@ impl JQuantsClient {
         api_key: &str,
         plan: JQuantsPlan,
     ) -> Result<Self, DataProviderError> {
+        Ok(Self {
+            http: JQuantsHttpClient::without_rate_limiter(
+                plan,
+                std::time::Duration::ZERO,
+                std::time::Duration::from_secs(10),
+            )?,
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            plan,
+        })
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_base_url_and_max_wait(
+        base_url: &str,
+        api_key: &str,
+        plan: JQuantsPlan,
+        max_wait: std::time::Duration,
+    ) -> Result<Self, DataProviderError> {
         let redis_url = std::env::var("REDIS_URL").map_err(|error| {
             DataProviderError::RateLimit(format!("REDIS_URL is not available: {error}"))
         })?;
@@ -86,7 +105,7 @@ impl JQuantsClient {
                 &redis_url,
                 http::test_key_prefix(),
                 plan,
-                std::time::Duration::ZERO,
+                max_wait,
                 std::time::Duration::from_secs(10),
             )?,
             base_url: base_url.to_string(),
@@ -132,8 +151,9 @@ impl JQuantsClient {
     /// それ以外のエラーは即座に返す。
     ///
     /// 429 はレートリミッターの cooldown 待ち (`RateLimiter::acquire` 内) に任せるため
-    /// 指数バックオフは行わず、`MAX_RATE_LIMIT_RETRIES` 回まで cooldown 明けを待って
-    /// 再試行する。5xx は従来通り `MAX_RETRIES` 回まで指数バックオフでリトライする。
+    /// 指数バックオフは行わず、`MAX_RATE_LIMIT_RETRIES` 回まで再試行する。ただし、cooldown が
+    /// `max_wait` を超える場合は `RateLimitWaitExceeded` を返す。5xx は従来通り `MAX_RETRIES` 回まで
+    /// 指数バックオフでリトライする。
     async fn get_with_retry(&self, url: &Url) -> Result<reqwest::Response, DataProviderError> {
         let url_str = url.as_str();
         let mut retry_attempt = 0u32;
