@@ -1,0 +1,239 @@
+use crate::entities::{note, note_ref, note_version};
+use core_application::note::{NoteListCursor, NoteListPage, NoteListQuery, NoteReadQueryError};
+use core_domain::note_graph::GraphDef;
+use core_domain::note_reference::{
+    BodyTokenPolicy, collect_note_refs_with_policy, format_note_token_errors,
+};
+use sea_orm::{
+    ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+};
+
+use super::{PostgresNoteReadQuery, find_current_versions, find_latest_versions, query_error};
+
+impl PostgresNoteReadQuery {
+    pub(super) async fn list_query(
+        &self,
+        query: NoteListQuery,
+    ) -> Result<NoteListPage, NoteReadQueryError> {
+        if query.include_pending {
+            self.list_including_pending(query).await
+        } else {
+            self.list_current_notes(query).await
+        }
+    }
+    async fn list_current_notes(
+        &self,
+        query: NoteListQuery,
+    ) -> Result<NoteListPage, NoteReadQueryError> {
+        let mut select = note::Entity::find()
+            .filter(note::Column::Id.in_subquery(current_note_ids()))
+            .order_by_desc(note::Column::UpdatedAt);
+        if let Some(strategy_id) = query.strategy_id {
+            select = select.filter(note::Column::StrategyId.eq(strategy_id));
+        }
+        if let Some(status) = query.status.as_deref() {
+            select =
+                select.filter(note::Column::Id.in_subquery(current_note_ids_with_status(status)));
+        }
+        if let Some(kind) = query.kind.as_deref() {
+            select = select.filter(note::Column::Kind.eq(kind));
+        }
+        if let Some((kind, id)) = query.reference.as_ref() {
+            select =
+                select.filter(note::Column::Id.in_subquery(note_ids_matching_ref(kind, id, None)));
+        }
+        if let Some(updated_after) = query.updated_after {
+            select = select.filter(note::Column::UpdatedAt.gte(updated_after));
+        }
+        if let Some(limit) = query.limit {
+            select = select.limit(limit);
+        }
+        let rows = select.all(&self.db).await.map_err(query_error)?;
+        let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
+        let versions = find_current_versions(&self.db, &ids).await?;
+        let notes = self.snapshots(rows, versions).await?;
+        Ok(NoteListPage {
+            notes,
+            cursor: None,
+            has_more: false,
+        })
+    }
+
+    async fn list_including_pending(
+        &self,
+        query: NoteListQuery,
+    ) -> Result<NoteListPage, NoteReadQueryError> {
+        let mut select = note::Entity::find();
+        if let Some(strategy_id) = query.strategy_id {
+            select = select.filter(note::Column::StrategyId.eq(strategy_id));
+        }
+        if let Some(kind) = query.kind.as_deref() {
+            select = select.filter(note::Column::Kind.eq(kind));
+        }
+        if let Some(updated_after) = query.updated_after {
+            select = select.filter(note::Column::UpdatedAt.gte(updated_after));
+        }
+        if let Some(cursor) = query.cursor {
+            select = select.filter(
+                Condition::any()
+                    .add(note::Column::UpdatedAt.lt(cursor.updated_at))
+                    .add(
+                        Condition::all()
+                            .add(note::Column::UpdatedAt.eq(cursor.updated_at))
+                            .add(note::Column::Id.lt(cursor.note_id)),
+                    ),
+            );
+        }
+
+        let mut current_candidate_ids = match query.status.as_deref() {
+            Some(status) => current_note_ids_with_status(status),
+            None => current_note_ids(),
+        };
+        if let Some((kind, id)) = query.reference.as_ref() {
+            current_candidate_ids = note_ids_matching_ref(kind, id, Some(current_candidate_ids));
+        }
+        if query.status.is_some() || query.reference.is_some() {
+            select = select.filter(
+                Condition::any()
+                    .add(note::Column::Id.in_subquery(current_candidate_ids))
+                    .add(note::Column::Id.not_in_subquery(current_note_ids())),
+            );
+        }
+
+        select = select
+            .order_by_desc(note::Column::UpdatedAt)
+            .order_by_desc(note::Column::Id);
+        if let Some(limit) = query.limit {
+            select = select.limit(limit);
+        }
+        let rows = select.all(&self.db).await.map_err(query_error)?;
+        let Some(last) = rows.last() else {
+            return Ok(NoteListPage {
+                notes: Vec::new(),
+                cursor: None,
+                has_more: false,
+            });
+        };
+        let cursor = NoteListCursor {
+            updated_at: last.updated_at,
+            note_id: last.id,
+        };
+        let has_more = query.limit.is_some_and(|limit| rows.len() as u64 == limit);
+        let ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
+        let mut versions = find_current_versions(&self.db, &ids).await?;
+        let pending_ids = ids
+            .iter()
+            .filter(|id| !versions.contains_key(id))
+            .copied()
+            .collect::<Vec<_>>();
+        versions.extend(find_latest_versions(&self.db, &pending_ids).await?);
+
+        let mut matching_rows = Vec::new();
+        for row in rows {
+            let version = versions.remove(&row.id).ok_or_else(|| {
+                NoteReadQueryError::InvalidData(format!(
+                    "note {} has no current or latest version",
+                    row.id
+                ))
+            })?;
+            if query
+                .status
+                .as_deref()
+                .is_some_and(|status| version.status != status)
+            {
+                continue;
+            }
+            if let Some((kind, id)) = query.reference.as_ref()
+                && !version.is_current
+            {
+                match version_matches_reference(&version, kind, id) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(error) => {
+                        tracing::warn!(
+                            note_id = %row.id,
+                            version_id = %version.id,
+                            %error,
+                            "skipping pending note version with unparsable references"
+                        );
+                        continue;
+                    }
+                }
+            }
+            matching_rows.push((row, version));
+        }
+
+        let selected_versions = matching_rows
+            .iter()
+            .map(|(row, version)| (row.id, version.clone()))
+            .collect();
+        let notes = self
+            .snapshots(
+                matching_rows.into_iter().map(|(row, _)| row).collect(),
+                selected_versions,
+            )
+            .await?;
+        Ok(NoteListPage {
+            notes,
+            cursor: Some(cursor),
+            has_more,
+        })
+    }
+}
+fn current_note_ids() -> sea_orm::sea_query::SelectStatement {
+    note_version::Entity::find()
+        .select_only()
+        .column(note_version::Column::NoteId)
+        .filter(note_version::Column::IsCurrent.eq(true))
+        .into_query()
+}
+
+fn current_note_ids_with_status(status: &str) -> sea_orm::sea_query::SelectStatement {
+    note_version::Entity::find()
+        .select_only()
+        .column(note_version::Column::NoteId)
+        .filter(note_version::Column::IsCurrent.eq(true))
+        .filter(note_version::Column::Status.eq(status))
+        .into_query()
+}
+
+fn note_ids_matching_ref(
+    kind: &str,
+    id: &str,
+    restrict_to: Option<sea_orm::sea_query::SelectStatement>,
+) -> sea_orm::sea_query::SelectStatement {
+    let mut query = note_ref::Entity::find()
+        .select_only()
+        .column(note_ref::Column::NoteId)
+        .filter(note_ref::Column::RefKind.eq(kind))
+        .filter(note_ref::Column::RefId.eq(id));
+    if let Some(restrict_to) = restrict_to {
+        query = query.filter(note_ref::Column::NoteId.in_subquery(restrict_to));
+    }
+    query.into_query()
+}
+
+fn version_matches_reference(
+    version: &note_version::Model,
+    kind: &str,
+    id: &str,
+) -> Result<bool, String> {
+    let graphs: Vec<GraphDef> = serde_json::from_value(version.graphs_json.clone())
+        .map_err(|error| format!("failed to deserialize note_version.graphs_json: {error}"))?;
+    collect_note_refs_with_policy(
+        &version.body_md,
+        &graphs,
+        BodyTokenPolicy::AllowLegacyBodyTokens,
+    )
+    .map(|references| {
+        references
+            .iter()
+            .any(|reference| reference.0 == kind && reference.1 == id)
+    })
+    .map_err(|errors| {
+        format!(
+            "failed to collect references from a pending note version: {}",
+            format_note_token_errors(&errors)
+        )
+    })
+}
