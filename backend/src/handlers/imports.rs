@@ -9,9 +9,7 @@ use std::collections::HashMap;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
-use chrono::NaiveDate;
 use core_application::trade::{SbiImportRow, TradeMatchQuery};
-use rust_decimal::Decimal;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
@@ -45,22 +43,22 @@ pub async fn sbi_preview(
     let trades = state.use_cases.trades();
 
     let mut rows = Vec::with_capacity(parsed.rows.len());
-    let mut csv_seen: HashMap<TradeKey, usize> = HashMap::new();
+    let mut csv_seen: HashMap<TradeMatchQuery, usize> = HashMap::new();
     for r in parsed.rows {
-        let key = trade_key(r.date, &r.symbol, &r.side, r.qty, r.price);
+        let query = TradeMatchQuery {
+            date: r.date,
+            symbol: r.symbol.clone(),
+            side: r.side.clone(),
+            qty: r.qty,
+            price: r.price,
+        };
         let csv_index = {
-            let count = csv_seen.entry(key.clone()).or_insert(0);
+            let count = csv_seen.entry(query.clone()).or_insert(0);
             *count += 1;
             *count
         };
         let db_count = trades
-            .count_import_matches(&TradeMatchQuery {
-                date: r.date,
-                symbol: r.symbol.clone(),
-                side: r.side.clone(),
-                qty: r.qty,
-                price: r.price,
-            })
+            .count_import_matches(&query)
             .await
             .map_err(super::trades::map_trade_error)?;
         // CSV 内 N 件目の出現を、DB 既存 N 件と突合する。分割約定など同条件の取引が複数回
@@ -132,10 +130,4 @@ pub async fn sbi_commit(
         imported_count: result.imported_count,
         skipped_count: result.skipped_count,
     }))
-}
-
-type TradeKey = (NaiveDate, String, String, Decimal, Decimal);
-
-fn trade_key(date: NaiveDate, symbol: &str, side: &str, qty: Decimal, price: Decimal) -> TradeKey {
-    (date, symbol.to_string(), side.to_string(), qty, price)
 }

@@ -167,65 +167,117 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::NaiveDate;
+    use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
     use serde_json::json;
     use uuid::Uuid;
 
-    use crate::change_history::{Actor, FakeChangeHistory, Op, TargetKind};
+    use crate::change_history::{Actor, ChangeHistoryRecord, FakeChangeHistory, Op, TargetKind};
     use crate::strategy_existence::FakeStrategyExistence;
     use crate::trade::{FakeTradeRepository, SbiImportResult, SbiImportRow, Trade, TradeUseCases};
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    #[tokio::test]
-    async fn commit_import_preserves_duplicate_counts_and_records_changes_in_one_transaction() {
+    struct ImportFixture {
+        use_cases: TradeUseCases,
+        repository: Arc<FakeTradeRepository>,
+        strategy_existence: Arc<FakeStrategyExistence>,
+        unit_of_work: Arc<FakeUnitOfWork>,
+        change_history: Arc<FakeChangeHistory>,
+        strategy_id: Uuid,
+        date: NaiveDate,
+    }
+
+    impl ImportFixture {
+        async fn seed(&self) {
+            self.strategy_existence
+                .insert_strategy(self.strategy_id)
+                .await;
+            self.repository
+                .insert_trade(Trade {
+                    id: Uuid::from_u128(1),
+                    strategy_id: self.strategy_id,
+                    symbol: "ZXQ91".into(),
+                    side: "buy".into(),
+                    qty: Decimal::from(3),
+                    price: Decimal::from(25),
+                    fee: Decimal::ZERO,
+                    date: self.date,
+                    source: "manual".into(),
+                    note: None,
+                    created_at: chrono::Utc::now().fixed_offset(),
+                    updated_at: chrono::Utc::now().fixed_offset(),
+                })
+                .await;
+        }
+
+        fn duplicate_rows(&self) -> Vec<SbiImportRow> {
+            (0..3)
+                .map(|_| SbiImportRow {
+                    strategy_id: self.strategy_id,
+                    date: self.date,
+                    symbol: "ZXQ91".into(),
+                    stock_name: "Example Placeholder".into(),
+                    side: "buy".into(),
+                    qty: Decimal::from(3),
+                    price: Decimal::from(25),
+                    fee: None,
+                })
+                .collect()
+        }
+
+        fn unique_row(&self) -> SbiImportRow {
+            SbiImportRow {
+                strategy_id: self.strategy_id,
+                date: self.date,
+                symbol: "QWE42".into(),
+                stock_name: "Another Placeholder".into(),
+                side: "buy".into(),
+                qty: Decimal::from(2),
+                price: Decimal::from(18),
+                fee: None,
+            }
+        }
+    }
+
+    #[fixture]
+    fn import_fixture() -> ImportFixture {
         let repository = Arc::new(FakeTradeRepository::new());
         let strategy_existence = Arc::new(FakeStrategyExistence::new());
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let change_history = Arc::new(FakeChangeHistory::new());
         let strategy_id = Uuid::nil();
-        let date = NaiveDate::from_ymd_opt(2026, 1, 15).expect("valid date");
-        strategy_existence.insert_strategy(strategy_id).await;
-        repository
-            .insert_trade(Trade {
-                id: Uuid::from_u128(1),
-                strategy_id,
-                symbol: "ZXQ91".into(),
-                side: "buy".into(),
-                qty: Decimal::from(3),
-                price: Decimal::from(25),
-                fee: Decimal::ZERO,
-                date,
-                source: "manual".into(),
-                note: None,
-                created_at: chrono::Utc::now().fixed_offset(),
-                updated_at: chrono::Utc::now().fixed_offset(),
-            })
-            .await;
         let use_cases = TradeUseCases::new(
             unit_of_work.clone() as SharedUnitOfWork,
             repository.clone(),
             strategy_existence.clone(),
             change_history.clone(),
         );
-        let rows = (0..3)
-            .map(|_| SbiImportRow {
-                strategy_id,
-                date,
-                symbol: "ZXQ91".into(),
-                stock_name: "Example Placeholder".into(),
-                side: "buy".into(),
-                qty: Decimal::from(3),
-                price: Decimal::from(25),
-                fee: None,
-            })
-            .collect();
+        ImportFixture {
+            use_cases,
+            repository,
+            strategy_existence,
+            unit_of_work,
+            change_history,
+            strategy_id,
+            date: NaiveDate::MIN,
+        }
+    }
 
-        let result = use_cases
-            .commit_sbi_import(rows)
+    #[rstest]
+    #[tokio::test]
+    async fn commit_import_preserves_duplicate_counts_and_stock_values(
+        import_fixture: ImportFixture,
+    ) {
+        import_fixture.seed().await;
+
+        let result = import_fixture
+            .use_cases
+            .commit_sbi_import(import_fixture.duplicate_rows())
             .await
             .expect("import succeeds");
 
-        let imported_trades: Vec<_> = repository
+        let imported_trades: Vec<_> = import_fixture
+            .repository
             .trades
             .lock()
             .await
@@ -233,8 +285,6 @@ mod tests {
             .filter(|trade| trade.id != Uuid::from_u128(1))
             .cloned()
             .collect();
-        let mut imported_ids: Vec<_> = imported_trades.iter().map(|trade| trade.id).collect();
-        imported_ids.sort();
         let mut imported_rows: Vec<_> = imported_trades
             .iter()
             .map(|trade| {
@@ -252,45 +302,10 @@ mod tests {
             })
             .collect();
         imported_rows.sort_by(|left, right| left.1.cmp(&right.1));
-        let stocks = repository.stocks.lock().await.clone();
-        let begun = unit_of_work.begun.lock().await.clone();
-        let committed = unit_of_work.committed.lock().await.clone();
-        let repository_transactions = repository.transaction_ids.lock().await.clone();
-        let strategy_transactions = strategy_existence.transaction_ids().await;
-        let history = change_history.entries.lock().await.clone();
-        let mut history_ids: Vec<_> = history.iter().map(|entry| entry.record.target_id).collect();
-        history_ids.sort();
-        let transaction_id = begun.first().copied().unwrap_or_default();
-        let history_records: Vec<_> = history
-            .iter()
-            .map(|entry| {
-                (
-                    entry.record.actor,
-                    entry.record.target_kind,
-                    entry.record.op,
-                    entry.record.diff.clone(),
-                    entry.record.summary.clone(),
-                    entry.transaction_id == transaction_id,
-                )
-            })
-            .collect();
+        let stocks = import_fixture.repository.stocks.lock().await.clone();
 
         assert_eq!(
-            (
-                result,
-                imported_rows,
-                stocks,
-                (
-                    begun.len(),
-                    committed,
-                    repository_transactions.len(),
-                    repository_transactions
-                        .iter()
-                        .all(|id| *id == transaction_id),
-                    strategy_transactions,
-                ),
-                (history_ids, history_records),
-            ),
+            (result, imported_rows, stocks),
             (
                 SbiImportResult {
                     imported_count: 2,
@@ -298,42 +313,109 @@ mod tests {
                 },
                 vec![
                     (
-                        strategy_id,
+                        import_fixture.strategy_id,
                         "ZXQ91".into(),
                         "buy".into(),
                         Decimal::from(3),
                         Decimal::from(25),
                         Decimal::ZERO,
-                        date,
+                        import_fixture.date,
                         "csv".into(),
                         None,
                     );
                     2
                 ],
                 HashMap::from([("ZXQ91".into(), "Example Placeholder".into())]),
-                (1, vec![transaction_id], 5, true, vec![transaction_id],),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn commit_import_uses_one_transaction_for_trade_and_history(
+        import_fixture: ImportFixture,
+    ) {
+        import_fixture.seed().await;
+        let row = import_fixture.unique_row();
+        import_fixture
+            .use_cases
+            .commit_sbi_import(vec![row.clone()])
+            .await
+            .expect("import succeeds");
+
+        let begun = import_fixture.unit_of_work.begun.lock().await.clone();
+        let committed = import_fixture.unit_of_work.committed.lock().await.clone();
+        let repository_transactions = import_fixture
+            .repository
+            .transaction_ids
+            .lock()
+            .await
+            .clone();
+        let strategy_transactions = import_fixture.strategy_existence.transaction_ids().await;
+        let history = import_fixture.change_history.entries.lock().await.clone();
+        let transaction_id = begun.first().copied().unwrap_or_default();
+        let imported_trade_id = import_fixture
+            .repository
+            .trades
+            .lock()
+            .await
+            .values()
+            .find(|trade| trade.symbol == row.symbol)
+            .expect("imported trade exists")
+            .id;
+        let history_records = history
+            .iter()
+            .map(|entry| {
+                let target_matches_import = entry.record.target_id == imported_trade_id;
+                let mut record = entry.record.clone();
+                record.target_id = Uuid::nil();
                 (
-                    imported_ids,
-                    vec![
-                        (
-                            Actor::Human,
-                            TargetKind::Trade,
-                            Op::Create,
-                            json!({
-                                "strategy_id": strategy_id,
-                                "symbol": "ZXQ91",
-                                "side": "buy",
-                                "qty": 3,
-                                "price": 25,
-                                "source": "csv",
-                                "origin": "sbi_csv_import",
-                            }),
-                            None,
-                            true,
-                        );
-                        2
-                    ],
-                ),
+                    record,
+                    entry.transaction_id == transaction_id,
+                    target_matches_import,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (
+                begun.len(),
+                committed,
+                repository_transactions
+                    .iter()
+                    .map(|id| *id == transaction_id)
+                    .collect::<Vec<_>>(),
+                strategy_transactions
+                    .iter()
+                    .map(|id| *id == transaction_id)
+                    .collect::<Vec<_>>(),
+                history_records,
+            ),
+            (
+                1,
+                vec![transaction_id],
+                vec![true; 3],
+                vec![true],
+                vec![(
+                    ChangeHistoryRecord {
+                        actor: Actor::Human,
+                        target_kind: TargetKind::Trade,
+                        target_id: Uuid::nil(),
+                        op: Op::Create,
+                        diff: json!({
+                            "strategy_id": import_fixture.strategy_id,
+                            "symbol": row.symbol,
+                            "side": row.side,
+                            "qty": row.qty,
+                            "price": row.price,
+                            "source": "csv",
+                            "origin": "sbi_csv_import",
+                        }),
+                        summary: None,
+                    },
+                    true,
+                    true,
+                ),],
             ),
         );
     }

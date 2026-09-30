@@ -141,6 +141,7 @@ impl TradeRepository for PostgresTradeRepository {
         name: &str,
     ) -> Result<(), TradeRepositoryError> {
         let transaction = transaction_ref(transaction)?;
+        // SBI CSV の銘柄名は独自表記のため、既存のマスタ名は更新しない。
         if stock::Entity::find_by_id(symbol.to_string())
             .one(transaction)
             .await
@@ -149,6 +150,7 @@ impl TradeRepository for PostgresTradeRepository {
         {
             return Ok(());
         }
+        // 空欄の CSV 名を銘柄名として保存しないよう、銘柄コードを代わりに使う。
         let trimmed_name = name.trim();
         let resolved_name = if trimmed_name.is_empty() {
             symbol
@@ -164,6 +166,7 @@ impl TradeRepository for PostgresTradeRepository {
             created_at: NotSet,
             updated_at: NotSet,
         };
+        // 並行 import が同じ銘柄を追加した場合は、一意制約違反を成功扱いにする。
         if let Err(error) = stock::Entity::insert(model).exec(transaction).await {
             if matches!(
                 error.sql_err(),
