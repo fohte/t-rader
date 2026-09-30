@@ -7,6 +7,7 @@ use sea_orm::{
 
 extern crate self as gateway_postgres;
 
+mod account_risk_policy;
 mod annotation;
 mod change_history;
 mod comment;
@@ -27,6 +28,7 @@ mod transaction;
 mod trigger;
 mod unit_of_work;
 
+pub use account_risk_policy::PostgresAccountRiskPolicyRepository;
 pub use annotation::PostgresAnnotationRepository;
 pub use change_history::PostgresChangeHistory;
 pub use comment::PostgresCommentRepository;

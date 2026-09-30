@@ -7,6 +7,7 @@ use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresUnitOfWork,
 };
 
+mod account_risk_policy;
 mod annotation;
 mod comment;
 mod custom_indicator;
