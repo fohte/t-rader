@@ -14,7 +14,6 @@ use crate::models::{
     IndicatorResponse, RefResolution, SectorResponse, StockResponse, ThemeResponse,
 };
 use crate::services::note_refs::ALLOWED_REF_KINDS;
-pub(crate) use core_application::refs::sanitize_like;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

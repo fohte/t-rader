@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::rss_feed;
+use core_application::rss_feed::RssFeed;
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -51,8 +51,8 @@ pub struct RssFeedResponse {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-impl From<rss_feed::Model> for RssFeedResponse {
-    fn from(model: rss_feed::Model) -> Self {
+impl From<RssFeed> for RssFeedResponse {
+    fn from(model: RssFeed) -> Self {
         Self {
             id: model.id,
             source: model.source,
