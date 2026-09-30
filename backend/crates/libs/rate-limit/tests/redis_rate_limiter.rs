@@ -1,25 +1,12 @@
-use std::{
-    error::Error,
-    sync::atomic::{AtomicU64, Ordering},
-    time::Duration,
-};
+use std::{error::Error, time::Duration};
 
 use rate_limit::{Quota, RateLimitError, RateLimiter};
-
-static NEXT_PREFIX: AtomicU64 = AtomicU64::new(0);
-
-fn test_limiter_with_prefix() -> Result<(RateLimiter, String), Box<dyn Error>> {
-    let redis_url = std::env::var("REDIS_URL")?;
-    let prefix = format!(
-        "t-rader:test:rate-limit:{}:{}:",
-        std::process::id(),
-        NEXT_PREFIX.fetch_add(1, Ordering::Relaxed)
-    );
-    Ok((RateLimiter::new(&redis_url, prefix.clone())?, prefix))
-}
+use rstest::{fixture, rstest};
 
 fn test_limiter() -> Result<RateLimiter, Box<dyn Error>> {
-    Ok(test_limiter_with_prefix()?.0)
+    let redis_url = std::env::var("REDIS_URL")?;
+    let prefix = format!("t-rader:test:rate-limit:{}:", std::process::id());
+    Ok(RateLimiter::new(&redis_url, prefix)?)
 }
 
 #[tokio::test]
@@ -96,29 +83,33 @@ async fn penalize_blocks_matching_quotas_until_cooldown_expires() -> Result<(), 
 }
 
 #[tokio::test]
-async fn stores_fractional_quota_time_without_float_rounding() -> Result<(), Box<dyn Error>> {
-    let (limiter, prefix) = test_limiter_with_prefix()?;
-    let quota = Quota::new("fractional", 3, Duration::from_millis(2));
-    limiter
+async fn acquire_enforces_fractional_quota_interval() -> Result<(), Box<dyn Error>> {
+    let limiter = test_limiter()?;
+    let quota = Quota::new("fractional", 3, Duration::from_secs(2));
+    let first = limiter
         .acquire(std::slice::from_ref(&quota), Duration::ZERO)
-        .await?;
+        .await;
+    let second = limiter
+        .acquire(std::slice::from_ref(&quota), Duration::ZERO)
+        .await;
+    let third = limiter
+        .acquire(std::slice::from_ref(&quota), Duration::ZERO)
+        .await;
+    let fourth = limiter
+        .acquire(std::slice::from_ref(&quota), Duration::ZERO)
+        .await;
 
-    let client = redis::Client::open(std::env::var("REDIS_URL")?)?;
-    let mut connection = client.get_multiplexed_async_connection().await?;
-    let state: String = redis::cmd("GET")
-        .arg(format!("{prefix}quota:{}", quota.key))
-        .query_async(&mut connection)
-        .await?;
-    let (seconds, microseconds) = state
-        .split_once(':')
-        .ok_or_else(|| std::io::Error::other("quota state is not an exact time pair"))?;
-    let seconds = seconds.parse::<u64>()?;
-    let microseconds = microseconds.parse::<u32>()?;
-    if microseconds >= 1_000_000 {
-        return Err(std::io::Error::other("quota time fraction is out of range").into());
-    }
-
-    assert_eq!(state, format!("{seconds}:{microseconds:06}"));
+    assert_eq!(
+        (first, second, third, fourth),
+        (
+            Ok(()),
+            Ok(()),
+            Ok(()),
+            Err(RateLimitError::MaxWaitExceeded {
+                max_wait: Duration::ZERO,
+            }),
+        )
+    );
     Ok(())
 }
 
@@ -145,53 +136,57 @@ async fn acquire_waits_until_max_wait_when_redis_is_unavailable() {
     );
 }
 
-#[tokio::test]
-async fn validates_inputs_without_connecting_to_redis() -> Result<(), Box<dyn Error>> {
-    let empty_prefix_result = RateLimiter::new("redis://127.0.0.1:1/", "").map(|_| ());
-    let limiter = RateLimiter::new("redis://127.0.0.1:1/", "t-rader:test:validation:")?;
-    let empty_key_result = limiter
-        .acquire(&[Quota::new("", 1, Duration::from_secs(1))], Duration::ZERO)
-        .await;
-    let zero_limit_result = limiter
-        .acquire(
-            &[Quota::new("limited", 0, Duration::from_secs(1))],
-            Duration::ZERO,
-        )
-        .await;
-    let zero_period_result = limiter
-        .acquire(&[Quota::new("period", 1, Duration::ZERO)], Duration::ZERO)
-        .await;
-    let duplicate_key_result = limiter
-        .acquire(
-            &[
-                Quota::new("duplicate", 1, Duration::from_secs(1)),
-                Quota::new("duplicate", 2, Duration::from_secs(1)),
-            ],
-            Duration::ZERO,
-        )
-        .await;
-    let empty_penalty_key_result = limiter.penalize("", Duration::ZERO).await;
-    let zero_duration_result = limiter.penalize("valid", Duration::ZERO).await;
+#[fixture]
+fn validation_limiter() -> Result<RateLimiter, RateLimitError> {
+    RateLimiter::new("redis://127.0.0.1:1/", "t-rader:test:validation:")
+}
 
+#[rstest]
+#[case::empty_key(vec![Quota::new("", 1, Duration::from_secs(1))], RateLimitError::EmptyKey)]
+#[case::zero_limit(vec![Quota::new("limited", 0, Duration::from_secs(1))], RateLimitError::ZeroLimit)]
+#[case::zero_period(vec![Quota::new("period", 1, Duration::ZERO)], RateLimitError::InvalidDuration)]
+#[case::duplicate_key(vec![Quota::new("duplicate", 1, Duration::from_secs(1)), Quota::new("duplicate", 2, Duration::from_secs(1))], RateLimitError::DuplicateKey)]
+#[tokio::test]
+async fn acquire_rejects_invalid_quotas_without_connecting_to_redis(
+    validation_limiter: Result<RateLimiter, RateLimitError>,
+    #[case] quotas: Vec<Quota>,
+    #[case] expected_error: RateLimitError,
+) -> Result<(), Box<dyn Error>> {
+    let limiter = validation_limiter?;
     assert_eq!(
-        (
-            empty_prefix_result,
-            empty_key_result,
-            zero_limit_result,
-            zero_period_result,
-            duplicate_key_result,
-            empty_penalty_key_result,
-            zero_duration_result,
-        ),
-        (
-            Err(RateLimitError::EmptyPrefix),
-            Err(RateLimitError::EmptyKey),
-            Err(RateLimitError::ZeroLimit),
-            Err(RateLimitError::InvalidDuration),
-            Err(RateLimitError::DuplicateKey),
-            Err(RateLimitError::EmptyKey),
-            Ok(()),
-        )
+        limiter.acquire(&quotas, Duration::ZERO).await,
+        Err(expected_error)
     );
+    Ok(())
+}
+
+#[test]
+fn rate_limiter_rejects_empty_prefix() {
+    assert_eq!(
+        RateLimiter::new("redis://127.0.0.1:1/", "").map(|_| ()),
+        Err(RateLimitError::EmptyPrefix)
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn penalize_rejects_empty_key(
+    validation_limiter: Result<RateLimiter, RateLimitError>,
+) -> Result<(), Box<dyn Error>> {
+    let limiter = validation_limiter?;
+    assert_eq!(
+        limiter.penalize("", Duration::ZERO).await,
+        Err(RateLimitError::EmptyKey)
+    );
+    Ok(())
+}
+
+#[rstest]
+#[tokio::test]
+async fn penalize_accepts_zero_duration(
+    validation_limiter: Result<RateLimiter, RateLimitError>,
+) -> Result<(), Box<dyn Error>> {
+    let limiter = validation_limiter?;
+    assert_eq!(limiter.penalize("valid", Duration::ZERO).await, Ok(()));
     Ok(())
 }
