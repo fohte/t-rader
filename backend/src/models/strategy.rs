@@ -63,6 +63,9 @@ pub struct UpdateStrategyRequest {
 pub struct StrategyChatRequest {
     #[schema(min_length = 1)]
     pub prompt: String,
+    /// タスク投入先の agent_config の purpose キー。省略時は既定の設定を使い、存在しないキーは 400 になる。
+    #[serde(default)]
+    pub purpose: Option<String>,
 }
 
 /// `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。
