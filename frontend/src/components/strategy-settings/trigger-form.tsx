@@ -28,7 +28,7 @@ export const EMPTY_FORM: FormState = {
   enabled: true,
 }
 
-export function parseKind(value: string): TriggerKind {
+function parseKind(value: string): TriggerKind {
   return value === 'hook' ? 'hook' : 'cron'
 }
 
@@ -126,7 +126,9 @@ export function TriggerForm({
         <PurposeSelect
           purposes={purposes}
           selectedPurpose={form.purpose}
-          onPurposeChange={(purpose) => update('purpose', purpose)}
+          onPurposeChange={(purpose) => {
+            update('purpose', purpose)
+          }}
           disabled={isSaving}
         />
         <p className="font-mono text-2xs text-muted-foreground">
