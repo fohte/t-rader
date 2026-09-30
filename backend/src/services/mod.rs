@@ -3,7 +3,6 @@ pub mod agent_config;
 pub mod agent_graph;
 pub mod backfill;
 pub mod change_history;
-pub mod comment_anchor;
 pub mod custom_indicators;
 pub mod daily_bars_ingest;
 pub mod earnings_date_ingest;
