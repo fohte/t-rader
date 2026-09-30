@@ -7,7 +7,9 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use uuid::Uuid;
 
-use core_application::rss_feed::{CreateRssFeedCommand, RssFeedUseCaseError, UpdateRssFeedPatch};
+use core_application::rss_feed::{
+    CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch,
+};
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
@@ -19,13 +21,13 @@ use crate::models::{
 fn map_err(err: RssFeedUseCaseError) -> AppError {
     match err {
         RssFeedUseCaseError::Validation(message) => AppError::Validation(message),
-        RssFeedUseCaseError::DuplicateSource(source) => {
-            AppError::Conflict(RssFeedUseCaseError::DuplicateSource(source).to_string())
+        error @ RssFeedUseCaseError::Repository(RssFeedRepositoryError::DuplicateSource(_)) => {
+            AppError::Conflict(error.to_string())
         }
         RssFeedUseCaseError::NotFound(id) => {
             AppError::NotFound(RssFeedUseCaseError::NotFound(id).to_string())
         }
-        RssFeedUseCaseError::Persistence(error) => error.into(),
+        RssFeedUseCaseError::Repository(RssFeedRepositoryError::Persistence(error)) => error.into(),
         RssFeedUseCaseError::UnitOfWork(
             core_application::unit_of_work::UnitOfWorkError::Begin(error)
             | core_application::unit_of_work::UnitOfWorkError::Commit(error),
@@ -219,9 +221,9 @@ mod tests {
         let res = server
             .post("/api/rss-feeds")
             .json(&json!({
-                "source": "bloomberg-jp",
-                "display_name": "Bloomberg JP",
-                "url": "https://feeds.bloomberg.co.jp/markets.xml",
+                "source": "sample-newswire",
+                "display_name": "Sample Newswire",
+                "url": "https://feeds.example.invalid/markets.xml",
             }))
             .await;
         res.assert_status(StatusCode::CREATED);
@@ -229,9 +231,9 @@ mod tests {
             normalize(res.json()),
             json!({
                 "id": "<id>",
-                "source": "bloomberg-jp",
-                "display_name": "Bloomberg JP",
-                "url": "https://feeds.bloomberg.co.jp/markets.xml",
+                "source": "sample-newswire",
+                "display_name": "Sample Newswire",
+                "url": "https://feeds.example.invalid/markets.xml",
                 "enabled": true,
                 "created_at": "<created_at>",
                 "updated_at": "<updated_at>",

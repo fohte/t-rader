@@ -156,43 +156,126 @@ mod tests {
 
     fn normalize(mut feed: RssFeed) -> RssFeed {
         feed.id = Uuid::nil();
-        let timestamp = chrono::DateTime::<Utc>::from_timestamp(0, 0)
-            .expect("valid timestamp")
-            .fixed_offset();
+        let timestamp = epoch();
         feed.created_at = timestamp;
         feed.updated_at = timestamp;
         feed
     }
 
-    #[backend_test_macros::database_test]
-    async fn repository_lists_updates_and_deletes_feeds(db: DatabaseHandle) {
+    fn epoch() -> chrono::DateTime<chrono::FixedOffset> {
+        chrono::DateTime::<Utc>::from_timestamp(0, 0)
+            .expect("valid timestamp")
+            .fixed_offset()
+    }
+
+    fn new_feed(source: &str, display_name: &str, enabled: bool) -> NewRssFeed {
+        NewRssFeed {
+            id: Uuid::new_v4(),
+            source: source.into(),
+            display_name: display_name.into(),
+            url: format!("https://feeds.example.invalid/{source}.xml"),
+            enabled,
+        }
+    }
+
+    fn setup(db: DatabaseHandle) -> (PostgresUnitOfWork, PostgresRssFeedRepository) {
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let repository = PostgresRssFeedRepository::new(db);
+        (unit_of_work, repository)
+    }
+
+    async fn create_feed(
+        unit_of_work: &PostgresUnitOfWork,
+        repository: &PostgresRssFeedRepository,
+        feed: NewRssFeed,
+    ) -> RssFeed {
         let transaction = unit_of_work.begin().await.expect("transaction begins");
         let created = repository
-            .create(
-                &transaction,
-                NewRssFeed {
-                    id: Uuid::new_v4(),
-                    source: "feed-alpha".into(),
-                    display_name: "Alpha feed".into(),
-                    url: "https://example.invalid/alpha".into(),
-                    enabled: true,
-                },
-            )
+            .create(&transaction, feed)
             .await
             .expect("feed creates");
         unit_of_work
             .commit(transaction)
             .await
             .expect("transaction commits");
+        created
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_creates_and_lists_feed(db: DatabaseHandle) {
+        let (unit_of_work, repository) = setup(db);
+        let created = create_feed(
+            &unit_of_work,
+            &repository,
+            new_feed("feed-alpha", "Alpha publication", true),
+        )
+        .await;
         let listed = repository.list(true).await.expect("feeds list");
+
+        let expected = RssFeed {
+            id: Uuid::nil(),
+            source: "feed-alpha".into(),
+            display_name: "Alpha publication".into(),
+            url: "https://feeds.example.invalid/feed-alpha.xml".into(),
+            enabled: true,
+            created_at: epoch(),
+            updated_at: epoch(),
+        };
+
+        assert_eq!(
+            (
+                normalize(created),
+                listed.into_iter().map(normalize).collect::<Vec<_>>(),
+            ),
+            (expected.clone(), vec![expected]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_filters_list_by_enabled_state(db: DatabaseHandle) {
+        let (unit_of_work, repository) = setup(db);
+        let enabled = create_feed(
+            &unit_of_work,
+            &repository,
+            new_feed("feed-alpha", "Alpha publication", true),
+        )
+        .await;
+        let disabled = create_feed(
+            &unit_of_work,
+            &repository,
+            new_feed("feed-zeta", "Zeta publication", false),
+        )
+        .await;
+        let enabled_feeds = repository.list(true).await.expect("enabled feeds list");
+        let all_feeds = repository.list(false).await.expect("all feeds list");
+
+        assert_eq!(
+            (
+                enabled_feeds.into_iter().map(normalize).collect::<Vec<_>>(),
+                all_feeds.into_iter().map(normalize).collect::<Vec<_>>(),
+            ),
+            (
+                vec![normalize(enabled.clone())],
+                vec![normalize(enabled), normalize(disabled)],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_updates_feed(db: DatabaseHandle) {
+        let (unit_of_work, repository) = setup(db);
+        let created = create_feed(
+            &unit_of_work,
+            &repository,
+            new_feed("feed-alpha", "Alpha publication", true),
+        )
+        .await;
         let transaction = unit_of_work.begin().await.expect("transaction begins");
         let updated = repository
             .update(
                 &transaction,
                 RssFeed {
-                    display_name: "Updated feed".into(),
+                    display_name: "Updated publication".into(),
                     enabled: false,
                     updated_at: Utc::now().fixed_offset(),
                     ..created.clone()
@@ -204,6 +287,26 @@ mod tests {
             .commit(transaction)
             .await
             .expect("transaction commits");
+
+        assert_eq!(
+            normalize(updated),
+            normalize(RssFeed {
+                display_name: "Updated publication".into(),
+                enabled: false,
+                ..created
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_deletes_feed(db: DatabaseHandle) {
+        let (unit_of_work, repository) = setup(db);
+        let created = create_feed(
+            &unit_of_work,
+            &repository,
+            new_feed("feed-alpha", "Alpha publication", true),
+        )
+        .await;
         let transaction = unit_of_work.begin().await.expect("transaction begins");
         let deleted = repository
             .delete(&transaction, created.id)
@@ -218,23 +321,22 @@ mod tests {
             .await
             .expect("feed lookup");
 
-        assert_eq!(
-            (
-                listed.into_iter().map(normalize).collect::<Vec<_>>(),
-                normalize(updated),
-                deleted,
-                missing,
-            ),
-            (
-                vec![normalize(created.clone())],
-                normalize(RssFeed {
-                    display_name: "Updated feed".into(),
-                    enabled: false,
-                    ..created
-                }),
-                true,
-                None,
-            ),
-        );
+        assert_eq!((deleted, missing), (true, None));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repository_returns_false_when_deleting_missing_feed(db: DatabaseHandle) {
+        let (unit_of_work, repository) = setup(db);
+        let transaction = unit_of_work.begin().await.expect("transaction begins");
+        let deleted = repository
+            .delete(&transaction, Uuid::new_v4())
+            .await
+            .expect("missing feed delete succeeds");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("transaction commits");
+
+        assert!(!deleted);
     }
 }

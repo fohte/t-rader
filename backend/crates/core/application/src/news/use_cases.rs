@@ -30,6 +30,7 @@ impl NewsUseCases {
         }
     }
 
+    /// ニュースは全戦略で共有するため、検索結果には戦略スコープの絞り込みを適用しない。
     pub async fn search_news(
         &self,
         _scope: StrategyScope,
@@ -63,6 +64,7 @@ impl NewsUseCases {
         let feeds = rows
             .into_iter()
             .map(|feed| NewsFeed {
+                // news_item.source には既存の表示名が入るため、slug ではなく display_name を渡す。
                 source: feed.display_name,
                 url: feed.url,
             })
@@ -78,130 +80,25 @@ impl NewsUseCases {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-support"))]
 mod tests {
-    use std::collections::HashSet;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
-    use async_trait::async_trait;
-    use chrono::{DateTime, NaiveDate, Utc};
+    use chrono::{DateTime, Utc};
     use rstest::rstest;
     use uuid::Uuid;
 
-    use crate::news::repository::{
-        NewsItemRepository, NewsItemRepositoryError, NewsSearchCriteria,
-    };
+    use crate::news::FakeNewsItemRepository;
+    use crate::news::repository::NewsSearchCriteria;
     use crate::news::types::{AggregationStats, SearchNewsQuery};
     use crate::news_aggregator::{FakeNewsAggregator, NewsItem};
-    use crate::rss_feed::{NewRssFeed, RssFeed, RssFeedRepository, RssFeedRepositoryError};
+    use crate::rss_feed::{FakeRssFeedRepository, RssFeed};
     use crate::strategy_scope::StrategyScope;
 
     use super::NewsUseCases;
 
-    #[derive(Clone)]
-    struct FakeRssFeedRepository {
-        feeds: Vec<RssFeed>,
-    }
-
-    #[async_trait]
-    impl RssFeedRepository for FakeRssFeedRepository {
-        async fn list(&self, enabled_only: bool) -> Result<Vec<RssFeed>, RssFeedRepositoryError> {
-            let mut feeds = self
-                .feeds
-                .iter()
-                .filter(|feed| !enabled_only || feed.enabled)
-                .cloned()
-                .collect::<Vec<_>>();
-            feeds.sort_by(|left, right| left.display_name.cmp(&right.display_name));
-            Ok(feeds)
-        }
-
-        async fn find_by_id(&self, id: Uuid) -> Result<Option<RssFeed>, RssFeedRepositoryError> {
-            Ok(self.feeds.iter().find(|feed| feed.id == id).cloned())
-        }
-
-        async fn find_by_id_in_transaction(
-            &self,
-            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            id: Uuid,
-        ) -> Result<Option<RssFeed>, RssFeedRepositoryError> {
-            self.find_by_id(id).await
-        }
-
-        async fn create(
-            &self,
-            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            feed: NewRssFeed,
-        ) -> Result<RssFeed, RssFeedRepositoryError> {
-            let now = Utc::now().fixed_offset();
-            Ok(RssFeed {
-                id: feed.id,
-                source: feed.source,
-                display_name: feed.display_name,
-                url: feed.url,
-                enabled: feed.enabled,
-                created_at: now,
-                updated_at: now,
-            })
-        }
-
-        async fn update(
-            &self,
-            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            feed: RssFeed,
-        ) -> Result<RssFeed, RssFeedRepositoryError> {
-            Ok(feed)
-        }
-
-        async fn delete(
-            &self,
-            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            _id: Uuid,
-        ) -> Result<bool, RssFeedRepositoryError> {
-            Ok(false)
-        }
-    }
-
-    #[derive(Default)]
-    struct FakeNewsItemRepository {
-        upserts: Mutex<Vec<Vec<NewsItem>>>,
-        searches: Mutex<Vec<NewsSearchCriteria>>,
-    }
-
-    #[async_trait]
-    impl NewsItemRepository for FakeNewsItemRepository {
-        async fn upsert(
-            &self,
-            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            items: &[NewsItem],
-        ) -> Result<usize, NewsItemRepositoryError> {
-            self.upserts
-                .lock()
-                .expect("mutex is not poisoned")
-                .push(items.to_vec());
-            Ok(items
-                .iter()
-                .map(|item| item.url.as_str())
-                .collect::<HashSet<_>>()
-                .len())
-        }
-
-        async fn search(
-            &self,
-            criteria: NewsSearchCriteria,
-        ) -> Result<Vec<crate::news::NewsArticle>, NewsItemRepositoryError> {
-            self.searches
-                .lock()
-                .expect("mutex is not poisoned")
-                .push(criteria);
-            Ok(Vec::new())
-        }
-    }
-
     fn feed(source: &str, display_name: &str, enabled: bool) -> RssFeed {
-        let timestamp = DateTime::from_timestamp(0, 0)
-            .expect("valid timestamp")
-            .fixed_offset();
+        let timestamp = DateTime::<Utc>::UNIX_EPOCH.fixed_offset();
         RssFeed {
             id: Uuid::new_v4(),
             source: source.into(),
@@ -214,10 +111,10 @@ mod tests {
     }
 
     fn use_cases(feeds: Vec<RssFeed>) -> (NewsUseCases, Arc<FakeNewsItemRepository>) {
-        let news_repository = Arc::new(FakeNewsItemRepository::default());
+        let news_repository = Arc::new(FakeNewsItemRepository::new());
         let use_cases = NewsUseCases::new(
             Arc::new(crate::unit_of_work::FakeUnitOfWork::new()),
-            Arc::new(FakeRssFeedRepository { feeds }),
+            Arc::new(FakeRssFeedRepository::new(feeds)),
             news_repository.clone(),
         );
         (use_cases, news_repository)
@@ -236,7 +133,7 @@ mod tests {
             url: "https://example.invalid/article".into(),
             title: "Sample headline".into(),
             body_snippet: Some("Sample summary".into()),
-            published_at: DateTime::from_timestamp(0, 0).expect("valid timestamp"),
+            published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
         *aggregator.items.lock().await = vec![article.clone()];
 
@@ -245,11 +142,7 @@ mod tests {
             .await
             .expect("aggregation cycle succeeds");
         let requested_feeds = aggregator.requested_feeds.lock().await.clone();
-        let upserts = news_repository
-            .upserts
-            .lock()
-            .expect("mutex is not poisoned")
-            .clone();
+        let upserts = news_repository.upserts.lock().await.clone();
 
         assert_eq!(
             (stats, requested_feeds, upserts),
@@ -283,15 +176,110 @@ mod tests {
             .await
             .map(|stats| stats.fetched)
             .map_err(|error| error.to_string());
-        let upsert_count = news_repository
-            .upserts
-            .lock()
-            .expect("mutex is not poisoned")
-            .len();
+        let upsert_count = news_repository.upserts.lock().await.len();
 
         assert_eq!(
             (result, upsert_count),
             (Err("network error: sample failure".into()), 0),
+        );
+    }
+
+    #[tokio::test]
+    async fn aggregation_cycle_returns_zero_when_no_items_are_fetched() {
+        let (use_cases, news_repository) = use_cases(Vec::new());
+        let aggregator = FakeNewsAggregator::new();
+
+        let result = use_cases
+            .run_aggregation_cycle(&aggregator)
+            .await
+            .map_err(|error| error.to_string());
+        let requested_feeds = aggregator.requested_feeds.lock().await.clone();
+        let upserts = news_repository.upserts.lock().await.clone();
+
+        assert_eq!(
+            (result, requested_feeds, upserts),
+            (
+                Ok(AggregationStats { fetched: 0 }),
+                vec![Vec::new()],
+                Vec::new(),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn aggregation_cycle_propagates_duplicate_url_batch_error() {
+        let (use_cases, news_repository) = use_cases(Vec::new());
+        let aggregator = FakeNewsAggregator::new();
+        let item = NewsItem {
+            source: "Sample publication".into(),
+            url: "https://example.invalid/article".into(),
+            title: "Sample headline".into(),
+            body_snippet: None,
+            published_at: DateTime::<Utc>::UNIX_EPOCH,
+        };
+        *aggregator.items.lock().await = vec![item.clone(), item];
+
+        let result = use_cases
+            .run_aggregation_cycle(&aggregator)
+            .await
+            .map_err(|error| error.to_string());
+        let upserts = news_repository.upserts.lock().await.clone();
+
+        assert_eq!(
+            (result, upserts),
+            (
+                Err("news item batch contains duplicate URLs".into()),
+                Vec::new(),
+            ),
+        );
+    }
+
+    async fn run_search(
+        use_cases: &NewsUseCases,
+        news_repository: &FakeNewsItemRepository,
+        query: SearchNewsQuery,
+    ) -> (
+        Result<Vec<crate::news::NewsArticle>, String>,
+        Vec<NewsSearchCriteria>,
+    ) {
+        let result = use_cases
+            .search_news(StrategyScope::from(Uuid::nil()), query)
+            .await
+            .map_err(|error| error.to_string());
+        let criteria = news_repository.searches.lock().await.clone();
+        (result, criteria)
+    }
+
+    #[rstest]
+    #[case::missing(None, None)]
+    #[case::empty(Some(""), None)]
+    #[case::whitespace(Some("   "), None)]
+    #[case::trimmed(Some("  Sample query  "), Some("Sample query"))]
+    #[tokio::test]
+    async fn search_news_trims_keyword_and_omits_blank_values(
+        #[case] keyword: Option<&str>,
+        #[case] expected_keyword: Option<&str>,
+    ) {
+        let (use_cases, news_repository) = use_cases(Vec::new());
+        let query = SearchNewsQuery {
+            keyword: keyword.map(str::to_string),
+            from: None,
+            to: None,
+            limit: Some(13),
+        };
+        let search_result = run_search(&use_cases, &news_repository, query).await;
+
+        assert_eq!(
+            search_result,
+            (
+                Ok(Vec::new()),
+                vec![NewsSearchCriteria {
+                    keyword: expected_keyword.map(str::to_string),
+                    from: None,
+                    to: None,
+                    limit: 13,
+                }],
+            ),
         );
     }
 
@@ -300,36 +288,28 @@ mod tests {
     #[case::minimum(Some(0), 1)]
     #[case::maximum(Some(500), 200)]
     #[tokio::test]
-    async fn search_news_normalizes_keyword_and_clamps_limit(
-        #[case] limit: Option<u32>,
-        #[case] expected_limit: u64,
-    ) {
+    async fn search_news_clamps_limit(#[case] limit: Option<u32>, #[case] expected_limit: u64) {
         let (use_cases, news_repository) = use_cases(Vec::new());
-        let query = SearchNewsQuery {
-            keyword: Some("  Sample query  ".into()),
-            from: Some(NaiveDate::from_ymd_opt(2026, 1, 2).expect("valid date")),
-            to: Some(NaiveDate::from_ymd_opt(2026, 1, 3).expect("valid date")),
-            limit,
-        };
-
-        let result = use_cases
-            .search_news(StrategyScope::from(Uuid::new_v4()), query.clone())
-            .await
-            .expect("search succeeds");
-        let criteria = news_repository
-            .searches
-            .lock()
-            .expect("mutex is not poisoned")
-            .clone();
+        let search_result = run_search(
+            &use_cases,
+            &news_repository,
+            SearchNewsQuery {
+                keyword: None,
+                from: None,
+                to: None,
+                limit,
+            },
+        )
+        .await;
 
         assert_eq!(
-            (result, criteria),
+            search_result,
             (
-                Vec::new(),
+                Ok(Vec::new()),
                 vec![NewsSearchCriteria {
-                    keyword: query.keyword.map(|keyword| keyword.trim().to_string()),
-                    from: query.from,
-                    to: query.to,
+                    keyword: None,
+                    from: None,
+                    to: None,
                     limit: expected_limit,
                 }],
             ),

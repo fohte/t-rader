@@ -61,7 +61,7 @@ mod tests {
 
     use super::super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
     use super::super::tests_common::build_server;
-    use core_application::news::{NewsItemRepository, NewsSearchCriteria};
+    use core_application::news::NewsItemRepository;
     use core_application::news_aggregator::NewsItem;
     use core_application::unit_of_work::UnitOfWork;
     use gateway_postgres::{DatabaseHandle, PostgresNewsItemRepository, PostgresUnitOfWork};
@@ -83,7 +83,7 @@ mod tests {
         title: &str,
         body_snippet: Option<&str>,
         published_at: DateTime<FixedOffset>,
-    ) -> Uuid {
+    ) {
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let repository = PostgresNewsItemRepository::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("transaction begins");
@@ -104,23 +104,29 @@ mod tests {
             .commit(transaction)
             .await
             .expect("transaction commits");
-        repository
-            .search(NewsSearchCriteria {
-                keyword: None,
-                from: None,
-                to: None,
-                limit: 200,
-            })
-            .await
-            .expect("search inserted news item")
-            .into_iter()
-            .find(|item| item.url == url)
-            .map(|item| item.id)
-            .expect("inserted news item exists")
     }
 
-    fn result_urls(result: &SearchNewsResult) -> Vec<String> {
-        result.items.iter().map(|i| i.url.clone()).collect()
+    fn normalize_result(mut result: SearchNewsResult) -> SearchNewsResult {
+        for item in &mut result.items {
+            item.id = Uuid::nil();
+        }
+        result
+    }
+
+    fn expected_item(
+        url: &str,
+        title: &str,
+        body_snippet: Option<&str>,
+        published_at: DateTime<FixedOffset>,
+    ) -> NewsItemDto {
+        NewsItemDto {
+            id: Uuid::nil(),
+            source: "Sample publication".into(),
+            url: url.into(),
+            title: title.into(),
+            body_snippet: body_snippet.map(str::to_string),
+            published_at,
+        }
     }
 
     #[backend_test_macros::database_test]
@@ -128,9 +134,9 @@ mod tests {
         let server = build_server(db.clone());
 
         let published_at = at_noon(ymd(2026, 6, 1));
-        let id = insert_news_item_with(
+        insert_news_item_with(
             &db,
-            "https://ex.com/1",
+            "https://example.invalid/news/one",
             "Example Ventures earnings update",
             Some("quarterly results"),
             published_at,
@@ -151,16 +157,14 @@ mod tests {
             .expect("search_news");
 
         assert_eq!(
-            result,
+            normalize_result(result),
             SearchNewsResult {
-                items: vec![NewsItemDto {
-                    id,
-                    source: "Sample publication".into(),
-                    url: "https://ex.com/1".into(),
-                    title: "Example Ventures earnings update".into(),
-                    body_snippet: Some("quarterly results".into()),
+                items: vec![expected_item(
+                    "https://example.invalid/news/one",
+                    "Example Ventures earnings update",
+                    Some("quarterly results"),
                     published_at,
-                }],
+                )],
             },
         );
     }
@@ -173,7 +177,7 @@ mod tests {
 
         insert_news_item_with(
             &db,
-            "https://ex.com/1",
+            "https://example.invalid/news/one",
             "EXAMPLE VENTURES earnings update",
             None,
             at_noon(ymd(2026, 6, 1)),
@@ -181,16 +185,16 @@ mod tests {
         .await;
         insert_news_item_with(
             &db,
-            "https://ex.com/2",
-            "市況まとめ",
-            Some("半導体株が上昇"),
+            "https://example.invalid/news/two",
+            "Market overview",
+            Some("sample sector shares rise"),
             at_noon(ymd(2026, 6, 1)),
         )
         .await;
         insert_news_item_with(
             &db,
-            "https://ex.com/3",
-            "無関係のニュース",
+            "https://example.invalid/news/three",
+            "Unrelated update",
             None,
             at_noon(ymd(2026, 6, 1)),
         )
@@ -209,7 +213,17 @@ mod tests {
             .await
             .expect("search_news");
 
-        assert_eq!(result_urls(&result), vec!["https://ex.com/1".to_string()]);
+        assert_eq!(
+            normalize_result(result),
+            SearchNewsResult {
+                items: vec![expected_item(
+                    "https://example.invalid/news/one",
+                    "EXAMPLE VENTURES earnings update",
+                    None,
+                    at_noon(ymd(2026, 6, 1)),
+                )],
+            },
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -220,7 +234,7 @@ mod tests {
 
         insert_news_item_with(
             &db,
-            "https://ex.com/1",
+            "https://example.invalid/news/one",
             "AXB",
             None,
             at_noon(ymd(2026, 6, 1)),
@@ -240,7 +254,10 @@ mod tests {
             .await
             .expect("search_news");
 
-        assert_eq!(result_urls(&result), Vec::<String>::new());
+        assert_eq!(
+            normalize_result(result),
+            SearchNewsResult { items: Vec::new() }
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -251,24 +268,24 @@ mod tests {
 
         insert_news_item_with(
             &db,
-            "https://ex.com/1",
-            "1日",
+            "https://example.invalid/news/one",
+            "Day one",
             None,
             at_noon(ymd(2026, 6, 1)),
         )
         .await;
         insert_news_item_with(
             &db,
-            "https://ex.com/2",
-            "5日",
+            "https://example.invalid/news/five",
+            "Day five",
             None,
             at_noon(ymd(2026, 6, 5)),
         )
         .await;
         insert_news_item_with(
             &db,
-            "https://ex.com/3",
-            "10日",
+            "https://example.invalid/news/ten",
+            "Day ten",
             None,
             at_noon(ymd(2026, 6, 10)),
         )
@@ -287,7 +304,17 @@ mod tests {
             .await
             .expect("search_news");
 
-        assert_eq!(result_urls(&result), vec!["https://ex.com/2".to_string()]);
+        assert_eq!(
+            normalize_result(result),
+            SearchNewsResult {
+                items: vec![expected_item(
+                    "https://example.invalid/news/five",
+                    "Day five",
+                    None,
+                    at_noon(ymd(2026, 6, 5)),
+                )],
+            },
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -298,24 +325,24 @@ mod tests {
 
         insert_news_item_with(
             &db,
-            "https://ex.com/1",
-            "1日",
+            "https://example.invalid/news/one",
+            "Day one",
             None,
             at_noon(ymd(2026, 6, 1)),
         )
         .await;
         insert_news_item_with(
             &db,
-            "https://ex.com/2",
-            "2日",
+            "https://example.invalid/news/two",
+            "Day two",
             None,
             at_noon(ymd(2026, 6, 2)),
         )
         .await;
         insert_news_item_with(
             &db,
-            "https://ex.com/3",
-            "3日",
+            "https://example.invalid/news/three",
+            "Day three",
             None,
             at_noon(ymd(2026, 6, 3)),
         )
@@ -335,11 +362,23 @@ mod tests {
             .expect("search_news");
 
         assert_eq!(
-            result_urls(&result),
-            vec![
-                "https://ex.com/3".to_string(),
-                "https://ex.com/2".to_string(),
-            ],
+            normalize_result(result),
+            SearchNewsResult {
+                items: vec![
+                    expected_item(
+                        "https://example.invalid/news/three",
+                        "Day three",
+                        None,
+                        at_noon(ymd(2026, 6, 3)),
+                    ),
+                    expected_item(
+                        "https://example.invalid/news/two",
+                        "Day two",
+                        None,
+                        at_noon(ymd(2026, 6, 2)),
+                    ),
+                ],
+            },
         );
     }
 }

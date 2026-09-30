@@ -1,6 +1,8 @@
 //! 管理 MCP の RSS フィード CRUD tool。
 
-use core_application::rss_feed::{CreateRssFeedCommand, RssFeedUseCaseError, UpdateRssFeedPatch};
+use core_application::rss_feed::{
+    CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch,
+};
 use rmcp::ErrorData as McpError;
 
 use super::MgmtServer;
@@ -80,13 +82,13 @@ impl MgmtServer {
 fn map_rss_feed_error(err: RssFeedUseCaseError) -> McpError {
     match err {
         RssFeedUseCaseError::Validation(message) => invalid_params(message),
-        RssFeedUseCaseError::DuplicateSource(source) => {
-            invalid_params(RssFeedUseCaseError::DuplicateSource(source).to_string())
+        error @ RssFeedUseCaseError::Repository(RssFeedRepositoryError::DuplicateSource(_)) => {
+            invalid_params(error.to_string())
         }
         RssFeedUseCaseError::NotFound(id) => {
             McpError::resource_not_found(RssFeedUseCaseError::NotFound(id).to_string(), None)
         }
-        RssFeedUseCaseError::Persistence(error) => {
+        RssFeedUseCaseError::Repository(error) => {
             tracing::error!(error = %error, "mgmt mcp rss feed operation failed");
             super::internal_error(format!("database error: {error}"))
         }
@@ -114,9 +116,9 @@ mod tests {
 
         let Json(created) = server
             .create_rss_feed(Parameters(CreateRssFeedParams {
-                source: "bloomberg-jp".into(),
-                display_name: "Bloomberg JP".into(),
-                url: "https://feeds.bloomberg.co.jp/markets.xml".into(),
+                source: "sample-newswire".into(),
+                display_name: "Sample Newswire".into(),
+                url: "https://feeds.example.invalid/markets.xml".into(),
                 enabled: None,
             }))
             .await
@@ -127,9 +129,9 @@ mod tests {
         };
         let expected = RssFeedSummary {
             id: Uuid::nil(),
-            source: "bloomberg-jp".into(),
-            display_name: "Bloomberg JP".into(),
-            url: "https://feeds.bloomberg.co.jp/markets.xml".into(),
+            source: "sample-newswire".into(),
+            display_name: "Sample Newswire".into(),
+            url: "https://feeds.example.invalid/markets.xml".into(),
             enabled: true,
         };
         assert_eq!(

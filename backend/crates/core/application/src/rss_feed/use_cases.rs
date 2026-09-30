@@ -7,6 +7,7 @@ use super::types::{CreateRssFeedCommand, NewRssFeed, RssFeed, UpdateRssFeedPatch
 use super::url_validator::SharedRssFeedUrlValidator;
 use crate::unit_of_work::SharedUnitOfWork;
 
+/// `source` は機械処理向けの slug、`display_name` は利用者向けの表示名。
 const SOURCE_PATTERN_DESC: &str = "^[a-z0-9_-]+$";
 
 #[derive(Clone)]
@@ -142,12 +143,20 @@ fn validate_display_name(name: &str) -> Result<String, RssFeedUseCaseError> {
     Ok(trimmed.to_string())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-support"))]
 mod tests {
-    use rstest::rstest;
+    use std::sync::Arc;
 
-    use super::{RssFeedUseCaseError, validate_display_name, validate_source, validate_url};
-    use crate::rss_feed::RssFeedUrlValidator;
+    use chrono::{DateTime, Utc};
+    use rstest::rstest;
+    use uuid::Uuid;
+
+    use super::{RssFeedUseCases, validate_display_name, validate_source, validate_url};
+    use crate::rss_feed::{
+        CreateRssFeedCommand, FakeRssFeedRepository, RssFeed, RssFeedRepository,
+        RssFeedUrlValidator, UpdateRssFeedPatch,
+    };
+    use crate::unit_of_work::FakeUnitOfWork;
 
     struct TestUrlValidator;
 
@@ -155,6 +164,39 @@ mod tests {
         fn is_valid_http_url(&self, url: &str) -> bool {
             url.starts_with("http://") || url.starts_with("https://")
         }
+    }
+
+    fn timestamp() -> DateTime<chrono::FixedOffset> {
+        DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
+    }
+
+    fn normalize(mut feed: RssFeed) -> RssFeed {
+        feed.id = Uuid::nil();
+        feed.created_at = timestamp();
+        feed.updated_at = timestamp();
+        feed
+    }
+
+    fn feed(source: &str, display_name: &str, url: &str, enabled: bool) -> RssFeed {
+        RssFeed {
+            id: Uuid::new_v4(),
+            source: source.into(),
+            display_name: display_name.into(),
+            url: url.into(),
+            enabled,
+            created_at: timestamp(),
+            updated_at: timestamp(),
+        }
+    }
+
+    fn use_cases(feeds: Vec<RssFeed>) -> (RssFeedUseCases, Arc<FakeRssFeedRepository>) {
+        let repository = Arc::new(FakeRssFeedRepository::new(feeds));
+        let use_cases = RssFeedUseCases::new(
+            Arc::new(FakeUnitOfWork::new()),
+            repository.clone(),
+            Arc::new(TestUrlValidator),
+        );
+        (use_cases, repository)
     }
 
     #[rstest]
@@ -166,15 +208,15 @@ mod tests {
     }
 
     #[rstest]
-    #[case::uppercase("Feed")]
-    #[case::space("feed source")]
-    #[case::non_ascii("配信元")]
-    #[case::empty("")]
-    fn source_rejects_invalid_slug(#[case] source: &str) {
-        assert!(matches!(
-            validate_source(source),
-            Err(RssFeedUseCaseError::Validation(_))
-        ));
+    #[case::uppercase("Feed", "source must match ^[a-z0-9_-]+$ (got 'Feed')")]
+    #[case::space("feed source", "source must match ^[a-z0-9_-]+$ (got 'feed source')")]
+    #[case::non_ascii("配信元", "source must match ^[a-z0-9_-]+$ (got '配信元')")]
+    #[case::empty("", "source must match ^[a-z0-9_-]+$ (got '')")]
+    fn source_rejects_invalid_slug(#[case] source: &str, #[case] expected_error: &str) {
+        assert_eq!(
+            validate_source(source).map_err(|error| error.to_string()),
+            Err(expected_error.to_string()),
+        );
     }
 
     #[rstest]
@@ -185,14 +227,20 @@ mod tests {
     }
 
     #[rstest]
-    #[case::missing_scheme("example.invalid/feed")]
-    #[case::ftp("ftp://example.invalid/feed")]
-    #[case::invalid("not-a-url")]
-    fn url_rejects_invalid_values(#[case] url: &str) {
-        assert!(matches!(
-            validate_url(url, &TestUrlValidator),
-            Err(RssFeedUseCaseError::Validation(_))
-        ));
+    #[case::missing_scheme(
+        "example.invalid/feed",
+        "url must be a valid http(s) URL (got 'example.invalid/feed')"
+    )]
+    #[case::ftp(
+        "ftp://example.invalid/feed",
+        "url must be a valid http(s) URL (got 'ftp://example.invalid/feed')"
+    )]
+    #[case::invalid("not-a-url", "url must be a valid http(s) URL (got 'not-a-url')")]
+    fn url_rejects_invalid_values(#[case] url: &str, #[case] expected_error: &str) {
+        assert_eq!(
+            validate_url(url, &TestUrlValidator).map_err(|error| error.to_string()),
+            Err(expected_error.to_string()),
+        );
     }
 
     #[rstest]
@@ -206,9 +254,159 @@ mod tests {
     #[case::empty("")]
     #[case::whitespace("   ")]
     fn display_name_rejects_empty_values(#[case] name: &str) {
-        assert!(matches!(
-            validate_display_name(name),
-            Err(RssFeedUseCaseError::Validation(_))
-        ));
+        assert_eq!(
+            validate_display_name(name).map_err(|error| error.to_string()),
+            Err("display_name must not be empty".into()),
+        );
+    }
+
+    #[tokio::test]
+    async fn create_trims_fields_and_defaults_enabled() {
+        let (use_cases, repository) = use_cases(Vec::new());
+        let created = use_cases
+            .create(CreateRssFeedCommand {
+                source: " feed-alpha ".into(),
+                display_name: " Alpha publication ".into(),
+                url: " https://feeds.example.invalid/feed-alpha.xml ".into(),
+                enabled: None,
+            })
+            .await
+            .expect("feed creates");
+        let listed = repository.list(false).await.expect("feeds list");
+        let expected = RssFeed {
+            id: Uuid::nil(),
+            source: "feed-alpha".into(),
+            display_name: "Alpha publication".into(),
+            url: "https://feeds.example.invalid/feed-alpha.xml".into(),
+            enabled: true,
+            created_at: timestamp(),
+            updated_at: timestamp(),
+        };
+
+        assert_eq!(
+            (
+                normalize(created),
+                listed.into_iter().map(normalize).collect::<Vec<_>>()
+            ),
+            (expected.clone(), vec![expected]),
+        );
+    }
+
+    #[tokio::test]
+    async fn create_reports_duplicate_source() {
+        let existing = feed(
+            "feed-alpha",
+            "Alpha publication",
+            "https://feeds.example.invalid/feed-alpha.xml",
+            true,
+        );
+        let (use_cases, repository) = use_cases(vec![existing]);
+        let result = use_cases
+            .create(CreateRssFeedCommand {
+                source: "feed-alpha".into(),
+                display_name: "Another publication".into(),
+                url: "https://feeds.example.invalid/another.xml".into(),
+                enabled: None,
+            })
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        let listed = repository.list(false).await.expect("feeds list");
+
+        assert_eq!(
+            (
+                result,
+                listed.into_iter().map(normalize).collect::<Vec<_>>()
+            ),
+            (
+                Err("rss feed with source 'feed-alpha' already exists".into()),
+                vec![RssFeed {
+                    id: Uuid::nil(),
+                    source: "feed-alpha".into(),
+                    display_name: "Alpha publication".into(),
+                    url: "https://feeds.example.invalid/feed-alpha.xml".into(),
+                    enabled: true,
+                    created_at: timestamp(),
+                    updated_at: timestamp(),
+                }],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn update_applies_patch_and_preserves_source() {
+        let existing = feed(
+            "feed-alpha",
+            "Alpha publication",
+            "https://feeds.example.invalid/feed-alpha.xml",
+            true,
+        );
+        let id = existing.id;
+        let (use_cases, repository) = use_cases(vec![existing]);
+        let updated = use_cases
+            .update(
+                id,
+                UpdateRssFeedPatch {
+                    display_name: Some("Updated publication".into()),
+                    url: Some("https://feeds.example.invalid/updated.xml".into()),
+                    enabled: Some(false),
+                },
+            )
+            .await
+            .expect("feed updates");
+        let listed = repository.list(false).await.expect("feeds list");
+        let expected = RssFeed {
+            id: Uuid::nil(),
+            source: "feed-alpha".into(),
+            display_name: "Updated publication".into(),
+            url: "https://feeds.example.invalid/updated.xml".into(),
+            enabled: false,
+            created_at: timestamp(),
+            updated_at: timestamp(),
+        };
+
+        assert_eq!(
+            (
+                normalize(updated),
+                listed.into_iter().map(normalize).collect::<Vec<_>>()
+            ),
+            (expected.clone(), vec![expected]),
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_removes_feed() {
+        let existing = feed(
+            "feed-alpha",
+            "Alpha publication",
+            "https://feeds.example.invalid/feed-alpha.xml",
+            true,
+        );
+        let id = existing.id;
+        let (use_cases, repository) = use_cases(vec![existing]);
+
+        let result = use_cases
+            .delete(id)
+            .await
+            .map_err(|error| error.to_string());
+        let listed = repository.list(false).await.expect("feeds list");
+
+        assert_eq!((result, listed), (Ok(()), Vec::new()));
+    }
+
+    #[tokio::test]
+    async fn delete_reports_missing_feed() {
+        let (use_cases, repository) = use_cases(Vec::new());
+        let id = Uuid::nil();
+        let result = use_cases
+            .delete(id)
+            .await
+            .map_err(|error| error.to_string());
+        let listed = repository.list(false).await.expect("feeds list");
+
+        assert_eq!(
+            (result, listed),
+            (Err(format!("rss feed {id} not found")), Vec::new()),
+        );
     }
 }

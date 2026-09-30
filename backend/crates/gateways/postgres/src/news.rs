@@ -111,6 +111,7 @@ fn transaction_ref(
 }
 
 fn sanitize_like(value: &str) -> String {
+    // SeaORM の ILIKE は ESCAPE 句を指定できないため、ワイルドカードを除去する。
     value
         .chars()
         .filter(|character| !matches!(character, '%' | '_' | '\\'))
