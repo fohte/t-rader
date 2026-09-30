@@ -1,62 +1,13 @@
 //! 戦略実行 MCP の `read_valuation` tool。
 
-use chrono::NaiveDate;
 use core_application::strategy_scope::StrategyScope;
+use core_domain::valuation::Valuation;
 use rmcp::ErrorData as McpError;
-use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
+use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 
 use super::dto::{ReadValuationParams, ReadValuationResult, ValuationDto};
-use super::{StrategyServer, db_error};
-
-const READ_VALUATION_SQL: &str = indoc::indoc! {"
-    SELECT
-        date,
-        eps::double precision AS eps,
-        fwd_eps::double precision AS fwd_eps,
-        bps::double precision AS bps,
-        roe::double precision AS roe,
-        fwd_roe::double precision AS fwd_roe,
-        per::double precision AS per,
-        fwd_per::double precision AS fwd_per,
-        pbr::double precision AS pbr,
-        mkt_cap::double precision AS mkt_cap
-    FROM valuation
-    WHERE LEFT(code, 4) = $1
-      AND date >= $2
-      AND date <= $3
-    ORDER BY date DESC
-"};
-
-#[derive(Debug, FromQueryResult)]
-struct ValuationRow {
-    date: NaiveDate,
-    eps: Option<f64>,
-    fwd_eps: Option<f64>,
-    bps: Option<f64>,
-    roe: Option<f64>,
-    fwd_roe: Option<f64>,
-    per: Option<f64>,
-    fwd_per: Option<f64>,
-    pbr: Option<f64>,
-    mkt_cap: Option<f64>,
-}
-
-impl From<ValuationRow> for ValuationDto {
-    fn from(row: ValuationRow) -> Self {
-        Self {
-            date: row.date,
-            eps: row.eps,
-            fwd_eps: row.fwd_eps,
-            bps: row.bps,
-            roe: row.roe,
-            fwd_roe: row.fwd_roe,
-            per: row.per,
-            fwd_per: row.fwd_per,
-            pbr: row.pbr,
-            mkt_cap: row.mkt_cap,
-        }
-    }
-}
+use super::{StrategyServer, internal_error};
 
 impl StrategyServer {
     pub(crate) async fn read_valuation_inner(
@@ -65,124 +16,81 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadValuationParams,
     ) -> Result<ReadValuationResult, McpError> {
-        let _scope = scope.into();
-        let rows = self
-            .db
-            .query_all_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                READ_VALUATION_SQL,
-                [
-                    params.symbol.clone().into(),
-                    params.from.into(),
-                    params.to.into(),
-                ],
-            ))
+        let valuations = self
+            .use_cases
+            .valuations()
+            .find_for_symbol(scope.into(), &params.symbol, params.from, params.to)
             .await
-            .map_err(db_error)?;
-
-        let items = rows
-            .iter()
-            .map(|row| ValuationRow::from_query_result(row, ""))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(db_error)?
-            .into_iter()
-            .map(ValuationDto::from)
-            .collect();
+            .map_err(|error| {
+                tracing::error!(error = %error, "strategy mcp db error");
+                internal_error(format!("database error: {error}"))
+            })?;
 
         Ok(ReadValuationResult {
             symbol: params.symbol,
-            items,
+            items: valuations.into_iter().map(ValuationDto::from).collect(),
         })
     }
+}
+
+impl From<Valuation> for ValuationDto {
+    fn from(row: Valuation) -> Self {
+        Self {
+            date: row.date,
+            eps: decimal_to_f64(row.eps),
+            fwd_eps: decimal_to_f64(row.fwd_eps),
+            bps: decimal_to_f64(row.bps),
+            roe: decimal_to_f64(row.roe),
+            fwd_roe: decimal_to_f64(row.fwd_roe),
+            per: decimal_to_f64(row.per),
+            fwd_per: decimal_to_f64(row.fwd_per),
+            pbr: decimal_to_f64(row.pbr),
+            mkt_cap: decimal_to_f64(row.mkt_cap),
+        }
+    }
+}
+
+fn decimal_to_f64(value: Option<Decimal>) -> Option<f64> {
+    value.and_then(|value| value.to_f64())
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
     use rust_decimal::Decimal;
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
-    use uuid::Uuid;
 
-    use super::super::tests_common::build_server;
-    use super::{ReadValuationParams, ReadValuationResult, ValuationDto};
-    use gateway_postgres::entities::valuation;
-    fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
-    }
+    use super::ValuationDto;
+    use core_domain::valuation::Valuation;
 
-    async fn seed(db: &impl sea_orm::ConnectionTrait, code: &str, date: NaiveDate, eps: Decimal) {
-        valuation::ActiveModel {
-            code: Set(code.to_string()),
-            date: Set(date),
-            eps: Set(Some(eps)),
-            fwd_eps: Set(None),
-            bps: Set(None),
-            roe: Set(None),
-            fwd_roe: Set(None),
-            per: Set(None),
-            fwd_per: Set(None),
-            pbr: Set(None),
-            mkt_cap: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("seed valuation");
-    }
-
-    #[backend_test_macros::database_test]
-    async fn read_valuation_matches_code_prefix_and_date_range(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let server = build_server(db.clone());
-        seed(&db, "ZZZZ0", ymd(2099, 1, 3), Decimal::new(125, 1)).await;
-        seed(&db, "ZZZZ1", ymd(2099, 1, 8), Decimal::new(185, 1)).await;
-        seed(&db, "ZZZZ0", ymd(2099, 1, 1), Decimal::new(90, 1)).await;
-        seed(&db, "YYYY0", ymd(2099, 1, 5), Decimal::new(150, 1)).await;
-
-        let result = server
-            .read_valuation_inner(
-                Uuid::new_v4(),
-                ReadValuationParams {
-                    symbol: "ZZZZ".to_string(),
-                    from: ymd(2099, 1, 2),
-                    to: ymd(2099, 1, 10),
-                },
-            )
-            .await
-            .expect("read valuation");
-
+    #[test]
+    fn converts_domain_valuation_to_mcp_dto() {
+        let date = NaiveDate::from_ymd_opt(2042, 4, 17).expect("valid date");
         assert_eq!(
-            result,
-            ReadValuationResult {
-                symbol: "ZZZZ".to_string(),
-                items: vec![
-                    ValuationDto {
-                        date: ymd(2099, 1, 8),
-                        eps: Some(18.5),
-                        fwd_eps: None,
-                        bps: None,
-                        roe: None,
-                        fwd_roe: None,
-                        per: None,
-                        fwd_per: None,
-                        pbr: None,
-                        mkt_cap: None,
-                    },
-                    ValuationDto {
-                        date: ymd(2099, 1, 3),
-                        eps: Some(12.5),
-                        fwd_eps: None,
-                        bps: None,
-                        roe: None,
-                        fwd_roe: None,
-                        per: None,
-                        fwd_per: None,
-                        pbr: None,
-                        mkt_cap: None,
-                    },
-                ],
-            }
+            ValuationDto::from(Valuation {
+                code: "ZZZ90".to_string(),
+                date,
+                eps: Some(Decimal::new(125, 1)),
+                fwd_eps: Some(Decimal::new(135, 1)),
+                bps: Some(Decimal::new(145, 1)),
+                roe: Some(Decimal::new(15, 2)),
+                fwd_roe: Some(Decimal::new(18, 2)),
+                per: Some(Decimal::new(205, 1)),
+                fwd_per: Some(Decimal::new(195, 1)),
+                pbr: Some(Decimal::new(12, 1)),
+                mkt_cap: Some(Decimal::new(98765, 2)),
+            }),
+            ValuationDto {
+                date,
+                eps: Some(12.5),
+                fwd_eps: Some(13.5),
+                bps: Some(14.5),
+                roe: Some(0.15),
+                fwd_roe: Some(0.18),
+                per: Some(20.5),
+                fwd_per: Some(19.5),
+                pbr: Some(1.2),
+                mkt_cap: Some(987.65),
+            },
         );
     }
 }
