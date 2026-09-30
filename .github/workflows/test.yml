@@ -666,6 +666,7 @@ jobs:
             rate-limit-test reset on \
             '>test-password' '~t-rader:*' \
             +@connection +select +@scripting +get +set +pttl +time
+          docker exec "$REDIS_CONTAINER_ID" redis-cli ACL SETUSER default reset off
 
       - name: Run tests with coverage
         working-directory: backend

@@ -6,9 +6,10 @@ use tokio::{sync::Mutex, time::Instant};
 
 const ACQUIRE_SCRIPT: &str = r#"
 local now = redis.call('TIME')
-local now_ms = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+local now_sec = tonumber(now[1])
+local now_usec = tonumber(now[2])
 local quota_count = #ARGV / 2
-local retry_after_ms = 0
+local retry_after_us = 0
 local next_tats = {}
 
 for index = 1, quota_count do
@@ -18,24 +19,54 @@ for index = 1, quota_count do
   local penalty_key = KEYS[key_index + 2]
   local limit = tonumber(ARGV[arg_index + 1])
   local period_ms = tonumber(ARGV[arg_index + 2])
-  local interval_ms = period_ms / limit
-  local burst_ms = (limit - 1) * interval_ms
-  local tat = tonumber(redis.call('GET', quota_key)) or now_ms
-  local quota_retry_after_ms = tat - burst_ms - now_ms
+  local interval_us = math.ceil(period_ms * 1000 / limit)
+  local burst_us = (limit - 1) * interval_us
+  local tat_sec = now_sec
+  local tat_usec = now_usec
+  local stored_tat = redis.call('GET', quota_key)
+
+  if stored_tat then
+    local seconds, microseconds = string.match(stored_tat, '^(%d+):(%d+)$')
+    tat_sec = tonumber(seconds)
+    tat_usec = tonumber(microseconds)
+  end
+
+  local eligible_sec = tat_sec
+  local eligible_usec = tat_usec - burst_us
+  if eligible_usec < 0 then
+    local borrowed_seconds = math.ceil(-eligible_usec / 1000000)
+    eligible_sec = eligible_sec - borrowed_seconds
+    eligible_usec = eligible_usec + borrowed_seconds * 1000000
+  end
+  local quota_retry_after_us =
+    (eligible_sec - now_sec) * 1000000 + eligible_usec - now_usec
+  local penalty = redis.call('GET', penalty_key)
   local penalty_ttl_ms = redis.call('PTTL', penalty_key)
 
-  if quota_retry_after_ms > retry_after_ms then
-    retry_after_ms = quota_retry_after_ms
+  if quota_retry_after_us > retry_after_us then
+    retry_after_us = quota_retry_after_us
   end
-  if penalty_ttl_ms > retry_after_ms then
-    retry_after_ms = penalty_ttl_ms
+  if penalty and penalty_ttl_ms == 0 then
+    penalty_ttl_ms = 1
+  end
+  local penalty_ttl_us = penalty_ttl_ms * 1000
+  if penalty_ttl_us > retry_after_us then
+    retry_after_us = penalty_ttl_us
   end
 
-  next_tats[index] = math.max(tat, now_ms) + interval_ms
+  if tat_sec < now_sec or (tat_sec == now_sec and tat_usec < now_usec) then
+    tat_sec = now_sec
+    tat_usec = now_usec
+  end
+
+  local next_usec = tat_usec + interval_us
+  local next_sec = tat_sec + math.floor(next_usec / 1000000)
+  next_usec = next_usec % 1000000
+  next_tats[index] = string.format('%.0f:%06.0f', next_sec, next_usec)
 end
 
-if retry_after_ms > 0 then
-  return {0, math.ceil(retry_after_ms)}
+if retry_after_us > 0 then
+  return {0, math.ceil(retry_after_us / 1000)}
 end
 
 for index = 1, quota_count do
@@ -68,6 +99,7 @@ const INITIAL_RETRY_BACKOFF: Duration = Duration::from_secs(1);
 const MAX_RETRY_BACKOFF: Duration = Duration::from_secs(30);
 const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 const REDIS_OPERATION_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_EXACT_DURATION_MILLIS: u64 = 8_000_000_000_000;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RateLimitError {
@@ -79,7 +111,7 @@ pub enum RateLimitError {
     EmptyPrefix,
     #[error("quota limit must be greater than zero")]
     ZeroLimit,
-    #[error("duration must fit in Redis milliseconds")]
+    #[error("duration exceeds the Redis Lua precision range")]
     InvalidDuration,
     #[error("quota keys must be unique within one acquire call")]
     DuplicateKey,
@@ -187,6 +219,7 @@ impl RateLimiter {
     }
 
     /// `key` に cooldown を設定する。既存 cooldown より短い期間では上書きしない。
+    /// Redis のエラーは再試行せず呼び出し元に返す。
     pub async fn penalize(&self, key: &str, duration: Duration) -> Result<(), RateLimitError> {
         if key.is_empty() {
             return Err(RateLimitError::EmptyKey);
@@ -300,9 +333,13 @@ fn validate_quotas(quotas: &[Quota]) -> Result<Vec<u64>, RateLimitError> {
 }
 
 fn duration_to_millis(duration: Duration) -> Result<u64, RateLimitError> {
+    if duration.is_zero() {
+        return Err(RateLimitError::InvalidDuration);
+    }
     let milliseconds = duration.as_nanos().div_ceil(1_000_000);
     u64::try_from(milliseconds)
         .ok()
+        .filter(|milliseconds| *milliseconds <= MAX_EXACT_DURATION_MILLIS)
         .map(|milliseconds| milliseconds.max(1))
         .ok_or(RateLimitError::InvalidDuration)
 }
