@@ -1,10 +1,11 @@
-use chrono::{NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use rstest::rstest;
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
     ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, MockDatabase, QueryFilter, Set,
 };
+use serde_json::json;
 use uuid::Uuid;
 
 use super::super::StrategyServer;
@@ -118,6 +119,19 @@ async fn fetch_evidence_by_step(
     rows
 }
 
+fn normalize_evidence_rows(
+    rows: Vec<strategy_task_step_evidence::Model>,
+) -> Vec<strategy_task_step_evidence::Model> {
+    rows.into_iter()
+        .map(|mut row| {
+            row.id = Uuid::nil();
+            row.observed_at =
+                DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").expect("timestamp sentinel");
+            row
+        })
+        .collect()
+}
+
 #[backend_test_macros::database_test]
 async fn query_data_returns_bars_for_each_requested_instrument(
     db: gateway_postgres::DatabaseHandle,
@@ -228,13 +242,56 @@ async fn query_data_records_evidence_per_instrument_when_execution_step_id_prese
         .await
         .expect("query");
 
-    let rows = fetch_evidence_by_step(&db, execution_step_id).await;
-    let source_refs: Vec<String> = rows.into_iter().map(|r| r.source_ref).collect();
     assert_eq!(
-        source_refs,
+        normalize_evidence_rows(fetch_evidence_by_step(&db, execution_step_id).await),
         vec![
-            "fictional-instrument-a".to_string(),
-            "fictional-instrument-b".to_string()
+            strategy_task_step_evidence::Model {
+                id: Uuid::nil(),
+                execution_step_id,
+                source: "query_data".to_string(),
+                source_ref: "fictional-instrument-a".to_string(),
+                observed_at: DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z")
+                    .expect("timestamp sentinel"),
+                published_at: Some(
+                    bar_dto(NaiveDate::from_ymd_opt(2025, 1, 7).expect("date"), 105).timestamp
+                ),
+                effective_at: Some(
+                    bar_dto(NaiveDate::from_ymd_opt(2025, 1, 7).expect("date"), 105).timestamp
+                ),
+                snapshot: json!({
+                    "instrument_id": "fictional-instrument-a",
+                    "from": NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
+                    "to": NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
+                    "bars": [
+                        bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 100),
+                        bar_dto(NaiveDate::from_ymd_opt(2025, 1, 7).expect("date"), 105),
+                    ],
+                    "total_bars": 2,
+                    "truncated": false,
+                }),
+            },
+            strategy_task_step_evidence::Model {
+                id: Uuid::nil(),
+                execution_step_id,
+                source: "query_data".to_string(),
+                source_ref: "fictional-instrument-b".to_string(),
+                observed_at: DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z")
+                    .expect("timestamp sentinel"),
+                published_at: Some(
+                    bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 200).timestamp
+                ),
+                effective_at: Some(
+                    bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 200).timestamp
+                ),
+                snapshot: json!({
+                    "instrument_id": "fictional-instrument-b",
+                    "from": NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
+                    "to": NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
+                    "bars": [bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 200)],
+                    "total_bars": 1,
+                    "truncated": false,
+                }),
+            },
         ]
     );
 }
