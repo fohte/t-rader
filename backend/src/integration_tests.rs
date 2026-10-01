@@ -40,12 +40,9 @@ async fn postgres_queue_enqueues_one_keyed_strategy_task_reconcile_job(
     use gateway_postgres::PostgresStrategyTaskReconcileJobQueue;
 
     let pool = gateway_postgres::test_support::create_test_pool().await;
-    let _worker = graphile_worker::WorkerOptions::default()
-        .pg_pool(pool)
-        .schema("graphile_worker")
-        .init()
+    crate::migrations::migrate_graphile_worker_schema(pool)
         .await
-        .expect("initialize Graphile Worker schema");
+        .expect("migrate Graphile Worker schema");
     let queue = PostgresStrategyTaskReconcileJobQueue::new(db.clone());
     queue
         .enqueue_reconciliation()
