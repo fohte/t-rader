@@ -15,7 +15,8 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct ShareholdingStructureIngest;
 
 impl TaskHandler for ShareholdingStructureIngest {
-    const IDENTIFIER: &'static str = "shareholding_structure_ingest";
+    const IDENTIFIER: &'static str =
+        core_application::ingest_status::SHAREHOLDING_STRUCTURE_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(

@@ -10,6 +10,7 @@ pub mod group_axes;
 pub mod history;
 pub mod hooks;
 pub mod imports;
+pub mod ingest_status;
 pub mod note_kinds;
 pub mod note_links;
 pub mod note_predictions;
