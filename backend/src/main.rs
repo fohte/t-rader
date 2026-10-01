@@ -14,10 +14,16 @@ use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
+use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
+use core_application::equity_master_source::SharedEquityMasterSource;
+use core_application::financial_summary_source::SharedFinancialSummarySource;
 use core_application::indicator_observation_source::SharedIndicatorObservationSource;
 use core_application::margin_source::SharedMarginSource;
+use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
+use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
+use core_application::valuation_source::SharedValuationSource;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
@@ -219,24 +225,20 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。webhook 受信時の
-    // 即時 polling 誘発用に Notify を watcher と共有する。
-    let agent_task_notify = Arc::new(tokio::sync::Notify::new());
-    let agent_task_client: SharedAgentTaskClient = match AgentTaskClientConfig::from_env()
-        .map_err(|e| AppError::Config(e.to_string()))?
-    {
+    // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。
+    let agent_task_client_config =
+        AgentTaskClientConfig::from_env().map_err(|e| AppError::Config(e.to_string()))?;
+    let strategy_task_reconcile_enabled = matches!(
+        &agent_task_client_config,
+        AgentTaskClientConfigSource::Configured(_)
+    );
+    let agent_task_client: SharedAgentTaskClient = match agent_task_client_config {
         AgentTaskClientConfigSource::Configured(config) => {
             let client = HttpAgentTaskClient::new(config).map_err(|e| {
                 AppError::Config(format!("failed to initialize agent task client: {e}"))
             })?;
             tracing::info!("agent task client initialized");
             let arc: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(client);
-            let _watcher = backend::mcp::watcher::spawn(
-                db.clone(),
-                arc.clone(),
-                backend::mcp::watcher::DEFAULT_INTERVAL,
-                agent_task_notify.clone(),
-            );
             arc
         }
         AgentTaskClientConfigSource::Disabled => {
@@ -278,20 +280,12 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // 公開 RSS から 1h 間隔でニュースを集約する poll task を起動する。
-    // フィード一覧は `rss_feed` テーブルから tick ごとに読み直す (UI / MCP からの追加・無効化を
-    // 再起動なしで反映するため)。0 件運用も許容する。
+    // フィード一覧を取り込みごとに読み直し、UI / MCP からの変更を反映する。
     let news_aggregator: SharedNewsAggregator =
         Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
             AppError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
     let use_cases = backend::services::use_cases::build_use_cases(db.clone());
-    let _news_poll = backend::services::news::spawn_poll(
-        use_cases.news(),
-        news_aggregator,
-        std::time::Duration::from_secs(3600),
-    );
-    tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
     let fred_source: Option<SharedIndicatorObservationSource> = match std::env::var("FRED_API_KEY")
     {
@@ -309,80 +303,6 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // cron trigger を schedule どおりに発火させる worker を起動する。
-    // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
-    tracing::info!(
-        interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
-        "starting cron trigger worker",
-    );
-    let _trigger_worker = backend::services::trigger_worker::spawn(
-        use_cases.triggers(),
-        agent_task_client.clone(),
-        backend::services::trigger_worker::DEFAULT_INTERVAL,
-    );
-
-    if let Some(client) = &jquants_ingest_client {
-        let _stock_master_sync_poll = backend::services::stock_master_sync::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::stock_master_sync::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::stock_master_sync::DEFAULT_INTERVAL.as_secs(),
-            "stock master sync poll task started",
-        );
-
-        let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::fin_summary_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::fin_summary_ingest::DEFAULT_INTERVAL.as_secs(),
-            "fin summary ingest poll task started",
-        );
-
-        let _earnings_date_ingest_poll = backend::services::earnings_date_ingest::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::earnings_date_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::earnings_date_ingest::DEFAULT_INTERVAL.as_secs(),
-            "earnings date ingest poll task started",
-        );
-
-        let _edinet_holdings_poll = backend::services::edinet_holdings::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::edinet_holdings::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::edinet_holdings::DEFAULT_INTERVAL.as_secs(),
-            "EDINET holdings ingest poll task started",
-        );
-
-        let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
-            use_cases.bars(),
-            client.clone(),
-            backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::daily_bars_ingest::DEFAULT_INTERVAL.as_secs(),
-            "daily bars ingest poll task started",
-        );
-
-        let _valuation_ingest_poll = backend::services::valuation_ingest::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::valuation_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::valuation_ingest::DEFAULT_INTERVAL.as_secs(),
-            "valuation ingest poll task started",
-        );
-    }
-
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
@@ -392,7 +312,40 @@ async fn main() -> Result<(), AppError> {
     let margin_source: Option<SharedMarginSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedMarginSource);
+    let market_daily_bar_source: Option<SharedMarketDailyBarSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedMarketDailyBarSource);
+    let earnings_schedule_source: Option<SharedEarningsScheduleSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedEarningsScheduleSource);
+    let financial_summary_source: Option<SharedFinancialSummarySource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedFinancialSummarySource);
+    let equity_master_source: Option<SharedEquityMasterSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedEquityMasterSource);
+    let shareholding_structure_source: Option<SharedShareholdingStructureSource> =
+        jquants_ingest_client
+            .as_ref()
+            .map(|client| Arc::clone(client) as SharedShareholdingStructureSource);
+    let valuation_source: Option<SharedValuationSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedValuationSource);
     let dependencies = SchedulerDependencies {
+        bars: use_cases.bars(),
+        market_daily_bar_source,
+        news: use_cases.news(),
+        news_aggregator,
+        earnings_schedules: use_cases.earnings_schedules(),
+        earnings_schedule_source,
+        financial_summaries: use_cases.financial_summaries(),
+        financial_summary_source,
+        equity_master: use_cases.equity_master(),
+        equity_master_source,
+        shareholding_structures: use_cases.shareholding_structures(),
+        shareholding_structure_source,
+        valuations: use_cases.valuations(),
+        valuation_source,
         indicator_observations: use_cases.indicator_observations(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
@@ -402,6 +355,10 @@ async fn main() -> Result<(), AppError> {
         margins: use_cases.margins(),
         short_selling_source,
         margin_source,
+        strategy_tasks: use_cases.strategy_tasks(),
+        triggers: use_cases.triggers(),
+        agent_task_client: agent_task_client.clone(),
+        strategy_task_reconcile_enabled,
     };
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal_tx = shutdown_tx.clone();
@@ -425,7 +382,6 @@ async fn main() -> Result<(), AppError> {
         daily_bar_source,
         jquants_client,
         agent_task_client,
-        agent_task_notify,
         agent_webhook_token: Arc::from(agent_webhook_token),
         kata_executor,
         llm_gateway_client,

@@ -37,7 +37,7 @@ pub enum Layout {
 pub struct GraphNode {
     pub id: String,
     pub label: String,
-    /// 一級参照型トークン (例: "stock:7203" / "theme:weak-jpy")
+    /// 一級参照型トークン (例: "stock:demo-code" / "group:demo-axis/demo-group")
     #[serde(rename = "ref")]
     pub r#ref: Option<String>,
     /// ノードサイズ / 棒の高さ。指定するなら `cite` も必須

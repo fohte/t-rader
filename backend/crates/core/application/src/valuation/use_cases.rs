@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use chrono::{Duration as ChronoDuration, NaiveDate};
 use core_domain::business_day::latest_business_day;
 use core_domain::valuation::Valuation;
+use serde::Serialize;
 
 use crate::daily_bar_source::DateRange;
 use crate::strategy_scope::StrategyScope;
@@ -14,7 +15,7 @@ use super::repository::SharedValuationRepository;
 const TARGET_BUSINESS_DAYS: usize = 400;
 const REFETCH_WINDOW_BUSINESS_DAYS: usize = 7;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct IngestStats {
     pub days_attempted: usize,
     pub rows_upserted: usize,

@@ -16,6 +16,20 @@ pub trait StrategyScopeSource: Send + Sync {
 
 pub type SharedStrategyScopeSource = Arc<dyn StrategyScopeSource>;
 
+pub struct StrategyScopeUseCases {
+    source: SharedStrategyScopeSource,
+}
+
+impl StrategyScopeUseCases {
+    pub fn new(source: SharedStrategyScopeSource) -> Self {
+        Self { source }
+    }
+
+    pub async fn verify(&self, id: Uuid) -> Result<StrategyScope, StrategyScopeError> {
+        StrategyScope::verify(id, self.source.as_ref()).await
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StrategyScope {
     id: Uuid,

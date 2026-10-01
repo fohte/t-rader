@@ -7,45 +7,50 @@ describe('extractRefs', () => {
     expect(
       extractRefs({
         frontmatter_json: {
-          refs: ['stock:7203', 'indicator:USDJPY'],
+          refs: ['stock:demo-code', 'indicator:demo-indicator'],
         },
-        body_md: '本文 [[stock:3436]]',
+        body_md: '本文 [[stock:sample-code]]',
       }),
-    ).toEqual(['stock:7203', 'indicator:USDJPY'])
+    ).toEqual(['stock:demo-code', 'indicator:demo-indicator'])
   })
 
   it('falls back to body scan when frontmatter has no refs', () => {
     expect(
       extractRefs({
         frontmatter_json: {},
-        body_md: '[[stock:3436]] と [[indicator:USDJPY]] を見る',
+        body_md:
+          '[[stock:sample-code]] と [[indicator:demo-indicator]] と [[group:demo-axis/demo-group]] を見る。[[theme:demo-topic]] は旧形式。',
       }),
-    ).toEqual(['stock:3436', 'indicator:USDJPY'])
+    ).toEqual([
+      'stock:sample-code',
+      'indicator:demo-indicator',
+      'group:demo-axis/demo-group',
+    ])
   })
 
   it('deduplicates body refs', () => {
     expect(
       extractRefs({
         frontmatter_json: {},
-        body_md: '[[stock:3436]] と再掲 [[stock:3436]]',
+        body_md: '[[stock:sample-code]] と再掲 [[stock:sample-code]]',
       }),
-    ).toEqual(['stock:3436'])
+    ).toEqual(['stock:sample-code'])
   })
 
   it('filters non-string values from frontmatter refs', () => {
     expect(
       extractRefs({
-        frontmatter_json: { refs: ['stock:7203', 42, null] },
+        frontmatter_json: { refs: ['stock:demo-code', 42, null] },
         body_md: '',
       }),
-    ).toEqual(['stock:7203'])
+    ).toEqual(['stock:demo-code'])
   })
 })
 
 describe('buildSnippet', () => {
   it('strips markdown and ref syntax', () => {
-    expect(buildSnippet('## 見出し\n*強調* と [[stock:3436]]')).toBe(
-      '見出し 強調 と 3436',
+    expect(buildSnippet('## 見出し\n*強調* と [[stock:sample-code]]')).toBe(
+      '見出し 強調 と sample-code',
     )
   })
 

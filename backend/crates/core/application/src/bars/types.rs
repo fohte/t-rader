@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use rust_decimal::Decimal;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BarsQuery {
@@ -19,7 +20,7 @@ pub struct BarsByInstrumentsQuery {
     pub to: Option<DateTime<FixedOffset>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct IngestStats {
     pub days_attempted: usize,
     pub bars_upserted: usize,

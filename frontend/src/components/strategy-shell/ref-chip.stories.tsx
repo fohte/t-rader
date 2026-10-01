@@ -7,11 +7,9 @@ import { mockResolveRef } from '#storybook/mock-resolve-ref'
 const queryClient = new QueryClient()
 
 const NAMES: Record<string, string> = {
-  'stock:7203': 'トヨタ自動車',
-  'stock:3436': 'SUMCO',
-  'indicator:USDJPY': 'USD/JPY',
-  'sector:半導体': '半導体',
-  'theme:円安': '円安',
+  'stock:demo-code': 'Sample Stock',
+  'indicator:demo-indicator': 'Sample Indicator',
+  'group:demo-axis/demo-group': 'Sample Group',
 }
 
 const meta = {
@@ -33,31 +31,26 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Stock: Story = {
-  name: 'shows a stock reference with its resolved company name.',
-  args: { token: 'stock:7203' },
+  name: 'shows a stock reference with its resolved name.',
+  args: { token: 'stock:demo-code' },
 }
 
 export const Indicator: Story = {
-  name: 'shows an indicator reference with its resolved label.',
-  args: { token: 'indicator:USDJPY' },
+  name: 'shows an indicator reference with its resolved name.',
+  args: { token: 'indicator:demo-indicator' },
 }
 
-export const Sector: Story = {
-  name: 'shows a sector reference with its resolved name.',
-  args: { token: 'sector:半導体' },
-}
-
-export const Theme: Story = {
-  name: 'shows a theme reference with its resolved name.',
-  args: { token: 'theme:円安' },
+export const Group: Story = {
+  name: 'shows a group reference with its resolved name.',
+  args: { token: 'group:demo-axis/demo-group' },
 }
 
 export const Pill: Story = {
   name: 'shows a stock reference in the compact pill style.',
-  args: { token: 'stock:3436', pill: true },
+  args: { token: 'stock:demo-code', pill: true },
 }
 
 export const Unknown: Story = {
   name: 'shows an unresolved stock reference.',
-  args: { token: 'stock:9999' },
+  args: { token: 'stock:missing-code' },
 }

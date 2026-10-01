@@ -134,6 +134,7 @@ uuid = { workspace = true, features = ["serde", "v4", "v5"] }
 backend-test-macros = { path = "crates/libs/test-macros" }
 axum-test = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
+graphile_worker = { workspace = true }
 gateway-jquants = { workspace = true, features = ["test-support"] }
 gateway-postgres = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }

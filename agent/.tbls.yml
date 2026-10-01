@@ -7,3 +7,25 @@ exclude:
   - drizzle.*
   - _timescaledb_*.*
   - timescaledb_*.*
+lint:
+  requireTableComment:
+    enabled: true
+  requireColumnComment:
+    enabled: true
+    exclude: [id, created_at, updated_at]
+comments:
+  - table: a2a_push_configs
+    tableComment: 'A2A push 通知設定をタスクと設定 ID ごとに永続化するテーブル。'
+    columnComments:
+      task_id: 'push 通知設定が紐づく A2A タスクの識別子。'
+      config_id: 'push 通知設定の識別子。設定に ID がない場合は task_id を使う。'
+      config: 'A2A PushNotificationConfig オブジェクト。'
+  - table: a2a_tasks
+    tableComment: 'A2A タスク本体と、状態検索や実行停滞の判定に使う項目を永続化するテーブル。'
+    columnComments:
+      task_id: 'A2A タスクの識別子。Task.id を保存する。'
+      context_id: 'タスクが属する A2A コンテキストの識別子。'
+      state: 'タスクの現在の状態。Task.status.state を保存する。'
+      status_timestamp: 'タスク状態の更新時刻。Task.status.timestamp がない場合は現在時刻を使い、実行停滞の判定にも使う。'
+      protocol_version: 'A2A プロトコルのバージョン。DB の既定値は 0.3。'
+      task: 'A2A Task オブジェクト全体。'

@@ -51,7 +51,7 @@ pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteR
 pub use note_kind::NoteKindResponse;
 pub use note_version::NoteVersionResponse;
 pub use prediction::PredictionResponse;
-pub use refs::{IndicatorResponse, RefResolution, SectorResponse, StockResponse, ThemeResponse};
+pub use refs::{IndicatorResponse, RefResolution, StockResponse};
 pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
     parse_risk_policy, serialize_risk_policy, validate_ratio,

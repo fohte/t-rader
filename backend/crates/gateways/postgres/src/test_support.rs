@@ -14,11 +14,15 @@ use sqlx::{
 
 use crate::DatabaseHandle;
 
+pub async fn create_test_pool() -> sqlx::PgPool {
+    connect_test_database_or_initialize()
+        .await
+        .expect("connect to shared test database")
+}
+
 /// テストごとに独立した rollback transaction を作る。
 pub async fn create_test_transaction() -> DatabaseHandle {
-    let pool = connect_test_database_or_initialize()
-        .await
-        .expect("connect to shared test database");
+    let pool = create_test_pool().await;
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
     let transaction = DatabaseHandle::from(db.begin().await.expect("begin test transaction"));
     transaction

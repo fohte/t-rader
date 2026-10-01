@@ -1,5 +1,5 @@
 use chrono::{DateTime, FixedOffset};
-use core_application::refs::{IndicatorRef, ResolvedRef, SectorRef, StockRef, ThemeRef};
+use core_application::refs::{IndicatorRef, ResolvedRef, StockRef};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -49,44 +49,10 @@ impl From<IndicatorRef> for IndicatorResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
-#[schema(as = Sector)]
-pub struct SectorResponse {
-    pub id: String,
-    pub name: String,
-}
-
-impl From<SectorRef> for SectorResponse {
-    fn from(model: SectorRef) -> Self {
-        Self {
-            id: model.id,
-            name: model.name,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, ToSchema)]
-#[schema(as = Theme)]
-pub struct ThemeResponse {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-}
-
-impl From<ThemeRef> for ThemeResponse {
-    fn from(model: ThemeRef) -> Self {
-        Self {
-            id: model.id,
-            name: model.name,
-            description: model.description,
-        }
-    }
-}
-
 /// `[[kind:id]]` のリンクテキストを解決した結果
 #[derive(Debug, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RefResolution {
-    /// "stock" | "indicator" | "sector" | "theme"
+    /// "stock" | "indicator" | "group"
     pub kind: String,
     /// 別名で解決できた場合、入力ではなく正規の id
     pub id: String,

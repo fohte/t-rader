@@ -1,22 +1,13 @@
-//! J-Quants の全上場銘柄マスタを日次で `stock` に同期する定期タスク。
+//! J-Quants の全上場銘柄マスタを `stock` に同期する処理。
 //!
 //! 全上場銘柄を `stock` に upsert し、名前・市場区分・業種・商品区分を最新に保つ。
 //! master に含まれなくなった行 (上場廃止した保有銘柄等) は削除せずそのまま残す。
 
-use std::time::Duration;
-
 use core_application::equity_master::EquityMasterUseCaseError;
 use core_application::equity_master_source::EquityMasterSource;
 use gateway_postgres::DatabaseHandle;
-use sea_orm::DatabaseConnection;
-use tokio::task::JoinHandle;
-
-use crate::data_provider::SharedEquityMasterSource;
 
 pub use core_application::equity_master::EquityMasterSyncStats as SyncStats;
-
-/// poll task のデフォルト実行間隔。全銘柄マスタの更新頻度 (日次) に合わせて 1 日とする。
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 全上場銘柄マスタを取得し、`stock` (および参照先の `sector`) に反映する 1 サイクル。
 pub async fn run_sync_cycle(
@@ -27,32 +18,6 @@ pub async fn run_sync_cycle(
         .equity_master()
         .sync(source)
         .await
-}
-
-/// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-pub fn spawn_poll(
-    db: DatabaseConnection,
-    source: SharedEquityMasterSource,
-    interval: Duration,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match run_sync_cycle(db.clone(), source.as_ref()).await {
-                Ok(stats) => {
-                    tracing::info!(
-                        stocks_upserted = stats.stocks_upserted,
-                        "stock master sync cycle completed",
-                    );
-                }
-                Err(err) => {
-                    tracing::warn!(%err, "stock master sync cycle failed");
-                }
-            }
-        }
-    })
 }
 
 #[cfg(test)]

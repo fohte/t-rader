@@ -1,8 +1,8 @@
 //! 戦略実行 MCP の参照型横断検索 tool。
 //!
-//! 一級参照型 (stock / indicator / sector / theme) はそれぞれ独立したテーブルに
+//! 一級参照型 (stock / indicator / group) はそれぞれ独立したテーブルに
 //! 分かれており umbrella エンティティを持たない (プロジェクト方針)。横断検索は
-//! この 4 テーブルを `UNION ALL` した raw SQL で行う。id / name / `ref_term` の別名
+//! 各型のテーブルを `UNION ALL` した raw SQL で行う。id / name / `ref_term` の別名
 //! いずれかへの部分一致 (大文字小文字・全角半角を区別しない) で検索し、`ref_kind` / `ref_id`
 //! / `name` の組で返す。
 
@@ -24,7 +24,7 @@ pub struct SearchRefsParams {
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct RefDto {
-    /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
+    /// 参照型 (`stock` / `indicator` / `group`)
     pub ref_kind: String,
     pub ref_id: String,
     pub name: String,
@@ -49,7 +49,7 @@ pub struct SearchRefsResult {
 }
 
 impl StrategyServer {
-    /// 参照型 4 種 (stock / indicator / sector / theme) を横断して id / name / 別名
+    /// 参照型 3 種 (stock / indicator / group) を横断して id / name / 別名
     /// (ref_term) の部分一致で検索する。戦略スコープを持たないマスタデータのため
     /// `session_strategy_id` は使わない。
     pub(crate) async fn search_refs_inner(
@@ -70,7 +70,7 @@ impl StrategyServer {
     }
 }
 
-fn ref_use_case_error(error: RefUseCaseError) -> McpError {
+pub(super) fn ref_use_case_error(error: RefUseCaseError) -> McpError {
     match error {
         RefUseCaseError::Validation(message) => invalid_params(message),
         error @ (RefUseCaseError::Repository(RefRepositoryError::Database(_))
@@ -101,7 +101,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
-    use gateway_postgres::entities::{indicator, ref_term, sector, stock, theme};
+    use gateway_postgres::entities::{indicator, ref_term, stock};
 
     async fn seed_ref_term(
         db: &impl sea_orm::ConnectionTrait,
@@ -156,35 +156,14 @@ mod tests {
         .expect("seed indicator");
     }
 
-    async fn seed_sector(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
-        sector::ActiveModel {
-            id: Set(id.into()),
-            name: Set(name.into()),
-        }
-        .insert(db)
-        .await
-        .expect("seed sector");
-    }
-
-    async fn seed_theme(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
-        theme::ActiveModel {
-            id: Set(id.into()),
-            name: Set(name.into()),
-            description: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("seed theme");
-    }
-
     #[backend_test_macros::database_test]
     async fn search_refs_matches_across_all_kinds_ordered_by_name(
         db: gateway_postgres::DatabaseHandle,
     ) {
         seed_indicator(&db, "IND1", "Alpha Indicator").await;
-        seed_sector(&db, "SEC1", "Alpha Sector").await;
+        let group_id =
+            crate::testing::insert_test_group(&db, "demo-axis", "demo-group", "Alpha Group").await;
         seed_stock(&db, "STK1", "Alpha Stock").await;
-        seed_theme(&db, "THM1", "Alpha Theme").await;
         seed_stock(&db, "STK2", "Beta Stock").await;
         let server = build_server(db);
 
@@ -201,27 +180,21 @@ mod tests {
             SearchRefsResult {
                 refs: vec![
                     RefDto {
+                        ref_kind: "group".into(),
+                        ref_id: group_id,
+                        name: "Alpha Group".into(),
+                        product_category: None,
+                    },
+                    RefDto {
                         ref_kind: "indicator".into(),
                         ref_id: "IND1".into(),
                         name: "Alpha Indicator".into(),
                         product_category: None,
                     },
                     RefDto {
-                        ref_kind: "sector".into(),
-                        ref_id: "SEC1".into(),
-                        name: "Alpha Sector".into(),
-                        product_category: None,
-                    },
-                    RefDto {
                         ref_kind: "stock".into(),
                         ref_id: "STK1".into(),
                         name: "Alpha Stock".into(),
-                        product_category: None,
-                    },
-                    RefDto {
-                        ref_kind: "theme".into(),
-                        ref_id: "THM1".into(),
-                        name: "Alpha Theme".into(),
                         product_category: None,
                     },
                 ],
@@ -231,12 +204,12 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_refs_matches_by_id_substring(db: gateway_postgres::DatabaseHandle) {
-        seed_stock(&db, "TOY7203", "Something").await;
+        seed_stock(&db, "DEMO-STOCK", "Something").await;
         let server = build_server(db);
 
         let result = server
             .search_refs_inner(SearchRefsParams {
-                query: "7203".into(),
+                query: "DEMO".into(),
                 limit: None,
             })
             .await
@@ -247,7 +220,7 @@ mod tests {
             SearchRefsResult {
                 refs: vec![RefDto {
                     ref_kind: "stock".into(),
-                    ref_id: "TOY7203".into(),
+                    ref_id: "DEMO-STOCK".into(),
                     name: "Something".into(),
                     product_category: None,
                 }],
@@ -257,12 +230,14 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_refs_is_case_insensitive(db: gateway_postgres::DatabaseHandle) {
-        seed_sector(&db, "semi", "Semiconductors").await;
+        let group_id =
+            crate::testing::insert_test_group(&db, "demo-axis", "sample-group", "Sample Group")
+                .await;
         let server = build_server(db);
 
         let result = server
             .search_refs_inner(SearchRefsParams {
-                query: "semicon".into(),
+                query: "sample".into(),
                 limit: None,
             })
             .await
@@ -272,9 +247,9 @@ mod tests {
             result,
             SearchRefsResult {
                 refs: vec![RefDto {
-                    ref_kind: "sector".into(),
-                    ref_id: "semi".into(),
-                    name: "Semiconductors".into(),
+                    ref_kind: "group".into(),
+                    ref_id: group_id,
+                    name: "Sample Group".into(),
                     product_category: None,
                 }],
             },
@@ -287,7 +262,7 @@ mod tests {
     ) {
         // "_" は ILIKE の単一文字ワイルドカードなので、素通しすると "AXB" が
         // "A_B" にマッチしてしまう。sanitize_like で除去され、マッチしないことを確認する。
-        seed_theme(&db, "u1", "AXB").await;
+        crate::testing::insert_test_group(&db, "demo-axis", "sample-group", "AXB").await;
         let server = build_server(db);
 
         let result = server
@@ -303,9 +278,9 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_refs_respects_limit_after_ordering(db: gateway_postgres::DatabaseHandle) {
-        seed_theme(&db, "t1", "Match A").await;
-        seed_theme(&db, "t2", "Match B").await;
-        seed_theme(&db, "t3", "Match C").await;
+        crate::testing::insert_test_group(&db, "demo-axis-a", "sample-group", "Match A").await;
+        crate::testing::insert_test_group(&db, "demo-axis-b", "sample-group", "Match B").await;
+        crate::testing::insert_test_group(&db, "demo-axis-c", "sample-group", "Match C").await;
         let server = build_server(db);
 
         let result = server
@@ -321,14 +296,14 @@ mod tests {
             SearchRefsResult {
                 refs: vec![
                     RefDto {
-                        ref_kind: "theme".into(),
-                        ref_id: "t1".into(),
+                        ref_kind: "group".into(),
+                        ref_id: "demo-axis-a/sample-group".into(),
                         name: "Match A".into(),
                         product_category: None,
                     },
                     RefDto {
-                        ref_kind: "theme".into(),
-                        ref_id: "t2".into(),
+                        ref_kind: "group".into(),
+                        ref_id: "demo-axis-b/sample-group".into(),
                         name: "Match B".into(),
                         product_category: None,
                     },
@@ -390,12 +365,12 @@ mod tests {
     async fn search_refs_matches_full_width_query_against_half_width_name(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        seed_stock(&db, "STK1", "Alpha Motors").await;
+        seed_stock(&db, "DEMO-STOCK", "Sample Motors").await;
         let server = build_server(db);
 
         let result = server
             .search_refs_inner(SearchRefsParams {
-                query: "Ａｌｐｈａ".into(),
+                query: "Ｓａｍｐｌｅ".into(),
                 limit: None,
             })
             .await
@@ -406,8 +381,8 @@ mod tests {
             SearchRefsResult {
                 refs: vec![RefDto {
                     ref_kind: "stock".into(),
-                    ref_id: "STK1".into(),
-                    name: "Alpha Motors".into(),
+                    ref_id: "DEMO-STOCK".into(),
+                    name: "Sample Motors".into(),
                     product_category: None,
                 }],
             },
@@ -418,12 +393,12 @@ mod tests {
     async fn search_refs_matches_full_width_query_against_half_width_id(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        seed_indicator(&db, "USDJPY", "US Dollar / Japanese Yen").await;
+        seed_indicator(&db, "DEMO-INDEX", "Sample Indicator").await;
         let server = build_server(db);
 
         let result = server
             .search_refs_inner(SearchRefsParams {
-                query: "ＵＳＤＪＰＹ".into(),
+                query: "ＤＥＭＯ－ＩＮＤＥＸ".into(),
                 limit: None,
             })
             .await
@@ -434,8 +409,8 @@ mod tests {
             SearchRefsResult {
                 refs: vec![RefDto {
                     ref_kind: "indicator".into(),
-                    ref_id: "USDJPY".into(),
-                    name: "US Dollar / Japanese Yen".into(),
+                    ref_id: "DEMO-INDEX".into(),
+                    name: "Sample Indicator".into(),
                     product_category: None,
                 }],
             },
@@ -446,7 +421,7 @@ mod tests {
     async fn search_refs_does_not_treat_full_width_underscore_as_wildcard(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        seed_theme(&db, "u1", "AXB").await;
+        crate::testing::insert_test_group(&db, "demo-axis", "sample-group", "AXB").await;
         let server = build_server(db);
 
         let result = server
@@ -462,8 +437,14 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_refs_matches_ref_term_alias(db: gateway_postgres::DatabaseHandle) {
-        seed_stock(&db, "7203", "Alpha Motors").await;
-        seed_ref_term(&db, "stock", "7203", "Ａｌｐｈａ Ｍｏｔｏｒｓ Ｇｒｏｕｐ").await;
+        seed_stock(&db, "DEMO-STOCK", "Sample Motors").await;
+        seed_ref_term(
+            &db,
+            "stock",
+            "DEMO-STOCK",
+            "Ｓａｍｐｌｅ Ｍｏｔｏｒｓ Ｇｒｏｕｐ",
+        )
+        .await;
         let server = build_server(db);
 
         let result = server
@@ -479,8 +460,8 @@ mod tests {
             SearchRefsResult {
                 refs: vec![RefDto {
                     ref_kind: "stock".into(),
-                    ref_id: "7203".into(),
-                    name: "Alpha Motors".into(),
+                    ref_id: "DEMO-STOCK".into(),
+                    name: "Sample Motors".into(),
                     product_category: None,
                 }],
             },
@@ -488,16 +469,61 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn search_refs_matches_group_id_and_alias(db: gateway_postgres::DatabaseHandle) {
+        let group_id =
+            crate::testing::insert_test_group(&db, "demo-axis", "demo-group", "Sample Group").await;
+        seed_ref_term(&db, "group", &group_id, "demo-alias").await;
+        let server = build_server(db);
+
+        let by_id = server
+            .search_refs_inner(SearchRefsParams {
+                query: "demo-axis/demo-group".into(),
+                limit: None,
+            })
+            .await
+            .expect("search_refs by group id");
+        let by_alias = server
+            .search_refs_inner(SearchRefsParams {
+                query: "demo-alias".into(),
+                limit: None,
+            })
+            .await
+            .expect("search_refs by group alias");
+
+        assert_eq!(
+            (by_id, by_alias),
+            (
+                SearchRefsResult {
+                    refs: vec![RefDto {
+                        ref_kind: "group".into(),
+                        ref_id: group_id.clone(),
+                        name: "Sample Group".into(),
+                        product_category: None,
+                    }],
+                },
+                SearchRefsResult {
+                    refs: vec![RefDto {
+                        ref_kind: "group".into(),
+                        ref_id: group_id,
+                        name: "Sample Group".into(),
+                        product_category: None,
+                    }],
+                },
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn search_refs_returns_one_row_when_both_name_and_alias_match(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        seed_stock(&db, "7203", "Alpha Motors").await;
-        seed_ref_term(&db, "stock", "7203", "Alpha Auto").await;
+        seed_stock(&db, "DEMO-STOCK", "Sample Motors").await;
+        seed_ref_term(&db, "stock", "DEMO-STOCK", "Sample Auto").await;
         let server = build_server(db);
 
         let result = server
             .search_refs_inner(SearchRefsParams {
-                query: "Alpha".into(),
+                query: "Sample".into(),
                 limit: None,
             })
             .await
@@ -508,8 +534,8 @@ mod tests {
             SearchRefsResult {
                 refs: vec![RefDto {
                     ref_kind: "stock".into(),
-                    ref_id: "7203".into(),
-                    name: "Alpha Motors".into(),
+                    ref_id: "DEMO-STOCK".into(),
+                    name: "Sample Motors".into(),
                     product_category: None,
                 }],
             },
@@ -520,7 +546,7 @@ mod tests {
     async fn search_refs_ignores_dangling_alias_not_in_master(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        seed_ref_term(&db, "stock", "9999", "Ghost Co").await;
+        seed_ref_term(&db, "stock", "DEMO-MISSING", "Ghost Co").await;
         let server = build_server(db);
 
         let result = server

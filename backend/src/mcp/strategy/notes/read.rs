@@ -3,7 +3,7 @@ use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot,
 };
 use core_application::strategy_scope::StrategyScope;
-use core_domain::note_reference::ALLOWED_REF_KINDS;
+use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
 use rmcp::ErrorData as McpError;
 
 use super::super::dto::{ListNotesParams, ListNotesResult, NoteDto, NoteLinkDto, ReadNoteParams};
@@ -24,6 +24,11 @@ fn parse_note_ref(value: &str) -> Result<(String, String), McpError> {
     let id = id.trim();
     if id.is_empty() {
         return Err(invalid_params("ref id must not be empty"));
+    }
+    if !is_valid_ref_id_format(kind, id) {
+        return Err(invalid_params(
+            "group ref id must use axis-key/group-key format",
+        ));
     }
     Ok((kind.to_string(), id.to_string()))
 }

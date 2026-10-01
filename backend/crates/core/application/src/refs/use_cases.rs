@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
+use core_domain::note_reference::is_valid_ref_id_format;
+
 use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::RefUseCaseError;
 use super::repository::SharedRefRepository;
-use super::types::{
-    IndicatorRef, RefKind, RefSearchMatch, ResolvedRef, SectorRef, StockRef, ThemeRef,
-};
+use super::types::{IndicatorRef, RefKind, RefSearchMatch, ResolvedRef, StockRef};
 
 const AGENT_TERM_ORIGIN: &str = "llm";
 
@@ -38,6 +38,13 @@ impl RefUseCases {
         self.repository.find_stock(id).await.map_err(Into::into)
     }
 
+    pub async fn stock_sectors(
+        &self,
+        ids: &[String],
+    ) -> Result<HashMap<String, Option<String>>, RefUseCaseError> {
+        self.repository.stock_sectors(ids).await.map_err(Into::into)
+    }
+
     pub async fn list_indicators(
         &self,
         query: Option<&str>,
@@ -53,37 +60,6 @@ impl RefUseCases {
 
     pub async fn get_indicator(&self, id: &str) -> Result<Option<IndicatorRef>, RefUseCaseError> {
         self.repository.find_indicator(id).await.map_err(Into::into)
-    }
-
-    pub async fn list_sectors(
-        &self,
-        query: Option<&str>,
-    ) -> Result<Vec<SectorRef>, RefUseCaseError> {
-        let query = query
-            .filter(|value| !value.is_empty())
-            .map(super::sanitize_like);
-        self.repository
-            .list_sectors(query.as_deref())
-            .await
-            .map_err(Into::into)
-    }
-
-    pub async fn get_sector(&self, id: &str) -> Result<Option<SectorRef>, RefUseCaseError> {
-        self.repository.find_sector(id).await.map_err(Into::into)
-    }
-
-    pub async fn list_themes(&self, query: Option<&str>) -> Result<Vec<ThemeRef>, RefUseCaseError> {
-        let query = query
-            .filter(|value| !value.is_empty())
-            .map(super::sanitize_like);
-        self.repository
-            .list_themes(query.as_deref())
-            .await
-            .map_err(Into::into)
-    }
-
-    pub async fn get_theme(&self, id: &str) -> Result<Option<ThemeRef>, RefUseCaseError> {
-        self.repository.find_theme(id).await.map_err(Into::into)
     }
 
     pub async fn search_all(
@@ -108,10 +84,15 @@ impl RefUseCases {
         &self,
         requested: &[(String, String)],
     ) -> Result<Vec<ResolvedRef>, RefUseCaseError> {
-        for (kind, _) in requested {
+        for (kind, id) in requested {
             if RefKind::try_from(kind.as_str()).is_err() {
                 return Err(RefUseCaseError::Validation(format!(
                     "unknown ref kind: {kind}"
+                )));
+            }
+            if !is_valid_ref_id_format(kind, id.trim()) {
+                return Err(RefUseCaseError::Validation(format!(
+                    "invalid group ref_id: {id}"
                 )));
             }
         }
@@ -253,8 +234,7 @@ impl RefUseCases {
             let by_id = match RefKind::try_from(kind.as_str()) {
                 Ok(RefKind::Stock) => self.repository.stock_names(ids).await?,
                 Ok(RefKind::Indicator) => self.repository.indicator_names(ids).await?,
-                Ok(RefKind::Sector) => self.repository.sector_names(ids).await?,
-                Ok(RefKind::Theme) => self.repository.theme_names(ids).await?,
+                Ok(RefKind::Group) => self.repository.group_names(ids).await?,
                 Err(_) => {
                     return Err(RefUseCaseError::Validation(format!(
                         "unknown ref kind: {kind}"
@@ -283,6 +263,11 @@ fn normalize_ref(ref_kind: &str, ref_id: &str) -> Result<(String, String), RefUs
         return Err(RefUseCaseError::Validation(
             "ref_id must not be empty".into(),
         ));
+    }
+    if !is_valid_ref_id_format(ref_kind, ref_id) {
+        return Err(RefUseCaseError::Validation(format!(
+            "invalid group ref_id: {ref_id}"
+        )));
     }
     Ok((ref_kind.to_string(), ref_id.to_string()))
 }

@@ -5,22 +5,20 @@
 //! (価格・投資可能額・セクター) が欠けている制約は、誤った数値を返す代わりに
 //! `ConstraintResult::Unavailable` で「計算不能」を明示する。
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
-use gateway_postgres::entities::stock;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
+use super::refs::ref_use_case_error;
 use super::{
-    StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, strategy_use_case_error_to_mcp,
-    trade_error,
+    StrategyServer, app_error_to_mcp, decimal_to_f64, strategy_use_case_error_to_mcp, trade_error,
 };
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
@@ -92,9 +90,12 @@ impl StrategyServer {
             .map(|p| p.qty)
             .unwrap_or(Decimal::ZERO);
 
-        let sector_by_symbol = fetch_sector_by_symbol(&self.db, &symbols)
+        let sector_by_symbol = self
+            .use_cases
+            .refs()
+            .stock_sectors(&symbols)
             .await
-            .map_err(db_error)?;
+            .map_err(ref_use_case_error)?;
         let target_sector = sector_by_symbol.get(&symbol).cloned().flatten();
 
         let missing_price_symbols: Vec<String> = account_summary
@@ -169,17 +170,6 @@ impl StrategyServer {
             binding_constraint,
         })
     }
-}
-
-async fn fetch_sector_by_symbol(
-    db: &impl sea_orm::ConnectionTrait,
-    symbols: &[String],
-) -> Result<HashMap<String, Option<String>>, DbErr> {
-    let rows = stock::Entity::find()
-        .filter(stock::Column::Id.is_in(symbols.to_vec()))
-        .all(db)
-        .await?;
-    Ok(rows.into_iter().map(|s| (s.id, s.sector_id)).collect())
 }
 
 /// 円建ての残り購入余力 (`headroom`) を株数に変換し、単元株に切り捨てる。

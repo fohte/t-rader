@@ -1,18 +1,22 @@
 # public.prediction_grade
 
+## Description
+
+予測期間の株価データから算出した予測の採点結果。
+
 ## Columns
 
-| Name                 | Type                     | Default           | Nullable | Children | Parents                                   | Comment |
-| -------------------- | ------------------------ | ----------------- | -------- | -------- | ----------------------------------------- | ------- |
-| prediction_id        | uuid                     |                   | false    |          | [public.prediction](public.prediction.md) |         |
-| target_base_close    | numeric                  |                   | false    |          |                                           |         |
-| target_due_close     | numeric                  |                   | false    |          |                                           |         |
-| benchmark_base_close | numeric                  |                   | false    |          |                                           |         |
-| benchmark_due_close  | numeric                  |                   | false    |          |                                           |         |
-| target_return        | numeric                  |                   | false    |          |                                           |         |
-| benchmark_return     | numeric                  |                   | false    |          |                                           |         |
-| correct              | boolean                  |                   | false    |          |                                           |         |
-| graded_at            | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                           |         |
+| Name                 | Type                     | Default           | Nullable | Children | Parents                                   | Comment                                    |
+| -------------------- | ------------------------ | ----------------- | -------- | -------- | ----------------------------------------- | ------------------------------------------ |
+| prediction_id        | uuid                     |                   | false    |          | [public.prediction](public.prediction.md) | 採点対象の予測。                           |
+| target_base_close    | numeric                  |                   | false    |          |                                           | 起点日における対象銘柄の終値。             |
+| target_due_close     | numeric                  |                   | false    |          |                                           | 終点日における対象銘柄の終値。             |
+| benchmark_base_close | numeric                  |                   | false    |          |                                           | 起点日における比較銘柄の終値。             |
+| benchmark_due_close  | numeric                  |                   | false    |          |                                           | 終点日における比較銘柄の終値。             |
+| target_return        | numeric                  |                   | false    |          |                                           | 起点日から終点日までの対象銘柄のリターン。 |
+| benchmark_return     | numeric                  |                   | false    |          |                                           | 起点日から終点日までの比較銘柄のリターン。 |
+| correct              | boolean                  |                   | false    |          |                                           | 記録した方向予測が実績と一致したかどうか。 |
+| graded_at            | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                           | 予測を採点した時刻。                       |
 
 ## Constraints
 
