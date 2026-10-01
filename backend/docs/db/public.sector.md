@@ -1,11 +1,15 @@
 # public.sector
 
+## Description
+
+銘柄が参照する業種を管理する。
+
 ## Columns
 
-| Name | Type    | Default | Nullable | Children                        | Parents | Comment |
-| ---- | ------- | ------- | -------- | ------------------------------- | ------- | ------- |
-| id   | varchar |         | false    | [public.stock](public.stock.md) |         |         |
-| name | varchar |         | false    |                                 |         |         |
+| Name | Type    | Default | Nullable | Children                        | Parents | Comment  |
+| ---- | ------- | ------- | -------- | ------------------------------- | ------- | -------- |
+| id   | varchar |         | false    | [public.stock](public.stock.md) |         |          |
+| name | varchar |         | false    |                                 |         | 業種名。 |
 
 ## Constraints
 

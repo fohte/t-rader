@@ -1,4 +1,4 @@
-//! cron trigger poll を定期的に起動する backend 内の tokio タスク。
+//! cron trigger を 1 tick 評価する単発処理。
 
 use std::time::Duration;
 
@@ -17,27 +17,6 @@ pub async fn run_once(
     use_cases
         .run_cron_tick(agent_client.as_ref(), interval)
         .await
-}
-
-/// 定期 polling のバックグラウンドタスクを起動する。
-pub fn spawn(
-    use_cases: TriggerUseCases,
-    agent_client: SharedAgentTaskClient,
-    interval: Duration,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        // 起動時の全 trigger を即時発火しないよう、最初の tick は読み捨てる。
-        ticker.tick().await;
-        loop {
-            ticker.tick().await;
-            let attempts = run_once(&use_cases, &agent_client, interval).await;
-            if attempts > 0 {
-                tracing::info!(attempts, "cron triggers evaluated");
-            }
-        }
-    })
 }
 
 #[cfg(test)]

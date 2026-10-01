@@ -3,6 +3,7 @@ use chrono::{Duration, NaiveDate};
 use core_domain::holdings::{
     CrossShareholdingDocument, LargeVolumeShareholdingDocument, MajorShareholderDocument,
 };
+use serde::Serialize;
 
 use crate::daily_bar_source::DateRange;
 use crate::shareholding_structure::repository::SharedShareholdingStructureRepository;
@@ -17,7 +18,7 @@ use super::types::ShareholdingStructureBySymbol;
 
 const REFETCH_WINDOW_DAYS: i64 = 30;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct ShareholdingStructureIngestStats {
     pub days_processed: usize,
     pub documents_saved: usize,

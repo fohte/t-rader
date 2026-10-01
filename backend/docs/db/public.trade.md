@@ -1,21 +1,25 @@
 # public.trade
 
+## Description
+
+戦略ごとの売買取引と約定内容を記録する。
+
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children                                  | Parents                               | Comment |
-| ----------- | ------------------------ | ----------------- | -------- | ----------------------------------------- | ------------------------------------- | ------- |
-| id          | uuid                     |                   | false    | [public.trade_note](public.trade_note.md) |                                       |         |
-| strategy_id | uuid                     |                   | false    |                                           | [public.strategy](public.strategy.md) |         |
-| symbol      | varchar                  |                   | false    |                                           |                                       |         |
-| side        | varchar                  |                   | false    |                                           |                                       |         |
-| qty         | numeric                  |                   | false    |                                           |                                       |         |
-| price       | numeric                  |                   | false    |                                           |                                       |         |
-| fee         | numeric                  | 0                 | false    |                                           |                                       |         |
-| date        | date                     |                   | false    |                                           |                                       |         |
-| source      | varchar                  |                   | false    |                                           |                                       |         |
-| note        | text                     |                   | true     |                                           |                                       |         |
-| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                           |                                       |         |
-| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                           |                                       |         |
+| Name        | Type                     | Default           | Nullable | Children                                  | Parents                               | Comment                |
+| ----------- | ------------------------ | ----------------- | -------- | ----------------------------------------- | ------------------------------------- | ---------------------- |
+| id          | uuid                     |                   | false    | [public.trade_note](public.trade_note.md) |                                       |                        |
+| strategy_id | uuid                     |                   | false    |                                           | [public.strategy](public.strategy.md) | 取引を記録した戦略。   |
+| symbol      | varchar                  |                   | false    |                                           |                                       | 取引対象の銘柄コード。 |
+| side        | varchar                  |                   | false    |                                           |                                       | 売買の方向。           |
+| qty         | numeric                  |                   | false    |                                           |                                       | 取引数量。             |
+| price       | numeric                  |                   | false    |                                           |                                       | 取引単価。             |
+| fee         | numeric                  | 0                 | false    |                                           |                                       | 取引手数料。           |
+| date        | date                     |                   | false    |                                           |                                       | 取引日。               |
+| source      | varchar                  |                   | false    |                                           |                                       | 取引記録の登録元。     |
+| note        | text                     |                   | true     |                                           |                                       | 取引に付けた補足メモ。 |
+| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                           |                                       |                        |
+| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                           |                                       |                        |
 
 ## Constraints
 

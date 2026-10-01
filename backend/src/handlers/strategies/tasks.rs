@@ -73,7 +73,10 @@ async fn verify_strategy_scope(
     strategy_id: Uuid,
     not_found_message: String,
 ) -> Result<StrategyScope, AppError> {
-    crate::services::strategies::strategy_scope(&state.db, strategy_id)
+    state
+        .use_cases
+        .strategy_scope()
+        .verify(strategy_id)
         .await
         .map_err(|error| match error {
             StrategyScopeError::NotFound(_) => AppError::NotFound(not_found_message),

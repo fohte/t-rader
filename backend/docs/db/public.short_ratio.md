@@ -1,14 +1,18 @@
 # public.short_ratio
 
+## Description
+
+33 業種ごとの売買代金を日付別に保持する。
+
 ## Columns
 
-| Name                            | Type    | Default | Nullable | Children | Parents | Comment |
-| ------------------------------- | ------- | ------- | -------- | -------- | ------- | ------- |
-| date                            | date    |         | false    |          |         |         |
-| sector33_code                   | text    |         | false    |          |         |         |
-| sell_excluding_short_value      | numeric |         | true     |          |         |         |
-| short_with_restriction_value    | numeric |         | true     |          |         |         |
-| short_without_restriction_value | numeric |         | true     |          |         |         |
+| Name                            | Type    | Default | Nullable | Children | Parents | Comment                          |
+| ------------------------------- | ------- | ------- | -------- | -------- | ------- | -------------------------------- |
+| date                            | date    |         | false    |          |         | 売買代金の対象日。               |
+| sector33_code                   | text    |         | false    |          |         | 33 業種コード。                  |
+| sell_excluding_short_value      | numeric |         | true     |          |         | 空売り以外の売り注文の売買代金。 |
+| short_with_restriction_value    | numeric |         | true     |          |         | 価格規制ありの空売り売買代金。   |
+| short_without_restriction_value | numeric |         | true     |          |         | 価格規制なしの空売り売買代金。   |
 
 ## Constraints
 

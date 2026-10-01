@@ -1,10 +1,14 @@
 # public.valuation_ingested_date
 
+## Description
+
+株価評価指標データの取り込み済み日付を記録する。
+
 ## Columns
 
-| Name | Type | Default | Nullable | Children | Parents | Comment |
-| ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| date | date |         | false    |          |         |         |
+| Name | Type | Default | Nullable | Children | Parents | Comment                          |
+| ---- | ---- | ------- | -------- | -------- | ------- | -------------------------------- |
+| date | date |         | false    |          |         | 評価指標データを取り込んだ日付。 |
 
 ## Constraints
 

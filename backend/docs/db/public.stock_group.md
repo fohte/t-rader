@@ -1,14 +1,18 @@
 # public.stock_group
 
+## Description
+
+分類軸の中で銘柄をまとめるグループを定義する。
+
 ## Columns
 
-| Name        | Type | Default           | Nullable | Children                                                  | Parents                                   | Comment |
-| ----------- | ---- | ----------------- | -------- | --------------------------------------------------------- | ----------------------------------------- | ------- |
-| id          | uuid | gen_random_uuid() | false    | [public.stock_group_member](public.stock_group_member.md) |                                           |         |
-| axis_id     | uuid |                   | false    |                                                           | [public.group_axis](public.group_axis.md) |         |
-| key         | text |                   | false    |                                                           |                                           |         |
-| name        | text |                   | false    |                                                           |                                           |         |
-| description | text |                   | true     |                                                           |                                           |         |
+| Name        | Type | Default           | Nullable | Children                                                  | Parents                                   | Comment                                  |
+| ----------- | ---- | ----------------- | -------- | --------------------------------------------------------- | ----------------------------------------- | ---------------------------------------- |
+| id          | uuid | gen_random_uuid() | false    | [public.stock_group_member](public.stock_group_member.md) |                                           |                                          |
+| axis_id     | uuid |                   | false    |                                                           | [public.group_axis](public.group_axis.md) | グループが属する分類軸。                 |
+| key         | text |                   | false    |                                                           |                                           | 同じ分類軸の中でグループを識別するキー。 |
+| name        | text |                   | false    |                                                           |                                           | グループの表示名。                       |
+| description | text |                   | true     |                                                           |                                           | グループの説明。                         |
 
 ## Constraints
 

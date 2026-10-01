@@ -1,7 +1,8 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
+use serde::Serialize;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct AggregationStats {
     pub fetched: usize,
 }

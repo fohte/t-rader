@@ -1,21 +1,25 @@
 # public.trigger
 
+## Description
+
+時刻や外部 hook を契機にエージェントタスクを起動する設定。
+
 ## Columns
 
-| Name            | Type                     | Default           | Nullable | Children | Parents                                       | Comment |
-| --------------- | ------------------------ | ----------------- | -------- | -------- | --------------------------------------------- | ------- |
-| trigger_id      | uuid                     | gen_random_uuid() | false    |          |                                               |         |
-| strategy_id     | uuid                     |                   | true     |          | [public.strategy](public.strategy.md)         |         |
-| kind            | text                     |                   | false    |          |                                               |         |
-| schedule        | text                     |                   | true     |          |                                               |         |
-| hook_slug       | text                     |                   | true     |          |                                               |         |
-| event_match     | jsonb                    |                   | true     |          |                                               |         |
-| prompt_template | text                     |                   | false    |          |                                               |         |
-| enabled         | boolean                  | true              | false    |          |                                               |         |
-| last_fired_at   | timestamp with time zone |                   | true     |          |                                               |         |
-| created_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |         |
-| updated_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |         |
-| purpose         | text                     |                   | true     |          | [public.agent_config](public.agent_config.md) |         |
+| Name            | Type                     | Default           | Nullable | Children | Parents                                       | Comment                                            |
+| --------------- | ------------------------ | ----------------- | -------- | -------- | --------------------------------------------- | -------------------------------------------------- |
+| trigger_id      | uuid                     | gen_random_uuid() | false    |          |                                               | trigger を識別する ID。                            |
+| strategy_id     | uuid                     |                   | true     |          | [public.strategy](public.strategy.md)         | タスクの実行対象となる戦略。                       |
+| kind            | text                     |                   | false    |          |                                               | 起動方式。                                         |
+| schedule        | text                     |                   | true     |          |                                               | cron 起動に使う UTC のスケジュール式。             |
+| hook_slug       | text                     |                   | true     |          |                                               | hook 起動時に trigger を識別するパス名。           |
+| event_match     | jsonb                    |                   | true     |          |                                               | hook の payload が起動条件を満たすか判定する条件。 |
+| prompt_template | text                     |                   | false    |          |                                               | 起動時にエージェントへ渡す指示文のテンプレート。   |
+| enabled         | boolean                  | true              | false    |          |                                               | trigger が有効かどうか。                           |
+| last_fired_at   | timestamp with time zone |                   | true     |          |                                               | 最後に trigger が発火した時刻。                    |
+| created_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |                                                    |
+| updated_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |                                                    |
+| purpose         | text                     |                   | true     |          | [public.agent_config](public.agent_config.md) | 実行に使用する agent_config の purpose キー。      |
 
 ## Constraints
 

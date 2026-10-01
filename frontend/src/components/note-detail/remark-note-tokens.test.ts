@@ -12,7 +12,9 @@ function textTree(value: string): Root {
 
 describe('remarkNoteTokens', () => {
   it('replaces prefixed refs with note-ref nodes', () => {
-    const tree = textTree('A [[stock:3436]] と [[indicator:USDJPY]] B')
+    const tree = textTree(
+      'A [[stock:sample-code]] と [[indicator:demo-indicator]] と [[group:demo-axis/demo-group]] B',
+    )
     remarkNoteTokens()(tree)
     expect(tree).toEqual({
       type: 'root',
@@ -23,14 +25,25 @@ describe('remarkNoteTokens', () => {
             { type: 'text', value: 'A ' },
             {
               type: 'noteToken',
-              data: { hName: 'note-ref', hProperties: { token: 'stock:3436' } },
+              data: {
+                hName: 'note-ref',
+                hProperties: { token: 'stock:sample-code' },
+              },
             },
             { type: 'text', value: ' と ' },
             {
               type: 'noteToken',
               data: {
                 hName: 'note-ref',
-                hProperties: { token: 'indicator:USDJPY' },
+                hProperties: { token: 'indicator:demo-indicator' },
+              },
+            },
+            { type: 'text', value: ' と ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-ref',
+                hProperties: { token: 'group:demo-axis/demo-group' },
               },
             },
             { type: 'text', value: ' B' },
@@ -75,6 +88,16 @@ describe('remarkNoteTokens', () => {
     remarkNoteTokens()(tree)
     expect(tree).toEqual(textTree('未知 [[foo:bar]] は素通り'))
   })
+
+  it.each(['sector', 'theme'] as const)(
+    'leaves the removed %s reference kind as literal text',
+    (kind) => {
+      const token = `[[${kind}:demo-value]]`
+      const tree = textTree(`旧参照 ${token} は素通り`)
+      remarkNoteTokens()(tree)
+      expect(tree).toEqual(textTree(`旧参照 ${token} は素通り`))
+    },
+  )
 
   it('replaces a paragraph consisting solely of [[graph:g1]] with a note-graph block', () => {
     const tree = textTree('[[graph:g1]]')

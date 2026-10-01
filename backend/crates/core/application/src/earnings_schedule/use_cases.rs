@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use core_domain::business_day::latest_business_day;
+use serde::Serialize;
 
 use crate::daily_bar_source::DateRange;
 use crate::earnings_schedule_source::EarningsScheduleSource;
@@ -9,7 +10,7 @@ use super::repository::SharedEarningsScheduleRepository;
 
 const LOOKBACK_DAYS: i64 = 30;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct EarningsScheduleIngestStats {
     pub days_attempted: usize,
     pub upserted: usize,

@@ -1,6 +1,5 @@
 pub mod agent_client;
 pub mod cli;
-pub(crate) mod concurrent;
 pub mod data_provider;
 pub mod error;
 pub mod extractors;
@@ -58,9 +57,6 @@ pub struct AppState {
     /// t-rader-agent 内部 API クライアント。戦略タスクの投入 / 状態照会に使う。
     /// `TRADER_AGENT_API_URL=disabled` (dev opt-out) の場合は `DisabledAgentTaskClient` が入る。
     pub agent_task_client: SharedAgentTaskClient,
-    /// watcher (`mcp::watcher`) の polling を即時発火させるための通知。
-    /// t-rader-agent からの webhook 受信時に `notify_one()` される。
-    pub agent_task_notify: Arc<tokio::sync::Notify>,
     /// t-rader-agent からの webhook (`POST /api/agent-tasks/notifications`) を認証する
     /// bearer トークン。
     pub agent_webhook_token: Arc<str>,
@@ -98,7 +94,7 @@ impl AppState {
         (name = "bars", description = "バーデータ (OHLCV)"),
         (name = "strategies", description = "戦略 (ワークスペース)"),
         (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
-        (name = "refs", description = "一級参照型 (stock / indicator / sector / theme)"),
+        (name = "refs", description = "一級参照型 (stock / indicator / group)"),
         (name = "notes", description = "ノート"),
         (name = "note_kinds", description = "ノート種別"),
         (name = "annotations", description = "アノテーション"),
@@ -151,7 +147,6 @@ mod app_state_tests {
             daily_bar_source: Some(daily_bar_source),
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
-            agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             llm_gateway_client: None,
@@ -168,7 +163,6 @@ mod app_state_tests {
             daily_bar_source: None,
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
-            agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             llm_gateway_client: None,
@@ -234,10 +228,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(refs::get_stock))
         .routes(routes!(refs::list_indicators))
         .routes(routes!(refs::get_indicator))
-        .routes(routes!(refs::list_sectors))
-        .routes(routes!(refs::get_sector))
-        .routes(routes!(refs::list_themes))
-        .routes(routes!(refs::get_theme))
         .routes(routes!(refs::resolve_refs))
         // notes
         .routes(routes!(notes::list_notes, notes::create_note))

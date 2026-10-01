@@ -1,17 +1,21 @@
 # public.bars
 
+## Description
+
+銘柄ごとの日足価格と出来高を保持する。
+
 ## Columns
 
-| Name          | Type                     | Default | Nullable | Children | Parents                                     | Comment |
-| ------------- | ------------------------ | ------- | -------- | -------- | ------------------------------------------- | ------- |
-| instrument_id | varchar                  |         | false    |          | [public.instruments](public.instruments.md) |         |
-| timeframe     | varchar                  |         | false    |          |                                             |         |
-| timestamp     | timestamp with time zone |         | false    |          |                                             |         |
-| open          | numeric                  |         | false    |          |                                             |         |
-| high          | numeric                  |         | false    |          |                                             |         |
-| low           | numeric                  |         | false    |          |                                             |         |
-| close         | numeric                  |         | false    |          |                                             |         |
-| volume        | bigint                   |         | false    |          |                                             |         |
+| Name          | Type                     | Default | Nullable | Children | Parents                                     | Comment                                |
+| ------------- | ------------------------ | ------- | -------- | -------- | ------------------------------------------- | -------------------------------------- |
+| instrument_id | varchar                  |         | false    |          | [public.instruments](public.instruments.md) | バーの銘柄コード。                     |
+| timeframe     | varchar                  |         | false    |          |                                             | バーの時間足。現行スキーマは日足のみ。 |
+| timestamp     | timestamp with time zone |         | false    |          |                                             | バーの時刻。                           |
+| open          | numeric                  |         | false    |          |                                             | 調整後の始値。                         |
+| high          | numeric                  |         | false    |          |                                             | 調整後の高値。                         |
+| low           | numeric                  |         | false    |          |                                             | 調整後の安値。                         |
+| close         | numeric                  |         | false    |          |                                             | 調整後の終値。                         |
+| volume        | bigint                   |         | false    |          |                                             | 調整後の出来高。                       |
 
 ## Constraints
 

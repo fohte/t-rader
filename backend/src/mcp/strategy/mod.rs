@@ -49,7 +49,6 @@ use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 use crate::services::use_cases::UseCases;
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::PostgresStrategyScopeSource;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -66,7 +65,7 @@ const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 /// 扱いになってしまうため、`note.execution_id` には `step_id` 部分のみを保持し、
 /// `annotation.execution_step_id` / `annotation.execution_task_id` には両者を分けて保持する。
 /// 呼び出し元の `a2a_task_id` が現在アクティブな試行かどうかは検査しない。
-/// `strategy_task.deadline_at` 超過による Failed 確定 (`backend/src/mcp/watcher.rs`) は
+/// `strategy_task.deadline_at` 超過による Failed 確定 (scheduler の照合 job) は
 /// agent 側の実行を cancel しないため、resume 後も旧試行の agent プロセスが生存して
 /// 呼び出しを送ってくると、新しい試行が書いた内容を上書き/削除しうる。
 const EXECUTION_ID_HEADER: &str = "x-execution-id";
@@ -132,7 +131,6 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 
 #[derive(Clone)]
 pub struct StrategyServer {
-    db: DatabaseHandle,
     pub(super) use_cases: UseCases,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
@@ -153,12 +151,11 @@ impl StrategyServer {
     }
 
     pub fn with_use_cases(
-        db: impl Into<DatabaseHandle>,
+        _db: impl Into<DatabaseHandle>,
         use_cases: UseCases,
         daily_bar_source: Option<SharedDailyBarSource>,
     ) -> Self {
         Self {
-            db: db.into(),
             use_cases,
             daily_bar_source,
             kata_executor: None,
@@ -188,8 +185,9 @@ impl StrategyServer {
         ctx: &RequestContext<RoleServer>,
     ) -> Result<StrategyScope, McpError> {
         let id = strategy_id_from_ctx(ctx)?;
-        let source = PostgresStrategyScopeSource::new(&self.db);
-        StrategyScope::verify(id, &source)
+        self.use_cases
+            .strategy_scope()
+            .verify(id)
             .await
             .map_err(|error| match error {
                 StrategyScopeError::NotFound(id) => {
