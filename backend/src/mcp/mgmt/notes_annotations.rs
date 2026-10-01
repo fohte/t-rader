@@ -1,16 +1,15 @@
 //! 管理 MCP の直近ノート・アノテーション一覧 tool。
 
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
+use core_application::annotation::{AnnotationReadQueryError, AnnotationReadUseCaseError};
 use core_application::note::{NoteListQuery, NoteReadQueryError, NoteReadUseCaseError};
-use gateway_postgres::entities::annotation;
 
 use super::MgmtServer;
 use super::dto::{
     AnnotationMeta, ListRecentAnnotationsResult, ListRecentNotesResult, ListRecentParams, NoteMeta,
 };
-use super::{clamp_limit, db_error, internal_error, invalid_params, map_app_error};
+use super::{clamp_limit, internal_error, invalid_params, map_app_error};
 
 fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
     match error {
@@ -83,13 +82,17 @@ impl MgmtServer {
         params: ListRecentParams,
     ) -> Result<ListRecentAnnotationsResult, McpError> {
         let limit = clamp_limit(params.limit);
-        let rows = annotation::Entity::find()
-            .filter(annotation::Column::StrategyId.eq(params.strategy_id))
-            .order_by_desc(annotation::Column::UpdatedAt)
-            .limit(limit)
-            .all(&self.db)
+        let rows = self
+            .use_cases
+            .annotation_reads()
+            .list_recent_annotations(params.strategy_id, limit)
             .await
-            .map_err(db_error)?;
+            .map_err(|error| match error {
+                AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {
+                    map_app_error(error.into())
+                }
+                other => internal_error(format!("{other}")),
+            })?;
         let annotations = rows
             .into_iter()
             .map(|row| AnnotationMeta {

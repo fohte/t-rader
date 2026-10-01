@@ -1,45 +1,22 @@
 //! コメント操作の inner method 実装。
 //!
-//! 書き込み時の戦略境界はユースケースが検証し、読み取り時は対象の所有権をここで検証する。
+//! 戦略境界の検証はユースケースが担う。
 
 use core_application::change_history::Actor;
-use core_application::comment::{CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand};
-use core_application::note::NoteReadUseCases;
+use core_application::comment::{
+    CommentListQuery, CommentReadQueryError, CommentReadUseCaseError, CommentTargetKind,
+    CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand,
+};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-use uuid::Uuid;
-
-use gateway_postgres::entities::comment;
 
 use super::dto::{
     CommentDto, ReadCommentsParams, ReadCommentsResult, ReplyCommentParams, ReplyCommentResult,
     ResolveCommentParams, ResolveCommentResult,
 };
-use super::{
-    STRATEGY_AGENT_ACTOR, StrategyServer, db_error, fetch_annotation_owned_by, internal_error,
-    invalid_params,
-};
+use super::{STRATEGY_AGENT_ACTOR, StrategyServer, internal_error, invalid_params};
 
 const ALLOWED_COMMENT_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
-
-fn comment_to_dto(m: comment::Model) -> CommentDto {
-    CommentDto {
-        comment_id: m.id,
-        target_kind: m.target_kind,
-        target_id: m.target_id,
-        parent_id: m.parent_id,
-        body: m.body,
-        author_kind: m.author_kind,
-        author_label: m.author_label,
-        resolved: m.resolved,
-        created_at: m.created_at,
-        anchor_text: m.anchor_text,
-        anchor_side: m.anchor_side,
-        start_line: m.start_line,
-        end_line: m.end_line,
-    }
-}
 
 fn comment_use_case_to_dto(m: core_application::comment::Comment) -> CommentDto {
     CommentDto {
@@ -59,33 +36,6 @@ fn comment_use_case_to_dto(m: core_application::comment::Comment) -> CommentDto 
     }
 }
 
-/// comment の target_kind に応じて所有権 (strategy_id 一致) を検査する。
-async fn ensure_comment_target_owned_by(
-    db: &impl sea_orm::ConnectionTrait,
-    note_reads: &NoteReadUseCases,
-    target_kind: &str,
-    target_id: Uuid,
-    scope: StrategyScope,
-) -> Result<(), McpError> {
-    match target_kind {
-        "note_version" => {
-            note_reads
-                .ensure_note_version_scope(target_id, scope)
-                .await
-                .map_err(super::notes::note_read_error_to_mcp)?;
-        }
-        "annotation" => {
-            fetch_annotation_owned_by(db, target_id, scope.id()).await?;
-        }
-        other => {
-            return Err(internal_error(format!(
-                "comment has unexpected target_kind: {other}"
-            )));
-        }
-    }
-    Ok(())
-}
-
 impl StrategyServer {
     pub(crate) async fn read_comments_inner(
         &self,
@@ -93,34 +43,27 @@ impl StrategyServer {
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
         let scope = scope.into();
-        if !ALLOWED_COMMENT_TARGET_KIND.contains(&params.target_kind.as_str()) {
-            return Err(invalid_params(format!(
+        let target_kind = CommentTargetKind::parse(&params.target_kind).ok_or_else(|| {
+            invalid_params(format!(
                 "invalid target_kind: {} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})",
                 params.target_kind
-            )));
-        }
-        ensure_comment_target_owned_by(
-            &self.db,
-            &self.use_cases.note_reads(),
-            &params.target_kind,
-            params.target_id,
-            scope,
-        )
-        .await?;
-
-        let mut query = comment::Entity::find()
-            .filter(comment::Column::TargetKind.eq(params.target_kind))
-            .filter(comment::Column::TargetId.eq(params.target_id));
-        if let Some(resolved) = params.resolved {
-            query = query.filter(comment::Column::Resolved.eq(resolved));
-        }
-        let rows = query
-            .order_by_asc(comment::Column::CreatedAt)
-            .all(&self.db)
+            ))
+        })?;
+        let comments = self
+            .use_cases
+            .comment_reads()
+            .list_comments(
+                CommentListQuery {
+                    target_kind,
+                    target_id: params.target_id,
+                    resolved: params.resolved,
+                },
+                Some(scope),
+            )
             .await
-            .map_err(db_error)?;
+            .map_err(comment_read_error)?;
         Ok(ReadCommentsResult {
-            comments: rows.into_iter().map(comment_to_dto).collect(),
+            comments: comments.into_iter().map(comment_use_case_to_dto).collect(),
         })
     }
 
@@ -166,6 +109,18 @@ impl StrategyServer {
         Ok(ReplyCommentResult {
             comment: comment_use_case_to_dto(created),
         })
+    }
+}
+
+fn comment_read_error(error: CommentReadUseCaseError) -> McpError {
+    match error {
+        CommentReadUseCaseError::Query(CommentReadQueryError::Database(error)) => {
+            super::app_error_to_mcp(error.into())
+        }
+        CommentReadUseCaseError::AnnotationRead(error) => {
+            super::annotations::annotation_read_error_to_mcp(error)
+        }
+        CommentReadUseCaseError::NoteRead(error) => super::notes::note_read_error_to_mcp(error),
     }
 }
 
@@ -334,6 +289,34 @@ mod tests {
                 start_line: None,
                 end_line: None,
             }],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn read_comments_preserves_missing_annotation_error(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let server = build_server(db);
+
+        let error = server
+            .read_comments_inner(
+                strategy_id,
+                ReadCommentsParams {
+                    target_kind: "annotation".into(),
+                    target_id: uuid::Uuid::new_v4(),
+                    resolved: None,
+                },
+            )
+            .await
+            .expect_err("missing annotation expected to be rejected");
+
+        assert_eq!(
+            (error.code, error.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::RESOURCE_NOT_FOUND,
+                "annotation not found"
+            ),
         );
     }
 

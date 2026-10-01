@@ -1,24 +1,24 @@
 //! アノテーション操作の inner method 実装。
 //!
-//! 書き込み時の戦略境界はユースケースが検証し、読み取り時は戦略 ID で絞り込む。
+//! 戦略境界の検証はユースケースが担う。
 
-use core_application::annotation::{AnnotationUseCaseError, CreateAnnotationCommand};
+use core_application::annotation::{
+    AnnotationListQuery, AnnotationReadQueryError, AnnotationReadUseCaseError,
+    AnnotationUseCaseError, CreateAnnotationCommand,
+};
 use core_application::change_history::Actor;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
-
-use gateway_postgres::entities::annotation;
 
 use super::dto::{
     AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
     ReadAnnotationsResult,
 };
 use super::{
-    DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    decimal_to_f64, internal_error, invalid_params,
+    DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, decimal_to_f64,
+    internal_error, invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
@@ -28,29 +28,6 @@ fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
 /// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
 /// 必ず `Some` になるはずだが、不変条件が壊れた場合に別 strategy の id を誤って
 /// 返さないよう fail-loud にする。
-fn annotation_to_dto(m: annotation::Model) -> Result<AnnotationDto, McpError> {
-    let strategy_id = m.strategy_id.ok_or_else(|| {
-        internal_error(format!(
-            "annotation {} has no strategy_id despite session scoping",
-            m.id
-        ))
-    })?;
-    Ok(AnnotationDto {
-        annotation_id: m.id,
-        strategy_id,
-        target_symbol: m.target_symbol,
-        target_kind: m.target_kind,
-        timestamp: m.timestamp,
-        price: m.price.map(decimal_to_f64),
-        text: m.text,
-        status: m.status,
-        linked_note_id: m.linked_note_id,
-        created_by_kind: m.created_by_kind,
-        created_at: m.created_at,
-        updated_at: m.updated_at,
-    })
-}
-
 fn annotation_use_case_to_dto(
     m: core_application::annotation::Annotation,
 ) -> Result<AnnotationDto, McpError> {
@@ -116,29 +93,42 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadAnnotationsParams,
     ) -> Result<ReadAnnotationsResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        let mut q = annotation::Entity::find()
-            .filter(annotation::Column::StrategyId.eq(session_strategy_id))
-            .order_by_desc(annotation::Column::Timestamp);
-        if let Some(sym) = params
-            .target_symbol
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            q = q.filter(annotation::Column::TargetSymbol.eq(sym));
-        }
-        let rows = q
-            .limit(clamp_limit(params.limit))
-            .all(&self.db)
+        let query = AnnotationListQuery {
+            strategy_id: None,
+            target_symbol: params
+                .target_symbol
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            limit: Some(clamp_limit(params.limit)),
+        };
+        let annotations = self
+            .use_cases
+            .annotation_reads()
+            .list_annotations(query, Some(scope.into()))
             .await
-            .map_err(db_error)?;
+            .map_err(annotation_read_error_to_mcp)?;
         Ok(ReadAnnotationsResult {
-            annotations: rows
+            annotations: annotations
                 .into_iter()
-                .map(annotation_to_dto)
+                .map(annotation_use_case_to_dto)
                 .collect::<Result<Vec<_>, _>>()?,
         })
+    }
+}
+
+pub(super) fn annotation_read_error_to_mcp(error: AnnotationReadUseCaseError) -> McpError {
+    match error {
+        AnnotationReadUseCaseError::NotFound(_) => {
+            McpError::resource_not_found("annotation not found", None)
+        }
+        AnnotationReadUseCaseError::Forbidden(id) => invalid_params(format!(
+            "forbidden: annotation {id} belongs to another strategy"
+        )),
+        AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {
+            super::app_error_to_mcp(error.into())
+        }
     }
 }
 

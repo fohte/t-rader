@@ -2,13 +2,13 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use core_application::annotation::{
+    AnnotationListQuery, AnnotationReadQueryError, AnnotationReadUseCaseError,
     AnnotationRepositoryError, AnnotationUseCaseError, ChangeAnnotationStatusCommand,
     CreateAnnotationCommand, DeleteAnnotationCommand, UpdateAnnotationCommand,
 };
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -21,7 +21,6 @@ use crate::models::{
     AnnotationResponse, ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest,
 };
 use crate::services::strategy_tasks::{self, TaskSource};
-use gateway_postgres::entities::annotation;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -46,16 +45,21 @@ pub async fn list_annotations(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<ListAnnotationsQuery>,
 ) -> Result<Json<Vec<AnnotationResponse>>, AppError> {
-    let mut q = annotation::Entity::find().order_by_desc(annotation::Column::Timestamp);
-    if let Some(sid) = params.strategy_id {
-        q = q.filter(annotation::Column::StrategyId.eq(sid));
-    }
-    if let Some(sym) = params.target_symbol.as_deref().filter(|s| !s.is_empty()) {
-        q = q.filter(annotation::Column::TargetSymbol.eq(sym));
-    }
+    let annotations = state
+        .use_cases
+        .annotation_reads()
+        .list_annotations(
+            AnnotationListQuery {
+                strategy_id: params.strategy_id,
+                target_symbol: params.target_symbol.filter(|symbol| !symbol.is_empty()),
+                limit: None,
+            },
+            None,
+        )
+        .await
+        .map_err(map_annotation_read_error)?;
     Ok(Json(
-        q.all(&state.db)
-            .await?
+        annotations
             .into_iter()
             .map(AnnotationResponse::from)
             .collect(),
@@ -79,11 +83,13 @@ pub async fn get_annotation(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
-    let m = annotation::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
-    Ok(Json(m.into()))
+    let annotation = state
+        .use_cases
+        .annotation_reads()
+        .get_annotation(id, None)
+        .await
+        .map_err(map_annotation_read_error)?;
+    Ok(Json(annotation.into()))
 }
 
 /// アノテーション作成
@@ -228,10 +234,12 @@ pub async fn reject_annotation(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
-    let current = annotation::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
+    let current = state
+        .use_cases
+        .annotation_reads()
+        .get_annotation(id, None)
+        .await
+        .map_err(map_annotation_read_error)?;
     // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
     // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
     if current.status == "rejected" {
@@ -323,6 +331,20 @@ fn map_annotation_error(error: AnnotationUseCaseError) -> AppError {
     }
 }
 
+pub(super) fn map_annotation_read_error(error: AnnotationReadUseCaseError) -> AppError {
+    match error {
+        AnnotationReadUseCaseError::NotFound(id) => {
+            AppError::NotFound(format!("annotation {id} not found"))
+        }
+        AnnotationReadUseCaseError::Forbidden(_) => {
+            AppError::Validation("annotation belongs to a different strategy".into())
+        }
+        AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {
+            error.into()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -336,8 +358,10 @@ mod tests {
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use gateway_postgres::entities::annotation;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
@@ -374,6 +398,148 @@ mod tests {
         res.assert_status(StatusCode::CREATED);
         let body: Value = res.json();
         Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+    }
+
+    async fn create_annotation_at(
+        server: &TestServer,
+        strategy_id: Uuid,
+        target_symbol: &str,
+        timestamp: &str,
+    ) -> Value {
+        let response = server
+            .post("/api/annotations")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "target_symbol": target_symbol,
+                "target_kind": "sample-kind",
+                "timestamp": timestamp,
+                "text": "sample text",
+            }))
+            .await;
+        response.assert_status(StatusCode::CREATED);
+        response.json()
+    }
+
+    fn normalize_annotation_response(mut value: Value) -> Value {
+        fn normalize_row(annotation: &mut Value) {
+            for key in ["id", "created_at", "updated_at"] {
+                if let Some(value) = annotation
+                    .as_object_mut()
+                    .and_then(|object| object.get_mut(key))
+                {
+                    *value = Value::String(format!("<{key}>"));
+                }
+            }
+        }
+        if let Some(rows) = value.as_array_mut() {
+            for row in rows {
+                normalize_row(row);
+            }
+        } else {
+            normalize_row(&mut value);
+        }
+        value
+    }
+
+    #[backend_test_macros::database_test]
+    async fn annotation_reads_filter_order_and_preserve_not_found_response(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
+        let foreign_strategy_id = insert_test_strategy(&db, "foreign-strategy").await;
+        let old =
+            create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
+        create_annotation_at(&server, strategy_id, "SAMPLE-B", "2026-06-03T00:00:00Z").await;
+        create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-02T00:00:00Z").await;
+        create_annotation_at(
+            &server,
+            foreign_strategy_id,
+            "SAMPLE-A",
+            "2026-06-04T00:00:00Z",
+        )
+        .await;
+
+        let list = server
+            .get(&format!(
+                "/api/annotations?strategy_id={strategy_id}&target_symbol=SAMPLE-A"
+            ))
+            .await;
+        let get = server
+            .get(&format!(
+                "/api/annotations/{}",
+                old["id"].as_str().expect("id")
+            ))
+            .await;
+        let missing = server
+            .get(&format!("/api/annotations/{}", Uuid::nil()))
+            .await;
+        assert_eq!(
+            (
+                list.status_code(),
+                normalize_annotation_response(list.json()),
+                get.status_code(),
+                normalize_annotation_response(get.json()),
+                missing.status_code(),
+                missing.json::<Value>(),
+            ),
+            (
+                StatusCode::OK,
+                json!([
+                    {
+                        "id": "<id>",
+                        "strategy_id": strategy_id,
+                        "target_symbol": "SAMPLE-A",
+                        "target_kind": "sample-kind",
+                        "timestamp": "2026-06-02T00:00:00Z",
+                        "price": null,
+                        "text": "sample text",
+                        "status": "unread",
+                        "linked_note_id": null,
+                        "created_by_kind": "human",
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "execution_step_id": null,
+                        "execution_task_id": null,
+                    },
+                    {
+                        "id": "<id>",
+                        "strategy_id": strategy_id,
+                        "target_symbol": "SAMPLE-A",
+                        "target_kind": "sample-kind",
+                        "timestamp": "2026-06-01T00:00:00Z",
+                        "price": null,
+                        "text": "sample text",
+                        "status": "unread",
+                        "linked_note_id": null,
+                        "created_by_kind": "human",
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "execution_step_id": null,
+                        "execution_task_id": null,
+                    },
+                ]),
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": strategy_id,
+                    "target_symbol": "SAMPLE-A",
+                    "target_kind": "sample-kind",
+                    "timestamp": "2026-06-01T00:00:00Z",
+                    "price": null,
+                    "text": "sample text",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+                StatusCode::NOT_FOUND,
+                json!({ "error": format!("annotation {} not found", Uuid::nil()) }),
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]

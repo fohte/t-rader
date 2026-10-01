@@ -1,9 +1,15 @@
 mod error;
+mod query;
+mod read;
 mod repository;
 mod types;
 mod use_cases;
 
 pub use error::{CommentRepositoryError, CommentUseCaseError};
+pub use query::{
+    CommentListQuery, CommentReadQuery, CommentReadQueryError, SharedCommentReadQuery,
+};
+pub use read::{CommentReadUseCaseError, CommentReadUseCases};
 pub use repository::{CommentRepository, SharedCommentRepository};
 pub use types::{
     Comment, CommentTargetKind, CreateCommentCommand, DeleteCommentCommand, NewComment,
