@@ -2,15 +2,15 @@ use chrono::NaiveDate;
 use core_domain::business_day::latest_business_day;
 
 use crate::ingest_status::IngestStatus;
-use crate::ingest_status::{INGEST_JOBS, IngestJobStatus, IngestStatusRepository};
+use crate::ingest_status::{INGEST_JOBS, IngestJobStatus, SharedIngestStatusRepository};
 use crate::persistence::PersistenceError;
 
 pub struct IngestStatusUseCase {
-    repository: std::sync::Arc<dyn IngestStatusRepository + Send + Sync>,
+    repository: SharedIngestStatusRepository,
 }
 
 impl IngestStatusUseCase {
-    pub fn new(repository: std::sync::Arc<dyn IngestStatusRepository + Send + Sync>) -> Self {
+    pub fn new(repository: SharedIngestStatusRepository) -> Self {
         Self { repository }
     }
 
