@@ -7,29 +7,7 @@ use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresUnitOfWork,
 };
 
-mod account_risk_policy;
-mod agent_config;
-mod annotation;
-mod comment;
-mod custom_indicator;
-mod earnings_schedule;
-mod financial_summary;
-mod indicator_observation;
-mod margin;
-mod news;
-mod note;
-mod note_kind;
-mod prediction;
-mod refs;
-mod rss_feed;
-mod short_ratio;
-mod short_sale_report;
-mod stock_group;
-mod strategy;
-mod strategy_task;
-mod trade;
-mod trigger;
-mod valuation;
+automod::dir!("src/services/use_cases");
 
 #[derive(Clone)]
 pub struct UseCases {

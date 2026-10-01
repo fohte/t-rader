@@ -22,7 +22,7 @@ impl TaskHandler for PredictionGrading {
                     .await
                     .map_err(|error| error.to_string())?;
                 tracing::debug!(graded = stats.graded, "prediction grading completed");
-                Ok(())
+                Ok(stats)
             },
         )
         .await
