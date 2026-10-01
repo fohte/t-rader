@@ -92,6 +92,7 @@ cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
 futures-util = { workspace = true }
+graphile_worker = { workspace = true }
 jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }
@@ -134,7 +135,6 @@ uuid = { workspace = true, features = ["serde", "v4", "v5"] }
 backend-test-macros = { path = "crates/libs/test-macros" }
 axum-test = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
-graphile_worker = { workspace = true }
 gateway-jquants = { workspace = true, features = ["test-support"] }
 gateway-postgres = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }

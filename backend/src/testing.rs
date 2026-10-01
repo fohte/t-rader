@@ -389,12 +389,9 @@ pub async fn create_test_server_with_db_and_agent_client(
 /// `AppState` 全体と `TestServer` のペアを返す。webhook token を参照するテスト向け。
 pub async fn create_test_server_with_state(db: DatabaseHandle) -> (AppState, TestServer) {
     let pool = gateway_postgres::test_support::create_test_pool().await;
-    let _worker = graphile_worker::WorkerOptions::default()
-        .pg_pool(pool)
-        .schema("graphile_worker")
-        .init()
+    crate::migrations::migrate_graphile_worker_schema(pool)
         .await
-        .expect("initialize Graphile Worker schema");
+        .expect("migrate Graphile Worker schema");
     let state = base_state(db);
     let router = create_router(state.clone());
     let server = TestServer::new(router).expect("failed to create test server");

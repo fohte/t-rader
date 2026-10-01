@@ -9,6 +9,7 @@ mod integration_tests;
 pub mod kata_exec;
 pub mod mcp;
 pub mod middleware;
+pub mod migrations;
 pub mod models;
 pub(crate) mod serde_helpers;
 pub mod services;

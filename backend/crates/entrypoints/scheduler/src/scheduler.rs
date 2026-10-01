@@ -27,7 +27,7 @@ use crate::{
     state::{SchedulerDependencies, SchedulerState},
 };
 
-const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
+pub const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
 const JQUANTS_QUEUE: &str = "jquants";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
