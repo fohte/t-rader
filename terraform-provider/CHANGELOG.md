@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.0...terraform-provider-v0.1.1) (2026-10-01)
+
+
+### Features
+
+* **group-axis:** 分類軸の管理 API と Terraform リソースを追加 ([#670](https://github.com/fohte/t-rader/issues/670)) ([9eb6706](https://github.com/fohte/t-rader/commit/9eb670613d689e414239d8bab733630185cc8cd3))
+* **terraform-provider:** ノート種別リソースを追加する ([#664](https://github.com/fohte/t-rader/issues/664)) ([6f312c1](https://github.com/fohte/t-rader/commit/6f312c10f766965a881ac050acb14875d27145b9))
+
 ## [0.1.0](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.0...terraform-provider-v0.1.0) (2026-09-30)
 
 
