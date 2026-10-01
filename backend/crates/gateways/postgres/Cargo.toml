@@ -35,6 +35,7 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 backend-test-macros = { path = "../../libs/test-macros" }
 migration = { path = "../../../migration" }
+rstest = { workspace = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-native-tls", "postgres", "migrate"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 

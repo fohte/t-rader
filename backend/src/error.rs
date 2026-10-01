@@ -2,6 +2,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use core_application::bars::{BarsRepositoryError, BarsUseCaseError};
 use core_application::change_history::ChangeHistoryError;
+use core_application::group_axis::{GroupAxisRepositoryError, GroupAxisUseCaseError};
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
@@ -131,6 +132,20 @@ impl From<NoteKindUseCaseError> for AppError {
             | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
             | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
             NoteKindUseCaseError::Note(error) => map_note_use_case_error(error),
+            other => Self::Database(DbErr::Custom(other.to_string())),
+        }
+    }
+}
+
+impl From<GroupAxisUseCaseError> for AppError {
+    fn from(error: GroupAxisUseCaseError) -> Self {
+        match error {
+            GroupAxisUseCaseError::Validation(message) => Self::Validation(message),
+            GroupAxisUseCaseError::NotFound(message) => Self::NotFound(message),
+            GroupAxisUseCaseError::Conflict(message) => Self::Conflict(message),
+            GroupAxisUseCaseError::Repository(GroupAxisRepositoryError::Database(error))
+            | GroupAxisUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+            | GroupAxisUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
             other => Self::Database(DbErr::Custom(other.to_string())),
         }
     }

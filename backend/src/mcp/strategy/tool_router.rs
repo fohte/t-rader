@@ -33,6 +33,10 @@ use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
+use super::stock_groups::{
+    CreateStockGroupParams, ListStockGroupMembersParams, StockGroupDto,
+    StockGroupMemberChangeResult, StockGroupMemberParams, UpdateStockGroupParams,
+};
 use super::web_search::TOOL_NAME as SEARCH_WEB_TOOL_NAME;
 use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
@@ -341,7 +345,7 @@ impl StrategyServer {
     /// 業種別の空売りの売買代金と空売り比率を日ごとに返す
     #[tool(
         name = "read_sector_short_ratio",
-        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is the same 33-sector name used by the sector table / search_refs / check_buyable_qty (e.g. \"輸送用機器\"); unrecognized names are rejected. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
+        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is the same 33-sector name used by the sector table / check_buyable_qty; unrecognized names are rejected. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
         annotations(read_only_hint = true)
     )]
     async fn read_sector_short_ratio(
@@ -428,6 +432,77 @@ impl StrategyServer {
     ) -> Result<Json<RemoveRefTermsResult>, McpError> {
         self.strategy_scope_from_ctx(&ctx).await?;
         self.remove_ref_terms_inner(params).await.map(Json)
+    }
+
+    /// 分類軸のグループを作成する
+    #[tool(
+        name = "create_stock_group",
+        description = "Create a stock group under an existing group axis. The axis must be managed by an agent rather than a synchronization source. Group keys are immutable."
+    )]
+    async fn create_stock_group(
+        &self,
+        Parameters(params): Parameters<CreateStockGroupParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<StockGroupDto>, McpError> {
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.create_stock_group_inner(params).await.map(Json)
+    }
+
+    /// グループの表示名と説明を更新する
+    #[tool(
+        name = "update_stock_group",
+        description = "Update a stock group's name and/or description. Its axis key and group key are immutable; pass description as null to clear it. Groups on synchronized axes cannot be changed by MCP."
+    )]
+    async fn update_stock_group(
+        &self,
+        Parameters(params): Parameters<UpdateStockGroupParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<StockGroupDto>, McpError> {
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.update_stock_group_inner(params).await.map(Json)
+    }
+
+    /// グループに銘柄を追加する
+    #[tool(
+        name = "add_stock_to_group",
+        description = "Add one stock to a group. Repeating an existing membership is a no-op. The stock ID must exist, and groups on synchronized axes cannot be changed by MCP."
+    )]
+    async fn add_stock_to_group(
+        &self,
+        Parameters(params): Parameters<StockGroupMemberParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<StockGroupMemberChangeResult>, McpError> {
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.add_stock_to_group_inner(params).await.map(Json)
+    }
+
+    /// グループから銘柄を削除する
+    #[tool(
+        name = "remove_stock_from_group",
+        description = "Remove one stock from a group. Repeating a removal for a non-member is a no-op. Groups on synchronized axes cannot be changed by MCP."
+    )]
+    async fn remove_stock_from_group(
+        &self,
+        Parameters(params): Parameters<StockGroupMemberParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<StockGroupMemberChangeResult>, McpError> {
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.remove_stock_from_group_inner(params).await.map(Json)
+    }
+
+    /// グループに属する銘柄一覧を返す
+    #[tool(
+        name = "list_stock_group_members",
+        description = "List the stock IDs in a group in ascending order. Stock groups are account-wide and do not belong to the calling strategy.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_stock_group_members(
+        &self,
+        Parameters(params): Parameters<ListStockGroupMembersParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<super::stock_groups::ListStockGroupMembersResult>, McpError> {
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.list_stock_group_members_inner(params).await.map(Json)
     }
 
     /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す
@@ -787,13 +862,16 @@ mod tests {
             read_only_hints,
             [
                 ("add_ref_terms", None),
+                ("add_stock_to_group", None),
                 ("check_buyable_qty", Some(true)),
                 ("create_annotation", None),
+                ("create_stock_group", None),
                 ("eval_indicator", None),
                 ("eval_python", None),
                 ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
+                ("list_stock_group_members", Some(true)),
                 ("query_data", Some(true)),
                 ("query_media", Some(true)),
                 ("read_annotations", Some(true)),
@@ -811,11 +889,13 @@ mod tests {
                 ("read_valuation", Some(true)),
                 ("record_prediction", None),
                 ("remove_ref_terms", None),
+                ("remove_stock_from_group", None),
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),
                 ("search_refs", Some(true)),
                 ("search_web", Some(true)),
+                ("update_stock_group", None),
                 ("write_note", None),
             ]
             .into_iter()

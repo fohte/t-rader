@@ -6,6 +6,7 @@ pub mod bars;
 pub mod comments;
 pub mod config;
 pub mod custom_indicators;
+pub mod group_axes;
 pub mod history;
 pub mod hooks;
 pub mod imports;
