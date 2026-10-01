@@ -1,12 +1,16 @@
 # public.note_link
 
+## Description
+
+ノートバージョン本文から別のノートへのリンクを保持する。
+
 ## Columns
 
-| Name            | Type | Default | Nullable | Children | Parents                                       | Comment |
-| --------------- | ---- | ------- | -------- | -------- | --------------------------------------------- | ------- |
-| from_version_id | uuid |         | false    |          | [public.note_version](public.note_version.md) |         |
-| to_note_id      | uuid |         | false    |          | [public.note](public.note.md)                 |         |
-| to_version_id   | uuid |         | true     |          | [public.note_version](public.note_version.md) |         |
+| Name            | Type | Default | Nullable | Children | Parents                                       | Comment                                                                           |
+| --------------- | ---- | ------- | -------- | -------- | --------------------------------------------- | --------------------------------------------------------------------------------- |
+| from_version_id | uuid |         | false    |          | [public.note_version](public.note_version.md) | リンクを記述したノートバージョン。                                                |
+| to_note_id      | uuid |         | false    |          | [public.note](public.note.md)                 | リンク先ノート。                                                                  |
+| to_version_id   | uuid |         | true     |          | [public.note_version](public.note_version.md) | 固定リンク先のノートバージョン。null の場合はリンク先の現行バージョンに追従する。 |
 
 ## Constraints
 

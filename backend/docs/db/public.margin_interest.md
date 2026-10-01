@@ -1,24 +1,28 @@
 # public.margin_interest
 
+## Description
+
+銘柄ごとの信用取引残高を日付と銘柄区分別に保持する。
+
 ## Columns
 
-| Name         | Type     | Default | Nullable | Children | Parents | Comment |
-| ------------ | -------- | ------- | -------- | -------- | ------- | ------- |
-| date         | date     |         | false    |          |         |         |
-| code         | varchar  |         | false    |          |         |         |
-| iss_type     | smallint |         | false    |          |         |         |
-| shrt_vol     | bigint   |         | false    |          |         |         |
-| long_vol     | bigint   |         | false    |          |         |         |
-| shrt_neg_vol | bigint   |         | false    |          |         |         |
-| long_neg_vol | bigint   |         | false    |          |         |         |
-| shrt_std_vol | bigint   |         | false    |          |         |         |
-| long_std_vol | bigint   |         | false    |          |         |         |
-| shrt_val     | bigint   |         | true     |          |         |         |
-| long_val     | bigint   |         | true     |          |         |         |
-| shrt_neg_val | bigint   |         | true     |          |         |         |
-| long_neg_val | bigint   |         | true     |          |         |         |
-| shrt_std_val | bigint   |         | true     |          |         |         |
-| long_std_val | bigint   |         | true     |          |         |         |
+| Name         | Type     | Default | Nullable | Children | Parents | Comment                                 |
+| ------------ | -------- | ------- | -------- | -------- | ------- | --------------------------------------- |
+| date         | date     |         | false    |          |         | 信用取引残高の対象日。                  |
+| code         | varchar  |         | false    |          |         | 銘柄コード。                            |
+| iss_type     | smallint |         | false    |          |         | 信用取引の銘柄区分コード。              |
+| shrt_vol     | bigint   |         | false    |          |         | 信用売り残高の数量。                    |
+| long_vol     | bigint   |         | false    |          |         | 信用買い残高の数量。                    |
+| shrt_neg_vol | bigint   |         | false    |          |         | 信用売り残高の neg 区分数量。           |
+| long_neg_vol | bigint   |         | false    |          |         | 信用買い残高の neg 区分数量。           |
+| shrt_std_vol | bigint   |         | false    |          |         | 信用売り残高の std 区分数量。           |
+| long_std_vol | bigint   |         | false    |          |         | 信用買い残高の std 区分数量。           |
+| shrt_val     | bigint   |         | true     |          |         | 信用売り残高に対応する金額。            |
+| long_val     | bigint   |         | true     |          |         | 信用買い残高に対応する金額。            |
+| shrt_neg_val | bigint   |         | true     |          |         | 信用売り残高の neg 区分に対応する金額。 |
+| long_neg_val | bigint   |         | true     |          |         | 信用買い残高の neg 区分に対応する金額。 |
+| shrt_std_val | bigint   |         | true     |          |         | 信用売り残高の std 区分に対応する金額。 |
+| long_std_val | bigint   |         | true     |          |         | 信用買い残高の std 区分に対応する金額。 |
 
 ## Constraints
 

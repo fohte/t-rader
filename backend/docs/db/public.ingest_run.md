@@ -1,16 +1,20 @@
 # public.ingest_run
 
+## Description
+
+データ取り込みジョブの実行履歴と結果を記録する。
+
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ----------- | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| id          | uuid                     | gen_random_uuid() | false    |          |         |         |
-| job         | text                     |                   | false    |          |         |         |
-| started_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
-| finished_at | timestamp with time zone |                   | true     |          |         |         |
-| status      | text                     | 'running'::text   | false    |          |         |         |
-| stats       | jsonb                    |                   | true     |          |         |         |
-| error       | text                     |                   | true     |          |         |         |
+| Name        | Type                     | Default           | Nullable | Children | Parents | Comment                                                   |
+| ----------- | ------------------------ | ----------------- | -------- | -------- | ------- | --------------------------------------------------------- |
+| id          | uuid                     | gen_random_uuid() | false    |          |         |                                                           |
+| job         | text                     |                   | false    |          |         | 実行したジョブを識別するキー。                            |
+| started_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         | ジョブを開始した時刻。                                    |
+| finished_at | timestamp with time zone |                   | true     |          |         | ジョブの終了時刻。実行中は null。                         |
+| status      | text                     | 'running'::text   | false    |          |         | ジョブの実行状態。running、succeeded、failed のいずれか。 |
+| stats       | jsonb                    |                   | true     |          |         | 成功時のジョブ結果を表す JSON。                           |
+| error       | text                     |                   | true     |          |         | 失敗時のエラー内容。中断復旧時は interrupted。            |
 
 ## Constraints
 

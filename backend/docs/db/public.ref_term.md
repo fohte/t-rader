@@ -1,14 +1,18 @@
 # public.ref_term
 
+## Description
+
+銘柄・指標・グループに対する別名を保持する。
+
 ## Columns
 
-| Name       | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ---------- | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| ref_kind   | varchar                  |                   | false    |          |         |         |
-| ref_id     | varchar                  |                   | false    |          |         |         |
-| term       | varchar                  |                   | false    |          |         |         |
-| origin     | varchar                  |                   | false    |          |         |         |
-| created_at | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name       | Type                     | Default           | Nullable | Children | Parents | Comment                                                                  |
+| ---------- | ------------------------ | ----------------- | -------- | -------- | ------- | ------------------------------------------------------------------------ |
+| ref_kind   | varchar                  |                   | false    |          |         | 別名が指す参照型。stock / indicator / group のいずれか。                 |
+| ref_id     | varchar                  |                   | false    |          |         | 別名が指す参照先 ID。group は分類軸 key とグループ key を / で連結する。 |
+| term       | varchar                  |                   | false    |          |         | 参照先を検索するための別名。                                             |
+| origin     | varchar                  |                   | false    |          |         | 別名を登録した主体の種別。                                               |
+| created_at | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                                                          |
 
 ## Constraints
 

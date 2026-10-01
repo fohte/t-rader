@@ -1,16 +1,20 @@
 # public.jquants_earnings_date
 
+## Description
+
+銘柄ごとの決算発表日と決算期情報を保持する。
+
 ## Columns
 
-| Name       | Type    | Default | Nullable | Children | Parents | Comment |
-| ---------- | ------- | ------- | -------- | -------- | ------- | ------- |
-| code       | varchar |         | false    |          |         |         |
-| fq_name    | varchar |         | false    |          |         |         |
-| pub_date   | date    |         | false    |          |         |         |
-| sch_date   | date    |         | true     |          |         |         |
-| fye        | varchar |         | false    |          |         |         |
-| co_name    | varchar |         | false    |          |         |         |
-| co_name_en | varchar |         | false    |          |         |         |
+| Name       | Type    | Default | Nullable | Children | Parents | Comment                             |
+| ---------- | ------- | ------- | -------- | -------- | ------- | ----------------------------------- |
+| code       | varchar |         | false    |          |         | 銘柄コード。                        |
+| fq_name    | varchar |         | false    |          |         | 決算期名。                          |
+| pub_date   | date    |         | false    |          |         | 決算発表日。                        |
+| sch_date   | date    |         | true     |          |         | 決算発表予定日。未定の場合は null。 |
+| fye        | varchar |         | false    |          |         | 会計年度末。                        |
+| co_name    | varchar |         | false    |          |         | 日本語の会社名。                    |
+| co_name_en | varchar |         | false    |          |         | 英語の会社名。                      |
 
 ## Constraints
 

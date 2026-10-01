@@ -1,16 +1,20 @@
 # public.cross_shareholding_documents
 
+## Description
+
+EDINET の政策保有株式に関する提出書類と明細を保持する。
+
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| document_id  | text                     |                   | false    |          |         |         |
-| stock_code   | text                     |                   | true     |          |         |         |
-| filer_code   | text                     |                   | false    |          |         |         |
-| submitted_on | date                     |                   | false    |          |         |         |
-| details      | jsonb                    |                   | false    |          |         |         |
-| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
-| updated_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name         | Type                     | Default           | Nullable | Children | Parents | Comment                                                          |
+| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ---------------------------------------------------------------- |
+| document_id  | text                     |                   | false    |          |         | EDINET 書類の識別子。                                            |
+| stock_code   | text                     |                   | true     |          |         | 書類の対象銘柄コード。                                           |
+| filer_code   | text                     |                   | false    |          |         | 書類提出者の EDINET コード。                                     |
+| submitted_on | date                     |                   | false    |          |         | 書類の提出日。                                                   |
+| details      | jsonb                    |                   | false    |          |         | 対象期間、相手先、保有株数・簿価の現行値と前期値を含む書類明細。 |
+| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                                                  |
+| updated_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                                                  |
 
 ## Constraints
 

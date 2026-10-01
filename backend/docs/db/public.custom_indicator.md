@@ -1,19 +1,23 @@
 # public.custom_indicator
 
+## Description
+
+共有または戦略ごとに定義する実行可能なカスタム指標。
+
 ## Columns
 
-| Name          | Type                     | Default           | Nullable | Children | Parents                               | Comment |
-| ------------- | ------------------------ | ----------------- | -------- | -------- | ------------------------------------- | ------- |
-| indicator_id  | uuid                     | gen_random_uuid() | false    |          |                                       |         |
-| name          | text                     |                   | false    |          |                                       |         |
-| scope         | text                     |                   | false    |          |                                       |         |
-| strategy_id   | uuid                     |                   | true     |          | [public.strategy](public.strategy.md) |         |
-| code          | text                     |                   | false    |          |                                       |         |
-| input_schema  | jsonb                    |                   | false    |          |                                       |         |
-| output_schema | jsonb                    |                   | false    |          |                                       |         |
-| description   | text                     |                   | true     |          |                                       |         |
-| created_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |         |
-| updated_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |         |
+| Name          | Type                     | Default           | Nullable | Children | Parents                               | Comment                                  |
+| ------------- | ------------------------ | ----------------- | -------- | -------- | ------------------------------------- | ---------------------------------------- |
+| indicator_id  | uuid                     | gen_random_uuid() | false    |          |                                       | カスタム指標の識別子。                   |
+| name          | text                     |                   | false    |          |                                       | カスタム指標の名称。                     |
+| scope         | text                     |                   | false    |          |                                       | 指標の共有範囲。                         |
+| strategy_id   | uuid                     |                   | true     |          | [public.strategy](public.strategy.md) | 戦略スコープの場合に指標を所有する戦略。 |
+| code          | text                     |                   | false    |          |                                       | 指標の計算に実行するコード。             |
+| input_schema  | jsonb                    |                   | false    |          |                                       | 指標へ渡す入力値を検証する JSON Schema。 |
+| output_schema | jsonb                    |                   | false    |          |                                       | 指標の出力値を検証する JSON Schema。     |
+| description   | text                     |                   | true     |          |                                       | カスタム指標の説明。                     |
+| created_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |                                          |
+| updated_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |                                          |
 
 ## Constraints
 

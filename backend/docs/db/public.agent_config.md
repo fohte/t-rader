@@ -1,16 +1,20 @@
 # public.agent_config
 
+## Description
+
+purpose ごとのエージェント実行設定を保持する。
+
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children                            | Parents | Comment |
-| ----------- | ------------------------ | ----------------- | -------- | ----------------------------------- | ------- | ------- |
-| id          | uuid                     | gen_random_uuid() | false    |                                     |         |         |
-| purpose     | text                     |                   | false    | [public.trigger](public.trigger.md) |         |         |
-| agents_md   | text                     | ''::text          | false    |                                     |         |         |
-| skills      | jsonb                    | '{}'::jsonb       | false    |                                     |         |         |
-| agent_graph | text                     | ''::text          | false    |                                     |         |         |
-| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |         |         |
-| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |         |         |
+| Name        | Type                     | Default           | Nullable | Children                            | Parents | Comment                                                  |
+| ----------- | ------------------------ | ----------------- | -------- | ----------------------------------- | ------- | -------------------------------------------------------- |
+| id          | uuid                     | gen_random_uuid() | false    |                                     |         |                                                          |
+| purpose     | text                     |                   | false    | [public.trigger](public.trigger.md) |         | 設定を選択するための目的キー。                           |
+| agents_md   | text                     | ''::text          | false    |                                     |         | エージェントに渡す方針・制約を記述した Markdown。        |
+| skills      | jsonb                    | '{}'::jsonb       | false    |                                     |         | エージェントが利用する skill 名と内容の対応を表す JSON。 |
+| agent_graph | text                     | ''::text          | false    |                                     |         | エージェントの実行グラフを記述した YAML。                |
+| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |         |                                                          |
+| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |         |                                                          |
 
 ## Constraints
 

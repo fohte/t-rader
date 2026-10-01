@@ -97,6 +97,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 ## DB schema docs
 
 - backend と agent の DB schema docs は `mise run db-doc` で再生成する
+- テーブルやカラムを追加するときは、対応するパッケージの `.tbls.yml` に説明を追加する (`id`、`created_at`、`updated_at` は除外対象)
 - CI はスキーマ関連の変更がある PR で `backend/docs/db/` と `agent/docs/db/` を再生成し、自動コミットする
 - 生成には開発 DB ではなく、migration を適用した使い捨て DB を使う
 

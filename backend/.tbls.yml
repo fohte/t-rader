@@ -7,3 +7,485 @@ exclude:
   - public.seaql_migrations
   - _timescaledb_*.*
   - timescaledb_.*
+lint:
+  requireTableComment:
+    enabled: true
+  requireColumnComment:
+    enabled: true
+    exclude: [id, created_at, updated_at]
+comments:
+  - table: account_risk_policy
+    tableComment: '口座全体に適用するリスク制限設定を保持する。'
+    columnComments:
+      risk_policy: '口座全体のリスク制限を表す JSON 設定。'
+  - table: agent_config
+    tableComment: 'purpose ごとのエージェント実行設定を保持する。'
+    columnComments:
+      purpose: '設定を選択するための目的キー。'
+      agents_md: 'エージェントに渡す方針・制約を記述した Markdown。'
+      skills: 'エージェントが利用する skill 名と内容の対応を表す JSON。'
+      agent_graph: 'エージェントの実行グラフを記述した YAML。'
+  - table: annotation
+    tableComment: '戦略に属する銘柄などの対象へ付与したテキスト注釈を保持する。'
+    columnComments:
+      strategy_id: '注釈を所有する戦略。戦略に属さない注釈では null。'
+      target_symbol: '注釈対象を識別する銘柄・参照の ID。'
+      target_kind: '注釈対象の種類。'
+      timestamp: '注釈を紐づける時刻。'
+      price: '注釈を紐づける価格。'
+      text: '注釈本文。'
+      status: '注釈のレビュー状態。'
+      linked_note_id: '注釈に関連付けたノート。'
+      created_by_kind: '注釈を作成した主体の種別。'
+      execution_step_id: '注釈を作成したタスク実行ステップの UUID。'
+      execution_task_id: '注釈を作成したタスク実行の識別子。'
+  - table: change_history
+    tableComment: '主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。'
+    columnComments:
+      target_kind: '変更対象のレコード種別。stock_group は銘柄グループを表す。'
+      target_id: '変更対象レコードの ID。'
+      actor_kind: '変更を行った主体の種別。'
+      actor_label: '変更を行った主体の表示名。'
+      op: '記録した操作の種別。'
+      diff_json: '変更内容を表す JSON 差分。'
+      summary: '変更理由などの補足説明。'
+  - table: checkpoint
+    tableComment: '戦略・処理グラフごとに外部 stream の読み進め位置を保持する。'
+    columnComments:
+      strategy_id: 'checkpoint が属する戦略。'
+      graph: 'checkpoint を分離する処理グラフの識別子。'
+      stream: 'checkpoint を分離する外部 stream の識別子。'
+      cursor: '外部 stream で最後に読み進めた位置。'
+      updated_by_run_id: 'checkpoint を最後に更新したタスク実行の識別子。'
+  - table: comment
+    tableComment: 'ノートやアノテーションに付けるコメントと返信を保持する。'
+    columnComments:
+      target_kind: 'コメント対象の種類。'
+      target_id: 'コメント対象の ID。'
+      parent_id: '返信元となる親コメント。'
+      body: 'コメント本文。'
+      author_kind: 'コメントを投稿した主体の種別。'
+      author_label: 'コメントを投稿した主体の表示名。'
+      resolved: 'コメントが解決済みかどうか。'
+      anchor_text: '行コメントで選択した本文の引用。'
+      start_line: '行コメントの開始行。1 始まり。'
+      end_line: '行コメントの終了行。1 始まり。'
+      anchor_side: '行コメントが参照するノートバージョン本文の側。'
+  - table: group_axis
+    tableComment: '銘柄グループを分類する軸を定義する。'
+    columnComments:
+      key: '分類軸を識別するキー。'
+      name: '分類軸の表示名。'
+      description: '分類軸の説明。'
+      sync_source: '分類軸の同期元を示す値。'
+  - table: mcp_tool_call_count
+    tableComment: 'タスク実行ごとの MCP ツール呼び出し数を追跡する。'
+    columnComments:
+      task_execution_id: '呼び出し数を集計するタスク実行の ID。'
+      tool_name: '呼び出し数を集計する MCP ツール名。'
+      call_count: 'タスク実行中に記録したツール呼び出し数。'
+  - table: note
+    tableComment: '戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。'
+    columnComments:
+      strategy_id: 'ノートを所有する戦略。戦略に属さないノートでは null。'
+      kind: 'note_kind で定義されたノート分類キー。'
+      trigger: 'ノートが作成された契機の種別。'
+      trigger_label: 'ノート作成の契機に付けた表示ラベル。'
+      execution_id: 'ノートを作成したタスク実行の識別子。'
+  - table: note_kind
+    tableComment: 'ノートの分類と、その分類に適用するレビュー設定を定義する。'
+    columnComments:
+      key: 'ノート分類を識別するキー。'
+      display_name: 'ノート分類の表示名。'
+      requires_approval: 'この分類のエージェント作成バージョンに承認を要求するかどうか。'
+      description: 'ノート分類の説明。'
+      sort_order: '分類一覧の表示順。'
+  - table: note_link
+    tableComment: 'ノートバージョン本文から別のノートへのリンクを保持する。'
+    columnComments:
+      from_version_id: 'リンクを記述したノートバージョン。'
+      to_note_id: 'リンク先ノート。'
+      to_version_id: '固定リンク先のノートバージョン。null の場合はリンク先の現行バージョンに追従する。'
+  - table: note_ref
+    tableComment: 'ノート本文やグラフから抽出した一級参照へのリンクを保持する。'
+    columnComments:
+      note_id: '参照を含むノート。'
+      ref_kind: '参照先の型。stock / indicator / group のいずれか。'
+      ref_id: '参照先を識別する ID。group は分類軸 key とグループ key を / で連結する。'
+  - table: note_version
+    tableComment: 'ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。'
+    columnComments:
+      note_id: 'このバージョンが属するノート。'
+      version_no: 'ノート内で連番となるバージョン番号。'
+      title: 'ノートのタイトル。'
+      body_md: 'ノート本文の Markdown。'
+      frontmatter_json: 'ノートに付随する構造化メタデータ。'
+      graphs_json: 'ノートに付随するグラフ定義の配列。'
+      status: 'このバージョンのレビュー状態。'
+      is_current: 'ノートの現行バージョンかどうか。'
+      change_reason: 'バージョン更新の理由。'
+      created_by_kind: 'バージョンを作成した主体の種別。'
+      execution_id: 'バージョンを作成したタスク実行の識別子。'
+      reviewed_at: 'このバージョンをレビューした時刻。'
+  - table: prediction
+    tableComment: '戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。'
+    columnComments:
+      prediction_id: '予測を識別する ID。'
+      strategy_id: '予測を所有する戦略。'
+      note_id: '予測の根拠として関連付けたノート。'
+      target_stock_id: '比較対象となる銘柄の ID。'
+      benchmark_stock_id: 'リターンを比較する銘柄の ID。'
+      direction: '対象銘柄が比較銘柄を上回るか下回るかの予測。'
+      probability: '予測した方向が実現する確率。'
+      base_date: '比較の起点とする終値の日付。'
+      due_date: '比較の終点とする終値の日付。'
+  - table: prediction_grade
+    tableComment: '予測期間の株価データから算出した予測の採点結果。'
+    columnComments:
+      prediction_id: '採点対象の予測。'
+      target_base_close: '起点日における対象銘柄の終値。'
+      target_due_close: '終点日における対象銘柄の終値。'
+      benchmark_base_close: '起点日における比較銘柄の終値。'
+      benchmark_due_close: '終点日における比較銘柄の終値。'
+      target_return: '起点日から終点日までの対象銘柄のリターン。'
+      benchmark_return: '起点日から終点日までの比較銘柄のリターン。'
+      correct: '記録した方向予測が実績と一致したかどうか。'
+      graded_at: '予測を採点した時刻。'
+  - table: stock_group
+    tableComment: '分類軸の中で銘柄をまとめるグループを定義する。'
+    columnComments:
+      axis_id: 'グループが属する分類軸。'
+      key: '同じ分類軸の中でグループを識別するキー。'
+      name: 'グループの表示名。'
+      description: 'グループの説明。'
+  - table: stock_group_member
+    tableComment: '銘柄と銘柄グループの所属関係を保持する。'
+    columnComments:
+      stock_id: 'グループに所属する銘柄。'
+      group_id: '銘柄が所属するグループ。'
+  - table: strategy
+    tableComment: '投資判断と関連データを分けて管理する永続的な戦略ワークスペース。'
+    columnComments:
+      name: '戦略の名称。'
+      description: '戦略の説明。'
+      sort_order: '戦略一覧の表示順。'
+  - table: strategy_investable_amount
+    tableComment: '戦略ごとに設定した投資可能額の履歴。'
+    columnComments:
+      strategy_id: '投資可能額を設定した戦略。'
+      amount_jpy: '投資に回す枠として設定した金額。単位は円。'
+      effective_at: 'この金額が有効になる時刻。'
+  - table: strategy_task
+    tableComment: '戦略に対して投入したエージェントタスクの内容と実行状態を記録する。'
+    columnComments:
+      task_id: 'タスクを識別する ID。'
+      strategy_id: 'タスクを実行する戦略。'
+      a2a_task_id: 'エージェント側でタスクを識別する ID。'
+      source: 'タスクの投入元。'
+      prompt: 'エージェントへ渡した指示文。'
+      phase: 'タスクの実行状態。'
+      error_summary: '失敗時のエラー概要。'
+      result_text: 'エージェントが返した最終応答テキスト。'
+      deadline_at: 'タスクの実行期限。'
+      purpose: '実行時に選択した agent_config の purpose キー。'
+      as_of: '実行の論理的な基準時刻。監査用に記録し、実際に参照する全データがこの時刻のものとは限らない。'
+      auto_resumed_at: 'タスクを自動再開した時刻。'
+  - table: strategy_task_step
+    tableComment: 'エージェントタスクを構成する実行ステップの状態と結果を記録する。'
+    columnComments:
+      execution_step_id: '実行ステップを識別する UUID。'
+      task_id: 'このステップが属するタスク。'
+      phase_key: '実行グラフ内でフェーズを識別するキー。'
+      label: 'ステップの表示名。'
+      model: 'ステップに割り当てたモデル識別子。'
+      status: 'ステップの実行状態。'
+      item: 'ステップが処理する項目の構造化データ。'
+      item_label: '処理項目の表示名。'
+      output: 'ステップが出力した構造化データ。'
+      started_at: 'ステップを開始した時刻。'
+      finished_at: 'ステップを終了した時刻。'
+      trace_id: 'ステップの分散トレース ID。'
+      span_id: 'ステップの分散トレース内の span ID。'
+      error: 'ステップで発生したエラーの説明。'
+      seq: 'タスク内のステップ順序。'
+  - table: strategy_task_step_evidence
+    tableComment: '実行ステップが取得したデータのスナップショットと時刻を記録する。'
+    columnComments:
+      execution_step_id: '証跡を取得した実行ステップの UUID。'
+      source: 'データを取得した MCP ツールの識別子。'
+      source_ref: 'データソース内の取得対象を識別する値。'
+      observed_at: 'エージェントがデータを取得した時刻。'
+      published_at: 'データの公表時刻。公表時刻がないデータでは取得内容の最新時刻を記録する。'
+      effective_at: '取得データが表す時刻。'
+      snapshot: '取得時の条件とデータを保存した JSON。'
+  - table: trade
+    tableComment: '戦略ごとの売買取引と約定内容を記録する。'
+    columnComments:
+      strategy_id: '取引を記録した戦略。'
+      symbol: '取引対象の銘柄コード。'
+      side: '売買の方向。'
+      qty: '取引数量。'
+      price: '取引単価。'
+      fee: '取引手数料。'
+      date: '取引日。'
+      source: '取引記録の登録元。'
+      note: '取引に付けた補足メモ。'
+  - table: trade_note
+    tableComment: '取引と関連ノートおよび関連付け時のノートバージョンを結び付ける。'
+    columnComments:
+      trade_id: '関連付ける取引。'
+      note_id: '取引に関連付けるノート。'
+      note_version_id: '取引への関連付けに使用したノートバージョン。'
+  - table: trigger
+    tableComment: '時刻や外部 hook を契機にエージェントタスクを起動する設定。'
+    columnComments:
+      trigger_id: 'trigger を識別する ID。'
+      strategy_id: 'タスクの実行対象となる戦略。'
+      kind: '起動方式。'
+      schedule: 'cron 起動に使う UTC のスケジュール式。'
+      hook_slug: 'hook 起動時に trigger を識別するパス名。'
+      event_match: 'hook の payload が起動条件を満たすか判定する条件。'
+      prompt_template: '起動時にエージェントへ渡す指示文のテンプレート。'
+      enabled: 'trigger が有効かどうか。'
+      last_fired_at: '最後に trigger が発火した時刻。'
+      purpose: '実行に使用する agent_config の purpose キー。'
+  - table: bars
+    tableComment: '銘柄ごとの日足価格と出来高を保持する。'
+    columnComments:
+      instrument_id: 'バーの銘柄コード。'
+      timeframe: 'バーの時間足。現行スキーマは日足のみ。'
+      timestamp: 'バーの時刻。'
+      open: '調整後の始値。'
+      high: '調整後の高値。'
+      low: '調整後の安値。'
+      close: '調整後の終値。'
+      volume: '調整後の出来高。'
+  - table: cross_shareholding_documents
+    tableComment: 'EDINET の政策保有株式に関する提出書類と明細を保持する。'
+    columnComments:
+      document_id: 'EDINET 書類の識別子。'
+      stock_code: '書類の対象銘柄コード。'
+      filer_code: '書類提出者の EDINET コード。'
+      submitted_on: '書類の提出日。'
+      details: '対象期間、相手先、保有株数・簿価の現行値と前期値を含む書類明細。'
+  - table: custom_indicator
+    tableComment: '共有または戦略ごとに定義する実行可能なカスタム指標。'
+    columnComments:
+      indicator_id: 'カスタム指標の識別子。'
+      name: 'カスタム指標の名称。'
+      scope: '指標の共有範囲。'
+      strategy_id: '戦略スコープの場合に指標を所有する戦略。'
+      code: '指標の計算に実行するコード。'
+      input_schema: '指標へ渡す入力値を検証する JSON Schema。'
+      output_schema: '指標の出力値を検証する JSON Schema。'
+      description: 'カスタム指標の説明。'
+  - table: financial_summary
+    tableComment: '銘柄ごとの決算開示内容と業績予想を保持する。'
+    columnComments:
+      code: '銘柄コード。'
+      disclosure_no: '開示番号。'
+      disclosure_date: '開示日。'
+      report_group_key: '開示書類種別と対象期間をまとめる内部識別キー。'
+      document_type: '開示書類の種別。'
+      current_period_type: '当期対象期間の種別。'
+      current_period_start: '当期対象期間の開始日。'
+      current_period_end: '当期対象期間の終了日。'
+      current_fiscal_year_start: '当期会計年度の開始日。'
+      current_fiscal_year_end: '当期会計年度の終了日。'
+      sales: '売上高。'
+      operating_profit: '営業利益。'
+      ordinary_profit: '経常利益。'
+      net_profit: '純利益。'
+      eps: '1 株当たり利益。'
+      bps: '1 株当たり純資産。'
+      total_assets: '総資産。'
+      equity: '純資産。'
+      equity_to_asset_ratio: '純資産の総資産に対する比率。'
+      roe: '自己資本利益率。'
+      cash_flow_operating: '営業活動によるキャッシュフロー。'
+      cash_flow_investing: '投資活動によるキャッシュフロー。'
+      cash_flow_financing: '財務活動によるキャッシュフロー。'
+      cash_and_equivalents: '現金及び現金同等物。'
+      dividend_annual: '年間配当実績。'
+      dividend_annual_forecast: '年間配当予想。'
+      dividend_annual_forecast_next: '翌期の年間配当予想。'
+      forecast_sales: '当期の売上高予想。'
+      forecast_operating_profit: '当期の営業利益予想。'
+      forecast_ordinary_profit: '当期の経常利益予想。'
+      forecast_net_profit: '当期の純利益予想。'
+      forecast_eps: '当期の 1 株当たり利益予想。'
+      next_forecast_sales: '翌期の売上高予想。'
+      next_forecast_operating_profit: '翌期の営業利益予想。'
+      next_forecast_ordinary_profit: '翌期の経常利益予想。'
+      next_forecast_net_profit: '翌期の純利益予想。'
+      next_forecast_eps: '翌期の 1 株当たり利益予想。'
+  - table: indicator
+    tableComment: 'マクロ指標などの参照先を定義する。'
+    columnComments:
+      name: '指標の表示名。'
+      kind: '指標の分類ラベル。'
+  - table: indicator_observation
+    tableComment: '日付ごとの指標観測値を保持する。'
+    columnComments:
+      indicator_id: '観測した指標の識別子。'
+      date: '指標を観測した日付。'
+      value: 'データソースの単位で記録した観測値。'
+  - table: ingest_run
+    tableComment: 'データ取り込みジョブの実行履歴と結果を記録する。'
+    columnComments:
+      job: '実行したジョブを識別するキー。'
+      started_at: 'ジョブを開始した時刻。'
+      finished_at: 'ジョブの終了時刻。実行中は null。'
+      status: 'ジョブの実行状態。running、succeeded、failed のいずれか。'
+      stats: '成功時のジョブ結果を表す JSON。'
+      error: '失敗時のエラー内容。中断復旧時は interrupted。'
+  - table: instruments
+    tableComment: '価格データの取得対象となる金融商品を管理する。'
+    columnComments:
+      name: '金融商品の名称。'
+      market: '金融商品が上場する市場。'
+      sector: '金融商品に設定された業種名。'
+  - table: jquants_daily_bars_ingested_date
+    tableComment: '全銘柄の日足データを取り込んだ営業日を記録する。'
+    columnComments:
+      date: '全銘柄の日足データの取り込みが完了した営業日。'
+  - table: jquants_earnings_date
+    tableComment: '銘柄ごとの決算発表日と決算期情報を保持する。'
+    columnComments:
+      code: '銘柄コード。'
+      fq_name: '決算期名。'
+      pub_date: '決算発表日。'
+      sch_date: '決算発表予定日。未定の場合は null。'
+      fye: '会計年度末。'
+      co_name: '日本語の会社名。'
+      co_name_en: '英語の会社名。'
+  - table: large_volume_shareholding_documents
+    tableComment: 'EDINET の大量保有報告書と保有状況の明細を保持する。'
+    columnComments:
+      document_id: 'EDINET 書類の識別子。'
+      stock_code: '書類の対象銘柄コード。'
+      filer_code: '書類提出者の EDINET コード。'
+      submitted_on: '書類の提出日。'
+      details: '報告種別、変更理由、保有割合と保有者ごとの保有株数・割合を含む書類明細。'
+  - table: major_shareholder_documents
+    tableComment: 'EDINET の主要株主書類と順位付き株主情報を保持する。'
+    columnComments:
+      document_id: 'EDINET 書類の識別子。'
+      stock_code: '書類の対象銘柄コード。'
+      filer_code: '書類提出者の EDINET コード。'
+      submitted_on: '書類の提出日。'
+      details: '対象期間末、報告種別、順位付きの主要株主名・保有株数・保有割合を含む書類明細。'
+  - table: margin_alert
+    tableComment: '日々公表銘柄の信用取引残高情報を保持する。'
+    columnComments:
+      pub_date: 'データの公表日。'
+      code: '銘柄コード。'
+      app_date: '信用取引残高の申込日。'
+      pub_reason: '日々公表を行う理由のコード。'
+      shrt_out: '信用売り残高。'
+      long_out: '信用買い残高。'
+      shrt_out_chg: '信用売り残高の増減。'
+      long_out_chg: '信用買い残高の増減。'
+      shrt_out_ratio: '信用売り残高の比率。'
+      long_out_ratio: '信用買い残高の比率。'
+      sl_ratio: 'データソースの SL 比率欄の値。'
+      shrt_neg_out: '信用売り残高の neg 区分値。'
+      shrt_std_out: '信用売り残高の std 区分値。'
+      long_neg_out: '信用買い残高の neg 区分値。'
+      long_std_out: '信用買い残高の std 区分値。'
+      tse_mrgn_reg_cls: '東証の信用規制区分コード。'
+  - table: margin_interest
+    tableComment: '銘柄ごとの信用取引残高を日付と銘柄区分別に保持する。'
+    columnComments:
+      date: '信用取引残高の対象日。'
+      code: '銘柄コード。'
+      iss_type: '信用取引の銘柄区分コード。'
+      shrt_vol: '信用売り残高の数量。'
+      long_vol: '信用買い残高の数量。'
+      shrt_neg_vol: '信用売り残高の neg 区分数量。'
+      long_neg_vol: '信用買い残高の neg 区分数量。'
+      shrt_std_vol: '信用売り残高の std 区分数量。'
+      long_std_vol: '信用買い残高の std 区分数量。'
+      shrt_val: '信用売り残高に対応する金額。'
+      long_val: '信用買い残高に対応する金額。'
+      shrt_neg_val: '信用売り残高の neg 区分に対応する金額。'
+      long_neg_val: '信用買い残高の neg 区分に対応する金額。'
+      shrt_std_val: '信用売り残高の std 区分に対応する金額。'
+      long_std_val: '信用買い残高の std 区分に対応する金額。'
+  - table: news_item
+    tableComment: 'RSS フィードなどから取得したニュース記事情報を保持する。'
+    columnComments:
+      source: 'ニュースソースの表示名。'
+      url: '記事の URL。'
+      title: '記事タイトル。'
+      body_snippet: 'フィードの説明文から切り出した記事本文の抜粋。'
+      published_at: '記事の公開日時。'
+      fetched_at: '記事を取得した日時。'
+  - table: ref_term
+    tableComment: '銘柄・指標・グループに対する別名を保持する。'
+    columnComments:
+      ref_kind: '別名が指す参照型。stock / indicator / group のいずれか。'
+      ref_id: '別名が指す参照先 ID。group は分類軸 key とグループ key を / で連結する。'
+      term: '参照先を検索するための別名。'
+      origin: '別名を登録した主体の種別。'
+  - table: rss_feed
+    tableComment: 'ニュース取り込み元となる RSS フィードを管理する。'
+    columnComments:
+      source: 'フィードを識別するキー。'
+      display_name: 'フィードの表示名。'
+      url: 'RSS フィードの URL。'
+      enabled: 'フィードを取り込み対象とするかどうか。'
+  - table: sector
+    tableComment: '銘柄が参照する業種を管理する。'
+    columnComments:
+      name: '業種名。'
+  - table: short_ratio
+    tableComment: '33 業種ごとの売買代金を日付別に保持する。'
+    columnComments:
+      date: '売買代金の対象日。'
+      sector33_code: '33 業種コード。'
+      sell_excluding_short_value: '空売り以外の売り注文の売買代金。'
+      short_with_restriction_value: '価格規制ありの空売り売買代金。'
+      short_without_restriction_value: '価格規制なしの空売り売買代金。'
+  - table: short_sale_report
+    tableComment: '銘柄別の空売り残高報告と報告者情報を保持する。'
+    columnComments:
+      disc_date: '報告書の提出日。'
+      calc_date: '空売り残高の計算日。'
+      code: '銘柄コード。'
+      ss_name: '空売り報告者の商号または名称。'
+      ss_addr: '空売り報告者の住所。'
+      dic_name: '報告者の委託者名。'
+      dic_addr: '報告者の委託者住所。'
+      fund_name: '空売りに係る信託財産名。'
+      short_position_ratio: '空売り残高の発行済株式数に対する割合。'
+      short_position_shares: '空売り残高の株式数。'
+      short_position_units: '空売り残高の売買単位数。'
+      prev_report_date: '直近の前回報告に記載された計算日。'
+      prev_report_ratio: '直近の前回報告に記載された空売り残高割合。'
+      notes: '報告書の備考。'
+  - table: stock
+    tableComment: 'ノートや戦略などから参照する銘柄マスタ。'
+    columnComments:
+      name: '銘柄名。'
+      market: '市場区分名。'
+      sector_id: '銘柄が属する業種の ID。'
+      product_category: '銘柄の商品区分コード。'
+  - table: valuation
+    tableComment: '銘柄ごとの株価評価指標を日付別に保持する。'
+    columnComments:
+      code: '銘柄コード。'
+      date: '評価指標の基準日。'
+      eps: '1 株当たり利益。'
+      fwd_eps: '予想 1 株当たり利益。'
+      bps: '1 株当たり純資産。'
+      roe: '自己資本利益率。'
+      fwd_roe: '予想自己資本利益率。'
+      per: '株価収益率。'
+      fwd_per: '予想株価収益率。'
+      pbr: '株価純資産倍率。'
+      mkt_cap: '時価総額。'
+  - table: valuation_ingested_date
+    tableComment: '株価評価指標データの取り込み済み日付を記録する。'
+    columnComments:
+      date: '評価指標データを取り込んだ日付。'

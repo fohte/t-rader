@@ -1,12 +1,16 @@
 # public.note_ref
 
+## Description
+
+ノート本文やグラフから抽出した一級参照へのリンクを保持する。
+
 ## Columns
 
-| Name     | Type    | Default | Nullable | Children | Parents                       | Comment |
-| -------- | ------- | ------- | -------- | -------- | ----------------------------- | ------- |
-| note_id  | uuid    |         | false    |          | [public.note](public.note.md) |         |
-| ref_kind | varchar |         | false    |          |                               |         |
-| ref_id   | varchar |         | false    |          |                               |         |
+| Name     | Type    | Default | Nullable | Children | Parents                       | Comment                                                                  |
+| -------- | ------- | ------- | -------- | -------- | ----------------------------- | ------------------------------------------------------------------------ |
+| note_id  | uuid    |         | false    |          | [public.note](public.note.md) | 参照を含むノート。                                                       |
+| ref_kind | varchar |         | false    |          |                               | 参照先の型。stock / indicator / group のいずれか。                       |
+| ref_id   | varchar |         | false    |          |                               | 参照先を識別する ID。group は分類軸 key とグループ key を / で連結する。 |
 
 ## Constraints
 

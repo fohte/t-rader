@@ -1,19 +1,23 @@
 # public.prediction
 
+## Description
+
+戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。
+
 ## Columns
 
-| Name               | Type                     | Default           | Nullable | Children                                              | Parents                               | Comment |
-| ------------------ | ------------------------ | ----------------- | -------- | ----------------------------------------------------- | ------------------------------------- | ------- |
-| prediction_id      | uuid                     |                   | false    | [public.prediction_grade](public.prediction_grade.md) |                                       |         |
-| strategy_id        | uuid                     |                   | false    |                                                       | [public.strategy](public.strategy.md) |         |
-| note_id            | uuid                     |                   | true     |                                                       | [public.note](public.note.md)         |         |
-| target_stock_id    | varchar                  |                   | false    |                                                       | [public.stock](public.stock.md)       |         |
-| benchmark_stock_id | varchar                  |                   | false    |                                                       | [public.stock](public.stock.md)       |         |
-| direction          | text                     |                   | false    |                                                       |                                       |         |
-| probability        | numeric                  |                   | false    |                                                       |                                       |         |
-| base_date          | date                     |                   | false    |                                                       |                                       |         |
-| due_date           | date                     |                   | false    |                                                       |                                       |         |
-| created_at         | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                       |                                       |         |
+| Name               | Type                     | Default           | Nullable | Children                                              | Parents                               | Comment                                      |
+| ------------------ | ------------------------ | ----------------- | -------- | ----------------------------------------------------- | ------------------------------------- | -------------------------------------------- |
+| prediction_id      | uuid                     |                   | false    | [public.prediction_grade](public.prediction_grade.md) |                                       | 予測を識別する ID。                          |
+| strategy_id        | uuid                     |                   | false    |                                                       | [public.strategy](public.strategy.md) | 予測を所有する戦略。                         |
+| note_id            | uuid                     |                   | true     |                                                       | [public.note](public.note.md)         | 予測の根拠として関連付けたノート。           |
+| target_stock_id    | varchar                  |                   | false    |                                                       | [public.stock](public.stock.md)       | 比較対象となる銘柄の ID。                    |
+| benchmark_stock_id | varchar                  |                   | false    |                                                       | [public.stock](public.stock.md)       | リターンを比較する銘柄の ID。                |
+| direction          | text                     |                   | false    |                                                       |                                       | 対象銘柄が比較銘柄を上回るか下回るかの予測。 |
+| probability        | numeric                  |                   | false    |                                                       |                                       | 予測した方向が実現する確率。                 |
+| base_date          | date                     |                   | false    |                                                       |                                       | 比較の起点とする終値の日付。                 |
+| due_date           | date                     |                   | false    |                                                       |                                       | 比較の終点とする終値の日付。                 |
+| created_at         | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                       |                                       |                                              |
 
 ## Constraints
 

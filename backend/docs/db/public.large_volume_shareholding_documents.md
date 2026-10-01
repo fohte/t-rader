@@ -1,16 +1,20 @@
 # public.large_volume_shareholding_documents
 
+## Description
+
+EDINET の大量保有報告書と保有状況の明細を保持する。
+
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| document_id  | text                     |                   | false    |          |         |         |
-| stock_code   | text                     |                   | true     |          |         |         |
-| filer_code   | text                     |                   | false    |          |         |         |
-| submitted_on | date                     |                   | false    |          |         |         |
-| details      | jsonb                    |                   | false    |          |         |         |
-| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
-| updated_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name         | Type                     | Default           | Nullable | Children | Parents | Comment                                                                  |
+| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ------------------------------------------------------------------------ |
+| document_id  | text                     |                   | false    |          |         | EDINET 書類の識別子。                                                    |
+| stock_code   | text                     |                   | true     |          |         | 書類の対象銘柄コード。                                                   |
+| filer_code   | text                     |                   | false    |          |         | 書類提出者の EDINET コード。                                             |
+| submitted_on | date                     |                   | false    |          |         | 書類の提出日。                                                           |
+| details      | jsonb                    |                   | false    |          |         | 報告種別、変更理由、保有割合と保有者ごとの保有株数・割合を含む書類明細。 |
+| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                                                          |
+| updated_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                                                          |
 
 ## Constraints
 
