@@ -40,6 +40,7 @@ pub enum TargetKind {
     Comment,
     CustomIndicator,
     NoteKind,
+    StockGroup,
 }
 
 impl TargetKind {
@@ -52,6 +53,7 @@ impl TargetKind {
             Self::Comment => "comment",
             Self::CustomIndicator => "custom_indicator",
             Self::NoteKind => "note_kind",
+            Self::StockGroup => "stock_group",
         }
     }
 }
