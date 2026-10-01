@@ -1,24 +1,28 @@
 # public.strategy_task_step
 
+## Description
+
+エージェントタスクを構成する実行ステップの状態と結果を記録する。
+
 ## Columns
 
-| Name              | Type                      | Default                                         | Nullable | Children | Parents                                         | Comment |
-| ----------------- | ------------------------- | ----------------------------------------------- | -------- | -------- | ----------------------------------------------- | ------- |
-| execution_step_id | uuid                      |                                                 | false    |          |                                                 |         |
-| task_id           | uuid                      |                                                 | false    |          | [public.strategy_task](public.strategy_task.md) |         |
-| phase_key         | text                      |                                                 | false    |          |                                                 |         |
-| label             | text                      |                                                 | false    |          |                                                 |         |
-| model             | text                      |                                                 | false    |          |                                                 |         |
-| status            | strategy_task_step_status |                                                 | false    |          |                                                 |         |
-| item              | jsonb                     |                                                 | true     |          |                                                 |         |
-| item_label        | text                      |                                                 | true     |          |                                                 |         |
-| output            | jsonb                     |                                                 | true     |          |                                                 |         |
-| started_at        | timestamp with time zone  |                                                 | false    |          |                                                 |         |
-| finished_at       | timestamp with time zone  |                                                 | true     |          |                                                 |         |
-| trace_id          | text                      |                                                 | false    |          |                                                 |         |
-| span_id           | text                      |                                                 | false    |          |                                                 |         |
-| error             | text                      |                                                 | true     |          |                                                 |         |
-| seq               | bigint                    | nextval('strategy_task_step_seq_seq'::regclass) | false    |          |                                                 |         |
+| Name              | Type                      | Default                                         | Nullable | Children | Parents                                         | Comment                                |
+| ----------------- | ------------------------- | ----------------------------------------------- | -------- | -------- | ----------------------------------------------- | -------------------------------------- |
+| execution_step_id | uuid                      |                                                 | false    |          |                                                 | 実行ステップを識別する UUID。          |
+| task_id           | uuid                      |                                                 | false    |          | [public.strategy_task](public.strategy_task.md) | このステップが属するタスク。           |
+| phase_key         | text                      |                                                 | false    |          |                                                 | 実行グラフ内でフェーズを識別するキー。 |
+| label             | text                      |                                                 | false    |          |                                                 | ステップの表示名。                     |
+| model             | text                      |                                                 | false    |          |                                                 | ステップに割り当てたモデル識別子。     |
+| status            | strategy_task_step_status |                                                 | false    |          |                                                 | ステップの実行状態。                   |
+| item              | jsonb                     |                                                 | true     |          |                                                 | ステップが処理する項目の構造化データ。 |
+| item_label        | text                      |                                                 | true     |          |                                                 | 処理項目の表示名。                     |
+| output            | jsonb                     |                                                 | true     |          |                                                 | ステップが出力した構造化データ。       |
+| started_at        | timestamp with time zone  |                                                 | false    |          |                                                 | ステップを開始した時刻。               |
+| finished_at       | timestamp with time zone  |                                                 | true     |          |                                                 | ステップを終了した時刻。               |
+| trace_id          | text                      |                                                 | false    |          |                                                 | ステップの分散トレース ID。            |
+| span_id           | text                      |                                                 | false    |          |                                                 | ステップの分散トレース内の span ID。   |
+| error             | text                      |                                                 | true     |          |                                                 | ステップで発生したエラーの説明。       |
+| seq               | bigint                    | nextval('strategy_task_step_seq_seq'::regclass) | false    |          |                                                 | タスク内のステップ順序。               |
 
 ## Constraints
 

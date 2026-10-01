@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 use super::error::RefRepositoryError;
-use super::types::{IndicatorRef, RefSearchMatch, RefTerm, SectorRef, StockRef, ThemeRef};
+use super::types::{IndicatorRef, RefSearchMatch, RefTerm, StockRef};
 
 #[async_trait]
 pub trait RefRepository: Send + Sync {
@@ -19,11 +19,6 @@ pub trait RefRepository: Send + Sync {
         query: Option<&str>,
     ) -> Result<Vec<IndicatorRef>, RefRepositoryError>;
     async fn find_indicator(&self, id: &str) -> Result<Option<IndicatorRef>, RefRepositoryError>;
-    async fn list_sectors(&self, query: Option<&str>)
-    -> Result<Vec<SectorRef>, RefRepositoryError>;
-    async fn find_sector(&self, id: &str) -> Result<Option<SectorRef>, RefRepositoryError>;
-    async fn list_themes(&self, query: Option<&str>) -> Result<Vec<ThemeRef>, RefRepositoryError>;
-    async fn find_theme(&self, id: &str) -> Result<Option<ThemeRef>, RefRepositoryError>;
     async fn search_all(
         &self,
         pattern: &str,
@@ -37,11 +32,7 @@ pub trait RefRepository: Send + Sync {
         &self,
         ids: &[String],
     ) -> Result<HashMap<String, String>, RefRepositoryError>;
-    async fn sector_names(
-        &self,
-        ids: &[String],
-    ) -> Result<HashMap<String, String>, RefRepositoryError>;
-    async fn theme_names(
+    async fn group_names(
         &self,
         ids: &[String],
     ) -> Result<HashMap<String, String>, RefRepositoryError>;

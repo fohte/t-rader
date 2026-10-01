@@ -2,7 +2,7 @@ import { useResolveRef } from '#hooks/use-resolve-ref'
 import { REF_KIND_JP } from '#lib/strategy-mock'
 
 interface RefChipProps {
-  // `stock:7203` のような prefix 付き token (markdown 中の [[...]] と同形式)
+  // `stock:demo-code` のような prefix 付き token (markdown 中の [[...]] と同形式)
   token: string
   pill?: boolean
   showKind?: boolean

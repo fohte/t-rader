@@ -1,10 +1,14 @@
 # public.jquants_daily_bars_ingested_date
 
+## Description
+
+全銘柄の日足データを取り込んだ営業日を記録する。
+
 ## Columns
 
-| Name | Type | Default | Nullable | Children | Parents | Comment |
-| ---- | ---- | ------- | -------- | -------- | ------- | ------- |
-| date | date |         | false    |          |         |         |
+| Name | Type | Default | Nullable | Children | Parents | Comment                                        |
+| ---- | ---- | ------- | -------- | -------- | ------- | ---------------------------------------------- |
+| date | date |         | false    |          |         | 全銘柄の日足データの取り込みが完了した営業日。 |
 
 ## Constraints
 

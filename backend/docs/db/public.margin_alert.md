@@ -1,25 +1,29 @@
 # public.margin_alert
 
+## Description
+
+日々公表銘柄の信用取引残高情報を保持する。
+
 ## Columns
 
-| Name             | Type    | Default | Nullable | Children | Parents | Comment |
-| ---------------- | ------- | ------- | -------- | -------- | ------- | ------- |
-| pub_date         | date    |         | false    |          |         |         |
-| code             | varchar |         | false    |          |         |         |
-| app_date         | date    |         | false    |          |         |         |
-| pub_reason       | jsonb   |         | false    |          |         |         |
-| shrt_out         | bigint  |         | false    |          |         |         |
-| long_out         | bigint  |         | false    |          |         |         |
-| shrt_out_chg     | bigint  |         | true     |          |         |         |
-| long_out_chg     | bigint  |         | true     |          |         |         |
-| shrt_out_ratio   | numeric |         | true     |          |         |         |
-| long_out_ratio   | numeric |         | true     |          |         |         |
-| sl_ratio         | numeric |         | true     |          |         |         |
-| shrt_neg_out     | bigint  |         | false    |          |         |         |
-| shrt_std_out     | bigint  |         | false    |          |         |         |
-| long_neg_out     | bigint  |         | false    |          |         |         |
-| long_std_out     | bigint  |         | false    |          |         |         |
-| tse_mrgn_reg_cls | varchar |         | false    |          |         |         |
+| Name             | Type    | Default | Nullable | Children | Parents | Comment                        |
+| ---------------- | ------- | ------- | -------- | -------- | ------- | ------------------------------ |
+| pub_date         | date    |         | false    |          |         | データの公表日。               |
+| code             | varchar |         | false    |          |         | 銘柄コード。                   |
+| app_date         | date    |         | false    |          |         | 信用取引残高の申込日。         |
+| pub_reason       | jsonb   |         | false    |          |         | 日々公表を行う理由のコード。   |
+| shrt_out         | bigint  |         | false    |          |         | 信用売り残高。                 |
+| long_out         | bigint  |         | false    |          |         | 信用買い残高。                 |
+| shrt_out_chg     | bigint  |         | true     |          |         | 信用売り残高の増減。           |
+| long_out_chg     | bigint  |         | true     |          |         | 信用買い残高の増減。           |
+| shrt_out_ratio   | numeric |         | true     |          |         | 信用売り残高の比率。           |
+| long_out_ratio   | numeric |         | true     |          |         | 信用買い残高の比率。           |
+| sl_ratio         | numeric |         | true     |          |         | データソースの SL 比率欄の値。 |
+| shrt_neg_out     | bigint  |         | false    |          |         | 信用売り残高の neg 区分値。    |
+| shrt_std_out     | bigint  |         | false    |          |         | 信用売り残高の std 区分値。    |
+| long_neg_out     | bigint  |         | false    |          |         | 信用買い残高の neg 区分値。    |
+| long_std_out     | bigint  |         | false    |          |         | 信用買い残高の std 区分値。    |
+| tse_mrgn_reg_cls | varchar |         | false    |          |         | 東証の信用規制区分コード。     |
 
 ## Constraints
 

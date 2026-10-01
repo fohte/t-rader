@@ -1,7 +1,7 @@
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{WEEKLY_TIMEOUT, run_with_state};
+use super::{WEEKLY_TIMEOUT, run_with_ingest_run_log_state};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PredictionGrading;
@@ -10,7 +10,7 @@ impl TaskHandler for PredictionGrading {
     const IDENTIFIER: &'static str = "prediction_grading";
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
+        run_with_ingest_run_log_state(
             context,
             Self::IDENTIFIER,
             WEEKLY_TIMEOUT,
