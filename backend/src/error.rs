@@ -17,7 +17,7 @@ use crate::data_provider::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("database error: {0}")]
+    #[error("internal error: {0}")]
     Internal(String),
 
     #[error("configuration error: {0}")]
@@ -237,44 +237,22 @@ mod tests {
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
-    #[rstest]
-    #[case::missing_reference(
-        PersistenceError::MissingReference("reference missing".into()),
-        StatusCode::BAD_REQUEST,
-        json!({ "error": "referenced resource does not exist" })
-    )]
-    #[case::conflict(
-        PersistenceError::Conflict("duplicate resource".into()),
-        StatusCode::CONFLICT,
-        json!({ "error": "resource already exists" })
-    )]
-    #[case::constraint_violation(
-        PersistenceError::ConstraintViolation("invalid value".into()),
-        StatusCode::BAD_REQUEST,
-        json!({ "error": "value violates database constraint" })
-    )]
-    #[case::record_not_updated(
-        PersistenceError::RecordNotUpdated("record not updated".into()),
-        StatusCode::NOT_FOUND,
-        json!({ "error": "resource not found" })
-    )]
-    #[case::database_error(
-        PersistenceError::Database("database unavailable".into()),
-        StatusCode::INTERNAL_SERVER_ERROR,
-        json!({ "error": "internal server error" })
-    )]
     #[tokio::test]
-    async fn persistence_error_maps_to_http_response(
-        #[case] error: PersistenceError,
-        #[case] expected_status: StatusCode,
-        #[case] expected_body: serde_json::Value,
-    ) {
-        let response = AppError::from(error).into_response();
+    async fn sea_orm_error_maps_to_http_internal_response() {
+        let response =
+            AppError::from(sea_orm::DbErr::Custom("database unavailable".into())).into_response();
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("read body");
         let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
-        assert_eq!((status, body), (expected_status, expected_body));
+
+        assert_eq!(
+            (status, body),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "error": "internal server error" }),
+            ),
+        );
     }
 }

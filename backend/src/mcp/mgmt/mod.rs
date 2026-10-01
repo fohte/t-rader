@@ -127,8 +127,8 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
     McpError::invalid_params(msg, None)
 }
 
-pub(super) fn db_error(err: &str) -> McpError {
-    tracing::error!(error = %err, "mgmt mcp db error");
+pub(super) fn internal_failure(err: &str) -> McpError {
+    tracing::error!(error = %err, "mgmt mcp internal failure");
     internal_error(format!("database error: {err}"))
 }
 
@@ -137,7 +137,7 @@ pub(super) fn db_error(err: &str) -> McpError {
 pub(super) fn map_app_error(err: AppError) -> McpError {
     match err {
         AppError::NotFound(msg) => invalid_params(msg),
-        AppError::Internal(message) => db_error(&message),
+        AppError::Internal(message) => internal_failure(&message),
         other => internal_error(other.to_string()),
     }
 }
