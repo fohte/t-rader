@@ -8,12 +8,19 @@ use tokio::time::timeout;
 
 use crate::state::SchedulerState;
 
+pub mod daily_bars;
+pub mod earnings_schedule;
+pub mod edinet_holdings;
+pub mod equity_master;
+pub mod financial_summary;
 pub mod fred;
 pub mod ingest_run_recovery;
 pub mod jquants;
+pub mod news;
 pub mod prediction;
 pub mod strategy_task_reconcile;
 pub mod trigger_evaluation;
+pub mod valuation;
 
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
