@@ -10,35 +10,35 @@ import { createStoryRouter } from '#storybook/story-router'
 const queryClient = new QueryClient()
 
 const NAMES: Record<string, string> = {
-  'stock:3436': 'SUMCO',
-  'indicator:USDJPY': 'USD/JPY',
-  'sector:半導体': '半導体',
+  'stock:demo-code': 'Sample Stock',
+  'indicator:demo-indicator': 'Sample Indicator',
+  'group:demo-axis/demo-group': 'Sample Group',
 }
 
-const SAMPLE = `# SUMCO レンジ回帰の確度評価
+const SAMPLE = `# サンプル銘柄の記録
 
 ## 要約
 
-SUMCO [[stock:3436]] は約 2 ヶ月にわたり 1,480-1,640 のレンジで推移している。[[indicator:USDJPY]] と [[sector:半導体]] のモメンタムも中立。こうした局面では **テクニカルなレンジ回帰が機能しやすい** という過去パターンに合致する。
+[[stock:demo-code]] はサンプル期間に 1,200-1,400 のレンジで推移している。[[indicator:demo-indicator]] と [[group:demo-axis/demo-group]] の動きも中立。こうした局面では **レンジ内での推移が続く可能性がある**。
 
 ## レンジ回帰の定量評価
 
-過去 3 年の同様レジーム (材料なし・出来高低下・ボラ縮小) を抽出し、レンジ内回帰の発生率を計測した。
+過去の類似期間を抽出し、レンジ内で価格が推移した割合を計測した。
 
-- レンジ滞在中に下限 -2σ から中央へ戻った確率: **72%** (n=18)
-- 上限ブレイク継続 (ダマシでない) 確率: 21%
-- 平均回帰までの営業日数: 4.3 日
+- 下限から中央へ戻った割合: **72%** (n=18)
+- 上限を超えて推移した割合: 21%
+- 中央へ戻るまでの営業日数: 4.3 日
 
-直近の [[anno:A2]] で下限 -2σ に接触し下ヒゲ陽線。出来高も平均比 +38% と、反発シグナルの確度を補強する。
+直近の [[anno:A2]] で下限に接触し、終値は前日を上回った。
 
-> 「撤退ラインは 1,470」 — レンジ下限 -2σ + ATR バッファ
+> 「確認ラインは 1,180」 — サンプル範囲の下限に設定
 
-| レジーム | 発生率 | n |
+| ケース | 割合 | n |
 | --- | ---: | ---: |
-| 下限 -2σ → 中央回帰 | 72% | 18 |
-| 上限ブレイク継続 | 21% | 18 |
+| 下限から中央へ戻る | 72% | 18 |
+| 上限を超えて推移する | 21% | 18 |
 
-詳細は [参考記事](https://example.com/sumco-range) と [[sector:半導体]] の動向を参照。
+詳細は [サンプル記事](https://example.com/sample-range) と [[group:demo-axis/demo-group]] の動向を参照。
 
 判断の前提は [[note:00000000-0000-0000-0000-000000000101]] のバージョンに記録した。
 現行の資料は [[note:00000000-0000-0000-0000-000000000102@current]] を参照する。
@@ -57,13 +57,13 @@ const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
     note_id: '00000000-0000-0000-0000-000000000101',
     version_id: '00000000-0000-0000-0000-000000000201',
     version_no: 2,
-    title: '架空銘柄の購入判断',
+    title: 'サンプル銘柄の判断',
   },
   {
     note_id: '00000000-0000-0000-0000-000000000102',
     version_id: null,
     version_no: 4,
-    title: '市場環境の観察',
+    title: 'サンプル環境の記録',
   },
 ]
 

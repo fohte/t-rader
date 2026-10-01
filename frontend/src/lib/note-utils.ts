@@ -1,4 +1,4 @@
-const REF_KINDS_ALT = ['stock', 'indicator', 'sector', 'theme'].join('|')
+const REF_KINDS_ALT = ['stock', 'indicator', 'group'].join('|')
 const REF_RE = new RegExp(`\\[\\[(${REF_KINDS_ALT}):([^\\]]+)\\]\\]`, 'g')
 export const REF_PREFIX_RE = new RegExp(`^(${REF_KINDS_ALT}):`)
 

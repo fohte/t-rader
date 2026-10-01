@@ -42,7 +42,7 @@ comments:
   - table: change_history
     tableComment: '主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。'
     columnComments:
-      target_kind: '変更対象のレコード種別。'
+      target_kind: '変更対象のレコード種別。stock_group は銘柄グループを表す。'
       target_id: '変更対象レコードの ID。'
       actor_kind: '変更を行った主体の種別。'
       actor_label: '変更を行った主体の表示名。'
@@ -110,8 +110,8 @@ comments:
     tableComment: 'ノート本文やグラフから抽出した一級参照へのリンクを保持する。'
     columnComments:
       note_id: '参照を含むノート。'
-      ref_kind: '参照先の種類。'
-      ref_id: '参照先を識別する ID。'
+      ref_kind: '参照先の型。stock / indicator / group のいずれか。'
+      ref_id: '参照先を識別する ID。group は分類軸 key とグループ key を / で連結する。'
   - table: note_version
     tableComment: 'ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。'
     columnComments:
@@ -422,10 +422,10 @@ comments:
       published_at: '記事の公開日時。'
       fetched_at: '記事を取得した日時。'
   - table: ref_term
-    tableComment: '銘柄・指標・業種・テーマに対する別名を保持する。'
+    tableComment: '銘柄・指標・グループに対する別名を保持する。'
     columnComments:
-      ref_kind: '別名が指す参照種別。'
-      ref_id: '別名が指す参照先 ID。'
+      ref_kind: '別名が指す参照型。stock / indicator / group のいずれか。'
+      ref_id: '別名が指す参照先 ID。group は分類軸 key とグループ key を / で連結する。'
       term: '参照先を検索するための別名。'
       origin: '別名を登録した主体の種別。'
   - table: rss_feed
@@ -471,11 +471,6 @@ comments:
       market: '市場区分名。'
       sector_id: '銘柄が属する業種の ID。'
       product_category: '銘柄の商品区分コード。'
-  - table: theme
-    tableComment: 'ノートや戦略などから参照する投資テーマを管理する。'
-    columnComments:
-      name: 'テーマ名。'
-      description: 'テーマの説明。'
   - table: valuation
     tableComment: '銘柄ごとの株価評価指標を日付別に保持する。'
     columnComments:

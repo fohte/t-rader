@@ -6,17 +6,17 @@
 
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children | Parents | Comment                    |
-| ----------- | ------------------------ | ----------------- | -------- | -------- | ------- | -------------------------- |
-| id          | uuid                     |                   | false    |          |         |                            |
-| target_kind | varchar                  |                   | false    |          |         | 変更対象のレコード種別。   |
-| target_id   | uuid                     |                   | false    |          |         | 変更対象レコードの ID。    |
-| actor_kind  | varchar                  |                   | false    |          |         | 変更を行った主体の種別。   |
-| actor_label | varchar                  |                   | false    |          |         | 変更を行った主体の表示名。 |
-| op          | varchar                  |                   | false    |          |         | 記録した操作の種別。       |
-| diff_json   | jsonb                    |                   | false    |          |         | 変更内容を表す JSON 差分。 |
-| summary     | text                     |                   | true     |          |         | 変更理由などの補足説明。   |
-| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                            |
+| Name        | Type                     | Default           | Nullable | Children | Parents | Comment                                                    |
+| ----------- | ------------------------ | ----------------- | -------- | -------- | ------- | ---------------------------------------------------------- |
+| id          | uuid                     |                   | false    |          |         |                                                            |
+| target_kind | varchar                  |                   | false    |          |         | 変更対象のレコード種別。stock_group は銘柄グループを表す。 |
+| target_id   | uuid                     |                   | false    |          |         | 変更対象レコードの ID。                                    |
+| actor_kind  | varchar                  |                   | false    |          |         | 変更を行った主体の種別。                                   |
+| actor_label | varchar                  |                   | false    |          |         | 変更を行った主体の表示名。                                 |
+| op          | varchar                  |                   | false    |          |         | 記録した操作の種別。                                       |
+| diff_json   | jsonb                    |                   | false    |          |         | 変更内容を表す JSON 差分。                                 |
+| summary     | text                     |                   | true     |          |         | 変更理由などの補足説明。                                   |
+| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                                            |
 
 ## Constraints
 

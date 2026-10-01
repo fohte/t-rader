@@ -10,7 +10,6 @@
 | [public.sector](public.sector.md)                                                           | 2       | 銘柄が参照する業種を管理する。                                                         | BASE TABLE |
 | [public.stock](public.stock.md)                                                             | 7       | ノートや戦略などから参照する銘柄マスタ。                                               | BASE TABLE |
 | [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                     | BASE TABLE |
-| [public.theme](public.theme.md)                                                             | 3       | ノートや戦略などから参照する投資テーマを管理する。                                     | BASE TABLE |
 | [public.note](public.note.md)                                                               | 8       | 戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。 | BASE TABLE |
 | [public.note_ref](public.note_ref.md)                                                       | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                           | BASE TABLE |
 | [public.annotation](public.annotation.md)                                                   | 14      | 戦略に属する銘柄などの対象へ付与したテキスト注釈を保持する。                           | BASE TABLE |
@@ -34,7 +33,7 @@
 | [public.margin_alert](public.margin_alert.md)                                               | 16      | 日々公表銘柄の信用取引残高情報を保持する。                                             | BASE TABLE |
 | [public.short_sale_report](public.short_sale_report.md)                                     | 14      | 銘柄別の空売り残高報告と報告者情報を保持する。                                         | BASE TABLE |
 | [public.short_ratio](public.short_ratio.md)                                                 | 5       | 33 業種ごとの売買代金を日付別に保持する。                                              | BASE TABLE |
-| [public.ref_term](public.ref_term.md)                                                       | 5       | 銘柄・指標・業種・テーマに対する別名を保持する。                                       | BASE TABLE |
+| [public.ref_term](public.ref_term.md)                                                       | 5       | 銘柄・指標・グループに対する別名を保持する。                                           | BASE TABLE |
 | [public.indicator_observation](public.indicator_observation.md)                             | 3       | 日付ごとの指標観測値を保持する。                                                       | BASE TABLE |
 | [public.jquants_daily_bars_ingested_date](public.jquants_daily_bars_ingested_date.md)       | 1       | 全銘柄の日足データを取り込んだ営業日を記録する。                                       | BASE TABLE |
 | [public.prediction](public.prediction.md)                                                   | 10      | 戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。                         | BASE TABLE |
@@ -249,11 +248,6 @@ erDiagram
   varchar id
   varchar name
   varchar kind
-}
-"public.theme" {
-  varchar id
-  varchar name
-  text description
 }
 "public.note" {
   uuid id

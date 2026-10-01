@@ -14,7 +14,9 @@ use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-use gateway_postgres::entities::{note, note_version, stock, strategy, strategy_task, trigger};
+use gateway_postgres::entities::{
+    group_axis, note, note_version, stock, stock_group, strategy, strategy_task, trigger,
+};
 
 /// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
 /// 参照できる。
@@ -297,6 +299,37 @@ pub async fn insert_test_stock(db: &impl ConnectionTrait, id: &str, name: &str) 
     .insert(db)
     .await
     .expect("insert test stock");
+}
+
+/// テストで group_axis と stock_group を seed する。
+pub async fn insert_test_group(
+    db: &impl ConnectionTrait,
+    axis_key: &str,
+    group_key: &str,
+    name: &str,
+) -> String {
+    let axis_id = Uuid::new_v4();
+    group_axis::ActiveModel {
+        id: Set(axis_id),
+        key: Set(axis_key.into()),
+        name: Set("Sample Axis".into()),
+        description: Set("Sample axis for tests".into()),
+        sync_source: Set(None),
+    }
+    .insert(db)
+    .await
+    .expect("insert test group axis");
+    stock_group::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        axis_id: Set(axis_id),
+        key: Set(group_key.into()),
+        name: Set(name.into()),
+        description: Set(None),
+    }
+    .insert(db)
+    .await
+    .expect("insert test stock group");
+    format!("{axis_key}/{group_key}")
 }
 
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。
