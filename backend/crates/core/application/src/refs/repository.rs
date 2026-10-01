@@ -10,6 +10,10 @@ use super::types::{IndicatorRef, RefSearchMatch, RefTerm, SectorRef, StockRef, T
 pub trait RefRepository: Send + Sync {
     async fn list_stocks(&self, query: Option<&str>) -> Result<Vec<StockRef>, RefRepositoryError>;
     async fn find_stock(&self, id: &str) -> Result<Option<StockRef>, RefRepositoryError>;
+    async fn stock_sectors(
+        &self,
+        ids: &[String],
+    ) -> Result<HashMap<String, Option<String>>, RefRepositoryError>;
     async fn list_indicators(
         &self,
         query: Option<&str>,

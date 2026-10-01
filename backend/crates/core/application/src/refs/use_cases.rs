@@ -38,6 +38,13 @@ impl RefUseCases {
         self.repository.find_stock(id).await.map_err(Into::into)
     }
 
+    pub async fn stock_sectors(
+        &self,
+        ids: &[String],
+    ) -> Result<HashMap<String, Option<String>>, RefUseCaseError> {
+        self.repository.stock_sectors(ids).await.map_err(Into::into)
+    }
+
     pub async fn list_indicators(
         &self,
         query: Option<&str>,

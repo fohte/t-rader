@@ -108,6 +108,25 @@ impl RefRepository for PostgresRefRepository {
             .map_err(repository_error)
     }
 
+    async fn stock_sectors(
+        &self,
+        ids: &[String],
+    ) -> Result<HashMap<String, Option<String>>, RefRepositoryError> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        stock::Entity::find()
+            .filter(stock::Column::Id.is_in(ids.to_vec()))
+            .all(&self.db)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| (row.id, row.sector_id))
+                    .collect()
+            })
+            .map_err(repository_error)
+    }
+
     async fn list_indicators(
         &self,
         query: Option<&str>,
@@ -399,7 +418,7 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
 
     use super::PostgresRefRepository;
-    use crate::entities::{indicator, ref_term, stock};
+    use crate::entities::{indicator, ref_term, sector, stock};
     use crate::unit_of_work::PostgresUnitOfWork;
 
     fn build_use_cases(db: crate::DatabaseHandle) -> RefUseCases {
@@ -441,6 +460,28 @@ mod tests {
         .expect("seed stock");
     }
 
+    async fn seed_stock_with_sector(db: &impl sea_orm::ConnectionTrait, id: &str, sector_id: &str) {
+        sector::ActiveModel {
+            id: Set(sector_id.into()),
+            name: Set(sector_id.into()),
+        }
+        .insert(db)
+        .await
+        .expect("seed sector");
+        stock::ActiveModel {
+            id: Set(id.into()),
+            name: Set(id.into()),
+            market: Set(None),
+            sector_id: Set(Some(sector_id.into())),
+            product_category: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("seed stock");
+    }
+
     async fn seed_indicator(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         indicator::ActiveModel {
             id: Set(id.into()),
@@ -450,6 +491,29 @@ mod tests {
         .insert(db)
         .await
         .expect("seed indicator");
+    }
+
+    #[backend_test_macros::database_test]
+    async fn stock_sectors_returns_assignments_for_existing_stocks(db: crate::DatabaseHandle) {
+        seed_stock_with_sector(&db, "DEMO-STOCK-A", "DEMO-SECTOR").await;
+        seed_stock(&db, "DEMO-STOCK-B", "Demo Stock B").await;
+
+        let result = build_use_cases(db)
+            .stock_sectors(&[
+                "DEMO-STOCK-A".into(),
+                "DEMO-STOCK-B".into(),
+                "DEMO-STOCK-MISSING".into(),
+            ])
+            .await
+            .expect("find stock sectors");
+
+        assert_eq!(
+            result,
+            std::collections::HashMap::from([
+                ("DEMO-STOCK-A".into(), Some("DEMO-SECTOR".into())),
+                ("DEMO-STOCK-B".into(), None),
+            ]),
+        );
     }
 
     #[backend_test_macros::database_test]
