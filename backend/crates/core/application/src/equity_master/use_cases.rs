@@ -1,10 +1,12 @@
+use serde::Serialize;
+
 use crate::equity_master_source::EquityMasterSource;
 use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::EquityMasterUseCaseError;
 use super::repository::SharedEquityMasterRepository;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct EquityMasterSyncStats {
     pub stocks_upserted: usize,
 }

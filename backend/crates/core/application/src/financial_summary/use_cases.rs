@@ -1,6 +1,7 @@
 use chrono::{Duration, NaiveDate};
 use core_domain::business_day::latest_business_day;
 use core_domain::financial_summary::FinancialSummary;
+use serde::Serialize;
 use tracing::{debug, warn};
 
 use crate::daily_bar_source::DateRange;
@@ -12,7 +13,7 @@ use crate::unit_of_work::SharedUnitOfWork;
 
 const LOOKBACK_DAYS: i64 = 30;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct FinancialSummaryIngestStats {
     pub days_attempted: usize,
     pub upserted: usize,
