@@ -5,20 +5,16 @@
 //! 戦略に属さない市場データのため `search_refs` / `search_news`
 //! 同様、`x-strategy-id` を検索条件には使わない。
 
+use core_application::shareholding_structure::{
+    ShareholdingStructureRepositoryError, ShareholdingStructureUseCaseError,
+};
 use core_application::strategy_scope::StrategyScope;
 use core_domain::holdings::{
     CrossShareholding as DomainCrossShareholding,
-    CrossShareholdingCategory as DomainCrossShareholdingCategory, CrossShareholdingContent,
-    LargeVolumeReportType, LargeVolumeShareholdingContent, MajorShareholderContent,
+    CrossShareholdingCategory as DomainCrossShareholdingCategory, LargeVolumeReportType,
     MajorShareholderReportType, MutualHolding as DomainMutualHolding,
 };
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use serde_json::from_value;
-
-use gateway_postgres::entities::{
-    cross_shareholding_documents, large_volume_shareholding_documents, major_shareholder_documents,
-};
 
 use super::dto::{
     CrossShareholdingCategory, CrossShareholdingDto, CrossShareholdingsReportDto,
@@ -26,7 +22,7 @@ use super::dto::{
     MajorShareholdersDocumentType, MajorShareholdersReportDto, MutualHolding,
     ReadShareholdingStructureParams, ReadShareholdingStructureResult,
 };
-use super::{StrategyServer, clamp_limit, code_range, db_error, internal_error, validate_symbol};
+use super::{StrategyServer, clamp_limit, internal_error, validate_symbol};
 
 fn large_volume_document_type(report_type: LargeVolumeReportType) -> LargeVolumeDocumentType {
     match report_type {
@@ -72,152 +68,88 @@ fn cross_shareholding_dto(entry: DomainCrossShareholding) -> CrossShareholdingDt
     }
 }
 
-/// symbol の code range に一致する本文のある最新行 (提出日降順、書類 ID で tie-break) を 1 件取得する。
-/// major_shareholders / cross_shareholdings は「直近の書類のみ返す」という同じクエリ形を
-/// entity 違いで繰り返すため、ここに切り出す。
-async fn latest_matching_document<E>(
-    db: &impl sea_orm::ConnectionTrait,
-    code_column: E::Column,
-    sub_date_column: E::Column,
-    doc_id_column: E::Column,
-    details_column: E::Column,
-    symbol: &str,
-) -> Result<Option<E::Model>, sea_orm::DbErr>
-where
-    E: EntityTrait,
-{
-    let (lower, upper) = code_range(symbol);
-    E::find()
-        .filter(code_column.between(lower, upper))
-        .filter(details_column.ne(serde_json::Value::Null))
-        .order_by_desc(sub_date_column)
-        .order_by_desc(doc_id_column)
-        .one(db)
-        .await
-}
-
 impl StrategyServer {
     pub(crate) async fn read_shareholding_structure_inner(
         &self,
         scope: impl Into<StrategyScope>,
         params: ReadShareholdingStructureParams,
     ) -> Result<ReadShareholdingStructureResult, McpError> {
-        let _scope = scope.into();
+        let scope = scope.into();
         validate_symbol(&params.symbol)?;
         let limit = clamp_limit(params.limit);
-        let (lower, upper) = code_range(&params.symbol);
-
-        let large_volume_rows = large_volume_shareholding_documents::Entity::find()
-            .filter(large_volume_shareholding_documents::Column::StockCode.between(lower, upper))
-            .order_by_desc(large_volume_shareholding_documents::Column::SubmittedOn)
-            .order_by_desc(large_volume_shareholding_documents::Column::DocumentId)
-            .limit(limit)
-            .all(&self.db)
+        let shareholding = self
+            .use_cases
+            .shareholding_structures()
+            .find_for_symbol(scope, &params.symbol, limit)
             .await
-            .map_err(db_error)?;
-
-        let mut large_volume_reports = Vec::with_capacity(large_volume_rows.len());
-        for row in large_volume_rows {
-            let doc_id = row.document_id;
-            let doc: LargeVolumeShareholdingContent = match from_value(row.details) {
-                Ok(doc) => doc,
-                Err(e) => {
-                    tracing::warn!(
-                        doc_id,
-                        error = %e,
-                        "malformed large volume shareholding details, skipping"
-                    );
-                    continue;
+            .map_err(|error| {
+                tracing::error!(%error, "strategy mcp shareholding structure query failed");
+                match error {
+                    ShareholdingStructureUseCaseError::Repository(
+                        ShareholdingStructureRepositoryError::MalformedDocument { .. },
+                    ) => internal_error(error.to_string()),
+                    _ => internal_error(format!("database error: {error}")),
                 }
-            };
-            large_volume_reports.push(LargeVolumeReportDto {
-                doc_id,
-                submitted_on: row.submitted_on,
-                document_type: large_volume_document_type(doc.report_type),
-                change_reason: doc.change_reason,
-                total_shares_ratio: doc.total_shares_ratio,
-                total_shares_ratio_last: doc.previous_total_shares_ratio,
-                holders: doc
-                    .holders
-                    .into_iter()
-                    .map(|holder| LargeVolumeHolderDto {
-                        holder_name: holder.name,
-                        holding_purpose: holder.holding_purpose,
-                        shares_held: holder.shares_held,
-                        shares_ratio: holder.shares_ratio,
-                        shares_ratio_last: holder.previous_shares_ratio,
-                    })
-                    .collect(),
-            });
-        }
+            })?;
 
-        let major_shareholders_row =
-            latest_matching_document::<major_shareholder_documents::Entity>(
-                &self.db,
-                major_shareholder_documents::Column::StockCode,
-                major_shareholder_documents::Column::SubmittedOn,
-                major_shareholder_documents::Column::DocumentId,
-                major_shareholder_documents::Column::Details,
-                &params.symbol,
-            )
-            .await
-            .map_err(db_error)?;
-        let major_shareholders = major_shareholders_row
-            .map(|row| -> Result<_, McpError> {
-                let doc_id = row.document_id;
-                let doc: MajorShareholderContent = from_value(row.details).map_err(|e| {
-                    internal_error(format!("malformed major shareholder details {doc_id}: {e}"))
-                })?;
-                Ok(MajorShareholdersReportDto {
-                    doc_id,
-                    submitted_on: row.submitted_on,
-                    period_end: doc.period_end,
-                    document_type: major_shareholders_document_type(doc.report_type),
+        let large_volume_reports = shareholding
+            .large_volume_reports
+            .into_iter()
+            .filter_map(|row| {
+                let doc = row.content?;
+                Some(LargeVolumeReportDto {
+                    doc_id: row.metadata.document_id,
+                    submitted_on: row.metadata.submitted_on,
+                    document_type: large_volume_document_type(doc.report_type),
+                    change_reason: doc.change_reason,
+                    total_shares_ratio: doc.total_shares_ratio,
+                    total_shares_ratio_last: doc.previous_total_shares_ratio,
                     holders: doc
                         .holders
                         .into_iter()
-                        .map(|holder| MajorShareholderDto {
-                            rank: holder.rank,
+                        .map(|holder| LargeVolumeHolderDto {
                             holder_name: holder.name,
+                            holding_purpose: holder.holding_purpose,
                             shares_held: holder.shares_held,
                             shares_ratio: holder.shares_ratio,
+                            shares_ratio_last: holder.previous_shares_ratio,
                         })
                         .collect(),
                 })
             })
-            .transpose()?;
-
-        let cross_shareholdings_row =
-            latest_matching_document::<cross_shareholding_documents::Entity>(
-                &self.db,
-                cross_shareholding_documents::Column::StockCode,
-                cross_shareholding_documents::Column::SubmittedOn,
-                cross_shareholding_documents::Column::DocumentId,
-                cross_shareholding_documents::Column::Details,
-                &params.symbol,
-            )
-            .await
-            .map_err(db_error)?;
-        let cross_shareholdings = cross_shareholdings_row
-            .map(|row| -> Result<_, McpError> {
-                let doc_id = row.document_id;
-                let doc: CrossShareholdingContent = from_value(row.details).map_err(|e| {
-                    internal_error(format!(
-                        "malformed cross shareholding details {doc_id}: {e}"
-                    ))
-                })?;
-                Ok(CrossShareholdingsReportDto {
-                    doc_id,
-                    submitted_on: row.submitted_on,
-                    period_end: doc.period_end,
-                    holdings: doc
-                        .holdings
-                        .into_iter()
-                        .map(cross_shareholding_dto)
-                        .collect(),
-                })
-            })
-            .transpose()?;
+            .collect();
+        let major_shareholders = shareholding
+            .major_shareholders
+            .and_then(|row| row.content.map(|doc| (row.metadata, doc)))
+            .map(|(metadata, doc)| MajorShareholdersReportDto {
+                doc_id: metadata.document_id,
+                submitted_on: metadata.submitted_on,
+                period_end: doc.period_end,
+                document_type: major_shareholders_document_type(doc.report_type),
+                holders: doc
+                    .holders
+                    .into_iter()
+                    .map(|holder| MajorShareholderDto {
+                        rank: holder.rank,
+                        holder_name: holder.name,
+                        shares_held: holder.shares_held,
+                        shares_ratio: holder.shares_ratio,
+                    })
+                    .collect(),
+            });
+        let cross_shareholdings = shareholding
+            .cross_shareholdings
+            .and_then(|row| row.content.map(|doc| (row.metadata, doc)))
+            .map(|(metadata, doc)| CrossShareholdingsReportDto {
+                doc_id: metadata.document_id,
+                submitted_on: metadata.submitted_on,
+                period_end: doc.period_end,
+                holdings: doc
+                    .holdings
+                    .into_iter()
+                    .map(cross_shareholding_dto)
+                    .collect(),
+            });
 
         Ok(ReadShareholdingStructureResult {
             symbol: params.symbol,

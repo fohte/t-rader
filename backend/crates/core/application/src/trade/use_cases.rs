@@ -21,10 +21,10 @@ const ALLOWED_SOURCE: [&str; 3] = ["manual", "csv", "api"];
 
 #[derive(Clone)]
 pub struct TradeUseCases {
-    unit_of_work: SharedUnitOfWork,
-    repository: SharedTradeRepository,
-    strategy_existence: SharedStrategyExistence,
-    change_history: crate::change_history::SharedChangeHistoryPort,
+    pub(super) unit_of_work: SharedUnitOfWork,
+    pub(super) repository: SharedTradeRepository,
+    pub(super) strategy_existence: SharedStrategyExistence,
+    pub(super) change_history: crate::change_history::SharedChangeHistoryPort,
 }
 
 impl TradeUseCases {

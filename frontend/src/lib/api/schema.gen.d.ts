@@ -348,6 +348,43 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/group-axes': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 分類軸一覧 */
+    get: operations['list_group_axes']
+    put?: never
+    /** 分類軸を作成 */
+    post: operations['create_group_axis']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/group-axes/{key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 分類軸を取得 */
+    get: operations['get_group_axis']
+    put?: never
+    post?: never
+    /** グループが残っている分類軸は削除しない */
+    delete: operations['delete_group_axis']
+    options?: never
+    head?: never
+    /** 分類軸を部分更新する (key は変更不可) */
+    patch: operations['update_group_axis']
+    trace?: never
+  }
   '/api/health': {
     parameters: {
       query?: never
@@ -1414,6 +1451,12 @@ export interface components {
         [key: string]: unknown
       }
     }
+    CreateGroupAxisRequest: {
+      description: string
+      key: string
+      name: string
+      sync_source?: string | null
+    }
     CreateNoteKindRequest: {
       description?: string | null
       display_name: string
@@ -1559,6 +1602,12 @@ export interface components {
       x?: number | null
       /** Format: double */
       y?: number | null
+    }
+    GroupAxis: {
+      description: string
+      key: string
+      name: string
+      sync_source?: string | null
     }
     /** @description ヘルスチェックレスポンス */
     HealthResponse: {
@@ -2046,6 +2095,11 @@ export interface components {
       output_schema?: {
         [key: string]: unknown
       } | null
+    }
+    UpdateGroupAxisRequest: {
+      description?: string | null
+      name?: string | null
+      sync_source?: string | null
     }
     UpdateNoteKindRequest: {
       description?: string | null
@@ -3585,6 +3639,250 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ConfigResponse']
+        }
+      }
+    }
+  }
+  list_group_axes: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['GroupAxis'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_group_axis: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateGroupAxisRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['GroupAxis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description key が既存と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストの Content-Type が application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_group_axis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 分類軸 key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['GroupAxis']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_group_axis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 分類軸 key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 分類軸にグループが残っている */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_group_axis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 分類軸 key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateGroupAxisRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['GroupAxis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストの Content-Type が application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
     }

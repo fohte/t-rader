@@ -4,7 +4,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::change_history;
+use core_application::change_history::ChangeHistoryEntry;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = ChangeHistory)]
@@ -21,8 +21,8 @@ pub struct ChangeHistoryResponse {
     pub created_at: DateTime<FixedOffset>,
 }
 
-impl From<change_history::Model> for ChangeHistoryResponse {
-    fn from(model: change_history::Model) -> Self {
+impl From<ChangeHistoryEntry> for ChangeHistoryResponse {
+    fn from(model: ChangeHistoryEntry) -> Self {
         Self {
             id: model.id,
             target_kind: model.target_kind,

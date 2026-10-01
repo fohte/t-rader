@@ -1,10 +1,10 @@
-use thiserror::Error;
-use uuid::Uuid;
-
 use super::repository::TradeRepositoryError;
 use crate::change_history::ChangeHistoryError;
+use crate::note::{NoteReadUseCaseError, NoteRepositoryError};
 use crate::strategy_existence::StrategyExistenceError;
 use crate::unit_of_work::UnitOfWorkError;
+use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum TradeUseCaseError {
@@ -12,8 +12,14 @@ pub enum TradeUseCaseError {
     Validation(String),
     #[error("trade {0} not found")]
     NotFound(Uuid),
+    #[error("{0}")]
+    ResourceNotFound(String),
     #[error(transparent)]
     Repository(#[from] TradeRepositoryError),
+    #[error(transparent)]
+    NoteRepository(#[from] NoteRepositoryError),
+    #[error(transparent)]
+    NoteRead(#[from] NoteReadUseCaseError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]
