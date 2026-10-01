@@ -14,7 +14,6 @@ pub mod note_versions;
 pub mod prediction_grading;
 pub mod stock_master_sync;
 pub mod strategies;
-pub mod strategy_tasks;
 pub mod trigger_worker;
 pub mod use_cases;
 pub mod valuation_ingest;

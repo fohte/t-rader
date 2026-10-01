@@ -172,8 +172,8 @@ mod tests {
 
     use super::super::tests_common::{build_server, insert_strategy};
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::agent_config;
+    use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::{annotation, strategy_task};
     use rmcp::handler::server::wrapper::{Json, Parameters};

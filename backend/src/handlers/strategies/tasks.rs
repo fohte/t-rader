@@ -224,13 +224,13 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::agent_config;
     use crate::testing::{
         create_test_server, create_test_server_with_db,
         create_test_server_with_db_and_agent_client, insert_test_strategy,
         insert_test_strategy_task,
     };
+    use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::strategy_task;
 
     /// JSON body から動的フィールド (created_at/updated_at/as_of) を除去し、

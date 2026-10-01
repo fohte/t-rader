@@ -12,17 +12,20 @@ use crate::strategy_task::{
     StrategyTaskUseCases, SubmitTaskError, TaskListQuery, TaskSource,
 };
 use crate::unit_of_work::{FakeUnitOfWork, UnitOfWorkTransaction};
+use rstest::rstest;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
     Submitted,
     AgentNetworkError(String),
     OtherError(String),
+    PurposeNotFound(String),
 }
 
 struct FailingFailedUpdateRepository {
     task: Mutex<Option<StrategyTask>>,
     update_phases: Mutex<Vec<Option<StrategyTaskPhase>>>,
+    agent_config_exists: bool,
 }
 
 impl FailingFailedUpdateRepository {
@@ -30,6 +33,15 @@ impl FailingFailedUpdateRepository {
         Self {
             task: Mutex::new(task),
             update_phases: Mutex::new(Vec::new()),
+            agent_config_exists: true,
+        }
+    }
+
+    fn without_agent_config(task: Option<StrategyTask>) -> Self {
+        Self {
+            task: Mutex::new(task),
+            update_phases: Mutex::new(Vec::new()),
+            agent_config_exists: false,
         }
     }
 }
@@ -47,7 +59,7 @@ impl StrategyTaskRepository for FailingFailedUpdateRepository {
         &self,
         _purpose: &str,
     ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(true)
+        Ok(self.agent_config_exists)
     }
 
     async fn insert(
@@ -165,6 +177,7 @@ fn submit_outcome(result: Result<super::SubmittedTask, SubmitTaskError>) -> Outc
         Err(SubmitTaskError::AgentTask(AgentTaskError::Network(error))) => {
             Outcome::AgentNetworkError(error)
         }
+        Err(SubmitTaskError::PurposeNotFound(purpose)) => Outcome::PurposeNotFound(purpose),
         Err(error) => Outcome::OtherError(error.to_string()),
     }
 }
@@ -177,6 +190,43 @@ fn resume_outcome(result: Result<super::SubmittedTask, ResumeTaskError>) -> Outc
         }
         Err(error) => Outcome::OtherError(error.to_string()),
     }
+}
+
+#[rstest]
+#[case::mgmt_mcp(TaskSource::MgmtMcp, "mgmt-mcp")]
+#[case::frontend(TaskSource::Frontend, "frontend")]
+#[case::cron(TaskSource::Cron, "cron")]
+#[case::hook(TaskSource::Hook, "hook")]
+#[case::review(TaskSource::Review, "review")]
+fn task_source_as_str(#[case] source: TaskSource, #[case] expected: &str) {
+    assert_eq!(source.as_str(), expected);
+}
+
+#[tokio::test]
+async fn submit_rejects_missing_default_purpose_before_inserting_a_task() {
+    let unit_of_work = Arc::new(FakeUnitOfWork::new());
+    let repository = Arc::new(FailingFailedUpdateRepository::without_agent_config(None));
+    let agent_client = FakeAgentTaskClient::new();
+    let use_cases = StrategyTaskUseCases::new(unit_of_work, repository.clone());
+
+    let result = submit_outcome(
+        use_cases
+            .submit_task(
+                &agent_client,
+                Uuid::nil(),
+                "prompt",
+                TaskSource::Review,
+                None,
+            )
+            .await,
+    );
+    let task_inserted = repository.task.lock().await.is_some();
+    let submitted_count = agent_client.submitted.lock().await.len();
+
+    assert_eq!(
+        (result, task_inserted, submitted_count),
+        (Outcome::PurposeNotFound("default".to_string()), false, 0),
+    );
 }
 
 #[tokio::test]
