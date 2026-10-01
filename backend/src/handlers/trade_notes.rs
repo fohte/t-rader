@@ -1,28 +1,12 @@
-use std::collections::HashMap;
-
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ActiveValue::Set;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait};
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateTradeNoteRequest, NoteResponse, TradeNoteResponse};
-use crate::services::note_versions::find_initial_created_by_kind;
-use gateway_postgres::entities::{note, note_version, trade, trade_note};
-
-async fn find_trade_or_404(
-    db: &impl sea_orm::ConnectionTrait,
-    trade_id: Uuid,
-) -> Result<trade::Model, AppError> {
-    trade::Entity::find_by_id(trade_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("trade {trade_id} not found")))
-}
 
 /// 取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す)
 #[utoipa::path(
@@ -41,57 +25,16 @@ pub async fn list_trade_notes(
     State(state): State<AppState>,
     JsonPath(trade_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
-    find_trade_or_404(&state.db, trade_id).await?;
-
-    let links = trade_note::Entity::find()
-        .filter(trade_note::Column::TradeId.eq(trade_id))
-        .order_by_asc(trade_note::Column::CreatedAt)
-        .all(&state.db)
-        .await?;
-    let note_ids: Vec<Uuid> = links.iter().map(|l| l.note_id).collect();
-    let version_ids: Vec<Uuid> = links.iter().map(|l| l.note_version_id).collect();
-
-    let notes = note::Entity::find()
-        .filter(note::Column::Id.is_in(note_ids.iter().copied()))
-        .all(&state.db)
-        .await?;
-    let versions = note_version::Entity::find()
-        .filter(note_version::Column::Id.is_in(version_ids.iter().copied()))
-        .all(&state.db)
-        .await?;
-    let versions_by_id: HashMap<Uuid, note_version::Model> = versions
+    let snapshots = state
+        .use_cases
+        .trade_notes()
+        .list(trade_id)
+        .await
+        .map_err(super::trades::map_trade_error)?
         .into_iter()
-        .map(|version| (version.id, version))
+        .map(NoteResponse::from_snapshot)
         .collect();
-    let creators = find_initial_created_by_kind(&state.db, &note_ids).await?;
-    let mut notes_by_id: HashMap<Uuid, note::Model> =
-        notes.into_iter().map(|note| (note.id, note)).collect();
-
-    // is_in() は順序を保証しないため、リンク作成順の links を基準に固定バージョンを組み立て直す
-    let ordered = links
-        .into_iter()
-        .map(|link| {
-            let id = link.note_id;
-            let note = notes_by_id
-                .remove(&id)
-                .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
-            let version = versions_by_id
-                .get(&link.note_version_id)
-                .cloned()
-                .filter(|version| version.note_id == id)
-                .ok_or_else(|| {
-                    AppError::NotFound(format!(
-                        "version {} for note {id} not found",
-                        link.note_version_id
-                    ))
-                })?;
-            let created_by_kind = creators.get(&id).cloned().ok_or_else(|| {
-                AppError::NotFound(format!("initial version for note {id} not found"))
-            })?;
-            Ok(NoteResponse::from_version(note, version, created_by_kind))
-        })
-        .collect::<Result<Vec<_>, AppError>>()?;
-    Ok(Json(ordered))
+    Ok(Json(snapshots))
 }
 
 /// 取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する)
@@ -116,35 +59,12 @@ pub async fn create_trade_note(
     JsonPath(trade_id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<CreateTradeNoteRequest>,
 ) -> Result<(StatusCode, Json<TradeNoteResponse>), AppError> {
-    let trade = find_trade_or_404(&state.db, trade_id).await?;
-
-    let note = note::Entity::find_by_id(p.note_id).one(&state.db).await?;
-    match note {
-        Some(n) if n.strategy_id == Some(trade.strategy_id) => {}
-        _ => {
-            return Err(AppError::Validation(
-                "note_id must belong to the same strategy as the trade".into(),
-            ));
-        }
-    }
-
-    let txn = state.db.begin().await?;
-    let version = crate::services::note_versions::find_current_version(&txn, p.note_id)
-        .await?
-        .ok_or_else(|| {
-            AppError::NotFound(format!("current version for note {} not found", p.note_id))
-        })?;
-
-    let model = trade_note::ActiveModel {
-        trade_id: Set(trade_id),
-        note_id: Set(p.note_id),
-        note_version_id: Set(version.id),
-        created_at: sea_orm::ActiveValue::NotSet,
-    };
-    let created = trade_note::Entity::insert(model)
-        .exec_with_returning(&txn)
-        .await?;
-    txn.commit().await?;
+    let created = state
+        .use_cases
+        .trade_notes()
+        .create(trade_id, p.note_id)
+        .await
+        .map_err(super::trades::map_trade_error)?;
     Ok((StatusCode::CREATED, Json(created.into())))
 }
 
@@ -168,16 +88,12 @@ pub async fn delete_trade_note(
     State(state): State<AppState>,
     JsonPath((trade_id, note_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<StatusCode, AppError> {
-    let res = trade_note::Entity::delete_many()
-        .filter(trade_note::Column::TradeId.eq(trade_id))
-        .filter(trade_note::Column::NoteId.eq(note_id))
-        .exec(&state.db)
-        .await?;
-    if res.rows_affected == 0 {
-        return Err(AppError::NotFound(format!(
-            "trade_note ({trade_id}, {note_id}) not found"
-        )));
-    }
+    state
+        .use_cases
+        .trade_notes()
+        .delete(trade_id, note_id)
+        .await
+        .map_err(super::trades::map_trade_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

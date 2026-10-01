@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::trade_note;
-
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = TradeNote)]
 pub struct TradeNoteResponse {
@@ -14,8 +12,8 @@ pub struct TradeNoteResponse {
     pub note_version_id: Uuid,
 }
 
-impl From<trade_note::Model> for TradeNoteResponse {
-    fn from(model: trade_note::Model) -> Self {
+impl From<core_application::trade::TradeNoteLink> for TradeNoteResponse {
+    fn from(model: core_application::trade::TradeNoteLink) -> Self {
         Self {
             trade_id: model.trade_id,
             note_id: model.note_id,
