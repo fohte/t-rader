@@ -1,27 +1,6 @@
-//! cron trigger を 1 tick 評価する単発処理。
-
-use std::time::Duration;
-
-use core_application::trigger::TriggerUseCases;
-
-use crate::agent_client::SharedAgentTaskClient;
-
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
-
-/// 1 tick の cron trigger 処理を application use case に委譲する。
-pub async fn run_once(
-    use_cases: &TriggerUseCases,
-    agent_client: &SharedAgentTaskClient,
-    interval: Duration,
-) -> usize {
-    use_cases
-        .run_cron_tick(agent_client.as_ref(), interval)
-        .await
-}
-
-#[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
 
     use chrono::TimeZone;
     use sea_orm::ActiveModelTrait;
@@ -37,7 +16,7 @@ mod tests {
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::{strategy, strategy_task};
 
-    use super::*;
+    const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 
     async fn seed_strategy(db: &impl sea_orm::ConnectionTrait) -> Uuid {
         let id = Uuid::new_v4();
@@ -97,7 +76,9 @@ mod tests {
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();
 
-        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = triggers
+            .run_cron_tick(agent_client.as_ref(), DEFAULT_INTERVAL)
+            .await;
 
         let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
         let fired = triggers.get(trigger_id).await.unwrap();
@@ -141,7 +122,9 @@ mod tests {
 
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let triggers = build_use_cases(db.clone()).triggers();
-        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = triggers
+            .run_cron_tick(agent_client.as_ref(), DEFAULT_INTERVAL)
+            .await;
         let tasks = strategy_task::Entity::find()
             .all(&db)
             .await
@@ -174,7 +157,9 @@ mod tests {
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();
 
-        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = triggers
+            .run_cron_tick(agent_client.as_ref(), DEFAULT_INTERVAL)
+            .await;
 
         let tasks = strategy_task::Entity::find()
             .all(&db)
@@ -204,7 +189,9 @@ mod tests {
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();
 
-        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = triggers
+            .run_cron_tick(agent_client.as_ref(), DEFAULT_INTERVAL)
+            .await;
 
         let tasks = strategy_task::Entity::find()
             .all(&db)
@@ -224,7 +211,9 @@ mod tests {
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();
 
-        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = triggers
+            .run_cron_tick(agent_client.as_ref(), DEFAULT_INTERVAL)
+            .await;
 
         let tasks = strategy_task::Entity::find()
             .all(&db)

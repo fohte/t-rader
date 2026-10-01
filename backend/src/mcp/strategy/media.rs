@@ -110,8 +110,9 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db(), None)
-            .with_litellm_client(Some(std::sync::Arc::new(client)));
+        let server =
+            StrategyServer::new(crate::services::use_cases::build_use_cases(mock_db()), None)
+                .with_litellm_client(Some(std::sync::Arc::new(client)));
 
         let out = server
             .query_media_inner(
@@ -148,7 +149,8 @@ mod tests {
 
     #[tokio::test]
     async fn query_media_requires_litellm_client() {
-        let server = StrategyServer::new(mock_db(), None);
+        let server =
+            StrategyServer::new(crate::services::use_cases::build_use_cases(mock_db()), None);
         let err = server
             .query_media_inner(
                 Uuid::new_v4(),
@@ -175,7 +177,8 @@ mod tests {
         #[case] prompt: &str,
         #[case] expected_msg: &str,
     ) {
-        let server = StrategyServer::new(mock_db(), None);
+        let server =
+            StrategyServer::new(crate::services::use_cases::build_use_cases(mock_db()), None);
         let err = server
             .query_media_inner(
                 Uuid::new_v4(),

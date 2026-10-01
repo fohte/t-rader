@@ -64,7 +64,6 @@ use core_application::strategy::StrategyUseCaseError;
 use core_application::strategy_scope::{
     StrategyScope, StrategyScopeError, StrategyScopeSourceError,
 };
-use gateway_postgres::DatabaseHandle;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
@@ -96,20 +95,7 @@ pub struct MgmtServer {
 }
 
 impl MgmtServer {
-    pub fn new(db: impl Into<DatabaseHandle>, agent_client: SharedAgentTaskClient) -> Self {
-        let db = db.into();
-        Self::with_use_cases(
-            db.clone(),
-            crate::services::use_cases::build_use_cases(db),
-            agent_client,
-        )
-    }
-
-    pub fn with_use_cases(
-        _db: impl Into<DatabaseHandle>,
-        use_cases: UseCases,
-        agent_client: SharedAgentTaskClient,
-    ) -> Self {
+    pub fn new(use_cases: UseCases, agent_client: SharedAgentTaskClient) -> Self {
         Self {
             use_cases,
             agent_client,

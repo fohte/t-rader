@@ -236,7 +236,8 @@ mod tests {
         executor: Arc<FakeKataExecutor>,
     ) -> (StrategyServer, SharedKataExecutor) {
         let shared: SharedKataExecutor = executor;
-        let server = StrategyServer::new(db, None).with_kata_executor(Some(shared.clone()));
+        let server = StrategyServer::new(crate::services::use_cases::build_use_cases(db), None)
+            .with_kata_executor(Some(shared.clone()));
         (server, shared)
     }
 
@@ -593,7 +594,7 @@ mod tests {
             json!({"type": "object"}),
         )
         .await;
-        let server = StrategyServer::new(db, None);
+        let server = StrategyServer::new(crate::services::use_cases::build_use_cases(db), None);
 
         let err = server
             .eval_indicator_inner(sid, params("rsi", json!({})))

@@ -4,7 +4,7 @@ use axum_test::TestServer;
 use chrono::{DateTime, TimeZone, Utc};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ConnectionTrait, EntityTrait, TransactionSession};
+use sea_orm::ConnectionTrait;
 use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
@@ -15,7 +15,15 @@ use crate::{AppState, create_router};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::{
-    group_axis, note, note_version, stock, stock_group, strategy, strategy_task, trigger,
+    group_axis, stock, stock_group, strategy, strategy_task, trigger as trigger_entity,
+};
+
+mod note;
+mod prediction_grading;
+mod trigger;
+pub use note::{
+    find_current_note_version, insert_test_note, insert_test_note_in_scope,
+    insert_test_note_with_execution_id, insert_test_note_with_status,
 };
 
 /// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
@@ -25,7 +33,6 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 /// agent_task_client を disabled にした最小構成の `AppState` を組み立てる。
 fn base_state(db: DatabaseHandle) -> AppState {
     AppState {
-        db: db.clone(),
         use_cases: crate::services::use_cases::build_use_cases(db),
         daily_bar_source: None,
         jquants_client: None,
@@ -38,7 +45,7 @@ fn base_state(db: DatabaseHandle) -> AppState {
 
 /// `#[backend_test_macros::database_test]` から注入された transaction を使って TestServer を作成する。
 pub async fn create_test_server(db: DatabaseHandle) -> TestServer {
-    let router = create_router(base_state(db));
+    let router = create_router(base_state(db.clone()), db);
     TestServer::new(router).expect("failed to create test server")
 }
 
@@ -88,110 +95,6 @@ pub async fn insert_test_strategy(db: &impl ConnectionTrait, name: &str) -> Uuid
     id
 }
 
-/// テストで note を 1 件 seed する。
-pub async fn insert_test_note(
-    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
-    strategy_id: Uuid,
-    title: &str,
-    body_md: &str,
-) -> Uuid {
-    insert_test_note_in_scope(db, Some(strategy_id), title, body_md).await
-}
-
-pub async fn insert_test_note_in_scope(
-    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
-    strategy_id: Option<Uuid>,
-    title: &str,
-    body_md: &str,
-) -> Uuid {
-    insert_test_note_with_options(db, strategy_id, title, body_md, None, "human", "unread").await
-}
-
-pub async fn insert_test_note_with_status(
-    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
-    strategy_id: Uuid,
-    title: &str,
-    body_md: &str,
-    status: &str,
-) -> Uuid {
-    insert_test_note_with_options(db, Some(strategy_id), title, body_md, None, "human", status)
-        .await
-}
-
-pub async fn insert_test_note_with_execution_id(
-    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
-    strategy_id: Uuid,
-    title: &str,
-    body_md: &str,
-    execution_id: &str,
-) -> Uuid {
-    insert_test_note_with_options(
-        db,
-        Some(strategy_id),
-        title,
-        body_md,
-        Some(execution_id.to_string()),
-        "llm",
-        "unread",
-    )
-    .await
-}
-
-async fn insert_test_note_with_options(
-    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
-    strategy_id: Option<Uuid>,
-    title: &str,
-    body_md: &str,
-    execution_id: Option<String>,
-    created_by_kind: &str,
-    status: &str,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    let txn = db.begin().await.expect("begin test note transaction");
-    note::Entity::insert(note::ActiveModel {
-        id: Set(id),
-        strategy_id: Set(strategy_id),
-        kind: Set(None),
-        trigger: Set(None),
-        trigger_label: Set(None),
-        created_at: NotSet,
-        updated_at: NotSet,
-        execution_id: Set(execution_id.clone()),
-    })
-    .exec_without_returning(&txn)
-    .await
-    .expect("insert test note");
-    let version = crate::services::note_versions::append_version(
-        &txn,
-        id,
-        crate::services::note_versions::AppendVersion {
-            title: title.to_string(),
-            body_md: body_md.to_string(),
-            frontmatter_json: serde_json::json!({}),
-            graphs_json: serde_json::json!([]),
-            created_by_kind: created_by_kind.to_string(),
-            execution_id,
-            change_reason: None,
-            change_diff: None,
-            actor: crate::services::change_history::Actor::Human,
-        },
-    )
-    .await
-    .expect("append test note version");
-    if status != version.status {
-        note_version::ActiveModel {
-            id: Set(version.id),
-            status: Set(status.to_string()),
-            ..Default::default()
-        }
-        .update(&txn)
-        .await
-        .expect("set test note version status");
-    }
-    txn.commit().await.expect("commit test note transaction");
-    id
-}
-
 /// テストで strategy_task を 1 件 seed する。`created_at`/`updated_at` を明示指定できる
 /// ため、一覧の並び順を検証するテストで使う。
 pub async fn insert_test_strategy_task(
@@ -235,7 +138,7 @@ pub async fn insert_test_cron_trigger(
     purpose: Option<&str>,
 ) -> Uuid {
     let id = Uuid::new_v4();
-    trigger::ActiveModel {
+    trigger_entity::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
         purpose: Set(purpose.map(str::to_string)),
@@ -265,7 +168,7 @@ pub async fn insert_test_hook_trigger(
     enabled: bool,
 ) -> Uuid {
     let id = Uuid::new_v4();
-    trigger::ActiveModel {
+    trigger_entity::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
         purpose: Set(None),
@@ -335,7 +238,7 @@ pub async fn insert_test_group(
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。
 pub async fn create_test_server_with_db(db: DatabaseHandle) -> (DatabaseHandle, TestServer) {
     let state = base_state(db.clone());
-    let router = create_router(state);
+    let router = create_router(state, db.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (db, server)
 }
@@ -345,9 +248,9 @@ pub async fn create_test_server_with_kata(
     db: DatabaseHandle,
     executor: SharedKataExecutor,
 ) -> TestServer {
-    let mut state = base_state(db);
+    let mut state = base_state(db.clone());
     state.kata_executor = Some(executor);
-    let router = create_router(state);
+    let router = create_router(state, db);
     TestServer::new(router).expect("failed to create test server")
 }
 
@@ -356,12 +259,12 @@ pub async fn create_test_server_with_llm_gateway(
     db: DatabaseHandle,
     llm_gateway_base_url: &str,
 ) -> TestServer {
-    let mut state = base_state(db);
+    let mut state = base_state(db.clone());
     state.llm_gateway_client = Some(Arc::new(
         crate::services::litellm_client::LiteLlmClient::new(llm_gateway_base_url, None)
             .expect("build llm gateway client"),
     ));
-    let router = create_router(state);
+    let router = create_router(state, db);
     TestServer::new(router).expect("failed to create test server")
 }
 
@@ -381,7 +284,7 @@ pub async fn create_test_server_with_db_and_agent_client(
 ) -> (DatabaseHandle, TestServer) {
     let mut state = base_state(db.clone());
     state.agent_task_client = agent_client;
-    let router = create_router(state);
+    let router = create_router(state, db.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (db, server)
 }
@@ -392,8 +295,8 @@ pub async fn create_test_server_with_state(db: DatabaseHandle) -> (AppState, Tes
     crate::migrations::migrate_graphile_worker_schema(pool)
         .await
         .expect("migrate Graphile Worker schema");
-    let state = base_state(db);
-    let router = create_router(state.clone());
+    let state = base_state(db.clone());
+    let router = create_router(state.clone(), db);
     let server = TestServer::new(router).expect("failed to create test server");
     (state, server)
 }

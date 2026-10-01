@@ -7,6 +7,7 @@
 //! されること) のみを扱う。
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
 use rmcp::handler::server::wrapper::Parameters;
@@ -18,7 +19,6 @@ use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
-use crate::services::trigger_worker;
 use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
 use crate::testing::{
@@ -105,7 +105,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .await
         .expect("insert test agent_config");
 
-    let mgmt = MgmtServer::new(db.clone(), agent_client.clone());
+    let mgmt = MgmtServer::new(build_use_cases(db.clone()), agent_client.clone());
     mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
         strategy_id,
         prompt: "from mgmt".into(),
@@ -135,7 +135,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
     let use_cases = build_use_cases(db.clone());
     let attempts = use_cases
         .triggers()
-        .run_cron_tick(agent_client.as_ref(), trigger_worker::DEFAULT_INTERVAL)
+        .run_cron_tick(agent_client.as_ref(), Duration::from_secs(60))
         .await;
     assert_eq!(attempts, 1);
 
@@ -155,7 +155,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
     note_res.assert_status(axum::http::StatusCode::CREATED);
     let note_body: Value = note_res.json();
     let note_id = Uuid::parse_str(note_body["id"].as_str().unwrap()).unwrap();
-    let version = crate::services::note_versions::find_current_version(&db, note_id)
+    let version = crate::testing::find_current_note_version(&db, note_id)
         .await
         .unwrap()
         .unwrap();

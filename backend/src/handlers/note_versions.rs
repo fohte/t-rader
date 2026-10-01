@@ -9,7 +9,6 @@ use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::comments::map_comment_read_error;
 use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, NoteVersionResponse};
-use crate::services::note_versions::INITIAL_NOTE_STATUS;
 
 /// ノートの全バージョンを古い順に返す。
 #[utoipa::path(
@@ -91,7 +90,7 @@ pub async fn list_pending_note_versions(
 }
 
 fn ensure_pending_version(version: &core_application::note::NoteVersion) -> Result<(), AppError> {
-    if version.status != INITIAL_NOTE_STATUS {
+    if version.status != "unread" {
         return Err(AppError::Conflict(format!(
             "note version {}/{} is not pending",
             version.note_id, version.version_no

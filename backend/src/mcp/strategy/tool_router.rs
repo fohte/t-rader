@@ -691,8 +691,11 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db_with_strategy(strategy_id), None)
-            .with_litellm_client(Some(std::sync::Arc::new(client)));
+        let server = StrategyServer::new(
+            crate::services::use_cases::build_use_cases(mock_db_with_strategy(strategy_id)),
+            None,
+        )
+        .with_litellm_client(Some(std::sync::Arc::new(client)));
         let (ctx, running) = request_context(
             &server,
             strategy_id,
@@ -763,8 +766,11 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db_with_strategy(strategy_id), None)
-            .with_litellm_client(Some(std::sync::Arc::new(client)));
+        let server = StrategyServer::new(
+            crate::services::use_cases::build_use_cases(mock_db_with_strategy(strategy_id)),
+            None,
+        )
+        .with_litellm_client(Some(std::sync::Arc::new(client)));
         let (ctx, running) = request_context(
             &server,
             strategy_id,
@@ -820,7 +826,7 @@ mod tests {
         let db = MockDatabase::new(DatabaseBackend::Postgres)
             .append_query_results([Vec::<gateway_postgres::entities::strategy::Model>::new()])
             .into_connection();
-        let server = StrategyServer::new(db, None);
+        let server = StrategyServer::new(crate::services::use_cases::build_use_cases(db), None);
         let (ctx, running) = request_context(&server, strategy_id, None);
 
         assert_eq!(

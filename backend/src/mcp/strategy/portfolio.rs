@@ -319,7 +319,10 @@ mod tests {
                 }]),
         );
 
-        let server = StrategyServer::new(db, Some(provider));
+        let server = StrategyServer::new(
+            crate::services::use_cases::build_use_cases(db),
+            Some(provider),
+        );
 
         let result = server
             .read_portfolio_inner(strategy_id)
