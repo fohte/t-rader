@@ -5,7 +5,7 @@
 //! 後から実行しても、データプロバイダ側の更新により同じ結果が返るとは限らないため。
 //!
 //! `execution_step_id` に対応する `strategy_task_step` 行は t-rader-agent への polling
-//! (`super::super::watcher`) で非同期に反映されるため、MCP tool 呼び出し時点ではまだ
+//! (scheduler の照合 job) で非同期に反映されるため、MCP tool 呼び出し時点ではまだ
 //! 存在しないことがある (レース)。そのため FK は持たず、`note.execution_id` と同じく
 //! 単なる相関用の UUID として扱う。
 

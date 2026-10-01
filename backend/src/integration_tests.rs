@@ -1,7 +1,7 @@
 //! 戦略タスクの投入 (5 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
-//! watcher による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
+//! scheduler job による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
 //!
-//! 各コンポーネント単体の挙動は `services::strategy_tasks` / `mcp::watcher` /
+//! 各コンポーネント単体の挙動は `services::strategy_tasks` /
 //! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
 //! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use chrono::{TimeZone, Utc};
 use rmcp::handler::server::wrapper::Parameters;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, Statement};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -18,7 +18,6 @@ use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
-use crate::mcp::watcher;
 use crate::services::strategy_tasks::DEFAULT_PURPOSE;
 use crate::services::trigger_worker;
 use crate::services::use_cases::build_use_cases;
@@ -29,6 +28,73 @@ use crate::testing::{
 };
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::strategy_task;
+
+#[backend_test_macros::database_test]
+async fn postgres_queue_enqueues_one_keyed_strategy_task_reconcile_job(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    use core_application::strategy_task::{
+        STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
+        StrategyTaskReconcileJobQueue,
+    };
+    use gateway_postgres::PostgresStrategyTaskReconcileJobQueue;
+
+    let pool = gateway_postgres::test_support::create_test_pool().await;
+    let _worker = graphile_worker::WorkerOptions::default()
+        .pg_pool(pool)
+        .schema("graphile_worker")
+        .init()
+        .await
+        .expect("initialize Graphile Worker schema");
+    let queue = PostgresStrategyTaskReconcileJobQueue::new(db.clone());
+    queue
+        .enqueue_reconciliation()
+        .await
+        .expect("enqueue reconciliation job");
+    queue
+        .enqueue_reconciliation()
+        .await
+        .expect("deduplicate reconciliation job");
+
+    let statement = Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT tasks.identifier, jobs.payload::text AS payload, \
+                jobs.max_attempts::int AS max_attempts, jobs.key, queues.queue_name \
+         FROM graphile_worker._private_jobs AS jobs \
+         JOIN graphile_worker._private_tasks AS tasks ON tasks.id = jobs.task_id \
+         LEFT JOIN graphile_worker._private_job_queues AS queues ON queues.id = jobs.job_queue_id \
+         WHERE jobs.key = $1"
+            .to_string(),
+        [STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string().into()],
+    );
+    let rows = db.query_all_raw(statement).await.expect("read queued job");
+    let actual = rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.try_get::<String>("", "identifier")
+                    .expect("job identifier"),
+                row.try_get::<String>("", "payload").expect("job payload"),
+                row.try_get::<i32>("", "max_attempts")
+                    .expect("maximum attempts"),
+                row.try_get::<Option<String>>("", "key").expect("job key"),
+                row.try_get::<Option<String>>("", "queue_name")
+                    .expect("queue name"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual,
+        vec![(
+            STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string(),
+            "{}".to_string(),
+            3,
+            Some(STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string()),
+            Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME.to_string()),
+        )],
+    );
+}
 
 #[backend_test_macros::database_test]
 async fn all_five_submission_routes_converge_on_strategy_task_use_case(
@@ -174,7 +240,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
 }
 
 #[backend_test_macros::database_test]
-async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(
+async fn submitted_task_reaches_completed_with_result_text_after_scheduler_reconciles(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let fake = Arc::new(FakeAgentTaskClient::new());
@@ -210,8 +276,12 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
     )
     .await;
 
-    let updated = watcher::run_once(&db, &agent_client).await;
-    assert_eq!(updated, 1);
+    let updated = entrypoint_scheduler::reconcile_in_flight_tasks(
+        &build_use_cases(db.clone()).strategy_tasks(),
+        agent_client.as_ref(),
+    )
+    .await;
+    assert_eq!(updated, Ok(1));
 
     let res = server
         .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))

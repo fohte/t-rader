@@ -28,7 +28,6 @@ fn base_state(db: DatabaseHandle) -> AppState {
         daily_bar_source: None,
         jquants_client: None,
         agent_task_client: AppState::disabled_agent_task_client(),
-        agent_task_notify: Arc::new(tokio::sync::Notify::new()),
         agent_webhook_token: Arc::from(TEST_AGENT_WEBHOOK_TOKEN),
         kata_executor: None,
         llm_gateway_client: None,
@@ -354,9 +353,15 @@ pub async fn create_test_server_with_db_and_agent_client(
     (db, server)
 }
 
-/// `AppState` 全体と `TestServer` のペアを返す。webhook token / notify への直接アクセスが
-/// 必要なテスト (webhook 受信のような) 向け。
+/// `AppState` 全体と `TestServer` のペアを返す。webhook token を参照するテスト向け。
 pub async fn create_test_server_with_state(db: DatabaseHandle) -> (AppState, TestServer) {
+    let pool = gateway_postgres::test_support::create_test_pool().await;
+    let _worker = graphile_worker::WorkerOptions::default()
+        .pg_pool(pool)
+        .schema("graphile_worker")
+        .init()
+        .await
+        .expect("initialize Graphile Worker schema");
     let state = base_state(db);
     let router = create_router(state.clone());
     let server = TestServer::new(router).expect("failed to create test server");
