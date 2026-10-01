@@ -98,109 +98,139 @@ async fn sync_sector_groups(
         .collect::<HashSet<_>>();
 
     for axis in axes {
-        if !sector_names.is_empty() {
-            let groups = sector_names.iter().map(|name| stock_group::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                axis_id: Set(axis.id),
-                key: Set((*name).to_owned()),
-                name: Set((*name).to_owned()),
-                description: Set(None),
-            });
-            stock_group::Entity::insert_many(groups)
-                .on_conflict(
-                    OnConflict::columns([stock_group::Column::AxisId, stock_group::Column::Key])
-                        .update_column(stock_group::Column::Name)
-                        .to_owned(),
-                )
-                .exec_without_returning(transaction)
-                .await
-                .map_err(repository_error)?;
-        }
+        sync_axis_sector_groups(transaction, axis.id, entries, &sector_names).await?;
+    }
 
-        let groups = stock_group::Entity::find()
-            .filter(stock_group::Column::AxisId.eq(axis.id))
-            .all(transaction)
-            .await
-            .map_err(repository_error)?;
-        if groups.is_empty() {
-            continue;
-        }
+    Ok(())
+}
 
-        let group_ids = groups.iter().map(|group| group.id).collect::<Vec<_>>();
-        let groups_by_key = groups
-            .iter()
-            .map(|group| (group.key.as_str(), group.id))
-            .collect::<HashMap<_, _>>();
-        let stock_ids = entries
-            .iter()
-            .map(|entry| entry.id.as_str())
-            .collect::<Vec<_>>();
-        let existing_members = stock_group_member::Entity::find()
-            .filter(stock_group_member::Column::StockId.is_in(stock_ids))
-            .filter(stock_group_member::Column::GroupId.is_in(group_ids))
-            .all(transaction)
-            .await
-            .map_err(repository_error)?;
-        let desired_groups_by_stock = entries
-            .iter()
-            .filter_map(|entry| {
-                entry
-                    .sector_name
-                    .as_deref()
-                    .and_then(|key| groups_by_key.get(key))
-                    .map(|group_id| (entry.id.as_str(), *group_id))
-            })
-            .collect::<HashMap<_, _>>();
-        let stale_members = existing_members
-            .iter()
-            .filter(|member| {
-                desired_groups_by_stock.get(member.stock_id.as_str()) != Some(&member.group_id)
-            })
-            .collect::<Vec<_>>();
-        if !stale_members.is_empty() {
-            let stale_condition =
-                stale_members
-                    .iter()
-                    .fold(Condition::any(), |condition, member| {
-                        condition.add(
-                            Condition::all()
-                                .add(
-                                    stock_group_member::Column::StockId.eq(member.stock_id.clone()),
-                                )
-                                .add(stock_group_member::Column::GroupId.eq(member.group_id)),
-                        )
-                    });
-            stock_group_member::Entity::delete_many()
-                .filter(stale_condition)
-                .exec(transaction)
-                .await
-                .map_err(repository_error)?;
-        }
+async fn sync_axis_sector_groups(
+    transaction: &sea_orm::DatabaseTransaction,
+    axis_id: Uuid,
+    entries: &[EquityMasterEntry],
+    sector_names: &HashSet<&str>,
+) -> Result<(), EquityMasterRepositoryError> {
+    upsert_sector_groups(transaction, axis_id, sector_names).await?;
 
-        let memberships = entries.iter().filter_map(|entry| {
-            let group_id = entry
+    let groups = stock_group::Entity::find()
+        .filter(stock_group::Column::AxisId.eq(axis_id))
+        .all(transaction)
+        .await
+        .map_err(repository_error)?;
+    if groups.is_empty() {
+        return Ok(());
+    }
+
+    let groups_by_key = groups
+        .iter()
+        .map(|group| (group.key.as_str(), group.id))
+        .collect::<HashMap<_, _>>();
+    let desired_groups_by_stock = entries
+        .iter()
+        .filter_map(|entry| {
+            entry
                 .sector_name
                 .as_deref()
-                .and_then(|key| groups_by_key.get(key))?;
-            Some(stock_group_member::ActiveModel {
-                stock_id: Set(entry.id.clone()),
-                group_id: Set(*group_id),
-                created_at: NotSet,
-            })
-        });
-        stock_group_member::Entity::insert_many(memberships)
-            .on_conflict(
-                OnConflict::columns([
-                    stock_group_member::Column::StockId,
-                    stock_group_member::Column::GroupId,
-                ])
-                .do_nothing()
+                .and_then(|key| groups_by_key.get(key))
+                .map(|group_id| (entry.id.as_str(), *group_id))
+        })
+        .collect::<HashMap<_, _>>();
+
+    sync_axis_memberships(transaction, entries, &groups, &desired_groups_by_stock).await
+}
+
+async fn upsert_sector_groups(
+    transaction: &sea_orm::DatabaseTransaction,
+    axis_id: Uuid,
+    sector_names: &HashSet<&str>,
+) -> Result<(), EquityMasterRepositoryError> {
+    if sector_names.is_empty() {
+        return Ok(());
+    }
+
+    let groups = sector_names.iter().map(|name| stock_group::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        axis_id: Set(axis_id),
+        key: Set((*name).to_owned()),
+        name: Set((*name).to_owned()),
+        description: Set(None),
+    });
+    stock_group::Entity::insert_many(groups)
+        .on_conflict(
+            OnConflict::columns([stock_group::Column::AxisId, stock_group::Column::Key])
+                .update_column(stock_group::Column::Name)
                 .to_owned(),
-            )
-            .exec_without_returning(transaction)
+        )
+        .exec_without_returning(transaction)
+        .await
+        .map_err(repository_error)?;
+
+    Ok(())
+}
+
+async fn sync_axis_memberships(
+    transaction: &sea_orm::DatabaseTransaction,
+    entries: &[EquityMasterEntry],
+    groups: &[stock_group::Model],
+    desired_groups_by_stock: &HashMap<&str, Uuid>,
+) -> Result<(), EquityMasterRepositoryError> {
+    let group_ids = groups.iter().map(|group| group.id).collect::<Vec<_>>();
+    let stock_ids = entries
+        .iter()
+        .map(|entry| entry.id.as_str())
+        .collect::<Vec<_>>();
+    let existing_members = stock_group_member::Entity::find()
+        .filter(stock_group_member::Column::StockId.is_in(stock_ids))
+        .filter(stock_group_member::Column::GroupId.is_in(group_ids))
+        .all(transaction)
+        .await
+        .map_err(repository_error)?;
+    let stale_members = existing_members
+        .iter()
+        .filter(|member| {
+            desired_groups_by_stock.get(member.stock_id.as_str()) != Some(&member.group_id)
+        })
+        .collect::<Vec<_>>();
+    if !stale_members.is_empty() {
+        let stale_condition = stale_members
+            .iter()
+            .fold(Condition::any(), |condition, member| {
+                condition.add(
+                    Condition::all()
+                        .add(stock_group_member::Column::StockId.eq(member.stock_id.clone()))
+                        .add(stock_group_member::Column::GroupId.eq(member.group_id)),
+                )
+            });
+        stock_group_member::Entity::delete_many()
+            .filter(stale_condition)
+            .exec(transaction)
             .await
             .map_err(repository_error)?;
     }
+
+    if desired_groups_by_stock.is_empty() {
+        return Ok(());
+    }
+
+    let memberships = desired_groups_by_stock.iter().map(|(stock_id, group_id)| {
+        stock_group_member::ActiveModel {
+            stock_id: Set((*stock_id).to_owned()),
+            group_id: Set(*group_id),
+            created_at: NotSet,
+        }
+    });
+    stock_group_member::Entity::insert_many(memberships)
+        .on_conflict(
+            OnConflict::columns([
+                stock_group_member::Column::StockId,
+                stock_group_member::Column::GroupId,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_without_returning(transaction)
+        .await
+        .map_err(repository_error)?;
 
     Ok(())
 }
@@ -355,132 +385,147 @@ mod tests {
         (group_snapshot, member_snapshot)
     }
 
+    fn expected_group(axis: &str, key: &str) -> (String, String, String) {
+        (axis.to_owned(), key.to_owned(), key.to_owned())
+    }
+
+    fn expected_member(stock: &str, axis: &str, group: &str) -> (String, String, String) {
+        (stock.to_owned(), axis.to_owned(), group.to_owned())
+    }
+
+    fn expected_snapshot(
+        mut groups: GroupSnapshot,
+        mut members: MemberSnapshot,
+    ) -> (GroupSnapshot, MemberSnapshot) {
+        groups.sort();
+        members.sort();
+        (groups, members)
+    }
+
     #[backend_test_macros::database_test]
-    async fn sync_assigns_each_jquants_axis_and_moves_changed_sectors(db: DatabaseHandle) {
+    async fn sync_assigns_stock_to_group_on_each_jquants_axis(db: DatabaseHandle) {
         insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
         insert_axis(&db, "synthetic-axis-b", Some("jquants")).await;
-        let manual_axis_id = insert_axis(&db, "synthetic-manual-axis", None).await;
-
-        let initial_entries = vec![
+        let entries = [
             entry("ZZ91", Some("架空業種A")),
             entry("ZZ92", Some("架空業種B")),
             entry("ZZ93", None),
         ];
-        let initial_count = upsert(&db, &initial_entries).await;
+
+        let count = upsert(&db, &entries).await;
+        let actual = snapshot(&db).await;
+
+        assert_eq!(
+            (count, actual),
+            (
+                3,
+                expected_snapshot(
+                    vec![
+                        expected_group("synthetic-axis-a", "架空業種A"),
+                        expected_group("synthetic-axis-a", "架空業種B"),
+                        expected_group("synthetic-axis-b", "架空業種A"),
+                        expected_group("synthetic-axis-b", "架空業種B"),
+                    ],
+                    vec![
+                        expected_member("ZZ91", "synthetic-axis-a", "架空業種A"),
+                        expected_member("ZZ91", "synthetic-axis-b", "架空業種A"),
+                        expected_member("ZZ92", "synthetic-axis-a", "架空業種B"),
+                        expected_member("ZZ92", "synthetic-axis-b", "架空業種B"),
+                    ],
+                ),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn repeated_sync_leaves_groups_and_members_unchanged(db: DatabaseHandle) {
+        insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
+        let entries = [entry("ZZ91", Some("架空業種A"))];
+
+        let initial_count = upsert(&db, &entries).await;
+        let before_repeat = snapshot(&db).await;
+        let repeated_count = upsert(&db, &entries).await;
+        let after_repeat = snapshot(&db).await;
+
+        let expected = expected_snapshot(
+            vec![expected_group("synthetic-axis-a", "架空業種A")],
+            vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種A")],
+        );
+        assert_eq!(
+            (initial_count, repeated_count, before_repeat, after_repeat),
+            (1, 1, expected.clone(), expected),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn sync_moves_member_when_sector_changes_and_removes_when_sector_is_none(
+        db: DatabaseHandle,
+    ) {
+        insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
+        upsert(&db, &[entry("ZZ91", Some("架空業種A"))]).await;
+
+        let move_count = upsert(&db, &[entry("ZZ91", Some("架空業種B"))]).await;
+        let after_move = snapshot(&db).await;
+        let removal_count = upsert(&db, &[entry("ZZ91", None)]).await;
+        let after_removal = snapshot(&db).await;
+
+        assert_eq!(
+            (move_count, after_move, removal_count, after_removal),
+            (
+                1,
+                expected_snapshot(
+                    vec![
+                        expected_group("synthetic-axis-a", "架空業種A"),
+                        expected_group("synthetic-axis-a", "架空業種B"),
+                    ],
+                    vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種B",)],
+                ),
+                1,
+                expected_snapshot(
+                    vec![
+                        expected_group("synthetic-axis-a", "架空業種A"),
+                        expected_group("synthetic-axis-a", "架空業種B"),
+                    ],
+                    vec![],
+                ),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn sync_keeps_memberships_on_axes_without_jquants_source(db: DatabaseHandle) {
+        insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
+        let manual_axis_id = insert_axis(&db, "synthetic-manual-axis", None).await;
+        let other_axis_id =
+            insert_axis(&db, "synthetic-other-axis", Some("synthetic-source")).await;
+        upsert(&db, &[entry("ZZ92", Some("架空業種A"))]).await;
 
         let manual_group_id =
             insert_group(&db, manual_axis_id, "架空手動分類", "架空手動分類").await;
-        insert_membership(&db, manual_group_id, "ZZ91").await;
-        let before_repeat = snapshot(&db).await;
-        let repeated_count = upsert(&db, &initial_entries).await;
-        let after_repeat = snapshot(&db).await;
+        let other_group_id = insert_group(&db, other_axis_id, "架空外部分類", "架空外部分類").await;
+        insert_membership(&db, manual_group_id, "ZZ92").await;
+        insert_membership(&db, other_group_id, "ZZ92").await;
 
-        let changed_entries = vec![
-            entry("ZZ91", Some("架空業種B")),
-            entry("ZZ92", None),
-            entry("ZZ93", Some("架空業種A")),
-        ];
-        let changed_count = upsert(&db, &changed_entries).await;
-        let after_change = snapshot(&db).await;
-
-        let expected_groups = vec![
-            (
-                "synthetic-axis-a".to_owned(),
-                "架空業種A".to_owned(),
-                "架空業種A".to_owned(),
-            ),
-            (
-                "synthetic-axis-a".to_owned(),
-                "架空業種B".to_owned(),
-                "架空業種B".to_owned(),
-            ),
-            (
-                "synthetic-axis-b".to_owned(),
-                "架空業種A".to_owned(),
-                "架空業種A".to_owned(),
-            ),
-            (
-                "synthetic-axis-b".to_owned(),
-                "架空業種B".to_owned(),
-                "架空業種B".to_owned(),
-            ),
-            (
-                "synthetic-manual-axis".to_owned(),
-                "架空手動分類".to_owned(),
-                "架空手動分類".to_owned(),
-            ),
-        ];
-        let expected_initial_members = vec![
-            (
-                "ZZ91".to_owned(),
-                "synthetic-axis-a".to_owned(),
-                "架空業種A".to_owned(),
-            ),
-            (
-                "ZZ91".to_owned(),
-                "synthetic-axis-b".to_owned(),
-                "架空業種A".to_owned(),
-            ),
-            (
-                "ZZ91".to_owned(),
-                "synthetic-manual-axis".to_owned(),
-                "架空手動分類".to_owned(),
-            ),
-            (
-                "ZZ92".to_owned(),
-                "synthetic-axis-a".to_owned(),
-                "架空業種B".to_owned(),
-            ),
-            (
-                "ZZ92".to_owned(),
-                "synthetic-axis-b".to_owned(),
-                "架空業種B".to_owned(),
-            ),
-        ];
-        let expected_changed_members = vec![
-            (
-                "ZZ91".to_owned(),
-                "synthetic-axis-a".to_owned(),
-                "架空業種B".to_owned(),
-            ),
-            (
-                "ZZ91".to_owned(),
-                "synthetic-axis-b".to_owned(),
-                "架空業種B".to_owned(),
-            ),
-            (
-                "ZZ91".to_owned(),
-                "synthetic-manual-axis".to_owned(),
-                "架空手動分類".to_owned(),
-            ),
-            (
-                "ZZ93".to_owned(),
-                "synthetic-axis-a".to_owned(),
-                "架空業種A".to_owned(),
-            ),
-            (
-                "ZZ93".to_owned(),
-                "synthetic-axis-b".to_owned(),
-                "架空業種A".to_owned(),
-            ),
-        ];
+        let count = upsert(&db, &[entry("ZZ92", Some("架空業種B"))]).await;
+        let actual = snapshot(&db).await;
 
         assert_eq!(
+            (count, actual),
             (
-                initial_count,
-                repeated_count,
-                changed_count,
-                before_repeat,
-                after_repeat,
-                after_change,
-            ),
-            (
-                3,
-                3,
-                3,
-                (expected_groups.clone(), expected_initial_members.clone()),
-                (expected_groups.clone(), expected_initial_members),
-                (expected_groups, expected_changed_members),
+                1,
+                expected_snapshot(
+                    vec![
+                        expected_group("synthetic-axis-a", "架空業種A"),
+                        expected_group("synthetic-axis-a", "架空業種B"),
+                        expected_group("synthetic-manual-axis", "架空手動分類"),
+                        expected_group("synthetic-other-axis", "架空外部分類"),
+                    ],
+                    vec![
+                        expected_member("ZZ92", "synthetic-axis-a", "架空業種B"),
+                        expected_member("ZZ92", "synthetic-manual-axis", "架空手動分類"),
+                        expected_member("ZZ92", "synthetic-other-axis", "架空外部分類"),
+                    ],
+                ),
             ),
         );
     }
@@ -510,28 +555,12 @@ mod tests {
             .and_then(|stock| stock.sector_id);
         let expected = (
             vec![
-                (
-                    "synthetic-manual-axis".to_owned(),
-                    "架空手動分類".to_owned(),
-                    "架空手動分類".to_owned(),
-                ),
-                (
-                    "synthetic-other-axis".to_owned(),
-                    "架空外部分類".to_owned(),
-                    "架空外部分類".to_owned(),
-                ),
+                expected_group("synthetic-manual-axis", "架空手動分類"),
+                expected_group("synthetic-other-axis", "架空外部分類"),
             ],
             vec![
-                (
-                    "ZZ94".to_owned(),
-                    "synthetic-manual-axis".to_owned(),
-                    "架空手動分類".to_owned(),
-                ),
-                (
-                    "ZZ94".to_owned(),
-                    "synthetic-other-axis".to_owned(),
-                    "架空外部分類".to_owned(),
-                ),
+                expected_member("ZZ94", "synthetic-manual-axis", "架空手動分類"),
+                expected_member("ZZ94", "synthetic-other-axis", "架空外部分類"),
             ],
         );
         assert_eq!(
