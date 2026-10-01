@@ -493,3 +493,32 @@ pub fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
     message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。");
     message
 }
+
+#[cfg(test)]
+mod tests {
+    use indoc::indoc;
+    use rstest::rstest;
+
+    use super::collect_note_refs;
+
+    #[rstest]
+    #[case::inline_code("inline `[[sample:token]]` code")]
+    #[case::multiline_inline_code(indoc! {"
+        `[[sample:token]]
+        [[stock:sample-code]]`
+    "})]
+    #[case::backtick_fence(indoc! {"
+        ```text
+        [[sample:token]]
+        ```
+    "})]
+    #[case::tilde_fence(indoc! {"
+        ~~~text
+        [[graph:sample-graph]]
+        ~~~
+    "})]
+    #[case::indented_code("    [[sample:token]]")]
+    fn markdown_code_does_not_produce_note_references(#[case] body: &str) {
+        assert_eq!(collect_note_refs(body, &[]), Ok(vec![]));
+    }
+}

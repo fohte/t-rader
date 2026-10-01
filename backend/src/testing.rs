@@ -15,14 +15,12 @@ use crate::{AppState, create_router};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::{
-    group_axis, stock, stock_group, strategy, strategy_task, trigger as trigger_entity,
+    group_axis, stock, stock_group, strategy, strategy_task, trigger,
 };
 
 mod note;
-mod prediction_grading;
-mod trigger;
 pub use note::{
-    find_current_note_version, insert_test_note, insert_test_note_in_scope,
+    find_current_note_version, insert_test_note, insert_test_note_as, insert_test_note_in_scope,
     insert_test_note_with_execution_id, insert_test_note_with_status,
 };
 
@@ -138,7 +136,7 @@ pub async fn insert_test_cron_trigger(
     purpose: Option<&str>,
 ) -> Uuid {
     let id = Uuid::new_v4();
-    trigger_entity::ActiveModel {
+    trigger::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
         purpose: Set(purpose.map(str::to_string)),
@@ -168,7 +166,7 @@ pub async fn insert_test_hook_trigger(
     enabled: bool,
 ) -> Uuid {
     let id = Uuid::new_v4();
-    trigger_entity::ActiveModel {
+    trigger::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
         purpose: Set(None),

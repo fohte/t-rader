@@ -8,6 +8,16 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+struct TestNoteOptions<'a> {
+    strategy_id: Option<Uuid>,
+    title: &'a str,
+    body_md: &'a str,
+    execution_id: Option<String>,
+    created_by_kind: &'a str,
+    status: &'a str,
+    actor: Actor,
+}
+
 pub async fn insert_test_note(
     db: &DatabaseHandle,
     strategy_id: Uuid,
@@ -23,7 +33,42 @@ pub async fn insert_test_note_in_scope(
     title: &str,
     body_md: &str,
 ) -> Uuid {
-    insert_test_note_with_options(db, strategy_id, title, body_md, None, "human", "unread").await
+    insert_test_note_with_options(
+        db,
+        TestNoteOptions {
+            strategy_id,
+            title,
+            body_md,
+            execution_id: None,
+            created_by_kind: "human",
+            status: "unread",
+            actor: Actor::Human,
+        },
+    )
+    .await
+}
+
+pub async fn insert_test_note_as(
+    db: &DatabaseHandle,
+    strategy_id: Option<Uuid>,
+    title: &str,
+    body_md: &str,
+    created_by_kind: &str,
+    actor: Actor,
+) -> Uuid {
+    insert_test_note_with_options(
+        db,
+        TestNoteOptions {
+            strategy_id,
+            title,
+            body_md,
+            execution_id: None,
+            created_by_kind,
+            status: "unread",
+            actor,
+        },
+    )
+    .await
 }
 
 pub async fn insert_test_note_with_status(
@@ -33,8 +78,19 @@ pub async fn insert_test_note_with_status(
     body_md: &str,
     status: &str,
 ) -> Uuid {
-    insert_test_note_with_options(db, Some(strategy_id), title, body_md, None, "human", status)
-        .await
+    insert_test_note_with_options(
+        db,
+        TestNoteOptions {
+            strategy_id: Some(strategy_id),
+            title,
+            body_md,
+            execution_id: None,
+            created_by_kind: "human",
+            status,
+            actor: Actor::Human,
+        },
+    )
+    .await
 }
 
 pub async fn insert_test_note_with_execution_id(
@@ -46,55 +102,54 @@ pub async fn insert_test_note_with_execution_id(
 ) -> Uuid {
     insert_test_note_with_options(
         db,
-        Some(strategy_id),
-        title,
-        body_md,
-        Some(execution_id.to_string()),
-        "llm",
-        "unread",
+        TestNoteOptions {
+            strategy_id: Some(strategy_id),
+            title,
+            body_md,
+            execution_id: Some(execution_id.to_string()),
+            created_by_kind: "llm",
+            status: "unread",
+            actor: Actor::Human,
+        },
     )
     .await
 }
 
-async fn insert_test_note_with_options(
-    db: &DatabaseHandle,
-    strategy_id: Option<Uuid>,
-    title: &str,
-    body_md: &str,
-    execution_id: Option<String>,
-    created_by_kind: &str,
-    status: &str,
-) -> Uuid {
-    let scope = execution_id
-        .as_ref()
-        .map(|_| StrategyScope::from(strategy_id.expect("execution notes have a strategy")));
+async fn insert_test_note_with_options(db: &DatabaseHandle, options: TestNoteOptions<'_>) -> Uuid {
+    let scope = options.execution_id.as_ref().map(|_| {
+        StrategyScope::from(
+            options
+                .strategy_id
+                .expect("execution notes have a strategy"),
+        )
+    });
     let result = crate::services::use_cases::build_use_cases(db.clone())
         .notes()
         .write(NoteWriteCommand {
             scope,
-            strategy_id,
-            execution_id,
+            strategy_id: options.strategy_id,
+            execution_id: options.execution_id,
             note_id: None,
-            title: Some(title.to_string()),
-            body_md: Some(body_md.to_string()),
+            title: Some(options.title.to_string()),
+            body_md: Some(options.body_md.to_string()),
             frontmatter_json: Some(serde_json::json!({})),
             graphs_json: Some(serde_json::json!([])),
             kind: None,
             status: None,
             trigger: None,
             trigger_label: None,
-            created_by_kind: created_by_kind.to_string(),
+            created_by_kind: options.created_by_kind.to_string(),
             change_reason: None,
-            actor: Actor::Human,
+            actor: options.actor,
             change_diff: None,
         })
         .await
         .expect("create test note");
 
-    if result.snapshot.version.status != status {
+    if result.snapshot.version.status != options.status {
         note_version::ActiveModel {
             id: Set(result.snapshot.version.id),
-            status: Set(status.to_string()),
+            status: Set(options.status.to_string()),
             ..Default::default()
         }
         .update(db)

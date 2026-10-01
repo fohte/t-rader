@@ -5,7 +5,6 @@ use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::super::StrategyServer;
 use super::super::dto::{SearchWebParams, SearchWebResult};
 use super::*;
 use crate::services::litellm_client::LiteLlmClient;
@@ -34,7 +33,7 @@ fn sse_body(content: &str) -> String {
 
 #[tokio::test]
 async fn search_web_inner_requires_litellm_client() {
-    let server = StrategyServer::new(crate::services::use_cases::build_use_cases(mock_db()), None);
+    let server = super::super::tests_common::build_server(mock_db());
     let err = server
         .search_web_inner(
             Uuid::new_v4(),
@@ -55,7 +54,7 @@ async fn search_web_inner_requires_litellm_client() {
 
 #[tokio::test]
 async fn search_web_inner_rejects_empty_query() {
-    let server = StrategyServer::new(crate::services::use_cases::build_use_cases(mock_db()), None);
+    let server = super::super::tests_common::build_server(mock_db());
     let err = server
         .search_web_inner(
             Uuid::new_v4(),
@@ -84,7 +83,7 @@ async fn search_web_inner_returns_text_and_citations() {
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server = StrategyServer::new(crate::services::use_cases::build_use_cases(mock_db()), None)
+    let server = super::super::tests_common::build_server(mock_db())
         .with_litellm_client(Some(std::sync::Arc::new(client)));
 
     let out = server
@@ -132,7 +131,7 @@ async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::Dat
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server = StrategyServer::new(crate::services::use_cases::build_use_cases(db), None)
+    let server = super::super::tests_common::build_server(db)
         .with_litellm_client(Some(std::sync::Arc::new(client)));
     let task_execution_id = format!("task-{}", Uuid::new_v4());
 
@@ -187,7 +186,7 @@ async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server = StrategyServer::new(crate::services::use_cases::build_use_cases(db), None)
+    let server = super::super::tests_common::build_server(db)
         .with_litellm_client(Some(std::sync::Arc::new(client)));
     let task_execution_id = format!("task-{}", Uuid::new_v4());
 

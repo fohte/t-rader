@@ -9,6 +9,8 @@ mod use_cases;
 mod version_review;
 mod version_write;
 
+pub const INITIAL_NOTE_STATUS: &str = "unread";
+
 pub use error::NoteUseCaseError;
 pub use query::{NoteReadQuery, NoteReadQueryError, SharedNoteReadQuery};
 pub use read::{NoteReadUseCaseError, NoteReadUseCases};

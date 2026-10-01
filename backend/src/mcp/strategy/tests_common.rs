@@ -2,8 +2,6 @@
 
 use chrono::{DateTime, FixedOffset};
 use core_application::change_history::Actor;
-use core_application::note::NoteWriteCommand;
-use core_application::strategy_scope::StrategyScope;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
@@ -11,6 +9,8 @@ use uuid::Uuid;
 use gateway_postgres::entities::{
     annotation, change_history, comment, note, note_kind, note_version, strategy,
 };
+
+use crate::data_provider::SharedDailyBarSource;
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
@@ -49,7 +49,17 @@ pub(super) async fn insert_note_kind(
 }
 
 pub(super) fn build_server(db: impl Into<gateway_postgres::DatabaseHandle>) -> StrategyServer {
-    StrategyServer::new(crate::services::use_cases::build_use_cases(db), None)
+    build_server_with_source(db, None)
+}
+
+pub(super) fn build_server_with_source(
+    db: impl Into<gateway_postgres::DatabaseHandle>,
+    daily_bar_source: Option<SharedDailyBarSource>,
+) -> StrategyServer {
+    StrategyServer::new(
+        crate::services::use_cases::build_use_cases(db),
+        daily_bar_source,
+    )
 }
 
 /// DTO の比較で動的な timestamp を差し替えるための sentinel 値。
@@ -171,31 +181,17 @@ pub(super) async fn seed_foreign_note(
     owner: Uuid,
     title: &str,
 ) -> Uuid {
-    crate::services::use_cases::build_use_cases(db.clone())
-        .notes()
-        .write(NoteWriteCommand {
-            scope: Some(StrategyScope::from(owner)),
-            strategy_id: Some(owner),
-            execution_id: None,
-            note_id: None,
-            title: Some(title.to_string()),
-            body_md: Some("body".to_string()),
-            frontmatter_json: Some(serde_json::json!({})),
-            graphs_json: Some(serde_json::json!([])),
-            kind: None,
-            status: None,
-            trigger: None,
-            trigger_label: None,
-            created_by_kind: super::STRATEGY_AGENT_ACTOR.into(),
-            change_reason: None,
-            actor: Actor::Llm {
-                label: super::STRATEGY_AGENT_ACTOR,
-            },
-            change_diff: None,
-        })
-        .await
-        .expect("seed note")
-        .note_id
+    crate::testing::insert_test_note_as(
+        db,
+        Some(owner),
+        title,
+        "body",
+        super::STRATEGY_AGENT_ACTOR,
+        Actor::Llm {
+            label: super::STRATEGY_AGENT_ACTOR,
+        },
+    )
+    .await
 }
 
 /// 指定戦略の所有として固定パラメータの annotation を seed する (cross-strategy violation 用)

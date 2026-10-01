@@ -143,7 +143,6 @@ mod tests {
     use crate::testing::MockProvider;
     use gateway_postgres::entities::trade;
 
-    use super::super::StrategyServer;
     use super::super::dto::{
         PortfolioPositionDto, PortfolioScopeDto, ReadPortfolioResult, StrategyPortfolioScopeDto,
     };
@@ -319,10 +318,7 @@ mod tests {
                 }]),
         );
 
-        let server = StrategyServer::new(
-            crate::services::use_cases::build_use_cases(db),
-            Some(provider),
-        );
+        let server = super::super::tests_common::build_server_with_source(db, Some(provider));
 
         let result = server
             .read_portfolio_inner(strategy_id)

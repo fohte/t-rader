@@ -968,6 +968,7 @@ name = "core-domain"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "indoc",
  "jpholiday",
  "rstest",
  "rust_decimal",
