@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -27,15 +29,25 @@ pub struct AccountRiskPolicyData {
     pub max_group_ratios: Vec<GroupRatio>,
 }
 
-/// 比率の範囲を検証する。すべての値は (0, 1] の範囲でなければならない。
+/// 分類軸の空値と重複、および比率の範囲を検証する。
 pub fn validate_group_ratios(values: &[GroupRatio]) -> Result<(), crate::error::AppError> {
-    if values
-        .iter()
-        .any(|value| value.ratio <= Decimal::ZERO || value.ratio > Decimal::ONE)
-    {
-        return Err(crate::error::AppError::Validation(
-            "ratio must be greater than 0 and less than or equal to 1".into(),
-        ));
+    let mut axes = HashSet::with_capacity(values.len());
+    for value in values {
+        if value.axis.trim().is_empty() {
+            return Err(crate::error::AppError::Validation(
+                "axis must not be empty".into(),
+            ));
+        }
+        if !axes.insert(value.axis.as_str()) {
+            return Err(crate::error::AppError::Validation(
+                "axis must be unique".into(),
+            ));
+        }
+        if value.ratio <= Decimal::ZERO || value.ratio > Decimal::ONE {
+            return Err(crate::error::AppError::Validation(
+                "ratio must be greater than 0 and less than or equal to 1".into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -106,6 +118,30 @@ mod tests {
     #[test]
     fn test_validate_group_ratios_accepts_empty_list() {
         assert!(validate_group_ratios(&[]).is_ok());
+    }
+
+    #[test]
+    fn test_validate_group_ratios_rejects_empty_axis() {
+        let values = [GroupRatio {
+            axis: "  ".to_string(),
+            ratio: Decimal::new(3, 1),
+        }];
+        assert!(validate_group_ratios(&values).is_err());
+    }
+
+    #[test]
+    fn test_validate_group_ratios_rejects_duplicate_axes() {
+        let values = [
+            GroupRatio {
+                axis: "sample-axis".to_string(),
+                ratio: Decimal::new(3, 1),
+            },
+            GroupRatio {
+                axis: "sample-axis".to_string(),
+                ratio: Decimal::new(2, 1),
+            },
+        ];
+        assert!(validate_group_ratios(&values).is_err());
     }
 
     #[test]

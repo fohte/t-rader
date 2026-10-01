@@ -1,5 +1,7 @@
 //! 口座全体のリスク上限 (`account_risk_policy`)。戦略に紐づかないため 404 判定は無い。
 
+use std::collections::HashSet;
+
 use axum::Json;
 use axum::extract::State;
 use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
@@ -60,6 +62,21 @@ pub async fn put_account_risk_policy(
     JsonBody(payload): JsonBody<PutAccountRiskPolicyRequest>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
     validate_group_ratios(&payload.max_group_ratios)?;
+    let axes = state.use_cases.group_axes().list().await?;
+    let known_axes = axes
+        .into_iter()
+        .map(|axis| axis.key)
+        .collect::<HashSet<_>>();
+    if let Some(value) = payload
+        .max_group_ratios
+        .iter()
+        .find(|value| !known_axes.contains(&value.axis))
+    {
+        return Err(AppError::Validation(format!(
+            "unknown axis: {}",
+            value.axis
+        )));
+    }
     let data = AccountRiskPolicyData {
         schema_version: crate::models::risk_policy::RISK_POLICY_SCHEMA_VERSION,
         max_group_ratios: payload.max_group_ratios,
@@ -83,7 +100,7 @@ fn map_account_risk_policy_error(error: AccountRiskPolicyRepositoryError) -> App
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::create_test_server;
+    use crate::testing::{create_test_server, insert_test_group};
 
     #[backend_test_macros::database_test]
     async fn get_returns_null_when_unset(db: gateway_postgres::DatabaseHandle) {
@@ -99,6 +116,14 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn put_then_get_round_trips(db: gateway_postgres::DatabaseHandle) {
+        insert_test_group(&db, "sample-axis", "sample-group", "Sample group").await;
+        insert_test_group(
+            &db,
+            "another-sample-axis",
+            "another-sample-group",
+            "Another sample group",
+        )
+        .await;
         let server = create_test_server(db).await;
 
         let expected = serde_json::json!({
@@ -118,6 +143,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn put_multiple_times_updates_to_latest_value(db: gateway_postgres::DatabaseHandle) {
+        insert_test_group(&db, "sample-axis", "sample-group", "Sample group").await;
         let server = create_test_server(db).await;
 
         server
@@ -146,6 +172,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn put_empty_list_clears_limit(db: gateway_postgres::DatabaseHandle) {
+        insert_test_group(&db, "sample-axis", "sample-group", "Sample group").await;
         let server = create_test_server(db).await;
 
         server
@@ -182,5 +209,18 @@ mod tests {
                 .await;
             res.assert_status(axum::http::StatusCode::BAD_REQUEST);
         }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn put_400_for_unknown_axis(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let res = server
+            .put("/api/account/risk-policy")
+            .json(&serde_json::json!({
+                "max_group_ratios": [{ "axis": "unknown-axis", "ratio": 0.3 }]
+            }))
+            .await;
+
+        res.assert_status(axum::http::StatusCode::BAD_REQUEST);
     }
 }

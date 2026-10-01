@@ -216,15 +216,17 @@ fn compute_group_ratio_constraint(
         return ConstraintResult::Unlimited;
     }
 
-    for (axis_key, _) in max_group_ratios {
-        if groups_by_axis_and_symbol
+    let mut target_groups = Vec::with_capacity(max_group_ratios.len());
+    for (axis_key, ratio) in max_group_ratios {
+        let Some(group_keys) = groups_by_axis_and_symbol
             .get(&(axis_key.clone(), symbol.to_owned()))
-            .is_none_or(BTreeSet::is_empty)
-        {
+            .filter(|groups| !groups.is_empty())
+        else {
             return ConstraintResult::Unavailable {
                 reason: format!("{symbol} has no group assigned for axis {axis_key}"),
             };
-        }
+        };
+        target_groups.push((axis_key, ratio, group_keys));
     }
     let Some(price) = price else {
         return ConstraintResult::Unavailable {
@@ -241,14 +243,7 @@ fn compute_group_ratio_constraint(
     }
 
     let mut max_additional_qty: Option<i64> = None;
-    for (axis_key, ratio) in max_group_ratios {
-        let Some(group_keys) =
-            groups_by_axis_and_symbol.get(&(axis_key.clone(), symbol.to_owned()))
-        else {
-            return ConstraintResult::Unavailable {
-                reason: format!("{symbol} has no group assigned for axis {axis_key}"),
-            };
-        };
+    for (axis_key, ratio, group_keys) in target_groups {
         let denominator = price * (Decimal::ONE - ratio);
         if denominator <= Decimal::ZERO {
             continue;
