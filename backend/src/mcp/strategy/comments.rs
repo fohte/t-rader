@@ -16,8 +16,6 @@ use super::dto::{
 };
 use super::{STRATEGY_AGENT_ACTOR, StrategyServer, internal_error, invalid_params};
 
-const ALLOWED_COMMENT_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
-
 fn comment_use_case_to_dto(m: core_application::comment::Comment) -> CommentDto {
     CommentDto {
         comment_id: m.id,
@@ -44,8 +42,9 @@ impl StrategyServer {
     ) -> Result<ReadCommentsResult, McpError> {
         let scope = scope.into();
         let target_kind = CommentTargetKind::parse(&params.target_kind).ok_or_else(|| {
+            let expected = CommentTargetKind::ALL.map(CommentTargetKind::as_str);
             invalid_params(format!(
-                "invalid target_kind: {} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})",
+                "invalid target_kind: {} (expected one of {expected:?})",
                 params.target_kind
             ))
         })?;

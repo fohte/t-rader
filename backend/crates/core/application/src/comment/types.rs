@@ -11,12 +11,12 @@ pub enum CommentTargetKind {
 }
 
 impl CommentTargetKind {
+    pub const ALL: [Self; 2] = [Self::NoteVersion, Self::Annotation];
+
     pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "note_version" => Some(Self::NoteVersion),
-            "annotation" => Some(Self::Annotation),
-            _ => None,
-        }
+        Self::ALL
+            .into_iter()
+            .find(|target_kind| target_kind.as_str() == value)
     }
 
     pub fn as_str(self) -> &'static str {

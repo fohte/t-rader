@@ -441,15 +441,40 @@ mod tests {
         value
     }
 
-    #[backend_test_macros::database_test]
-    async fn annotation_reads_filter_order_and_preserve_not_found_response(
+    async fn create_annotation_read_context(
         db: gateway_postgres::DatabaseHandle,
-    ) {
+    ) -> (gateway_postgres::DatabaseHandle, TestServer, Uuid) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
+        (db, server, strategy_id)
+    }
+
+    fn expected_annotation_response(strategy_id: Uuid, timestamp: &str) -> Value {
+        json!({
+            "id": "<id>",
+            "strategy_id": strategy_id,
+            "target_symbol": "SAMPLE-A",
+            "target_kind": "sample-kind",
+            "timestamp": timestamp,
+            "price": null,
+            "text": "sample text",
+            "status": "unread",
+            "linked_note_id": null,
+            "created_by_kind": "human",
+            "created_at": "<created_at>",
+            "updated_at": "<updated_at>",
+            "execution_step_id": null,
+            "execution_task_id": null,
+        })
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_annotations_filters_by_strategy_and_symbol_newest_first(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server, strategy_id) = create_annotation_read_context(db).await;
         let foreign_strategy_id = insert_test_strategy(&db, "foreign-strategy").await;
-        let old =
-            create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
+        create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
         create_annotation_at(&server, strategy_id, "SAMPLE-B", "2026-06-03T00:00:00Z").await;
         create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-02T00:00:00Z").await;
         create_annotation_at(
@@ -465,79 +490,56 @@ mod tests {
                 "/api/annotations?strategy_id={strategy_id}&target_symbol=SAMPLE-A"
             ))
             .await;
-        let get = server
-            .get(&format!(
-                "/api/annotations/{}",
-                old["id"].as_str().expect("id")
-            ))
-            .await;
-        let missing = server
-            .get(&format!("/api/annotations/{}", Uuid::nil()))
-            .await;
         assert_eq!(
             (
                 list.status_code(),
-                normalize_annotation_response(list.json()),
-                get.status_code(),
-                normalize_annotation_response(get.json()),
-                missing.status_code(),
-                missing.json::<Value>(),
+                normalize_annotation_response(list.json())
             ),
             (
                 StatusCode::OK,
                 json!([
-                    {
-                        "id": "<id>",
-                        "strategy_id": strategy_id,
-                        "target_symbol": "SAMPLE-A",
-                        "target_kind": "sample-kind",
-                        "timestamp": "2026-06-02T00:00:00Z",
-                        "price": null,
-                        "text": "sample text",
-                        "status": "unread",
-                        "linked_note_id": null,
-                        "created_by_kind": "human",
-                        "created_at": "<created_at>",
-                        "updated_at": "<updated_at>",
-                        "execution_step_id": null,
-                        "execution_task_id": null,
-                    },
-                    {
-                        "id": "<id>",
-                        "strategy_id": strategy_id,
-                        "target_symbol": "SAMPLE-A",
-                        "target_kind": "sample-kind",
-                        "timestamp": "2026-06-01T00:00:00Z",
-                        "price": null,
-                        "text": "sample text",
-                        "status": "unread",
-                        "linked_note_id": null,
-                        "created_by_kind": "human",
-                        "created_at": "<created_at>",
-                        "updated_at": "<updated_at>",
-                        "execution_step_id": null,
-                        "execution_task_id": null,
-                    },
+                    expected_annotation_response(strategy_id, "2026-06-02T00:00:00Z"),
+                    expected_annotation_response(strategy_id, "2026-06-01T00:00:00Z"),
                 ]),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_annotation_returns_annotation(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server, strategy_id) = create_annotation_read_context(db).await;
+        let created =
+            create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
+        let response = server
+            .get(&format!(
+                "/api/annotations/{}",
+                created["id"].as_str().expect("id")
+            ))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_annotation_response(response.json())
+            ),
+            (
                 StatusCode::OK,
-                json!({
-                    "id": "<id>",
-                    "strategy_id": strategy_id,
-                    "target_symbol": "SAMPLE-A",
-                    "target_kind": "sample-kind",
-                    "timestamp": "2026-06-01T00:00:00Z",
-                    "price": null,
-                    "text": "sample text",
-                    "status": "unread",
-                    "linked_note_id": null,
-                    "created_by_kind": "human",
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                    "execution_step_id": null,
-                    "execution_task_id": null,
-                }),
+                expected_annotation_response(strategy_id, "2026-06-01T00:00:00Z"),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_annotation_returns_not_found_for_missing_id(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server, _strategy_id) = create_annotation_read_context(db).await;
+        let missing_id = Uuid::nil();
+        let response = server.get(&format!("/api/annotations/{missing_id}")).await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
                 StatusCode::NOT_FOUND,
-                json!({ "error": format!("annotation {} not found", Uuid::nil()) }),
+                json!({ "error": format!("annotation {missing_id} not found") }),
             ),
         );
     }

@@ -25,9 +25,7 @@ fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
     Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
 }
 
-/// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
-/// 必ず `Some` になるはずだが、不変条件が壊れた場合に別 strategy の id を誤って
-/// 返さないよう fail-loud にする。
+/// 戦略 MCP の annotation は strategy 所属が必須なので、欠落時は明示的に失敗させる。
 fn annotation_use_case_to_dto(
     m: core_application::annotation::Annotation,
 ) -> Result<AnnotationDto, McpError> {
