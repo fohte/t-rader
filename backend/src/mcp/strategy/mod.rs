@@ -50,7 +50,6 @@ use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 use crate::services::use_cases::UseCases;
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::PostgresStrategyScopeSource;
 use gateway_postgres::entities::annotation;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -190,8 +189,9 @@ impl StrategyServer {
         ctx: &RequestContext<RoleServer>,
     ) -> Result<StrategyScope, McpError> {
         let id = strategy_id_from_ctx(ctx)?;
-        let source = PostgresStrategyScopeSource::new(&self.db);
-        StrategyScope::verify(id, &source)
+        self.use_cases
+            .strategy_scope()
+            .verify(id)
             .await
             .map_err(|error| match error {
                 StrategyScopeError::NotFound(id) => {

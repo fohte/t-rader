@@ -64,7 +64,7 @@ use core_application::strategy::StrategyUseCaseError;
 use core_application::strategy_scope::{
     StrategyScope, StrategyScopeError, StrategyScopeSourceError,
 };
-use gateway_postgres::{DatabaseHandle, PostgresStrategyScopeSource};
+use gateway_postgres::DatabaseHandle;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
@@ -194,8 +194,9 @@ pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
 #[tool_router]
 impl MgmtServer {
     pub(super) async fn strategy_scope(&self, id: uuid::Uuid) -> Result<StrategyScope, McpError> {
-        let source = PostgresStrategyScopeSource::new(&self.db);
-        StrategyScope::verify(id, &source)
+        self.use_cases
+            .strategy_scope()
+            .verify(id)
             .await
             .map_err(|error| match error {
                 StrategyScopeError::NotFound(id) => {
