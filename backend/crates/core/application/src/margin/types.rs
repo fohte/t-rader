@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use core_domain::margin::{MarginAlertRecord, MarginInterestRecord};
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarginQuery {
@@ -15,7 +16,7 @@ pub struct MarginReadResult {
     pub alerts: Vec<MarginAlertRecord>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct IngestStats {
     pub days_fetched: usize,
     pub rows_upserted: usize,

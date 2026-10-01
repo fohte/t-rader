@@ -1,14 +1,16 @@
-use std::future::Future;
+use std::{future::Future, time::Duration};
 
 use chrono::Weekday;
 use graphile_worker::{
-    Crontab, CrontabFill, CrontabTimer, CrontabTimerError, TaskHandler, Worker, WorkerOptions,
+    Cron, Crontab, CrontabFill, CrontabTimer, CrontabTimerError, TaskHandler, Worker, WorkerOptions,
 };
 use sqlx::PgPool;
 
 use crate::{
     jobs::{
+        DAILY_TIMEOUT, WEEKLY_TIMEOUT,
         fred::FredIngest,
+        ingest_run_recovery::IngestRunRecovery,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         prediction::PredictionGrading,
     },
@@ -18,6 +20,14 @@ use crate::{
 const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
 const JQUANTS_QUEUE: &str = "jquants";
 const MAX_ATTEMPTS: u16 = 3;
+const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 5] = [
+    (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (ShortSaleReportIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (MarginIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (PredictionGrading::IDENTIFIER, WEEKLY_TIMEOUT),
+];
 
 pub struct Scheduler {
     worker: Worker,
@@ -35,6 +45,10 @@ impl Scheduler {
         )
         .map_err(|error| error.to_string())?;
         let state = SchedulerState { dependencies };
+        let recovery_cron =
+            Cron::every_n_minutes::<IngestRunRecovery>(INGEST_RUN_RECOVERY_INTERVAL_MINUTES)
+                .map_err(|error| error.to_string())?
+                .fill(CrontabFill::minutes(10));
         let worker = WorkerOptions::default()
             .pg_pool(pool)
             .schema(GRAPHILE_WORKER_SCHEMA)
@@ -45,11 +59,13 @@ impl Scheduler {
             .shutdown_signal(shutdown_signal)
             .add_extension(state)
             .define_job::<FredIngest>()
+            .define_job::<IngestRunRecovery>()
             .define_job::<ShortRatioIngest>()
             .define_job::<ShortSaleReportIngest>()
             .define_job::<MarginIngest>()
             .define_job::<PredictionGrading>()
             .with_crons(crontabs)
+            .with_cron(recovery_cron)
             .init()
             .await
             .map_err(|error| error.to_string())?;

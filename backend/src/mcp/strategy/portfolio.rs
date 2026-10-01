@@ -10,8 +10,6 @@ use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 
-use crate::services::market_price::fetch_latest_prices;
-
 use super::dto::{
     PortfolioPositionDto, PortfolioScopeDto, ReadPortfolioResult, StrategyPortfolioScopeDto,
 };
@@ -42,8 +40,11 @@ impl StrategyServer {
         symbols.extend(strategy_summary.positions.iter().map(|p| p.symbol.clone()));
         let symbols: Vec<String> = symbols.into_iter().collect();
 
-        let prices =
-            fetch_latest_prices(&self.db, self.daily_bar_source.as_deref(), &symbols).await;
+        let prices = self
+            .use_cases
+            .bars()
+            .fetch_latest_prices(self.daily_bar_source.as_deref(), &symbols)
+            .await;
 
         let account_positions = to_position_dtos(account_summary.positions, &prices.prices);
         let account = PortfolioScopeDto {

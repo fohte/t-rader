@@ -2,7 +2,6 @@ pub mod agent_client;
 pub mod cli;
 pub(crate) mod concurrent;
 pub mod data_provider;
-pub(crate) mod date_utils;
 pub mod error;
 pub mod extractors;
 pub mod handlers;

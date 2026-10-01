@@ -1,6 +1,7 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
+use serde::Serialize;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,7 +88,7 @@ pub struct PredictionStats {
     pub buckets: Vec<PredictionProbabilityBucket>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct GradingStats {
     pub graded: usize,
 }

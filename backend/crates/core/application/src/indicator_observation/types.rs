@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use core_domain::IndicatorObservation;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndicatorObservationMetadata {
@@ -21,12 +22,12 @@ pub struct IndicatorObservationReadResult {
     pub observations: Vec<IndicatorObservation>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IndicatorObservationIngestResult {
     pub series: Vec<IndicatorObservationIngestSeriesResult>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum IndicatorObservationIngestSeriesResult {
     Succeeded { series_id: String, upserted: usize },
     Failed { series_id: String, error: String },
