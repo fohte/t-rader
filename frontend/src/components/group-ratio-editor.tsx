@@ -1,6 +1,7 @@
 import { Button } from '@fohte/ui/button'
 import { Input } from '@fohte/ui/input'
 
+import { Skeleton } from '#components/ui/skeleton'
 import type {
   GroupRatioDraft,
   GroupRatioDraftErrors,
@@ -17,6 +18,8 @@ export interface GroupRatioEditorProps {
   axes: GroupRatioAxisOption[]
   rows: GroupRatioDraft[]
   errors: Array<GroupRatioDraftErrors | null>
+  isLoading: boolean
+  loadError: boolean
   isSaving: boolean
   saveError: string | null
   onRowsChange: (rows: GroupRatioDraft[]) => void
@@ -27,11 +30,22 @@ export function GroupRatioEditor({
   axes,
   rows,
   errors,
+  isLoading,
+  loadError,
   isSaving,
   saveError,
   onRowsChange,
   onSave,
 }: GroupRatioEditorProps) {
+  if (isLoading) return <Skeleton className="h-48 w-full max-w-xl" />
+  if (loadError) {
+    return (
+      <p className="font-mono text-xs text-primary">
+        リスク上限の読み込みに失敗しました
+      </p>
+    )
+  }
+
   const hasAvailableAxis = axes.some(
     (axis) => !rows.some((row) => row.axis === axis.key),
   )

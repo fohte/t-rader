@@ -3,7 +3,6 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
 import { GroupRatioEditor } from '#components/group-ratio-editor'
-import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import {
   type GroupRatioDraft,
@@ -103,23 +102,17 @@ function RiskPolicySettingsPage() {
         </p>
       </header>
 
-      {isPolicyPending || areAxesPending ? (
-        <Skeleton className="h-48 w-full max-w-xl" />
-      ) : isPolicyError || areAxesError ? (
-        <p className="font-mono text-xs text-primary">
-          リスク上限の読み込みに失敗しました
-        </p>
-      ) : (
-        <GroupRatioEditor
-          axes={axes.map(({ key, name }) => ({ key, name }))}
-          rows={rows}
-          errors={validationErrors}
-          isSaving={mutation.isPending}
-          saveError={saveError}
-          onRowsChange={handleRowsChange}
-          onSave={handleSave}
-        />
-      )}
+      <GroupRatioEditor
+        axes={axes.map(({ key, name }) => ({ key, name }))}
+        rows={rows}
+        errors={validationErrors}
+        isLoading={isPolicyPending || areAxesPending}
+        loadError={isPolicyError || areAxesError}
+        isSaving={mutation.isPending}
+        saveError={saveError}
+        onRowsChange={handleRowsChange}
+        onSave={handleSave}
+      />
     </div>
   )
 }

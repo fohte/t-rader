@@ -20,6 +20,8 @@ const meta = {
     axes,
     rows: [],
     errors: [],
+    isLoading: false,
+    loadError: false,
     isSaving: false,
     saveError: null,
     onRowsChange: NOOP_ROWS,
@@ -29,6 +31,16 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
+
+export const Loading: Story = {
+  name: 'shows a loading placeholder while limits are fetched.',
+  args: { isLoading: true },
+}
+
+export const LoadError: Story = {
+  name: 'shows an error when loading limits fails.',
+  args: { loadError: true },
+}
 
 export const Empty: Story = {
   name: 'shows that no group ratio limits are configured.',
