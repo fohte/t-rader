@@ -34,7 +34,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::testing::create_test_server_with_state;
-    use gateway_postgres::entities::{ingest_run, jquants_daily_bars_ingested_date};
+    use gateway_postgres::entities::{
+        ingest_run, jquants_daily_bars_ingested_date, jquants_earnings_date,
+    };
 
     fn timestamp(value: &str) -> DateTime<FixedOffset> {
         DateTime::parse_from_rfc3339(value).expect("valid fixture timestamp")
@@ -50,9 +52,6 @@ mod tests {
                 run.insert("id".into(), Value::String("<run-id>".into()));
                 run.insert("started_at".into(), Value::String("<started-at>".into()));
                 run.insert("finished_at".into(), Value::String("<finished-at>".into()));
-            }
-            if !job["last_succeeded_at"].is_null() {
-                job["last_succeeded_at"] = Value::String("<last-succeeded-at>".into());
             }
             if !job["expected_data_date"].is_null() {
                 job["expected_data_date"] = Value::String("<expected-data-date>".into());
@@ -102,6 +101,20 @@ mod tests {
         .expect("mark graphile job failed");
     }
 
+    async fn mark_job_running(
+        db: &gateway_postgres::DatabaseHandle,
+        job_id: i64,
+        locked_at: DateTime<FixedOffset>,
+    ) {
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE graphile_worker._private_jobs SET locked_at = $2 WHERE id = $1",
+            [job_id.into(), locked_at.into()],
+        ))
+        .await
+        .expect("mark graphile job running");
+    }
+
     #[backend_test_macros::database_test]
     async fn get_returns_latest_run_data_date_and_graphile_queue_states(
         db: gateway_postgres::DatabaseHandle,
@@ -148,12 +161,28 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert daily bar ingested dates");
+        jquants_earnings_date::Entity::insert(jquants_earnings_date::ActiveModel {
+            code: Set("demo-code".into()),
+            fq_name: Set("sample-period".into()),
+            pub_date: Set(date(2030, 6, 4)),
+            sch_date: Set(None),
+            fye: Set("2030-12".into()),
+            co_name: Set("sample-company".into()),
+            co_name_en: Set("Sample Company".into()),
+        })
+        .exec(&db)
+        .await
+        .expect("insert earnings schedule date");
         let _waiting_id = enqueue_job(&db, timestamp("2030-06-06T12:02:00Z")).await;
         let failed_id = enqueue_job(&db, timestamp("2030-06-06T12:03:00Z")).await;
         mark_job_failed(&db, failed_id).await;
+        let running_id = enqueue_job(&db, timestamp("2030-06-06T12:04:00Z")).await;
+        mark_job_running(&db, running_id, timestamp("2030-06-06T12:04:00Z")).await;
 
         let response = server.get("/api/ingest-status").await;
         let actual = (response.status_code(), normalize(response.json::<Value>()));
+        let expected_last_succeeded_at =
+            serde_json::to_value(earlier_finished_at).expect("serialize expected timestamp");
 
         assert_eq!(
             actual,
@@ -171,7 +200,7 @@ mod tests {
                                 "stats": null,
                                 "error": "sample ingest failure"
                             },
-                            "last_succeeded_at": "<last-succeeded-at>",
+                            "last_succeeded_at": expected_last_succeeded_at,
                             "latest_data_date": "2030-06-06",
                             "expected_data_date": "<expected-data-date>",
                             "worker_jobs": [
@@ -194,6 +223,16 @@ mod tests {
                                     "attempts": 3,
                                     "max_attempts": 3,
                                     "last_error": "sample queue failure"
+                                },
+                                {
+                                    "id": -1,
+                                    "task_identifier": "daily_bars_ingest",
+                                    "state": "running",
+                                    "queue_name": "sample-queue",
+                                    "run_at": "<run-at>",
+                                    "attempts": 0,
+                                    "max_attempts": 3,
+                                    "last_error": null
                                 }
                             ]
                         },
@@ -201,7 +240,7 @@ mod tests {
                             "job": "earnings_schedule_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
-                            "latest_data_date": null,
+                            "latest_data_date": "2030-06-04",
                             "expected_data_date": "<expected-data-date>",
                             "worker_jobs": []
                         },
