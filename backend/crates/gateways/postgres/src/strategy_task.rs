@@ -440,3 +440,435 @@ fn transaction_ref(
 fn repository_error(error: sea_orm::DbErr) -> StrategyTaskRepositoryError {
     StrategyTaskRepositoryError::Database(persistence_error(error))
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, FixedOffset};
+    use core_application::strategy_task::{
+        StrategyTask, StrategyTaskPhase, StrategyTaskRepository, StrategyTaskStep,
+        StrategyTaskStepStatus,
+    };
+    use core_application::unit_of_work::UnitOfWork;
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use uuid::Uuid;
+
+    use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus as DbStepStatus;
+    use crate::entities::{strategy, strategy_task_step};
+    use crate::{DatabaseHandle, PostgresUnitOfWork};
+
+    use super::PostgresStrategyTaskRepository;
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ClaimObservation {
+        name: &'static str,
+        claimed: bool,
+        phase: StrategyTaskPhase,
+        auto_resumed_at: Option<DateTime<FixedOffset>>,
+    }
+
+    struct ClaimCase {
+        name: &'static str,
+        phase: StrategyTaskPhase,
+        step_status: Option<StrategyTaskStepStatus>,
+        auto_resumed_at: Option<DateTime<FixedOffset>>,
+        mark_auto_resumed: bool,
+        expected_claimed: bool,
+        expected_phase: StrategyTaskPhase,
+        expected_auto_resumed_at: Option<DateTime<FixedOffset>>,
+    }
+
+    fn fixed_time() -> DateTime<FixedOffset> {
+        (DateTime::<chrono::Utc>::UNIX_EPOCH + chrono::Duration::days(20_454)).fixed_offset()
+    }
+
+    fn task(
+        task_id: Uuid,
+        strategy_id: Uuid,
+        phase: StrategyTaskPhase,
+        auto_resumed_at: Option<DateTime<FixedOffset>>,
+    ) -> StrategyTask {
+        let now = fixed_time();
+        StrategyTask {
+            task_id,
+            strategy_id,
+            a2a_task_id: None,
+            source: "review".to_string(),
+            prompt: "fictional prompt".to_string(),
+            phase,
+            error_summary: None,
+            result_text: None,
+            deadline_at: now,
+            purpose: Some("fictional-purpose".to_string()),
+            as_of: Some(now),
+            auto_resumed_at,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn step_model(
+        task_id: Uuid,
+        execution_step_id: Uuid,
+        status: StrategyTaskStepStatus,
+    ) -> strategy_task_step::ActiveModel {
+        let status = match status {
+            StrategyTaskStepStatus::Running => DbStepStatus::Running,
+            StrategyTaskStepStatus::Completed => DbStepStatus::Completed,
+            StrategyTaskStepStatus::Failed => DbStepStatus::Failed,
+        };
+        strategy_task_step::ActiveModel {
+            execution_step_id: Set(execution_step_id),
+            task_id: Set(task_id),
+            phase_key: Set("fictional-phase".to_string()),
+            label: Set("Fictional phase".to_string()),
+            model: Set("fictional-model".to_string()),
+            status: Set(status),
+            item: Set(None),
+            item_label: Set(None),
+            output: Set(None),
+            started_at: Set(fixed_time()),
+            finished_at: Set(None),
+            trace_id: Set("trace-placeholder".to_string()),
+            span_id: Set("span-placeholder".to_string()),
+            error: Set(None),
+            seq: NotSet,
+        }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn claim_resumable_updates_only_eligible_tasks(db: DatabaseHandle) {
+        let strategy_id = Uuid::from_u128(100);
+        strategy::ActiveModel {
+            id: Set(strategy_id),
+            name: Set("Fictional strategy".to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test strategy");
+
+        let now = fixed_time();
+        let previous_auto_resume = now + chrono::Duration::hours(1);
+        let cases = [
+            ClaimCase {
+                name: "failed task is manually resumable",
+                phase: StrategyTaskPhase::Failed,
+                step_status: None,
+                auto_resumed_at: None,
+                mark_auto_resumed: false,
+                expected_claimed: true,
+                expected_phase: StrategyTaskPhase::Running,
+                expected_auto_resumed_at: None,
+            },
+            ClaimCase {
+                name: "completed task with failed step is resumable",
+                phase: StrategyTaskPhase::Completed,
+                step_status: Some(StrategyTaskStepStatus::Failed),
+                auto_resumed_at: None,
+                mark_auto_resumed: false,
+                expected_claimed: true,
+                expected_phase: StrategyTaskPhase::Running,
+                expected_auto_resumed_at: None,
+            },
+            ClaimCase {
+                name: "completed task without steps is not resumable",
+                phase: StrategyTaskPhase::Completed,
+                step_status: None,
+                auto_resumed_at: None,
+                mark_auto_resumed: false,
+                expected_claimed: false,
+                expected_phase: StrategyTaskPhase::Completed,
+                expected_auto_resumed_at: None,
+            },
+            ClaimCase {
+                name: "completed task with completed step is not resumable",
+                phase: StrategyTaskPhase::Completed,
+                step_status: Some(StrategyTaskStepStatus::Completed),
+                auto_resumed_at: None,
+                mark_auto_resumed: false,
+                expected_claimed: false,
+                expected_phase: StrategyTaskPhase::Completed,
+                expected_auto_resumed_at: None,
+            },
+            ClaimCase {
+                name: "running task with failed step is not resumable",
+                phase: StrategyTaskPhase::Running,
+                step_status: Some(StrategyTaskStepStatus::Failed),
+                auto_resumed_at: None,
+                mark_auto_resumed: false,
+                expected_claimed: false,
+                expected_phase: StrategyTaskPhase::Running,
+                expected_auto_resumed_at: None,
+            },
+            ClaimCase {
+                name: "pending task with failed step is not resumable",
+                phase: StrategyTaskPhase::Pending,
+                step_status: Some(StrategyTaskStepStatus::Failed),
+                auto_resumed_at: None,
+                mark_auto_resumed: false,
+                expected_claimed: false,
+                expected_phase: StrategyTaskPhase::Pending,
+                expected_auto_resumed_at: None,
+            },
+            ClaimCase {
+                name: "already auto-resumed task is not claimed again",
+                phase: StrategyTaskPhase::Failed,
+                step_status: None,
+                auto_resumed_at: Some(previous_auto_resume),
+                mark_auto_resumed: true,
+                expected_claimed: false,
+                expected_phase: StrategyTaskPhase::Failed,
+                expected_auto_resumed_at: Some(previous_auto_resume),
+            },
+            ClaimCase {
+                name: "manual resume preserves auto-resume marker",
+                phase: StrategyTaskPhase::Failed,
+                step_status: None,
+                auto_resumed_at: Some(previous_auto_resume),
+                mark_auto_resumed: false,
+                expected_claimed: true,
+                expected_phase: StrategyTaskPhase::Running,
+                expected_auto_resumed_at: Some(previous_auto_resume),
+            },
+        ];
+
+        let repository = PostgresStrategyTaskRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let transaction = unit_of_work.begin().await.expect("begin setup transaction");
+        for (index, case) in cases.iter().enumerate() {
+            let task_id = Uuid::from_u128(200 + index as u128);
+            repository
+                .insert(
+                    &transaction,
+                    task(task_id, strategy_id, case.phase, case.auto_resumed_at),
+                )
+                .await
+                .expect("insert test task");
+            if let Some(status) = case.step_status {
+                step_model(task_id, Uuid::from_u128(300 + index as u128), status)
+                    .insert(
+                        transaction
+                            .downcast_ref::<sea_orm::DatabaseTransaction>()
+                            .expect("postgres transaction"),
+                    )
+                    .await
+                    .expect("insert test task step");
+            }
+        }
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit setup transaction");
+
+        let mut actual = Vec::new();
+        for (index, case) in cases.iter().enumerate() {
+            let task_id = Uuid::from_u128(200 + index as u128);
+            let transaction = unit_of_work.begin().await.expect("begin claim transaction");
+            let claimed = repository
+                .claim_resumable(&transaction, task_id, now, case.mark_auto_resumed)
+                .await
+                .expect("claim resumable task");
+            unit_of_work
+                .commit(transaction)
+                .await
+                .expect("commit claim transaction");
+            let task = repository
+                .find_by_id(task_id)
+                .await
+                .expect("read test task")
+                .expect("test task exists");
+            actual.push(ClaimObservation {
+                name: case.name,
+                claimed,
+                phase: task.phase,
+                auto_resumed_at: task.auto_resumed_at,
+            });
+        }
+
+        assert_eq!(
+            actual,
+            cases
+                .iter()
+                .map(|case| ClaimObservation {
+                    name: case.name,
+                    claimed: case.expected_claimed,
+                    phase: case.expected_phase,
+                    auto_resumed_at: case.expected_auto_resumed_at,
+                })
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct StepView {
+        execution_step_id: Uuid,
+        task_id: Uuid,
+        phase_key: String,
+        label: String,
+        model: String,
+        status: StrategyTaskStepStatus,
+        item: Option<serde_json::Value>,
+        item_label: Option<String>,
+        output: Option<serde_json::Value>,
+        started_at: DateTime<FixedOffset>,
+        finished_at: Option<DateTime<FixedOffset>>,
+        trace_id: String,
+        span_id: String,
+        error: Option<String>,
+        seq: i64,
+    }
+
+    impl From<StrategyTaskStep> for StepView {
+        fn from(step: StrategyTaskStep) -> Self {
+            Self {
+                execution_step_id: step.execution_step_id,
+                task_id: step.task_id,
+                phase_key: step.phase_key,
+                label: step.label,
+                model: step.model,
+                status: step.status,
+                item: step.item,
+                item_label: step.item_label,
+                output: step.output,
+                started_at: step.started_at,
+                finished_at: step.finished_at,
+                trace_id: step.trace_id,
+                span_id: step.span_id,
+                error: step.error,
+                seq: step.seq,
+            }
+        }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_steps_returns_every_field_in_sequence_order(db: DatabaseHandle) {
+        let strategy_id = Uuid::from_u128(400);
+        strategy::ActiveModel {
+            id: Set(strategy_id),
+            name: Set("Fictional strategy".to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test strategy");
+
+        let task_id = Uuid::from_u128(401);
+        let repository = PostgresStrategyTaskRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let transaction = unit_of_work.begin().await.expect("begin setup transaction");
+        repository
+            .insert(
+                &transaction,
+                task(task_id, strategy_id, StrategyTaskPhase::Completed, None),
+            )
+            .await
+            .expect("insert test task");
+
+        let first_started_at = fixed_time();
+        let second_started_at = first_started_at + chrono::Duration::minutes(1);
+        let first_finished_at = first_started_at + chrono::Duration::minutes(2);
+        let first_step_id = Uuid::from_u128(402);
+        let second_step_id = Uuid::from_u128(403);
+        let transaction_ref = transaction
+            .downcast_ref::<sea_orm::DatabaseTransaction>()
+            .expect("postgres transaction");
+        strategy_task_step::ActiveModel {
+            execution_step_id: Set(first_step_id),
+            task_id: Set(task_id),
+            phase_key: Set("fictional-complete-phase".to_string()),
+            label: Set("Completed phase".to_string()),
+            model: Set("fictional-model".to_string()),
+            status: Set(DbStepStatus::Completed),
+            item: Set(Some(serde_json::json!({ "ticker": "FAKE" }))),
+            item_label: Set(Some("Fictional item".to_string())),
+            output: Set(Some(serde_json::json!({ "summary": "fictional output" }))),
+            started_at: Set(first_started_at),
+            finished_at: Set(Some(first_finished_at)),
+            trace_id: Set("fictional-trace".to_string()),
+            span_id: Set("fictional-span".to_string()),
+            error: Set(Some("fictional warning".to_string())),
+            seq: Set(20),
+        }
+        .insert(transaction_ref)
+        .await
+        .expect("insert first test task step");
+        strategy_task_step::ActiveModel {
+            execution_step_id: Set(second_step_id),
+            task_id: Set(task_id),
+            phase_key: Set("fictional-running-phase".to_string()),
+            label: Set("Running phase".to_string()),
+            model: Set("fictional-model".to_string()),
+            status: Set(DbStepStatus::Running),
+            item: Set(None),
+            item_label: Set(None),
+            output: Set(None),
+            started_at: Set(second_started_at),
+            finished_at: Set(None),
+            trace_id: Set("trace-placeholder".to_string()),
+            span_id: Set("span-placeholder".to_string()),
+            error: Set(None),
+            seq: Set(10),
+        }
+        .insert(transaction_ref)
+        .await
+        .expect("insert second test task step");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit setup transaction");
+
+        let actual = repository
+            .list_steps(task_id)
+            .await
+            .expect("list test task steps")
+            .into_iter()
+            .map(StepView::from)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![
+                StepView {
+                    execution_step_id: second_step_id,
+                    task_id,
+                    phase_key: "fictional-running-phase".to_string(),
+                    label: "Running phase".to_string(),
+                    model: "fictional-model".to_string(),
+                    status: StrategyTaskStepStatus::Running,
+                    item: None,
+                    item_label: None,
+                    output: None,
+                    started_at: second_started_at,
+                    finished_at: None,
+                    trace_id: "trace-placeholder".to_string(),
+                    span_id: "span-placeholder".to_string(),
+                    error: None,
+                    seq: 10,
+                },
+                StepView {
+                    execution_step_id: first_step_id,
+                    task_id,
+                    phase_key: "fictional-complete-phase".to_string(),
+                    label: "Completed phase".to_string(),
+                    model: "fictional-model".to_string(),
+                    status: StrategyTaskStepStatus::Completed,
+                    item: Some(serde_json::json!({ "ticker": "FAKE" })),
+                    item_label: Some("Fictional item".to_string()),
+                    output: Some(serde_json::json!({ "summary": "fictional output" })),
+                    started_at: first_started_at,
+                    finished_at: Some(first_finished_at),
+                    trace_id: "fictional-trace".to_string(),
+                    span_id: "fictional-span".to_string(),
+                    error: Some("fictional warning".to_string()),
+                    seq: 20,
+                },
+            ],
+        );
+    }
+}

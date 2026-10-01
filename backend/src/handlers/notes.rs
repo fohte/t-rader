@@ -302,13 +302,13 @@ mod tests {
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::services::note_versions;
-    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::agent_config;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
     use gateway_postgres::entities::{change_history, comment, note, note_version};

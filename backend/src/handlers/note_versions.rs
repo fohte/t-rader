@@ -1,5 +1,6 @@
 use axum::Json;
 use axum::extract::State;
+use core_application::strategy_task::TaskSource;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -9,7 +10,6 @@ use crate::handlers::comments::map_comment_read_error;
 use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, NoteVersionResponse};
 use crate::services::note_versions::INITIAL_NOTE_STATUS;
-use crate::services::strategy_tasks::{self, TaskSource};
 
 /// ノートの全バージョンを古い順に返す。
 #[utoipa::path(
@@ -201,16 +201,18 @@ pub async fn reject_note_version(
             "ノート「{}」(id: {}) の v{} (version_id: {}) がレビューで却下されました。{}付いているコメントを確認し、指摘を反映してください。",
             version.title, note_id, version_no, version.id, reason
         );
-        strategy_tasks::submit_task(
-            &state.db,
-            &state.agent_task_client,
-            strategy_id,
-            &prompt,
-            TaskSource::Review,
-            None,
-        )
-        .await
-        .map_err(map_submit_error)?;
+        state
+            .use_cases
+            .strategy_tasks()
+            .submit_task(
+                state.agent_task_client.as_ref(),
+                strategy_id,
+                &prompt,
+                TaskSource::Review,
+                None,
+            )
+            .await
+            .map_err(map_submit_error)?;
     }
 
     let updated = state
