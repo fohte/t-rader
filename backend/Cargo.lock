@@ -1824,6 +1824,7 @@ dependencies = [
  "core-application",
  "core-domain",
  "migration",
+ "rstest",
  "rust_decimal",
  "sea-orm",
  "serde",

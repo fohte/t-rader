@@ -6,8 +6,17 @@ use uuid::Uuid;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
+mod query;
+mod use_cases;
+
 #[cfg(feature = "test-support")]
 mod fake;
+
+pub use query::{
+    ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQuery, ChangeHistoryQueryError,
+    SharedChangeHistoryQuery,
+};
+pub use use_cases::{ChangeHistoryUseCaseError, ChangeHistoryUseCases};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Actor {
