@@ -1,16 +1,20 @@
 # public.news_item
 
+## Description
+
+RSS フィードなどから取得したニュース記事情報を保持する。
+
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| id           | uuid                     | gen_random_uuid() | false    |          |         |         |
-| source       | text                     |                   | false    |          |         |         |
-| url          | text                     |                   | false    |          |         |         |
-| title        | text                     |                   | false    |          |         |         |
-| body_snippet | text                     |                   | true     |          |         |         |
-| published_at | timestamp with time zone |                   | false    |          |         |         |
-| fetched_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name         | Type                     | Default           | Nullable | Children | Parents | Comment                                        |
+| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ---------------------------------------------- |
+| id           | uuid                     | gen_random_uuid() | false    |          |         |                                                |
+| source       | text                     |                   | false    |          |         | ニュースソースの表示名。                       |
+| url          | text                     |                   | false    |          |         | 記事の URL。                                   |
+| title        | text                     |                   | false    |          |         | 記事タイトル。                                 |
+| body_snippet | text                     |                   | true     |          |         | フィードの説明文から切り出した記事本文の抜粋。 |
+| published_at | timestamp with time zone |                   | false    |          |         | 記事の公開日時。                               |
+| fetched_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         | 記事を取得した日時。                           |
 
 ## Constraints
 

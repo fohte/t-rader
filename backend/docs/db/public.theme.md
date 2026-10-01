@@ -1,12 +1,16 @@
 # public.theme
 
+## Description
+
+ノートや戦略などから参照する投資テーマを管理する。
+
 ## Columns
 
-| Name        | Type    | Default | Nullable | Children | Parents | Comment |
-| ----------- | ------- | ------- | -------- | -------- | ------- | ------- |
-| id          | varchar |         | false    |          |         |         |
-| name        | varchar |         | false    |          |         |         |
-| description | text    |         | true     |          |         |         |
+| Name        | Type    | Default | Nullable | Children | Parents | Comment        |
+| ----------- | ------- | ------- | -------- | -------- | ------- | -------------- |
+| id          | varchar |         | false    |          |         |                |
+| name        | varchar |         | false    |          |         | テーマ名。     |
+| description | text    |         | true     |          |         | テーマの説明。 |
 
 ## Constraints
 

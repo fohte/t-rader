@@ -1,12 +1,16 @@
 # public.stock_group_member
 
+## Description
+
+銘柄と銘柄グループの所属関係を保持する。
+
 ## Columns
 
-| Name       | Type                     | Default           | Nullable | Children | Parents                                     | Comment |
-| ---------- | ------------------------ | ----------------- | -------- | -------- | ------------------------------------------- | ------- |
-| stock_id   | varchar                  |                   | false    |          | [public.stock](public.stock.md)             |         |
-| group_id   | uuid                     |                   | false    |          | [public.stock_group](public.stock_group.md) |         |
-| created_at | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                             |         |
+| Name       | Type                     | Default           | Nullable | Children | Parents                                     | Comment                  |
+| ---------- | ------------------------ | ----------------- | -------- | -------- | ------------------------------------------- | ------------------------ |
+| stock_id   | varchar                  |                   | false    |          | [public.stock](public.stock.md)             | グループに所属する銘柄。 |
+| group_id   | uuid                     |                   | false    |          | [public.stock_group](public.stock_group.md) | 銘柄が所属するグループ。 |
+| created_at | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                             |                          |
 
 ## Constraints
 
