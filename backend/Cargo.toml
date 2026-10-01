@@ -13,6 +13,7 @@ default-members = [
 [workspace.dependencies]
 async-trait = "=0.1.92"
 axum = "=0.8.9"
+automod = "=1.0.17"
 core-domain = { path = "crates/core/domain" }
 core-application = { path = "crates/core/application" }
 entrypoint-scheduler = { path = "crates/entrypoints/scheduler" }
@@ -71,6 +72,7 @@ default-run = "backend"
 
 [dependencies]
 async-trait = { workspace = true }
+automod = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive"] }

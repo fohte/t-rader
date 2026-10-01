@@ -1,4 +1,5 @@
 use chrono::NaiveDate;
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShortSaleReportQuery {
@@ -9,7 +10,7 @@ pub struct ShortSaleReportQuery {
     pub limit: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct ShortSaleReportIngestStats {
     pub days_fetched: usize,
     pub rows_upserted: usize,

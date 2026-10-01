@@ -22,7 +22,7 @@ use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
-use gateway_postgres::DatabaseHandle;
+use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
 use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
@@ -378,6 +378,7 @@ async fn main() -> Result<(), AppError> {
         .map(|client| Arc::clone(client) as SharedMarginSource);
     let dependencies = SchedulerDependencies {
         indicator_observations: use_cases.indicator_observations(),
+        ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
         predictions: use_cases.predictions(),
         short_ratios: use_cases.short_ratios(),
