@@ -225,24 +225,20 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。webhook 受信時の
-    // 即時 polling 誘発用に Notify を watcher と共有する。
-    let agent_task_notify = Arc::new(tokio::sync::Notify::new());
-    let agent_task_client: SharedAgentTaskClient = match AgentTaskClientConfig::from_env()
-        .map_err(|e| AppError::Config(e.to_string()))?
-    {
+    // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。
+    let agent_task_client_config =
+        AgentTaskClientConfig::from_env().map_err(|e| AppError::Config(e.to_string()))?;
+    let strategy_task_reconcile_enabled = matches!(
+        &agent_task_client_config,
+        AgentTaskClientConfigSource::Configured(_)
+    );
+    let agent_task_client: SharedAgentTaskClient = match agent_task_client_config {
         AgentTaskClientConfigSource::Configured(config) => {
             let client = HttpAgentTaskClient::new(config).map_err(|e| {
                 AppError::Config(format!("failed to initialize agent task client: {e}"))
             })?;
             tracing::info!("agent task client initialized");
             let arc: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(client);
-            let _watcher = backend::mcp::watcher::spawn(
-                db.clone(),
-                arc.clone(),
-                backend::mcp::watcher::DEFAULT_INTERVAL,
-                agent_task_notify.clone(),
-            );
             arc
         }
         AgentTaskClientConfigSource::Disabled => {
@@ -284,7 +280,7 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // フィード一覧はユースケースが取得ごとに読み直すため、UI / MCP からの変更を反映できる。
+    // フィード一覧を取り込みごとに読み直し、UI / MCP からの変更を反映する。
     let news_aggregator: SharedNewsAggregator =
         Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
             AppError::Config(format!("failed to initialize RSS news aggregator: {err}"))
@@ -307,30 +303,18 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // cron trigger を schedule どおりに発火させる worker を起動する。
-    // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
-    tracing::info!(
-        interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
-        "starting cron trigger worker",
-    );
-    let _trigger_worker = backend::services::trigger_worker::spawn(
-        use_cases.triggers(),
-        agent_task_client.clone(),
-        backend::services::trigger_worker::DEFAULT_INTERVAL,
-    );
-
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
-    let market_daily_bar_source: Option<SharedMarketDailyBarSource> = jquants_ingest_client
-        .as_ref()
-        .map(|client| Arc::clone(client) as SharedMarketDailyBarSource);
     let margin_source: Option<SharedMarginSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedMarginSource);
+    let market_daily_bar_source: Option<SharedMarketDailyBarSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedMarketDailyBarSource);
     let earnings_schedule_source: Option<SharedEarningsScheduleSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedEarningsScheduleSource);
@@ -371,6 +355,10 @@ async fn main() -> Result<(), AppError> {
         margins: use_cases.margins(),
         short_selling_source,
         margin_source,
+        strategy_tasks: use_cases.strategy_tasks(),
+        triggers: use_cases.triggers(),
+        agent_task_client: agent_task_client.clone(),
+        strategy_task_reconcile_enabled,
     };
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal_tx = shutdown_tx.clone();
@@ -394,7 +382,6 @@ async fn main() -> Result<(), AppError> {
         daily_bar_source,
         jquants_client,
         agent_task_client,
-        agent_task_notify,
         agent_webhook_token: Arc::from(agent_webhook_token),
         kata_executor,
         llm_gateway_client,

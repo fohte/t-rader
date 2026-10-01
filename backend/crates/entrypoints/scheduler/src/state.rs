@@ -1,3 +1,4 @@
+use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::{
     bars::BarsUseCases, earnings_schedule::EarningsScheduleUseCases,
     earnings_schedule_source::SharedEarningsScheduleSource, equity_master::EquityMasterUseCases,
@@ -11,7 +12,8 @@ use core_application::{
     shareholding_structure::ShareholdingStructureUseCases,
     shareholding_structure_source::SharedShareholdingStructureSource,
     short_ratio::ShortRatioUseCases, short_sale_report::ShortSaleReportUseCases,
-    short_selling_source::SharedShortSellingSource, valuation::ValuationUseCases,
+    short_selling_source::SharedShortSellingSource, strategy_task::StrategyTaskUseCases,
+    trigger::TriggerUseCases, valuation::ValuationUseCases,
     valuation_source::SharedValuationSource,
 };
 
@@ -40,6 +42,10 @@ pub struct SchedulerDependencies {
     pub margins: MarginUseCases,
     pub short_selling_source: Option<SharedShortSellingSource>,
     pub margin_source: Option<SharedMarginSource>,
+    pub strategy_tasks: StrategyTaskUseCases,
+    pub triggers: TriggerUseCases,
+    pub agent_task_client: SharedAgentTaskClient,
+    pub strategy_task_reconcile_enabled: bool,
 }
 
 #[derive(Clone)]

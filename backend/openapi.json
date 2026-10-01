@@ -976,7 +976,7 @@
         },
         "responses": {
           "204": {
-            "description": "受理 (watcher の即時 polling を誘発)"
+            "description": "受理 (戦略タスク照合 job を投入)"
           },
           "401": {
             "description": "トークン不一致",
@@ -4414,13 +4414,13 @@
           "refs"
         ],
         "summary": "`[[kind:id]]` の参照解決。リンクテキストから表示名を引く。",
-        "description": "`link=stock:7203,indicator:USDJPY` のようにカンマ区切りで複数渡せる。\nid が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の\nid と name を返す (レスポンスの id が入力と異なることがある)。\nどちらにも一致しないものは name = null、id は入力のまま返す。",
+        "description": "`link=stock:demo-code,indicator:demo-index,group:demo-axis/demo-group` のようにカンマ区切りで複数渡せる。\nid が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の\nid と name を返す (レスポンスの id が入力と異なることがある)。\nどちらにも一致しないものは name = null、id は入力のまま返す。",
         "operationId": "resolve_refs",
         "parameters": [
           {
             "name": "link",
             "in": "query",
-            "description": "`[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定",
+            "description": "`[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定。group の id は `axis-key/group-key`。",
             "required": true,
             "schema": {
               "type": "string"
@@ -4442,103 +4442,6 @@
             }
           },
           "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/refs/sectors": {
-      "get": {
-        "tags": [
-          "refs"
-        ],
-        "summary": "sector 検索",
-        "operationId": "list_sectors",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "description": "部分一致クエリ。空のときは先頭から最大 50 件返す",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Sector"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/refs/sectors/{id}": {
-      "get": {
-        "tags": [
-          "refs"
-        ],
-        "summary": "sector 詳細",
-        "operationId": "get_sector",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "セクター ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Sector"
-                }
-              }
-            }
-          },
-          "404": {
             "description": "",
             "content": {
               "application/json": {
@@ -4631,103 +4534,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Stock"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/refs/themes": {
-      "get": {
-        "tags": [
-          "refs"
-        ],
-        "summary": "theme 検索",
-        "operationId": "list_themes",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "description": "部分一致クエリ。空のときは先頭から最大 50 件返す",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Theme"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/refs/themes/{id}": {
-      "get": {
-        "tags": [
-          "refs"
-        ],
-        "summary": "theme 詳細",
-        "operationId": "get_theme",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "テーマ ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Theme"
                 }
               }
             }
@@ -8270,7 +8076,7 @@
               "string",
               "null"
             ],
-            "description": "一級参照型トークン (例: \"stock:7203\" / \"theme:weak-jpy\")"
+            "description": "一級参照型トークン (例: \"stock:demo-code\" / \"group:demo-axis/demo-group\")"
           },
           "value": {
             "type": [
@@ -8914,7 +8720,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "\"stock\" | \"indicator\" | \"sector\" | \"theme\""
+            "description": "\"stock\" | \"indicator\" | \"group\""
           },
           "name": {
             "type": [
@@ -9128,21 +8934,6 @@
             "type": "string"
           },
           "symbol": {
-            "type": "string"
-          }
-        }
-      },
-      "Sector": {
-        "type": "object",
-        "required": [
-          "id",
-          "name"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
             "type": "string"
           }
         }
@@ -9431,27 +9222,6 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
-          }
-        }
-      },
-      "Theme": {
-        "type": "object",
-        "required": [
-          "id",
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
           }
         }
       },
@@ -10041,7 +9811,7 @@
     },
     {
       "name": "refs",
-      "description": "一級参照型 (stock / indicator / sector / theme)"
+      "description": "一級参照型 (stock / indicator / group)"
     },
     {
       "name": "notes",

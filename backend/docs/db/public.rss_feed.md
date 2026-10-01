@@ -1,16 +1,20 @@
 # public.rss_feed
 
+## Description
+
+ニュース取り込み元となる RSS フィードを管理する。
+
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| id           | uuid                     | gen_random_uuid() | false    |          |         |         |
-| source       | text                     |                   | false    |          |         |         |
-| display_name | text                     |                   | false    |          |         |         |
-| url          | text                     |                   | false    |          |         |         |
-| enabled      | boolean                  | true              | false    |          |         |         |
-| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
-| updated_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name         | Type                     | Default           | Nullable | Children | Parents | Comment                                |
+| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | -------------------------------------- |
+| id           | uuid                     | gen_random_uuid() | false    |          |         |                                        |
+| source       | text                     |                   | false    |          |         | フィードを識別するキー。               |
+| display_name | text                     |                   | false    |          |         | フィードの表示名。                     |
+| url          | text                     |                   | false    |          |         | RSS フィードの URL。                   |
+| enabled      | boolean                  | true              | false    |          |         | フィードを取り込み対象とするかどうか。 |
+| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                        |
+| updated_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                        |
 
 ## Constraints
 

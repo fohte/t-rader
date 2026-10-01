@@ -2,7 +2,7 @@ use core_application::{news::NewsUseCases, news_aggregator::NewsAggregator};
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{DAILY_TIMEOUT, run_with_state};
+use super::{DAILY_TIMEOUT, run_with_ingest_run_log_state};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NewsAggregation;
@@ -11,7 +11,7 @@ impl TaskHandler for NewsAggregation {
     const IDENTIFIER: &'static str = "news_aggregation";
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
+        run_with_ingest_run_log_state(
             context,
             Self::IDENTIFIER,
             DAILY_TIMEOUT,

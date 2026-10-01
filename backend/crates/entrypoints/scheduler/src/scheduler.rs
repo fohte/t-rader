@@ -1,6 +1,7 @@
 use std::{future::Future, time::Duration};
 
 use chrono::Weekday;
+use core_application::strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME;
 use graphile_worker::{
     Cron, Crontab, CrontabFill, CrontabTimer, CrontabTimerError, TaskHandler, Worker, WorkerOptions,
 };
@@ -19,6 +20,8 @@ use crate::{
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         prediction::PredictionGrading,
+        strategy_task_reconcile::StrategyTaskReconcile,
+        trigger_evaluation::TriggerEvaluation,
         valuation::ValuationIngest,
     },
     state::{SchedulerDependencies, SchedulerState},
@@ -53,6 +56,7 @@ struct ConfiguredJobs {
     valuation: bool,
     equity_master: bool,
     shareholding_structure: bool,
+    strategy_task_reconcile: bool,
 }
 
 pub struct Scheduler {
@@ -75,6 +79,7 @@ impl Scheduler {
             valuation: dependencies.valuation_source.is_some(),
             equity_master: dependencies.equity_master_source.is_some(),
             shareholding_structure: dependencies.shareholding_structure_source.is_some(),
+            strategy_task_reconcile: dependencies.strategy_task_reconcile_enabled,
         })
         .map_err(|error| error.to_string())?;
         let state = SchedulerState { dependencies };
@@ -104,6 +109,8 @@ impl Scheduler {
             .define_job::<ShortSaleReportIngest>()
             .define_job::<MarginIngest>()
             .define_job::<PredictionGrading>()
+            .define_job::<StrategyTaskReconcile>()
+            .define_job::<TriggerEvaluation>()
             .with_crons(crontabs)
             .with_cron(recovery_cron)
             .init()
@@ -194,18 +201,28 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
         14,
         0,
     )?);
+    if configured.strategy_task_reconcile {
+        crontabs.push(every_minute_cron::<StrategyTaskReconcile>(
+            "strategy_task_reconcile",
+            Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME),
+        ));
+    }
+    crontabs.push(every_minute_cron::<TriggerEvaluation>(
+        "trigger_evaluation",
+        None,
+    ));
     Ok(crontabs)
 }
 
 fn configure_cron<T: TaskHandler>(
     timer: CrontabTimer,
     id: &str,
-    fill: CrontabFill,
+    fill: Option<CrontabFill>,
     queue: Option<&str>,
 ) -> Crontab {
     let mut crontab = Crontab::new(timer, T::IDENTIFIER);
     crontab.options.id = Some(id.to_string());
-    crontab.options.fill = Some(fill);
+    crontab.options.fill = fill;
     crontab.options.max = Some(MAX_ATTEMPTS);
     crontab.options.queue = queue.map(str::to_string);
     crontab
@@ -220,7 +237,7 @@ fn daily_cron<T: TaskHandler>(
     Ok(configure_cron::<T>(
         CrontabTimer::daily_at(utc_hour, utc_minute)?,
         id,
-        CrontabFill::days(3),
+        Some(CrontabFill::days(3)),
         queue,
     ))
 }
@@ -234,7 +251,7 @@ fn hourly_cron<T: TaskHandler>(
     Ok(configure_cron::<T>(
         CrontabTimer::hourly_at(utc_minute)?,
         id,
-        fill,
+        Some(fill),
         queue,
     ))
 }
@@ -248,9 +265,13 @@ fn weekly_cron<T: TaskHandler>(
     Ok(configure_cron::<T>(
         CrontabTimer::weekly_on(weekday, utc_hour, utc_minute)?,
         id,
-        CrontabFill::weeks(2),
+        Some(CrontabFill::weeks(2)),
         None,
     ))
+}
+
+fn every_minute_cron<T: TaskHandler>(id: &str, queue: Option<&str>) -> Crontab {
+    configure_cron::<T>(CrontabTimer::every_minute(), id, None, queue)
 }
 
 #[cfg(test)]
@@ -269,10 +290,15 @@ mod tests {
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         prediction::PredictionGrading,
+        strategy_task_reconcile::StrategyTaskReconcile,
+        trigger_evaluation::TriggerEvaluation,
         valuation::ValuationIngest,
     };
 
-    use super::{ConfiguredJobs, JQUANTS_QUEUE, build_crontabs, configure_cron, hourly_cron};
+    use super::{
+        ConfiguredJobs, JQUANTS_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, build_crontabs,
+        configure_cron, every_minute_cron, hourly_cron,
+    };
 
     #[fixture]
     fn all_configured_jobs() -> ConfiguredJobs {
@@ -285,6 +311,7 @@ mod tests {
             valuation: true,
             equity_master: true,
             shareholding_structure: true,
+            strategy_task_reconcile: true,
         }
     }
 
@@ -294,7 +321,7 @@ mod tests {
         fill: CrontabFill,
         queue: Option<&str>,
     ) -> Option<Crontab> {
-        Some(configure_cron::<T>(timer?, id, fill, queue))
+        Some(configure_cron::<T>(timer?, id, Some(fill), queue))
     }
 
     #[rstest]
@@ -372,6 +399,14 @@ mod tests {
                 CrontabFill::weeks(2),
                 None,
             ),
+            Some(every_minute_cron::<StrategyTaskReconcile>(
+                "strategy_task_reconcile",
+                Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME),
+            )),
+            Some(every_minute_cron::<TriggerEvaluation>(
+                "trigger_evaluation",
+                None,
+            )),
         ]
         .into_iter()
         .collect::<Option<Vec<_>>>();
@@ -472,20 +507,28 @@ mod tests {
                     Some(3),
                     None,
                 ),
+                (
+                    Some("strategy_task_reconcile".to_string()),
+                    None,
+                    Some(3),
+                    Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME.to_string()),
+                ),
+                (Some("trigger_evaluation".to_string()), None, Some(3), None,),
             ]),
         );
     }
 
     #[rstest]
-    #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading"])]
-    #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading"])]
-    #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading"])]
-    #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading"])]
-    #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading"])]
-    #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading"])]
-    #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading"])]
-    #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading"])]
-    #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading"])]
+    #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "trigger_evaluation"])]
+    #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
     fn schedules_only_configured_sources(
         #[case] configured: ConfiguredJobs,
         #[case] expected_ids: Vec<&str>,

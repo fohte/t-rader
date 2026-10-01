@@ -5,8 +5,7 @@ use core_domain::note_reference::ALLOWED_REF_KINDS;
 pub enum RefKind {
     Stock,
     Indicator,
-    Sector,
-    Theme,
+    Group,
 }
 
 impl RefKind {
@@ -14,8 +13,7 @@ impl RefKind {
         match self {
             Self::Stock => "stock",
             Self::Indicator => "indicator",
-            Self::Sector => "sector",
-            Self::Theme => "theme",
+            Self::Group => "group",
         }
     }
 }
@@ -24,12 +22,8 @@ impl TryFrom<&str> for RefKind {
     type Error = String;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        const KINDS_BY_ALLOWED_KIND: [RefKind; ALLOWED_REF_KINDS.len()] = [
-            RefKind::Stock,
-            RefKind::Indicator,
-            RefKind::Sector,
-            RefKind::Theme,
-        ];
+        const KINDS_BY_ALLOWED_KIND: [RefKind; ALLOWED_REF_KINDS.len()] =
+            [RefKind::Stock, RefKind::Indicator, RefKind::Group];
 
         let index = ALLOWED_REF_KINDS
             .iter()
@@ -58,19 +52,6 @@ pub struct IndicatorRef {
     pub id: String,
     pub name: String,
     pub kind: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SectorRef {
-    pub id: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ThemeRef {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

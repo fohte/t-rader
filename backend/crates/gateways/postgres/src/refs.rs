@@ -1,9 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use core_application::refs::{
-    IndicatorRef, RefRepository, RefRepositoryError, RefSearchMatch, RefTerm, SectorRef, StockRef,
-    ThemeRef,
+    IndicatorRef, RefRepository, RefRepositoryError, RefSearchMatch, RefTerm, StockRef,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -14,7 +13,7 @@ use sea_orm::{
 };
 
 use crate::DatabaseHandle;
-use crate::entities::{indicator, ref_term, sector, stock, theme};
+use crate::entities::{group_axis, indicator, ref_term, stock, stock_group};
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
@@ -39,23 +38,14 @@ const SEARCH_REFS_SQL: &str = r#"
                  AND normalize(t.term, NFKC) ILIKE $1
            )
     UNION ALL
-    SELECT 'sector', se.id, se.name, NULL
-        FROM sector se
-        WHERE normalize(se.id, NFKC) ILIKE $1
-           OR normalize(se.name, NFKC) ILIKE $1
+    SELECT 'group', ga.key || '/' || sg.key, sg.name, NULL
+        FROM stock_group sg
+        JOIN group_axis ga ON ga.id = sg.axis_id
+        WHERE normalize(ga.key || '/' || sg.key, NFKC) ILIKE $1
+           OR normalize(sg.name, NFKC) ILIKE $1
            OR EXISTS (
                SELECT 1 FROM ref_term t
-               WHERE t.ref_kind = 'sector' AND t.ref_id = se.id
-                 AND normalize(t.term, NFKC) ILIKE $1
-           )
-    UNION ALL
-    SELECT 'theme', th.id, th.name, NULL
-        FROM theme th
-        WHERE normalize(th.id, NFKC) ILIKE $1
-           OR normalize(th.name, NFKC) ILIKE $1
-           OR EXISTS (
-               SELECT 1 FROM ref_term t
-               WHERE t.ref_kind = 'theme' AND t.ref_id = th.id
+               WHERE t.ref_kind = 'group' AND t.ref_id = ga.key || '/' || sg.key
                  AND normalize(t.term, NFKC) ILIKE $1
            )
     ORDER BY name, ref_kind
@@ -136,59 +126,6 @@ impl RefRepository for PostgresRefRepository {
             .map_err(repository_error)
     }
 
-    async fn list_sectors(
-        &self,
-        query: Option<&str>,
-    ) -> Result<Vec<SectorRef>, RefRepositoryError> {
-        let mut find = sector::Entity::find().order_by_asc(sector::Column::Id);
-        if let Some(query) = query {
-            let pattern = format!("%{query}%");
-            find = find.filter(
-                Condition::any()
-                    .add(sector::Column::Id.like(&pattern))
-                    .add(sector::Column::Name.like(&pattern)),
-            );
-        }
-        find.limit(50)
-            .all(&self.db)
-            .await
-            .map(|rows| rows.into_iter().map(to_sector_ref).collect())
-            .map_err(repository_error)
-    }
-
-    async fn find_sector(&self, id: &str) -> Result<Option<SectorRef>, RefRepositoryError> {
-        sector::Entity::find_by_id(id.to_string())
-            .one(&self.db)
-            .await
-            .map(|row| row.map(to_sector_ref))
-            .map_err(repository_error)
-    }
-
-    async fn list_themes(&self, query: Option<&str>) -> Result<Vec<ThemeRef>, RefRepositoryError> {
-        let mut find = theme::Entity::find().order_by_asc(theme::Column::Id);
-        if let Some(query) = query {
-            let pattern = format!("%{query}%");
-            find = find.filter(
-                Condition::any()
-                    .add(theme::Column::Id.like(&pattern))
-                    .add(theme::Column::Name.like(&pattern)),
-            );
-        }
-        find.limit(50)
-            .all(&self.db)
-            .await
-            .map(|rows| rows.into_iter().map(to_theme_ref).collect())
-            .map_err(repository_error)
-    }
-
-    async fn find_theme(&self, id: &str) -> Result<Option<ThemeRef>, RefRepositoryError> {
-        theme::Entity::find_by_id(id.to_string())
-            .one(&self.db)
-            .await
-            .map(|row| row.map(to_theme_ref))
-            .map_err(repository_error)
-    }
-
     async fn search_all(
         &self,
         pattern: &str,
@@ -247,34 +184,38 @@ impl RefRepository for PostgresRefRepository {
             .map_err(repository_error)
     }
 
-    async fn sector_names(
+    async fn group_names(
         &self,
         ids: &[String],
     ) -> Result<HashMap<String, String>, RefRepositoryError> {
         if ids.is_empty() {
             return Ok(HashMap::new());
         }
-        sector::Entity::find()
-            .filter(sector::Column::Id.is_in(ids.to_vec()))
-            .all(&self.db)
-            .await
-            .map(|rows| rows.into_iter().map(|row| (row.id, row.name)).collect())
-            .map_err(repository_error)
-    }
-
-    async fn theme_names(
-        &self,
-        ids: &[String],
-    ) -> Result<HashMap<String, String>, RefRepositoryError> {
-        if ids.is_empty() {
+        let requested_ids = ids.iter().cloned().collect::<HashSet<_>>();
+        let group_keys = ids
+            .iter()
+            .filter_map(|id| id.split_once('/').map(|(_, key)| key.to_string()))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        if group_keys.is_empty() {
             return Ok(HashMap::new());
         }
-        theme::Entity::find()
-            .filter(theme::Column::Id.is_in(ids.to_vec()))
+        stock_group::Entity::find()
+            .find_also_related(group_axis::Entity)
+            .filter(stock_group::Column::Key.is_in(group_keys))
             .all(&self.db)
             .await
-            .map(|rows| rows.into_iter().map(|row| (row.id, row.name)).collect())
             .map_err(repository_error)
+            .map(|rows| {
+                rows.into_iter()
+                    .filter_map(|(group, axis)| {
+                        let axis = axis?;
+                        let id = format!("{}/{}", axis.key, group.key);
+                        requested_ids.contains(&id).then_some((id, group.name))
+                    })
+                    .collect()
+            })
     }
 
     async fn list_terms(&self, ref_kind: &str) -> Result<Vec<RefTerm>, RefRepositoryError> {
@@ -374,21 +315,6 @@ fn to_indicator_ref(model: indicator::Model) -> IndicatorRef {
     }
 }
 
-fn to_sector_ref(model: sector::Model) -> SectorRef {
-    SectorRef {
-        id: model.id,
-        name: model.name,
-    }
-}
-
-fn to_theme_ref(model: theme::Model) -> ThemeRef {
-    ThemeRef {
-        id: model.id,
-        name: model.name,
-        description: model.description,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -399,8 +325,9 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
 
     use super::PostgresRefRepository;
-    use crate::entities::{indicator, ref_term, stock};
+    use crate::entities::{group_axis, indicator, ref_term, stock, stock_group};
     use crate::unit_of_work::PostgresUnitOfWork;
+    use uuid::Uuid;
 
     fn build_use_cases(db: crate::DatabaseHandle) -> RefUseCases {
         let unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
@@ -452,6 +379,36 @@ mod tests {
         .expect("seed indicator");
     }
 
+    async fn seed_group(
+        db: &impl sea_orm::ConnectionTrait,
+        axis_key: &str,
+        group_key: &str,
+        name: &str,
+    ) -> String {
+        let axis_id = Uuid::new_v4();
+        group_axis::ActiveModel {
+            id: Set(axis_id),
+            key: Set(axis_key.into()),
+            name: Set("Sample Axis".into()),
+            description: Set("Sample axis for tests".into()),
+            sync_source: Set(None),
+        }
+        .insert(db)
+        .await
+        .expect("seed group axis");
+        stock_group::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            axis_id: Set(axis_id),
+            key: Set(group_key.into()),
+            name: Set(name.into()),
+            description: Set(None),
+        }
+        .insert(db)
+        .await
+        .expect("seed stock group");
+        format!("{axis_key}/{group_key}")
+    }
+
     #[backend_test_macros::database_test]
     async fn resolve_prefers_ids_and_preserves_alias_and_input_order(db: crate::DatabaseHandle) {
         seed_stock(&db, "DEMO-STOCK", "架空銘柄").await;
@@ -486,6 +443,26 @@ mod tests {
                     name: None,
                 },
             ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn resolve_looks_up_group_by_axis_and_group_keys(db: crate::DatabaseHandle) {
+        seed_group(&db, "demo-axis-a", "demo-group", "Other Group").await;
+        let group_id = seed_group(&db, "demo-axis-b", "demo-group", "Sample Group").await;
+
+        let result = build_use_cases(db)
+            .resolve(&[("group".into(), group_id.clone())])
+            .await
+            .expect("resolve group");
+
+        assert_eq!(
+            result,
+            vec![ResolvedRef {
+                kind: "group".into(),
+                id: group_id,
+                name: Some("Sample Group".into()),
+            }],
         );
     }
 

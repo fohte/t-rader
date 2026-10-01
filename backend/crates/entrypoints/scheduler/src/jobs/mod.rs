@@ -18,6 +18,8 @@ pub mod ingest_run_recovery;
 pub mod jquants;
 pub mod news;
 pub mod prediction;
+pub mod strategy_task_reconcile;
+pub mod trigger_evaluation;
 pub mod valuation;
 
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
@@ -27,7 +29,34 @@ pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, Stri
     source.ok_or_else(|| format!("{name} is not configured"))
 }
 
-pub(super) async fn run_with_state<F, Fut, Stats>(
+pub(super) async fn run_with_state<F, Fut>(
+    context: WorkerContext,
+    task_name: &'static str,
+    timeout: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: FnOnce(SchedulerState) -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    let Some(state) = context.get_ext::<SchedulerState>() else {
+        return Err("scheduler state is not configured".to_string());
+    };
+
+    match run_with_timeout(task_name, timeout, task(state.clone())).await {
+        TimedTaskResult::Completed(Ok(())) => {
+            tracing::info!(task = task_name, "scheduled job completed");
+            Ok(())
+        }
+        TimedTaskResult::Completed(Err(error)) => {
+            tracing::warn!(task = task_name, %error, "scheduled job failed");
+            Err(error)
+        }
+        TimedTaskResult::TimedOut(error) => Err(error),
+    }
+}
+
+pub(super) async fn run_with_ingest_run_log_state<F, Fut, Stats>(
     context: WorkerContext,
     task_name: &'static str,
     timeout: Duration,
@@ -51,6 +80,30 @@ where
     .await
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum TimedTaskResult<Stats> {
+    Completed(Result<Stats, String>),
+    TimedOut(String),
+}
+
+async fn run_with_timeout<F, Stats>(
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> TimedTaskResult<Stats>
+where
+    F: Future<Output = Result<Stats, String>>,
+{
+    match timeout(duration, task).await {
+        Ok(result) => TimedTaskResult::Completed(result),
+        Err(_) => {
+            let error = format!("{task_name} timed out after {duration:?}");
+            tracing::error!(task = task_name, ?duration, "scheduled job timed out");
+            TimedTaskResult::TimedOut(error)
+        }
+    }
+}
+
 async fn run_with_ingest_run_log<F, Stats>(
     ingest_run_log: &dyn IngestRunLog,
     task_name: &'static str,
@@ -70,9 +123,9 @@ where
         }
     };
 
-    let task_result = match timeout(duration, task).await {
-        Ok(result) => result,
-        Err(_) => Err(format!("{task_name} timed out after {duration:?}")),
+    let (task_result, timed_out) = match run_with_timeout(task_name, duration, task).await {
+        TimedTaskResult::Completed(result) => (result, false),
+        TimedTaskResult::TimedOut(error) => (Err(error), true),
     };
     let recorded_result = task_result.and_then(|stats| {
         serde_json::to_value(stats)
@@ -103,7 +156,9 @@ where
             Ok(())
         }
         Err(error) => {
-            tracing::warn!(task = task_name, %error, "scheduled job failed");
+            if !timed_out {
+                tracing::warn!(task = task_name, %error, "scheduled job failed");
+            }
             Err(error)
         }
     }
@@ -127,7 +182,9 @@ mod tests {
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
-    use super::run_with_ingest_run_log;
+    use rstest::rstest;
+
+    use super::{TimedTaskResult, run_with_ingest_run_log, run_with_timeout};
 
     const RUN_ID: Uuid = Uuid::from_u128(1);
 
@@ -194,6 +251,36 @@ mod tests {
     #[derive(Serialize)]
     struct IngestStats {
         rows: usize,
+    }
+
+    #[rstest]
+    #[case::success(Ok(()), TimedTaskResult::Completed(Ok(())))]
+    #[case::failure(
+        Err("operation failed".to_string()),
+        TimedTaskResult::Completed(Err("operation failed".to_string()))
+    )]
+    #[tokio::test]
+    async fn returns_completed_job_results(
+        #[case] task_result: Result<(), String>,
+        #[case] expected: TimedTaskResult<()>,
+    ) {
+        assert_eq!(
+            run_with_timeout("sample_task", Duration::from_secs(1), async { task_result }).await,
+            expected,
+        );
+    }
+
+    #[tokio::test]
+    async fn marks_jobs_that_exceed_their_timeout() {
+        assert_eq!(
+            run_with_timeout(
+                "sample_task",
+                Duration::from_millis(1),
+                pending::<Result<(), String>>(),
+            )
+            .await,
+            TimedTaskResult::TimedOut("sample_task timed out after 1ms".to_string()),
+        );
     }
 
     #[tokio::test]

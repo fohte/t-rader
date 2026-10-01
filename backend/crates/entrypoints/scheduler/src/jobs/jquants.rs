@@ -6,7 +6,7 @@ use core_application::{
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{DAILY_TIMEOUT, require_source, run_with_state};
+use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ShortRatioIngest;
@@ -15,7 +15,7 @@ impl TaskHandler for ShortRatioIngest {
     const IDENTIFIER: &'static str = "short_ratio_ingest";
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
+        run_with_ingest_run_log_state(
             context,
             Self::IDENTIFIER,
             DAILY_TIMEOUT,
@@ -54,7 +54,7 @@ impl TaskHandler for ShortSaleReportIngest {
     const IDENTIFIER: &'static str = "short_sale_report_ingest";
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
+        run_with_ingest_run_log_state(
             context,
             Self::IDENTIFIER,
             DAILY_TIMEOUT,
@@ -100,7 +100,7 @@ impl TaskHandler for MarginIngest {
     const IDENTIFIER: &'static str = "margin_ingest";
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
+        run_with_ingest_run_log_state(
             context,
             Self::IDENTIFIER,
             DAILY_TIMEOUT,

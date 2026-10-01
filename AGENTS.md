@@ -23,28 +23,26 @@ fohte 個人用の日本株投資プラットフォーム。
 
 フェーズごとのモデル割り当ては DB の `agent_config.agent_graph` (YAML) で設定する。backend (`put_agent_graph`, `backend/src/handlers/agent_config.rs`) は値を保存するだけで解釈せず、agent (`createChatModel`, `agent/src/strategy-agent/strategy-agent.ts`) も文字列をそのまま渡すだけで、コードはモデル名を素通しする設計にすること。未設定時のフォールバック値としてもコードに実モデル名を直接書かないこと。テストや story で名前が必要な場合も実在しない架空のモデル名を使うこと。
 
-### 一級参照型は 4 種、umbrella なし
+### 一級参照型は 3 種、umbrella なし
 
-ノートや分析カードから参照される一級型はこの 4 種のみ。それぞれ独立した id 体系で別テーブルにする (umbrella エンティティを作らない):
+ノートや分析カードから参照される一級型はこの 3 種のみ。それぞれ独立した id 体系で別テーブルにする (umbrella エンティティを作らない):
 
 | kind        | 例                     |
 | ----------- | ---------------------- |
-| `stock`     | 7203                   |
-| `indicator` | USDJPY, VIX            |
-| `sector`    | 半導体                 |
-| `theme`     | 円安, 米利上げサイクル |
+| `stock`     | `demo-code`            |
+| `indicator` | `demo-indicator`       |
+| `group`     | `demo-axis/demo-group` |
 
 横断検索は UNION クエリで対応する。
 
 ### Markdown 内リンクは prefix 必須
 
-ノート / コメント / アノテーションの markdown 本文で参照型を指す内部リンクは prefix 付きにすること。prefix なしの `[[7203]]` は許容しない。
+ノート / コメント / アノテーションの markdown 本文で参照型を指す内部リンクは prefix 付きにすること。prefix なしの `[[demo-code]]` は許容しない。
 
 ```text
-[[stock:7203]]
-[[indicator:USDJPY]]
-[[sector:semiconductor]]
-[[theme:weak-jpy]]
+[[stock:demo-code]]
+[[indicator:demo-indicator]]
+[[group:demo-axis/demo-group]]
 ```
 
 ### 既存実装との関係
@@ -99,6 +97,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 ## DB schema docs
 
 - backend と agent の DB schema docs は `mise run db-doc` で再生成する
+- テーブルやカラムを追加するときは、対応するパッケージの `.tbls.yml` に説明を追加する (`id`、`created_at`、`updated_at` は除外対象)
 - CI はスキーマ関連の変更がある PR で `backend/docs/db/` と `agent/docs/db/` を再生成し、自動コミットする
 - 生成には開発 DB ではなく、migration を適用した使い捨て DB を使う
 
