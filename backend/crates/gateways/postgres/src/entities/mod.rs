@@ -15,6 +15,7 @@ pub mod financial_summary;
 pub mod group_axis;
 pub mod indicator;
 pub mod indicator_observation;
+pub mod ingest_run;
 pub mod instruments;
 pub mod jquants_daily_bars_ingested_date;
 pub mod jquants_earnings_date;

@@ -13,6 +13,7 @@ pub use super::financial_summary::Entity as FinancialSummary;
 pub use super::group_axis::Entity as GroupAxis;
 pub use super::indicator::Entity as Indicator;
 pub use super::indicator_observation::Entity as IndicatorObservation;
+pub use super::ingest_run::Entity as IngestRun;
 pub use super::instruments::Entity as Instruments;
 pub use super::jquants_daily_bars_ingested_date::Entity as JquantsDailyBarsIngestedDate;
 pub use super::jquants_earnings_date::Entity as JquantsEarningsDate;
