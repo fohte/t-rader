@@ -178,8 +178,6 @@ mod tests {
     use crate::testing::insert_test_cron_trigger;
     use core_application::change_history::Actor;
     use core_application::strategy::{StrategyUpdateCommand, StrategyUseCaseError};
-    use core_application::strategy_scope::StrategyScope;
-    use gateway_postgres::PostgresStrategyScopeSource;
     use gateway_postgres::entities::strategy;
 
     use super::super::tests_common::{build_server, insert_strategy};
@@ -385,11 +383,12 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "original").await;
-        let scope_source = PostgresStrategyScopeSource::new(&db);
-        let scope = StrategyScope::verify(strategy_id, &scope_source)
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+        let scope = use_cases
+            .strategy_scope()
+            .verify(strategy_id)
             .await
             .expect("verify strategy scope");
-        let use_cases = crate::services::use_cases::build_use_cases(db.clone());
 
         use_cases
             .strategies()

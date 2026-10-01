@@ -16,7 +16,6 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, StrategyResponse, UpdateStrategyRequest};
-use gateway_postgres::PostgresStrategyScopeSource;
 
 mod investable_amount;
 mod tasks;
@@ -35,15 +34,10 @@ pub(super) async fn strategy_scope_or_404(
     state: &AppState,
     id: Uuid,
 ) -> Result<StrategyScope, AppError> {
-    verify_strategy_scope(&state.db, id).await
-}
-
-async fn verify_strategy_scope(
-    db: &gateway_postgres::DatabaseHandle,
-    id: Uuid,
-) -> Result<StrategyScope, AppError> {
-    let source = PostgresStrategyScopeSource::new(db);
-    StrategyScope::verify(id, &source)
+    state
+        .use_cases
+        .strategy_scope()
+        .verify(id)
         .await
         .map_err(|error| match error {
             StrategyScopeError::NotFound(id) => {
