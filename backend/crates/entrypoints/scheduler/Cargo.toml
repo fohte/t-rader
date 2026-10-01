@@ -8,6 +8,7 @@ chrono = { workspace = true, features = ["clock"] }
 core-application = { workspace = true }
 graphile_worker = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sqlx = { workspace = true, features = ["postgres"] }
 tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
@@ -17,6 +18,7 @@ async-trait = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
 core-domain = { workspace = true }
 rstest = { workspace = true }
+uuid = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 
 [lints]

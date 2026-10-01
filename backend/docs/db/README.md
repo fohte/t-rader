@@ -52,6 +52,7 @@
 | [public.group_axis](public.group_axis.md)                                                   | 5       |         | BASE TABLE |
 | [public.stock_group](public.stock_group.md)                                                 | 5       |         | BASE TABLE |
 | [public.stock_group_member](public.stock_group_member.md)                                   | 3       |         | BASE TABLE |
+| [public.ingest_run](public.ingest_run.md)                                                   | 7       |         | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -690,6 +691,15 @@ erDiagram
   varchar stock_id FK
   uuid group_id FK
   timestamp_with_time_zone created_at
+}
+"public.ingest_run" {
+  uuid id
+  text job
+  timestamp_with_time_zone started_at
+  timestamp_with_time_zone finished_at
+  text status
+  jsonb stats
+  text error
 }
 ```
 
