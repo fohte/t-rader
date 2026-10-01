@@ -20,10 +20,11 @@ use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::short_selling_source::SharedShortSellingSource;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use gateway_fred::FredClient;
-use gateway_ibkr::IbkrClient;
+use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
-use gateway_postgres::DatabaseHandle;
+use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
 use migration::{Migrator, MigratorTrait};
+use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 use tokio::sync::watch;
 
@@ -139,7 +140,6 @@ async fn main() -> Result<(), AppError> {
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
 
     let app_db = DatabaseHandle::from(db.clone());
-
     let provider_kind = std::env::var("DATA_PROVIDER")
         .ok()
         .map(|s| s.to_lowercase())
@@ -161,10 +161,19 @@ async fn main() -> Result<(), AppError> {
             let exchange = std::env::var("IBKR_EXCHANGE")
                 .ok()
                 .filter(|s| !s.is_empty());
+            let rate_limiter =
+                RateLimiter::new(&redis_url, RATE_LIMIT_KEY_PREFIX).map_err(|e| {
+                    AppError::Config(format!("failed to initialize IBKR rate limiter: {e}"))
+                })?;
             let client = Arc::new(
-                IbkrClient::new(base_url, session_token, exchange).map_err(|e| {
-                    AppError::Config(format!("failed to initialize IBKR client: {e}"))
-                })?,
+                IbkrClient::new(
+                    base_url,
+                    session_token,
+                    exchange,
+                    rate_limiter,
+                    std::time::Duration::from_secs(30),
+                )
+                .map_err(|e| AppError::Config(format!("failed to initialize IBKR client: {e}")))?,
             );
             tracing::info!("IBKR 日足データ取得元を初期化しました");
             let source: SharedDailyBarSource = client;
@@ -273,7 +282,7 @@ async fn main() -> Result<(), AppError> {
     // フィード一覧は `rss_feed` テーブルから tick ごとに読み直す (UI / MCP からの追加・無効化を
     // 再起動なしで反映するため)。0 件運用も許容する。
     let news_aggregator: SharedNewsAggregator =
-        Arc::new(RssNewsAggregator::new().map_err(|err| {
+        Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
             AppError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
     let use_cases = backend::services::use_cases::build_use_cases(db.clone());
@@ -354,7 +363,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
-            db.clone(),
+            use_cases.bars(),
             client.clone(),
             backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
         );
@@ -385,6 +394,7 @@ async fn main() -> Result<(), AppError> {
         .map(|client| Arc::clone(client) as SharedMarginSource);
     let dependencies = SchedulerDependencies {
         indicator_observations: use_cases.indicator_observations(),
+        ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
         predictions: use_cases.predictions(),
         short_ratios: use_cases.short_ratios(),

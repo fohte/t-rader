@@ -1,0 +1,42 @@
+id: no-rss-reqwest-client
+language: rust
+severity: error
+message: RSS の HTTP module を経由して送信してください。
+note: reqwest::Client は RSS の HTTP module 内に置いてください。
+files:
+  - backend/crates/gateways/rss/src/**/*.rs
+ignores:
+  - backend/crates/gateways/rss/src/http.rs
+rule:
+  any:
+    - pattern: reqwest::Client
+    - pattern: use reqwest::Client;
+    - pattern: use reqwest::Client as $ALIAS;
+    - pattern: use reqwest::{Client};
+    - pattern: use reqwest::{Client as $ALIAS};
+    - pattern: Client
+      inside:
+        kind: use_list
+        inside:
+          kind: scoped_use_list
+          has:
+            field: path
+            pattern: reqwest
+      not:
+        inside:
+          kind: use_as_clause
+          has:
+            field: alias
+            pattern: Client
+            stopBy: end
+    - kind: use_as_clause
+      has:
+        field: path
+        pattern: Client
+      inside:
+        kind: use_list
+        inside:
+          kind: scoped_use_list
+          has:
+            field: path
+            pattern: reqwest

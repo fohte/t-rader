@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use core_application::bars::{BarsRepositoryError, BarsUseCaseError};
 use core_application::change_history::ChangeHistoryError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
@@ -103,6 +104,18 @@ impl From<PersistenceError> for AppError {
                 Self::Validation("value violates database constraint".into())
             }
             PersistenceError::RecordNotUpdated(_) => Self::NotFound("resource not found".into()),
+        }
+    }
+}
+
+impl From<BarsUseCaseError> for AppError {
+    fn from(error: BarsUseCaseError) -> Self {
+        match error {
+            BarsUseCaseError::Repository(BarsRepositoryError::Database(error)) => error.into(),
+            BarsUseCaseError::UnitOfWork(
+                UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
+            ) => error.into(),
+            other => Self::Database(DbErr::Custom(other.to_string())),
         }
     }
 }
