@@ -164,25 +164,6 @@ impl StrategyUseCases {
         Ok(())
     }
 
-    pub async fn delete_confirmed(
-        &self,
-        actor: Actor,
-        scope: StrategyScope,
-        expected_name: &str,
-    ) -> Result<(), StrategyUseCaseError> {
-        let transaction = self.unit_of_work.begin().await?;
-        if !self
-            .repository
-            .delete_confirmed(&transaction, scope.id(), expected_name)
-            .await?
-        {
-            return Err(StrategyUseCaseError::ConfirmationMismatch(scope.id()));
-        }
-        self.record_delete(&transaction, actor, scope.id()).await?;
-        self.unit_of_work.commit(transaction).await?;
-        Ok(())
-    }
-
     pub async fn current_investable_amount(
         &self,
         scope: StrategyScope,

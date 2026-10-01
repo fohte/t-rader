@@ -55,9 +55,6 @@ pub(crate) fn map_strategy_error(error: StrategyUseCaseError) -> AppError {
         StrategyUseCaseError::NotFound(id) => {
             AppError::NotFound(format!("strategy {id} not found"))
         }
-        StrategyUseCaseError::ConfirmationMismatch(id) => AppError::NotFound(format!(
-            "strategy {id} not found or name changed since confirmation"
-        )),
         StrategyUseCaseError::Repository(StrategyRepositoryError::Database(error))
         | StrategyUseCaseError::SummaryQuery(StrategySummaryQueryError::Database(error))
         | StrategyUseCaseError::ChangeHistory(

@@ -5,7 +5,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::models::TriggerKind;
 use core_application::rss_feed::RssFeed;
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -136,36 +135,6 @@ pub struct ListRssFeedsResult {
     pub feeds: Vec<RssFeedSummary>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CreateRssFeedParams {
-    pub source: String,
-    pub display_name: String,
-    pub url: String,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateRssFeedParams {
-    pub id: Uuid,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub url: Option<String>,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct DeleteRssFeedParams {
-    pub id: Uuid,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct DeleteRssFeedResult {
-    pub id: Uuid,
-}
-
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct NoteKindSummary {
     pub key: String,
@@ -190,47 +159,6 @@ impl From<core_application::note_kind::NoteKind> for NoteKindSummary {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ListNoteKindsResult {
     pub note_kinds: Vec<NoteKindSummary>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CreateNoteKindParams {
-    pub key: String,
-    pub display_name: String,
-    #[serde(default)]
-    pub requires_approval: Option<bool>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub sort_order: Option<i32>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct UpdateNoteKindParams {
-    pub key: String,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub requires_approval: Option<bool>,
-    #[serde(
-        default,
-        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
-    )]
-    pub description: Option<Option<String>>,
-    #[serde(default)]
-    pub sort_order: Option<i32>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct DeleteNoteKindParams {
-    pub key: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct DeleteNoteKindResult {
-    pub key: String,
 }
 
 #[derive(Debug, PartialEq, Serialize, JsonSchema)]
@@ -280,129 +208,4 @@ pub struct GetStrategyConfigResult {
     pub name: String,
     pub description: Option<String>,
     pub triggers: Vec<TriggerSummary>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CreateStrategyParams {
-    pub name: String,
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct CreateStrategyResult {
-    pub ok: bool,
-    pub errors: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub strategy_id: Option<Uuid>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateStrategyConfigParams {
-    pub strategy_id: Uuid,
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct UpdateStrategyConfigResult {
-    pub ok: bool,
-    pub errors: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct DeleteStrategyParams {
-    pub strategy_id: Uuid,
-    /// 戦略名の完全一致が必須。cascade 削除の対象を取り違えないための確認用。
-    pub confirm_name: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct DeleteStrategyResult {
-    pub ok: bool,
-    pub errors: Vec<String>,
-}
-
-/// `crate::models::TriggerKind` は `schemars::JsonSchema` を derive していないため、
-/// MCP tool の入力スキーマ用に別途定義する。
-#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum TriggerKindParam {
-    Cron,
-    Hook,
-}
-
-impl From<TriggerKindParam> for TriggerKind {
-    fn from(value: TriggerKindParam) -> Self {
-        match value {
-            TriggerKindParam::Cron => TriggerKind::Cron,
-            TriggerKindParam::Hook => TriggerKind::Hook,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct CreateStrategyTriggerParams {
-    pub strategy_id: Uuid,
-    #[serde(default)]
-    pub purpose: Option<String>,
-    pub kind: TriggerKindParam,
-    /// kind=cron 時に必須 (UTC の 5 フィールド cron 式)
-    #[serde(default)]
-    pub schedule: Option<String>,
-    /// kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子)
-    #[serde(default)]
-    pub hook_slug: Option<String>,
-    #[serde(default)]
-    pub event_match: Option<serde_json::Map<String, serde_json::Value>>,
-    pub prompt_template: String,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct CreateStrategyTriggerResult {
-    pub ok: bool,
-    pub errors: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub trigger_id: Option<Uuid>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateStrategyTriggerParams {
-    pub trigger_id: Uuid,
-    #[serde(
-        default,
-        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
-    )]
-    pub purpose: Option<Option<String>>,
-    #[serde(default)]
-    pub schedule: Option<String>,
-    #[serde(default)]
-    pub hook_slug: Option<String>,
-    #[serde(default)]
-    pub event_match: Option<serde_json::Map<String, serde_json::Value>>,
-    #[serde(default)]
-    pub prompt_template: Option<String>,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct UpdateStrategyTriggerResult {
-    pub ok: bool,
-    pub errors: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct DeleteStrategyTriggerParams {
-    pub trigger_id: Uuid,
-}
-
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct DeleteStrategyTriggerResult {
-    pub ok: bool,
-    pub errors: Vec<String>,
 }

@@ -39,12 +39,6 @@ pub trait StrategyRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         id: Uuid,
     ) -> Result<bool, StrategyRepositoryError>;
-    async fn delete_confirmed(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        id: Uuid,
-        expected_name: &str,
-    ) -> Result<bool, StrategyRepositoryError>;
     async fn find_current_investable_amount(
         &self,
         strategy_id: Uuid,
