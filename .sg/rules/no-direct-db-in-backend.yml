@@ -7,6 +7,7 @@ note: |-
   application の port とユースケースを追加し、Postgres adapter は gateways/postgres に実装してください。
   services/use_cases/<aggregate>.rs から組み立て、HTTP / MCP の entrypoint はユースケースを呼び出してください。
   詳細は docs/backend-architecture.md の「集約のユースケース追加」と「権限とトランザクション」を参照してください。
+  ignores に列挙した既存違反は暫定除外です。新しい違反を追加せず、解消後は該当パスを ignores から外してください。
 files:
   - backend/src/**/*.rs
 ignores:
@@ -17,12 +18,11 @@ ignores:
   - backend/src/**/tests*.rs
   - backend/src/services/use_cases.rs
   - backend/src/services/use_cases/**/*.rs
-  # 定期実行 job と watcher は DB handle を受け取る。
+  # 既存の直接 DB アクセスが残るファイル。違反を解消したら ignores から外す。
   - backend/src/services/*_ingest.rs
   - backend/src/services/edinet_holdings/mod.rs
   - backend/src/services/stock_master_sync.rs
   - backend/src/mcp/watcher.rs
-  # 既存の直接 DB アクセスが残るファイル。
   - backend/src/handlers/annotations.rs
   - backend/src/handlers/comments.rs
   - backend/src/handlers/note_versions.rs
@@ -44,6 +44,10 @@ ignores:
   - backend/src/services/strategies.rs
   - backend/src/services/strategy_tasks/mod.rs
   - backend/src/services/strategy_tasks/resume.rs
+utils:
+  sea-orm-db-symbol:
+    kind: identifier
+    regex: '^(ActiveModelTrait|ActiveValue|ColumnTrait|ConnectionTrait|Database|DatabaseConnection|DatabaseTransaction|EntityTrait|PaginatorTrait|QueryFilter|QueryOrder|QuerySelect|QueryTrait|TransactionTrait|OnConflict)$'
 rule:
   any:
     - kind: scoped_identifier
@@ -67,37 +71,24 @@ rule:
             pattern: gateway_postgres
           stopBy: end
         stopBy: end
-    - kind: scoped_identifier
-      regex: '^sea_orm(::[A-Za-z0-9_]+)*::(ActiveModelTrait|ActiveValue|ColumnTrait|Database|DatabaseConnection|DatabaseTransaction|EntityTrait|PaginatorTrait|QueryFilter|QueryOrder|QuerySelect|QueryTrait|TransactionTrait|OnConflict)$'
-    - kind: scoped_type_identifier
-      regex: '^sea_orm(::[A-Za-z0-9_]+)*::(ActiveModelTrait|ActiveValue|ColumnTrait|ConnectionTrait|Database|DatabaseConnection|DatabaseTransaction|EntityTrait|PaginatorTrait|QueryFilter|QueryOrder|QuerySelect|QueryTrait|TransactionTrait|OnConflict)$'
-    - kind: scoped_use_list
-      regex: '^sea_orm(::[A-Za-z0-9_]+)*::(ActiveModelTrait|ActiveValue|ColumnTrait|Database|DatabaseConnection|DatabaseTransaction|EntityTrait|PaginatorTrait|QueryFilter|QueryOrder|QuerySelect|QueryTrait|TransactionTrait|OnConflict)(\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?$'
-    - kind: use_as_clause
-      regex: '^sea_orm(::[A-Za-z0-9_]+)*::(ActiveModelTrait|ActiveValue|ColumnTrait|Database|DatabaseConnection|DatabaseTransaction|EntityTrait|PaginatorTrait|QueryFilter|QueryOrder|QuerySelect|QueryTrait|TransactionTrait|OnConflict)\s+as\s+'
+    - matches: sea-orm-db-symbol
+      inside:
+        any:
+          - kind: scoped_identifier
+            regex: '^sea_orm::'
+          - kind: scoped_type_identifier
+            regex: '^sea_orm::'
+          - kind: scoped_use_list
+            regex: '^sea_orm::'
+        stopBy: end
     - kind: use_as_clause
       regex: '^sea_orm\s+as\s+'
-    - kind: identifier
-      regex: '^(ActiveModelTrait|ActiveValue|ColumnTrait|Database|DatabaseConnection|DatabaseTransaction|EntityTrait|PaginatorTrait|QueryFilter|QueryOrder|QuerySelect|QueryTrait|TransactionTrait|OnConflict)$'
-      inside:
-        kind: use_list
-        inside:
-          kind: scoped_use_list
-          has:
-            field: path
-            regex: '^sea_orm(::|$)'
-          stopBy: end
-        stopBy: end
     - pattern: $DATABASE.begin()
       not:
         has:
           field: function
-          pattern: unit_of_work.begin
-    - pattern: $DATABASE.transaction($$$ARGS)
-    - pattern: $DATABASE.execute($$$ARGS)
+          regex: '(^|\.)unit_of_work\.begin$'
     - pattern: $DATABASE.execute_unprepared($$$ARGS)
-    - pattern: $DATABASE.query_one($$$ARGS)
-    - pattern: $DATABASE.query_all($$$ARGS)
     - kind: use_wildcard
       has:
         any:

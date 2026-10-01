@@ -22,7 +22,6 @@ use axum::Json;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ConnectionTrait;
 use serde::Serialize;
 use utoipa::OpenApi;
 use utoipa::ToSchema;
@@ -403,6 +402,8 @@ pub fn create_router(state: AppState) -> Router {
 async fn health_check(
     State(state): State<AppState>,
 ) -> Result<(StatusCode, Json<HealthResponse>), AppError> {
+    use sea_orm::ConnectionTrait;
+
     // DB 接続の正常性を確認
     state.db.execute_unprepared("SELECT 1").await?;
 

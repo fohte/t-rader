@@ -21,10 +21,10 @@ snapshots:
   ? |
     fn load<C: sea_orm::ConnectionTrait>(database: &C) { database.begin(); }
   : labels:
-      - source: sea_orm::ConnectionTrait
+      - source: database.begin()
         style: primary
-        start: 11
-        end: 35
+        start: 53
+        end: 69
   gateway_postgres::PostgresSampleRepository::new(database);:
     labels:
       - source: gateway_postgres::PostgresSampleRepository::new
@@ -117,26 +117,52 @@ snapshots:
         end: 18
   use sea_orm::ActiveModelTrait;:
     labels:
-      - source: sea_orm::ActiveModelTrait
+      - source: ActiveModelTrait
         style: primary
+        start: 13
+        end: 29
+      - source: sea_orm::ActiveModelTrait
+        style: secondary
         start: 4
         end: 29
+  use sea_orm::ConnectionTrait;:
+    labels:
+      - source: ConnectionTrait
+        style: primary
+        start: 13
+        end: 28
+      - source: sea_orm::ConnectionTrait
+        style: secondary
+        start: 4
+        end: 28
   use sea_orm::EntityTrait as DbEntity;:
     labels:
-      - source: sea_orm::EntityTrait as DbEntity
+      - source: EntityTrait
         style: primary
+        start: 13
+        end: 24
+      - source: sea_orm::EntityTrait
+        style: secondary
         start: 4
-        end: 36
+        end: 24
   use sea_orm::EntityTrait;:
     labels:
-      - source: sea_orm::EntityTrait
+      - source: EntityTrait
         style: primary
+        start: 13
+        end: 24
+      - source: sea_orm::EntityTrait
+        style: secondary
         start: 4
         end: 24
   use sea_orm::QueryTrait;:
     labels:
-      - source: sea_orm::QueryTrait
+      - source: QueryTrait
         style: primary
+        start: 13
+        end: 23
+      - source: sea_orm::QueryTrait
+        style: secondary
         start: 4
         end: 23
   use sea_orm::prelude::*;:
@@ -151,27 +177,23 @@ snapshots:
         end: 20
   use sea_orm::sea_query::OnConflict;:
     labels:
-      - source: sea_orm::sea_query::OnConflict
+      - source: OnConflict
         style: primary
+        start: 24
+        end: 34
+      - source: sea_orm::sea_query::OnConflict
+        style: secondary
         start: 4
         end: 34
   use sea_orm::{ConnectionTrait as DbConnection, QueryFilter};:
     labels:
-      - source: QueryFilter
+      - source: ConnectionTrait
         style: primary
-        start: 47
-        end: 58
-      - source: sea_orm
-        style: secondary
-        start: 4
-        end: 11
+        start: 14
+        end: 29
       - source: sea_orm::{ConnectionTrait as DbConnection, QueryFilter}
         style: secondary
         start: 4
-        end: 59
-      - source: '{ConnectionTrait as DbConnection, QueryFilter}'
-        style: secondary
-        start: 13
         end: 59
   use sea_orm::{QueryFilter};:
     labels:
@@ -179,15 +201,7 @@ snapshots:
         style: primary
         start: 14
         end: 25
-      - source: sea_orm
-        style: secondary
-        start: 4
-        end: 11
       - source: sea_orm::{QueryFilter}
         style: secondary
         start: 4
-        end: 26
-      - source: '{QueryFilter}'
-        style: secondary
-        start: 13
         end: 26
