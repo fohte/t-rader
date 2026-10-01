@@ -88,12 +88,9 @@ impl StrategyServer {
 
 fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
     match error {
-        McpToolCallCountUseCaseError::CallLimitExceeded {
-            tool_name,
-            max_calls,
-        } => invalid_params(format!(
-            "{tool_name} call limit ({max_calls}) exceeded for this task execution"
-        )),
+        error @ McpToolCallCountUseCaseError::CallLimitExceeded { .. } => {
+            invalid_params(error.to_string())
+        }
         error => {
             tracing::error!(error = %error, "strategy mcp db error");
             internal_error(format!("database error: {error}"))
