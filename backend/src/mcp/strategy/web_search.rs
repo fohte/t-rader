@@ -5,93 +5,18 @@
 //! (agent 視点の 1 task = 複数 step からなる) あたりの呼び出し回数に上限を設け、
 //! 超えたら LiteLLM を呼ばずにエラーを返す。
 
+use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
-
-use gateway_postgres::entities::mcp_tool_call_count;
 
 use super::dto::{SearchWebParams, SearchWebResult};
-use super::{StrategyServer, db_error, internal_error, invalid_params, litellm_error_to_mcp};
+use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
 
 pub(super) const TOOL_NAME: &str = "search_web";
 
 /// 1 回の戦略タスク実行 (`task_execution_id` = `x-execution-id` の `a2a_task_id` 部分) あたりの
 /// `search_web` 呼び出し回数上限。
 const SEARCH_WEB_MAX_CALLS_PER_TASK: u32 = 20;
-
-/// `(task_execution_id, tool_name)` の呼び出し回数をアトミックにインクリメントし、
-/// インクリメント後の件数を返す。
-async fn increment_task_tool_call_count(
-    db: &impl sea_orm::ConnectionTrait,
-    task_execution_id: &str,
-    tool_name: &str,
-) -> Result<i32, McpError> {
-    let model = mcp_tool_call_count::ActiveModel {
-        id: NotSet,
-        task_execution_id: Set(task_execution_id.to_string()),
-        tool_name: Set(tool_name.to_string()),
-        call_count: Set(1),
-        created_at: NotSet,
-        updated_at: NotSet,
-    };
-    let row = mcp_tool_call_count::Entity::insert(model)
-        .on_conflict(
-            OnConflict::columns([
-                mcp_tool_call_count::Column::TaskExecutionId,
-                mcp_tool_call_count::Column::ToolName,
-            ])
-            .value(
-                mcp_tool_call_count::Column::CallCount,
-                Expr::col((
-                    mcp_tool_call_count::Entity,
-                    mcp_tool_call_count::Column::CallCount,
-                ))
-                .add(1),
-            )
-            .update_column(mcp_tool_call_count::Column::UpdatedAt)
-            .to_owned(),
-        )
-        .exec_with_returning(db)
-        .await
-        .map_err(db_error)?;
-    Ok(row.call_count)
-}
-
-/// `increment_task_tool_call_count` で予約した 1 回分を取り消す (best-effort)。LiteLLM
-/// 呼び出しが失敗した場合、実際には検索していないのに呼び出し予算だけを消費してしまうと、
-/// 上流の一時的な障害が続いたときに search_web がタスク実行の残り時間ずっと使えなくなる。
-/// デクリメント自体が失敗しても呼び出し元のエラーはそのまま返したいので、結果は返さず
-/// warn ログのみ残す。
-async fn decrement_task_tool_call_count(
-    db: &impl sea_orm::ConnectionTrait,
-    task_execution_id: &str,
-    tool_name: &str,
-) {
-    let result = mcp_tool_call_count::Entity::update_many()
-        .col_expr(
-            mcp_tool_call_count::Column::CallCount,
-            Expr::col(mcp_tool_call_count::Column::CallCount).sub(1),
-        )
-        .col_expr(
-            mcp_tool_call_count::Column::UpdatedAt,
-            Expr::current_timestamp(),
-        )
-        .filter(mcp_tool_call_count::Column::TaskExecutionId.eq(task_execution_id))
-        .filter(mcp_tool_call_count::Column::ToolName.eq(tool_name))
-        .exec(db)
-        .await;
-    if let Err(err) = result {
-        tracing::warn!(
-            task_execution_id,
-            tool_name,
-            error = %err,
-            "search_web: failed to release call count reservation after a failed request"
-        );
-    }
-}
 
 impl StrategyServer {
     pub(crate) async fn search_web_inner(
@@ -111,17 +36,15 @@ impl StrategyServer {
             .litellm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
+        let tool_call_counts = self.use_cases.mcp_tool_call_counts();
 
         // task_execution_id はヘッダ欠落時 (手動呼び出し等) に None になる。その場合は
         // 呼び出し回数の追跡をスキップし、fail-open で検索を実行する。
         if let Some(task_execution_id) = task_execution_id.as_deref() {
-            let call_count =
-                increment_task_tool_call_count(&self.db, task_execution_id, TOOL_NAME).await?;
-            if call_count > SEARCH_WEB_MAX_CALLS_PER_TASK as i32 {
-                return Err(invalid_params(format!(
-                    "search_web call limit ({SEARCH_WEB_MAX_CALLS_PER_TASK}) exceeded for this task execution"
-                )));
-            }
+            tool_call_counts
+                .reserve(task_execution_id, TOOL_NAME, SEARCH_WEB_MAX_CALLS_PER_TASK)
+                .await
+                .map_err(tool_call_count_error_to_mcp)?;
         }
 
         tracing::info!(
@@ -142,8 +65,15 @@ impl StrategyServer {
                     "search_web: web search request failed"
                 );
                 // 検索が実際には行われなかったので、予約した呼び出し回数を戻す。
-                if let Some(task_execution_id) = task_execution_id.as_deref() {
-                    decrement_task_tool_call_count(&self.db, task_execution_id, TOOL_NAME).await;
+                if let Some(task_execution_id) = task_execution_id.as_deref()
+                    && let Err(err) = tool_call_counts.release(task_execution_id, TOOL_NAME).await
+                {
+                    tracing::warn!(
+                        task_execution_id,
+                        tool_name = TOOL_NAME,
+                        error = %err,
+                        "search_web: failed to release call count reservation after a failed request"
+                    );
                 }
                 return Err(litellm_error_to_mcp(e));
             }
@@ -156,241 +86,20 @@ impl StrategyServer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use indoc::indoc;
-    use sea_orm::{DatabaseBackend, MockDatabase};
-    use serde_json::json;
-    use uuid::Uuid;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    use super::super::StrategyServer;
-    use super::super::dto::{SearchWebParams, SearchWebResult};
-    use super::*;
-    use crate::services::litellm_client::LiteLlmClient;
-
-    fn mock_db() -> sea_orm::DatabaseConnection {
-        MockDatabase::new(DatabaseBackend::Postgres).into_connection()
-    }
-
-    fn params(query: &str) -> SearchWebParams {
-        SearchWebParams {
-            query: query.into(),
+fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
+    match error {
+        McpToolCallCountUseCaseError::CallLimitExceeded {
+            tool_name,
+            max_calls,
+        } => invalid_params(format!(
+            "{tool_name} call limit ({max_calls}) exceeded for this task execution"
+        )),
+        error => {
+            tracing::error!(error = %error, "strategy mcp db error");
+            internal_error(format!("database error: {error}"))
         }
-    }
-
-    fn sse_body(content: &str) -> String {
-        format!(
-            indoc! {"
-                data: {}
-
-                data: [DONE]
-
-            "},
-            json!({"choices": [{"delta": {"content": content}}]})
-        )
-    }
-
-    #[tokio::test]
-    async fn search_web_inner_requires_litellm_client() {
-        let server = StrategyServer::new(mock_db(), None);
-        let err = server
-            .search_web_inner(
-                Uuid::new_v4(),
-                None,
-                "example-model-search".to_string(),
-                params("半導体 関連ニュース"),
-            )
-            .await
-            .expect_err("expected internal error");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INTERNAL_ERROR,
-                "litellm client is not configured",
-            ),
-        );
-    }
-
-    #[tokio::test]
-    async fn search_web_inner_rejects_empty_query() {
-        let server = StrategyServer::new(mock_db(), None);
-        let err = server
-            .search_web_inner(
-                Uuid::new_v4(),
-                None,
-                "example-model-search".to_string(),
-                params("   "),
-            )
-            .await
-            .expect_err("expected invalid params");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                "query must not be empty",
-            ),
-        );
-    }
-
-    #[tokio::test]
-    async fn search_web_inner_returns_text_and_citations() {
-        let litellm = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(sse_body("半導体銘柄が上昇")))
-            .mount(&litellm)
-            .await;
-
-        let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db(), None)
-            .with_litellm_client(Some(std::sync::Arc::new(client)));
-
-        let out = server
-            .search_web_inner(
-                Uuid::new_v4(),
-                None,
-                "example-model-search".to_string(),
-                params("半導体 関連ニュース"),
-            )
-            .await
-            .expect("search_web");
-        let requests = litellm
-            .received_requests()
-            .await
-            .expect("recorded requests");
-        let body: serde_json::Value = requests[0].body_json().expect("parse request body");
-        assert_eq!(
-            (out, body),
-            (
-                SearchWebResult {
-                    text: "半導体銘柄が上昇".into(),
-                    citations: vec![],
-                },
-                json!({
-                    "model": "example-model-search",
-                    "messages": [{
-                        "role": "user",
-                        "content": [{"type": "text", "text": "半導体 関連ニュース"}],
-                    }],
-                    "stream": true,
-                    "web_search_options": {},
-                    "allowed_openai_params": ["web_search_options"],
-                }),
-            ),
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHandle) {
-        let litellm = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(sse_body("ok")))
-            .mount(&litellm)
-            .await;
-
-        let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server =
-            StrategyServer::new(db, None).with_litellm_client(Some(std::sync::Arc::new(client)));
-        let task_execution_id = format!("task-{}", Uuid::new_v4());
-
-        for _ in 0..SEARCH_WEB_MAX_CALLS_PER_TASK {
-            server
-                .search_web_inner(
-                    Uuid::new_v4(),
-                    Some(task_execution_id.clone()),
-                    "example-model-search".to_string(),
-                    params("query"),
-                )
-                .await
-                .expect("call within limit should succeed");
-        }
-
-        let err = server
-            .search_web_inner(
-                Uuid::new_v4(),
-                Some(task_execution_id.clone()),
-                "example-model-search".to_string(),
-                params("query"),
-            )
-            .await
-            .expect_err("call beyond limit should fail");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!(
-                    "search_web call limit ({SEARCH_WEB_MAX_CALLS_PER_TASK}) exceeded for this task execution"
-                )
-                .as_str(),
-            ),
-        );
-
-        let requests = litellm
-            .received_requests()
-            .await
-            .expect("recorded requests");
-        assert_eq!(requests.len(), SEARCH_WEB_MAX_CALLS_PER_TASK as usize);
-    }
-
-    #[backend_test_macros::database_test]
-    async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let litellm = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(500).set_body_string("upstream error"))
-            .mount(&litellm)
-            .await;
-
-        let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server =
-            StrategyServer::new(db, None).with_litellm_client(Some(std::sync::Arc::new(client)));
-        let task_execution_id = format!("task-{}", Uuid::new_v4());
-
-        // 予約したカウントが都度解放されなければ、SEARCH_WEB_MAX_CALLS_PER_TASK 回目以降は
-        // 呼び出し上限エラー (INVALID_PARAMS) に化けてしまう。上限の 2 倍失敗させても常に
-        // upstream の失敗 (INTERNAL_ERROR) のまま伝わることを確認する。
-        for _ in 0..(SEARCH_WEB_MAX_CALLS_PER_TASK * 2) {
-            let err = server
-                .search_web_inner(
-                    Uuid::new_v4(),
-                    Some(task_execution_id.clone()),
-                    "example-model-search".to_string(),
-                    params("query"),
-                )
-                .await
-                .expect_err("upstream failure should propagate");
-            assert_eq!(err.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
-        }
-    }
-
-    #[backend_test_macros::database_test]
-    async fn increment_task_tool_call_count_is_independent_per_task_and_tool(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let task_a = format!("task-{}", Uuid::new_v4());
-        let task_b = format!("task-{}", Uuid::new_v4());
-
-        let a_search_1 = increment_task_tool_call_count(&db, &task_a, "search_web")
-            .await
-            .expect("increment");
-        let a_search_2 = increment_task_tool_call_count(&db, &task_a, "search_web")
-            .await
-            .expect("increment");
-        let a_other_tool_1 = increment_task_tool_call_count(&db, &task_a, "other_tool")
-            .await
-            .expect("increment");
-        let b_search_1 = increment_task_tool_call_count(&db, &task_b, "search_web")
-            .await
-            .expect("increment");
-
-        assert_eq!(
-            (a_search_1, a_search_2, a_other_tool_1, b_search_1),
-            (1, 2, 1, 1),
-        );
     }
 }
+
+#[cfg(test)]
+mod tests;
