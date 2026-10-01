@@ -1,13 +1,17 @@
 # public.instruments
 
+## Description
+
+価格データの取得対象となる金融商品を管理する。
+
 ## Columns
 
-| Name   | Type    | Default | Nullable | Children                      | Parents | Comment |
-| ------ | ------- | ------- | -------- | ----------------------------- | ------- | ------- |
-| id     | varchar |         | false    | [public.bars](public.bars.md) |         |         |
-| name   | varchar |         | false    |                               |         |         |
-| market | varchar |         | false    |                               |         |         |
-| sector | varchar |         | true     |                               |         |         |
+| Name   | Type    | Default | Nullable | Children                      | Parents | Comment                      |
+| ------ | ------- | ------- | -------- | ----------------------------- | ------- | ---------------------------- |
+| id     | varchar |         | false    | [public.bars](public.bars.md) |         |                              |
+| name   | varchar |         | false    |                               |         | 金融商品の名称。             |
+| market | varchar |         | false    |                               |         | 金融商品が上場する市場。     |
+| sector | varchar |         | true     |                               |         | 金融商品に設定された業種名。 |
 
 ## Constraints
 

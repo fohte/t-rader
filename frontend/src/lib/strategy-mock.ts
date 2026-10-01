@@ -1,4 +1,4 @@
-export type RefKind = 'stock' | 'indicator' | 'sector' | 'theme'
+export type RefKind = 'stock' | 'indicator' | 'group'
 
 export interface Strategy {
   id: string
@@ -39,6 +39,5 @@ export const STRATEGIES_MOCK: Strategy[] = [
 export const REF_KIND_JP: Record<RefKind, string> = {
   stock: '銘柄',
   indicator: '指標',
-  sector: 'セクター',
-  theme: 'テーマ',
+  group: 'グループ',
 }

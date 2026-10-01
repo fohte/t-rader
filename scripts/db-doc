@@ -64,6 +64,7 @@ for package in backend agent; do
 
   (
     cd "$package"
+    TBLS_DSN="${database_url}?sslmode=disable" tbls lint -c .tbls.yml
     TBLS_DSN="${database_url}?sslmode=disable" tbls doc --rm-dist -c .tbls.yml
   )
   cleanup_database

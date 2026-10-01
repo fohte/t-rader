@@ -1,4 +1,8 @@
-//! `query_data` の取得結果を実行ステップの evidence として記録する。
+//! 外部データ取得の証跡記録。
+//!
+//! `query_data` が取得したバーデータを `strategy_task_step_evidence` に保存し、
+//! 「エージェントが当時何を見たか」を実行ステップ単位で再現可能にする。同じ問い合わせを
+//! 後から実行しても、データプロバイダ側の更新により同じ結果が返るとは限らないため。
 
 use core_application::strategy_task_step_evidence::{
     QueryDataBar, StrategyTaskStepEvidenceUseCaseError, StrategyTaskStepEvidenceUseCases,

@@ -1,14 +1,18 @@
 # public.group_axis
 
+## Description
+
+銘柄グループを分類する軸を定義する。
+
 ## Columns
 
-| Name        | Type | Default           | Nullable | Children                                    | Parents | Comment |
-| ----------- | ---- | ----------------- | -------- | ------------------------------------------- | ------- | ------- |
-| id          | uuid | gen_random_uuid() | false    | [public.stock_group](public.stock_group.md) |         |         |
-| key         | text |                   | false    |                                             |         |         |
-| name        | text |                   | false    |                                             |         |         |
-| description | text |                   | false    |                                             |         |         |
-| sync_source | text |                   | true     |                                             |         |         |
+| Name        | Type | Default           | Nullable | Children                                    | Parents | Comment                  |
+| ----------- | ---- | ----------------- | -------- | ------------------------------------------- | ------- | ------------------------ |
+| id          | uuid | gen_random_uuid() | false    | [public.stock_group](public.stock_group.md) |         |                          |
+| key         | text |                   | false    |                                             |         | 分類軸を識別するキー。   |
+| name        | text |                   | false    |                                             |         | 分類軸の表示名。         |
+| description | text |                   | false    |                                             |         | 分類軸の説明。           |
+| sync_source | text |                   | true     |                                             |         | 分類軸の同期元を示す値。 |
 
 ## Constraints
 

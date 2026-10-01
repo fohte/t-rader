@@ -14,7 +14,9 @@ use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-use gateway_postgres::entities::{note, note_version, stock, strategy, strategy_task, trigger};
+use gateway_postgres::entities::{
+    group_axis, note, note_version, stock, stock_group, strategy, strategy_task, trigger,
+};
 
 /// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
 /// 参照できる。
@@ -28,7 +30,6 @@ fn base_state(db: DatabaseHandle) -> AppState {
         daily_bar_source: None,
         jquants_client: None,
         agent_task_client: AppState::disabled_agent_task_client(),
-        agent_task_notify: Arc::new(tokio::sync::Notify::new()),
         agent_webhook_token: Arc::from(TEST_AGENT_WEBHOOK_TOKEN),
         kata_executor: None,
         llm_gateway_client: None,
@@ -300,6 +301,37 @@ pub async fn insert_test_stock(db: &impl ConnectionTrait, id: &str, name: &str) 
     .expect("insert test stock");
 }
 
+/// テストで group_axis と stock_group を seed する。
+pub async fn insert_test_group(
+    db: &impl ConnectionTrait,
+    axis_key: &str,
+    group_key: &str,
+    name: &str,
+) -> String {
+    let axis_id = Uuid::new_v4();
+    group_axis::ActiveModel {
+        id: Set(axis_id),
+        key: Set(axis_key.into()),
+        name: Set("Sample Axis".into()),
+        description: Set("Sample axis for tests".into()),
+        sync_source: Set(None),
+    }
+    .insert(db)
+    .await
+    .expect("insert test group axis");
+    stock_group::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        axis_id: Set(axis_id),
+        key: Set(group_key.into()),
+        name: Set(name.into()),
+        description: Set(None),
+    }
+    .insert(db)
+    .await
+    .expect("insert test stock group");
+    format!("{axis_key}/{group_key}")
+}
+
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。
 pub async fn create_test_server_with_db(db: DatabaseHandle) -> (DatabaseHandle, TestServer) {
     let state = base_state(db.clone());
@@ -354,9 +386,15 @@ pub async fn create_test_server_with_db_and_agent_client(
     (db, server)
 }
 
-/// `AppState` 全体と `TestServer` のペアを返す。webhook token / notify への直接アクセスが
-/// 必要なテスト (webhook 受信のような) 向け。
+/// `AppState` 全体と `TestServer` のペアを返す。webhook token を参照するテスト向け。
 pub async fn create_test_server_with_state(db: DatabaseHandle) -> (AppState, TestServer) {
+    let pool = gateway_postgres::test_support::create_test_pool().await;
+    let _worker = graphile_worker::WorkerOptions::default()
+        .pg_pool(pool)
+        .schema("graphile_worker")
+        .init()
+        .await
+        .expect("initialize Graphile Worker schema");
     let state = base_state(db);
     let router = create_router(state.clone());
     let server = TestServer::new(router).expect("failed to create test server");

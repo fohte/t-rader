@@ -73,11 +73,30 @@ describe('MarkdownBody', () => {
   it('replaces [[stock:xxx]] with a clickable ref chip', async () => {
     const user = userEvent.setup()
     const onRef = vi.fn()
-    render(<MarkdownBody source="銘柄 [[stock:7203]] 参照" onRef={onRef} />, {
-      wrapper: QueryClientWrapper,
-    })
-    await user.click(screen.getByRole('button', { name: /7203/ }))
-    expect(onRef).toHaveBeenCalledWith('stock:7203')
+    render(
+      <MarkdownBody source="銘柄 [[stock:demo-code]] 参照" onRef={onRef} />,
+      {
+        wrapper: QueryClientWrapper,
+      },
+    )
+    await user.click(screen.getByRole('button', { name: /demo-code/ }))
+    expect(onRef.mock.calls).toEqual([['stock:demo-code']])
+  })
+
+  it('replaces a group ref with a clickable ref chip', async () => {
+    const user = userEvent.setup()
+    const onRef = vi.fn()
+    render(
+      <MarkdownBody
+        source="グループ [[group:demo-axis/demo-group]] を参照"
+        onRef={onRef}
+      />,
+      { wrapper: QueryClientWrapper },
+    )
+    await user.click(
+      screen.getByRole('button', { name: /demo-axis\/demo-group/ }),
+    )
+    expect(onRef.mock.calls).toEqual([['group:demo-axis/demo-group']])
   })
 
   it('replaces [[anno:xxx]] with a clickable annotation button', async () => {

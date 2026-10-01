@@ -25,7 +25,7 @@ pub struct QueryDataBar {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrategyTaskStepEvidence {
     pub id: Uuid,
-    /// strategy_task_step は watcher が非同期反映するため、外部キーではなく相関用 UUID とする。
+    /// strategy_task_step の行は照合 job が非同期反映するため、外部キーではなく相関用 UUID とする。
     pub execution_step_id: Uuid,
     pub source: String,
     pub source_ref: String,

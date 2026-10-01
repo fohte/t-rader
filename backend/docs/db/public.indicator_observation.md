@@ -1,12 +1,16 @@
 # public.indicator_observation
 
+## Description
+
+日付ごとの指標観測値を保持する。
+
 ## Columns
 
-| Name         | Type    | Default | Nullable | Children | Parents                                 | Comment |
-| ------------ | ------- | ------- | -------- | -------- | --------------------------------------- | ------- |
-| indicator_id | varchar |         | false    |          | [public.indicator](public.indicator.md) |         |
-| date         | date    |         | false    |          |                                         |         |
-| value        | numeric |         | false    |          |                                         |         |
+| Name         | Type    | Default | Nullable | Children | Parents                                 | Comment                              |
+| ------------ | ------- | ------- | -------- | -------- | --------------------------------------- | ------------------------------------ |
+| indicator_id | varchar |         | false    |          | [public.indicator](public.indicator.md) | 観測した指標の識別子。               |
+| date         | date    |         | false    |          |                                         | 指標を観測した日付。                 |
+| value        | numeric |         | false    |          |                                         | データソースの単位で記録した観測値。 |
 
 ## Constraints
 

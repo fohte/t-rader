@@ -1,22 +1,26 @@
 # public.comment
 
+## Description
+
+ノートやアノテーションに付けるコメントと返信を保持する。
+
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children                            | Parents                             | Comment |
-| ------------ | ------------------------ | ----------------- | -------- | ----------------------------------- | ----------------------------------- | ------- |
-| id           | uuid                     |                   | false    | [public.comment](public.comment.md) |                                     |         |
-| target_kind  | varchar                  |                   | false    |                                     |                                     |         |
-| target_id    | uuid                     |                   | false    |                                     |                                     |         |
-| parent_id    | uuid                     |                   | true     |                                     | [public.comment](public.comment.md) |         |
-| body         | text                     |                   | false    |                                     |                                     |         |
-| author_kind  | varchar                  |                   | false    |                                     |                                     |         |
-| author_label | varchar                  |                   | false    |                                     |                                     |         |
-| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |                                     |         |
-| resolved     | boolean                  | false             | false    |                                     |                                     |         |
-| anchor_text  | text                     |                   | true     |                                     |                                     |         |
-| start_line   | integer                  |                   | true     |                                     |                                     |         |
-| end_line     | integer                  |                   | true     |                                     |                                     |         |
-| anchor_side  | text                     |                   | true     |                                     |                                     |         |
+| Name         | Type                     | Default           | Nullable | Children                            | Parents                             | Comment                                        |
+| ------------ | ------------------------ | ----------------- | -------- | ----------------------------------- | ----------------------------------- | ---------------------------------------------- |
+| id           | uuid                     |                   | false    | [public.comment](public.comment.md) |                                     |                                                |
+| target_kind  | varchar                  |                   | false    |                                     |                                     | コメント対象の種類。                           |
+| target_id    | uuid                     |                   | false    |                                     |                                     | コメント対象の ID。                            |
+| parent_id    | uuid                     |                   | true     |                                     | [public.comment](public.comment.md) | 返信元となる親コメント。                       |
+| body         | text                     |                   | false    |                                     |                                     | コメント本文。                                 |
+| author_kind  | varchar                  |                   | false    |                                     |                                     | コメントを投稿した主体の種別。                 |
+| author_label | varchar                  |                   | false    |                                     |                                     | コメントを投稿した主体の表示名。               |
+| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |                                     |                                                |
+| resolved     | boolean                  | false             | false    |                                     |                                     | コメントが解決済みかどうか。                   |
+| anchor_text  | text                     |                   | true     |                                     |                                     | 行コメントで選択した本文の引用。               |
+| start_line   | integer                  |                   | true     |                                     |                                     | 行コメントの開始行。1 始まり。                 |
+| end_line     | integer                  |                   | true     |                                     |                                     | 行コメントの終了行。1 始まり。                 |
+| anchor_side  | text                     |                   | true     |                                     |                                     | 行コメントが参照するノートバージョン本文の側。 |
 
 ## Constraints
 

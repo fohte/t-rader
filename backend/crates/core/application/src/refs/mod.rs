@@ -5,9 +5,7 @@ mod use_cases;
 
 pub use error::{RefRepositoryError, RefUseCaseError};
 pub use repository::{RefRepository, SharedRefRepository};
-pub use types::{
-    IndicatorRef, RefKind, RefSearchMatch, RefTerm, ResolvedRef, SectorRef, StockRef, ThemeRef,
-};
+pub use types::{IndicatorRef, RefKind, RefSearchMatch, RefTerm, ResolvedRef, StockRef};
 pub use use_cases::RefUseCases;
 
 pub fn sanitize_like(value: &str) -> String {

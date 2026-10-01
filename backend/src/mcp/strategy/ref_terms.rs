@@ -1,6 +1,6 @@
 //! 戦略実行 MCP の参照型別名 (ref_term) 追加/削除 tool。
 //!
-//! 一級参照型 (stock/indicator/sector/theme) には正規化では吸収できない表記揺れや
+//! 一級参照型 (stock/indicator/group) には正規化では吸収できない表記揺れや
 //! 別称 (旧社名、指数と構成銘柄の関係等) があり、コードの規則では導出できない。
 //! そのため語をデータとして LLM または人間が直接登録・削除する。同じ語が複数の
 //! 参照に当たること (例: Apple が銘柄にも指数の構成銘柄としても出る) は正常な状態
@@ -20,7 +20,7 @@ use super::{StrategyServer, internal_error, invalid_params};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AddRefTermsParams {
-    /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
+    /// 参照型 (`stock` / `indicator` / `group`)
     pub ref_kind: String,
     pub ref_id: String,
     pub terms: Vec<String>,
@@ -195,6 +195,39 @@ mod tests {
             .await
             .expect_err("empty ref_id");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn ref_term_operations_reject_invalid_group_ref_ids(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = build_server(db);
+        let add_result = server
+            .add_ref_terms_inner(AddRefTermsParams {
+                ref_kind: "group".into(),
+                ref_id: "demo-group".into(),
+                terms: vec!["Sample Group".into()],
+            })
+            .await
+            .map(|_| ())
+            .map_err(|error| error.code);
+        let remove_result = server
+            .remove_ref_terms_inner(RemoveRefTermsParams {
+                ref_kind: "group".into(),
+                ref_id: "demo-group".into(),
+                terms: vec!["Sample Group".into()],
+            })
+            .await
+            .map(|_| ())
+            .map_err(|error| error.code);
+
+        assert_eq!(
+            [add_result, remove_result],
+            [
+                Err(rmcp::model::ErrorCode::INVALID_PARAMS),
+                Err(rmcp::model::ErrorCode::INVALID_PARAMS),
+            ],
+        );
     }
 
     #[backend_test_macros::database_test]
