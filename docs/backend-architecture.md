@@ -52,7 +52,7 @@ backend/crates/
 
 `apps/*` は `rmcp` の session 管理、allowed hosts、access log など、複数の entrypoint に共通する MCP の配線も担う。複数 crate を組み合わせる結合テストも `apps/*` に置く。
 
-backend の bin は 1 つとし、起動モードで API と worker を切り替える。
+`backend` パッケージの bin は 1 つとし、`--run-mode` (`api` / `worker` / `both`, 既定は `both`) で HTTP / MCP API と `entrypoints/scheduler` の worker を切り替える。`both` では片方が終了するともう片方も停止する。
 
 ## crate 間の依存
 

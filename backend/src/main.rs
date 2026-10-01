@@ -468,8 +468,9 @@ async fn main() -> Result<(), AppError> {
         (None, Some(server_run)) => server_run
             .await
             .map_err(|error| AppError::Config(format!("server error: {error}"))),
+        // RunMode の追加時に有効化条件が漏れた場合も、無言で終了しないようにする。
         (None, None) => Err(AppError::Config(format!(
-            "no backend component selected for run mode {:?}",
+            "backend runtime setup is incomplete for run mode {:?}",
             cli.run_mode
         ))),
     }
