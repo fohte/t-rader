@@ -1,195 +1,16 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use rstest::rstest;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask};
-use crate::strategy_task::repository::{StrategyTaskRepository, StrategyTaskRepositoryError};
+use crate::strategy_task::test_support::FakeStrategyTaskRepository;
 use crate::strategy_task::{
     ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
-    StrategyTaskUpdate, StrategyTaskUseCases, TaskListQuery,
+    StrategyTaskUseCases,
 };
-use crate::unit_of_work::{FakeUnitOfWork, UnitOfWorkTransaction};
-
-#[derive(Default)]
-struct RepositoryState {
-    task: Option<StrategyTask>,
-    steps: Vec<StrategyTaskStep>,
-}
-
-struct FakeStrategyTaskRepository {
-    state: Mutex<RepositoryState>,
-}
-
-impl FakeStrategyTaskRepository {
-    fn new(task: Option<StrategyTask>, steps: Vec<StrategyTaskStep>) -> Self {
-        Self {
-            state: Mutex::new(RepositoryState { task, steps }),
-        }
-    }
-
-    async fn set_phase(&self, phase: StrategyTaskPhase) {
-        if let Some(task) = self.state.lock().await.task.as_mut() {
-            task.phase = phase;
-        }
-    }
-}
-
-#[async_trait]
-impl StrategyTaskRepository for FakeStrategyTaskRepository {
-    async fn strategy_exists(
-        &self,
-        _strategy_id: Uuid,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(true)
-    }
-
-    async fn agent_config_exists(
-        &self,
-        _purpose: &str,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(true)
-    }
-
-    async fn insert(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        task: StrategyTask,
-    ) -> Result<(), StrategyTaskRepositoryError> {
-        self.state.lock().await.task = Some(task);
-        Ok(())
-    }
-
-    async fn update(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        update: StrategyTaskUpdate,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        let mut state = self.state.lock().await;
-        let Some(task) = state
-            .task
-            .as_mut()
-            .filter(|task| task.task_id == update.task_id)
-        else {
-            return Ok(false);
-        };
-        if let Some(a2a_task_id) = update.a2a_task_id {
-            task.a2a_task_id = a2a_task_id;
-        }
-        if let Some(phase) = update.phase {
-            task.phase = phase;
-        }
-        if let Some(error_summary) = update.error_summary {
-            task.error_summary = error_summary;
-        }
-        if let Some(result_text) = update.result_text {
-            task.result_text = result_text;
-        }
-        if let Some(deadline_at) = update.deadline_at {
-            task.deadline_at = deadline_at;
-        }
-        if let Some(auto_resumed_at) = update.auto_resumed_at {
-            task.auto_resumed_at = auto_resumed_at;
-        }
-        task.updated_at = update.updated_at;
-        Ok(true)
-    }
-
-    async fn apply_status_and_steps(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        _task_id: Uuid,
-        _task_update: Option<StrategyTaskUpdate>,
-        _steps: Option<serde_json::Value>,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(false)
-    }
-
-    async fn find_by_id(
-        &self,
-        task_id: Uuid,
-    ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(self
-            .state
-            .lock()
-            .await
-            .task
-            .as_ref()
-            .filter(|task| task.task_id == task_id)
-            .cloned())
-    }
-
-    async fn find_by_a2a_task_id(
-        &self,
-        a2a_task_id: &str,
-    ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(self
-            .state
-            .lock()
-            .await
-            .task
-            .as_ref()
-            .filter(|task| task.a2a_task_id.as_deref() == Some(a2a_task_id))
-            .cloned())
-    }
-
-    async fn list(
-        &self,
-        _query: TaskListQuery,
-    ) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(Vec::new())
-    }
-
-    async fn list_in_flight(&self) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(Vec::new())
-    }
-
-    async fn list_steps(
-        &self,
-        task_id: Uuid,
-    ) -> Result<Vec<StrategyTaskStep>, StrategyTaskRepositoryError> {
-        Ok(self
-            .state
-            .lock()
-            .await
-            .steps
-            .iter()
-            .filter(|step| step.task_id == task_id)
-            .cloned()
-            .collect())
-    }
-
-    async fn claim_resumable(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        task_id: Uuid,
-        now: DateTime<FixedOffset>,
-        mark_auto_resumed: bool,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        let mut state = self.state.lock().await;
-        let has_failed_step = state
-            .steps
-            .iter()
-            .any(|step| step.task_id == task_id && step.status == StrategyTaskStepStatus::Failed);
-        let Some(task) = state.task.as_mut().filter(|task| task.task_id == task_id) else {
-            return Ok(false);
-        };
-        let resumable = task.phase == StrategyTaskPhase::Failed
-            || (task.phase == StrategyTaskPhase::Completed && has_failed_step);
-        let can_claim = resumable && (!mark_auto_resumed || task.auto_resumed_at.is_none());
-        if can_claim {
-            task.phase = StrategyTaskPhase::Running;
-            task.updated_at = now;
-            if mark_auto_resumed {
-                task.auto_resumed_at = Some(now);
-            }
-        }
-        Ok(can_claim)
-    }
-}
+use crate::unit_of_work::FakeUnitOfWork;
 
 #[derive(Debug, PartialEq, Eq)]
 enum ResumeResult {
@@ -228,6 +49,68 @@ struct ResumeObservation {
     committed_transactions: usize,
 }
 
+struct ResumeHarness {
+    repository: Arc<FakeStrategyTaskRepository>,
+    unit_of_work: Arc<FakeUnitOfWork>,
+    agent_client: FakeAgentTaskClient,
+    use_cases: StrategyTaskUseCases,
+}
+
+impl ResumeHarness {
+    fn new(task: Option<StrategyTask>, steps: Vec<StrategyTaskStep>) -> Self {
+        let repository = Arc::new(FakeStrategyTaskRepository::new(task, steps));
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let agent_client = FakeAgentTaskClient::new();
+        let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+        Self {
+            repository,
+            unit_of_work,
+            agent_client,
+            use_cases,
+        }
+    }
+
+    async fn observe(&self, result: ResumeResult) -> ResumeObservation {
+        let requests = self
+            .agent_client
+            .submitted
+            .lock()
+            .await
+            .iter()
+            .map(|request: &SubmitAgentTask| RequestView {
+                strategy_id: request.strategy_id,
+                prompt: request.prompt.clone(),
+                purpose: request.purpose.clone(),
+                resume_steps: request.resume_steps.clone(),
+                as_of: request.as_of,
+            })
+            .collect();
+        let task = self
+            .repository
+            .state
+            .lock()
+            .await
+            .task
+            .as_ref()
+            .map(|task| TaskView {
+                phase: task.phase,
+                a2a_task_id: task.a2a_task_id.clone(),
+                error_summary: task.error_summary.clone(),
+                result_text: task.result_text.clone(),
+                auto_resumed_at_is_set: task.auto_resumed_at.is_some(),
+                as_of: task.as_of,
+            });
+
+        ResumeObservation {
+            result,
+            requests,
+            task,
+            begun_transactions: self.unit_of_work.begun.lock().await.len(),
+            committed_transactions: self.unit_of_work.committed.lock().await.len(),
+        }
+    }
+}
+
 fn summarize_result(
     result: Result<crate::strategy_task::SubmittedTask, ResumeTaskError>,
 ) -> ResumeResult {
@@ -243,49 +126,6 @@ fn summarize_result(
         },
         Err(ResumeTaskError::AgentTask(error)) => ResumeResult::AgentTaskFailure(error.to_string()),
         Err(error) => ResumeResult::OtherFailure(error.to_string()),
-    }
-}
-
-async fn observe(
-    result: ResumeResult,
-    repository: &FakeStrategyTaskRepository,
-    agent_client: &FakeAgentTaskClient,
-    unit_of_work: &FakeUnitOfWork,
-) -> ResumeObservation {
-    let requests = agent_client
-        .submitted
-        .lock()
-        .await
-        .iter()
-        .map(|request: &SubmitAgentTask| RequestView {
-            strategy_id: request.strategy_id,
-            prompt: request.prompt.clone(),
-            purpose: request.purpose.clone(),
-            resume_steps: request.resume_steps.clone(),
-            as_of: request.as_of,
-        })
-        .collect();
-    let task = repository
-        .state
-        .lock()
-        .await
-        .task
-        .as_ref()
-        .map(|task| TaskView {
-            phase: task.phase,
-            a2a_task_id: task.a2a_task_id.clone(),
-            error_summary: task.error_summary.clone(),
-            result_text: task.result_text.clone(),
-            auto_resumed_at_is_set: task.auto_resumed_at.is_some(),
-            as_of: task.as_of,
-        });
-
-    ResumeObservation {
-        result,
-        requests,
-        task,
-        begun_transactions: unit_of_work.begun.lock().await.len(),
-        committed_transactions: unit_of_work.committed.lock().await.len(),
     }
 }
 
@@ -359,13 +199,15 @@ async fn resume_rejects_task_when_repository_does_not_claim_it(
     let steps = step_status
         .map(|status| vec![step(task_id, Uuid::from_u128(5), "phase", status, 1)])
         .unwrap_or_default();
-    let repository = Arc::new(FakeStrategyTaskRepository::new(Some(task), steps));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+    let harness = ResumeHarness::new(Some(task), steps);
 
-    let result = summarize_result(use_cases.resume(&agent_client, task_id).await);
-    let actual = observe(result, &repository, &agent_client, &unit_of_work).await;
+    let result = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(result).await;
 
     assert_eq!(
         actual,
@@ -392,13 +234,15 @@ async fn resume_rejects_task_when_repository_does_not_claim_it(
 #[tokio::test]
 async fn resume_returns_not_found_before_claiming() {
     let task_id = Uuid::from_u128(3);
-    let repository = Arc::new(FakeStrategyTaskRepository::new(None, Vec::new()));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+    let harness = ResumeHarness::new(None, Vec::new());
 
-    let result = summarize_result(use_cases.resume(&agent_client, task_id).await);
-    let actual = observe(result, &repository, &agent_client, &unit_of_work).await;
+    let result = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(result).await;
 
     assert_eq!(
         actual,
@@ -439,16 +283,19 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
             2,
         ),
     ];
-    let repository = Arc::new(FakeStrategyTaskRepository::new(Some(task), steps));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    agent_client
+    let harness = ResumeHarness::new(Some(task), steps);
+    harness
+        .agent_client
         .set_next_task_id("fictional-resumed-task")
         .await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
 
-    let result = summarize_result(use_cases.resume(&agent_client, task_id).await);
-    let actual = observe(result, &repository, &agent_client, &unit_of_work).await;
+    let result = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(result).await;
 
     assert_eq!(
         actual,
@@ -503,17 +350,25 @@ async fn resume_replays_saved_steps_and_updates_the_existing_task(
 async fn resume_does_not_submit_again_after_claiming_the_task() {
     let task = task(StrategyTaskPhase::Failed, None);
     let task_id = task.task_id;
-    let repository = Arc::new(FakeStrategyTaskRepository::new(Some(task), Vec::new()));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    agent_client
+    let harness = ResumeHarness::new(Some(task), Vec::new());
+    harness
+        .agent_client
         .set_next_task_id("fictional-first-resume")
         .await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
 
-    let first = summarize_result(use_cases.resume(&agent_client, task_id).await);
-    let second = summarize_result(use_cases.resume(&agent_client, task_id).await);
-    let actual = observe(second, &repository, &agent_client, &unit_of_work).await;
+    let first = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let second = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(second).await;
 
     assert_eq!(
         (first, actual,),
@@ -553,14 +408,19 @@ async fn resume_does_not_submit_again_after_claiming_the_task() {
 async fn auto_resume_marks_task_when_submission_succeeds() {
     let task = task(StrategyTaskPhase::Failed, None);
     let task_id = task.task_id;
-    let repository = Arc::new(FakeStrategyTaskRepository::new(Some(task), Vec::new()));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    agent_client.set_next_task_id("fictional-auto-resume").await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
+    let harness = ResumeHarness::new(Some(task), Vec::new());
+    harness
+        .agent_client
+        .set_next_task_id("fictional-auto-resume")
+        .await;
 
-    let result = summarize_result(use_cases.auto_resume(&agent_client, task_id).await);
-    let actual = observe(result, &repository, &agent_client, &unit_of_work).await;
+    let result = summarize_result(
+        harness
+            .use_cases
+            .auto_resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(result).await;
 
     assert_eq!(
         actual,
@@ -594,18 +454,29 @@ async fn auto_resume_marks_task_when_submission_succeeds() {
 async fn auto_resume_rejects_a_task_that_was_already_auto_resumed() {
     let task = task(StrategyTaskPhase::Failed, None);
     let task_id = task.task_id;
-    let repository = Arc::new(FakeStrategyTaskRepository::new(Some(task), Vec::new()));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    agent_client
+    let harness = ResumeHarness::new(Some(task), Vec::new());
+    harness
+        .agent_client
         .set_next_task_id("fictional-first-auto-resume")
         .await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
 
-    let first = summarize_result(use_cases.auto_resume(&agent_client, task_id).await);
-    repository.set_phase(StrategyTaskPhase::Failed).await;
-    let second = summarize_result(use_cases.auto_resume(&agent_client, task_id).await);
-    let actual = observe(second, &repository, &agent_client, &unit_of_work).await;
+    let first = summarize_result(
+        harness
+            .use_cases
+            .auto_resume(&harness.agent_client, task_id)
+            .await,
+    );
+    harness
+        .repository
+        .set_phase(StrategyTaskPhase::Failed)
+        .await;
+    let second = summarize_result(
+        harness
+            .use_cases
+            .auto_resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(second).await;
 
     assert_eq!(
         (first, actual),
@@ -645,16 +516,19 @@ async fn auto_resume_rejects_a_task_that_was_already_auto_resumed() {
 async fn auto_resume_keeps_claim_marker_when_submission_fails() {
     let task = task(StrategyTaskPhase::Failed, None);
     let task_id = task.task_id;
-    let repository = Arc::new(FakeStrategyTaskRepository::new(Some(task), Vec::new()));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    agent_client
+    let harness = ResumeHarness::new(Some(task), Vec::new());
+    harness
+        .agent_client
         .set_submit_error(AgentTaskError::NotConfigured)
         .await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
 
-    let result = summarize_result(use_cases.auto_resume(&agent_client, task_id).await);
-    let actual = observe(result, &repository, &agent_client, &unit_of_work).await;
+    let result = summarize_result(
+        harness
+            .use_cases
+            .auto_resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(result).await;
 
     assert_eq!(
         actual,
@@ -684,16 +558,19 @@ async fn auto_resume_keeps_claim_marker_when_submission_fails() {
 async fn manual_resume_preserves_an_existing_auto_resume_marker() {
     let task = task(StrategyTaskPhase::Failed, Some(fixed_time()));
     let task_id = task.task_id;
-    let repository = Arc::new(FakeStrategyTaskRepository::new(Some(task), Vec::new()));
-    let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let agent_client = FakeAgentTaskClient::new();
-    agent_client
+    let harness = ResumeHarness::new(Some(task), Vec::new());
+    harness
+        .agent_client
         .set_next_task_id("fictional-manual-resume")
         .await;
-    let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
 
-    let result = summarize_result(use_cases.resume(&agent_client, task_id).await);
-    let actual = observe(result, &repository, &agent_client, &unit_of_work).await;
+    let result = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+    let actual = harness.observe(result).await;
 
     assert_eq!(
         actual,

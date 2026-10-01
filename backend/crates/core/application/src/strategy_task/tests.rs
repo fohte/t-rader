@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient};
-use crate::persistence::PersistenceError;
-use crate::strategy_task::repository::{StrategyTaskRepository, StrategyTaskRepositoryError};
+use crate::strategy_task::test_support::FakeStrategyTaskRepository;
 use crate::strategy_task::{
-    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskUpdate,
-    StrategyTaskUseCases, SubmitTaskError, TaskListQuery, TaskSource,
+    ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskUseCases, SubmitTaskError,
+    TaskSource,
 };
-use crate::unit_of_work::{FakeUnitOfWork, UnitOfWorkTransaction};
+use crate::unit_of_work::FakeUnitOfWork;
 use rstest::rstest;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -20,135 +17,6 @@ enum Outcome {
     AgentNetworkError(String),
     OtherError(String),
     PurposeNotFound(String),
-}
-
-struct FailingFailedUpdateRepository {
-    task: Mutex<Option<StrategyTask>>,
-    update_phases: Mutex<Vec<Option<StrategyTaskPhase>>>,
-    agent_config_exists: bool,
-}
-
-impl FailingFailedUpdateRepository {
-    fn new(task: Option<StrategyTask>) -> Self {
-        Self {
-            task: Mutex::new(task),
-            update_phases: Mutex::new(Vec::new()),
-            agent_config_exists: true,
-        }
-    }
-
-    fn without_agent_config(task: Option<StrategyTask>) -> Self {
-        Self {
-            task: Mutex::new(task),
-            update_phases: Mutex::new(Vec::new()),
-            agent_config_exists: false,
-        }
-    }
-}
-
-#[async_trait]
-impl StrategyTaskRepository for FailingFailedUpdateRepository {
-    async fn strategy_exists(
-        &self,
-        _strategy_id: Uuid,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(true)
-    }
-
-    async fn agent_config_exists(
-        &self,
-        _purpose: &str,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(self.agent_config_exists)
-    }
-
-    async fn insert(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        task: StrategyTask,
-    ) -> Result<(), StrategyTaskRepositoryError> {
-        *self.task.lock().await = Some(task);
-        Ok(())
-    }
-
-    async fn update(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        task: StrategyTaskUpdate,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        self.update_phases.lock().await.push(task.phase);
-        if task.phase == Some(StrategyTaskPhase::Failed) {
-            Err(StrategyTaskRepositoryError::Database(
-                PersistenceError::Database("simulated update failure".to_string()),
-            ))
-        } else {
-            Ok(true)
-        }
-    }
-
-    async fn apply_status_and_steps(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        _task_id: Uuid,
-        _task_update: Option<StrategyTaskUpdate>,
-        _steps: Option<serde_json::Value>,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(false)
-    }
-
-    async fn find_by_id(
-        &self,
-        task_id: Uuid,
-    ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(self
-            .task
-            .lock()
-            .await
-            .as_ref()
-            .filter(|task| task.task_id == task_id)
-            .cloned())
-    }
-
-    async fn find_by_a2a_task_id(
-        &self,
-        a2a_task_id: &str,
-    ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(self
-            .task
-            .lock()
-            .await
-            .as_ref()
-            .filter(|task| task.a2a_task_id.as_deref() == Some(a2a_task_id))
-            .cloned())
-    }
-
-    async fn list(
-        &self,
-        _query: TaskListQuery,
-    ) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(Vec::new())
-    }
-
-    async fn list_in_flight(&self) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
-        Ok(Vec::new())
-    }
-
-    async fn list_steps(
-        &self,
-        _task_id: Uuid,
-    ) -> Result<Vec<StrategyTaskStep>, StrategyTaskRepositoryError> {
-        Ok(Vec::new())
-    }
-
-    async fn claim_resumable(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        _task_id: Uuid,
-        _now: chrono::DateTime<chrono::FixedOffset>,
-        _mark_auto_resumed: bool,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(true)
-    }
 }
 
 fn resumable_task() -> StrategyTask {
@@ -205,7 +73,7 @@ fn task_source_as_str(#[case] source: TaskSource, #[case] expected: &str) {
 #[tokio::test]
 async fn submit_rejects_missing_default_purpose_before_inserting_a_task() {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let repository = Arc::new(FailingFailedUpdateRepository::without_agent_config(None));
+    let repository = Arc::new(FakeStrategyTaskRepository::without_agent_config(None));
     let agent_client = FakeAgentTaskClient::new();
     let use_cases = StrategyTaskUseCases::new(unit_of_work, repository.clone());
 
@@ -220,7 +88,7 @@ async fn submit_rejects_missing_default_purpose_before_inserting_a_task() {
             )
             .await,
     );
-    let task_inserted = repository.task.lock().await.is_some();
+    let task_inserted = repository.state.lock().await.task.is_some();
     let submitted_count = agent_client.submitted.lock().await.len();
 
     assert_eq!(
@@ -232,7 +100,7 @@ async fn submit_rejects_missing_default_purpose_before_inserting_a_task() {
 #[tokio::test]
 async fn submit_returns_agent_error_when_marking_failed_also_fails() {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let repository = Arc::new(FailingFailedUpdateRepository::new(None));
+    let repository = Arc::new(FakeStrategyTaskRepository::failing_failed_update(None));
     let agent_client = FakeAgentTaskClient::new();
     agent_client
         .set_submit_error(AgentTaskError::Network(
@@ -270,7 +138,9 @@ async fn submit_returns_agent_error_when_marking_failed_also_fails() {
 #[tokio::test]
 async fn resume_returns_agent_error_when_marking_failed_also_fails() {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
-    let repository = Arc::new(FailingFailedUpdateRepository::new(Some(resumable_task())));
+    let repository = Arc::new(FakeStrategyTaskRepository::failing_failed_update(Some(
+        resumable_task(),
+    )));
     let agent_client = FakeAgentTaskClient::new();
     agent_client
         .set_submit_error(AgentTaskError::Network("resume unavailable".to_string()))
