@@ -330,6 +330,15 @@ comments:
       indicator_id: '観測した指標の識別子。'
       date: '指標を観測した日付。'
       value: 'データソースの単位で記録した観測値。'
+  - table: ingest_run
+    tableComment: 'データ取り込みジョブの実行履歴と結果を記録する。'
+    columnComments:
+      job: '実行したジョブを識別するキー。'
+      started_at: 'ジョブを開始した時刻。'
+      finished_at: 'ジョブの終了時刻。実行中は null。'
+      status: 'ジョブの実行状態。running、succeeded、failed のいずれか。'
+      stats: '成功時のジョブ結果を表す JSON。'
+      error: '失敗時のエラー内容。中断復旧時は interrupted。'
   - table: instruments
     tableComment: '価格データの取得対象となる金融商品を管理する。'
     columnComments:
