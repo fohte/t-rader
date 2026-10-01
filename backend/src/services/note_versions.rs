@@ -1,27 +1,32 @@
 //! note version の読み取りと note_kind 更新時の承認処理を提供する。
 
 #[cfg(test)]
+use sea_orm::ActiveModelTrait;
+#[cfg(test)]
 use sea_orm::ActiveValue::NotSet;
+#[cfg(test)]
 use sea_orm::ActiveValue::Set;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 #[cfg(test)]
 use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+#[cfg(test)]
 use crate::error::AppError;
 #[cfg(test)]
 use crate::services::change_history::{self, Actor, Op, TargetKind};
 #[cfg(test)]
 use crate::services::note_links::{copy_note_links, sync_note_links};
+#[cfg(test)]
 use crate::services::note_refs::sync_note_refs;
 #[cfg(test)]
 use crate::services::note_refs::sync_note_refs_after_graphs_only_update;
 #[cfg(test)]
+use gateway_postgres::entities::note;
+#[cfg(test)]
 use gateway_postgres::entities::note_kind;
-use gateway_postgres::entities::{note, note_version};
+use gateway_postgres::entities::note_version;
 
 #[cfg(test)]
 pub struct AppendVersion {
@@ -37,6 +42,7 @@ pub struct AppendVersion {
 }
 
 pub const INITIAL_NOTE_STATUS: &str = "unread";
+#[cfg(test)]
 const APPROVED_NOTE_STATUS: &str = "approved";
 #[cfg(test)]
 const HUMAN_CREATED_BY_KIND: &str = "human";
@@ -186,108 +192,6 @@ pub async fn append_version(
     Ok(version)
 }
 
-/// 指定したバージョンを現行にし、本文に紐づく参照データを同期する。
-pub async fn set_current_version(
-    txn: &impl sea_orm::ConnectionTrait,
-    note_id: Uuid,
-    version: note_version::Model,
-    new_status: Option<&str>,
-    reviewed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
-) -> Result<(note_version::Model, Option<Uuid>), AppError> {
-    let current = find_current_version(txn, note_id).await?;
-    let previous_current_id = current.as_ref().map(|current| current.id);
-    if let Some(current) = current.as_ref().filter(|current| current.id != version.id) {
-        note_version::ActiveModel {
-            id: Set(current.id),
-            is_current: Set(false),
-            ..Default::default()
-        }
-        .update(txn)
-        .await?;
-    }
-
-    let mut active = note_version::ActiveModel {
-        id: Set(version.id),
-        is_current: Set(true),
-        ..Default::default()
-    };
-    if let Some(status) = new_status {
-        active.status = Set(status.to_string());
-    }
-    if let Some(reviewed_at) = reviewed_at {
-        active.reviewed_at = Set(Some(reviewed_at));
-    }
-    let updated_version = active.update(txn).await?;
-
-    let note_row = note::Entity::find_by_id(note_id)
-        .one(txn)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
-    note::ActiveModel {
-        id: Set(note_id),
-        updated_at: Set(chrono::Utc::now().fixed_offset()),
-        ..Default::default()
-    }
-    .update(txn)
-    .await?;
-
-    let content_changed = current.as_ref().is_none_or(|current| {
-        current.body_md != updated_version.body_md
-            || current.graphs_json != updated_version.graphs_json
-    });
-    if content_changed {
-        sync_note_refs(
-            txn,
-            note_row.id,
-            &updated_version.body_md,
-            &updated_version.graphs_json,
-        )
-        .await?;
-    }
-
-    Ok((updated_version, previous_current_id))
-}
-
-pub async fn approve_pending_version(
-    txn: &impl sea_orm::ConnectionTrait,
-    note_id: Uuid,
-    version: note_version::Model,
-    reviewed_at: chrono::DateTime<chrono::FixedOffset>,
-) -> Result<(note_version::Model, Option<Uuid>), AppError> {
-    let current = find_current_version(txn, note_id).await?;
-    if current
-        .as_ref()
-        .is_some_and(|current| current.version_no > version.version_no)
-    {
-        let current_id = current.map(|current| current.id);
-        let updated = note_version::ActiveModel {
-            id: Set(version.id),
-            status: Set(APPROVED_NOTE_STATUS.into()),
-            reviewed_at: Set(Some(reviewed_at)),
-            ..Default::default()
-        }
-        .update(txn)
-        .await?;
-        note::ActiveModel {
-            id: Set(note_id),
-            updated_at: Set(reviewed_at),
-            ..Default::default()
-        }
-        .update(txn)
-        .await?;
-        return Ok((updated, current_id));
-    }
-
-    set_current_version(
-        txn,
-        note_id,
-        version,
-        Some(APPROVED_NOTE_STATUS),
-        Some(reviewed_at),
-    )
-    .await
-}
-
 pub async fn find_current_version<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: Uuid,
@@ -310,31 +214,7 @@ pub async fn find_latest_version<C: sea_orm::ConnectionTrait>(
         .await
 }
 
-pub async fn find_current_or_latest_version<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_id: Uuid,
-) -> Result<Option<note_version::Model>, sea_orm::DbErr> {
-    match find_current_version(db, note_id).await? {
-        Some(version) => Ok(Some(version)),
-        None => find_latest_version(db, note_id).await,
-    }
-}
-
-pub async fn find_version_of_note<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_id: Uuid,
-    version_id: Option<Uuid>,
-) -> Result<Option<note_version::Model>, sea_orm::DbErr> {
-    if let Some(version_id) = version_id {
-        note_version::Entity::find_by_id(version_id)
-            .filter(note_version::Column::NoteId.eq(note_id))
-            .one(db)
-            .await
-    } else {
-        find_current_version(db, note_id).await
-    }
-}
-
+#[cfg(test)]
 pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_ids: &[Uuid],
@@ -353,26 +233,6 @@ pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(
         .collect())
 }
 
-pub async fn find_latest_versions<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_ids: &[Uuid],
-) -> Result<HashMap<Uuid, note_version::Model>, sea_orm::DbErr> {
-    if note_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let mut versions = HashMap::new();
-    for version in note_version::Entity::find()
-        .filter(note_version::Column::NoteId.is_in(note_ids.iter().copied()))
-        .order_by_desc(note_version::Column::VersionNo)
-        .all(db)
-        .await?
-    {
-        versions.entry(version.note_id).or_insert(version);
-    }
-    Ok(versions)
-}
-
 pub async fn find_initial_created_by_kind<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_ids: &[Uuid],
@@ -389,21 +249,4 @@ pub async fn find_initial_created_by_kind<C: sea_orm::ConnectionTrait>(
         .into_iter()
         .map(|version| (version.note_id, version.created_by_kind))
         .collect())
-}
-
-pub fn current_note_ids_with_status(status: &str) -> sea_orm::sea_query::SelectStatement {
-    note_version::Entity::find()
-        .select_only()
-        .column(note_version::Column::NoteId)
-        .filter(note_version::Column::IsCurrent.eq(true))
-        .filter(note_version::Column::Status.eq(status))
-        .into_query()
-}
-
-pub fn current_note_ids() -> sea_orm::sea_query::SelectStatement {
-    note_version::Entity::find()
-        .select_only()
-        .column(note_version::Column::NoteId)
-        .filter(note_version::Column::IsCurrent.eq(true))
-        .into_query()
 }

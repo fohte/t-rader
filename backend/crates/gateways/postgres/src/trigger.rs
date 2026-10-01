@@ -112,6 +112,7 @@ impl TriggerRepository for PostgresTriggerRepository {
         let model = trigger::ActiveModel {
             trigger_id: Set(trigger.trigger_id),
             strategy_id: Set(Some(trigger.strategy_id)),
+            purpose: Set(trigger.purpose),
             kind: Set(trigger.kind.as_str().to_string()),
             schedule: Set(trigger.schedule),
             hook_slug: Set(trigger.hook_slug),
@@ -138,6 +139,7 @@ impl TriggerRepository for PostgresTriggerRepository {
         let model = trigger::ActiveModel {
             trigger_id: sea_orm::ActiveValue::Unchanged(trigger.trigger_id),
             strategy_id: Set(trigger.strategy_id),
+            purpose: Set(trigger.purpose),
             kind: Set(trigger.kind.as_str().to_string()),
             schedule: Set(trigger.schedule),
             hook_slug: Set(trigger.hook_slug),
@@ -209,6 +211,7 @@ fn to_domain(model: trigger::Model) -> Result<Trigger, TriggerRepositoryError> {
     Ok(Trigger {
         trigger_id: model.trigger_id,
         strategy_id: model.strategy_id,
+        purpose: model.purpose,
         kind,
         schedule: model.schedule,
         hook_slug: model.hook_slug,

@@ -33,6 +33,7 @@ impl TryFrom<&str> for TriggerKind {
 pub struct Trigger {
     pub trigger_id: Uuid,
     pub strategy_id: Option<Uuid>,
+    pub purpose: Option<String>,
     pub kind: TriggerKind,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
@@ -48,6 +49,7 @@ pub struct Trigger {
 pub struct NewTrigger {
     pub trigger_id: Uuid,
     pub strategy_id: Uuid,
+    pub purpose: Option<String>,
     pub kind: TriggerKind,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
@@ -58,6 +60,7 @@ pub struct NewTrigger {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateTriggerCommand {
+    pub purpose: Option<String>,
     pub kind: TriggerKind,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
@@ -68,6 +71,7 @@ pub struct CreateTriggerCommand {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct UpdateTriggerCommand {
+    pub purpose: Option<Option<String>>,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
     pub event_match: Option<Option<Value>>,

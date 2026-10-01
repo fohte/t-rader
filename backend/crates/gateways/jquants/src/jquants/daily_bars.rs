@@ -24,11 +24,7 @@ impl JQuantsClient {
         ];
 
         let raw_bars = self
-            .fetch_all_pages::<DailyBarsResponse>(
-                "/equities/bars/daily",
-                &params,
-                self.current_rate_limit(),
-            )
+            .fetch_all_pages::<DailyBarsResponse>("/equities/bars/daily", &params)
             .await?;
 
         let mut all_bars = Vec::with_capacity(raw_bars.len());
@@ -53,11 +49,7 @@ impl JQuantsClient {
         let params = [("date", date_str.as_str())];
 
         let raw_bars = self
-            .fetch_all_pages::<DailyBarsResponse>(
-                "/equities/bars/daily",
-                &params,
-                self.current_rate_limit(),
-            )
+            .fetch_all_pages::<DailyBarsResponse>("/equities/bars/daily", &params)
             .await?;
 
         let mut all_bars = Vec::with_capacity(raw_bars.len());

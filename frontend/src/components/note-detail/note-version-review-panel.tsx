@@ -163,7 +163,9 @@ export function NoteVersionReviewView({
   const needsReason = lineCommentCount === 0
   const canReject = !needsReason || reason.trim() !== ''
   const isReviewed =
-    version.status === 'approved' || version.status === 'rejected'
+    version.status === 'approved' ||
+    version.status === 'rejected' ||
+    version.status === 'superseded'
 
   return (
     <section className="border border-border bg-card">

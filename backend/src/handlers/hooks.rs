@@ -97,8 +97,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
+    use crate::testing::agent_config;
     use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_hook_trigger};
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::{strategy, strategy_task};

@@ -14,6 +14,8 @@ pub enum TriggerUseCaseError {
     Validation(String),
     #[error("trigger {0} not found")]
     NotFound(Uuid),
+    #[error("agent_config purpose {0} not found")]
+    PurposeNotFound(String),
     #[error("hook {0} not found")]
     HookNotFound(String),
     #[error("trigger {0} is disabled")]

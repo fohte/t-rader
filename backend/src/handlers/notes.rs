@@ -1,7 +1,6 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -10,16 +9,14 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateNoteRequest, NoteResponse, UpdateNoteRequest};
-use crate::services::note_versions::{
-    self, current_note_ids, current_note_ids_with_status, find_current_versions,
-    find_initial_created_by_kind,
-};
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::note::NoteRepositoryError;
-use core_application::note::{NoteSnapshot, NoteUseCaseError, NoteWriteCommand, UpdateNoteCommand};
+use core_application::note::{
+    NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot, NoteUseCaseError,
+    NoteWriteCommand, UpdateNoteCommand,
+};
 use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
-use gateway_postgres::entities::{note, note_version};
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -34,44 +31,6 @@ pub struct ListNotesQuery {
 pub struct GetNoteQuery {
     /// 省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。
     pub version_id: Option<Uuid>,
-}
-
-struct NoteWithVersion {
-    note: note::Model,
-    version: note_version::Model,
-    created_by_kind: String,
-}
-
-async fn find_note_version_or_404<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    id: Uuid,
-    version_id: Option<Uuid>,
-) -> Result<NoteWithVersion, AppError> {
-    let note = note::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
-    let version = note_versions::find_version_of_note(db, id, version_id)
-        .await?
-        .ok_or_else(|| match version_id {
-            Some(version_id) => {
-                AppError::NotFound(format!("version {version_id} for note {id} not found"))
-            }
-            None => AppError::NotFound(format!("current version for note {id} not found")),
-        })?;
-    let created_by_kind = find_initial_created_by_kind(db, &[id])
-        .await?
-        .remove(&id)
-        .ok_or_else(|| AppError::NotFound(format!("initial version for note {id} not found")))?;
-    Ok(NoteWithVersion {
-        note,
-        version,
-        created_by_kind,
-    })
-}
-
-fn note_version_response(current: NoteWithVersion) -> NoteResponse {
-    NoteResponse::from_version(current.note, current.version, current.created_by_kind)
 }
 
 fn note_snapshot_response(snapshot: NoteSnapshot) -> NoteResponse {
@@ -112,41 +71,22 @@ pub async fn list_notes(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<ListNotesQuery>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
-    let mut q = note::Entity::find()
-        .filter(note::Column::Id.in_subquery(current_note_ids()))
-        .order_by_desc(note::Column::UpdatedAt);
-    if let Some(sid) = params.strategy_id {
-        q = q.filter(note::Column::StrategyId.eq(sid));
-    }
-    if let Some(status) = params.status.as_deref().filter(|s| !s.is_empty()) {
-        q = q.filter(note::Column::Id.in_subquery(current_note_ids_with_status(status)));
-    }
-    if let Some(kind) = params.kind.as_deref().filter(|s| !s.is_empty()) {
-        q = q.filter(note::Column::Kind.eq(kind));
-    }
-    let items = q.all(&state.db).await?;
-    let versions = find_current_versions(
-        &state.db,
-        &items.iter().map(|item| item.id).collect::<Vec<_>>(),
-    )
-    .await?;
-    let creators = find_initial_created_by_kind(
-        &state.db,
-        &items.iter().map(|item| item.id).collect::<Vec<_>>(),
-    )
-    .await?;
-    let responses = items
-        .into_iter()
-        .map(|item| {
-            let version = versions.get(&item.id).cloned().ok_or_else(|| {
-                AppError::NotFound(format!("current version for note {} not found", item.id))
-            })?;
-            let created_by_kind = creators.get(&item.id).cloned().ok_or_else(|| {
-                AppError::NotFound(format!("initial version for note {} not found", item.id))
-            })?;
-            Ok(NoteResponse::from_version(item, version, created_by_kind))
-        })
-        .collect::<Result<Vec<_>, AppError>>()?;
+    let page = state
+        .use_cases
+        .note_reads()
+        .list_notes(
+            None,
+            NoteListQuery {
+                strategy_id: params.strategy_id,
+                status: params.status.filter(|status| !status.is_empty()),
+                kind: params.kind.filter(|kind| !kind.is_empty()),
+                limit: None,
+                ..NoteListQuery::default()
+            },
+        )
+        .await
+        .map_err(map_note_read_error)?;
+    let responses = page.notes.into_iter().map(note_snapshot_response).collect();
     Ok(Json(responses))
 }
 
@@ -171,9 +111,43 @@ pub async fn get_note(
     JsonPath(id): JsonPath<Uuid>,
     JsonQuery(params): JsonQuery<GetNoteQuery>,
 ) -> Result<Json<NoteResponse>, AppError> {
-    Ok(Json(note_version_response(
-        find_note_version_or_404(&state.db, id, params.version_id).await?,
-    )))
+    let snapshot = state
+        .use_cases
+        .note_reads()
+        .get_note(id, params.version_id, false, None)
+        .await
+        .map_err(map_note_read_error)?;
+    Ok(Json(note_snapshot_response(snapshot)))
+}
+
+pub(super) fn map_note_read_error(error: NoteReadUseCaseError) -> AppError {
+    match error {
+        NoteReadUseCaseError::NotFound(message) => AppError::NotFound(message),
+        NoteReadUseCaseError::VersionDoesNotBelong {
+            note_id,
+            version_id,
+        } => AppError::NotFound(format!("version {version_id} for note {note_id} not found")),
+        NoteReadUseCaseError::NoVersion(note_id) => {
+            AppError::NotFound(format!("current version for note {note_id} not found"))
+        }
+        NoteReadUseCaseError::InitialVersionNotFound(note_id) => {
+            AppError::NotFound(format!("initial version for note {note_id} not found"))
+        }
+        NoteReadUseCaseError::VersionNumberNotFound {
+            note_id,
+            version_no,
+        } => AppError::NotFound(format!("note version {note_id}/{version_no} not found")),
+        NoteReadUseCaseError::NoteVersionNotFound => {
+            AppError::NotFound("note version not found".into())
+        }
+        NoteReadUseCaseError::Forbidden(note_id) => {
+            AppError::Validation(format!("note {note_id} is not accessible"))
+        }
+        NoteReadUseCaseError::Query(NoteReadQueryError::Database(error)) => error.into(),
+        NoteReadUseCaseError::Query(NoteReadQueryError::InvalidData(message)) => {
+            AppError::Database(sea_orm::DbErr::Custom(message))
+        }
+    }
 }
 
 /// ノート作成
@@ -327,8 +301,9 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::services::agent_config;
+    use crate::services::note_versions;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
+    use crate::testing::agent_config;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
@@ -336,9 +311,10 @@ mod tests {
     use axum_test::TestServer;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
-    use gateway_postgres::entities::{change_history, comment};
+    use gateway_postgres::entities::{change_history, comment, note, note_version};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
     use serde_json::{Value, json};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
@@ -407,6 +383,84 @@ mod tests {
         res.assert_status(StatusCode::CREATED);
         let body: Value = res.json();
         Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+    }
+
+    async fn insert_test_version(
+        db: &gateway_postgres::DatabaseHandle,
+        note_id: Uuid,
+        version_no: i32,
+        status: &str,
+        is_current: bool,
+    ) -> Uuid {
+        let id = Uuid::new_v4();
+        note_version::Entity::insert(note_version::ActiveModel {
+            id: Set(id),
+            note_id: Set(note_id),
+            version_no: Set(version_no),
+            title: Set(format!("version {version_no}")),
+            body_md: Set("body".into()),
+            frontmatter_json: Set(json!({})),
+            graphs_json: Set(json!([])),
+            status: Set(status.into()),
+            is_current: Set(is_current),
+            change_reason: Set(None),
+            created_by_kind: Set("llm".into()),
+            execution_id: Set(None),
+            created_at: NotSet,
+            reviewed_at: Set(None),
+        })
+        .exec_without_returning(db)
+        .await
+        .expect("insert test note version");
+        id
+    }
+
+    async fn create_note_with_approved_initial_version(
+        server: &TestServer,
+        db: &gateway_postgres::DatabaseHandle,
+        strategy_id: Uuid,
+        title: &str,
+    ) -> (Uuid, Uuid) {
+        let note_id = create_test_note_with_creator(server, strategy_id, title, "llm").await;
+        let initial = note_versions::find_current_version(db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
+        note_version::ActiveModel {
+            id: Set(initial.id),
+            status: Set("approved".into()),
+            ..Default::default()
+        }
+        .update(db)
+        .await
+        .expect("approve initial version");
+        (note_id, initial.id)
+    }
+
+    async fn note_version_states(
+        db: &gateway_postgres::DatabaseHandle,
+        note_id: Uuid,
+    ) -> Vec<(i32, String, bool)> {
+        note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .order_by_asc(note_version::Column::VersionNo)
+            .all(db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.version_no, row.status, row.is_current))
+            .collect()
+    }
+
+    async fn status_change_diff(db: &gateway_postgres::DatabaseHandle, note_id: Uuid) -> Value {
+        change_history::Entity::find()
+            .filter(change_history::Column::TargetId.eq(note_id))
+            .filter(change_history::Column::Op.eq("status_change"))
+            .one(db)
+            .await
+            .unwrap()
+            .unwrap()
+            .diff_json
     }
 
     /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
@@ -525,6 +579,142 @@ mod tests {
                     }),
                     None,
                 )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn approving_a_version_supersedes_older_pending_versions_and_records_their_ids(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let (note_id, initial_id) =
+            create_note_with_approved_initial_version(&server, &db, strategy_id, "review").await;
+        let older_pending_id = insert_test_version(&db, note_id, 2, "unread", false).await;
+        insert_test_version(&db, note_id, 3, "rejected", false).await;
+        let approved_id = insert_test_version(&db, note_id, 4, "unread", false).await;
+
+        let response = server
+            .post(&format!("/api/notes/{note_id}/versions/4/approve"))
+            .json(&json!({}))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                note_version_states(&db, note_id).await,
+                status_change_diff(&db, note_id).await,
+            ),
+            (
+                StatusCode::OK,
+                vec![
+                    (1, "approved".to_string(), false),
+                    (2, "superseded".to_string(), false),
+                    (3, "rejected".to_string(), false),
+                    (4, "approved".to_string(), true),
+                ],
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": approved_id,
+                    "previous_current_version_id": initial_id,
+                    "superseded_version_ids": [older_pending_id],
+                    "label": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn approving_an_older_version_preserves_a_newer_current_version(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let note_id = create_test_note_with_creator(&server, strategy_id, "review", "llm").await;
+        let initial = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
+        note_version::ActiveModel {
+            id: Set(initial.id),
+            status: Set("approved".into()),
+            is_current: Set(false),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("clear initial current version");
+        let superseded_id = insert_test_version(&db, note_id, 2, "unread", false).await;
+        let approved_id = insert_test_version(&db, note_id, 3, "unread", false).await;
+        let current_id = insert_test_version(&db, note_id, 4, "approved", true).await;
+        insert_test_version(&db, note_id, 5, "unread", false).await;
+
+        let response = server
+            .post(&format!("/api/notes/{note_id}/versions/3/approve"))
+            .json(&json!({}))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                note_version_states(&db, note_id).await,
+                status_change_diff(&db, note_id).await,
+            ),
+            (
+                StatusCode::OK,
+                vec![
+                    (1, "approved".to_string(), false),
+                    (2, "superseded".to_string(), false),
+                    (3, "approved".to_string(), false),
+                    (4, "approved".to_string(), true),
+                    (5, "unread".to_string(), false),
+                ],
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": approved_id,
+                    "previous_current_version_id": current_id,
+                    "superseded_version_ids": [superseded_id],
+                    "label": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn approving_a_version_does_not_change_another_notes_pending_versions(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let (reviewed_note, _) =
+            create_note_with_approved_initial_version(&server, &db, strategy_id, "reviewed").await;
+        insert_test_version(&db, reviewed_note, 2, "unread", false).await;
+        insert_test_version(&db, reviewed_note, 3, "unread", false).await;
+        let (untouched_note, _) =
+            create_note_with_approved_initial_version(&server, &db, strategy_id, "untouched").await;
+        insert_test_version(&db, untouched_note, 2, "unread", false).await;
+        insert_test_version(&db, untouched_note, 3, "unread", false).await;
+
+        let response = server
+            .post(&format!("/api/notes/{reviewed_note}/versions/3/approve"))
+            .json(&json!({}))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                note_version_states(&db, untouched_note).await
+            ),
+            (
+                StatusCode::OK,
+                vec![
+                    (1, "approved".to_string(), true),
+                    (2, "unread".to_string(), false),
+                    (3, "unread".to_string(), false),
+                ],
             ),
         );
     }

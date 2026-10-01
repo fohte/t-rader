@@ -87,6 +87,15 @@ type CreateCustomIndicatorRequest struct {
 	OutputSchema map[string]interface{}    `json:"output_schema"`
 }
 
+// CreateNoteKindRequest defines model for CreateNoteKindRequest.
+type CreateNoteKindRequest struct {
+	Description      nullable.Nullable[string] `json:"description,omitempty"`
+	DisplayName      string                    `json:"display_name"`
+	Key              string                    `json:"key"`
+	RequiresApproval bool                      `json:"requires_approval"`
+	SortOrder        nullable.Nullable[int32]  `json:"sort_order,omitempty"`
+}
+
 // CreateRssFeedRequest defines model for CreateRssFeedRequest.
 type CreateRssFeedRequest struct {
 	// DisplayName UI 表示用名前
@@ -118,6 +127,9 @@ type CreateTriggerRequest struct {
 	HookSlug       nullable.Nullable[string] `json:"hook_slug,omitempty"`
 	Kind           TriggerKind               `json:"kind"`
 	PromptTemplate string                    `json:"prompt_template"`
+
+	// Purpose 省略時または `null` 指定時は default の agent 設定を使用する。
+	Purpose nullable.Nullable[string] `json:"purpose,omitempty"`
 
 	// Schedule kind=cron 時に必須 (UTC の 5 フィールド cron 式)
 	Schedule nullable.Nullable[string] `json:"schedule,omitempty"`
@@ -160,6 +172,15 @@ type HookResponse struct {
 type InvestableAmountResponse struct {
 	AmountJpy   nullable.Nullable[float64]   `json:"amount_jpy,omitempty"`
 	EffectiveAt nullable.Nullable[time.Time] `json:"effective_at,omitempty"`
+}
+
+// NoteKind defines model for NoteKind.
+type NoteKind struct {
+	Description      nullable.Nullable[string] `json:"description,omitempty"`
+	DisplayName      string                    `json:"display_name"`
+	Key              string                    `json:"key"`
+	RequiresApproval bool                      `json:"requires_approval"`
+	SortOrder        int32                     `json:"sort_order"`
 }
 
 // PreviewIndicatorRequest defines model for PreviewIndicatorRequest.
@@ -304,6 +325,7 @@ type Trigger struct {
 	Kind           string                                    `json:"kind"`
 	LastFiredAt    nullable.Nullable[time.Time]              `json:"last_fired_at,omitempty"`
 	PromptTemplate string                                    `json:"prompt_template"`
+	Purpose        nullable.Nullable[string]                 `json:"purpose,omitempty"`
 	Schedule       nullable.Nullable[string]                 `json:"schedule,omitempty"`
 	StrategyId     nullable.Nullable[openapi_types.UUID]     `json:"strategy_id,omitempty"`
 	TriggerId      openapi_types.UUID                        `json:"trigger_id"`
@@ -320,6 +342,14 @@ type UpdateCustomIndicatorRequest struct {
 	InputSchema  nullable.Nullable[map[string]interface{}] `json:"input_schema,omitempty"`
 	Name         nullable.Nullable[string]                 `json:"name,omitempty"`
 	OutputSchema nullable.Nullable[map[string]interface{}] `json:"output_schema,omitempty"`
+}
+
+// UpdateNoteKindRequest defines model for UpdateNoteKindRequest.
+type UpdateNoteKindRequest struct {
+	Description      nullable.Nullable[string] `json:"description,omitempty"`
+	DisplayName      nullable.Nullable[string] `json:"display_name,omitempty"`
+	RequiresApproval nullable.Nullable[bool]   `json:"requires_approval,omitempty"`
+	SortOrder        nullable.Nullable[int32]  `json:"sort_order,omitempty"`
 }
 
 // UpdateRssFeedRequest defines model for UpdateRssFeedRequest.
@@ -345,7 +375,10 @@ type UpdateTriggerRequest struct {
 	EventMatch     interface{}               `json:"event_match,omitempty"`
 	HookSlug       nullable.Nullable[string] `json:"hook_slug,omitempty"`
 	PromptTemplate nullable.Nullable[string] `json:"prompt_template,omitempty"`
-	Schedule       nullable.Nullable[string] `json:"schedule,omitempty"`
+
+	// Purpose 省略時は変更せず、`null` 指定時は default purpose に戻す。
+	Purpose  nullable.Nullable[string] `json:"purpose,omitempty"`
+	Schedule nullable.Nullable[string] `json:"schedule,omitempty"`
 }
 
 // Value defines model for Value.
@@ -401,6 +434,12 @@ type PreviewIndicatorJSONRequestBody = PreviewIndicatorRequest
 
 // UpdateIndicatorJSONRequestBody defines body for UpdateIndicator for application/json ContentType.
 type UpdateIndicatorJSONRequestBody = UpdateCustomIndicatorRequest
+
+// CreateNoteKindJSONRequestBody defines body for CreateNoteKind for application/json ContentType.
+type CreateNoteKindJSONRequestBody = CreateNoteKindRequest
+
+// UpdateNoteKindJSONRequestBody defines body for UpdateNoteKind for application/json ContentType.
+type UpdateNoteKindJSONRequestBody = UpdateNoteKindRequest
 
 // CreateRssFeedJSONRequestBody defines body for CreateRssFeed for application/json ContentType.
 type CreateRssFeedJSONRequestBody = CreateRssFeedRequest
@@ -727,6 +766,44 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/indicators/{indicator_id} (the `UpdateIndicator` operationId).
 	UpdateIndicator(ctx context.Context, indicatorId openapi_types.UUID, body UpdateIndicatorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListNoteKinds ノート種別一覧
+	//
+	// Corresponds with GET /api/note-kinds (the `ListNoteKinds` operationId).
+	ListNoteKinds(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNoteKindWithBody ノート種別を作成
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+	CreateNoteKindWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateNoteKind ノート種別を作成
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+	CreateNoteKind(ctx context.Context, body CreateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteNoteKind ノートが使用中の種別は削除しない
+	//
+	// Corresponds with DELETE /api/note-kinds/{key} (the `DeleteNoteKind` operationId).
+	DeleteNoteKind(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNoteKindWithBody ノート種別を部分更新する (key は変更不可)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+	UpdateNoteKindWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateNoteKind ノート種別を部分更新する (key は変更不可)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+	UpdateNoteKind(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRssFeeds RSS フィード一覧
 	//
@@ -1481,6 +1558,104 @@ func (c *OpenAPIClient) UpdateIndicatorWithBody(ctx context.Context, indicatorId
 // Corresponds with PUT /api/indicators/{indicator_id} (the `UpdateIndicator` operationId).
 func (c *OpenAPIClient) UpdateIndicator(ctx context.Context, indicatorId openapi_types.UUID, body UpdateIndicatorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateIndicatorRequest(c.Server, indicatorId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListNoteKinds ノート種別一覧
+//
+// Corresponds with GET /api/note-kinds (the `ListNoteKinds` operationId).
+func (c *OpenAPIClient) ListNoteKinds(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListNoteKindsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNoteKindWithBody ノート種別を作成
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+func (c *OpenAPIClient) CreateNoteKindWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNoteKindRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateNoteKind ノート種別を作成
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+func (c *OpenAPIClient) CreateNoteKind(ctx context.Context, body CreateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateNoteKindRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteNoteKind ノートが使用中の種別は削除しない
+//
+// Corresponds with DELETE /api/note-kinds/{key} (the `DeleteNoteKind` operationId).
+func (c *OpenAPIClient) DeleteNoteKind(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteNoteKindRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNoteKindWithBody ノート種別を部分更新する (key は変更不可)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+func (c *OpenAPIClient) UpdateNoteKindWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNoteKindRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateNoteKind ノート種別を部分更新する (key は変更不可)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+func (c *OpenAPIClient) UpdateNoteKind(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateNoteKindRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2891,6 +3066,154 @@ func NewUpdateIndicatorRequestWithBody(server string, indicatorId openapi_types.
 	return req, nil
 }
 
+// NewListNoteKindsRequest constructs an http.Request for the ListNoteKinds method
+func NewListNoteKindsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-kinds")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateNoteKindRequest calls the generic CreateNoteKind builder with application/json body
+func NewCreateNoteKindRequest(server string, body CreateNoteKindJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateNoteKindRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateNoteKindRequestWithBody constructs an http.Request for the CreateNoteKind method, with any body, and a specified content type
+func NewCreateNoteKindRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-kinds")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteNoteKindRequest constructs an http.Request for the DeleteNoteKind method
+func NewDeleteNoteKindRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-kinds/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateNoteKindRequest calls the generic UpdateNoteKind builder with application/json body
+func NewUpdateNoteKindRequest(server string, key string, body UpdateNoteKindJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateNoteKindRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewUpdateNoteKindRequestWithBody constructs an http.Request for the UpdateNoteKind method, with any body, and a specified content type
+func NewUpdateNoteKindRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/note-kinds/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListRssFeedsRequest constructs an http.Request for the ListRssFeeds method
 func NewListRssFeedsRequest(server string, params *ListRssFeedsParams) (*http.Request, error) {
 	var err error
@@ -4122,6 +4445,48 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/indicators/{indicator_id} (the `UpdateIndicator` operationId).
 	UpdateIndicatorWithResponse(ctx context.Context, indicatorId openapi_types.UUID, body UpdateIndicatorJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateIndicatorResult, error)
+
+	// ListNoteKindsWithResponse ノート種別一覧
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/note-kinds (the `ListNoteKinds` operationId).
+	ListNoteKindsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNoteKindsResult, error)
+
+	// CreateNoteKindWithBodyWithResponse ノート種別を作成
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+	CreateNoteKindWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNoteKindResult, error)
+
+	// CreateNoteKindWithResponse ノート種別を作成
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+	CreateNoteKindWithResponse(ctx context.Context, body CreateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNoteKindResult, error)
+
+	// DeleteNoteKindWithResponse ノートが使用中の種別は削除しない
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/note-kinds/{key} (the `DeleteNoteKind` operationId).
+	DeleteNoteKindWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteNoteKindResult, error)
+
+	// UpdateNoteKindWithBodyWithResponse ノート種別を部分更新する (key は変更不可)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+	UpdateNoteKindWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNoteKindResult, error)
+
+	// UpdateNoteKindWithResponse ノート種別を部分更新する (key は変更不可)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+	UpdateNoteKindWithResponse(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNoteKindResult, error)
 
 	// ListRssFeedsWithResponse RSS フィード一覧
 	//
@@ -5790,6 +6155,261 @@ func (r UpdateIndicatorResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateIndicatorResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListNoteKindsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]NoteKind
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListNoteKindsResult) GetJSON200() *[]NoteKind {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListNoteKindsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListNoteKindsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListNoteKindsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListNoteKindsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListNoteKindsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateNoteKindResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *NoteKind
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateNoteKindResult) GetJSON201() *NoteKind {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateNoteKindResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateNoteKindResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r CreateNoteKindResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateNoteKindResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateNoteKindResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateNoteKindResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateNoteKindResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateNoteKindResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateNoteKindResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteNoteKindResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteNoteKindResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteNoteKindResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteNoteKindResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteNoteKindResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteNoteKindResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteNoteKindResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteNoteKindResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateNoteKindResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *NoteKind
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateNoteKindResult) GetJSON200() *NoteKind {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateNoteKindResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateNoteKindResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r UpdateNoteKindResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateNoteKindResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UpdateNoteKindResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateNoteKindResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateNoteKindResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateNoteKindResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateNoteKindResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -7780,6 +8400,84 @@ func (c *ClientWithResponses) UpdateIndicatorWithResponse(ctx context.Context, i
 	return ParseUpdateIndicatorResult(rsp)
 }
 
+// ListNoteKindsWithResponse ノート種別一覧
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/note-kinds (the `ListNoteKinds` operationId).
+func (c *ClientWithResponses) ListNoteKindsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListNoteKindsResult, error) {
+	rsp, err := c.ListNoteKinds(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListNoteKindsResult(rsp)
+}
+
+// CreateNoteKindWithBodyWithResponse ノート種別を作成
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+func (c *ClientWithResponses) CreateNoteKindWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateNoteKindResult, error) {
+	rsp, err := c.CreateNoteKindWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNoteKindResult(rsp)
+}
+
+// CreateNoteKindWithResponse ノート種別を作成
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/note-kinds (the `CreateNoteKind` operationId).
+func (c *ClientWithResponses) CreateNoteKindWithResponse(ctx context.Context, body CreateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateNoteKindResult, error) {
+	rsp, err := c.CreateNoteKind(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateNoteKindResult(rsp)
+}
+
+// DeleteNoteKindWithResponse ノートが使用中の種別は削除しない
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/note-kinds/{key} (the `DeleteNoteKind` operationId).
+func (c *ClientWithResponses) DeleteNoteKindWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteNoteKindResult, error) {
+	rsp, err := c.DeleteNoteKind(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteNoteKindResult(rsp)
+}
+
+// UpdateNoteKindWithBodyWithResponse ノート種別を部分更新する (key は変更不可)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+func (c *ClientWithResponses) UpdateNoteKindWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateNoteKindResult, error) {
+	rsp, err := c.UpdateNoteKindWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNoteKindResult(rsp)
+}
+
+// UpdateNoteKindWithResponse ノート種別を部分更新する (key は変更不可)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
+func (c *ClientWithResponses) UpdateNoteKindWithResponse(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNoteKindResult, error) {
+	rsp, err := c.UpdateNoteKind(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateNoteKindResult(rsp)
+}
+
 // ListRssFeedsWithResponse RSS フィード一覧
 //
 // Returns a wrapper object for the known response body format(s).
@@ -9284,6 +9982,204 @@ func ParseUpdateIndicatorResult(rsp *http.Response) (*UpdateIndicatorResult, err
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListNoteKindsResult parses an HTTP response from a ListNoteKindsWithResponse call
+func ParseListNoteKindsResult(rsp *http.Response) (*ListNoteKindsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListNoteKindsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []NoteKind
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateNoteKindResult parses an HTTP response from a CreateNoteKindWithResponse call
+func ParseCreateNoteKindResult(rsp *http.Response) (*CreateNoteKindResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateNoteKindResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest NoteKind
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteNoteKindResult parses an HTTP response from a DeleteNoteKindWithResponse call
+func ParseDeleteNoteKindResult(rsp *http.Response) (*DeleteNoteKindResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteNoteKindResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateNoteKindResult parses an HTTP response from a UpdateNoteKindWithResponse call
+func ParseUpdateNoteKindResult(rsp *http.Response) (*UpdateNoteKindResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateNoteKindResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NoteKind
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
 		var dest ErrorResponse

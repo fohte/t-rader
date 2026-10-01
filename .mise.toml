@@ -12,10 +12,15 @@ CARGO_TARGET_DIR = "{{config_root}}/target"
 description = "開発用 DB と Redis を起動する"
 file = "scripts/db-up"
 
+[tasks.db-doc]
+description = "使い捨て DB から DB ドキュメントを生成する"
+file = "scripts/db-doc"
+
 [tools]
 lefthook = "2.1.14"
 "github:ast-grep/ast-grep" = "0.45.3"
 "cargo:sea-orm-cli" = "2.0.3"
+"github:k1LoW/tbls" = "1.95.0"
 
 # lefthook hooks
 actionlint = "1.7.12"
