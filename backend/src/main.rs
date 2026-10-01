@@ -25,6 +25,7 @@ use core_application::shareholding_structure_source::SharedShareholdingStructure
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::valuation_source::SharedValuationSource;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
+use futures_util::future::BoxFuture;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
@@ -132,6 +133,13 @@ async fn main() -> Result<(), AppError> {
     if !cli.skip_migration {
         tracing::info!("running database migrations");
         Migrator::up(&db, None).await?;
+        backend::migrations::migrate_graphile_worker_schema(
+            db.get_postgres_connection_pool().clone(),
+        )
+        .await
+        .map_err(|error| {
+            AppError::Config(format!("failed to migrate Graphile Worker schema: {error}"))
+        })?;
         tracing::info!("database migrations completed");
     } else {
         tracing::info!("skipping database migrations (--skip-migration)");
@@ -249,37 +257,6 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
-    // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
-    // 合わさって空文字同士の一致で認証をすり抜けてしまう。
-    let agent_webhook_token = std::env::var("AGENT_WEBHOOK_TOKEN")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            AppError::Config("AGENT_WEBHOOK_TOKEN environment variable is not set".to_string())
-        })?;
-
-    let kata_executor: Option<SharedKataExecutor> = match KataExecutorConfig::from_env() {
-        Some(config) => match HttpKataExecutor::new(config) {
-            Ok(executor) => {
-                tracing::info!("kata executor initialized");
-                let arc: Arc<dyn KataExecutor + Send + Sync> = Arc::new(executor);
-                Some(arc)
-            }
-            Err(e) => {
-                return Err(AppError::Config(format!(
-                    "failed to initialize kata executor: {e}"
-                )));
-            }
-        },
-        None => {
-            tracing::warn!(
-                "KATA_EXEC_API_URL が未設定のため、kata executor を無効化して起動します"
-            );
-            None
-        }
-    };
-
     // フィード一覧を取り込みごとに読み直し、UI / MCP からの変更を反映する。
     let news_aggregator: SharedNewsAggregator =
         Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
@@ -302,9 +279,6 @@ async fn main() -> Result<(), AppError> {
             None
         }
     };
-
-    let llm_gateway_client =
-        LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
@@ -360,6 +334,55 @@ async fn main() -> Result<(), AppError> {
         agent_task_client: agent_task_client.clone(),
         strategy_task_reconcile_enabled,
     };
+    let app = if cli.run_mode.starts_api() {
+        // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
+        // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
+        // 合わさって空文字同士の一致で認証をすり抜けてしまう。
+        let agent_webhook_token = std::env::var("AGENT_WEBHOOK_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                AppError::Config("AGENT_WEBHOOK_TOKEN environment variable is not set".to_string())
+            })?;
+
+        let kata_executor: Option<SharedKataExecutor> = match KataExecutorConfig::from_env() {
+            Some(config) => match HttpKataExecutor::new(config) {
+                Ok(executor) => {
+                    tracing::info!("kata executor initialized");
+                    let arc: Arc<dyn KataExecutor + Send + Sync> = Arc::new(executor);
+                    Some(arc)
+                }
+                Err(e) => {
+                    return Err(AppError::Config(format!(
+                        "failed to initialize kata executor: {e}"
+                    )));
+                }
+            },
+            None => {
+                tracing::warn!(
+                    "KATA_EXEC_API_URL が未設定のため、kata executor を無効化して起動します"
+                );
+                None
+            }
+        };
+
+        let llm_gateway_client =
+            LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
+        let state = AppState {
+            db: app_db,
+            use_cases,
+            daily_bar_source,
+            jquants_client,
+            agent_task_client,
+            agent_webhook_token: Arc::from(agent_webhook_token),
+            kata_executor,
+            llm_gateway_client,
+        };
+        Some(create_router(state))
+    } else {
+        None
+    };
+
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal_tx = shutdown_tx.clone();
     let _shutdown_listener = tokio::spawn(async move {
@@ -368,70 +391,88 @@ async fn main() -> Result<(), AppError> {
         }
         let _ = signal_tx.send(true);
     });
-    let worker = Scheduler::initialize(
-        db.get_postgres_connection_pool().clone(),
-        dependencies,
-        wait_for_shutdown(shutdown_rx.clone()),
-    )
-    .await
-    .map_err(|error| AppError::Config(format!("failed to initialize Graphile Worker: {error}")))?;
-    tracing::info!("Graphile Worker initialized");
-    let state = AppState {
-        db: app_db,
-        use_cases,
-        daily_bar_source,
-        jquants_client,
-        agent_task_client,
-        agent_webhook_token: Arc::from(agent_webhook_token),
-        kata_executor,
-        llm_gateway_client,
+
+    let worker = if cli.run_mode.starts_worker() {
+        let worker = Scheduler::initialize(
+            db.get_postgres_connection_pool().clone(),
+            dependencies,
+            wait_for_shutdown(shutdown_rx.clone()),
+        )
+        .await
+        .map_err(|error| {
+            AppError::Config(format!("failed to initialize Graphile Worker: {error}"))
+        })?;
+        tracing::info!("Graphile Worker initialized");
+        Some(worker)
+    } else {
+        None
     };
 
-    let app = create_router(state);
+    let server_run: Option<BoxFuture<'static, Result<(), std::io::Error>>> = if let Some(app) = app
+    {
+        let port: u16 = std::env::var("BACKEND_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3000);
+        let addr = SocketAddr::from(([0, 0, 0, 0], port));
+        tracing::info!("listening on {addr}");
 
-    let port: u16 = std::env::var("BACKEND_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(3000);
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    tracing::info!("listening on {addr}");
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .map_err(|e| AppError::Config(format!("failed to bind to {addr}: {e}")))?;
+        let server_shutdown = wait_for_shutdown(shutdown_rx);
+        Some(Box::pin(async move {
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(server_shutdown)
+            .await
+        }))
+    } else {
+        None
+    };
 
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|e| AppError::Config(format!("failed to bind to {addr}: {e}")))?;
+    match (worker, server_run) {
+        (Some(worker), Some(mut server_run)) => {
+            let mut worker_run = Box::pin(worker.run());
 
-    let mut worker_run = Box::pin(worker.run());
-    let mut server_run = Box::pin(async move {
-        axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .with_graceful_shutdown(wait_for_shutdown(shutdown_rx))
-        .await
-    });
-
-    // Worker が停止したまま API だけを提供しないよう、どちらかの終了時に両方を停止する。
-    tokio::select! {
-        result = &mut worker_run => {
-            let _ = shutdown_tx.send(true);
-            let worker_result = result
-                .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
-            let server_result = server_run
-                .await
-                .map_err(|error| AppError::Config(format!("server error: {error}")));
-            worker_result?;
-            server_result
+            // 両方を起動した場合は、片方の終了時にもう片方も停止する。
+            tokio::select! {
+                result = &mut worker_run => {
+                    let _ = shutdown_tx.send(true);
+                    let worker_result = result
+                        .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+                    let server_result = server_run
+                        .await
+                        .map_err(|error| AppError::Config(format!("server error: {error}")));
+                    worker_result?;
+                    server_result
+                }
+                result = &mut server_run => {
+                    let _ = shutdown_tx.send(true);
+                    let server_result = result
+                        .map_err(|error| AppError::Config(format!("server error: {error}")));
+                    let worker_result = worker_run
+                        .await
+                        .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+                    server_result?;
+                    worker_result
+                }
+            }
         }
-        result = &mut server_run => {
-            let _ = shutdown_tx.send(true);
-            let server_result = result
-                .map_err(|error| AppError::Config(format!("server error: {error}")));
-            let worker_result = worker_run
-                .await
-                .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
-            server_result?;
-            worker_result
-        }
+        (Some(worker), None) => worker
+            .run()
+            .await
+            .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}"))),
+        (None, Some(server_run)) => server_run
+            .await
+            .map_err(|error| AppError::Config(format!("server error: {error}"))),
+        // RunMode の追加時に有効化条件が漏れた場合も、無言で終了しないようにする。
+        (None, None) => Err(AppError::Config(format!(
+            "backend runtime setup is incomplete for run mode {:?}",
+            cli.run_mode
+        ))),
     }
 }
 

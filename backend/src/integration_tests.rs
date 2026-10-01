@@ -1,7 +1,7 @@
 //! 戦略タスクの投入 (5 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
 //! scheduler job による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
 //!
-//! 各コンポーネント単体の挙動は `services::strategy_tasks` /
+//! 各コンポーネント単体の挙動は `core_application::strategy_task` /
 //! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
 //! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
@@ -18,7 +18,6 @@ use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
-use crate::services::strategy_tasks::DEFAULT_PURPOSE;
 use crate::services::trigger_worker;
 use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
@@ -26,6 +25,7 @@ use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy,
 };
+use core_application::strategy_task::DEFAULT_PURPOSE;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::strategy_task;
 
@@ -40,12 +40,9 @@ async fn postgres_queue_enqueues_one_keyed_strategy_task_reconcile_job(
     use gateway_postgres::PostgresStrategyTaskReconcileJobQueue;
 
     let pool = gateway_postgres::test_support::create_test_pool().await;
-    let _worker = graphile_worker::WorkerOptions::default()
-        .pg_pool(pool)
-        .schema("graphile_worker")
-        .init()
+    crate::migrations::migrate_graphile_worker_schema(pool)
         .await
-        .expect("initialize Graphile Worker schema");
+        .expect("migrate Graphile Worker schema");
     let queue = PostgresStrategyTaskReconcileJobQueue::new(db.clone());
     queue
         .enqueue_reconciliation()
