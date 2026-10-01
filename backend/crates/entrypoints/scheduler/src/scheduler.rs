@@ -257,7 +257,7 @@ fn weekly_cron<T: TaskHandler>(
 mod tests {
     use chrono::Weekday;
     use graphile_worker::{Crontab, CrontabFill, CrontabTimer, TaskHandler};
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
 
     use crate::jobs::{
         daily_bars::DailyBarsIngest,
@@ -274,6 +274,20 @@ mod tests {
 
     use super::{ConfiguredJobs, JQUANTS_QUEUE, build_crontabs, configure_cron, hourly_cron};
 
+    #[fixture]
+    fn all_configured_jobs() -> ConfiguredJobs {
+        ConfiguredJobs {
+            daily_bars: true,
+            fred: true,
+            jquants: true,
+            earnings_schedule: true,
+            financial_summary: true,
+            valuation: true,
+            equity_master: true,
+            shareholding_structure: true,
+        }
+    }
+
     fn expected_cron<T: TaskHandler>(
         timer: Option<CrontabTimer>,
         id: &str,
@@ -283,8 +297,8 @@ mod tests {
         Some(configure_cron::<T>(timer?, id, fill, queue))
     }
 
-    #[test]
-    fn schedules_fixed_utc_times_and_serializes_jquants_jobs() {
+    #[rstest]
+    fn schedules_fixed_utc_times_and_serializes_jquants_jobs(all_configured_jobs: ConfiguredJobs) {
         let expected = [
             expected_cron::<NewsAggregation>(
                 CrontabTimer::hourly_at(0).ok(),
@@ -362,36 +376,14 @@ mod tests {
         .into_iter()
         .collect::<Option<Vec<_>>>();
 
-        assert_eq!(
-            build_crontabs(ConfiguredJobs {
-                daily_bars: true,
-                fred: true,
-                jquants: true,
-                earnings_schedule: true,
-                financial_summary: true,
-                valuation: true,
-                equity_master: true,
-                shareholding_structure: true,
-            })
-            .ok(),
-            expected
-        );
+        assert_eq!(build_crontabs(all_configured_jobs).ok(), expected);
     }
 
-    #[test]
-    fn configures_missed_tick_fill_retry_limit_and_jquants_queue() {
-        let actual = build_crontabs(ConfiguredJobs {
-            daily_bars: true,
-            fred: true,
-            jquants: true,
-            earnings_schedule: true,
-            financial_summary: true,
-            valuation: true,
-            equity_master: true,
-            shareholding_structure: true,
-        })
-        .ok()
-        .map(|crontabs| {
+    #[rstest]
+    fn configures_missed_tick_fill_retry_limit_and_jquants_queue(
+        all_configured_jobs: ConfiguredJobs,
+    ) {
+        let actual = build_crontabs(all_configured_jobs).ok().map(|crontabs| {
             crontabs
                 .into_iter()
                 .map(|crontab| {

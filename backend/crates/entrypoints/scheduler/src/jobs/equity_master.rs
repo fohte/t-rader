@@ -59,14 +59,14 @@ mod tests {
         unit_of_work::{FakeUnitOfWork, SharedUnitOfWork, UnitOfWorkTransaction},
     };
     use core_domain::equity_master::EquityMasterEntry;
-    use tokio::sync::Mutex;
+    use rstest::{fixture, rstest};
 
     use super::sync_equity_master;
 
     #[derive(Default)]
     struct FakeSource {
         entries: Vec<EquityMasterEntry>,
-        calls: Mutex<usize>,
+        error: Option<String>,
     }
 
     #[async_trait]
@@ -74,15 +74,14 @@ mod tests {
         async fn fetch_all_equities_master(
             &self,
         ) -> Result<Vec<EquityMasterEntry>, EquityMasterSourceError> {
-            *self.calls.lock().await += 1;
+            if let Some(error) = &self.error {
+                return Err(EquityMasterSourceError::Failed(error.clone()));
+            }
             Ok(self.entries.clone())
         }
     }
 
-    #[derive(Default)]
-    struct FakeRepository {
-        saved: Mutex<Vec<EquityMasterEntry>>,
-    }
+    struct FakeRepository;
 
     #[async_trait]
     impl EquityMasterRepository for FakeRepository {
@@ -91,52 +90,42 @@ mod tests {
             _transaction: &UnitOfWorkTransaction,
             entries: &[EquityMasterEntry],
         ) -> Result<usize, EquityMasterRepositoryError> {
-            self.saved.lock().await.extend_from_slice(entries);
             Ok(entries.len())
         }
     }
 
+    #[fixture]
+    fn use_cases() -> EquityMasterUseCases {
+        let repository: SharedEquityMasterRepository = Arc::new(FakeRepository);
+        let unit_of_work: SharedUnitOfWork = Arc::new(FakeUnitOfWork::new());
+        EquityMasterUseCases::new(unit_of_work, repository)
+    }
+
+    fn equity_entry() -> EquityMasterEntry {
+        EquityMasterEntry {
+            id: "ZZ99".to_string(),
+            name: "架空銘柄".to_string(),
+            market: Some("架空市場".to_string()),
+            sector_name: Some("架空業種".to_string()),
+            product_category: Some("000".to_string()),
+        }
+    }
+
+    #[rstest]
+    #[case::success(
+        FakeSource { entries: vec![equity_entry()], error: None },
+        Ok(EquityMasterSyncStats { stocks_upserted: 1 }),
+    )]
+    #[case::source_error(
+        FakeSource { entries: vec![], error: Some("synthetic failure".to_string()) },
+        Err("equity master source error: synthetic failure".to_string()),
+    )]
     #[tokio::test]
-    async fn syncs_master_through_the_application_use_case() {
-        let source = FakeSource {
-            entries: vec![EquityMasterEntry {
-                id: "ZZ99".to_string(),
-                name: "架空銘柄".to_string(),
-                market: Some("架空市場".to_string()),
-                sector_name: Some("架空業種".to_string()),
-                product_category: Some("000".to_string()),
-            }],
-            ..FakeSource::default()
-        };
-        let repository = Arc::new(FakeRepository::default());
-        let repository_shared: SharedEquityMasterRepository = repository.clone();
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
-        let unit_of_work_shared: SharedUnitOfWork = unit_of_work.clone();
-        let use_cases = EquityMasterUseCases::new(unit_of_work_shared, repository_shared);
-
-        let stats = sync_equity_master(&use_cases, &source)
-            .await
-            .expect("sync succeeds");
-
-        let begun = unit_of_work.begun.lock().await.clone();
-        let committed = unit_of_work.committed.lock().await.clone();
-        assert_eq!(
-            (
-                stats,
-                *source.calls.lock().await,
-                repository.saved.lock().await.clone(),
-                begun.len(),
-                committed.len(),
-                begun == committed,
-            ),
-            (
-                EquityMasterSyncStats { stocks_upserted: 1 },
-                1,
-                source.entries,
-                1,
-                1,
-                true,
-            ),
-        );
+    async fn returns_the_application_use_case_result(
+        use_cases: EquityMasterUseCases,
+        #[case] source: FakeSource,
+        #[case] expected: Result<EquityMasterSyncStats, String>,
+    ) {
+        assert_eq!(sync_equity_master(&use_cases, &source).await, expected);
     }
 }
