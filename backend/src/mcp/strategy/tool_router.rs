@@ -296,7 +296,7 @@ impl StrategyServer {
     /// 指定銘柄をあと何株買えるかを、制約ごとの上限株数とともに返す
     #[tool(
         name = "check_buyable_qty",
-        description = "Calculate how many more shares of a symbol can be bought, per constraint (account-wide sector ratio cap and the strategy's remaining unused investable amount), plus the overall minimum and which constraint is binding. Works for symbols not currently held (current_qty is 0). max_additional_qty values are floored to 100-share lots (see lot_size). A constraint with no configured cap reports status=unlimited; a constraint that cannot be computed (missing price, missing sector, no investable amount recorded) reports status=unavailable with a reason instead of a possibly-wrong number, and poisons the overall max_qty to unavailable too.",
+        description = "Calculate how many more shares of a symbol can be bought, per constraint (account-wide group ratio caps for each configured group axis and the strategy's remaining unused investable amount), plus the overall minimum and which constraint is binding. Each configured axis checks every group containing the target symbol. Works for symbols not currently held (current_qty is 0). max_additional_qty values are floored to 100-share lots (see lot_size). A constraint with no configured cap reports status=unlimited; a constraint that cannot be computed (missing price, missing group membership for a configured axis, or no investable amount recorded) reports status=unavailable with a reason instead of a possibly-wrong number, and poisons the overall max_qty to unavailable too.",
         annotations(read_only_hint = true)
     )]
     async fn check_buyable_qty(

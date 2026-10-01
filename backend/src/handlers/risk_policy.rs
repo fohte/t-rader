@@ -9,10 +9,10 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
-    parse_risk_policy, serialize_risk_policy, validate_ratio,
+    parse_risk_policy, serialize_risk_policy, validate_group_ratios,
 };
 
-/// 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す
+/// 口座全体の分類軸ごとのグループ集中度上限を取得。
 #[utoipa::path(
     get,
     path = "/api/account/risk-policy",
@@ -35,13 +35,13 @@ pub async fn get_account_risk_policy(
         Some(risk_policy) => parse_risk_policy(risk_policy)?,
         None => AccountRiskPolicyData {
             schema_version: crate::models::risk_policy::RISK_POLICY_SCHEMA_VERSION,
-            max_sector_ratio: None,
+            max_group_ratios: vec![],
         },
     };
     Ok(Json(data.into()))
 }
 
-/// 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+/// 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 #[utoipa::path(
     put,
     path = "/api/account/risk-policy",
@@ -59,10 +59,10 @@ pub async fn put_account_risk_policy(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<PutAccountRiskPolicyRequest>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
-    validate_ratio(payload.max_sector_ratio)?;
+    validate_group_ratios(&payload.max_group_ratios)?;
     let data = AccountRiskPolicyData {
         schema_version: crate::models::risk_policy::RISK_POLICY_SCHEMA_VERSION,
-        max_sector_ratio: payload.max_sector_ratio,
+        max_group_ratios: payload.max_group_ratios,
     };
     let value = serialize_risk_policy(&data)?;
     let saved = state
@@ -93,7 +93,7 @@ mod tests {
         res.assert_status_ok();
         assert_eq!(
             res.json::<serde_json::Value>(),
-            serde_json::json!({ "max_sector_ratio": null }),
+            serde_json::json!({ "max_group_ratios": [] }),
         );
     }
 
@@ -101,11 +101,13 @@ mod tests {
     async fn put_then_get_round_trips(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
 
-        let expected = serde_json::json!({ "max_sector_ratio": 0.3 });
-        let put = server
-            .put("/api/account/risk-policy")
-            .json(&serde_json::json!({ "max_sector_ratio": 0.3 }))
-            .await;
+        let expected = serde_json::json!({
+            "max_group_ratios": [
+                { "axis": "sample-axis", "ratio": 0.3 },
+                { "axis": "another-sample-axis", "ratio": 0.2 },
+            ]
+        });
+        let put = server.put("/api/account/risk-policy").json(&expected).await;
         put.assert_status_ok();
         assert_eq!(put.json::<serde_json::Value>(), expected);
 
@@ -120,39 +122,47 @@ mod tests {
 
         server
             .put("/api/account/risk-policy")
-            .json(&serde_json::json!({ "max_sector_ratio": 0.3 }))
+            .json(&serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.3 }]
+            }))
             .await
             .assert_status_ok();
         server
             .put("/api/account/risk-policy")
-            .json(&serde_json::json!({ "max_sector_ratio": 0.5 }))
+            .json(&serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.5 }]
+            }))
             .await
             .assert_status_ok();
 
         let get = server.get("/api/account/risk-policy").await;
         assert_eq!(
             get.json::<serde_json::Value>(),
-            serde_json::json!({ "max_sector_ratio": 0.5 }),
+            serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.5 }]
+            }),
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn put_null_clears_limit(db: gateway_postgres::DatabaseHandle) {
+    async fn put_empty_list_clears_limit(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
 
         server
             .put("/api/account/risk-policy")
-            .json(&serde_json::json!({ "max_sector_ratio": 0.3 }))
+            .json(&serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.3 }]
+            }))
             .await
             .assert_status_ok();
         let cleared = server
             .put("/api/account/risk-policy")
-            .json(&serde_json::json!({ "max_sector_ratio": null }))
+            .json(&serde_json::json!({ "max_group_ratios": [] }))
             .await;
         cleared.assert_status_ok();
         assert_eq!(
             cleared.json::<serde_json::Value>(),
-            serde_json::json!({ "max_sector_ratio": null }),
+            serde_json::json!({ "max_group_ratios": [] }),
         );
     }
 
@@ -163,7 +173,12 @@ mod tests {
         for invalid in [serde_json::json!(0), serde_json::json!(1.5)] {
             let res = server
                 .put("/api/account/risk-policy")
-                .json(&serde_json::json!({ "max_sector_ratio": invalid }))
+                .json(&serde_json::json!({
+                    "max_group_ratios": [
+                        { "axis": "sample-axis", "ratio": 0.3 },
+                        { "axis": "another-sample-axis", "ratio": invalid },
+                    ]
+                }))
                 .await;
             res.assert_status(axum::http::StatusCode::BAD_REQUEST);
         }

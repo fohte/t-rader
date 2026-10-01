@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
 )
@@ -30,8 +31,13 @@ type riskLimitResource struct {
 }
 
 type riskLimitModel struct {
-	ID             types.String  `tfsdk:"id"`
-	MaxSectorRatio types.Float64 `tfsdk:"max_sector_ratio"`
+	ID             types.String `tfsdk:"id"`
+	MaxGroupRatios types.List   `tfsdk:"max_group_ratios"`
+}
+
+type riskLimitGroupRatioModel struct {
+	Axis  types.String  `tfsdk:"axis"`
+	Ratio types.Float64 `tfsdk:"ratio"`
 }
 
 func NewRiskLimitResource() resource.Resource {
@@ -51,10 +57,23 @@ func (r *riskLimitResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "口座を識別する固定 ID (`account`)。",
 			},
-			"max_sector_ratio": schema.Float64Attribute{
+			"max_group_ratios": schema.ListNestedAttribute{
 				Optional:            true,
-				Validators:          []validator.Float64{maxSectorRatioValidator{}},
-				MarkdownDescription: "口座全体の保有銘柄時価に対する、単一セクターの保有銘柄時価の上限比率。`(0, 1]` の範囲で指定し、省略すると上限を解除します。",
+				Default:             listdefault.StaticValue(emptyRiskLimitGroupRatios()),
+				MarkdownDescription: "分類軸ごとに、グループに適用する保有比率の上限を指定します。空配列にすると上限を解除します。",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"axis": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "上限を適用する分類軸のキー。",
+						},
+						"ratio": schema.Float64Attribute{
+							Required:            true,
+							Validators:          []validator.Float64{maxGroupRatioValidator{}},
+							MarkdownDescription: "各グループに適用する上限比率。`(0, 1]` の範囲で指定します。",
+						},
+					},
+				},
 			},
 		},
 	}
@@ -92,7 +111,12 @@ func (r *riskLimitResource) Read(ctx context.Context, req resource.ReadRequest, 
 		resp.Diagnostics.AddError("Error reading risk limit", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, riskLimitModelFromResponse(current))...)
+	model, diagnostics := riskLimitModelFromResponse(ctx, current)
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
 }
 
 func (r *riskLimitResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -130,56 +154,101 @@ func (r *riskLimitResource) upsert(ctx context.Context, plan tfsdk.Plan, state *
 		return
 	}
 
+	groupRatios, conversionDiagnostics := riskLimitGroupRatiosForRequest(ctx, planModel.MaxGroupRatios)
+	diagnostics.Append(conversionDiagnostics...)
+	if diagnostics.HasError() {
+		return
+	}
 	updated, err := client.PutRiskLimit(ctx, traderapi.PutAccountRiskPolicyRequest{
-		MaxSectorRatio: float64AttributeNullable(planModel.MaxSectorRatio),
+		MaxGroupRatios: groupRatios,
 	})
 	if err != nil {
 		diagnostics.AddError(errorSummary, err.Error())
 		return
 	}
-	diagnostics.Append(state.Set(ctx, riskLimitModelFromResponse(updated))...)
+	model, conversionDiagnostics := riskLimitModelFromResponse(ctx, updated)
+	diagnostics.Append(conversionDiagnostics...)
+	if diagnostics.HasError() {
+		return
+	}
+	diagnostics.Append(state.Set(ctx, model)...)
 }
 
-func riskLimitModelFromResponse(response traderapi.AccountRiskPolicyResponse) riskLimitModel {
+func riskLimitModelFromResponse(ctx context.Context, response traderapi.AccountRiskPolicyResponse) (riskLimitModel, diag.Diagnostics) {
+	groupRatios, diagnostics := maxGroupRatiosAttribute(ctx, response.MaxGroupRatios)
+	if diagnostics.HasError() {
+		return riskLimitModel{}, diagnostics
+	}
 	return riskLimitModel{
 		ID:             types.StringValue(riskLimitResourceID),
-		MaxSectorRatio: float64NullableAttribute(response.MaxSectorRatio),
-	}
+		MaxGroupRatios: groupRatios,
+	}, nil
 }
 
-func float64AttributeNullable(value types.Float64) nullable.Nullable[float64] {
-	if value.IsUnknown() {
-		return nullable.Nullable[float64]{}
-	}
+func riskLimitGroupRatioObjectType() types.ObjectType {
+	return types.ObjectType{AttrTypes: map[string]attr.Type{
+		"axis":  types.StringType,
+		"ratio": types.Float64Type,
+	}}
+}
+
+func emptyRiskLimitGroupRatios() types.List {
+	return types.ListValueMust(riskLimitGroupRatioObjectType(), []attr.Value{})
+}
+
+func riskLimitGroupRatiosForRequest(ctx context.Context, value types.List) ([]traderapi.GroupRatio, diag.Diagnostics) {
 	if value.IsNull() {
-		return nullable.NewNullNullable[float64]()
+		return []traderapi.GroupRatio{}, nil
 	}
-	return nullable.NewNullableWithValue(value.ValueFloat64())
+	if value.IsUnknown() {
+		var diagnostics diag.Diagnostics
+		diagnostics.AddAttributeError(path.Root("max_group_ratios"), "Unknown group ratio limits", "max_group_ratios must be known when applying the risk limit.")
+		return nil, diagnostics
+	}
+
+	var models []riskLimitGroupRatioModel
+	diagnostics := value.ElementsAs(ctx, &models, false)
+	if diagnostics.HasError() {
+		return nil, diagnostics
+	}
+
+	groupRatios := make([]traderapi.GroupRatio, 0, len(models))
+	for _, model := range models {
+		groupRatios = append(groupRatios, traderapi.GroupRatio{
+			Axis:  model.Axis.ValueString(),
+			Ratio: model.Ratio.ValueFloat64(),
+		})
+	}
+	return groupRatios, diagnostics
 }
 
-func float64NullableAttribute(value nullable.Nullable[float64]) types.Float64 {
-	if !value.IsSpecified() || value.IsNull() {
-		return types.Float64Null()
+func maxGroupRatiosAttribute(ctx context.Context, values []traderapi.GroupRatio) (types.List, diag.Diagnostics) {
+	models := make([]riskLimitGroupRatioModel, 0, len(values))
+	for _, value := range values {
+		models = append(models, riskLimitGroupRatioModel{
+			Axis:  types.StringValue(value.Axis),
+			Ratio: types.Float64Value(value.Ratio),
+		})
 	}
-	return types.Float64Value(value.GetOrEmpty())
+	return types.ListValueFrom(ctx, riskLimitGroupRatioObjectType(), models)
 }
 
-type maxSectorRatioValidator struct{}
+type maxGroupRatioValidator struct{}
 
-func (maxSectorRatioValidator) Description(context.Context) string {
+func (maxGroupRatioValidator) Description(context.Context) string {
 	return "比率は 0 より大きく 1 以下である必要があります。"
 }
 
-func (v maxSectorRatioValidator) MarkdownDescription(ctx context.Context) string {
+func (v maxGroupRatioValidator) MarkdownDescription(ctx context.Context) string {
 	return v.Description(ctx)
 }
 
-func (maxSectorRatioValidator) ValidateFloat64(_ context.Context, req validator.Float64Request, resp *validator.Float64Response) {
+func (maxGroupRatioValidator) ValidateFloat64(_ context.Context, req validator.Float64Request, resp *validator.Float64Response) {
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
 	}
 	value := req.ConfigValue.ValueFloat64()
 	if value <= 0 || value > 1 {
-		resp.Diagnostics.AddAttributeError(req.Path, "Invalid max sector ratio", "max_sector_ratio must be greater than 0 and less than or equal to 1.")
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid group ratio", "ratio must be greater than 0 and less than or equal to 1.")
 	}
 }

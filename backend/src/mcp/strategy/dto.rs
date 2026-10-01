@@ -166,15 +166,15 @@ pub struct CheckBuyableQtyResult {
     /// 最も新しい観測日。1 銘柄も取得できなければ null。`current_price` 自体の観測日とは
     /// 限らない
     pub priced_at: Option<NaiveDate>,
-    /// `account_risk_policy.max_sector_ratio` による制約
-    pub max_qty_by_sector_ratio: ConstraintResult,
+    /// `account_risk_policy.max_group_ratios` による制約
+    pub max_qty_by_group_ratios: ConstraintResult,
     /// 戦略の未使用投資可能額による制約
     pub max_qty_by_cash: ConstraintResult,
     /// 上記制約のうち最も厳しいもの。いずれかが unavailable なら unavailable、
     /// 全て unlimited なら unlimited
     pub max_qty: ConstraintResult,
     /// `max_qty` が `Limited` のとき、根拠になった制約名
-    /// (`sector_ratio` / `cash`)。それ以外は null
+    /// (`group_ratios` / `cash`)。それ以外は null
     pub binding_constraint: Option<String>,
 }
 
