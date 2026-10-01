@@ -51,9 +51,7 @@ fn map_prediction_error(error: PredictionUseCaseError) -> AppError {
         | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
         PredictionUseCaseError::Repository(PredictionRepositoryError::InvalidTransaction)
         | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
-            AppError::Database(sea_orm::DbErr::Custom(
-                "prediction transaction has an unexpected type".into(),
-            ))
+            AppError::Internal("prediction transaction has an unexpected type".into())
         }
     }
 }

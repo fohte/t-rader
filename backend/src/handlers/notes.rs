@@ -145,7 +145,7 @@ pub(super) fn map_note_read_error(error: NoteReadUseCaseError) -> AppError {
         }
         NoteReadUseCaseError::Query(NoteReadQueryError::Database(error)) => error.into(),
         NoteReadUseCaseError::Query(NoteReadQueryError::InvalidData(message)) => {
-            AppError::Database(sea_orm::DbErr::Custom(message))
+            AppError::Internal(message)
         }
     }
 }
@@ -291,7 +291,7 @@ pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
         | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
             error.into()
         }
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 

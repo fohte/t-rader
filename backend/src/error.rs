@@ -8,7 +8,6 @@ use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError}
 use core_application::persistence::PersistenceError;
 use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
-use sea_orm::{DbErr, RuntimeErr, SqlErr};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -16,54 +15,10 @@ use crate::data_provider::{
     DailyBarSourceError, EquityMasterSourceError, MarketDailyBarSourceError,
 };
 
-// SeaORM の `SqlErr` で拾えない PostgreSQL SQLSTATE を補完する。
-// NOT NULL 違反 (23502) は handler 側の入力検証漏れまたは型不整合を示すサーバーバグなので
-// あえて含めず、デフォルトの 500 にフォールバックさせて顕在化させる。
-// ref: https://www.postgresql.org/docs/current/errcodes-appendix.html
-const PG_UNIQUE_VIOLATION: &str = "23505";
-const PG_CHECK_VIOLATION: &str = "23514";
-
-/// DB 制約違反系エラーを HTTP ステータスにマップする。
-/// 該当しない場合は `None` を返し、呼び出し側で 500 にフォールバックさせる。
-fn classify_db_constraint(err: &DbErr) -> Option<(StatusCode, String)> {
-    if let Some(sql_err) = err.sql_err() {
-        match sql_err {
-            SqlErr::ForeignKeyConstraintViolation(_) => {
-                return Some((
-                    StatusCode::BAD_REQUEST,
-                    "referenced resource does not exist".to_string(),
-                ));
-            }
-            SqlErr::UniqueConstraintViolation(_) => {
-                return Some((StatusCode::CONFLICT, "resource already exists".to_string()));
-            }
-            _ => {}
-        }
-    }
-
-    // SeaORM の `sql_err()` は partial unique index 由来の違反などを取りこぼすことがあるため、
-    // raw SQLSTATE でも判定する。check 違反 (例: qty > 0) は handler 側のビジネスルール表現として
-    // 400 にマップする。
-    let (DbErr::Exec(RuntimeErr::SqlxError(sqlx_err))
-    | DbErr::Query(RuntimeErr::SqlxError(sqlx_err))) = err
-    else {
-        return None;
-    };
-    let code = sqlx_err.as_database_error()?.code()?;
-    match code.as_ref() {
-        PG_UNIQUE_VIOLATION => Some((StatusCode::CONFLICT, "resource already exists".to_string())),
-        PG_CHECK_VIOLATION => Some((
-            StatusCode::BAD_REQUEST,
-            "value violates database constraint".to_string(),
-        )),
-        _ => None,
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
+    Internal(String),
 
     #[error("configuration error: {0}")]
     Config(String),
@@ -96,7 +51,7 @@ pub enum AppError {
 impl From<PersistenceError> for AppError {
     fn from(error: PersistenceError) -> Self {
         match error {
-            PersistenceError::Database(message) => Self::Database(sea_orm::DbErr::Custom(message)),
+            PersistenceError::Database(message) => Self::Internal(message),
             PersistenceError::MissingReference(_) => {
                 Self::Validation("referenced resource does not exist".into())
             }
@@ -116,7 +71,7 @@ impl From<BarsUseCaseError> for AppError {
             BarsUseCaseError::UnitOfWork(
                 UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
             ) => error.into(),
-            other => Self::Database(DbErr::Custom(other.to_string())),
+            other => Self::Internal(other.to_string()),
         }
     }
 }
@@ -132,7 +87,7 @@ impl From<NoteKindUseCaseError> for AppError {
             | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
             | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
             NoteKindUseCaseError::Note(error) => map_note_use_case_error(error),
-            other => Self::Database(DbErr::Custom(other.to_string())),
+            other => Self::Internal(other.to_string()),
         }
     }
 }
@@ -146,7 +101,7 @@ impl From<GroupAxisUseCaseError> for AppError {
             GroupAxisUseCaseError::Repository(GroupAxisRepositoryError::Database(error))
             | GroupAxisUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
             | GroupAxisUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
-            other => Self::Database(DbErr::Custom(other.to_string())),
+            other => Self::Internal(other.to_string()),
         }
     }
 }
@@ -169,7 +124,7 @@ fn map_note_use_case_error(error: NoteUseCaseError) -> AppError {
         | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
             error.into()
         }
-        other => AppError::Database(DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 
@@ -183,21 +138,12 @@ pub struct ErrorResponse {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            AppError::Database(db_err) => {
-                if matches!(db_err, DbErr::RecordNotUpdated) {
-                    // read-then-update の間に対象行が並行削除されると 0 行更新でここに来る。
-                    // クライアントからは「対象が既に存在しない」だけなので 404 として扱う。
-                    (StatusCode::NOT_FOUND, "resource not found".to_string())
-                } else if let Some(mapped) = classify_db_constraint(db_err) {
-                    mapped
-                } else {
-                    // 内部エラーの詳細はログに記録し、クライアントには汎用メッセージのみ返す
-                    tracing::error!("{self}");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "internal server error".to_string(),
-                    )
-                }
+            AppError::Internal(_) => {
+                tracing::error!("{self}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
             }
             AppError::Config(_) => {
                 tracing::error!("{self}");
@@ -292,23 +238,38 @@ mod tests {
     }
 
     #[rstest]
+    #[case::missing_reference(
+        PersistenceError::MissingReference("reference missing".into()),
+        StatusCode::BAD_REQUEST,
+        json!({ "error": "referenced resource does not exist" })
+    )]
+    #[case::conflict(
+        PersistenceError::Conflict("duplicate resource".into()),
+        StatusCode::CONFLICT,
+        json!({ "error": "resource already exists" })
+    )]
+    #[case::constraint_violation(
+        PersistenceError::ConstraintViolation("invalid value".into()),
+        StatusCode::BAD_REQUEST,
+        json!({ "error": "value violates database constraint" })
+    )]
     #[case::record_not_updated(
-        DbErr::RecordNotUpdated,
+        PersistenceError::RecordNotUpdated("record not updated".into()),
         StatusCode::NOT_FOUND,
         json!({ "error": "resource not found" })
     )]
-    #[case::other_db_error(
-        DbErr::Custom("unexpected".into()),
+    #[case::database_error(
+        PersistenceError::Database("database unavailable".into()),
         StatusCode::INTERNAL_SERVER_ERROR,
         json!({ "error": "internal server error" })
     )]
     #[tokio::test]
-    async fn test_database_error_response(
-        #[case] db_err: DbErr,
+    async fn persistence_error_maps_to_http_response(
+        #[case] error: PersistenceError,
         #[case] expected_status: StatusCode,
         #[case] expected_body: serde_json::Value,
     ) {
-        let response = AppError::Database(db_err).into_response();
+        let response = AppError::from(error).into_response();
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await

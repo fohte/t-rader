@@ -1,6 +1,6 @@
 use chrono::{DateTime, FixedOffset};
-use sea_orm::entity::prelude::Json;
 use serde::Serialize;
+use serde_json::Value as Json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

@@ -127,17 +127,17 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
     McpError::invalid_params(msg, None)
 }
 
-pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
+pub(super) fn db_error(err: &str) -> McpError {
     tracing::error!(error = %err, "mgmt mcp db error");
     internal_error(format!("database error: {err}"))
 }
 
 /// `AppError::Validation` は各 tool 側で `ok=false` + `errors` として扱うため、ここでは
-/// `NotFound` / `Database` / その他だけを tool call の失敗として一律にマッピングする。
+/// `NotFound` / `Internal` / その他だけを tool call の失敗として一律にマッピングする。
 pub(super) fn map_app_error(err: AppError) -> McpError {
     match err {
         AppError::NotFound(msg) => invalid_params(msg),
-        AppError::Database(db_err) => db_error(db_err),
+        AppError::Internal(message) => db_error(&message),
         other => internal_error(other.to_string()),
     }
 }

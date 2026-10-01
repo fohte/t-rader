@@ -30,9 +30,9 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
         | SubmitTaskError::UnitOfWork(UnitOfWorkError::Begin(error))
         | SubmitTaskError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
         SubmitTaskError::Repository(StrategyTaskRepositoryError::InvalidTransaction)
-        | SubmitTaskError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => AppError::Database(
-            sea_orm::DbErr::Custom("invalid strategy task transaction".into()),
-        ),
+        | SubmitTaskError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            AppError::Internal("invalid strategy task transaction".into())
+        }
         SubmitTaskError::AgentTask(AgentTaskError::NotConfigured) => {
             AppError::ServiceUnavailable("agent task client is not configured".into())
         }
@@ -46,9 +46,7 @@ pub(crate) fn map_list_task_error(error: ListTasksError) -> AppError {
     match error {
         ListTasksError::Repository(StrategyTaskRepositoryError::Database(error)) => error.into(),
         ListTasksError::Repository(StrategyTaskRepositoryError::InvalidTransaction) => {
-            AppError::Database(sea_orm::DbErr::Custom(
-                "invalid strategy task transaction".into(),
-            ))
+            AppError::Internal("invalid strategy task transaction".into())
         }
     }
 }
@@ -61,9 +59,7 @@ fn map_get_task_error(error: GetTaskError) -> AppError {
         }
         GetTaskError::Repository(StrategyTaskRepositoryError::Database(error)) => error.into(),
         GetTaskError::Repository(StrategyTaskRepositoryError::InvalidTransaction) => {
-            AppError::Database(sea_orm::DbErr::Custom(
-                "invalid strategy task transaction".into(),
-            ))
+            AppError::Internal("invalid strategy task transaction".into())
         }
     }
 }
@@ -81,7 +77,7 @@ async fn verify_strategy_scope(
         .map_err(|error| match error {
             StrategyScopeError::NotFound(_) => AppError::NotFound(not_found_message),
             StrategyScopeError::Source(StrategyScopeSourceError::QueryFailed(message)) => {
-                AppError::Database(sea_orm::DbErr::Custom(message))
+                AppError::Internal(message)
             }
         })
 }
