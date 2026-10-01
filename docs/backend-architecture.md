@@ -78,8 +78,6 @@ backend/crates/
 
 `core/application` の `lib.rs` には `pub mod` 宣言を置き、型を crate root に再エクスポートしない。利用側は `core_application::trade::...` のように module path から参照する。新しい port や集約を追加するときは、対応する module を `pub mod` で公開する。
 
-`backend/src/` 配下では、handler / MCP / service から entity / repository を直接使ったり、SeaORM の query / transaction を実行したりしない。DB 操作が必要な場合は `core/application` に port とユースケースを追加し、Postgres adapter を `gateways/postgres` に実装する。集約固有の組み立ては `services/use_cases/<aggregate>.rs` に置き、handler / MCP は `UseCases` のメソッドを通して呼び出す。composition root / テストコード / DB エラー型の変換に加え、`health_check` の `SELECT 1` による DB 疎通確認だけを例外とする。既存の直接アクセスが残るファイルは `.sg/rules/no-direct-db-in-backend.yml` の `ignores` で暫定除外している。新しい違反を追加せず、既存違反を解消したら該当パスを `ignores` から外す。
-
 HTTP の `AppState` と MCP の StrategyServer / MgmtServer は同じ `UseCases` を受け取る。HTTP handler は `state.use_cases` 経由で、StrategyServer は自身の `use_cases` 経由で対象のユースケースを呼び出す。MgmtServer にも同じ container を渡し、MCP server の組み立てを共通化する。transaction、変更履歴、strategy 存在確認には既存の共通 port と Postgres 実装を使う。HTTP では `PersistenceError` を `AppError` に変換する。
 
 `entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror`, `jpholiday` (祝日の計算のみで I/O を持たない) と `serde` の derive に限る (テストでのみ使う dev-dependencies は対象外)。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
