@@ -249,7 +249,7 @@ impl StrategyUseCases {
     }
 }
 
-pub fn validate_name(value: &str) -> Result<String, StrategyUseCaseError> {
+fn validate_name(value: &str) -> Result<String, StrategyUseCaseError> {
     let trimmed = value.trim().to_string();
     if trimmed.is_empty() {
         return Err(StrategyUseCaseError::Validation(
