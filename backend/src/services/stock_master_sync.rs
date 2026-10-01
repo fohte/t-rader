@@ -3,107 +3,30 @@
 //! 全上場銘柄を `stock` に upsert し、名前・市場区分・業種・商品区分を最新に保つ。
 //! master に含まれなくなった行 (上場廃止した保有銘柄等) は削除せずそのまま残す。
 
-use std::collections::HashSet;
 use std::time::Duration;
 
-use chrono::Utc;
-use core_domain::equity_master::EquityMasterEntry;
-use sea_orm::ActiveValue::Set;
-use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use core_application::equity_master::EquityMasterUseCaseError;
+use core_application::equity_master_source::EquityMasterSource;
+use gateway_postgres::DatabaseHandle;
+use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
-use crate::data_provider::{EquityMasterSource, SharedEquityMasterSource};
-use crate::error::AppError;
-use gateway_postgres::entities::{sector, stock};
+use crate::data_provider::SharedEquityMasterSource;
+
+pub use core_application::equity_master::EquityMasterSyncStats as SyncStats;
 
 /// poll task のデフォルト実行間隔。全銘柄マスタの更新頻度 (日次) に合わせて 1 日とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// poll サイクルの結果統計
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct SyncStats {
-    pub stocks_upserted: usize,
-}
-
-async fn upsert_sectors(
-    db: &impl sea_orm::ConnectionTrait,
-    entries: &[EquityMasterEntry],
-) -> Result<(), sea_orm::DbErr> {
-    let names: HashSet<&str> = entries
-        .iter()
-        .filter_map(|e| e.sector_name.as_deref())
-        .collect();
-    if names.is_empty() {
-        return Ok(());
-    }
-
-    let models = names.into_iter().map(|name| sector::ActiveModel {
-        id: Set(name.to_string()),
-        name: Set(name.to_string()),
-    });
-    // support_returning() が true (Postgres) だと通常の exec() は RETURNING 行を
-    // 前提にしており、ON CONFLICT DO NOTHING で行が返らないと DbErr::RecordNotInserted
-    // になってしまう。conflict を正常系として扱うため returning 不要な exec を使う
-    sector::Entity::insert_many(models)
-        .on_conflict(
-            OnConflict::column(sector::Column::Id)
-                .do_nothing()
-                .to_owned(),
-        )
-        .exec_without_returning(db)
-        .await?;
-    Ok(())
-}
-
-async fn upsert_stocks(
-    db: &impl sea_orm::ConnectionTrait,
-    entries: &[EquityMasterEntry],
-) -> Result<usize, sea_orm::DbErr> {
-    if entries.is_empty() {
-        return Ok(0);
-    }
-
-    let now = Utc::now().fixed_offset();
-    let models = entries.iter().map(|e| stock::ActiveModel {
-        id: Set(e.id.clone()),
-        name: Set(e.name.clone()),
-        market: Set(e.market.clone()),
-        sector_id: Set(e.sector_name.clone()),
-        product_category: Set(e.product_category.clone()),
-        created_at: Set(now),
-        updated_at: Set(now),
-    });
-
-    stock::Entity::insert_many(models)
-        .on_conflict(
-            OnConflict::column(stock::Column::Id)
-                .update_columns([
-                    stock::Column::Name,
-                    stock::Column::Market,
-                    stock::Column::SectorId,
-                    stock::Column::ProductCategory,
-                    stock::Column::UpdatedAt,
-                ])
-                .to_owned(),
-        )
-        .exec_without_returning(db)
-        .await?;
-
-    Ok(entries.len())
-}
-
 /// 全上場銘柄マスタを取得し、`stock` (および参照先の `sector`) に反映する 1 サイクル。
 pub async fn run_sync_cycle(
-    db: &impl sea_orm::ConnectionTrait,
+    db: impl Into<DatabaseHandle>,
     source: &dyn EquityMasterSource,
-) -> Result<SyncStats, AppError> {
-    let entries = source.fetch_all_equities_master().await?;
-
-    upsert_sectors(db, &entries).await?;
-    let stocks_upserted = upsert_stocks(db, &entries).await?;
-
-    Ok(SyncStats { stocks_upserted })
+) -> Result<SyncStats, EquityMasterUseCaseError> {
+    crate::services::use_cases::build_use_cases(db)
+        .equity_master()
+        .sync(source)
+        .await
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
@@ -117,7 +40,7 @@ pub fn spawn_poll(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_sync_cycle(&db, source.as_ref()).await {
+            match run_sync_cycle(db.clone(), source.as_ref()).await {
                 Ok(stats) => {
                     tracing::info!(
                         stocks_upserted = stats.stocks_upserted,
@@ -135,9 +58,13 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use gateway_jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
+    use gateway_postgres::entities::{sector, stock};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::NotSet;
+    use sea_orm::ActiveValue::Set;
+    use sea_orm::EntityTrait;
     async fn fetch_stock(db: &impl sea_orm::ConnectionTrait, id: &str) -> Option<stock::Model> {
         stock::Entity::find_by_id(id.to_string())
             .one(db)
@@ -161,7 +88,7 @@ mod tests {
             .ok()
             .await;
 
-        let stats = run_sync_cycle(&db, &client).await.expect("cycle ok");
+        let stats = run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
         let stock = fetch_stock(&db, "7203").await.expect("stock exists");
         let sector_row = sector::Entity::find_by_id("輸送用機器".to_string())
             .one(&db)
@@ -219,7 +146,7 @@ mod tests {
             .ok()
             .await;
 
-        run_sync_cycle(&db, &client).await.expect("cycle ok");
+        run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
         let after = fetch_stock(&db, "7203").await.expect("stock exists");
 
         assert_eq!(
@@ -262,7 +189,7 @@ mod tests {
 
         mock.equities_master().entries(vec![]).ok().await;
 
-        let stats = run_sync_cycle(&db, &client).await.expect("cycle ok");
+        let stats = run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
         let stock = fetch_stock(&db, "9999").await.expect("stock still exists");
 
         assert_eq!(
@@ -296,7 +223,7 @@ mod tests {
             .ok()
             .await;
 
-        let stats = run_sync_cycle(&db, &client).await.expect("cycle ok");
+        let stats = run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
         let toyota = fetch_stock(&db, "7203").await.expect("stock exists");
         let honda = fetch_stock(&db, "7267").await.expect("stock exists");
 
@@ -326,7 +253,7 @@ mod tests {
             .ok()
             .await;
 
-        let stats = run_sync_cycle(&db, &client).await.expect("cycle ok");
+        let stats = run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
         let stock = fetch_stock(&db, "1300").await.expect("stock exists");
 
         assert_eq!(
