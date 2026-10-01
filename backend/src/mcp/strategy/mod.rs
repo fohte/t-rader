@@ -42,7 +42,6 @@ use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sea_orm::EntityTrait;
 use uuid::Uuid;
 
 use crate::data_provider::SharedDailyBarSource;
@@ -50,7 +49,6 @@ use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 use crate::services::use_cases::UseCases;
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::annotation;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -133,7 +131,6 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 
 #[derive(Clone)]
 pub struct StrategyServer {
-    db: DatabaseHandle,
     pub(super) use_cases: UseCases,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
@@ -154,12 +151,11 @@ impl StrategyServer {
     }
 
     pub fn with_use_cases(
-        db: impl Into<DatabaseHandle>,
+        _db: impl Into<DatabaseHandle>,
         use_cases: UseCases,
         daily_bar_source: Option<SharedDailyBarSource>,
     ) -> Self {
         Self {
-            db: db.into(),
             use_cases,
             daily_bar_source,
             kata_executor: None,
@@ -384,24 +380,6 @@ fn execution_task_id_from_execution_id(execution_id: &str) -> Option<&str> {
 fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     let execution_id = execution_id_from_ctx(ctx)?;
     execution_task_id_from_execution_id(&execution_id).map(str::to_string)
-}
-
-pub(super) async fn fetch_annotation_owned_by(
-    db: &impl sea_orm::ConnectionTrait,
-    annotation_id: Uuid,
-    expected: Uuid,
-) -> Result<annotation::Model, McpError> {
-    let row = annotation::Entity::find_by_id(annotation_id)
-        .one(db)
-        .await
-        .map_err(db_error)?
-        .ok_or_else(|| McpError::resource_not_found("annotation not found", None))?;
-    if row.strategy_id != Some(expected) {
-        return Err(invalid_params(format!(
-            "forbidden: annotation {annotation_id} belongs to another strategy"
-        )));
-    }
-    Ok(row)
 }
 
 pub(super) fn decimal_to_f64(d: Decimal) -> f64 {

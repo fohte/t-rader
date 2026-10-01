@@ -168,7 +168,7 @@ fn repository_error(error: sea_orm::DbErr) -> AnnotationRepositoryError {
     AnnotationRepositoryError::Database(persistence_error(error))
 }
 
-fn to_domain(model: annotation::Model) -> Annotation {
+pub(super) fn to_domain(model: annotation::Model) -> Annotation {
     Annotation {
         id: model.id,
         strategy_id: model.strategy_id,

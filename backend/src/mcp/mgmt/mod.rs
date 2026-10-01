@@ -91,7 +91,6 @@ const MAX_LIST_LIMIT: u64 = 100;
 
 #[derive(Clone)]
 pub struct MgmtServer {
-    db: DatabaseHandle,
     use_cases: UseCases,
     agent_client: SharedAgentTaskClient,
 }
@@ -107,12 +106,11 @@ impl MgmtServer {
     }
 
     pub fn with_use_cases(
-        db: impl Into<DatabaseHandle>,
+        _db: impl Into<DatabaseHandle>,
         use_cases: UseCases,
         agent_client: SharedAgentTaskClient,
     ) -> Self {
         Self {
-            db: db.into(),
             use_cases,
             agent_client,
         }
