@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
 
+/// evidence snapshot の肥大化を防ぐため、日足で約 20 年分に制限する。
 const MAX_SNAPSHOT_BARS: usize = 5_000;
 
 #[derive(Debug, Clone, Serialize)]
@@ -24,6 +25,7 @@ pub struct QueryDataBar {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrategyTaskStepEvidence {
     pub id: Uuid,
+    /// strategy_task_step は watcher が非同期反映するため、外部キーではなく相関用 UUID とする。
     pub execution_step_id: Uuid,
     pub source: String,
     pub source_ref: String,
@@ -81,6 +83,7 @@ impl StrategyTaskStepEvidenceUseCases {
         } else {
             &bars
         };
+        // 価格データに独立した公表時刻はないため、最新バーの時刻を両者に使う。
         let latest_bar_at = bars.last().map(|bar| bar.timestamp);
         let snapshot = json!({
             "instrument_id": instrument_id,
