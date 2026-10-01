@@ -1,0 +1,193 @@
+id: no-direct-db-in-backend
+snapshots:
+  ? |
+    async fn another_handler(database: &Database) {
+        database.begin().await;
+    }
+  : labels:
+      - source: database.begin()
+        style: primary
+        start: 52
+        end: 68
+  ? |
+    async fn another_handler(database: &Database) {
+        database.execute_unprepared("SELECT 1").await;
+    }
+  : labels:
+      - source: database.execute_unprepared("SELECT 1")
+        style: primary
+        start: 52
+        end: 91
+  ? |
+    fn load<C: sea_orm::ConnectionTrait>(database: &C) { database.begin(); }
+  : labels:
+      - source: sea_orm::ConnectionTrait
+        style: primary
+        start: 11
+        end: 35
+  gateway_postgres::PostgresSampleRepository::new(database);:
+    labels:
+      - source: gateway_postgres::PostgresSampleRepository::new
+        style: primary
+        start: 0
+        end: 47
+  use gateway_postgres as pg;:
+    labels:
+      - source: gateway_postgres as pg
+        style: primary
+        start: 4
+        end: 26
+  use gateway_postgres::PostgresSampleRepository as SampleRepository;:
+    labels:
+      - source: gateway_postgres::PostgresSampleRepository as SampleRepository
+        style: primary
+        start: 4
+        end: 66
+  use gateway_postgres::entities::sample_record;:
+    labels:
+      - source: gateway_postgres::entities::sample_record
+        style: primary
+        start: 4
+        end: 45
+  use gateway_postgres::entities::{sample_record as record};:
+    labels:
+      - source: gateway_postgres::entities::{sample_record as record}
+        style: primary
+        start: 4
+        end: 57
+  use gateway_postgres::{PostgresSampleRepository as SampleRepository};:
+    labels:
+      - source: PostgresSampleRepository
+        style: primary
+        start: 23
+        end: 47
+      - source: gateway_postgres
+        style: secondary
+        start: 4
+        end: 20
+      - source: gateway_postgres::{PostgresSampleRepository as SampleRepository}
+        style: secondary
+        start: 4
+        end: 68
+      - source: '{PostgresSampleRepository as SampleRepository}'
+        style: secondary
+        start: 22
+        end: 68
+  use gateway_postgres::{entities as records, repositories as stores};:
+    labels:
+      - source: entities
+        style: primary
+        start: 23
+        end: 31
+      - source: gateway_postgres
+        style: secondary
+        start: 4
+        end: 20
+      - source: gateway_postgres::{entities as records, repositories as stores}
+        style: secondary
+        start: 4
+        end: 67
+      - source: '{entities as records, repositories as stores}'
+        style: secondary
+        start: 22
+        end: 67
+  use gateway_postgres::{repositories as stores};:
+    labels:
+      - source: repositories
+        style: primary
+        start: 23
+        end: 35
+      - source: gateway_postgres
+        style: secondary
+        start: 4
+        end: 20
+      - source: gateway_postgres::{repositories as stores}
+        style: secondary
+        start: 4
+        end: 46
+      - source: '{repositories as stores}'
+        style: secondary
+        start: 22
+        end: 46
+  use sea_orm as orm;:
+    labels:
+      - source: sea_orm as orm
+        style: primary
+        start: 4
+        end: 18
+  use sea_orm::ActiveModelTrait;:
+    labels:
+      - source: sea_orm::ActiveModelTrait
+        style: primary
+        start: 4
+        end: 29
+  use sea_orm::EntityTrait as DbEntity;:
+    labels:
+      - source: sea_orm::EntityTrait as DbEntity
+        style: primary
+        start: 4
+        end: 36
+  use sea_orm::EntityTrait;:
+    labels:
+      - source: sea_orm::EntityTrait
+        style: primary
+        start: 4
+        end: 24
+  use sea_orm::QueryTrait;:
+    labels:
+      - source: sea_orm::QueryTrait
+        style: primary
+        start: 4
+        end: 23
+  use sea_orm::prelude::*;:
+    labels:
+      - source: sea_orm::prelude::*
+        style: primary
+        start: 4
+        end: 23
+      - source: sea_orm::prelude
+        style: secondary
+        start: 4
+        end: 20
+  use sea_orm::sea_query::OnConflict;:
+    labels:
+      - source: sea_orm::sea_query::OnConflict
+        style: primary
+        start: 4
+        end: 34
+  use sea_orm::{ConnectionTrait as DbConnection, QueryFilter};:
+    labels:
+      - source: QueryFilter
+        style: primary
+        start: 47
+        end: 58
+      - source: sea_orm
+        style: secondary
+        start: 4
+        end: 11
+      - source: sea_orm::{ConnectionTrait as DbConnection, QueryFilter}
+        style: secondary
+        start: 4
+        end: 59
+      - source: '{ConnectionTrait as DbConnection, QueryFilter}'
+        style: secondary
+        start: 13
+        end: 59
+  use sea_orm::{QueryFilter};:
+    labels:
+      - source: QueryFilter
+        style: primary
+        start: 14
+        end: 25
+      - source: sea_orm
+        style: secondary
+        start: 4
+        end: 11
+      - source: sea_orm::{QueryFilter}
+        style: secondary
+        start: 4
+        end: 26
+      - source: '{QueryFilter}'
+        style: secondary
+        start: 13
+        end: 26
