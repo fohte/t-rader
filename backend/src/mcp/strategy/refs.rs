@@ -70,7 +70,7 @@ impl StrategyServer {
     }
 }
 
-fn ref_use_case_error(error: RefUseCaseError) -> McpError {
+pub(super) fn ref_use_case_error(error: RefUseCaseError) -> McpError {
     match error {
         RefUseCaseError::Validation(message) => invalid_params(message),
         error @ (RefUseCaseError::Repository(RefRepositoryError::Database(_))

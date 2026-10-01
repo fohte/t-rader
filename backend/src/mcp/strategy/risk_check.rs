@@ -8,7 +8,6 @@
 use std::collections::BTreeSet;
 
 use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
-use core_application::refs::RefUseCaseError;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
@@ -17,9 +16,9 @@ use rust_decimal::prelude::ToPrimitive;
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
+use super::refs::ref_use_case_error;
 use super::{
-    StrategyServer, app_error_to_mcp, decimal_to_f64, internal_error, invalid_params,
-    strategy_use_case_error_to_mcp, trade_error,
+    StrategyServer, app_error_to_mcp, decimal_to_f64, strategy_use_case_error_to_mcp, trade_error,
 };
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
@@ -96,7 +95,7 @@ impl StrategyServer {
             .refs()
             .stock_sectors(&symbols)
             .await
-            .map_err(ref_use_case_error_to_mcp)?;
+            .map_err(ref_use_case_error)?;
         let target_sector = sector_by_symbol.get(&symbol).cloned().flatten();
 
         let missing_price_symbols: Vec<String> = account_summary
@@ -170,16 +169,6 @@ impl StrategyServer {
             max_qty,
             binding_constraint,
         })
-    }
-}
-
-fn ref_use_case_error_to_mcp(error: RefUseCaseError) -> McpError {
-    match error {
-        RefUseCaseError::Validation(message) => invalid_params(message),
-        error => {
-            tracing::error!(error = %error, "strategy mcp db error");
-            internal_error(format!("database error: {error}"))
-        }
     }
 }
 
