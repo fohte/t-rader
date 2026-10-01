@@ -7,6 +7,7 @@ use core_application::annotation::{
 };
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::strategy_existence::StrategyExistenceError;
+use core_application::strategy_task::TaskSource;
 use core_application::unit_of_work::UnitOfWorkError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
@@ -20,7 +21,6 @@ use crate::handlers::strategies::map_submit_error;
 use crate::models::{
     AnnotationResponse, ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest,
 };
-use crate::services::strategy_tasks::{self, TaskSource};
 use gateway_postgres::entities::annotation;
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -243,16 +243,18 @@ pub async fn reject_annotation(
             "アノテーション (id: {}, 対象: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
             current.id, current.target_symbol
         );
-        strategy_tasks::submit_task(
-            &state.db,
-            &state.agent_task_client,
-            strategy_id,
-            &prompt,
-            TaskSource::Review,
-            None,
-        )
-        .await
-        .map_err(map_submit_error)?;
+        state
+            .use_cases
+            .strategy_tasks()
+            .submit_task(
+                state.agent_task_client.as_ref(),
+                strategy_id,
+                &prompt,
+                TaskSource::Review,
+                None,
+            )
+            .await
+            .map_err(map_submit_error)?;
     }
 
     let updated = state
@@ -329,13 +331,13 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::agent_config;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client, insert_test_note,
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
     use serde_json::{Value, json};

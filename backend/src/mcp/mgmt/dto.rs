@@ -27,7 +27,7 @@ pub struct SubmitStrategyTaskParams {
     pub strategy_id: Uuid,
     pub prompt: String,
     /// タスク実行に使う `agent_config` テーブルの purpose キー。省略時は
-    /// `strategy_tasks::DEFAULT_PURPOSE` を使う。対応する `agent_config` 行が存在しない
+    /// `core_application::strategy_task::DEFAULT_PURPOSE` を使う。対応する `agent_config` 行が存在しない
     /// purpose を指定した場合はこの呼び出し自体がエラーになる。
     #[serde(default)]
     pub purpose: Option<String>,

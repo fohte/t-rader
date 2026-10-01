@@ -40,8 +40,7 @@ pub enum AgentTaskState {
 pub struct SubmitAgentTask {
     pub strategy_id: Uuid,
     pub prompt: String,
-    /// タスク実行に使う `agent_config` テーブルの purpose キー。`services::strategy_tasks::submit_task`
-    /// が常に解決済みの値を詰めるため、実質的に `None` にはならない。
+    /// タスク実行に使う `agent_config` テーブルの purpose キー。`StrategyTaskUseCases::submit_task` が既定値を補うため、通常は `None` にならない。
     pub purpose: Option<String>,
     /// 再開対象タスクの全 strategy_task_step 行 (seq 昇順)。中身は解釈せず素通しする。
     /// 新規タスクの投入では `None`。

@@ -11,7 +11,6 @@ pub mod note_refs;
 pub mod note_versions;
 pub mod prediction_grading;
 pub mod stock_master_sync;
-pub mod strategy_tasks;
 #[cfg(test)]
 pub mod trigger_worker;
 pub mod use_cases;

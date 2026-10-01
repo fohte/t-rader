@@ -5,6 +5,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use core_application::strategy::Strategy;
+use core_application::strategy_task::TaskStatusView;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Strategy)]
@@ -122,6 +123,23 @@ pub struct StrategyTaskSummary {
     /// (データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。
     /// `None` はこのカラムが追加される前に作成された行に限られる。
     pub as_of: Option<DateTime<FixedOffset>>,
+}
+
+impl From<TaskStatusView> for StrategyTaskSummary {
+    fn from(view: TaskStatusView) -> Self {
+        Self {
+            task_id: view.task_id,
+            strategy_id: view.strategy_id,
+            source: view.source,
+            prompt: view.prompt,
+            phase: view.phase.as_str().to_string(),
+            error_summary: view.error_summary,
+            created_at: view.created_at,
+            updated_at: view.updated_at,
+            purpose: view.purpose,
+            as_of: view.as_of,
+        }
+    }
 }
 
 /// 戦略の投資可能額を新しい history 行として記録するリクエスト。
