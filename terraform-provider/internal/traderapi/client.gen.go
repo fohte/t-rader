@@ -87,6 +87,14 @@ type CreateCustomIndicatorRequest struct {
 	OutputSchema map[string]interface{}    `json:"output_schema"`
 }
 
+// CreateGroupAxisRequest defines model for CreateGroupAxisRequest.
+type CreateGroupAxisRequest struct {
+	Description string                    `json:"description"`
+	Key         string                    `json:"key"`
+	Name        string                    `json:"name"`
+	SyncSource  nullable.Nullable[string] `json:"sync_source,omitempty"`
+}
+
 // CreateNoteKindRequest defines model for CreateNoteKindRequest.
 type CreateNoteKindRequest struct {
 	Description      nullable.Nullable[string] `json:"description,omitempty"`
@@ -153,6 +161,14 @@ type CustomIndicator struct {
 type ErrorResponse struct {
 	// Error エラーメッセージ
 	Error string `json:"error"`
+}
+
+// GroupAxis defines model for GroupAxis.
+type GroupAxis struct {
+	Description string                    `json:"description"`
+	Key         string                    `json:"key"`
+	Name        string                    `json:"name"`
+	SyncSource  nullable.Nullable[string] `json:"sync_source,omitempty"`
 }
 
 // HookResponse hook 受信レスポンス。
@@ -344,6 +360,13 @@ type UpdateCustomIndicatorRequest struct {
 	OutputSchema nullable.Nullable[map[string]interface{}] `json:"output_schema,omitempty"`
 }
 
+// UpdateGroupAxisRequest defines model for UpdateGroupAxisRequest.
+type UpdateGroupAxisRequest struct {
+	Description nullable.Nullable[string] `json:"description,omitempty"`
+	Name        nullable.Nullable[string] `json:"name,omitempty"`
+	SyncSource  nullable.Nullable[string] `json:"sync_source,omitempty"`
+}
+
 // UpdateNoteKindRequest defines model for UpdateNoteKindRequest.
 type UpdateNoteKindRequest struct {
 	Description      nullable.Nullable[string] `json:"description,omitempty"`
@@ -422,6 +445,12 @@ type AgentConfigPutSkillJSONRequestBody = SkillBody
 
 // ReceiveAgentTaskNotificationJSONRequestBody defines body for ReceiveAgentTaskNotification for application/json ContentType.
 type ReceiveAgentTaskNotificationJSONRequestBody = ReceiveAgentTaskNotificationJSONBody
+
+// CreateGroupAxisJSONRequestBody defines body for CreateGroupAxis for application/json ContentType.
+type CreateGroupAxisJSONRequestBody = CreateGroupAxisRequest
+
+// UpdateGroupAxisJSONRequestBody defines body for UpdateGroupAxis for application/json ContentType.
+type UpdateGroupAxisJSONRequestBody = UpdateGroupAxisRequest
 
 // ReceiveHookJSONRequestBody defines body for ReceiveHook for application/json ContentType.
 type ReceiveHookJSONRequestBody = ReceiveHookJSONBody
@@ -685,6 +714,49 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/agent-tasks/notifications (the `ReceiveAgentTaskNotification` operationId).
 	ReceiveAgentTaskNotification(ctx context.Context, body ReceiveAgentTaskNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListGroupAxes 分類軸一覧
+	//
+	// Corresponds with GET /api/group-axes (the `ListGroupAxes` operationId).
+	ListGroupAxes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGroupAxisWithBody 分類軸を作成
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+	CreateGroupAxisWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGroupAxis 分類軸を作成
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+	CreateGroupAxis(ctx context.Context, body CreateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteGroupAxis グループが残っている分類軸は削除しない
+	//
+	// Corresponds with DELETE /api/group-axes/{key} (the `DeleteGroupAxis` operationId).
+	DeleteGroupAxis(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetGroupAxis 分類軸を取得
+	//
+	// Corresponds with GET /api/group-axes/{key} (the `GetGroupAxis` operationId).
+	GetGroupAxis(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGroupAxisWithBody 分類軸を部分更新する (key は変更不可)
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+	UpdateGroupAxisWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateGroupAxis 分類軸を部分更新する (key は変更不可)
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+	UpdateGroupAxis(ctx context.Context, key string, body UpdateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ReceiveHookWithBody hook を受信する。
 	//
@@ -1367,6 +1439,119 @@ func (c *OpenAPIClient) ReceiveAgentTaskNotificationWithBody(ctx context.Context
 // Corresponds with POST /api/agent-tasks/notifications (the `ReceiveAgentTaskNotification` operationId).
 func (c *OpenAPIClient) ReceiveAgentTaskNotification(ctx context.Context, body ReceiveAgentTaskNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReceiveAgentTaskNotificationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListGroupAxes 分類軸一覧
+//
+// Corresponds with GET /api/group-axes (the `ListGroupAxes` operationId).
+func (c *OpenAPIClient) ListGroupAxes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListGroupAxesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGroupAxisWithBody 分類軸を作成
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+func (c *OpenAPIClient) CreateGroupAxisWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGroupAxisRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGroupAxis 分類軸を作成
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+func (c *OpenAPIClient) CreateGroupAxis(ctx context.Context, body CreateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGroupAxisRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteGroupAxis グループが残っている分類軸は削除しない
+//
+// Corresponds with DELETE /api/group-axes/{key} (the `DeleteGroupAxis` operationId).
+func (c *OpenAPIClient) DeleteGroupAxis(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteGroupAxisRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetGroupAxis 分類軸を取得
+//
+// Corresponds with GET /api/group-axes/{key} (the `GetGroupAxis` operationId).
+func (c *OpenAPIClient) GetGroupAxis(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGroupAxisRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGroupAxisWithBody 分類軸を部分更新する (key は変更不可)
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+func (c *OpenAPIClient) UpdateGroupAxisWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGroupAxisRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateGroupAxis 分類軸を部分更新する (key は変更不可)
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+func (c *OpenAPIClient) UpdateGroupAxis(ctx context.Context, key string, body UpdateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateGroupAxisRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2788,6 +2973,188 @@ func NewReceiveAgentTaskNotificationRequestWithBody(server string, contentType s
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListGroupAxesRequest constructs an http.Request for the ListGroupAxes method
+func NewListGroupAxesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/group-axes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateGroupAxisRequest calls the generic CreateGroupAxis builder with application/json body
+func NewCreateGroupAxisRequest(server string, body CreateGroupAxisJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateGroupAxisRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateGroupAxisRequestWithBody constructs an http.Request for the CreateGroupAxis method, with any body, and a specified content type
+func NewCreateGroupAxisRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/group-axes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteGroupAxisRequest constructs an http.Request for the DeleteGroupAxis method
+func NewDeleteGroupAxisRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/group-axes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetGroupAxisRequest constructs an http.Request for the GetGroupAxis method
+func NewGetGroupAxisRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/group-axes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateGroupAxisRequest calls the generic UpdateGroupAxis builder with application/json body
+func NewUpdateGroupAxisRequest(server string, key string, body UpdateGroupAxisJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateGroupAxisRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewUpdateGroupAxisRequestWithBody constructs an http.Request for the UpdateGroupAxis method, with any body, and a specified content type
+func NewUpdateGroupAxisRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/group-axes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -4359,6 +4726,55 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/agent-tasks/notifications (the `ReceiveAgentTaskNotification` operationId).
 	ReceiveAgentTaskNotificationWithResponse(ctx context.Context, body ReceiveAgentTaskNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*ReceiveAgentTaskNotificationResult, error)
 
+	// ListGroupAxesWithResponse 分類軸一覧
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/group-axes (the `ListGroupAxes` operationId).
+	ListGroupAxesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListGroupAxesResult, error)
+
+	// CreateGroupAxisWithBodyWithResponse 分類軸を作成
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+	CreateGroupAxisWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGroupAxisResult, error)
+
+	// CreateGroupAxisWithResponse 分類軸を作成
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+	CreateGroupAxisWithResponse(ctx context.Context, body CreateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGroupAxisResult, error)
+
+	// DeleteGroupAxisWithResponse グループが残っている分類軸は削除しない
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/group-axes/{key} (the `DeleteGroupAxis` operationId).
+	DeleteGroupAxisWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteGroupAxisResult, error)
+
+	// GetGroupAxisWithResponse 分類軸を取得
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/group-axes/{key} (the `GetGroupAxis` operationId).
+	GetGroupAxisWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetGroupAxisResult, error)
+
+	// UpdateGroupAxisWithBodyWithResponse 分類軸を部分更新する (key は変更不可)
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+	UpdateGroupAxisWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGroupAxisResult, error)
+
+	// UpdateGroupAxisWithResponse 分類軸を部分更新する (key は変更不可)
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+	UpdateGroupAxisWithResponse(ctx context.Context, key string, body UpdateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGroupAxisResult, error)
+
 	// ReceiveHookWithBodyWithResponse hook を受信する。
 	//
 	// - `hook_slug` に一致する有効な trigger が無ければ 404
@@ -5672,6 +6088,316 @@ func (r ReceiveAgentTaskNotificationResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReceiveAgentTaskNotificationResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListGroupAxesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]GroupAxis
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListGroupAxesResult) GetJSON200() *[]GroupAxis {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListGroupAxesResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListGroupAxesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListGroupAxesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListGroupAxesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListGroupAxesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateGroupAxisResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *GroupAxis
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateGroupAxisResult) GetJSON201() *GroupAxis {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateGroupAxisResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateGroupAxisResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r CreateGroupAxisResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateGroupAxisResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateGroupAxisResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateGroupAxisResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateGroupAxisResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateGroupAxisResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateGroupAxisResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteGroupAxisResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteGroupAxisResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteGroupAxisResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteGroupAxisResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteGroupAxisResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteGroupAxisResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteGroupAxisResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteGroupAxisResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetGroupAxisResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GroupAxis
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetGroupAxisResult) GetJSON200() *GroupAxis {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetGroupAxisResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetGroupAxisResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetGroupAxisResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetGroupAxisResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetGroupAxisResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetGroupAxisResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateGroupAxisResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GroupAxis
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateGroupAxisResult) GetJSON200() *GroupAxis {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateGroupAxisResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateGroupAxisResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r UpdateGroupAxisResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateGroupAxisResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UpdateGroupAxisResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateGroupAxisResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateGroupAxisResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateGroupAxisResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateGroupAxisResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8247,6 +8973,97 @@ func (c *ClientWithResponses) ReceiveAgentTaskNotificationWithResponse(ctx conte
 	return ParseReceiveAgentTaskNotificationResult(rsp)
 }
 
+// ListGroupAxesWithResponse 分類軸一覧
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/group-axes (the `ListGroupAxes` operationId).
+func (c *ClientWithResponses) ListGroupAxesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListGroupAxesResult, error) {
+	rsp, err := c.ListGroupAxes(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListGroupAxesResult(rsp)
+}
+
+// CreateGroupAxisWithBodyWithResponse 分類軸を作成
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+func (c *ClientWithResponses) CreateGroupAxisWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGroupAxisResult, error) {
+	rsp, err := c.CreateGroupAxisWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGroupAxisResult(rsp)
+}
+
+// CreateGroupAxisWithResponse 分類軸を作成
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/group-axes (the `CreateGroupAxis` operationId).
+func (c *ClientWithResponses) CreateGroupAxisWithResponse(ctx context.Context, body CreateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGroupAxisResult, error) {
+	rsp, err := c.CreateGroupAxis(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGroupAxisResult(rsp)
+}
+
+// DeleteGroupAxisWithResponse グループが残っている分類軸は削除しない
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/group-axes/{key} (the `DeleteGroupAxis` operationId).
+func (c *ClientWithResponses) DeleteGroupAxisWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteGroupAxisResult, error) {
+	rsp, err := c.DeleteGroupAxis(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteGroupAxisResult(rsp)
+}
+
+// GetGroupAxisWithResponse 分類軸を取得
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/group-axes/{key} (the `GetGroupAxis` operationId).
+func (c *ClientWithResponses) GetGroupAxisWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetGroupAxisResult, error) {
+	rsp, err := c.GetGroupAxis(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetGroupAxisResult(rsp)
+}
+
+// UpdateGroupAxisWithBodyWithResponse 分類軸を部分更新する (key は変更不可)
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+func (c *ClientWithResponses) UpdateGroupAxisWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateGroupAxisResult, error) {
+	rsp, err := c.UpdateGroupAxisWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGroupAxisResult(rsp)
+}
+
+// UpdateGroupAxisWithResponse 分類軸を部分更新する (key は変更不可)
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/group-axes/{key} (the `UpdateGroupAxis` operationId).
+func (c *ClientWithResponses) UpdateGroupAxisWithResponse(ctx context.Context, key string, body UpdateGroupAxisJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGroupAxisResult, error) {
+	rsp, err := c.UpdateGroupAxis(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateGroupAxisResult(rsp)
+}
+
 // ReceiveHookWithBodyWithResponse hook を受信する。
 //
 // - `hook_slug` に一致する有効な trigger が無ければ 404
@@ -9622,6 +10439,244 @@ func ParseReceiveAgentTaskNotificationResult(rsp *http.Response) (*ReceiveAgentT
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListGroupAxesResult parses an HTTP response from a ListGroupAxesWithResponse call
+func ParseListGroupAxesResult(rsp *http.Response) (*ListGroupAxesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListGroupAxesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []GroupAxis
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateGroupAxisResult parses an HTTP response from a CreateGroupAxisWithResponse call
+func ParseCreateGroupAxisResult(rsp *http.Response) (*CreateGroupAxisResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateGroupAxisResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GroupAxis
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteGroupAxisResult parses an HTTP response from a DeleteGroupAxisWithResponse call
+func ParseDeleteGroupAxisResult(rsp *http.Response) (*DeleteGroupAxisResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteGroupAxisResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetGroupAxisResult parses an HTTP response from a GetGroupAxisWithResponse call
+func ParseGetGroupAxisResult(rsp *http.Response) (*GetGroupAxisResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetGroupAxisResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GroupAxis
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateGroupAxisResult parses an HTTP response from a UpdateGroupAxisWithResponse call
+func ParseUpdateGroupAxisResult(rsp *http.Response) (*UpdateGroupAxisResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateGroupAxisResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GroupAxis
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
