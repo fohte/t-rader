@@ -23,7 +23,7 @@ impl TaskHandler for FredIngest {
                     .indicator_observations
                     .ingest(source.as_ref())
                     .await;
-                for outcome in result.series {
+                for outcome in &result.series {
                     match outcome {
                         IndicatorObservationIngestSeriesResult::Succeeded {
                             series_id,
@@ -34,7 +34,7 @@ impl TaskHandler for FredIngest {
                         }
                     }
                 }
-                Ok(())
+                Ok(result)
             },
         )
         .await

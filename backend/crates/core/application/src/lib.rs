@@ -14,6 +14,7 @@ pub mod financial_summary;
 pub mod financial_summary_source;
 pub mod indicator_observation;
 pub mod indicator_observation_source;
+pub mod ingest_run_log;
 pub mod kata_exec;
 pub mod llm_client;
 pub mod margin;
