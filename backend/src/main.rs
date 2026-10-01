@@ -22,7 +22,7 @@ use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
-use gateway_postgres::DatabaseHandle;
+use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
 use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
@@ -140,7 +140,6 @@ async fn main() -> Result<(), AppError> {
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
 
     let app_db = DatabaseHandle::from(db.clone());
-
     let provider_kind = std::env::var("DATA_PROVIDER")
         .ok()
         .map(|s| s.to_lowercase())
@@ -364,7 +363,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
-            db.clone(),
+            use_cases.bars(),
             client.clone(),
             backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
         );
@@ -395,6 +394,7 @@ async fn main() -> Result<(), AppError> {
         .map(|client| Arc::clone(client) as SharedMarginSource);
     let dependencies = SchedulerDependencies {
         indicator_observations: use_cases.indicator_observations(),
+        ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
         predictions: use_cases.predictions(),
         short_ratios: use_cases.short_ratios(),
