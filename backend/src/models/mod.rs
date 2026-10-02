@@ -54,10 +54,7 @@ pub use note_kind::NoteKindResponse;
 pub use note_version::NoteVersionResponse;
 pub use prediction::PredictionResponse;
 pub use refs::{IndicatorResponse, RefResolution, StockResponse};
-pub use risk_policy::{
-    AccountRiskPolicyData, AccountRiskPolicyResponse, GroupRatio, PutAccountRiskPolicyRequest,
-    parse_risk_policy, serialize_risk_policy, validate_group_ratios,
-};
+pub use risk_policy::{AccountRiskPolicyResponse, GroupRatio, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
 };

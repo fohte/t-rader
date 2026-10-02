@@ -7,13 +7,13 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
+use core_application::account_risk_policy::{
+    AccountRiskPolicyData, AccountRiskPolicyRepositoryError, parse_risk_policy,
+};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-
-use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
 use super::{
@@ -47,7 +47,7 @@ impl StrategyServer {
             .map_err(account_risk_policy_error_to_mcp)?;
         let max_group_ratios: Vec<(String, Decimal)> = match account_risk_policy {
             Some(risk_policy) => parse_risk_policy::<AccountRiskPolicyData>(risk_policy)
-                .map_err(app_error_to_mcp)?
+                .map_err(|error| app_error_to_mcp(error.into()))?
                 .max_group_ratios
                 .into_iter()
                 .map(|group_ratio| (group_ratio.axis, group_ratio.ratio))
@@ -527,9 +527,10 @@ mod integration_tests {
     use sea_orm::EntityTrait;
     use uuid::Uuid;
 
+    use core_domain::bar::{Bar, Timeframe};
+
     use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::models::{Bar, Timeframe};
     use core_application::change_history::Actor;
     use core_application::strategy_scope::StrategyScope;
     use gateway_postgres::entities::{
