@@ -9,7 +9,7 @@ import type {
 
 export type { GroupRatioDraft } from '#lib/group-ratio-policy'
 
-export interface GroupRatioAxisOption {
+interface GroupRatioAxisOption {
   key: string
   name: string
 }
