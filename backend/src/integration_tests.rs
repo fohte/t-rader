@@ -6,6 +6,7 @@
 //! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
 
+mod mgmt_mcp;
 mod prediction_grading;
 mod trigger;
 
@@ -13,7 +14,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
-use rmcp::handler::server::wrapper::Parameters;
 use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, Statement};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -21,7 +21,6 @@ use uuid::Uuid;
 use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
-use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
 use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
 use crate::testing::{
@@ -29,6 +28,7 @@ use crate::testing::{
     insert_test_hook_trigger, insert_test_strategy,
 };
 use core_application::strategy_task::DEFAULT_PURPOSE;
+use entrypoint_control_plane_mcp::MgmtServer;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::strategy_task;
 
@@ -113,11 +113,15 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         &use_cases,
         agent_client.clone(),
     ));
-    mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
-        strategy_id,
-        prompt: "from mgmt".into(),
-        purpose: None,
-    }))
+    let _: Value = mgmt_mcp::tests_common::call_tool(
+        &mgmt,
+        "submit_strategy_task",
+        json!({
+            "strategy_id": strategy_id,
+            "prompt": "from mgmt",
+            "purpose": null,
+        }),
+    )
     .await
     .expect("mgmt submit ok");
 

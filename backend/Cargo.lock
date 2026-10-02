@@ -1406,6 +1406,17 @@ version = "0.1.0"
 [[package]]
 name = "entrypoint-control-plane-mcp"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "core-application",
+ "rmcp",
+ "rstest",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "entrypoint-external-webhook"
