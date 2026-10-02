@@ -191,6 +191,9 @@ jobs:
         with:
           version: 2026.9.11
 
+      - name: Check entrypoint crate dependencies
+        run: bash backend/scripts/check-entrypoint-dependencies.sh
+
       - name: Run cargo-clippy
         run: lefthook run pre-commit --all-files --command cargo-clippy
 

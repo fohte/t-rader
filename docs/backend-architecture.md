@@ -20,6 +20,7 @@ backend/crates/
 ├── entrypoints/          # アプリを外部から呼び出す入口
 │   ├── frontend-api/
 │   ├── agent-webhook/
+│   ├── external-webhook/
 │   ├── agent-mcp/
 │   ├── control-plane-mcp/
 │   └── scheduler/
@@ -58,29 +59,41 @@ backend/crates/
 
 `backend/crates/` 内の crate 間の直接依存は `Cargo.toml` で次の関係に限定する。
 
-| crate              | 依存先                                                       |
-| ------------------ | ------------------------------------------------------------ |
-| `core/domain`      | なし                                                         |
-| `core/application` | `core/domain`                                                |
-| `entrypoints/*`    | `core/application`, `core/domain`                            |
-| `gateways/*`       | `core/application`, `core/domain`, `libs/rate-limit`         |
-| `apps/*`           | `backend/crates/` 内のすべての crate と `backend/migration/` |
-| `libs/rate-limit`  | なし                                                         |
-| `libs/test-macros` | なし                                                         |
+| crate                                       | 依存先                                                       |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| `core/domain`                               | なし                                                         |
+| `core/application`                          | `core/domain`                                                |
+| `entrypoints/*` (`external-webhook` を含む) | `core/application`, `core/domain`                            |
+| `gateways/*`                                | `core/application`, `core/domain`, `libs/rate-limit`         |
+| `apps/*`                                    | `backend/crates/` 内のすべての crate と `backend/migration/` |
+| `libs/rate-limit`                           | なし                                                         |
+| `libs/test-macros`                          | なし                                                         |
 
 `libs/rate-limit` は外部 crate への依存だけを持ち、`backend/crates/` 内の crate には依存しない。利用できるのは `gateways/*` と composition root (`backend`、将来の `apps/*`) のみとし、`core/*` と `entrypoints/*` からは依存させない。
 
 `gateways/postgres` は `DatabaseHandle`、SeaORM entity 定義、repository 関数を提供する。trade など一部の集約では `core/application` が定義する `UnitOfWork`、repository、`ChangeHistoryPort` port も実装する。`test-support` feature だけが共有テスト DB の準備に必要な `migration` と `sqlx` を有効にする。`gateways/postgres` は `libs/test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
 
+`entrypoints/*` の workspace crate 依存と `sea-orm` 依存は `backend/scripts/check-entrypoint-dependencies.sh` が Cargo metadata を使って検査する。
+
+## Entrypoint の設計
+
+各 entrypoint crate は、自身が使う `XUseCases` と必要な port だけを field に持つ依存 struct を定義する。struct は entrypoint crate に置き、composition root が組み立てて渡す。composition root の具象 `UseCases` container 自体は entrypoint に渡さない。workspace crate への直接依存は `core/application` と `core/domain` に限り、`gateways/postgres` と `sea-orm` には依存させない。
+
+DB を使う統合テストは composition root の crate (`backend`、将来は `apps/backend`) に置き、公開 router と MCP server を通して実行する。DB を使わない unit test は、検証対象のコードと同じ entrypoint crate に置く。
+
+entrypoint 間で必要になる小さな型 (`ErrorResponse`、`JsonBody`、`GraphDef` の DTO、`deserialize_nullable_option` など) は各 crate に複製する。DTO はプロトコルごとの表現 (`utoipa`、`schemars`) を持ち、domain 型への変換も各 crate が定義する。
+
+外部サービスから trigger を発火する `POST /api/hooks/{slug}` は `external-webhook` entrypoint が扱う。
+
 ## 集約のユースケース追加
 
 `backend/src/services/use_cases.rs` の `UseCases` は、集約をまたいで共有する `DatabaseHandle`、`UnitOfWork`、変更履歴、戦略の存在確認を保持する。各集約のユースケースと Postgres adapter は `backend/src/services/use_cases/<aggregate>.rs` に置き、`impl UseCases` のメソッドで組み立てる。各メソッドは `Arc` に包んだ共通依存を clone して組み立てるため、必要なときに呼び出してよい。集約固有の repository や query は共有フィールドに追加せず、集約のファイル内で `self.db` などから組み立てる。`UseCases` のフィールドと `use_cases.rs` の import には集約間で共有する依存だけを置く。集約間の依存がある場合は、同じ `UseCases` のメソッドから組み立てる。
 
-新しい集約を application に移すときは、port とユースケースを `backend/crates/core/application` に、Postgres adapter を `backend/crates/gateways/postgres` に追加し、`services/use_cases/<aggregate>.rs` を置いて `UseCases` のメソッドを実装する。`automod::dir!` がこのディレクトリ直下の `.rs` ファイルを module として登録するため、`services/use_cases.rs` の編集は不要。利用側はフィールドではなくメソッドを呼び出す。戦略タスクのように単独で必要な場合も、`build_use_cases` から同じメソッドを呼び出して組み立てる。
+新しい集約を application に移すときは、port とユースケースを `backend/crates/core/application` に、Postgres adapter を `backend/crates/gateways/postgres` に追加し、`services/use_cases/<aggregate>.rs` を置いて `UseCases` のメソッドを実装する。`automod::dir!` がこのディレクトリ直下の `.rs` ファイルを module として登録するため、`services/use_cases.rs` の編集は不要。利用側はフィールドではなくメソッドを呼び出す。戦略タスクのように単独で必要な場合も、`build_use_cases` から同じメソッドを呼び出して組み立てる。ユースケースを使う entrypoint の依存 struct には、その集約の `XUseCases` と必要な port の field を追加し、composition root が `UseCases` のメソッドから組み立てて注入する。
 
 `core/application` の `lib.rs` には `pub mod` 宣言を置き、型を crate root に再エクスポートしない。利用側は `core_application::trade::...` のように module path から参照する。新しい port や集約を追加するときは、対応する module を `pub mod` で公開する。
 
-HTTP の `AppState` と MCP の StrategyServer / MgmtServer は同じ `UseCases` を受け取る。HTTP handler は `state.use_cases` 経由で、StrategyServer は自身の `use_cases` 経由で対象のユースケースを呼び出す。MgmtServer にも同じ container を渡し、MCP server の組み立てを共通化する。transaction、変更履歴、strategy 存在確認には既存の共通 port と Postgres 実装を使う。HTTP では `PersistenceError` を `AppError` に変換する。
+composition root は既存の `UseCases` と gateway adapter から entrypoint ごとの依存 struct を組み立て、HTTP router や MCP server に渡す。HTTP handler と MCP server は受け取った依存 struct を通して対象のユースケースを呼び出す。transaction、変更履歴、strategy 存在確認には既存の共通 port と Postgres 実装を使う。HTTP では `PersistenceError` を `AppError` に変換する。
 
 `entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror`, `jpholiday` (祝日の計算のみで I/O を持たない) と `serde` の derive に限る (テストでのみ使う dev-dependencies は対象外)。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
 
