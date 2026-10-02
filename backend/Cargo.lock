@@ -1402,6 +1402,16 @@ version = "0.1.0"
 [[package]]
 name = "entrypoint-agent-webhook"
 version = "0.1.0"
+dependencies = [
+ "axum",
+ "core-application",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "utoipa",
+ "utoipa-axum",
+]
 
 [[package]]
 name = "entrypoint-control-plane-mcp"
@@ -1410,6 +1420,17 @@ version = "0.1.0"
 [[package]]
 name = "entrypoint-external-webhook"
 version = "0.1.0"
+dependencies = [
+ "axum",
+ "core-application",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "utoipa",
+ "utoipa-axum",
+ "uuid",
+]
 
 [[package]]
 name = "entrypoint-frontend-api"

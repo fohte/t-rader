@@ -32,12 +32,12 @@ use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::error::{AppError, ErrorResponse};
-pub use crate::handlers::state::{AgentTaskNotificationsState, AppState, ExternalHookState};
+pub use crate::handlers::state::AppState;
 use crate::handlers::{
-    agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, group_axes, history, hooks, imports, ingest_status, note_kinds, note_links,
-    note_predictions, note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks,
-    trade_notes, trades, triggers,
+    agent_config, agent_options, annotations, bars, comments, config, custom_indicators,
+    group_axes, history, imports, ingest_status, note_kinds, note_links, note_predictions,
+    note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
+    triggers,
 };
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::SharedDailyBarSource;
@@ -61,10 +61,6 @@ pub fn build_http_state(
 ) -> AppState {
     let agent_tool_summaries = mcp::StrategyServer::list_tool_summaries();
     let trigger_use_cases = use_cases.triggers();
-    let agent_task_notifications = AgentTaskNotificationsState {
-        strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
-        webhook_token: agent_webhook_token,
-    };
     AppState {
         account_risk_policy_use_cases: use_cases.account_risk_policies(),
         agent_config_use_cases: use_cases.agent_configs(),
@@ -93,7 +89,7 @@ pub fn build_http_state(
         kata_executor,
         llm_gateway_client,
         agent_tool_summaries,
-        agent_task_notifications,
+        agent_webhook_token,
     }
 }
 
@@ -246,10 +242,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             triggers::update_trigger,
             triggers::delete_trigger
         ))
-        // hooks (外部 webhook 受信)
-        .routes(routes!(hooks::receive_hook))
-        // t-rader-agent からのタスク決着通知
-        .routes(routes!(agent_tasks::receive_agent_task_notification))
         // imports
         .routes(routes!(imports::sbi_preview))
         .routes(routes!(imports::sbi_commit))
@@ -312,8 +304,10 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
 
 /// OpenAPI スペックを生成する (DB 接続不要)
 pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
-    let mut router = build_openapi_router();
-    router.to_openapi()
+    let mut openapi = build_openapi_router().into_openapi();
+    openapi.merge(entrypoint_agent_webhook::router().into_openapi());
+    openapi.merge(entrypoint_external_webhook::router().into_openapi());
+    openapi
 }
 
 pub fn create_router(
@@ -325,7 +319,23 @@ pub fn create_router(
     let agent_task_client = state.agent_task_client.clone();
     let kata_executor = state.kata_executor.clone();
     let llm_gateway_client = state.llm_gateway_client.clone();
-    let (router, api) = build_openapi_router().with_state(state).split_for_parts();
+    let agent_webhook_router = entrypoint_agent_webhook::router().with_state::<()>(
+        entrypoint_agent_webhook::AgentWebhookState {
+            strategy_task_reconcile_job_use_cases: mcp_use_cases.strategy_task_reconcile_job(),
+            webhook_token: state.agent_webhook_token.clone(),
+        },
+    );
+    let external_webhook_router = entrypoint_external_webhook::router().with_state::<()>(
+        entrypoint_external_webhook::ExternalWebhookState {
+            trigger_use_cases: state.trigger_use_cases.clone(),
+            agent_task_client: state.agent_task_client.clone(),
+        },
+    );
+    let (router, api) = build_openapi_router()
+        .with_state::<()>(state)
+        .merge(agent_webhook_router)
+        .merge(external_webhook_router)
+        .split_for_parts();
     let health_router = Router::new()
         .route("/api/health", get(health_check))
         .with_state(health_db);
