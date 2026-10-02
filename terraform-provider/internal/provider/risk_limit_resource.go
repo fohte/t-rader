@@ -59,6 +59,7 @@ func (r *riskLimitResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"max_group_ratios": schema.ListNestedAttribute{
 				Optional:            true,
+				Computed:            true,
 				Default:             listdefault.StaticValue(emptyRiskLimitGroupRatios()),
 				MarkdownDescription: "分類軸ごとに、グループに適用する保有比率の上限を指定します。空配列にすると上限を解除します。",
 				NestedObject: schema.NestedAttributeObject{
