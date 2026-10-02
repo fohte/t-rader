@@ -232,11 +232,6 @@ pub(super) fn strategy_use_case_error_to_mcp(
         core_application::strategy::StrategyUseCaseError::NotFound(id) => {
             invalid_params(format!("strategy {id} not found"))
         }
-        core_application::strategy::StrategyUseCaseError::ConfirmationMismatch(id) => {
-            invalid_params(format!(
-                "strategy {id} not found or name changed since confirmation"
-            ))
-        }
         other => {
             tracing::error!(error = %other, "strategy mcp strategy operation failed");
             internal_error(format!("strategy operation failed: {other}"))

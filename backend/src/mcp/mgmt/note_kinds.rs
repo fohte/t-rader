@@ -1,18 +1,12 @@
-//! 管理 MCP のノート種別 CRUD tool。
+//! 管理 MCP のノート種別一覧 tool。
 
 use rmcp::ErrorData as McpError;
 
 use crate::error::AppError;
-use core_application::change_history::Actor;
-use core_application::note_kind::{
-    CreateNoteKindCommand, NoteKindUseCaseError, UpdateNoteKindCommand,
-};
+use core_application::note_kind::NoteKindUseCaseError;
 
 use super::MgmtServer;
-use super::dto::{
-    CreateNoteKindParams, DeleteNoteKindParams, DeleteNoteKindResult, ListNoteKindsResult,
-    NoteKindSummary, UpdateNoteKindParams,
-};
+use super::dto::ListNoteKindsResult;
 use super::invalid_params;
 
 impl MgmtServer {
@@ -26,62 +20,6 @@ impl MgmtServer {
         Ok(ListNoteKindsResult {
             note_kinds: rows.into_iter().map(Into::into).collect(),
         })
-    }
-
-    pub(super) async fn create_note_kind_inner(
-        &self,
-        params: CreateNoteKindParams,
-    ) -> Result<NoteKindSummary, McpError> {
-        let created = self
-            .use_cases
-            .note_kinds()
-            .create(
-                Actor::Llm { label: "mgmt-mcp" },
-                CreateNoteKindCommand {
-                    key: params.key,
-                    display_name: params.display_name,
-                    requires_approval: params.requires_approval.unwrap_or(false),
-                    description: params.description,
-                    sort_order: params.sort_order,
-                },
-            )
-            .await
-            .map_err(map_note_kind_error)?;
-        Ok(created.into())
-    }
-
-    pub(super) async fn update_note_kind_inner(
-        &self,
-        params: UpdateNoteKindParams,
-    ) -> Result<NoteKindSummary, McpError> {
-        let updated = self
-            .use_cases
-            .note_kinds()
-            .update(
-                Actor::Llm { label: "mgmt-mcp" },
-                &params.key,
-                UpdateNoteKindCommand {
-                    display_name: params.display_name,
-                    requires_approval: params.requires_approval,
-                    description: params.description,
-                    sort_order: params.sort_order,
-                },
-            )
-            .await
-            .map_err(map_note_kind_error)?;
-        Ok(updated.into())
-    }
-
-    pub(super) async fn delete_note_kind_inner(
-        &self,
-        params: DeleteNoteKindParams,
-    ) -> Result<DeleteNoteKindResult, McpError> {
-        self.use_cases
-            .note_kinds()
-            .delete(Actor::Llm { label: "mgmt-mcp" }, &params.key)
-            .await
-            .map_err(map_note_kind_error)?;
-        Ok(DeleteNoteKindResult { key: params.key })
     }
 }
 

@@ -109,25 +109,6 @@ impl StrategyRepository for FakeStrategyRepository {
         Ok(self.strategies.lock().await.remove(&id).is_some())
     }
 
-    async fn delete_confirmed(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        id: Uuid,
-        expected_name: &str,
-    ) -> Result<bool, StrategyRepositoryError> {
-        self.record_transaction(transaction).await?;
-        let mut strategies = self.strategies.lock().await;
-        if strategies
-            .get(&id)
-            .is_some_and(|row| row.name == expected_name)
-        {
-            strategies.remove(&id);
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
     async fn find_current_investable_amount(
         &self,
         strategy_id: Uuid,

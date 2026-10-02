@@ -349,15 +349,15 @@ mod tests {
         assert_eq!(
             tool_names,
             vec![
-                "create_rss_feed",
-                "delete_rss_feed",
+                "get_strategy_config",
                 "get_strategy_task_status",
+                "list_note_kinds",
                 "list_recent_annotations",
                 "list_recent_notes",
                 "list_rss_feeds",
                 "list_strategies",
+                "resume_strategy_task",
                 "submit_strategy_task",
-                "update_rss_feed",
             ]
         );
     }

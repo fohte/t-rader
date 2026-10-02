@@ -112,22 +112,6 @@ impl StrategyRepository for PostgresStrategyRepository {
             .map_err(repository_error)
     }
 
-    async fn delete_confirmed(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        id: Uuid,
-        expected_name: &str,
-    ) -> Result<bool, StrategyRepositoryError> {
-        let transaction = transaction_ref(transaction)?;
-        strategy_entity::Entity::delete_many()
-            .filter(strategy_entity::Column::Id.eq(id))
-            .filter(strategy_entity::Column::Name.eq(expected_name))
-            .exec(transaction)
-            .await
-            .map(|result| result.rows_affected > 0)
-            .map_err(repository_error)
-    }
-
     async fn find_current_investable_amount(
         &self,
         strategy_id: Uuid,
