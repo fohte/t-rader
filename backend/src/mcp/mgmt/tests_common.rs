@@ -6,7 +6,7 @@ use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
 use uuid::Uuid;
 
-use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
+use crate::agent_client::FakeAgentTaskClient;
 use gateway_postgres::entities::strategy;
 
 use super::MgmtServer;
@@ -31,8 +31,9 @@ pub(super) fn build_server(
     db: impl Into<gateway_postgres::DatabaseHandle>,
     fake: Arc<FakeAgentTaskClient>,
 ) -> MgmtServer {
-    MgmtServer::new(
-        crate::services::use_cases::build_use_cases(db),
-        fake as SharedAgentTaskClient,
-    )
+    let use_cases = crate::services::use_cases::build_use_cases(db);
+    MgmtServer::new(crate::mcp::mgmt_dependencies(
+        &use_cases,
+        fake as core_application::agent_task_client::SharedAgentTaskClient,
+    ))
 }

@@ -108,7 +108,11 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .await
         .expect("insert test agent_config");
 
-    let mgmt = MgmtServer::new(build_use_cases(db.clone()), agent_client.clone());
+    let use_cases = build_use_cases(db.clone());
+    let mgmt = MgmtServer::new(crate::mcp::mgmt_dependencies(
+        &use_cases,
+        agent_client.clone(),
+    ));
     mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
         strategy_id,
         prompt: "from mgmt".into(),

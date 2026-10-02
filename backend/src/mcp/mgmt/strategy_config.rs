@@ -14,14 +14,14 @@ impl MgmtServer {
     ) -> Result<GetStrategyConfigResult, McpError> {
         let scope = self.strategy_scope(params.strategy_id).await?;
         let row = self
-            .use_cases
-            .strategies()
+            .dependencies
+            .strategies
             .get(scope)
             .await
             .map_err(map_strategy_use_case_error)?;
         let triggers = self
-            .use_cases
-            .triggers()
+            .dependencies
+            .triggers
             .list_for_strategy(scope, None)
             .await
             .map_err(map_trigger_error)?;

@@ -2,7 +2,7 @@
 
 use rmcp::ErrorData as McpError;
 
-use crate::agent_client::AgentTaskError;
+use core_application::agent_task_client::AgentTaskError;
 use core_application::strategy_task::{
     GetTaskError, ResumeTaskError, StrategyTaskRepositoryError, SubmitTaskError, TaskSource,
 };
@@ -18,8 +18,8 @@ use super::{MgmtServer, internal_error, invalid_params, map_strategy_use_case_er
 impl MgmtServer {
     pub(super) async fn list_strategies_inner(&self) -> Result<ListStrategiesResult, McpError> {
         let strategies = self
-            .use_cases
-            .strategies()
+            .dependencies
+            .strategies
             .list_summaries()
             .await
             .map_err(map_strategy_use_case_error)?
@@ -39,10 +39,10 @@ impl MgmtServer {
         params: SubmitStrategyTaskParams,
     ) -> Result<SubmitStrategyTaskResult, McpError> {
         let submitted = self
-            .use_cases
-            .strategy_tasks()
+            .dependencies
+            .strategy_tasks
             .submit_task(
-                self.agent_client.as_ref(),
+                self.dependencies.agent_client.as_ref(),
                 params.strategy_id,
                 &params.prompt,
                 TaskSource::MgmtMcp,
@@ -61,9 +61,9 @@ impl MgmtServer {
         params: ResumeStrategyTaskParams,
     ) -> Result<ResumeStrategyTaskResult, McpError> {
         let submitted = self
-            .use_cases
-            .strategy_tasks()
-            .resume(self.agent_client.as_ref(), params.task_id)
+            .dependencies
+            .strategy_tasks
+            .resume(self.dependencies.agent_client.as_ref(), params.task_id)
             .await
             .map_err(map_resume_error)?;
         Ok(ResumeStrategyTaskResult {
@@ -77,8 +77,8 @@ impl MgmtServer {
         params: GetStrategyTaskStatusParams,
     ) -> Result<GetStrategyTaskStatusResult, McpError> {
         let view = self
-            .use_cases
-            .strategy_tasks()
+            .dependencies
+            .strategy_tasks
             .get_by_a2a_task_id(&params.a2a_task_id)
             .await
             .map_err(map_get_task_error)?
