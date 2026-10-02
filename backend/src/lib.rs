@@ -76,6 +76,7 @@ pub fn build_http_state(
         comment_use_cases: use_cases.comments(),
         custom_indicator_use_cases: use_cases.custom_indicators(),
         group_axis_use_cases: use_cases.group_axes(),
+        ingest_status_use_case: Arc::new(use_cases.ingest_status()),
         note_kind_use_cases: use_cases.note_kinds(),
         note_read_use_cases: use_cases.note_reads(),
         note_use_cases: use_cases.notes(),

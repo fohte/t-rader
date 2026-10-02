@@ -61,7 +61,7 @@ pub async fn put_account_risk_policy(
     JsonBody(payload): JsonBody<PutAccountRiskPolicyRequest>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
     validate_group_ratios(&payload.max_group_ratios)?;
-    let axes = state.use_cases.group_axes().list().await?;
+    let axes = state.group_axis_use_cases.list().await?;
     let known_axes = axes
         .into_iter()
         .map(|axis| axis.key)

@@ -12,6 +12,7 @@ use core_application::change_history::ChangeHistoryUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
 use core_application::group_axis::GroupAxisUseCases;
+use core_application::ingest_status::IngestStatusUseCase;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
@@ -37,6 +38,7 @@ pub struct AppState {
     pub comment_use_cases: CommentUseCases,
     pub custom_indicator_use_cases: CustomIndicatorUseCases,
     pub group_axis_use_cases: GroupAxisUseCases,
+    pub ingest_status_use_case: Arc<IngestStatusUseCase>,
     pub note_kind_use_cases: NoteKindUseCases,
     pub note_read_use_cases: NoteReadUseCases,
     pub note_use_cases: NoteUseCases,
