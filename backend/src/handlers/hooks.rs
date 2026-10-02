@@ -8,9 +8,9 @@ use core_application::trigger::TriggerUseCaseError;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
+use crate::handlers::state::ExternalHookState;
 
 /// hook 受信レスポンス。
 ///
@@ -48,13 +48,12 @@ pub struct HookResponse {
     )
 )]
 pub async fn receive_hook(
-    State(state): State<AppState>,
+    State(state): State<ExternalHookState>,
     JsonPath(hook_slug): JsonPath<String>,
     JsonBody(payload): JsonBody<serde_json::Value>,
 ) -> Result<(StatusCode, Json<HookResponse>), AppError> {
     match state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .fire_hook(state.agent_task_client.as_ref(), &hook_slug, payload)
         .await
     {
@@ -96,9 +95,11 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::testing::agent_config;
     use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_hook_trigger};
+    use core_application::agent_task_client::{
+        AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient,
+    };
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::{strategy, strategy_task};

@@ -37,8 +37,7 @@ pub async fn list_stocks(
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<StockResponse>>, AppError> {
     let items = state
-        .use_cases
-        .refs()
+        .ref_use_cases
         .list_stocks(params.q.as_deref())
         .await
         .map_err(map_ref_error)?
@@ -65,8 +64,7 @@ pub async fn get_stock(
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<StockResponse>, AppError> {
     let m = state
-        .use_cases
-        .refs()
+        .ref_use_cases
         .get_stock(&id)
         .await
         .map_err(map_ref_error)?
@@ -90,8 +88,7 @@ pub async fn list_indicators(
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<IndicatorResponse>>, AppError> {
     let items = state
-        .use_cases
-        .refs()
+        .ref_use_cases
         .list_indicators(params.q.as_deref())
         .await
         .map_err(map_ref_error)?
@@ -119,8 +116,7 @@ pub async fn get_indicator(
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<IndicatorResponse>, AppError> {
     let m = state
-        .use_cases
-        .refs()
+        .ref_use_cases
         .get_indicator(&id)
         .await
         .map_err(map_ref_error)?
@@ -185,8 +181,7 @@ pub async fn resolve_refs(
     }
 
     let out = state
-        .use_cases
-        .refs()
+        .ref_use_cases
         .resolve(&requested)
         .await
         .map_err(map_ref_error)?

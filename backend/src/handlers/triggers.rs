@@ -38,8 +38,7 @@ pub async fn list_strategy_triggers(
     let scope = super::strategies::strategy_scope_or_404(&state, id).await?;
     let kind = query.kind.map(application_kind);
     let items = state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .list_for_strategy(scope, kind)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -71,8 +70,7 @@ pub async fn create_strategy_trigger(
 ) -> Result<(StatusCode, Json<TriggerResponse>), AppError> {
     let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
     let created = state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .create(
             scope,
             CreateTriggerCommand {
@@ -108,8 +106,7 @@ pub async fn get_trigger(
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<Json<TriggerResponse>, AppError> {
     let trigger = state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .get(trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -139,8 +136,7 @@ pub async fn update_trigger(
     JsonBody(payload): JsonBody<UpdateTriggerRequest>,
 ) -> Result<Json<TriggerResponse>, AppError> {
     let current = state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .get(trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -149,8 +145,7 @@ pub async fn update_trigger(
         .ok_or_else(|| AppError::NotFound(format!("trigger {trigger_id} not found")))?;
     let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
     let updated = state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .update(
             scope,
             trigger_id,
@@ -186,8 +181,7 @@ pub async fn delete_trigger(
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let current = state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .get(trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -196,8 +190,7 @@ pub async fn delete_trigger(
         .ok_or_else(|| AppError::NotFound(format!("trigger {trigger_id} not found")))?;
     let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
     state
-        .use_cases
-        .triggers()
+        .trigger_use_cases
         .delete(scope, trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;

@@ -51,8 +51,7 @@ pub async fn list_group_axes(
 ) -> Result<Json<Vec<GroupAxisResponse>>, AppError> {
     Ok(Json(
         state
-            .use_cases
-            .group_axes()
+            .group_axis_use_cases
             .list()
             .await?
             .into_iter()
@@ -81,8 +80,7 @@ pub async fn create_group_axis(
     JsonBody(payload): JsonBody<CreateGroupAxisRequest>,
 ) -> Result<(StatusCode, Json<GroupAxisResponse>), AppError> {
     let created = state
-        .use_cases
-        .group_axes()
+        .group_axis_use_cases
         .create(CreateGroupAxisCommand {
             key: payload.key,
             name: payload.name,
@@ -109,7 +107,7 @@ pub async fn get_group_axis(
     State(state): State<AppState>,
     JsonPath(key): JsonPath<String>,
 ) -> Result<Json<GroupAxisResponse>, AppError> {
-    let axis = state.use_cases.group_axes().get(&key).await?;
+    let axis = state.group_axis_use_cases.get(&key).await?;
     Ok(Json(axis.into()))
 }
 
@@ -135,8 +133,7 @@ pub async fn update_group_axis(
     JsonBody(payload): JsonBody<UpdateGroupAxisRequest>,
 ) -> Result<Json<GroupAxisResponse>, AppError> {
     let axis = state
-        .use_cases
-        .group_axes()
+        .group_axis_use_cases
         .update(
             &key,
             UpdateGroupAxisCommand {
@@ -166,7 +163,7 @@ pub async fn delete_group_axis(
     State(state): State<AppState>,
     JsonPath(key): JsonPath<String>,
 ) -> Result<StatusCode, AppError> {
-    state.use_cases.group_axes().delete(&key).await?;
+    state.group_axis_use_cases.delete(&key).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

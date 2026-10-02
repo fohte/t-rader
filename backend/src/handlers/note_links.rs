@@ -54,8 +54,7 @@ pub async fn get_note_links(
     JsonQuery(params): JsonQuery<GetNoteLinksQuery>,
 ) -> Result<Json<NoteLinksResponse>, AppError> {
     let links = state
-        .use_cases
-        .note_reads()
+        .note_read_use_cases
         .list_note_links(note_id, params.version_id, None)
         .await
         .map_err(crate::handlers::notes::map_note_read_error)?;
