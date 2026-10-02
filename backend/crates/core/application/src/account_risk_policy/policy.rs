@@ -117,31 +117,35 @@ mod tests {
     }
 
     #[test]
-    fn parse_risk_policy_uses_defaults_and_ignores_unknown_fields() {
+    fn parse_risk_policy_ignores_unknown_fields() {
         let parsed = parse_risk_policy::<AccountRiskPolicyData>(serde_json::json!({
             "schema_version": RISK_POLICY_SCHEMA_VERSION,
             "max_group_ratios": [{ "axis": "sample-axis", "ratio": "0.15" }],
             "future_field": "x",
         }))
         .expect("parse policy");
-        let missing = parse_risk_policy::<AccountRiskPolicyData>(serde_json::json!({}))
-            .expect("parse policy with defaults");
 
         assert_eq!(
-            (parsed, missing),
-            (
-                AccountRiskPolicyData {
-                    schema_version: RISK_POLICY_SCHEMA_VERSION,
-                    max_group_ratios: vec![GroupRatio {
-                        axis: "sample-axis".to_string(),
-                        ratio: Decimal::new(15, 2),
-                    }],
-                },
-                AccountRiskPolicyData {
-                    schema_version: RISK_POLICY_SCHEMA_VERSION,
-                    max_group_ratios: vec![],
-                },
-            ),
+            parsed,
+            AccountRiskPolicyData {
+                schema_version: RISK_POLICY_SCHEMA_VERSION,
+                max_group_ratios: vec![GroupRatio {
+                    axis: "sample-axis".to_string(),
+                    ratio: Decimal::new(15, 2),
+                }],
+            },
+        );
+    }
+
+    #[test]
+    fn parse_risk_policy_uses_defaults_when_fields_are_missing() {
+        assert_eq!(
+            parse_risk_policy::<AccountRiskPolicyData>(serde_json::json!({}))
+                .expect("parse policy with defaults"),
+            AccountRiskPolicyData {
+                schema_version: RISK_POLICY_SCHEMA_VERSION,
+                max_group_ratios: vec![],
+            },
         );
     }
 
@@ -149,12 +153,14 @@ mod tests {
     fn parse_risk_policy_returns_a_typed_error_for_invalid_data() {
         let actual = parse_risk_policy::<AccountRiskPolicyData>(serde_json::json!({
             "max_group_ratios": "invalid",
-        }));
+        }))
+        .map(|_| ())
+        .map_err(|error| match error {
+            AccountRiskPolicyDataError::Validation(_) => "validation",
+            AccountRiskPolicyDataError::InvalidData(_) => "invalid_data",
+        });
 
-        assert!(matches!(
-            actual,
-            Err(AccountRiskPolicyDataError::InvalidData(_))
-        ));
+        assert_eq!(actual, Err("invalid_data"));
     }
 
     #[test]
