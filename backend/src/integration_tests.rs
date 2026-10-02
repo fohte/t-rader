@@ -109,17 +109,10 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .expect("insert test agent_config");
 
     let use_cases = build_use_cases(db.clone());
-    let mgmt = MgmtServer::new(crate::mcp::MgmtDependencies {
-        strategies: use_cases.strategies(),
-        strategy_scope: Arc::new(use_cases.strategy_scope()),
-        strategy_tasks: use_cases.strategy_tasks(),
-        triggers: use_cases.triggers(),
-        note_kinds: use_cases.note_kinds(),
-        note_reads: use_cases.note_reads(),
-        annotation_reads: use_cases.annotation_reads(),
-        rss_feeds: use_cases.rss_feeds(),
-        agent_client: agent_client.clone(),
-    });
+    let mgmt = MgmtServer::new(crate::mcp::mgmt_dependencies(
+        &use_cases,
+        agent_client.clone(),
+    ));
     mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
         strategy_id,
         prompt: "from mgmt".into(),

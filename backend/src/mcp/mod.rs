@@ -37,17 +37,7 @@ pub fn router(
     litellm_client: Option<SharedLlmClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
-    let mgmt_dependencies = MgmtDependencies {
-        strategies: use_cases.strategies(),
-        strategy_scope: Arc::new(use_cases.strategy_scope()),
-        strategy_tasks: use_cases.strategy_tasks(),
-        triggers: use_cases.triggers(),
-        note_kinds: use_cases.note_kinds(),
-        note_reads: use_cases.note_reads(),
-        annotation_reads: use_cases.annotation_reads(),
-        rss_feeds: use_cases.rss_feeds(),
-        agent_client,
-    };
+    let mgmt_dependencies = mgmt_dependencies(&use_cases, agent_client);
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_dependencies.clone())),
         session_manager().into(),
@@ -72,6 +62,23 @@ pub fn router(
             access_log::AccessLogState::new(),
             access_log::access_log,
         ))
+}
+
+pub(crate) fn mgmt_dependencies(
+    use_cases: &UseCases,
+    agent_client: SharedAgentTaskClient,
+) -> MgmtDependencies {
+    MgmtDependencies {
+        strategies: use_cases.strategies(),
+        strategy_scope: Arc::new(use_cases.strategy_scope()),
+        strategy_tasks: use_cases.strategy_tasks(),
+        triggers: use_cases.triggers(),
+        note_kinds: use_cases.note_kinds(),
+        note_reads: use_cases.note_reads(),
+        annotation_reads: use_cases.annotation_reads(),
+        rss_feeds: use_cases.rss_feeds(),
+        agent_client,
+    }
 }
 
 /// `MCP_ALLOWED_HOSTS` (カンマ区切り) をパースする。未設定または空なら空 Vec。
