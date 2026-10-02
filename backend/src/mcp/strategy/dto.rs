@@ -8,7 +8,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::services::graph::GraphDef;
+use super::graph_dto::GraphDef;
+use super::serde_helpers::deserialize_nullable_option;
+
+fn any_json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::Map::new().into()
+}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryDataParams {
@@ -166,15 +171,15 @@ pub struct CheckBuyableQtyResult {
     /// 最も新しい観測日。1 銘柄も取得できなければ null。`current_price` 自体の観測日とは
     /// 限らない
     pub priced_at: Option<NaiveDate>,
-    /// `account_risk_policy.max_sector_ratio` による制約
-    pub max_qty_by_sector_ratio: ConstraintResult,
+    /// `account_risk_policy.max_group_ratios` による制約
+    pub max_qty_by_group_ratios: ConstraintResult,
     /// 戦略の未使用投資可能額による制約
     pub max_qty_by_cash: ConstraintResult,
     /// 上記制約のうち最も厳しいもの。いずれかが unavailable なら unavailable、
     /// 全て unlimited なら unlimited
     pub max_qty: ConstraintResult,
     /// `max_qty` が `Limited` のとき、根拠になった制約名
-    /// (`sector_ratio` / `cash`)。それ以外は null
+    /// (`group_ratios` / `cash`)。それ以外は null
     pub binding_constraint: Option<String>,
 }
 
@@ -188,10 +193,7 @@ pub struct WriteNoteParams {
     /// `@current` を付けると以降の現行バージョンに追従する。
     pub body_md: Option<String>,
     /// 新規作成時の種別。既存ノートの種別は変更できない。
-    #[serde(
-        default,
-        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
-    )]
+    #[serde(default, deserialize_with = "deserialize_nullable_option")]
     pub kind: Option<Option<String>>,
     /// 承認必須種別の 2 件目以降で必須となる変更理由。
     pub change_reason: Option<String>,
@@ -411,7 +413,7 @@ pub struct EvalIndicatorParams {
     /// 評価する indicator の name。戦略 scope に同名があれば優先、無ければ global を採用する。
     pub name: String,
     /// indicator の `input_schema` (JSON Schema) で validation される引数オブジェクト。
-    #[schemars(schema_with = "crate::mcp::any_json_schema")]
+    #[schemars(schema_with = "any_json_schema")]
     pub args: serde_json::Value,
     /// wall-clock 上限 (秒)。MCP 層の上限値を超える指定は invalid_params で拒否する。
     pub timeout_secs: Option<u32>,
@@ -458,7 +460,7 @@ pub struct EvalIndicatorResult {
     /// stdout 最終行が JSON として parse できない / output_schema に合致しない場合は
     /// MCP エラー (invalid_params) で失敗するため、本フィールドには到達しない。
     #[serde(default)]
-    #[schemars(schema_with = "crate::mcp::any_json_schema")]
+    #[schemars(schema_with = "any_json_schema")]
     pub output: Option<serde_json::Value>,
     pub stdout: String,
     pub stderr: String,

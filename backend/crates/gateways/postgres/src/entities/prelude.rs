@@ -32,7 +32,6 @@ pub use super::prediction::Entity as Prediction;
 pub use super::prediction_grade::Entity as PredictionGrade;
 pub use super::ref_term::Entity as RefTerm;
 pub use super::rss_feed::Entity as RssFeed;
-pub use super::sector::Entity as Sector;
 pub use super::short_ratio::Entity as ShortRatio;
 pub use super::short_sale_report::Entity as ShortSaleReport;
 pub use super::stock::Entity as Stock;

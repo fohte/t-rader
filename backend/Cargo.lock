@@ -557,6 +557,11 @@ dependencies = [
  "cron",
  "csv",
  "encoding_rs",
+ "entrypoint-agent-mcp",
+ "entrypoint-agent-webhook",
+ "entrypoint-control-plane-mcp",
+ "entrypoint-external-webhook",
+ "entrypoint-frontend-api",
  "entrypoint-scheduler",
  "futures-util",
  "gateway-fred",
@@ -1389,6 +1394,26 @@ dependencies = [
  "scopeguard",
  "simdutf8",
 ]
+
+[[package]]
+name = "entrypoint-agent-mcp"
+version = "0.1.0"
+
+[[package]]
+name = "entrypoint-agent-webhook"
+version = "0.1.0"
+
+[[package]]
+name = "entrypoint-control-plane-mcp"
+version = "0.1.0"
+
+[[package]]
+name = "entrypoint-external-webhook"
+version = "0.1.0"
+
+[[package]]
+name = "entrypoint-frontend-api"
+version = "0.1.0"
 
 [[package]]
 name = "entrypoint-scheduler"

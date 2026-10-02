@@ -11,9 +11,9 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す */
+    /** 口座全体の分類軸ごとのグループ集中度上限を取得。 */
     get: operations['get_account_risk_policy']
-    /** 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する */
+    /** 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。 */
     put: operations['put_account_risk_policy']
     post?: never
     delete?: never
@@ -545,6 +545,23 @@ export interface paths {
     post?: never
     /** indicator 削除 */
     delete: operations['delete_indicator']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/ingest-status': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ingest job の実行履歴、データ日、worker queue 状態 */
+    get: operations['get_ingest_status']
+    put?: never
+    post?: never
+    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -1179,8 +1196,8 @@ export type webhooks = Record<string, never>
 export interface components {
   schemas: {
     AccountRiskPolicyResponse: {
-      /** Format: double */
-      max_sector_ratio?: number | null
+      /** @description 分類軸ごとのグループ比率上限。空配列なら上限なし。 */
+      max_group_ratios: components['schemas']['GroupRatio'][]
     }
     AgentConfig: {
       agent_graph: string
@@ -1541,6 +1558,15 @@ export interface components {
       name: string
       sync_source?: string | null
     }
+    GroupRatio: {
+      /** @description 分類軸のキー。 */
+      axis: string
+      /**
+       * Format: double
+       * @description 分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。
+       */
+      ratio: number
+    }
     /** @description ヘルスチェックレスポンス */
     HealthResponse: {
       /** @description サービスの状態 */
@@ -1565,6 +1591,45 @@ export interface components {
       id: string
       kind: string
       name: string
+    }
+    IngestJobStatusResponse: {
+      /** Format: date */
+      expected_data_date?: string | null
+      job: string
+      last_run?: null | components['schemas']['IngestRunResponse']
+      /** Format: date-time */
+      last_succeeded_at?: string | null
+      /** Format: date */
+      latest_data_date?: string | null
+      worker_jobs: components['schemas']['IngestWorkerJobResponse'][]
+    }
+    IngestRunResponse: {
+      error?: string | null
+      /** Format: date-time */
+      finished_at?: string | null
+      /** Format: uuid */
+      id: string
+      /** Format: date-time */
+      started_at: string
+      stats?: unknown
+      status: string
+    }
+    IngestStatusResponse: {
+      jobs: components['schemas']['IngestJobStatusResponse'][]
+    }
+    IngestWorkerJobResponse: {
+      /** Format: int32 */
+      attempts: number
+      /** Format: int64 */
+      id: number
+      last_error?: string | null
+      /** Format: int32 */
+      max_attempts: number
+      queue_name?: string | null
+      /** Format: date-time */
+      run_at: string
+      state: string
+      task_identifier: string
     }
     /**
      * @description 戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。
@@ -1736,12 +1801,8 @@ export interface components {
       stdout: string
     }
     PutAccountRiskPolicyRequest: {
-      /**
-       * Format: double
-       * @description セクターに属する保有銘柄の時価合計 (口座全体) / 口座全体の保有銘柄時価合計 の上限比率。
-       *     (0, 1] の範囲。`null` で上限を解除する
-       */
-      max_sector_ratio?: number | null
+      /** @description 分類軸ごとのグループ比率上限。空配列なら上限なし。 */
+      max_group_ratios: components['schemas']['GroupRatio'][]
     }
     /**
      * @description 戦略の投資可能額を新しい history 行として記録するリクエスト。
@@ -4418,6 +4479,33 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_ingest_status: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['IngestStatusResponse']
         }
       }
       500: {

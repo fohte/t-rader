@@ -17,6 +17,7 @@ pub mod group_axis;
 pub mod indicator_observation;
 pub mod indicator_observation_source;
 pub mod ingest_run_log;
+pub mod ingest_status;
 pub mod kata_exec;
 pub mod llm_client;
 pub mod margin;

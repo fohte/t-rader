@@ -57,8 +57,8 @@ impl StrategyServer {
         params: SearchRefsParams,
     ) -> Result<SearchRefsResult, McpError> {
         let refs = self
-            .use_cases
-            .refs()
+            .dependencies
+            .refs
             .search_all(&params.query, clamp_limit(params.limit))
             .await
             .map_err(ref_use_case_error)?
@@ -135,7 +135,6 @@ mod tests {
             id: Set(id.into()),
             name: Set(name.into()),
             market: Set(None),
-            sector_id: Set(None),
             product_category: Set(product_category.map(str::to_string)),
             created_at: NotSet,
             updated_at: NotSet,

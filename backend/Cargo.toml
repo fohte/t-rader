@@ -16,6 +16,11 @@ axum = "=0.8.9"
 automod = "=1.0.17"
 core-domain = { path = "crates/core/domain" }
 core-application = { path = "crates/core/application" }
+entrypoint-agent-mcp = { path = "crates/entrypoints/agent-mcp" }
+entrypoint-agent-webhook = { path = "crates/entrypoints/agent-webhook" }
+entrypoint-control-plane-mcp = { path = "crates/entrypoints/control-plane-mcp" }
+entrypoint-external-webhook = { path = "crates/entrypoints/external-webhook" }
+entrypoint-frontend-api = { path = "crates/entrypoints/frontend-api" }
 entrypoint-scheduler = { path = "crates/entrypoints/scheduler" }
 gateway-fred = { path = "crates/gateways/fred" }
 gateway-ibkr = { path = "crates/gateways/ibkr" }
@@ -79,6 +84,11 @@ chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive"] }
 core-domain = { workspace = true }
 core-application = { workspace = true }
+entrypoint-agent-mcp = { workspace = true }
+entrypoint-agent-webhook = { workspace = true }
+entrypoint-control-plane-mcp = { workspace = true }
+entrypoint-external-webhook = { workspace = true }
+entrypoint-frontend-api = { workspace = true }
 gateway-fred = { workspace = true }
 gateway-ibkr = { workspace = true }
 gateway-jquants = { workspace = true }

@@ -49,8 +49,8 @@ impl StrategyServer {
             ))
         })?;
         let comments = self
-            .use_cases
-            .comment_reads()
+            .dependencies
+            .comment_reads
             .list_comments(
                 CommentListQuery {
                     target_kind,
@@ -72,8 +72,8 @@ impl StrategyServer {
         params: ResolveCommentParams,
     ) -> Result<ResolveCommentResult, McpError> {
         let updated = self
-            .use_cases
-            .comments()
+            .dependencies
+            .comments
             .resolve(ResolveCommentCommand {
                 scope: Some(scope.into()),
                 actor: Actor::Llm { label: "analyst" },
@@ -93,8 +93,8 @@ impl StrategyServer {
         params: ReplyCommentParams,
     ) -> Result<ReplyCommentResult, McpError> {
         let created = self
-            .use_cases
-            .comments()
+            .dependencies
+            .comments
             .reply(ReplyCommentCommand {
                 scope: Some(scope.into()),
                 actor: Actor::Llm { label: "analyst" },
@@ -114,7 +114,7 @@ impl StrategyServer {
 fn comment_read_error(error: CommentReadUseCaseError) -> McpError {
     match error {
         CommentReadUseCaseError::Query(CommentReadQueryError::Database(error)) => {
-            super::app_error_to_mcp(error.into())
+            super::persistence_error_to_mcp(error)
         }
         CommentReadUseCaseError::AnnotationRead(error) => {
             super::annotations::annotation_read_error_to_mcp(error)

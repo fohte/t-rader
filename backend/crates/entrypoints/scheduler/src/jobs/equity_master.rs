@@ -11,7 +11,7 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct EquityMasterIngest;
 
 impl TaskHandler for EquityMasterIngest {
-    const IDENTIFIER: &'static str = "equity_master_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::EQUITY_MASTER_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(

@@ -2,23 +2,23 @@
 //!
 //! LLM の判断を挟まず、risk_policy に基づく決定論的な計算で上限株数を出す。保有していない
 //! 銘柄でも、価格さえ取得できれば現在保有 0 株として計算する。計算に必要な値
-//! (価格・投資可能額・セクター) が欠けている制約は、誤った数値を返す代わりに
+//! (価格・投資可能額・分類軸グループ) が欠けている制約は、誤った数値を返す代わりに
 //! `ConstraintResult::Unavailable` で「計算不能」を明示する。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
-use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
+use core_application::account_risk_policy::{
+    AccountRiskPolicyData, AccountRiskPolicyRepositoryError, parse_risk_policy,
+};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 
-use crate::models::{AccountRiskPolicyData, parse_risk_policy};
-
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
-use super::refs::ref_use_case_error;
 use super::{
-    StrategyServer, app_error_to_mcp, decimal_to_f64, strategy_use_case_error_to_mcp, trade_error,
+    StrategyServer, decimal_to_f64, internal_failure, persistence_error_to_mcp,
+    strategy_use_case_error_to_mcp, trade_error,
 };
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
@@ -26,8 +26,12 @@ const LOT_SIZE: i64 = 100;
 
 fn account_risk_policy_error_to_mcp(error: AccountRiskPolicyRepositoryError) -> McpError {
     match error {
-        AccountRiskPolicyRepositoryError::Database(error) => app_error_to_mcp(error.into()),
+        AccountRiskPolicyRepositoryError::Database(error) => persistence_error_to_mcp(error),
     }
+}
+
+fn parse_account_risk_policy(value: serde_json::Value) -> Result<AccountRiskPolicyData, McpError> {
+    parse_risk_policy(value).map_err(|error| internal_failure(&error.to_string()))
 }
 
 impl StrategyServer {
@@ -41,29 +45,29 @@ impl StrategyServer {
         let symbol = params.symbol;
 
         let account_risk_policy = self
-            .use_cases
-            .account_risk_policies()
+            .dependencies
+            .account_risk_policies
             .find_current()
             .await
             .map_err(account_risk_policy_error_to_mcp)?;
-        let max_sector_ratio = match account_risk_policy {
-            Some(risk_policy) => {
-                parse_risk_policy::<AccountRiskPolicyData>(risk_policy)
-                    .map_err(app_error_to_mcp)?
-                    .max_sector_ratio
-            }
-            None => None,
+        let max_group_ratios: Vec<(String, Decimal)> = match account_risk_policy {
+            Some(risk_policy) => parse_account_risk_policy(risk_policy)?
+                .max_group_ratios
+                .into_iter()
+                .map(|group_ratio| (group_ratio.axis, group_ratio.ratio))
+                .collect(),
+            None => Vec::new(),
         };
 
         let account_summary = self
-            .use_cases
-            .trades()
+            .dependencies
+            .trades
             .summary(None)
             .await
             .map_err(trade_error)?;
         let strategy_summary = self
-            .use_cases
-            .trades()
+            .dependencies
+            .trades
             .summary(Some(strategy_id))
             .await
             .map_err(trade_error)?;
@@ -77,9 +81,9 @@ impl StrategyServer {
         let symbols: Vec<String> = symbols.into_iter().collect();
 
         let prices = self
-            .use_cases
-            .bars()
-            .fetch_latest_prices(self.daily_bar_source.as_deref(), &symbols)
+            .dependencies
+            .bars
+            .fetch_latest_prices(self.dependencies.daily_bar_source.as_deref(), &symbols)
             .await;
         let target_price = prices.prices.get(&symbol).copied();
 
@@ -90,13 +94,26 @@ impl StrategyServer {
             .map(|p| p.qty)
             .unwrap_or(Decimal::ZERO);
 
-        let sector_by_symbol = self
-            .use_cases
-            .refs()
-            .stock_sectors(&symbols)
+        let axis_keys: Vec<String> = max_group_ratios
+            .iter()
+            .map(|(axis, _)| axis.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let memberships = self
+            .dependencies
+            .stock_groups
+            .list_memberships(&symbols, &axis_keys)
             .await
-            .map_err(ref_use_case_error)?;
-        let target_sector = sector_by_symbol.get(&symbol).cloned().flatten();
+            .map_err(super::stock_groups::stock_group_error)?;
+        let mut groups_by_axis_and_symbol: HashMap<(String, String), BTreeSet<String>> =
+            HashMap::new();
+        for membership in memberships {
+            groups_by_axis_and_symbol
+                .entry((membership.axis_key, membership.stock_id))
+                .or_default()
+                .insert(membership.group_key);
+        }
 
         let missing_price_symbols: Vec<String> = account_summary
             .positions
@@ -111,31 +128,36 @@ impl StrategyServer {
             .filter_map(|p| prices.prices.get(&p.symbol).map(|price| p.qty * price))
             .sum();
 
-        let sector_value: Decimal = match &target_sector {
-            Some(sector_id) => account_summary
-                .positions
-                .iter()
-                .filter(|p| {
-                    sector_by_symbol.get(&p.symbol).and_then(|s| s.as_deref())
-                        == Some(sector_id.as_str())
-                })
-                .filter_map(|p| prices.prices.get(&p.symbol).map(|price| p.qty * price))
-                .sum(),
-            None => Decimal::ZERO,
-        };
+        let mut value_by_axis_and_group: HashMap<(String, String), Decimal> = HashMap::new();
+        for position in &account_summary.positions {
+            let Some(price) = prices.prices.get(&position.symbol) else {
+                continue;
+            };
+            for axis_key in &axis_keys {
+                if let Some(group_keys) =
+                    groups_by_axis_and_symbol.get(&(axis_key.clone(), position.symbol.clone()))
+                {
+                    for group_key in group_keys {
+                        *value_by_axis_and_group
+                            .entry((axis_key.clone(), group_key.clone()))
+                            .or_default() += position.qty * price;
+                    }
+                }
+            }
+        }
 
         let investable_amount_row = self
-            .use_cases
-            .strategies()
+            .dependencies
+            .strategies
             .current_investable_amount(scope)
             .await
             .map_err(strategy_use_case_error_to_mcp)?;
 
-        let sector_ratio_result = compute_sector_ratio_constraint(
-            max_sector_ratio,
+        let group_ratio_result = compute_group_ratio_constraint(
+            &max_group_ratios,
             target_price,
-            target_sector.as_deref(),
-            sector_value,
+            &groups_by_axis_and_symbol,
+            &value_by_axis_and_group,
             account_total_value,
             &missing_price_symbols,
             &symbol,
@@ -154,7 +176,7 @@ impl StrategyServer {
         let cash_result = compute_cash_constraint(unused_investable_amount, target_price, &symbol);
 
         let (max_qty, binding_constraint) = combine_constraints([
-            ("sector_ratio", &sector_ratio_result),
+            ("group_ratios", &group_ratio_result),
             ("cash", &cash_result),
         ]);
 
@@ -164,7 +186,7 @@ impl StrategyServer {
             current_qty: decimal_to_f64(current_qty),
             current_price: target_price.map(decimal_to_f64),
             priced_at: prices.priced_at,
-            max_qty_by_sector_ratio: sector_ratio_result,
+            max_qty_by_group_ratios: group_ratio_result,
             max_qty_by_cash: cash_result,
             max_qty,
             binding_constraint,
@@ -185,22 +207,30 @@ fn floor_to_lot(qty: i64) -> i64 {
     (qty / LOT_SIZE) * LOT_SIZE
 }
 
-fn compute_sector_ratio_constraint(
-    max_ratio: Option<Decimal>,
+fn compute_group_ratio_constraint(
+    max_group_ratios: &[(String, Decimal)],
     price: Option<Decimal>,
-    target_sector: Option<&str>,
-    sector_value: Decimal,
+    groups_by_axis_and_symbol: &HashMap<(String, String), BTreeSet<String>>,
+    value_by_axis_and_group: &HashMap<(String, String), Decimal>,
     total_value: Decimal,
     missing_price_symbols: &[String],
     symbol: &str,
 ) -> ConstraintResult {
-    let Some(ratio) = max_ratio else {
+    if max_group_ratios.is_empty() {
         return ConstraintResult::Unlimited;
-    };
-    if target_sector.is_none() {
-        return ConstraintResult::Unavailable {
-            reason: format!("{symbol} has no sector assigned"),
+    }
+
+    let mut target_groups = Vec::with_capacity(max_group_ratios.len());
+    for (axis_key, ratio) in max_group_ratios {
+        let Some(group_keys) = groups_by_axis_and_symbol
+            .get(&(axis_key.clone(), symbol.to_owned()))
+            .filter(|groups| !groups.is_empty())
+        else {
+            return ConstraintResult::Unavailable {
+                reason: format!("{symbol} has no group assigned for axis {axis_key}"),
+            };
         };
+        target_groups.push((axis_key, ratio, group_keys));
     }
     let Some(price) = price else {
         return ConstraintResult::Unavailable {
@@ -216,18 +246,31 @@ fn compute_sector_ratio_constraint(
         };
     }
 
-    // 上限比率が 1 (100%) 以上のとき、セクター比率は上限を超え得ないため無制限。
-    let denom = price * (Decimal::ONE - ratio);
-    if denom <= Decimal::ZERO {
-        return ConstraintResult::Unlimited;
+    let mut max_additional_qty: Option<i64> = None;
+    for (axis_key, ratio, group_keys) in target_groups {
+        let denominator = price * (Decimal::ONE - ratio);
+        if denominator <= Decimal::ZERO {
+            continue;
+        }
+        for group_key in group_keys {
+            let group_value = value_by_axis_and_group
+                .get(&(axis_key.clone(), group_key.clone()))
+                .copied()
+                .unwrap_or(Decimal::ZERO);
+            let numerator = ratio * total_value - group_value;
+            let group_max = if numerator <= Decimal::ZERO {
+                0
+            } else {
+                floor_to_lot((numerator / denominator).floor().to_i64().unwrap_or(0))
+            };
+            max_additional_qty =
+                Some(max_additional_qty.map_or(group_max, |current| current.min(group_max)));
+        }
     }
-    let numerator = ratio * total_value - sector_value;
-    let max_additional_qty = if numerator <= Decimal::ZERO {
-        0
-    } else {
-        floor_to_lot((numerator / denom).floor().to_i64().unwrap_or(0))
-    };
-    ConstraintResult::Limited { max_additional_qty }
+
+    max_additional_qty.map_or(ConstraintResult::Unlimited, |max_additional_qty| {
+        ConstraintResult::Limited { max_additional_qty }
+    })
 }
 
 fn compute_cash_constraint(
@@ -295,6 +338,17 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn malformed_risk_policy_maps_to_an_internal_error() {
+        assert_eq!(
+            parse_account_risk_policy(serde_json::json!(true)),
+            Err(rmcp::ErrorData::internal_error(
+                "database error: invalid risk_policy: invalid type: boolean `true`, expected struct AccountRiskPolicyData",
+                None,
+            ))
+        );
+    }
+
     #[rstest]
     #[case::negative_headroom(Decimal::new(-1, 0), Decimal::from(1000), 0)]
     #[case::zero_headroom(Decimal::ZERO, Decimal::from(1000), 0)]
@@ -310,99 +364,107 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_ratio_is_unlimited(
-        None, Some("transport"), Some(Decimal::from(1000)), Decimal::ZERO, Decimal::ZERO, &[],
+    #[case::no_limits_is_unlimited(
+        Vec::new(), HashMap::new(), HashMap::new(), Some(Decimal::from(1000)), &[],
         ConstraintResult::Unlimited
     )]
-    #[case::no_sector_is_unavailable(
-        Some(Decimal::new(2, 1)), None, Some(Decimal::from(1000)), Decimal::ZERO, Decimal::ZERO, &[],
-        ConstraintResult::Unavailable { reason: "7203 has no sector assigned".to_string() }
+    #[case::target_without_axis_membership_is_unavailable(
+        vec![("sample-axis".to_string(), Decimal::new(2, 1))], HashMap::new(), HashMap::new(),
+        Some(Decimal::from(1000)), &[],
+        ConstraintResult::Unavailable { reason: "demo-stock has no group assigned for axis sample-axis".to_string() }
     )]
     #[case::missing_price_is_unavailable(
-        Some(Decimal::new(2, 1)), Some("transport"), None, Decimal::ZERO, Decimal::ZERO, &[],
-        ConstraintResult::Unavailable { reason: "price unavailable for 7203".to_string() }
+        vec![("sample-axis".to_string(), Decimal::new(2, 1))],
+        group_memberships(&[("sample-axis", "sample-group", "demo-stock")]), HashMap::new(), None, &[],
+        ConstraintResult::Unavailable { reason: "price unavailable for demo-stock".to_string() }
     )]
     #[case::ratio_one_is_unlimited(
-        Decimal::ONE.into(), Some("transport"), Some(Decimal::from(1000)), Decimal::from(500_000), Decimal::from(1_000_000), &[],
-        ConstraintResult::Unlimited
+        vec![("sample-axis".to_string(), Decimal::ONE)],
+        group_memberships(&[("sample-axis", "sample-group", "demo-stock")]), HashMap::new(),
+        Some(Decimal::from(1000)), &[], ConstraintResult::Unlimited
     )]
-    fn compute_sector_ratio_constraint_cases(
-        #[case] max_ratio: Option<Decimal>,
-        #[case] target_sector: Option<&str>,
+    #[case::missing_price_for_a_holding_is_unavailable(
+        vec![("sample-axis".to_string(), Decimal::new(2, 1))],
+        group_memberships(&[("sample-axis", "sample-group", "demo-stock")]), HashMap::new(),
+        Some(Decimal::from(1000)), &["demo-unpriced".to_string()],
+        ConstraintResult::Unavailable {
+            reason: "missing price for held position(s), account-wide total is unreliable: demo-unpriced".to_string()
+        }
+    )]
+    fn compute_group_ratio_constraint_cases(
+        #[case] max_group_ratios: Vec<(String, Decimal)>,
+        #[case] groups_by_axis_and_symbol: HashMap<(String, String), BTreeSet<String>>,
+        #[case] value_by_axis_and_group: HashMap<(String, String), Decimal>,
         #[case] price: Option<Decimal>,
-        #[case] sector_value: Decimal,
-        #[case] total_value: Decimal,
         #[case] missing_price_symbols: &[String],
         #[case] expected: ConstraintResult,
     ) {
         assert_eq!(
-            compute_sector_ratio_constraint(
-                max_ratio,
+            compute_group_ratio_constraint(
+                &max_group_ratios,
                 price,
-                target_sector,
-                sector_value,
-                total_value,
+                &groups_by_axis_and_symbol,
+                &value_by_axis_and_group,
+                Decimal::from(1_000_000),
                 missing_price_symbols,
-                "7203"
+                "demo-stock"
             ),
             expected
         );
     }
 
     #[test]
-    fn compute_sector_ratio_constraint_solves_for_max_additional_qty() {
-        // sector 時価 200,000 / 口座全体 300,000、上限比率 0.8、価格 1,000
-        // => (0.8*300,000 - 200,000) / (1,000*0.2) = 40,000 / 200 = 200 株
-        let result = compute_sector_ratio_constraint(
-            Some(Decimal::new(8, 1)),
-            Some(Decimal::from(1000)),
-            Some("transport"),
-            Decimal::from(200_000),
-            Decimal::from(300_000),
-            &[],
-            "7203",
-        );
+    fn limits_against_every_target_group_on_each_configured_axis() {
+        let memberships = group_memberships(&[
+            ("sample-axis", "sample-group-a", "demo-stock"),
+            ("sample-axis", "sample-group-b", "demo-stock"),
+            ("other-axis", "other-group", "demo-stock"),
+        ]);
+        let values = HashMap::from([
+            (
+                ("sample-axis".to_string(), "sample-group-a".to_string()),
+                Decimal::from(200_000),
+            ),
+            (
+                ("sample-axis".to_string(), "sample-group-b".to_string()),
+                Decimal::from(750_000),
+            ),
+            (
+                ("other-axis".to_string(), "other-group".to_string()),
+                Decimal::from(350_000),
+            ),
+        ]);
+
         assert_eq!(
-            result,
+            compute_group_ratio_constraint(
+                &[
+                    ("sample-axis".to_string(), Decimal::new(8, 1)),
+                    ("other-axis".to_string(), Decimal::new(5, 1)),
+                ],
+                Some(Decimal::from(1000)),
+                &memberships,
+                &values,
+                Decimal::from(1_000_000),
+                &[],
+                "demo-stock",
+            ),
             ConstraintResult::Limited {
-                max_additional_qty: 200
+                max_additional_qty: 200,
             }
         );
     }
 
-    #[rstest]
-    #[case::missing_price_symbols_is_unavailable(
-        Some(Decimal::new(2, 1)),
-        Some("transport"),
-        Some(Decimal::from(1000)),
-        Decimal::ZERO,
-        Decimal::ZERO,
-        &["6758".to_string()],
-        ConstraintResult::Unavailable {
-            reason: "missing price for held position(s), account-wide total is unreliable: 6758".to_string()
+    fn group_memberships(
+        memberships: &[(&str, &str, &str)],
+    ) -> HashMap<(String, String), BTreeSet<String>> {
+        let mut grouped = HashMap::new();
+        for (axis_key, group_key, stock_id) in memberships {
+            grouped
+                .entry((axis_key.to_string(), stock_id.to_string()))
+                .or_insert_with(BTreeSet::new)
+                .insert(group_key.to_string());
         }
-    )]
-    fn compute_sector_ratio_constraint_missing_prices(
-        #[case] max_ratio: Option<Decimal>,
-        #[case] target_sector: Option<&str>,
-        #[case] price: Option<Decimal>,
-        #[case] sector_value: Decimal,
-        #[case] total_value: Decimal,
-        #[case] missing_price_symbols: &[String],
-        #[case] expected: ConstraintResult,
-    ) {
-        assert_eq!(
-            compute_sector_ratio_constraint(
-                max_ratio,
-                price,
-                target_sector,
-                sector_value,
-                total_value,
-                missing_price_symbols,
-                "7203"
-            ),
-            expected
-        );
+        grouped
     }
 
     #[rstest]
@@ -412,7 +474,7 @@ mod tests {
     )]
     #[case::missing_price_is_unavailable(
         Some(Decimal::from(1_000_000)), None,
-        ConstraintResult::Unavailable { reason: "price unavailable for 7203".to_string() }
+        ConstraintResult::Unavailable { reason: "price unavailable for demo-stock".to_string() }
     )]
     #[case::computes_from_unused_amount(
         Some(Decimal::from(1_000_000)), Some(Decimal::from(1000)),
@@ -428,7 +490,7 @@ mod tests {
         #[case] expected: ConstraintResult,
     ) {
         assert_eq!(
-            compute_cash_constraint(unused_investable_amount, price, "7203"),
+            compute_cash_constraint(unused_investable_amount, price, "demo-stock"),
             expected
         );
     }
@@ -443,29 +505,29 @@ mod tests {
     #[case::any_unavailable_poisons_overall(
         ConstraintResult::Unavailable { reason: "x".to_string() },
         ConstraintResult::Limited { max_additional_qty: 50 },
-        ConstraintResult::Unavailable { reason: "sector_ratio: x".to_string() },
+        ConstraintResult::Unavailable { reason: "group_ratios: x".to_string() },
         None
     )]
     #[case::picks_minimum_limited(
         ConstraintResult::Limited { max_additional_qty: 1000 },
         ConstraintResult::Limited { max_additional_qty: 1800 },
         ConstraintResult::Limited { max_additional_qty: 1000 },
-        Some("sector_ratio")
+        Some("group_ratios")
     )]
     #[case::ties_prefer_earlier_constraint(
         ConstraintResult::Limited { max_additional_qty: 1000 },
         ConstraintResult::Limited { max_additional_qty: 1000 },
         ConstraintResult::Limited { max_additional_qty: 1000 },
-        Some("sector_ratio")
+        Some("group_ratios")
     )]
     fn combine_constraints_cases(
-        #[case] sector_ratio: ConstraintResult,
+        #[case] group_ratios: ConstraintResult,
         #[case] cash: ConstraintResult,
         #[case] expected_max_qty: ConstraintResult,
         #[case] expected_binding: Option<&str>,
     ) {
         let (max_qty, binding_constraint) =
-            combine_constraints([("sector_ratio", &sector_ratio), ("cash", &cash)]);
+            combine_constraints([("group_ratios", &group_ratios), ("cash", &cash)]);
         assert_eq!(max_qty, expected_max_qty);
         assert_eq!(binding_constraint, expected_binding.map(str::to_string));
     }
@@ -480,12 +542,15 @@ mod integration_tests {
     use sea_orm::EntityTrait;
     use uuid::Uuid;
 
+    use core_domain::bar::{Bar, Timeframe};
+
     use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::models::{Bar, Timeframe};
     use core_application::change_history::Actor;
     use core_application::strategy_scope::StrategyScope;
-    use gateway_postgres::entities::{instruments, sector, stock, trade};
+    use gateway_postgres::entities::{
+        group_axis, instruments, stock, stock_group, stock_group_member, trade,
+    };
     use gateway_postgres::repositories::bars::upsert_bars;
 
     async fn seed_trade(
@@ -544,30 +609,11 @@ mod integration_tests {
         .expect("seed bar");
     }
 
-    async fn insert_stock(
-        db: &impl sea_orm::ConnectionTrait,
-        symbol: &str,
-        sector_id: Option<&str>,
-    ) {
-        if let Some(sector_id) = sector_id {
-            sector::Entity::insert(sector::ActiveModel {
-                id: Set(sector_id.to_string()),
-                name: Set(sector_id.to_string()),
-            })
-            .on_conflict(
-                sea_orm::sea_query::OnConflict::column(sector::Column::Id)
-                    .do_nothing()
-                    .to_owned(),
-            )
-            .exec_without_returning(db)
-            .await
-            .expect("insert test sector");
-        }
+    async fn insert_stock(db: &impl sea_orm::ConnectionTrait, symbol: &str) {
         stock::ActiveModel {
             id: Set(symbol.to_string()),
             name: Set(symbol.to_string()),
             market: Set(None),
-            sector_id: Set(sector_id.map(str::to_string)),
             product_category: Set(None),
             created_at: NotSet,
             updated_at: NotSet,
@@ -577,13 +623,59 @@ mod integration_tests {
         .expect("insert test stock");
     }
 
-    async fn set_max_sector_ratio(db: &gateway_postgres::DatabaseHandle, ratio: &str) {
+    async fn insert_group_axis(db: &impl sea_orm::ConnectionTrait) -> Uuid {
+        let id = Uuid::new_v4();
+        group_axis::Entity::insert(group_axis::ActiveModel {
+            id: Set(id),
+            key: Set("sample-axis".to_string()),
+            name: Set("Sample axis".to_string()),
+            description: Set("Sample axis for tests".to_string()),
+            sync_source: Set(None),
+        })
+        .exec(db)
+        .await
+        .expect("insert test group axis");
+        id
+    }
+
+    async fn insert_stock_group(
+        db: &impl sea_orm::ConnectionTrait,
+        axis_id: Uuid,
+        key: &str,
+        stock_ids: &[&str],
+    ) {
+        let group_id = Uuid::new_v4();
+        stock_group::Entity::insert(stock_group::ActiveModel {
+            id: Set(group_id),
+            axis_id: Set(axis_id),
+            key: Set(key.to_string()),
+            name: Set("Sample group".to_string()),
+            description: Set(None),
+        })
+        .exec(db)
+        .await
+        .expect("insert test stock group");
+        for stock_id in stock_ids {
+            stock_group_member::Entity::insert(stock_group_member::ActiveModel {
+                stock_id: Set((*stock_id).to_string()),
+                group_id: Set(group_id),
+                created_at: NotSet,
+            })
+            .exec(db)
+            .await
+            .expect("insert test stock group member");
+        }
+    }
+
+    async fn set_max_group_ratio(db: &gateway_postgres::DatabaseHandle, ratio: &str) {
         let use_cases = crate::services::use_cases::build_use_cases(db.clone());
         use_cases
             .account_risk_policies()
-            .save(serde_json::json!({ "max_sector_ratio": ratio }))
+            .save(serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": ratio }]
+            }))
             .await
-            .expect("set max_sector_ratio");
+            .expect("set max_group_ratios");
     }
 
     async fn record_investable_amount(
@@ -609,14 +701,14 @@ mod integration_tests {
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
-        seed_bar(&db, "7203", 1000).await;
+        seed_bar(&db, "demo-stock", 1000).await;
         let server = build_server(db);
 
         let result = server
             .check_buyable_qty_inner(
                 strategy_id,
                 CheckBuyableQtyParams {
-                    symbol: "7203".to_string(),
+                    symbol: "demo-stock".to_string(),
                 },
             )
             .await
@@ -625,12 +717,12 @@ mod integration_tests {
         assert_eq!(
             result,
             CheckBuyableQtyResult {
-                symbol: "7203".to_string(),
+                symbol: "demo-stock".to_string(),
                 lot_size: 100,
                 current_qty: 0.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_sector_ratio: ConstraintResult::Unlimited,
+                max_qty_by_group_ratios: ConstraintResult::Unlimited,
                 max_qty_by_cash: ConstraintResult::Limited {
                     max_additional_qty: 1000
                 },
@@ -643,19 +735,21 @@ mod integration_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn sector_ratio_binds_across_strategies(db: gateway_postgres::DatabaseHandle) {
+    async fn group_ratio_binds_across_strategies(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
-        insert_stock(&db, "7203", Some("transport")).await;
-        insert_stock(&db, "7267", Some("transport")).await;
-        insert_stock(&db, "6758", Some("tech")).await;
-        seed_trade(&db, strategy_a, "7203", 100, 1000).await;
-        seed_trade(&db, strategy_b, "7267", 200, 500).await;
-        seed_trade(&db, strategy_b, "6758", 50, 2000).await;
-        seed_bar(&db, "7203", 1000).await;
-        seed_bar(&db, "7267", 500).await;
-        seed_bar(&db, "6758", 2000).await;
-        set_max_sector_ratio(&db, "0.8").await;
+        insert_stock(&db, "demo-stock").await;
+        insert_stock(&db, "demo-peer").await;
+        insert_stock(&db, "demo-other").await;
+        let axis_id = insert_group_axis(&db).await;
+        insert_stock_group(&db, axis_id, "sample-group", &["demo-stock", "demo-peer"]).await;
+        seed_trade(&db, strategy_a, "demo-stock", 100, 1000).await;
+        seed_trade(&db, strategy_b, "demo-peer", 200, 500).await;
+        seed_trade(&db, strategy_b, "demo-other", 50, 2000).await;
+        seed_bar(&db, "demo-stock", 1000).await;
+        seed_bar(&db, "demo-peer", 500).await;
+        seed_bar(&db, "demo-other", 2000).await;
+        set_max_group_ratio(&db, "0.8").await;
         record_investable_amount(&db, strategy_a, 100_000_000).await;
         let server = build_server(db);
 
@@ -663,7 +757,7 @@ mod integration_tests {
             .check_buyable_qty_inner(
                 strategy_a,
                 CheckBuyableQtyParams {
-                    symbol: "7203".to_string(),
+                    symbol: "demo-stock".to_string(),
                 },
             )
             .await
@@ -672,12 +766,12 @@ mod integration_tests {
         assert_eq!(
             result,
             CheckBuyableQtyResult {
-                symbol: "7203".to_string(),
+                symbol: "demo-stock".to_string(),
                 lot_size: 100,
                 current_qty: 100.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_sector_ratio: ConstraintResult::Limited {
+                max_qty_by_group_ratios: ConstraintResult::Limited {
                     max_additional_qty: 200
                 },
                 max_qty_by_cash: ConstraintResult::Limited {
@@ -686,7 +780,7 @@ mod integration_tests {
                 max_qty: ConstraintResult::Limited {
                     max_additional_qty: 200
                 },
-                binding_constraint: Some("sector_ratio".to_string()),
+                binding_constraint: Some("group_ratios".to_string()),
             }
         );
     }
@@ -696,16 +790,19 @@ mod integration_tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
-        set_max_sector_ratio(&db, "0.2").await;
+        let axis_id = insert_group_axis(&db).await;
+        insert_stock(&db, "demo-stock").await;
+        insert_stock_group(&db, axis_id, "sample-group", &["demo-stock"]).await;
+        set_max_group_ratio(&db, "0.2").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
-        // "7203" の bar を意図的に seed しない (価格取得不可を再現)
+        // 対象銘柄の bar を意図的に seed しない (価格取得不可を再現)
         let server = build_server(db);
 
         let result = server
             .check_buyable_qty_inner(
                 strategy_id,
                 CheckBuyableQtyParams {
-                    symbol: "7203".to_string(),
+                    symbol: "demo-stock".to_string(),
                 },
             )
             .await
@@ -714,19 +811,19 @@ mod integration_tests {
         assert_eq!(
             result,
             CheckBuyableQtyResult {
-                symbol: "7203".to_string(),
+                symbol: "demo-stock".to_string(),
                 lot_size: 100,
                 current_qty: 0.0,
                 current_price: None,
                 priced_at: None,
-                max_qty_by_sector_ratio: ConstraintResult::Unavailable {
-                    reason: "7203 has no sector assigned".to_string()
+                max_qty_by_group_ratios: ConstraintResult::Unavailable {
+                    reason: "price unavailable for demo-stock".to_string()
                 },
                 max_qty_by_cash: ConstraintResult::Unavailable {
-                    reason: "price unavailable for 7203".to_string()
+                    reason: "price unavailable for demo-stock".to_string()
                 },
                 max_qty: ConstraintResult::Unavailable {
-                    reason: "sector_ratio: 7203 has no sector assigned".to_string()
+                    reason: "group_ratios: price unavailable for demo-stock".to_string()
                 },
                 binding_constraint: None,
             }
@@ -734,21 +831,22 @@ mod integration_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn sector_ratio_is_unavailable_when_target_has_no_sector(
+    async fn group_ratio_is_unavailable_when_target_has_no_group_for_axis(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
-        set_max_sector_ratio(&db, "0.2").await;
+        insert_group_axis(&db).await;
+        set_max_group_ratio(&db, "0.2").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
-        seed_bar(&db, "7203", 1000).await;
-        // "7203" は stock 行を作らない (sector_id 不明を再現)
+        seed_bar(&db, "demo-stock", 1000).await;
+        // 対象銘柄に分類軸の所属グループを設定しない。
         let server = build_server(db);
 
         let result = server
             .check_buyable_qty_inner(
                 strategy_id,
                 CheckBuyableQtyParams {
-                    symbol: "7203".to_string(),
+                    symbol: "demo-stock".to_string(),
                 },
             )
             .await
@@ -757,19 +855,20 @@ mod integration_tests {
         assert_eq!(
             result,
             CheckBuyableQtyResult {
-                symbol: "7203".to_string(),
+                symbol: "demo-stock".to_string(),
                 lot_size: 100,
                 current_qty: 0.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_sector_ratio: ConstraintResult::Unavailable {
-                    reason: "7203 has no sector assigned".to_string()
+                max_qty_by_group_ratios: ConstraintResult::Unavailable {
+                    reason: "demo-stock has no group assigned for axis sample-axis".to_string()
                 },
                 max_qty_by_cash: ConstraintResult::Limited {
                     max_additional_qty: 1000
                 },
                 max_qty: ConstraintResult::Unavailable {
-                    reason: "sector_ratio: 7203 has no sector assigned".to_string()
+                    reason: "group_ratios: demo-stock has no group assigned for axis sample-axis"
+                        .to_string()
                 },
                 binding_constraint: None,
             }
@@ -777,17 +876,19 @@ mod integration_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn sector_ratio_is_unavailable_when_a_held_position_price_is_missing(
+    async fn group_ratio_is_unavailable_when_a_held_position_price_is_missing(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
-        insert_stock(&db, "7203", Some("transport")).await;
-        insert_stock(&db, "9999", Some("tech")).await;
-        seed_trade(&db, strategy_id, "7203", 100, 1000).await;
-        seed_trade(&db, strategy_id, "9999", 10, 100).await;
-        seed_bar(&db, "7203", 1000).await;
-        // "9999" の bar は意図的に seed しない
-        set_max_sector_ratio(&db, "0.2").await;
+        insert_stock(&db, "demo-stock").await;
+        insert_stock(&db, "demo-unpriced").await;
+        let axis_id = insert_group_axis(&db).await;
+        insert_stock_group(&db, axis_id, "sample-group", &["demo-stock"]).await;
+        seed_trade(&db, strategy_id, "demo-stock", 100, 1000).await;
+        seed_trade(&db, strategy_id, "demo-unpriced", 10, 100).await;
+        seed_bar(&db, "demo-stock", 1000).await;
+        // もう一方の保有銘柄の bar は意図的に seed しない
+        set_max_group_ratio(&db, "0.2").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
         let server = build_server(db);
 
@@ -795,7 +896,7 @@ mod integration_tests {
             .check_buyable_qty_inner(
                 strategy_id,
                 CheckBuyableQtyParams {
-                    symbol: "7203".to_string(),
+                    symbol: "demo-stock".to_string(),
                 },
             )
             .await
@@ -804,14 +905,14 @@ mod integration_tests {
         assert_eq!(
             result,
             CheckBuyableQtyResult {
-                symbol: "7203".to_string(),
+                symbol: "demo-stock".to_string(),
                 lot_size: 100,
                 current_qty: 100.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_sector_ratio: ConstraintResult::Unavailable {
+                max_qty_by_group_ratios: ConstraintResult::Unavailable {
                     reason:
-                        "missing price for held position(s), account-wide total is unreliable: 9999"
+                        "missing price for held position(s), account-wide total is unreliable: demo-unpriced"
                             .to_string()
                 },
                 max_qty_by_cash: ConstraintResult::Limited {
@@ -819,7 +920,7 @@ mod integration_tests {
                 },
                 max_qty: ConstraintResult::Unavailable {
                     reason:
-                        "sector_ratio: missing price for held position(s), account-wide total is unreliable: 9999"
+                        "group_ratios: missing price for held position(s), account-wide total is unreliable: demo-unpriced"
                             .to_string()
                 },
                 binding_constraint: None,

@@ -50,8 +50,8 @@ impl StrategyServer {
         let limit = clamp_limit(params.limit);
         let (code_from, code_to) = code_range(&params.symbol);
         let rows = self
-            .use_cases
-            .short_sale_reports()
+            .dependencies
+            .short_sale_reports
             .read(
                 scope,
                 ShortSaleReportQuery {

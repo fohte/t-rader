@@ -15,8 +15,8 @@ impl StrategyServer {
         params: ReadValuationParams,
     ) -> Result<ReadValuationResult, McpError> {
         let valuations = self
-            .use_cases
-            .valuations()
+            .dependencies
+            .valuations
             .find_for_symbol(scope.into(), &params.symbol, params.from, params.to)
             .await
             .map_err(valuation_error)?;

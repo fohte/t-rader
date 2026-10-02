@@ -15,7 +15,7 @@ use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::kata_exec::{ExecRequest, KataExecError};
+use core_application::kata_exec::{ExecRequest, KataExecError};
 
 use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
 use super::{
@@ -52,8 +52,8 @@ impl StrategyServer {
         )?;
 
         let indicator = self
-            .use_cases
-            .custom_indicators()
+            .dependencies
+            .custom_indicators
             .resolve(strategy_scope, name)
             .await
             .map_err(|e| internal_error(format!("failed to resolve indicator: {e}")))?

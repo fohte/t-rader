@@ -296,7 +296,7 @@ impl StrategyServer {
     /// 指定銘柄をあと何株買えるかを、制約ごとの上限株数とともに返す
     #[tool(
         name = "check_buyable_qty",
-        description = "Calculate how many more shares of a symbol can be bought, per constraint (account-wide sector ratio cap and the strategy's remaining unused investable amount), plus the overall minimum and which constraint is binding. Works for symbols not currently held (current_qty is 0). max_additional_qty values are floored to 100-share lots (see lot_size). A constraint with no configured cap reports status=unlimited; a constraint that cannot be computed (missing price, missing sector, no investable amount recorded) reports status=unavailable with a reason instead of a possibly-wrong number, and poisons the overall max_qty to unavailable too.",
+        description = "Calculate how many more shares of a symbol can be bought, per constraint (account-wide group ratio caps for each configured group axis and the strategy's remaining unused investable amount), plus the overall minimum and which constraint is binding. Each configured axis checks every group containing the target symbol. Works for symbols not currently held (current_qty is 0). max_additional_qty values are floored to 100-share lots (see lot_size). A constraint with no configured cap reports status=unlimited; a constraint that cannot be computed (missing price, missing group membership for a configured axis, or no investable amount recorded) reports status=unavailable with a reason instead of a possibly-wrong number, and poisons the overall max_qty to unavailable too.",
         annotations(read_only_hint = true)
     )]
     async fn check_buyable_qty(
@@ -345,7 +345,7 @@ impl StrategyServer {
     /// 業種別の空売りの売買代金と空売り比率を日ごとに返す
     #[tool(
         name = "read_sector_short_ratio",
-        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is the same 33-sector name used by the sector table / check_buyable_qty; unrecognized names are rejected. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
+        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is the key of a group on the axis whose sync_source is jquants (the J-Quants 33-sector name); unrecognized keys are rejected. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
         annotations(read_only_hint = true)
     )]
     async fn read_sector_short_ratio(

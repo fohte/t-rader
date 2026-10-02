@@ -11,7 +11,7 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct DailyBarsIngest;
 
 impl TaskHandler for DailyBarsIngest {
-    const IDENTIFIER: &'static str = "daily_bars_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::DAILY_BARS_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(
