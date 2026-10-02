@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadShortSaleReportsParams {
     /// 対象銘柄コード (4桁、例: "7203")
     pub symbol: String,
@@ -18,6 +18,7 @@ pub struct ReadShortSaleReportsParams {
 /// 空売り残高報告 (J-Quants `/markets/short-sale-report`) の 1 件。報告義務は残高割合
 /// 0.5% 以上の空売りにのみ生じるため、この行が無いことは「空売りが無い」ことではなく
 /// 「報告義務のある空売りが無い」ことしか意味しない。
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ShortSaleReportDto {
     /// 公表日
@@ -47,6 +48,7 @@ pub struct ShortSaleReportDto {
     pub notes: Option<String>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadShortSaleReportsResult {
     pub symbol: String,
@@ -54,7 +56,7 @@ pub struct ReadShortSaleReportsResult {
     pub items: Vec<ShortSaleReportDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadSectorShortRatioParams {
     /// `sync_source = 'jquants'` の分類軸にあるグループ key
     pub sector: String,
@@ -67,6 +69,7 @@ pub struct ReadSectorShortRatioParams {
 
 /// 業種別空売り比率 (J-Quants `/markets/short-ratio`) の 1 日分。その業種で売買が無かった
 /// 日は 4 フィールドすべて null
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct SectorShortRatioDto {
     pub date: NaiveDate,
@@ -81,6 +84,7 @@ pub struct SectorShortRatioDto {
     pub short_ratio: Option<f64>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadSectorShortRatioResult {
     pub sector: String,

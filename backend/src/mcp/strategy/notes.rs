@@ -141,6 +141,3 @@ impl StrategyServer {
         })
     }
 }
-
-#[cfg(test)]
-include!("notes/tests.rs");

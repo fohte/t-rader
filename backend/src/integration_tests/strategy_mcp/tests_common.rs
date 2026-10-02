@@ -12,8 +12,8 @@ use gateway_postgres::entities::{
 
 use crate::data_provider::SharedDailyBarSource;
 
-use super::StrategyServer;
-use super::dto::{AnnotationDto, CommentDto, NoteDto};
+use super::dto::{AnnotationDto, CommentDto, ListNotesResult, NoteDto};
+use super::{StrategyServer, ToolOutput};
 
 pub(super) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
@@ -57,24 +57,34 @@ pub(super) fn build_server_with_source(
     daily_bar_source: Option<SharedDailyBarSource>,
 ) -> StrategyServer {
     let use_cases = crate::services::use_cases::build_use_cases(db);
-    StrategyServer::new(crate::mcp::strategy_server_dependencies(
-        &use_cases,
-        daily_bar_source,
-        None,
-        None,
+    StrategyServer::new(crate::mcp::StrategyServer::new(
+        crate::mcp::strategy_server_dependencies(&use_cases, daily_bar_source, None, None),
     ))
 }
 
 /// DTO の比較で動的な timestamp を差し替えるための sentinel 値。
-pub(in crate::mcp) fn ts_sentinel() -> DateTime<FixedOffset> {
+pub(super) fn ts_sentinel() -> DateTime<FixedOffset> {
     chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset()
 }
 
-pub(super) fn normalize_note(mut n: NoteDto) -> NoteDto {
-    n.version_id = Uuid::nil();
-    n.created_at = ts_sentinel();
-    n.updated_at = ts_sentinel();
-    n
+pub(super) fn normalize_note(n: ToolOutput<NoteDto>) -> ToolOutput<NoteDto> {
+    n.normalize_json(|value| {
+        value["version_id"] = serde_json::json!(Uuid::nil());
+        value["created_at"] = serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+        value["updated_at"] = serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+    })
+}
+
+pub(super) fn normalize_list_notes(
+    notes: ToolOutput<ListNotesResult>,
+) -> ToolOutput<ListNotesResult> {
+    notes.normalize_json(|value| {
+        for note in value["notes"].as_array_mut().expect("notes are an array") {
+            note["version_id"] = serde_json::json!(Uuid::nil());
+            note["created_at"] = serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+            note["updated_at"] = serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+        }
+    })
 }
 
 pub(super) fn normalize_annotation(mut a: AnnotationDto) -> AnnotationDto {

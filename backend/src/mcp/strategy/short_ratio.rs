@@ -137,49 +137,12 @@ impl StrategyServer {
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
-    use core_application::short_ratio::ShortRatioRepository;
-    use core_domain::short_ratio::ShortRatio;
+    use super::{compute_short_ratio, sector33_code_for_group_key};
     use rstest::rstest;
     use rust_decimal::Decimal;
-    use sea_orm::{DatabaseBackend, MockDatabase};
-    use uuid::Uuid;
-
-    use gateway_postgres::{DatabaseHandle, PostgresShortRatioRepository};
-
-    use super::super::dto::{
-        ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto,
-    };
-    use super::super::tests_common::build_server;
-    use super::{compute_short_ratio, sector33_code_for_group_key};
-
-    fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap()
-    }
 
     fn dec(s: &str) -> Decimal {
         s.parse().unwrap()
-    }
-
-    fn ratio(
-        date: NaiveDate,
-        sector33_code: &str,
-        values: Option<(&str, &str, &str)>,
-    ) -> ShortRatio {
-        let (
-            sell_excluding_short_value,
-            short_with_restriction_value,
-            short_without_restriction_value,
-        ) = values.map_or((None, None, None), |(sell, with_r, without_r)| {
-            (Some(dec(sell)), Some(dec(with_r)), Some(dec(without_r)))
-        });
-        ShortRatio {
-            date,
-            sector33_code: sector33_code.into(),
-            sell_excluding_short_value,
-            short_with_restriction_value,
-            short_without_restriction_value,
-        }
     }
 
     #[rstest]
@@ -204,79 +167,6 @@ mod tests {
         assert_eq!(
             compute_short_ratio(sell_excluding_short, with_restriction, without_restriction),
             expected,
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_unknown_group_key() {
-        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
-        let error = build_server(db)
-            .read_sector_short_ratio_inner(
-                Uuid::new_v4(),
-                ReadSectorShortRatioParams {
-                    sector: "合成業種".into(),
-                    from: None,
-                    to: None,
-                    limit: None,
-                },
-            )
-            .await
-            .expect_err("unknown group key should be rejected");
-
-        assert_eq!(
-            (error.code, error.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                "unknown J-Quants industry group key: \"合成業種\"",
-            ),
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn reads_sector_rows_and_maps_values_to_result(db: DatabaseHandle) {
-        PostgresShortRatioRepository::new(db.clone())
-            .upsert(vec![
-                ratio(ymd(2025, 1, 5), "9999", Some(("700", "200", "100"))),
-                ratio(ymd(2025, 1, 6), "9999", None),
-                ratio(ymd(2025, 1, 6), "9050", Some(("100", "50", "50"))),
-            ])
-            .await
-            .expect("seed short ratios");
-
-        let result = build_server(db)
-            .read_sector_short_ratio_inner(
-                Uuid::new_v4(),
-                ReadSectorShortRatioParams {
-                    sector: "その他".into(),
-                    from: Some(ymd(2025, 1, 5)),
-                    to: Some(ymd(2025, 1, 6)),
-                    limit: Some(5),
-                },
-            )
-            .await
-            .expect("read short ratio");
-
-        assert_eq!(
-            result,
-            ReadSectorShortRatioResult {
-                sector: "その他".into(),
-                items: vec![
-                    SectorShortRatioDto {
-                        date: ymd(2025, 1, 6),
-                        sell_excluding_short_value: None,
-                        short_with_restriction_value: None,
-                        short_without_restriction_value: None,
-                        short_ratio: None,
-                    },
-                    SectorShortRatioDto {
-                        date: ymd(2025, 1, 5),
-                        sell_excluding_short_value: Some(700.0),
-                        short_with_restriction_value: Some(200.0),
-                        short_without_restriction_value: Some(100.0),
-                        short_ratio: Some(0.3),
-                    },
-                ],
-            },
         );
     }
 }

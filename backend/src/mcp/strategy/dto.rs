@@ -15,7 +15,7 @@ fn any_json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Sche
     serde_json::Map::new().into()
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct QueryDataParams {
     /// 対象銘柄コードの配列。1 回の呼び出しで複数銘柄をまとめて取得できる
     /// (最大 100 件、重複不可)
@@ -26,6 +26,7 @@ pub struct QueryDataParams {
     pub to: NaiveDate,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct BarDto {
     pub timestamp: DateTime<FixedOffset>,
@@ -37,12 +38,14 @@ pub struct BarDto {
 }
 
 /// 1 銘柄分の日足バー。データが 1 件も無い銘柄は `bars: []` になる
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct InstrumentBarsDto {
     pub instrument_id: String,
     pub bars: Vec<BarDto>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct QueryDataResult {
     /// `instrument_ids` と同じ順序
@@ -50,6 +53,7 @@ pub struct QueryDataResult {
 }
 
 /// 銘柄ごとの未決済ポジションと損益 (FIFO ベース)
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct PortfolioPositionDto {
     pub symbol: String,
@@ -70,6 +74,7 @@ pub struct PortfolioPositionDto {
 }
 
 /// 口座全体、または単一戦略のポジション集計
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct PortfolioScopeDto {
     pub trade_count: i64,
@@ -81,6 +86,7 @@ pub struct PortfolioScopeDto {
 }
 
 /// 戦略単位のポジション集計 + 投資可能額
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct StrategyPortfolioScopeDto {
     pub trade_count: i64,
@@ -93,6 +99,7 @@ pub struct StrategyPortfolioScopeDto {
     pub unused_investable_amount: Option<f64>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadPortfolioResult {
     /// 保有時価の評価に用いた対象営業日。current_price を持つ全ポジションに共通する日付
@@ -105,6 +112,7 @@ pub struct ReadPortfolioResult {
 }
 
 /// 個々の約定 (account-wide、全戦略横断)
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct TradeDto {
     pub trade_id: Uuid,
@@ -120,13 +128,14 @@ pub struct TradeDto {
     pub notes: Vec<TradeNoteReferenceDto>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct TradeNoteReferenceDto {
     pub note_id: Uuid,
     pub note_version_id: Uuid,
 }
 
-#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct ReadTradesParams {
     /// この銘柄コードに一致する取引のみ返す。省略時は全銘柄
     pub symbol: Option<String>,
@@ -135,18 +144,20 @@ pub struct ReadTradesParams {
     pub limit: Option<u32>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadTradesResult {
     pub trades: Vec<TradeDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct CheckBuyableQtyParams {
     /// 対象銘柄コード (例: "7203")
     pub symbol: String,
 }
 
 /// 制約単位の追加購入可能株数。
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ConstraintResult {
@@ -158,6 +169,7 @@ pub enum ConstraintResult {
     Unavailable { reason: String },
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct CheckBuyableQtyResult {
     pub symbol: String,
@@ -183,7 +195,7 @@ pub struct CheckBuyableQtyResult {
     pub binding_constraint: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
@@ -206,19 +218,21 @@ pub struct WriteNoteParams {
     pub graphs: Option<Vec<GraphDef>>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadNoteParams {
     pub note_id: Uuid,
     /// 省略時は現行バージョンを読む。
     pub version_id: Option<Uuid>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct NoteLinkDto {
     /// 参照先ノート ID。
@@ -227,6 +241,7 @@ pub struct NoteLinkDto {
     pub to_version_id: Option<Uuid>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
@@ -251,6 +266,7 @@ pub struct NoteDto {
     pub links: Option<Vec<NoteLinkDto>>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct NoteKindDto {
     pub key: String,
@@ -260,12 +276,13 @@ pub struct NoteKindDto {
     pub sort_order: i32,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ListNoteKindsResult {
     pub note_kinds: Vec<NoteKindDto>,
 }
 
-#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[derive(Debug, Default, Deserialize, Serialize, JsonSchema)]
 pub struct ListNotesParams {
     pub limit: Option<u32>,
     /// 指定した note_kind のノートだけを返す
@@ -283,12 +300,13 @@ pub struct ListNotesParams {
     pub include_pending: Option<bool>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ListNotesResult {
     pub notes: Vec<NoteDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct CreateAnnotationParams {
     pub target_symbol: String,
     pub target_kind: String,
@@ -298,6 +316,7 @@ pub struct CreateAnnotationParams {
     pub linked_note_id: Option<Uuid>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct AnnotationDto {
     pub annotation_id: Uuid,
@@ -314,23 +333,25 @@ pub struct AnnotationDto {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct CreateAnnotationResult {
     pub annotation: AnnotationDto,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadAnnotationsParams {
     pub target_symbol: Option<String>,
     pub limit: Option<u32>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadAnnotationsResult {
     pub annotations: Vec<AnnotationDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadCommentsParams {
     /// "note_version" | "annotation"
     pub target_kind: String,
@@ -339,6 +360,7 @@ pub struct ReadCommentsParams {
     pub resolved: Option<bool>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct CommentDto {
     pub comment_id: Uuid,
@@ -360,35 +382,38 @@ pub struct CommentDto {
     pub end_line: Option<i32>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ReadCommentsResult {
     pub comments: Vec<CommentDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ResolveCommentParams {
     pub comment_id: Uuid,
     pub resolved: bool,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ResolveCommentResult {
     pub comment: CommentDto,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReplyCommentParams {
     /// 返信先コメント ID
     pub parent_id: Uuid,
     pub body: String,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ReplyCommentResult {
     pub comment: CommentDto,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EvalPythonParams {
     /// 実行する Python コード本体 (utf-8)
     pub code: String,
@@ -401,6 +426,7 @@ pub struct EvalPythonParams {
     pub max_output_bytes: Option<u32>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct EvalPythonResult {
     pub stdout: String,
@@ -408,7 +434,7 @@ pub struct EvalPythonResult {
     pub exit_code: i32,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EvalIndicatorParams {
     /// 評価する indicator の name。戦略 scope に同名があれば優先、無ければ global を採用する。
     pub name: String,
@@ -422,7 +448,7 @@ pub struct EvalIndicatorParams {
     pub max_output_bytes: Option<u32>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct QueryMediaParams {
     /// 動画/音声の URL。YouTube の公開動画 URL を推奨。他の公開 https:// URL も試行できるが、
     /// モデル側で取得できない場合はエラーになる。
@@ -431,17 +457,19 @@ pub struct QueryMediaParams {
     pub prompt: String,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct QueryMediaResult {
     pub text: String,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SearchWebParams {
     /// 検索したい内容を表す自然文の問い合わせ
     pub query: String,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct SearchWebResult {
     pub text: String,
@@ -449,6 +477,7 @@ pub struct SearchWebResult {
     pub citations: Vec<String>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct EvalIndicatorResult {
     /// 評価された indicator の id。
@@ -467,7 +496,7 @@ pub struct EvalIndicatorResult {
     pub exit_code: i32,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SearchNewsParams {
     /// title / body_snippet の部分一致 (大文字小文字を区別しない)。省略時はキーワード条件なし
     pub keyword: Option<String>,
@@ -479,6 +508,7 @@ pub struct SearchNewsParams {
 }
 
 /// `search_news` で返す記事 1 件
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NewsItemDto {
     pub id: Uuid,
@@ -489,12 +519,13 @@ pub struct NewsItemDto {
     pub published_at: DateTime<FixedOffset>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct SearchNewsResult {
     pub items: Vec<NewsItemDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadFinSummaryParams {
     /// 対象銘柄コード (4桁、例: "7203")
     pub symbol: String,
@@ -503,6 +534,7 @@ pub struct ReadFinSummaryParams {
 
 /// 財務情報テーブルの 1 開示分。記載の無い項目は null。
 /// IFRS/米国基準では ordinary_profit (経常利益) が概念自体存在せず null になる。
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct FinSummaryDto {
     /// 開示日
@@ -575,12 +607,13 @@ pub struct FinSummaryDto {
     pub next_forecast_eps: Option<f64>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadFinSummaryResult {
     pub items: Vec<FinSummaryDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RecordPredictionParams {
     /// 根拠となるノート (自戦略所有のもの)。省略可
     pub note_id: Option<Uuid>,
@@ -598,6 +631,7 @@ pub struct RecordPredictionParams {
     pub due_date: NaiveDate,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct PredictionDto {
     pub prediction_id: Uuid,
@@ -612,12 +646,13 @@ pub struct PredictionDto {
     pub created_at: DateTime<FixedOffset>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct RecordPredictionResult {
     pub prediction: PredictionDto,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ListPredictionsParams {
     pub limit: Option<u32>,
     /// 期限がこの日付以降 (inclusive) の予測のみ返す。「まだ結果が出ていない予測」を絞るときに使う
@@ -626,11 +661,13 @@ pub struct ListPredictionsParams {
     pub due_before: Option<NaiveDate>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ListPredictionsResult {
     pub predictions: Vec<PredictionDto>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct PredictionProbabilityBucketDto {
     /// 記録時の確率刻み (0.55〜0.90)
@@ -641,6 +678,7 @@ pub struct PredictionProbabilityBucketDto {
     pub hit_rate: Option<f64>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadPredictionStatsResult {
     /// 採点済み予測の件数
@@ -652,7 +690,7 @@ pub struct ReadPredictionStatsResult {
     pub buckets: Vec<PredictionProbabilityBucketDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadShareholdingStructureParams {
     /// 4桁の銘柄コード (例: "7203")
     pub symbol: String,
@@ -661,6 +699,7 @@ pub struct ReadShareholdingStructureParams {
 }
 
 /// 大量保有報告書 / 変更報告書の書類種別 (EDINET `LargeHldgTypeCode`)
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LargeVolumeDocumentType {
@@ -672,6 +711,7 @@ pub enum LargeVolumeDocumentType {
     Unknown,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct LargeVolumeHolderDto {
     pub holder_name: String,
@@ -683,6 +723,7 @@ pub struct LargeVolumeHolderDto {
     pub shares_ratio_last: Option<f64>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct LargeVolumeReportDto {
     pub doc_id: String,
@@ -698,6 +739,7 @@ pub struct LargeVolumeReportDto {
 }
 
 /// 大株主状況の書類種別 (EDINET `DocTypeCode`)
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MajorShareholdersDocumentType {
@@ -707,6 +749,7 @@ pub enum MajorShareholdersDocumentType {
     Unknown,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct MajorShareholderDto {
     /// 順位。通常 1-10 位だが件数は書類ごとに異なる
@@ -717,6 +760,7 @@ pub struct MajorShareholderDto {
     pub shares_ratio: Option<f64>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct MajorShareholdersReportDto {
     pub doc_id: String,
@@ -729,6 +773,7 @@ pub struct MajorShareholdersReportDto {
 }
 
 /// 政策保有株式の種別 (EDINET の `Spec`/`Deem` 配列の別)
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CrossShareholdingCategory {
@@ -739,6 +784,7 @@ pub enum CrossShareholdingCategory {
 }
 
 /// 保有先が当社株式を保有しているか (EDINET `IsrHoldsCode`)
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MutualHolding {
@@ -747,6 +793,7 @@ pub enum MutualHolding {
     Unknown,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct CrossShareholdingDto {
     /// 保有先の会社名
@@ -765,6 +812,7 @@ pub struct CrossShareholdingDto {
     pub mutual_holding: MutualHolding,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct CrossShareholdingsReportDto {
     pub doc_id: String,
@@ -774,6 +822,7 @@ pub struct CrossShareholdingsReportDto {
     pub holdings: Vec<CrossShareholdingDto>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadShareholdingStructureResult {
     pub symbol: String,
@@ -785,7 +834,7 @@ pub struct ReadShareholdingStructureResult {
     pub cross_shareholdings: Option<CrossShareholdingsReportDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadMacroIndicatorParams {
     /// indicator の id (例: "USDJPY", "VIX", "US10Y", "NIKKEI225")。search_refs で発見できる
     pub indicator_id: String,
@@ -795,6 +844,7 @@ pub struct ReadMacroIndicatorParams {
     pub to: NaiveDate,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct IndicatorObservationDto {
     pub date: NaiveDate,
@@ -802,6 +852,7 @@ pub struct IndicatorObservationDto {
     pub value: f64,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadMacroIndicatorResult {
     pub indicator_id: String,

@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadValuationParams {
     /// 対象銘柄コード (4 桁)
     pub symbol: String,
@@ -13,6 +13,7 @@ pub struct ReadValuationParams {
 }
 
 /// J-Quants の日次バリュエーション指標 1 件。
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ValuationDto {
     /// 指標の対象日
@@ -37,6 +38,7 @@ pub struct ValuationDto {
     pub mkt_cap: Option<f64>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadValuationResult {
     pub symbol: String,

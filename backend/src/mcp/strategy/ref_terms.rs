@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{StrategyServer, internal_error, invalid_params};
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct AddRefTermsParams {
     /// 参照型 (`stock` / `indicator` / `group`)
     pub ref_kind: String,
@@ -26,19 +26,21 @@ pub struct AddRefTermsParams {
     pub terms: Vec<String>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct AddRefTermsResult {
     /// 新規に追加された語 (既に登録済みだった語や空文字は含まない)
     pub added: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RemoveRefTermsParams {
     pub ref_kind: String,
     pub ref_id: String,
     pub terms: Vec<String>,
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct RemoveRefTermsResult {
     /// 実際に削除された語 (登録されていなかった語は含まない)
@@ -98,175 +100,5 @@ fn ref_terms_error(error: RefUseCaseError) -> McpError {
             tracing::error!(error = %error, "strategy mcp ref terms failed");
             internal_error("reference transaction has an unexpected type")
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::EntityTrait;
-
-    use super::super::tests_common::build_server;
-    use super::{AddRefTermsParams, RemoveRefTermsParams};
-    use gateway_postgres::entities::ref_term;
-
-    async fn seed_term(
-        db: &impl sea_orm::ConnectionTrait,
-        ref_kind: &str,
-        ref_id: &str,
-        term: &str,
-    ) {
-        ref_term::ActiveModel {
-            ref_kind: Set(ref_kind.into()),
-            ref_id: Set(ref_id.into()),
-            term: Set(term.into()),
-            origin: Set("human".into()),
-            created_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("seed ref_term");
-    }
-
-    #[backend_test_macros::database_test]
-    async fn add_ref_terms_inserts_new_terms(db: gateway_postgres::DatabaseHandle) {
-        let server = build_server(db);
-
-        let result = server
-            .add_ref_terms_inner(AddRefTermsParams {
-                ref_kind: "stock".into(),
-                ref_id: "7203".into(),
-                terms: vec!["トヨタ".into(), "Toyota".into()],
-            })
-            .await
-            .expect("add_ref_terms");
-
-        assert_eq!(
-            result.added,
-            vec!["トヨタ".to_string(), "Toyota".to_string()],
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn add_ref_terms_is_idempotent_and_skips_blank_terms(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let server = build_server(db.clone());
-        seed_term(&db, "stock", "7203", "トヨタ").await;
-
-        let result = server
-            .add_ref_terms_inner(AddRefTermsParams {
-                ref_kind: "stock".into(),
-                ref_id: "7203".into(),
-                terms: vec!["トヨタ".into(), "  ".into(), "Toyota".into()],
-            })
-            .await
-            .expect("add_ref_terms");
-
-        assert_eq!(result.added, vec!["Toyota".to_string()]);
-    }
-
-    #[backend_test_macros::database_test]
-    async fn add_ref_terms_rejects_invalid_ref_kind(db: gateway_postgres::DatabaseHandle) {
-        let server = build_server(db);
-
-        let err = server
-            .add_ref_terms_inner(AddRefTermsParams {
-                ref_kind: "bogus".into(),
-                ref_id: "7203".into(),
-                terms: vec!["トヨタ".into()],
-            })
-            .await
-            .expect_err("invalid kind");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
-    }
-
-    #[backend_test_macros::database_test]
-    async fn add_ref_terms_rejects_empty_ref_id(db: gateway_postgres::DatabaseHandle) {
-        let server = build_server(db);
-
-        let err = server
-            .add_ref_terms_inner(AddRefTermsParams {
-                ref_kind: "stock".into(),
-                ref_id: "  ".into(),
-                terms: vec!["トヨタ".into()],
-            })
-            .await
-            .expect_err("empty ref_id");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
-    }
-
-    #[backend_test_macros::database_test]
-    async fn ref_term_operations_reject_invalid_group_ref_ids(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let server = build_server(db);
-        let add_result = server
-            .add_ref_terms_inner(AddRefTermsParams {
-                ref_kind: "group".into(),
-                ref_id: "demo-group".into(),
-                terms: vec!["Sample Group".into()],
-            })
-            .await
-            .map(|_| ())
-            .map_err(|error| error.code);
-        let remove_result = server
-            .remove_ref_terms_inner(RemoveRefTermsParams {
-                ref_kind: "group".into(),
-                ref_id: "demo-group".into(),
-                terms: vec!["Sample Group".into()],
-            })
-            .await
-            .map(|_| ())
-            .map_err(|error| error.code);
-
-        assert_eq!(
-            [add_result, remove_result],
-            [
-                Err(rmcp::model::ErrorCode::INVALID_PARAMS),
-                Err(rmcp::model::ErrorCode::INVALID_PARAMS),
-            ],
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn remove_ref_terms_deletes_only_matching_terms(db: gateway_postgres::DatabaseHandle) {
-        let server = build_server(db.clone());
-        seed_term(&db, "stock", "7203", "トヨタ").await;
-        seed_term(&db, "stock", "7203", "Toyota").await;
-        seed_term(&db, "stock", "9984", "トヨタ").await;
-
-        let result = server
-            .remove_ref_terms_inner(RemoveRefTermsParams {
-                ref_kind: "stock".into(),
-                ref_id: "7203".into(),
-                terms: vec!["トヨタ".into(), "存在しない".into()],
-            })
-            .await
-            .expect("remove_ref_terms");
-
-        assert_eq!(result.removed, vec!["トヨタ".to_string()]);
-
-        let remaining = ref_term::Entity::find()
-            .all(&db)
-            .await
-            .expect("list remaining terms");
-        assert_eq!(remaining.len(), 2);
-    }
-
-    #[backend_test_macros::database_test]
-    async fn remove_ref_terms_rejects_invalid_ref_kind(db: gateway_postgres::DatabaseHandle) {
-        let server = build_server(db);
-
-        let err = server
-            .remove_ref_terms_inner(RemoveRefTermsParams {
-                ref_kind: "bogus".into(),
-                ref_id: "7203".into(),
-                terms: vec!["トヨタ".into()],
-            })
-            .await
-            .expect_err("invalid kind");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 }

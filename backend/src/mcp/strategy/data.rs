@@ -15,7 +15,7 @@ use super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
 use super::{StrategyServer, decimal_to_f64, internal_error, invalid_params};
 
 /// 1 回の呼び出しで指定できる銘柄数の上限
-const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
+pub(super) const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
 
 impl StrategyServer {
     pub(crate) async fn query_data_inner(
@@ -126,6 +126,3 @@ impl StrategyServer {
         Ok(QueryDataResult { results })
     }
 }
-
-#[cfg(test)]
-mod tests;
