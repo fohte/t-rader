@@ -1,5 +1,4 @@
 use serde_json::{Map, Value, json};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
@@ -168,13 +167,13 @@ impl StockGroupUseCases {
             return Ok(StockGroupSyncSourceCodeLookup::Missing);
         }
 
-        let unique_codes = codes.into_iter().flatten().collect::<HashSet<_>>();
-        if unique_codes.len() != 1 {
-            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
-        }
-        let Some(code) = unique_codes.into_iter().next() else {
+        let mut codes = codes.into_iter().flatten();
+        let Some(code) = codes.next() else {
             return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
         };
+        if codes.any(|other| other != code) {
+            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
+        }
         Ok(StockGroupSyncSourceCodeLookup::Found(code))
     }
 

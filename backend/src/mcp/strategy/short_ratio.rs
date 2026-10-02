@@ -123,11 +123,9 @@ mod tests {
     use core_domain::short_ratio::ShortRatio;
     use rstest::rstest;
     use rust_decimal::Decimal;
-    use sea_orm::ActiveValue::Set;
-    use sea_orm::EntityTrait;
     use uuid::Uuid;
 
-    use gateway_postgres::entities::{group_axis, stock_group};
+    use crate::testing::insert_test_group_with_sync_source_code;
     use gateway_postgres::{DatabaseHandle, PostgresShortRatioRepository};
 
     use super::super::dto::{
@@ -163,30 +161,6 @@ mod tests {
             short_with_restriction_value,
             short_without_restriction_value,
         }
-    }
-
-    async fn insert_jquants_group(db: &DatabaseHandle, group_key: &str, source_code: Option<&str>) {
-        let axis = group_axis::Entity::insert(group_axis::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            key: Set("sample-jquants-axis".into()),
-            name: Set("Sample synchronized axis".into()),
-            description: Set("Synthetic test axis".into()),
-            sync_source: Set(Some("jquants".into())),
-        })
-        .exec_with_returning(db)
-        .await
-        .expect("insert group axis");
-        stock_group::Entity::insert(stock_group::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            axis_id: Set(axis.id),
-            key: Set(group_key.into()),
-            name: Set(group_key.into()),
-            description: Set(None),
-            sync_source_code: Set(source_code.map(str::to_owned)),
-        })
-        .exec_without_returning(db)
-        .await
-        .expect("insert stock group");
     }
 
     #[rstest]
@@ -231,7 +205,15 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reports_when_group_code_has_not_been_synchronized(db: DatabaseHandle) {
-        insert_jquants_group(&db, "その他", None).await;
+        insert_test_group_with_sync_source_code(
+            &db,
+            "sample-jquants-axis",
+            "その他",
+            "その他",
+            Some("jquants"),
+            None,
+        )
+        .await;
         let error = build_server(db)
             .read_sector_short_ratio_inner(
                 Uuid::new_v4(),
@@ -256,7 +238,24 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reads_sector_rows_and_maps_values_to_result(db: DatabaseHandle) {
-        insert_jquants_group(&db, "その他", Some("1234")).await;
+        insert_test_group_with_sync_source_code(
+            &db,
+            "sample-jquants-axis",
+            "その他",
+            "その他",
+            Some("jquants"),
+            Some("1234"),
+        )
+        .await;
+        insert_test_group_with_sync_source_code(
+            &db,
+            "sample-other-axis",
+            "その他",
+            "合成分類",
+            Some("synthetic-source"),
+            Some("5678"),
+        )
+        .await;
         PostgresShortRatioRepository::new(db.clone())
             .upsert(vec![
                 ratio(ymd(2025, 1, 5), "1234", Some(("700", "200", "100"))),
