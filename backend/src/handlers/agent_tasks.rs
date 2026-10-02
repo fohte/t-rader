@@ -6,9 +6,9 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 
-use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
+use crate::handlers::state::AgentTaskNotificationsState;
 
 const NOTIFICATION_TOKEN_HEADER: &str = "x-a2a-notification-token";
 
@@ -38,7 +38,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     )
 )]
 pub async fn receive_agent_task_notification(
-    State(state): State<AppState>,
+    State(state): State<AgentTaskNotificationsState>,
     headers: HeaderMap,
     JsonBody(_payload): JsonBody<serde_json::Value>,
 ) -> Result<StatusCode, AppError> {
@@ -46,14 +46,13 @@ pub async fn receive_agent_task_notification(
         .get(NOTIFICATION_TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
-    if !constant_time_eq(presented.as_bytes(), state.agent_webhook_token.as_bytes()) {
+    if !constant_time_eq(presented.as_bytes(), state.webhook_token.as_bytes()) {
         // トークン誤設定は定期照合の裏に隠れて気づきにくいため、運用者向けに記録する。
         tracing::warn!("agent task notification rejected: token mismatch");
         return Err(AppError::Unauthorized("invalid notification token".into()));
     }
     state
-        .use_cases
-        .strategy_task_reconcile_job()
+        .strategy_task_reconcile_job_use_cases
         .enqueue_reconciliation()
         .await
         .map_err(|error| AppError::Internal(error.to_string()))?;
@@ -106,7 +105,7 @@ mod tests {
             .post("/api/agent-tasks/notifications")
             .add_header(
                 NOTIFICATION_TOKEN_HEADER,
-                state.agent_webhook_token.as_ref(),
+                state.agent_task_notifications.webhook_token.as_ref(),
             )
             .json(&json!({"id": "task-1", "status": {"state": "completed"}}))
             .await;

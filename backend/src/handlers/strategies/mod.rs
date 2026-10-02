@@ -35,8 +35,7 @@ pub(super) async fn strategy_scope_or_404(
     id: Uuid,
 ) -> Result<StrategyScope, AppError> {
     state
-        .use_cases
-        .strategy_scope()
+        .strategy_scope_use_cases
         .verify(id)
         .await
         .map_err(|error| match error {
@@ -80,8 +79,7 @@ pub async fn list_strategies(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<StrategyResponse>>, AppError> {
     let items = state
-        .use_cases
-        .strategies()
+        .strategy_use_cases
         .list()
         .await
         .map_err(map_strategy_error)?;
@@ -109,8 +107,7 @@ pub async fn get_strategy(
 ) -> Result<Json<StrategyResponse>, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;
     let model = state
-        .use_cases
-        .strategies()
+        .strategy_use_cases
         .get(scope)
         .await
         .map_err(map_strategy_error)?;
@@ -136,8 +133,7 @@ pub async fn create_strategy(
     JsonBody(payload): JsonBody<CreateStrategyRequest>,
 ) -> Result<(StatusCode, Json<StrategyResponse>), AppError> {
     let created = state
-        .use_cases
-        .strategies()
+        .strategy_use_cases
         .create(
             Actor::Human,
             CreateStrategyCommand {
@@ -175,8 +171,7 @@ pub async fn update_strategy(
 ) -> Result<Json<StrategyResponse>, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;
     let updated = state
-        .use_cases
-        .strategies()
+        .strategy_use_cases
         .update(
             Actor::Human,
             scope,
@@ -211,8 +206,7 @@ pub async fn delete_strategy(
 ) -> Result<StatusCode, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;
     state
-        .use_cases
-        .strategies()
+        .strategy_use_cases
         .delete(Actor::Human, scope)
         .await
         .map_err(map_strategy_error)?;

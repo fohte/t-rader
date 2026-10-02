@@ -26,8 +26,7 @@ pub async fn list_trade_notes(
     JsonPath(trade_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
     let snapshots = state
-        .use_cases
-        .trade_notes()
+        .trade_note_use_cases
         .list(trade_id)
         .await
         .map_err(super::trades::map_trade_error)?
@@ -60,8 +59,7 @@ pub async fn create_trade_note(
     JsonBody(p): JsonBody<CreateTradeNoteRequest>,
 ) -> Result<(StatusCode, Json<TradeNoteResponse>), AppError> {
     let created = state
-        .use_cases
-        .trade_notes()
+        .trade_note_use_cases
         .create(trade_id, p.note_id)
         .await
         .map_err(super::trades::map_trade_error)?;
@@ -89,8 +87,7 @@ pub async fn delete_trade_note(
     JsonPath((trade_id, note_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<StatusCode, AppError> {
     state
-        .use_cases
-        .trade_notes()
+        .trade_note_use_cases
         .delete(trade_id, note_id)
         .await
         .map_err(super::trades::map_trade_error)?;

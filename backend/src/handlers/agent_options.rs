@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::State;
 
 use crate::AppState;
-use crate::mcp::StrategyServer;
 use crate::models::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 
 /// 戦略 Agent 設定フォームに供給するモデル一覧を取得する。
@@ -46,9 +45,11 @@ pub async fn get_agent_models(State(state): State<AppState>) -> Json<AgentModels
     tag = "agent_options",
     responses((status = 200, body = AgentToolsResponse)),
 )]
-pub async fn get_agent_tools() -> Json<AgentToolsResponse> {
-    let tools = StrategyServer::list_tool_summaries()
-        .into_iter()
+pub async fn get_agent_tools(State(state): State<AppState>) -> Json<AgentToolsResponse> {
+    let tools = state
+        .agent_tool_summaries
+        .iter()
+        .cloned()
         .map(|(name, description)| AgentTool { name, description })
         .collect();
     Json(AgentToolsResponse { tools })

@@ -56,8 +56,7 @@ pub async fn list_note_kinds(
 ) -> Result<Json<Vec<NoteKindResponse>>, AppError> {
     Ok(Json(
         state
-            .use_cases
-            .note_kinds()
+            .note_kind_use_cases
             .list()
             .await?
             .into_iter()
@@ -86,8 +85,7 @@ pub async fn create_note_kind(
     JsonBody(payload): JsonBody<CreateNoteKindRequest>,
 ) -> Result<(StatusCode, Json<NoteKindResponse>), AppError> {
     let created = state
-        .use_cases
-        .note_kinds()
+        .note_kind_use_cases
         .create(
             Actor::Human,
             CreateNoteKindCommand {
@@ -124,8 +122,7 @@ pub async fn update_note_kind(
     JsonBody(payload): JsonBody<UpdateNoteKindRequest>,
 ) -> Result<Json<NoteKindResponse>, AppError> {
     let updated = state
-        .use_cases
-        .note_kinds()
+        .note_kind_use_cases
         .update(
             Actor::Human,
             &key,
@@ -157,11 +154,7 @@ pub async fn delete_note_kind(
     State(state): State<AppState>,
     JsonPath(key): JsonPath<String>,
 ) -> Result<StatusCode, AppError> {
-    state
-        .use_cases
-        .note_kinds()
-        .delete(Actor::Human, &key)
-        .await?;
+    state.note_kind_use_cases.delete(Actor::Human, &key).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -26,8 +26,7 @@ pub async fn get_account_risk_policy(
     State(state): State<AppState>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
     let risk_policy = state
-        .use_cases
-        .account_risk_policies()
+        .account_risk_policy_use_cases
         .find_current()
         .await
         .map_err(map_account_risk_policy_error)?;
@@ -66,8 +65,7 @@ pub async fn put_account_risk_policy(
     };
     let value = serialize_risk_policy(&data)?;
     let saved = state
-        .use_cases
-        .account_risk_policies()
+        .account_risk_policy_use_cases
         .save(value)
         .await
         .map_err(map_account_risk_policy_error)?;
