@@ -1,13 +1,12 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use core_application::trigger::TriggerUseCaseError;
 use serde::Serialize;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::error::{AppError, ErrorResponse, map_submit_error, map_trigger_use_case_error};
+use crate::error::{AppError, ErrorResponse, map_hook_error};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::state::ExternalWebhookState;
 
@@ -70,14 +69,7 @@ async fn receive_hook(
                 task_id: None,
             }),
         )),
-        Err(
-            TriggerUseCaseError::HookNotFound(_)
-            | TriggerUseCaseError::NotFound(_)
-            | TriggerUseCaseError::Disabled(_)
-            | TriggerUseCaseError::NoStrategy(_),
-        ) => Err(AppError::NotFound(format!("hook {hook_slug} not found"))),
-        Err(TriggerUseCaseError::Submit(error)) => Err(map_submit_error(error)),
-        Err(error) => Err(map_trigger_use_case_error(error)),
+        Err(error) => Err(map_hook_error(&hook_slug, error)),
     }
 }
 

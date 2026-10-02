@@ -49,18 +49,13 @@ impl From<PersistenceError> for AppError {
     }
 }
 
-pub(crate) fn map_trigger_use_case_error(error: TriggerUseCaseError) -> AppError {
+pub(crate) fn map_hook_error(hook_slug: &str, error: TriggerUseCaseError) -> AppError {
     match error {
-        TriggerUseCaseError::Validation(message) => AppError::Validation(message),
-        TriggerUseCaseError::NotFound(id) => AppError::NotFound(format!("trigger {id} not found")),
-        TriggerUseCaseError::PurposeNotFound(purpose) => {
-            AppError::NotFound(format!("agent_config purpose {purpose} not found"))
-        }
-        TriggerUseCaseError::HookNotFound(slug) => {
-            AppError::NotFound(format!("hook {slug} not found"))
-        }
-        TriggerUseCaseError::Disabled(id) | TriggerUseCaseError::NoStrategy(id) => {
-            AppError::NotFound(format!("trigger {id} not found"))
+        TriggerUseCaseError::NotFound(_)
+        | TriggerUseCaseError::HookNotFound(_)
+        | TriggerUseCaseError::Disabled(_)
+        | TriggerUseCaseError::NoStrategy(_) => {
+            AppError::NotFound(format!("hook {hook_slug} not found"))
         }
         TriggerUseCaseError::Submit(error) => map_submit_error(error),
         TriggerUseCaseError::Repository(TriggerRepositoryError::Database(error))

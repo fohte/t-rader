@@ -192,15 +192,19 @@ mod hooks {
             .post("/api/hooks/sample-hook")
             .json(&json!({"event": "ignored"}))
             .await;
-        res.assert_status_ok();
-        assert_eq!(res.json::<Value>(), json!({"fired": false}));
-
         let tasks = strategy_task::Entity::find()
             .order_by_asc(strategy_task::Column::CreatedAt)
             .all(&db)
             .await
             .unwrap();
-        assert!(tasks.is_empty());
+        assert_eq!(
+            (
+                res.status_code(),
+                res.json::<Value>(),
+                tasks.iter().map(TaskShape::from).collect::<Vec<_>>(),
+            ),
+            (StatusCode::OK, json!({"fired": false}), vec![]),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -295,6 +299,37 @@ mod hooks {
         assert_eq!(
             res.json::<Value>(),
             json!({ "error": "agent task client is not configured" }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn missing_default_agent_config_returns_503(db: gateway_postgres::DatabaseHandle) {
+        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
+        let _ =
+            insert_test_hook_trigger(&db, strategy_id, "sample-hook", "sample prompt", None, true)
+                .await;
+
+        let res = server.post("/api/hooks/sample-hook").json(&json!({})).await;
+        assert_eq!(
+            (
+                res.status_code(),
+                res.json::<Value>(),
+                strategy_task::Entity::find()
+                    .order_by_asc(strategy_task::Column::CreatedAt)
+                    .all(&db)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .map(TaskShape::from)
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!({ "error": "agent_config for purpose 'default' not found" }),
+                vec![],
+            ),
         );
     }
 }

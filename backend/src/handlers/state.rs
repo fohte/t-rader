@@ -54,7 +54,6 @@ pub struct AppState {
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_gateway_client: Option<SharedLlmClient>,
     pub agent_tool_summaries: Vec<(String, Option<String>)>,
-    pub agent_webhook_token: Arc<str>,
 }
 
 impl AppState {

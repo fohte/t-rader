@@ -374,14 +374,28 @@ async fn main() -> Result<(), AppError> {
 
         let llm_gateway_client =
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
+        let agent_webhook_state = entrypoint_agent_webhook::AgentWebhookState {
+            strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
+            webhook_token: Arc::from(agent_webhook_token),
+        };
+        let external_webhook_state = entrypoint_external_webhook::ExternalWebhookState {
+            trigger_use_cases: use_cases.triggers(),
+            agent_task_client: agent_task_client.clone(),
+        };
         let state = build_http_state(
             &use_cases,
             agent_task_client,
-            Arc::from(agent_webhook_token),
             kata_executor,
             llm_gateway_client,
         );
-        Some(create_router(state, use_cases, daily_bar_source, app_db))
+        Some(create_router(
+            state,
+            agent_webhook_state,
+            external_webhook_state,
+            use_cases,
+            daily_bar_source,
+            app_db,
+        ))
     } else {
         None
     };

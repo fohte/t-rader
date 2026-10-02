@@ -51,11 +51,10 @@ impl From<sea_orm::DbErr> for AppError {
     }
 }
 
-/// composition root の UseCases から HTTP entrypoint の依存 state を組み立てる。
+/// composition root の UseCases から frontend-api の依存 state を組み立てる。
 pub fn build_http_state(
     use_cases: &crate::services::use_cases::UseCases,
     agent_task_client: SharedAgentTaskClient,
-    agent_webhook_token: Arc<str>,
     kata_executor: Option<SharedKataExecutor>,
     llm_gateway_client: Option<SharedLlmClient>,
 ) -> AppState {
@@ -89,7 +88,6 @@ pub fn build_http_state(
         kata_executor,
         llm_gateway_client,
         agent_tool_summaries,
-        agent_webhook_token,
     }
 }
 
@@ -312,6 +310,8 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 
 pub fn create_router(
     state: AppState,
+    agent_webhook_state: entrypoint_agent_webhook::AgentWebhookState,
+    external_webhook_state: entrypoint_external_webhook::ExternalWebhookState,
     mcp_use_cases: crate::services::use_cases::UseCases,
     mcp_daily_bar_source: Option<SharedDailyBarSource>,
     health_db: DatabaseHandle,
@@ -319,18 +319,10 @@ pub fn create_router(
     let agent_task_client = state.agent_task_client.clone();
     let kata_executor = state.kata_executor.clone();
     let llm_gateway_client = state.llm_gateway_client.clone();
-    let agent_webhook_router = entrypoint_agent_webhook::router().with_state::<()>(
-        entrypoint_agent_webhook::AgentWebhookState {
-            strategy_task_reconcile_job_use_cases: mcp_use_cases.strategy_task_reconcile_job(),
-            webhook_token: state.agent_webhook_token.clone(),
-        },
-    );
-    let external_webhook_router = entrypoint_external_webhook::router().with_state::<()>(
-        entrypoint_external_webhook::ExternalWebhookState {
-            trigger_use_cases: state.trigger_use_cases.clone(),
-            agent_task_client: state.agent_task_client.clone(),
-        },
-    );
+    let agent_webhook_router =
+        entrypoint_agent_webhook::router().with_state::<()>(agent_webhook_state);
+    let external_webhook_router =
+        entrypoint_external_webhook::router().with_state::<()>(external_webhook_state);
     let (router, api) = build_openapi_router()
         .with_state::<()>(state)
         .merge(agent_webhook_router)
