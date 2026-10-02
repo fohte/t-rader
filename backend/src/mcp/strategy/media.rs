@@ -84,7 +84,6 @@ mod tests {
 
     use crate::services::litellm_client::LiteLlmClient;
 
-    use super::super::StrategyServer;
     use super::super::dto::{QueryMediaParams, QueryMediaResult};
 
     fn mock_db() -> sea_orm::DatabaseConnection {
@@ -110,7 +109,7 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db(), None)
+        let server = super::super::tests_common::build_server(mock_db())
             .with_litellm_client(Some(std::sync::Arc::new(client)));
 
         let out = server
@@ -148,7 +147,7 @@ mod tests {
 
     #[tokio::test]
     async fn query_media_requires_litellm_client() {
-        let server = StrategyServer::new(mock_db(), None);
+        let server = super::super::tests_common::build_server(mock_db());
         let err = server
             .query_media_inner(
                 Uuid::new_v4(),
@@ -175,7 +174,7 @@ mod tests {
         #[case] prompt: &str,
         #[case] expected_msg: &str,
     ) {
-        let server = StrategyServer::new(mock_db(), None);
+        let server = super::super::tests_common::build_server(mock_db());
         let err = server
             .query_media_inner(
                 Uuid::new_v4(),

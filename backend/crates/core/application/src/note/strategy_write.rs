@@ -7,12 +7,11 @@ use crate::note::types::{
 };
 use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
-use crate::note::{NoteUseCaseError, NoteUseCases};
+use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
-const INITIAL_NOTE_STATUS: &str = "unread";
 
 impl NoteUseCases {
     pub async fn write(

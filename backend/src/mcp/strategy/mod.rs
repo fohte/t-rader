@@ -42,15 +42,12 @@ use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sea_orm::EntityTrait;
 use uuid::Uuid;
 
 use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 use crate::services::use_cases::UseCases;
-use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::annotation;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -133,7 +130,6 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 
 #[derive(Clone)]
 pub struct StrategyServer {
-    db: DatabaseHandle,
     pub(super) use_cases: UseCases,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
@@ -141,25 +137,8 @@ pub struct StrategyServer {
 }
 
 impl StrategyServer {
-    pub fn new(
-        db: impl Into<DatabaseHandle>,
-        daily_bar_source: Option<SharedDailyBarSource>,
-    ) -> Self {
-        let db = db.into();
-        Self::with_use_cases(
-            db.clone(),
-            crate::services::use_cases::build_use_cases(db),
-            daily_bar_source,
-        )
-    }
-
-    pub fn with_use_cases(
-        db: impl Into<DatabaseHandle>,
-        use_cases: UseCases,
-        daily_bar_source: Option<SharedDailyBarSource>,
-    ) -> Self {
+    pub fn new(use_cases: UseCases, daily_bar_source: Option<SharedDailyBarSource>) -> Self {
         Self {
-            db: db.into(),
             use_cases,
             daily_bar_source,
             kata_executor: None,
@@ -219,8 +198,8 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
     McpError::invalid_params(msg, None)
 }
 
-pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
-    tracing::error!(error = %err, "strategy mcp db error");
+pub(super) fn internal_failure(err: &str) -> McpError {
+    tracing::error!(error = %err, "strategy mcp internal failure");
     internal_error(format!("database error: {err}"))
 }
 
@@ -252,11 +231,6 @@ pub(super) fn strategy_use_case_error_to_mcp(
         }
         core_application::strategy::StrategyUseCaseError::NotFound(id) => {
             invalid_params(format!("strategy {id} not found"))
-        }
-        core_application::strategy::StrategyUseCaseError::ConfirmationMismatch(id) => {
-            invalid_params(format!(
-                "strategy {id} not found or name changed since confirmation"
-            ))
         }
         other => {
             tracing::error!(error = %other, "strategy mcp strategy operation failed");
@@ -386,24 +360,6 @@ fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String
     execution_task_id_from_execution_id(&execution_id).map(str::to_string)
 }
 
-pub(super) async fn fetch_annotation_owned_by(
-    db: &impl sea_orm::ConnectionTrait,
-    annotation_id: Uuid,
-    expected: Uuid,
-) -> Result<annotation::Model, McpError> {
-    let row = annotation::Entity::find_by_id(annotation_id)
-        .one(db)
-        .await
-        .map_err(db_error)?
-        .ok_or_else(|| McpError::resource_not_found("annotation not found", None))?;
-    if row.strategy_id != Some(expected) {
-        return Err(invalid_params(format!(
-            "forbidden: annotation {annotation_id} belongs to another strategy"
-        )));
-    }
-    Ok(row)
-}
-
 pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
     d.to_f64().unwrap_or_else(|| {
         tracing::warn!(value = %d, "decimal value out of f64 range; coerced to 0.0");
@@ -415,7 +371,7 @@ pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
 pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
     use crate::error::AppError;
     match err {
-        AppError::Database(e) => db_error(e),
+        AppError::Internal(message) => internal_failure(&message),
         AppError::Validation(msg) => invalid_params(msg),
         other => internal_error(format!("{other}")),
     }

@@ -4,11 +4,11 @@ use axum::http::StatusCode;
 use core_application::change_history::Actor;
 use core_application::change_history::ChangeHistoryError;
 use core_application::comment::{
-    CommentRepositoryError, CommentUseCaseError, CreateCommentCommand, DeleteCommentCommand,
+    CommentListQuery, CommentReadQueryError, CommentReadUseCaseError, CommentRepositoryError,
+    CommentTargetKind, CommentUseCaseError, CreateCommentCommand, DeleteCommentCommand,
     ResolveCommentCommand,
 };
 use core_application::unit_of_work::UnitOfWorkError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -17,9 +17,6 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
-use gateway_postgres::entities::comment;
-
-const ALLOWED_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -44,19 +41,24 @@ pub async fn list_comments(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<ListCommentsQuery>,
 ) -> Result<Json<Vec<CommentResponse>>, AppError> {
-    if !ALLOWED_TARGET_KIND.contains(&p.target_kind.as_str()) {
-        return Err(AppError::Validation(format!(
-            "invalid target_kind: {}",
-            p.target_kind
-        )));
-    }
-    let items = comment::Entity::find()
-        .filter(comment::Column::TargetKind.eq(p.target_kind))
-        .filter(comment::Column::TargetId.eq(p.target_id))
-        .order_by_asc(comment::Column::CreatedAt)
-        .all(&state.db)
-        .await?;
-    Ok(Json(items.into_iter().map(CommentResponse::from).collect()))
+    let target_kind = CommentTargetKind::parse(&p.target_kind)
+        .ok_or_else(|| AppError::Validation(format!("invalid target_kind: {}", p.target_kind)))?;
+    let comments = state
+        .use_cases
+        .comment_reads()
+        .list_comments(
+            CommentListQuery {
+                target_kind,
+                target_id: p.target_id,
+                resolved: None,
+            },
+            None,
+        )
+        .await
+        .map_err(map_comment_read_error)?;
+    Ok(Json(
+        comments.into_iter().map(CommentResponse::from).collect(),
+    ))
 }
 
 /// コメント投稿
@@ -177,7 +179,19 @@ fn map_comment_error(error: CommentUseCaseError) -> AppError {
         | CommentUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | CommentUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | CommentUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
+    }
+}
+
+pub(super) fn map_comment_read_error(error: CommentReadUseCaseError) -> AppError {
+    match error {
+        CommentReadUseCaseError::Query(CommentReadQueryError::Database(error)) => error.into(),
+        CommentReadUseCaseError::AnnotationRead(error) => {
+            crate::handlers::annotations::map_annotation_read_error(error)
+        }
+        CommentReadUseCaseError::NoteRead(error) => {
+            crate::handlers::notes::map_note_read_error(error)
+        }
     }
 }
 
@@ -196,6 +210,29 @@ mod tests {
         value
     }
 
+    fn normalize_comment_list(mut value: Value) -> Value {
+        if let Some(comments) = value.as_array_mut() {
+            for comment in comments {
+                for key in ["id", "target_id", "created_at"] {
+                    if let Some(value) = comment
+                        .as_object_mut()
+                        .and_then(|object| object.get_mut(key))
+                    {
+                        *value = Value::String(format!("<{key}>"));
+                    }
+                }
+                if let Some(parent_id) = comment
+                    .as_object_mut()
+                    .and_then(|object| object.get_mut("parent_id"))
+                    .filter(|parent_id| !parent_id.is_null())
+                {
+                    *parent_id = Value::String("<id>".into());
+                }
+            }
+        }
+        value
+    }
+
     async fn create_note_comment(server: &axum_test::TestServer) -> Value {
         let strategy_id = crate::testing::create_strategy(server, "s").await;
         let note_id = create_note(server, &strategy_id, "body").await;
@@ -209,6 +246,72 @@ mod tests {
             }))
             .await
             .json()
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_comments_returns_target_threads_in_creation_order(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let root = create_note_comment(&server).await;
+        let reply = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": root["target_kind"],
+                "target_id": root["target_id"],
+                "parent_id": root["id"],
+                "body": "sample reply",
+            }))
+            .await;
+        let list = server
+            .get(&format!(
+                "/api/comments?target_kind=note_version&target_id={}",
+                root["target_id"].as_str().expect("target id"),
+            ))
+            .await;
+        assert_eq!(
+            (
+                reply.status_code(),
+                list.status_code(),
+                normalize_comment_list(list.json()),
+            ),
+            (
+                StatusCode::CREATED,
+                StatusCode::OK,
+                json!([
+                    {
+                        "id": "<id>",
+                        "target_kind": "note_version",
+                        "target_id": "<target_id>",
+                        "parent_id": null,
+                        "body": "fix this",
+                        "author_kind": "human",
+                        "author_label": "user",
+                        "resolved": false,
+                        "created_at": "<created_at>",
+                        "anchor_text": null,
+                        "anchor_side": null,
+                        "start_line": null,
+                        "end_line": null,
+                    },
+                    {
+                        "id": "<id>",
+                        "target_kind": "note_version",
+                        "target_id": "<target_id>",
+                        "parent_id": "<id>",
+                        "body": "sample reply",
+                        "author_kind": "human",
+                        "author_label": "user",
+                        "resolved": false,
+                        "created_at": "<created_at>",
+                        "anchor_text": null,
+                        "anchor_side": null,
+                        "start_line": null,
+                        "end_line": null,
+                    },
+                ]),
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]

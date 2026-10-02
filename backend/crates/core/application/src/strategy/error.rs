@@ -13,8 +13,6 @@ pub enum StrategyUseCaseError {
     Validation(String),
     #[error("strategy {0} not found")]
     NotFound(Uuid),
-    #[error("strategy {0} not found or name changed since confirmation")]
-    ConfirmationMismatch(Uuid),
     #[error(transparent)]
     Repository(#[from] StrategyRepositoryError),
     #[error(transparent)]

@@ -44,7 +44,7 @@ pub(super) async fn strategy_scope_or_404(
                 AppError::NotFound(format!("strategy {id} not found"))
             }
             StrategyScopeError::Source(StrategyScopeSourceError::QueryFailed(message)) => {
-                AppError::Database(sea_orm::DbErr::Custom(message))
+                AppError::Internal(message)
             }
         })
 }
@@ -55,9 +55,6 @@ pub(crate) fn map_strategy_error(error: StrategyUseCaseError) -> AppError {
         StrategyUseCaseError::NotFound(id) => {
             AppError::NotFound(format!("strategy {id} not found"))
         }
-        StrategyUseCaseError::ConfirmationMismatch(id) => AppError::NotFound(format!(
-            "strategy {id} not found or name changed since confirmation"
-        )),
         StrategyUseCaseError::Repository(StrategyRepositoryError::Database(error))
         | StrategyUseCaseError::SummaryQuery(StrategySummaryQueryError::Database(error))
         | StrategyUseCaseError::ChangeHistory(
@@ -65,7 +62,7 @@ pub(crate) fn map_strategy_error(error: StrategyUseCaseError) -> AppError {
         )
         | StrategyUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | StrategyUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 

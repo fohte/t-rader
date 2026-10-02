@@ -11,7 +11,7 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::{IndicatorResponse, RefResolution, StockResponse};
-use crate::services::note_refs::ALLOWED_REF_KINDS;
+use core_domain::note_reference::ALLOWED_REF_KINDS;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -203,9 +203,9 @@ fn map_ref_error(error: RefUseCaseError) -> AppError {
         | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
         RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => AppError::Database(
-            sea_orm::DbErr::Custom("reference transaction has an unexpected type".into()),
-        ),
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            AppError::Internal("reference transaction has an unexpected type".into())
+        }
     }
 }
 

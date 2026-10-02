@@ -102,7 +102,7 @@ async fn setup_server_with_bars(
     .await
     .expect("seed bars");
 
-    let server = StrategyServer::new(db.clone(), None);
+    let server = super::super::tests_common::build_server(db.clone());
     (db, server, strategy_id)
 }
 
@@ -360,7 +360,7 @@ async fn query_data_inner_rejects_invalid_params(
     #[case] to: &str,
     #[case] expected_message: &str,
 ) {
-    let server = StrategyServer::new(mock_db(), None);
+    let server = super::super::tests_common::build_server(mock_db());
     let err = server
         .query_data_inner(
             Uuid::new_v4(),

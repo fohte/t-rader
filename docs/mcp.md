@@ -16,38 +16,27 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 外部のコントロールプレーンクライアントから呼ばれる。tool 単位の認可は持たず、ネットワーク境界 (VPN / Zero Trust proxy 等) と前段認証で担保する想定。
 
-| tool                       | 入力                                                                                                              | 出力 (要約)                                                                                                  |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `list_strategies`          | (なし)                                                                                                            | 戦略一覧 (`strategy_id`, `name`, `updated_at`, `unread_card_count`)                                          |
-| `submit_strategy_task`     | `strategy_id`, `prompt`, `purpose?`                                                                               | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                    |
-| `get_strategy_task_status` | `a2a_task_id`                                                                                                     | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等    |
-| `get_strategy_config`      | `strategy_id`                                                                                                     | 戦略設定一式 (`name`, `description`) と紐づく `triggers` 一覧                                                |
-| `create_strategy`          | `name`, `description?`                                                                                            | `ok`, `errors`, `strategy_id?`。検証エラーがあれば 1 件も書き込まず `ok=false` で全エラーを返す              |
-| `update_strategy_config`   | `strategy_id`, `name?`, `description?`                                                                            | `ok`, `errors`。指定フィールドのみ 1 回の呼び出しで atomic に更新する                                        |
-| `delete_strategy`          | `strategy_id`, `confirm_name`                                                                                     | `ok`, `errors`。`confirm_name` が戦略名と完全一致しないと削除しない。一致すれば関連リソースごと cascade 削除 |
-| `create_strategy_trigger`  | `strategy_id`, `kind` (`cron` / `hook`), `schedule?`, `hook_slug?`, `event_match?`, `prompt_template`, `enabled?` | `ok`, `errors`, `trigger_id?`。kind=cron は schedule 必須 (hook_slug 禁止)、kind=hook はその逆               |
-| `update_strategy_trigger`  | `trigger_id`, `schedule?`, `hook_slug?`, `event_match?`, `prompt_template?`, `enabled?`                           | `ok`, `errors`。指定フィールドのみ更新。kind / strategy_id は不変                                            |
-| `delete_strategy_trigger`  | `trigger_id`                                                                                                      | `ok`, `errors`                                                                                               |
-| `list_recent_notes`        | `strategy_id`, `limit?`                                                                                           | 現行バージョンがあるノートのメタデータ一覧                                                                   |
-| `list_recent_annotations`  | `strategy_id`, `limit?`                                                                                           | 最新アノテーションのメタデータ一覧                                                                           |
-| `list_rss_feeds`           | `enabled_only?`                                                                                                   | RSS フィード定義一覧                                                                                         |
-| `create_rss_feed`          | `source`, `display_name`, `url`, `enabled?`                                                                       | 作成した RSS フィード定義                                                                                    |
-| `update_rss_feed`          | `id`, `display_name?`, `url?`, `enabled?`                                                                         | 更新後の RSS フィード定義                                                                                    |
-| `delete_rss_feed`          | `id`                                                                                                              | `id`。既存の `news_item` 行は残す                                                                            |
-| `list_note_kinds`          | (なし)                                                                                                            | ノート種別一覧 (`key`, `display_name`, `requires_approval`, `description`, `sort_order`)                     |
-| `create_note_kind`         | `key`, `display_name`, `requires_approval?`, `description?`, `sort_order?`                                        | 作成したノート種別 (`requires_approval` は省略時 false)                                                      |
-| `update_note_kind`         | `key`, `display_name?`, `requires_approval?`, `description?`, `sort_order?`                                       | 更新後のノート種別。`key` は変更不可。`description` は省略で維持し、`null` で消去                            |
-| `delete_note_kind`         | `key`                                                                                                             | `key`。既存ノートで使用中の場合は削除しない                                                                  |
+| tool                       | 入力                                | 出力 (要約)                                                                                               |
+| -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `list_strategies`          | (なし)                              | 戦略一覧 (`strategy_id`, `name`, `updated_at`, `unread_card_count`)                                       |
+| `submit_strategy_task`     | `strategy_id`, `prompt`, `purpose?` | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                 |
+| `resume_strategy_task`     | `task_id`                           | 再開したタスクの `task_id`, `a2a_task_id`                                                                 |
+| `get_strategy_task_status` | `a2a_task_id`                       | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等 |
+| `get_strategy_config`      | `strategy_id`                       | 戦略設定 (`name`, `description`) と紐づく `triggers` 一覧                                                 |
+| `list_recent_notes`        | `strategy_id`, `limit?`             | 現行バージョンがあるノートのメタデータ一覧                                                                |
+| `list_recent_annotations`  | `strategy_id`, `limit?`             | 最新アノテーションのメタデータ一覧                                                                        |
+| `list_rss_feeds`           | `enabled_only?`                     | RSS フィード定義一覧                                                                                      |
+| `list_note_kinds`          | (なし)                              | ノート種別一覧 (`key`, `display_name`, `requires_approval`, `description`, `sort_order`)                  |
 
 `submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。port は `backend/crates/core/application/`、クライアント実装は `backend/crates/gateways/t-rader-agent/` を参照。投入から決着までの共通ロジックは `backend/src/services/strategy_tasks.rs`、決着照合は `backend/crates/entrypoints/scheduler/src/jobs/strategy_task_reconcile.rs` を参照。
 
-`create_strategy` / `update_strategy_config` / `delete_strategy` による DB 書き込みは REST (`backend/src/handlers/strategies/mod.rs`) と共通の `backend/src/services/strategy_config.rs` を経由し、`change_history` には actor `llm` / label `mgmt-mcp` で記録される。
+戦略設定を変更する HTTP API は Terraform provider が利用するため維持している。管理 MCP には設定を書き込む tool を登録しない。
 
 ノートの `kind` は `note_kind.key` を参照する。`requires_approval` が true の種別では、エージェントが追加したバージョンは承認されるまで現行バージョンにならない。人間が追加したバージョンは承認済みの現行バージョンになる。`requires_approval` を true から false にすると、各ノートの最新の未承認バージョンを承認する。現行バージョンより新しいバージョンなら現行バージョンにし、古いバージョンなら既存の現行バージョンを維持する。false から true にしても、すでに現行のバージョンは変わらない。`sort_order` は一覧の表示順に使われる。
 
-`list_note_kinds` / `create_note_kind` / `update_note_kind` / `delete_note_kind` は REST (`/api/note-kinds`) と共通の application ユースケース (`backend/crates/core/application/src/note_kind/use_cases.rs`) を経由し、`change_history` にも actor `llm` / label `mgmt-mcp` で記録される。
+`list_note_kinds` は REST (`/api/note-kinds`) と共通の application ユースケース (`backend/crates/core/application/src/note_kind/use_cases.rs`) を経由する。ノート種別の設定変更には同じ HTTP API を使う。
 
-`create_strategy_trigger` / `update_strategy_trigger` / `delete_strategy_trigger` は REST (`POST /api/strategies/{id}/triggers`, `PUT /api/triggers/{trigger_id}`, `DELETE /api/triggers/{trigger_id}`) と共通の `backend/src/services/trigger_crud.rs` を経由する。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
+Trigger 設定の HTTP API (`POST /api/strategies/{id}/triggers`, `PUT /api/triggers/{trigger_id}`, `DELETE /api/triggers/{trigger_id}`) は維持している。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
 
 ## 戦略実行 MCP (`/mcp/strategy`)
 

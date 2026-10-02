@@ -166,7 +166,7 @@ fn repository_error(error: sea_orm::DbErr) -> CommentRepositoryError {
     CommentRepositoryError::Database(persistence_error(error))
 }
 
-fn to_domain(model: comment::Model) -> Comment {
+pub(super) fn to_domain(model: comment::Model) -> Comment {
     Comment {
         id: model.id,
         target_kind: model.target_kind,

@@ -14,7 +14,7 @@ pub use types::{
     CreateStrategyCommand, InvestableAmount, NewInvestableAmount, NewStrategy, Strategy,
     StrategySummary, StrategyUpdateCommand,
 };
-pub use use_cases::{StrategyUseCases, validate_name};
+pub use use_cases::StrategyUseCases;
 
 #[cfg(feature = "test-support")]
 pub use fake::{FakeStrategyRepository, FakeStrategySummaryQuery};

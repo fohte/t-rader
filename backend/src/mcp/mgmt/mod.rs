@@ -1,28 +1,16 @@
 //! 管理 MCP server の tool 実装
 //!
-//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 21 種:
+//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 9 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
 //! - `resume_strategy_task`
 //! - `get_strategy_task_status`
 //! - `get_strategy_config`
-//! - `create_strategy`
-//! - `update_strategy_config`
-//! - `delete_strategy`
-//! - `create_strategy_trigger`
-//! - `update_strategy_trigger`
-//! - `delete_strategy_trigger`
 //! - `list_recent_notes`
 //! - `list_recent_annotations`
 //! - `list_rss_feeds`
-//! - `create_rss_feed`
-//! - `update_rss_feed`
-//! - `delete_rss_feed`
 //! - `list_note_kinds`
-//! - `create_note_kind`
-//! - `update_note_kind`
-//! - `delete_note_kind`
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -30,16 +18,10 @@
 //! - `strategies`: 戦略一覧・タスク投入・タスク再開・タスク status
 //!   (`list_strategies_inner` / `submit_strategy_task_inner` / `resume_strategy_task_inner` /
 //!   `get_strategy_task_status_inner`)
-//! - `strategy_config`: 戦略設定 (name/description) の取得・作成・更新・削除と、
-//!   戦略に紐づく trigger の一覧取得 (読み取り専用)
-//!   (`get_strategy_config_inner` / `create_strategy_inner` / `update_strategy_config_inner` /
-//!   `delete_strategy_inner`)
-//! - `triggers`: trigger の作成・更新・削除
-//!   (`create_strategy_trigger_inner` / `update_strategy_trigger_inner` / `delete_strategy_trigger_inner`)
-//! - `rss_feeds`: RSS フィード CRUD
-//!   (`list_rss_feeds_inner` / `create_rss_feed_inner` / `update_rss_feed_inner` / `delete_rss_feed_inner`)
-//! - `note_kinds`: ノート種別 CRUD
-//!   (`list_note_kinds_inner` / `create_note_kind_inner` / `update_note_kind_inner` / `delete_note_kind_inner`)
+//! - `strategy_config`: 戦略設定 (name/description) と trigger 一覧の取得
+//!   (`get_strategy_config_inner`)
+//! - `rss_feeds`: RSS フィード一覧 (`list_rss_feeds_inner`)
+//! - `note_kinds`: ノート種別一覧 (`list_note_kinds_inner`)
 //! - `notes_annotations`: 直近ノート・アノテーション一覧
 //!   (`list_recent_notes_inner` / `list_recent_annotations_inner`)
 //!
@@ -52,7 +34,6 @@ mod notes_annotations;
 mod rss_feeds;
 mod strategies;
 mod strategy_config;
-mod triggers;
 
 #[cfg(test)]
 mod tests_common;
@@ -64,7 +45,6 @@ use core_application::strategy::StrategyUseCaseError;
 use core_application::strategy_scope::{
     StrategyScope, StrategyScopeError, StrategyScopeSourceError,
 };
-use gateway_postgres::DatabaseHandle;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
@@ -73,17 +53,11 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 // `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
 pub use dto::SubmitStrategyTaskParams;
 use dto::{
-    CreateNoteKindParams, CreateRssFeedParams, CreateStrategyParams, CreateStrategyResult,
-    CreateStrategyTriggerParams, CreateStrategyTriggerResult, DeleteNoteKindParams,
-    DeleteNoteKindResult, DeleteRssFeedParams, DeleteRssFeedResult, DeleteStrategyParams,
-    DeleteStrategyResult, DeleteStrategyTriggerParams, DeleteStrategyTriggerResult,
     GetStrategyConfigParams, GetStrategyConfigResult, GetStrategyTaskStatusParams,
     GetStrategyTaskStatusResult, ListNoteKindsResult, ListRecentAnnotationsResult,
     ListRecentNotesResult, ListRecentParams, ListRssFeedsParams, ListRssFeedsResult,
-    ListStrategiesResult, NoteKindSummary, ResumeStrategyTaskParams, ResumeStrategyTaskResult,
-    RssFeedSummary, SubmitStrategyTaskResult, UpdateNoteKindParams, UpdateRssFeedParams,
-    UpdateStrategyConfigParams, UpdateStrategyConfigResult, UpdateStrategyTriggerParams,
-    UpdateStrategyTriggerResult,
+    ListStrategiesResult, ResumeStrategyTaskParams, ResumeStrategyTaskResult,
+    SubmitStrategyTaskResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -91,28 +65,13 @@ const MAX_LIST_LIMIT: u64 = 100;
 
 #[derive(Clone)]
 pub struct MgmtServer {
-    db: DatabaseHandle,
     use_cases: UseCases,
     agent_client: SharedAgentTaskClient,
 }
 
 impl MgmtServer {
-    pub fn new(db: impl Into<DatabaseHandle>, agent_client: SharedAgentTaskClient) -> Self {
-        let db = db.into();
-        Self::with_use_cases(
-            db.clone(),
-            crate::services::use_cases::build_use_cases(db),
-            agent_client,
-        )
-    }
-
-    pub fn with_use_cases(
-        db: impl Into<DatabaseHandle>,
-        use_cases: UseCases,
-        agent_client: SharedAgentTaskClient,
-    ) -> Self {
+    pub fn new(use_cases: UseCases, agent_client: SharedAgentTaskClient) -> Self {
         Self {
-            db: db.into(),
             use_cases,
             agent_client,
         }
@@ -129,17 +88,17 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
     McpError::invalid_params(msg, None)
 }
 
-pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
-    tracing::error!(error = %err, "mgmt mcp db error");
+pub(super) fn internal_failure(err: &str) -> McpError {
+    tracing::error!(error = %err, "mgmt mcp internal failure");
     internal_error(format!("database error: {err}"))
 }
 
 /// `AppError::Validation` は各 tool 側で `ok=false` + `errors` として扱うため、ここでは
-/// `NotFound` / `Database` / その他だけを tool call の失敗として一律にマッピングする。
+/// `NotFound` / `Internal` / その他だけを tool call の失敗として一律にマッピングする。
 pub(super) fn map_app_error(err: AppError) -> McpError {
     match err {
         AppError::NotFound(msg) => invalid_params(msg),
-        AppError::Database(db_err) => db_error(db_err),
+        AppError::Internal(message) => internal_failure(&message),
         other => internal_error(other.to_string()),
     }
 }
@@ -176,9 +135,6 @@ pub(super) fn map_strategy_use_case_error(error: StrategyUseCaseError) -> McpErr
     match error {
         StrategyUseCaseError::Validation(message) => invalid_params(message),
         StrategyUseCaseError::NotFound(id) => invalid_params(format!("strategy {id} not found")),
-        StrategyUseCaseError::ConfirmationMismatch(id) => invalid_params(format!(
-            "strategy {id} not found or name changed since confirmation"
-        )),
         other => {
             tracing::error!(error = %other, "mgmt mcp strategy operation failed");
             internal_error(format!("strategy operation failed: {other}"))
@@ -269,78 +225,6 @@ impl MgmtServer {
         self.get_strategy_config_inner(params).await.map(Json)
     }
 
-    /// 戦略を作成する (name のみ必須、description は任意)
-    #[tool(
-        name = "create_strategy",
-        description = "Create a new strategy with name (required) and optionally description. On a validation failure (empty name) this returns ok=false with all the errors it found instead of failing the tool call, so the caller can read them, fix the input, and retry; no strategy is created when any error is present."
-    )]
-    async fn create_strategy(
-        &self,
-        Parameters(params): Parameters<CreateStrategyParams>,
-    ) -> Result<Json<CreateStrategyResult>, McpError> {
-        self.create_strategy_inner(params).await.map(Json)
-    }
-
-    /// 戦略の設定を部分更新する (1 回の呼び出しで複数フィールドをまとめて atomic に反映)
-    #[tool(
-        name = "update_strategy_config",
-        description = "Update only the given fields of a strategy's config in one atomic call. On a validation failure (empty name) this returns ok=false with all the errors it found instead of failing the tool call; nothing is written when any error is present."
-    )]
-    async fn update_strategy_config(
-        &self,
-        Parameters(params): Parameters<UpdateStrategyConfigParams>,
-    ) -> Result<Json<UpdateStrategyConfigResult>, McpError> {
-        self.update_strategy_config_inner(params).await.map(Json)
-    }
-
-    /// 戦略を削除する (confirm_name の完全一致必須、関連リソースは cascade 削除)
-    #[tool(
-        name = "delete_strategy",
-        description = "Delete a strategy and cascade-delete everything under it (notes, annotations, trades, triggers, custom indicators, strategy tasks). confirm_name must exactly match the strategy's current name or nothing is deleted, to guard against a wrong strategy_id."
-    )]
-    async fn delete_strategy(
-        &self,
-        Parameters(params): Parameters<DeleteStrategyParams>,
-    ) -> Result<Json<DeleteStrategyResult>, McpError> {
-        self.delete_strategy_inner(params).await.map(Json)
-    }
-
-    /// trigger を作成する
-    #[tool(
-        name = "create_strategy_trigger",
-        description = "Create a trigger for a strategy. kind=cron requires schedule (and forbids hook_slug); kind=hook requires hook_slug (and forbids schedule). On a validation failure this returns ok=false with the first error found (checks stop at the first failure, so a retry may surface a different one) instead of failing the tool call, so the caller can read it, fix the input, and retry; no trigger is created when an error is present. A database-level conflict (e.g. a hook_slug already used by another trigger) fails the tool call instead of returning ok=false."
-    )]
-    async fn create_strategy_trigger(
-        &self,
-        Parameters(params): Parameters<CreateStrategyTriggerParams>,
-    ) -> Result<Json<CreateStrategyTriggerResult>, McpError> {
-        self.create_strategy_trigger_inner(params).await.map(Json)
-    }
-
-    /// trigger を部分更新する (kind / strategy_id は不変)
-    #[tool(
-        name = "update_strategy_trigger",
-        description = "Update only the given fields of an existing trigger. kind and strategy_id are immutable; schedule can only be set on a cron trigger and hook_slug only on a hook trigger. On a validation failure this returns ok=false with the first error found (checks stop at the first failure, so a retry may surface a different one) instead of failing the tool call; nothing is written when an error is present. A database-level conflict (e.g. a hook_slug already used by another trigger) fails the tool call instead of returning ok=false."
-    )]
-    async fn update_strategy_trigger(
-        &self,
-        Parameters(params): Parameters<UpdateStrategyTriggerParams>,
-    ) -> Result<Json<UpdateStrategyTriggerResult>, McpError> {
-        self.update_strategy_trigger_inner(params).await.map(Json)
-    }
-
-    /// trigger を削除する
-    #[tool(
-        name = "delete_strategy_trigger",
-        description = "Delete a trigger by trigger_id."
-    )]
-    async fn delete_strategy_trigger(
-        &self,
-        Parameters(params): Parameters<DeleteStrategyTriggerParams>,
-    ) -> Result<Json<DeleteStrategyTriggerResult>, McpError> {
-        self.delete_strategy_trigger_inner(params).await.map(Json)
-    }
-
     /// 戦略 id + 件数で最新ノートメタを返す
     #[tool(
         name = "list_recent_notes",
@@ -375,78 +259,6 @@ impl MgmtServer {
     )]
     async fn list_note_kinds(&self) -> Result<Json<ListNoteKindsResult>, McpError> {
         self.list_note_kinds_inner().await.map(Json)
-    }
-
-    /// ノート種別を作成する
-    #[tool(
-        name = "create_note_kind",
-        description = "Create a note kind with an immutable key and display_name. requires_approval defaults to false; description and sort_order are optional."
-    )]
-    async fn create_note_kind(
-        &self,
-        Parameters(params): Parameters<CreateNoteKindParams>,
-    ) -> Result<Json<NoteKindSummary>, McpError> {
-        self.create_note_kind_inner(params).await.map(Json)
-    }
-
-    /// ノート種別を部分更新する (key は変更不可)
-    #[tool(
-        name = "update_note_kind",
-        description = "Update only the supplied fields of an existing note kind. The key is immutable; description may be set to null to clear it."
-    )]
-    async fn update_note_kind(
-        &self,
-        Parameters(params): Parameters<UpdateNoteKindParams>,
-    ) -> Result<Json<NoteKindSummary>, McpError> {
-        self.update_note_kind_inner(params).await.map(Json)
-    }
-
-    /// ノートが使用中の種別は削除しない
-    #[tool(
-        name = "delete_note_kind",
-        description = "Delete a note kind by key. Deletion fails while any existing note uses the key."
-    )]
-    async fn delete_note_kind(
-        &self,
-        Parameters(params): Parameters<DeleteNoteKindParams>,
-    ) -> Result<Json<DeleteNoteKindResult>, McpError> {
-        self.delete_note_kind_inner(params).await.map(Json)
-    }
-
-    /// RSS フィードを追加する
-    #[tool(
-        name = "create_rss_feed",
-        description = "Register a new RSS feed source. The 'source' is a machine slug ([a-z0-9_-]+); 'display_name' is shown to humans. 'url' must be http(s)."
-    )]
-    async fn create_rss_feed(
-        &self,
-        Parameters(params): Parameters<CreateRssFeedParams>,
-    ) -> Result<Json<RssFeedSummary>, McpError> {
-        self.create_rss_feed_inner(params).await.map(Json)
-    }
-
-    /// RSS フィードを部分更新する
-    #[tool(
-        name = "update_rss_feed",
-        description = "Update display_name / url / enabled of an existing RSS feed. The source slug is immutable."
-    )]
-    async fn update_rss_feed(
-        &self,
-        Parameters(params): Parameters<UpdateRssFeedParams>,
-    ) -> Result<Json<RssFeedSummary>, McpError> {
-        self.update_rss_feed_inner(params).await.map(Json)
-    }
-
-    /// RSS フィードを削除する (既存の news_item 行は残す)
-    #[tool(
-        name = "delete_rss_feed",
-        description = "Delete an RSS feed definition by id. Existing news_item rows are not removed."
-    )]
-    async fn delete_rss_feed(
-        &self,
-        Parameters(params): Parameters<DeleteRssFeedParams>,
-    ) -> Result<Json<DeleteRssFeedResult>, McpError> {
-        self.delete_rss_feed_inner(params).await.map(Json)
     }
 
     /// 戦略 id + 件数で最新アノテーションメタを返す
@@ -497,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn read_only_hint_matches_read_write_split() {
+    fn retained_tools_match_read_only_hints() {
         let read_only_hints: std::collections::BTreeMap<String, Option<bool>> =
             MgmtServer::tool_router()
                 .list_all()
@@ -513,14 +325,6 @@ mod tests {
         assert_eq!(
             read_only_hints,
             [
-                ("create_rss_feed", None),
-                ("create_strategy", None),
-                ("create_strategy_trigger", None),
-                ("delete_rss_feed", None),
-                ("create_note_kind", None),
-                ("delete_note_kind", None),
-                ("delete_strategy", None),
-                ("delete_strategy_trigger", None),
                 ("get_strategy_config", Some(true)),
                 ("get_strategy_task_status", Some(true)),
                 ("list_recent_annotations", Some(true)),
@@ -530,10 +334,6 @@ mod tests {
                 ("list_strategies", Some(true)),
                 ("resume_strategy_task", None),
                 ("submit_strategy_task", None),
-                ("update_rss_feed", None),
-                ("update_note_kind", None),
-                ("update_strategy_config", None),
-                ("update_strategy_trigger", None),
             ]
             .into_iter()
             .map(|(name, hint)| (name.to_string(), hint))

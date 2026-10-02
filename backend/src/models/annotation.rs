@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::annotation;
-
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Annotation)]
 pub struct AnnotationResponse {
@@ -26,27 +24,6 @@ pub struct AnnotationResponse {
     pub updated_at: DateTime<FixedOffset>,
     pub execution_step_id: Option<Uuid>,
     pub execution_task_id: Option<String>,
-}
-
-impl From<annotation::Model> for AnnotationResponse {
-    fn from(model: annotation::Model) -> Self {
-        Self {
-            id: model.id,
-            strategy_id: model.strategy_id,
-            target_symbol: model.target_symbol,
-            target_kind: model.target_kind,
-            timestamp: model.timestamp,
-            price: model.price,
-            text: model.text,
-            status: model.status,
-            linked_note_id: model.linked_note_id,
-            created_by_kind: model.created_by_kind,
-            created_at: model.created_at,
-            updated_at: model.updated_at,
-            execution_step_id: model.execution_step_id,
-            execution_task_id: model.execution_task_id,
-        }
-    }
 }
 
 impl From<core_application::annotation::Annotation> for AnnotationResponse {

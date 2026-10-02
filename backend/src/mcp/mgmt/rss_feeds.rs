@@ -1,15 +1,10 @@
-//! 管理 MCP の RSS フィード CRUD tool。
+//! 管理 MCP の RSS フィード一覧 tool。
 
-use core_application::rss_feed::{
-    CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch,
-};
+use core_application::rss_feed::{RssFeedRepositoryError, RssFeedUseCaseError};
 use rmcp::ErrorData as McpError;
 
 use super::MgmtServer;
-use super::dto::{
-    CreateRssFeedParams, DeleteRssFeedParams, DeleteRssFeedResult, ListRssFeedsParams,
-    ListRssFeedsResult, RssFeedSummary, UpdateRssFeedParams,
-};
+use super::dto::{ListRssFeedsParams, ListRssFeedsResult};
 use super::invalid_params;
 
 impl MgmtServer {
@@ -26,56 +21,6 @@ impl MgmtServer {
         Ok(ListRssFeedsResult {
             feeds: rows.into_iter().map(Into::into).collect(),
         })
-    }
-
-    pub(super) async fn create_rss_feed_inner(
-        &self,
-        params: CreateRssFeedParams,
-    ) -> Result<RssFeedSummary, McpError> {
-        let created = self
-            .use_cases
-            .rss_feeds()
-            .create(CreateRssFeedCommand {
-                source: params.source,
-                display_name: params.display_name,
-                url: params.url,
-                enabled: params.enabled,
-            })
-            .await
-            .map_err(map_rss_feed_error)?;
-        Ok(created.into())
-    }
-
-    pub(super) async fn update_rss_feed_inner(
-        &self,
-        params: UpdateRssFeedParams,
-    ) -> Result<RssFeedSummary, McpError> {
-        let updated = self
-            .use_cases
-            .rss_feeds()
-            .update(
-                params.id,
-                UpdateRssFeedPatch {
-                    display_name: params.display_name,
-                    url: params.url,
-                    enabled: params.enabled,
-                },
-            )
-            .await
-            .map_err(map_rss_feed_error)?;
-        Ok(updated.into())
-    }
-
-    pub(super) async fn delete_rss_feed_inner(
-        &self,
-        params: DeleteRssFeedParams,
-    ) -> Result<DeleteRssFeedResult, McpError> {
-        self.use_cases
-            .rss_feeds()
-            .delete(params.id)
-            .await
-            .map_err(map_rss_feed_error)?;
-        Ok(DeleteRssFeedResult { id: params.id })
     }
 }
 
@@ -109,64 +54,48 @@ mod tests {
     use super::super::tests_common::build_server;
     use super::*;
     use crate::agent_client::FakeAgentTaskClient;
+    use core_application::rss_feed::CreateRssFeedCommand;
 
     #[backend_test_macros::database_test]
-    async fn create_rss_feed_inserts_and_lists(db: gateway_postgres::DatabaseHandle) {
+    async fn list_rss_feeds_returns_configured_feeds(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
-
-        let Json(created) = server
-            .create_rss_feed(Parameters(CreateRssFeedParams {
+        server
+            .use_cases
+            .rss_feeds()
+            .create(CreateRssFeedCommand {
                 source: "sample-newswire".into(),
                 display_name: "Sample Newswire".into(),
                 url: "https://feeds.example.invalid/markets.xml".into(),
                 enabled: None,
-            }))
+            })
             .await
-            .expect("create ok");
-        let summary = |s: RssFeedSummary| RssFeedSummary {
-            id: Uuid::nil(),
-            ..s
-        };
-        let expected = RssFeedSummary {
-            id: Uuid::nil(),
-            source: "sample-newswire".into(),
-            display_name: "Sample Newswire".into(),
-            url: "https://feeds.example.invalid/markets.xml".into(),
-            enabled: true,
-        };
-        assert_eq!(
-            serde_json::to_value(summary(created)).unwrap(),
-            serde_json::to_value(&expected).unwrap(),
-        );
+            .expect("seed RSS feed");
 
         let Json(listed) = server
             .list_rss_feeds(Parameters(ListRssFeedsParams { enabled_only: None }))
             .await
             .expect("list ok");
-        assert_eq!(
-            listed
-                .feeds
-                .into_iter()
-                .map(summary)
-                .map(|s| serde_json::to_value(s).unwrap())
-                .collect::<Vec<_>>(),
-            vec![serde_json::to_value(&expected).unwrap()],
-        );
-    }
 
-    #[backend_test_macros::database_test]
-    async fn create_rss_feed_rejects_invalid_source(db: gateway_postgres::DatabaseHandle) {
-        let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
-        let err = server
-            .create_rss_feed(Parameters(CreateRssFeedParams {
-                source: "Bad Source".into(),
-                display_name: "x".into(),
-                url: "https://example.com/a".into(),
-                enabled: None,
-            }))
-            .await
-            .err()
-            .unwrap_or_else(|| panic!("expected error"));
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        let feeds = listed
+            .feeds
+            .into_iter()
+            .map(|feed| {
+                serde_json::to_value(super::super::dto::RssFeedSummary {
+                    id: Uuid::nil(),
+                    ..feed
+                })
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            feeds,
+            vec![serde_json::json!({
+                "id": Uuid::nil(),
+                "source": "sample-newswire",
+                "display_name": "Sample Newswire",
+                "url": "https://feeds.example.invalid/markets.xml",
+                "enabled": true,
+            })],
+        );
     }
 }

@@ -5,7 +5,6 @@ use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::super::StrategyServer;
 use super::super::dto::{SearchWebParams, SearchWebResult};
 use super::*;
 use crate::services::litellm_client::LiteLlmClient;
@@ -34,7 +33,7 @@ fn sse_body(content: &str) -> String {
 
 #[tokio::test]
 async fn search_web_inner_requires_litellm_client() {
-    let server = StrategyServer::new(mock_db(), None);
+    let server = super::super::tests_common::build_server(mock_db());
     let err = server
         .search_web_inner(
             Uuid::new_v4(),
@@ -55,7 +54,7 @@ async fn search_web_inner_requires_litellm_client() {
 
 #[tokio::test]
 async fn search_web_inner_rejects_empty_query() {
-    let server = StrategyServer::new(mock_db(), None);
+    let server = super::super::tests_common::build_server(mock_db());
     let err = server
         .search_web_inner(
             Uuid::new_v4(),
@@ -84,8 +83,8 @@ async fn search_web_inner_returns_text_and_citations() {
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server =
-        StrategyServer::new(mock_db(), None).with_litellm_client(Some(std::sync::Arc::new(client)));
+    let server = super::super::tests_common::build_server(mock_db())
+        .with_litellm_client(Some(std::sync::Arc::new(client)));
 
     let out = server
         .search_web_inner(
@@ -132,8 +131,8 @@ async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::Dat
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server =
-        StrategyServer::new(db, None).with_litellm_client(Some(std::sync::Arc::new(client)));
+    let server = super::super::tests_common::build_server(db)
+        .with_litellm_client(Some(std::sync::Arc::new(client)));
     let task_execution_id = format!("task-{}", Uuid::new_v4());
 
     for _ in 0..SEARCH_WEB_MAX_CALLS_PER_TASK {
@@ -187,8 +186,8 @@ async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server =
-        StrategyServer::new(db, None).with_litellm_client(Some(std::sync::Arc::new(client)));
+    let server = super::super::tests_common::build_server(db)
+        .with_litellm_client(Some(std::sync::Arc::new(client)));
     let task_execution_id = format!("task-{}", Uuid::new_v4());
 
     // 予約したカウントが都度解放されなければ、SEARCH_WEB_MAX_CALLS_PER_TASK 回目以降は

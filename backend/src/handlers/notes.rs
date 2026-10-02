@@ -145,7 +145,7 @@ pub(super) fn map_note_read_error(error: NoteReadUseCaseError) -> AppError {
         }
         NoteReadUseCaseError::Query(NoteReadQueryError::Database(error)) => error.into(),
         NoteReadUseCaseError::Query(NoteReadQueryError::InvalidData(message)) => {
-            AppError::Database(sea_orm::DbErr::Custom(message))
+            AppError::Internal(message)
         }
     }
 }
@@ -291,7 +291,7 @@ pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
         | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
             error.into()
         }
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 
@@ -301,8 +301,8 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::services::note_versions;
     use crate::testing::agent_config;
+    use crate::testing::find_current_note_version;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
@@ -422,7 +422,7 @@ mod tests {
         title: &str,
     ) -> (Uuid, Uuid) {
         let note_id = create_test_note_with_creator(server, strategy_id, title, "llm").await;
-        let initial = note_versions::find_current_version(db, note_id)
+        let initial = find_current_note_version(db, note_id)
             .await
             .unwrap()
             .unwrap();
@@ -633,7 +633,7 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         let note_id = create_test_note_with_creator(&server, strategy_id, "review", "llm").await;
-        let initial = note_versions::find_current_version(&db, note_id)
+        let initial = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .unwrap();
@@ -783,7 +783,7 @@ mod tests {
             .json(&json!({"body_md": INVALID_NOTE_BODY}))
             .await;
         let response = res.json::<Value>();
-        let saved_body = note_versions::find_current_version(&db, note_id)
+        let saved_body = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .map(|version| version.body_md);
@@ -817,7 +817,7 @@ mod tests {
         res.assert_status(StatusCode::CREATED);
         let note_id =
             Uuid::parse_str(res.json::<Value>()["id"].as_str().expect("id")).expect("uuid");
-        let version = note_versions::find_current_version(&db, note_id)
+        let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .unwrap();
@@ -869,7 +869,7 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note_with_creator(&server, strategy_id, "タイトル", "llm").await;
-        let version = note_versions::find_current_version(&db, note_id)
+        let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .unwrap();
@@ -935,7 +935,7 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note_with_creator(&server, strategy_id, "t", "llm").await;
-        let version = note_versions::find_current_version(&db, note_id)
+        let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .unwrap();
@@ -978,7 +978,7 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note_with_creator(&server, strategy_id, "t", "llm").await;
-        let version = note_versions::find_current_version(&db, note_id)
+        let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .unwrap();
@@ -992,7 +992,7 @@ mod tests {
             .await;
         res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
 
-        let current_version = note_versions::find_current_version(&db, note_id)
+        let current_version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .unwrap();
@@ -1015,7 +1015,7 @@ mod tests {
                 line three"},
         )
         .await;
-        let version_id = note_versions::find_current_version(&db, note_id)
+        let version_id = find_current_note_version(&db, note_id)
             .await
             .expect("find current version")
             .expect("current version exists")

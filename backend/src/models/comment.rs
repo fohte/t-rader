@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::comment;
-
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Comment)]
 pub struct CommentResponse {
@@ -22,26 +20,6 @@ pub struct CommentResponse {
     pub start_line: Option<i32>,
     pub end_line: Option<i32>,
     pub anchor_side: Option<String>,
-}
-
-impl From<comment::Model> for CommentResponse {
-    fn from(model: comment::Model) -> Self {
-        Self {
-            id: model.id,
-            target_kind: model.target_kind,
-            target_id: model.target_id,
-            parent_id: model.parent_id,
-            body: model.body,
-            author_kind: model.author_kind,
-            author_label: model.author_label,
-            created_at: model.created_at,
-            resolved: model.resolved,
-            anchor_text: model.anchor_text,
-            start_line: model.start_line,
-            end_line: model.end_line,
-            anchor_side: model.anchor_side,
-        }
-    }
 }
 
 impl From<core_application::comment::Comment> for CommentResponse {

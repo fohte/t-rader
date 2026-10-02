@@ -31,7 +31,7 @@ fn map_err(error: AgentConfigUseCaseError) -> AppError {
         AgentConfigUseCaseError::Repository(AgentConfigRepositoryError::Database(error))
         | AgentConfigUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | AgentConfigUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
-        error => AppError::Database(sea_orm::DbErr::Custom(error.to_string())),
+        error => AppError::Internal(error.to_string()),
     }
 }
 

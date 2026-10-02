@@ -6,10 +6,9 @@ use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
 use crate::note::types::{NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate};
-use crate::note::{NoteUseCaseError, NoteUseCases};
+use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-const INITIAL_NOTE_STATUS: &str = "unread";
 const APPROVED_NOTE_STATUS: &str = "approved";
 const HUMAN_CREATED_BY_KIND: &str = "human";
 
