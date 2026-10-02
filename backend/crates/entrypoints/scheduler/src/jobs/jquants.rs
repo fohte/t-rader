@@ -12,7 +12,7 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct ShortRatioIngest;
 
 impl TaskHandler for ShortRatioIngest {
-    const IDENTIFIER: &'static str = "short_ratio_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_RATIO_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(
@@ -51,7 +51,7 @@ async fn ingest_short_ratio(
 pub struct ShortSaleReportIngest;
 
 impl TaskHandler for ShortSaleReportIngest {
-    const IDENTIFIER: &'static str = "short_sale_report_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_SALE_REPORT_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(
@@ -97,7 +97,7 @@ struct MarginIngestStats {
 }
 
 impl TaskHandler for MarginIngest {
-    const IDENTIFIER: &'static str = "margin_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::MARGIN_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(

@@ -8,7 +8,7 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct FredIngest;
 
 impl TaskHandler for FredIngest {
-    const IDENTIFIER: &'static str = "fred_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::FRED_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(

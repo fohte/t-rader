@@ -3064,6 +3064,37 @@
         }
       }
     },
+    "/api/ingest-status": {
+      "get": {
+        "tags": [
+          "ingest_status"
+        ],
+        "summary": "ingest job の実行履歴、データ日、worker queue 状態",
+        "operationId": "get_ingest_status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestStatusResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/note-kinds": {
       "get": {
         "tags": [
@@ -8182,6 +8213,151 @@
           }
         }
       },
+      "IngestJobStatusResponse": {
+        "type": "object",
+        "required": [
+          "job",
+          "worker_jobs"
+        ],
+        "properties": {
+          "expected_data_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "job": {
+            "type": "string"
+          },
+          "last_run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IngestRunResponse"
+              }
+            ]
+          },
+          "last_succeeded_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "latest_data_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "worker_jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IngestWorkerJobResponse"
+            }
+          }
+        }
+      },
+      "IngestRunResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "started_at",
+          "status"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stats": {},
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "IngestStatusResponse": {
+        "type": "object",
+        "required": [
+          "jobs"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IngestJobStatusResponse"
+            }
+          }
+        }
+      },
+      "IngestWorkerJobResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "task_identifier",
+          "state",
+          "run_at",
+          "attempts",
+          "max_attempts"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "queue_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string"
+          },
+          "task_identifier": {
+            "type": "string"
+          }
+        }
+      },
       "InvestableAmountResponse": {
         "type": "object",
         "description": "戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。\nhistory が 1 行も無い戦略では両方 null。",
@@ -9860,6 +10036,10 @@
     {
       "name": "rss_feeds",
       "description": "ニュース集約対象の RSS フィード定義"
+    },
+    {
+      "name": "ingest_status",
+      "description": "取り込み job の状態"
     },
     {
       "name": "agent_options",

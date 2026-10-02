@@ -14,7 +14,7 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct EarningsScheduleIngest;
 
 impl TaskHandler for EarningsScheduleIngest {
-    const IDENTIFIER: &'static str = "earnings_schedule_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::EARNINGS_SCHEDULE_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(
