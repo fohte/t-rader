@@ -5,16 +5,16 @@ import (
 	"net/http"
 	"reflect"
 	"testing"
-
-	"github.com/oapi-codegen/nullable"
 )
 
 func TestClientGetRiskLimit(t *testing.T) {
 	t.Parallel()
 
-	expected := AccountRiskPolicyResponse{MaxSectorRatio: nullable.NewNullableWithValue(0.37)}
+	expected := AccountRiskPolicyResponse{MaxGroupRatios: []GroupRatio{{Axis: "sample-axis", Ratio: 0.37}}}
 	client, requests := newTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		writeJSON(t, w, http.StatusOK, map[string]any{"max_sector_ratio": 0.37})
+		writeJSON(t, w, http.StatusOK, map[string]any{
+			"max_group_ratios": []map[string]any{{"axis": "sample-axis", "ratio": 0.37}},
+		})
 	})
 
 	result, err := client.GetRiskLimit(context.Background())
@@ -53,20 +53,26 @@ func TestClientPutRiskLimit(t *testing.T) {
 		result  AccountRiskPolicyResponse
 	}{
 		{
-			name: "null removes the limit",
+			name: "empty list removes all limits",
 			payload: PutAccountRiskPolicyRequest{
-				MaxSectorRatio: nullable.NewNullNullable[float64](),
+				MaxGroupRatios: []GroupRatio{},
 			},
-			body:   `{"max_sector_ratio":null}`,
-			result: AccountRiskPolicyResponse{MaxSectorRatio: nullable.NewNullNullable[float64]()},
+			body:   `{"max_group_ratios":[]}`,
+			result: AccountRiskPolicyResponse{MaxGroupRatios: []GroupRatio{}},
 		},
 		{
-			name: "value sets the limit",
+			name: "multiple ratios set limits",
 			payload: PutAccountRiskPolicyRequest{
-				MaxSectorRatio: nullable.NewNullableWithValue(0.37),
+				MaxGroupRatios: []GroupRatio{
+					{Axis: "sample-axis", Ratio: 0.37},
+					{Axis: "another-sample-axis", Ratio: 0.2},
+				},
 			},
-			body:   `{"max_sector_ratio":0.37}`,
-			result: AccountRiskPolicyResponse{MaxSectorRatio: nullable.NewNullableWithValue(0.37)},
+			body: `{"max_group_ratios":[{"axis":"sample-axis","ratio":0.37},{"axis":"another-sample-axis","ratio":0.2}]}`,
+			result: AccountRiskPolicyResponse{MaxGroupRatios: []GroupRatio{
+				{Axis: "sample-axis", Ratio: 0.37},
+				{Axis: "another-sample-axis", Ratio: 0.2},
+			}},
 		},
 	}
 

@@ -16,6 +16,11 @@ const ITEMS: { to: string; label: string; description: string }[] = [
     description: 'ニュース集約対象の公開 RSS を追加・編集・無効化する',
   },
   {
+    to: '/settings/ingest-status',
+    label: '取り込み状況',
+    description: '取り込みジョブの実行履歴とデータ状況を確認する',
+  },
+  {
     to: '/settings/risk-policy',
     label: 'リスク上限',
     description:

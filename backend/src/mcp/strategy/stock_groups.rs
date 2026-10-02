@@ -153,7 +153,7 @@ fn group_to_dto(group: StockGroup) -> StockGroupDto {
     }
 }
 
-fn stock_group_error(error: StockGroupUseCaseError) -> McpError {
+pub(super) fn stock_group_error(error: StockGroupUseCaseError) -> McpError {
     match error {
         error @ (StockGroupUseCaseError::Validation(_)
         | StockGroupUseCaseError::AxisNotFound(_)

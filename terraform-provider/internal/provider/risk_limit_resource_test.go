@@ -43,9 +43,13 @@ func TestRiskLimitResourceCreate(t *testing.T) {
 
 	ctx := context.Background()
 	resourceSchema := riskLimitResourceSchema(t)
-	plan := riskLimitPlan(t, resourceSchema.Schema, types.Float64Value(0.37))
+	groupRatios := riskLimitRatios(t,
+		riskLimitGroupRatioModel{Axis: types.StringValue("sample-axis"), Ratio: types.Float64Value(0.37)},
+		riskLimitGroupRatioModel{Axis: types.StringValue("another-sample-axis"), Ratio: types.Float64Value(0.25)},
+	)
+	plan := riskLimitPlan(t, resourceSchema.Schema, groupRatios)
 	client, requests := newRiskLimitTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		writeRiskLimitResponse(t, w, http.StatusOK, `{"max_sector_ratio":0.37}`)
+		writeRiskLimitResponse(t, w, http.StatusOK, `{"max_group_ratios":[{"axis":"sample-axis","ratio":0.37},{"axis":"another-sample-axis","ratio":0.25}]}`)
 	})
 
 	response := resource.CreateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: resourceSchema.Schema}}
@@ -59,23 +63,25 @@ func TestRiskLimitResourceCreate(t *testing.T) {
 		Request: &riskLimitObservedRequest{
 			Method: http.MethodPut,
 			Path:   "/api/account/risk-policy",
-			Body:   `{"max_sector_ratio":0.37}`,
+			Body:   `{"max_group_ratios":[{"axis":"sample-axis","ratio":0.37},{"axis":"another-sample-axis","ratio":0.25}]}`,
 		},
-		State: riskLimitModel{ID: types.StringValue(riskLimitResourceID), MaxSectorRatio: types.Float64Value(0.37)},
+		State: riskLimitModel{ID: types.StringValue(riskLimitResourceID), MaxGroupRatios: groupRatios},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("create risk limit output mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
-func TestRiskLimitResourceReadKeepsUnconfiguredSingleton(t *testing.T) {
+func TestRiskLimitResourceRead(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	resourceSchema := riskLimitResourceSchema(t)
-	state := riskLimitState(t, resourceSchema.Schema, types.Float64Value(0.37))
+	state := riskLimitState(t, resourceSchema.Schema, riskLimitRatios(t,
+		riskLimitGroupRatioModel{Axis: types.StringValue("sample-axis"), Ratio: types.Float64Value(0.37)},
+	))
 	client, requests := newRiskLimitTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		writeRiskLimitResponse(t, w, http.StatusOK, `{"max_sector_ratio":null}`)
+		writeRiskLimitResponse(t, w, http.StatusOK, `{"max_group_ratios":[{"axis":"sample-axis","ratio":0.37},{"axis":"another-sample-axis","ratio":0.25}]}`)
 	})
 
 	response := resource.ReadResponse{State: state}
@@ -87,7 +93,13 @@ func TestRiskLimitResourceReadKeepsUnconfiguredSingleton(t *testing.T) {
 	got := riskLimitTestOutput{Request: &request, State: resultState, Diagnostics: riskLimitDiagnostics(response.Diagnostics)}
 	want := riskLimitTestOutput{
 		Request: &riskLimitObservedRequest{Method: http.MethodGet, Path: "/api/account/risk-policy"},
-		State:   riskLimitModel{ID: types.StringValue(riskLimitResourceID), MaxSectorRatio: types.Float64Null()},
+		State: riskLimitModel{
+			ID: types.StringValue(riskLimitResourceID),
+			MaxGroupRatios: riskLimitRatios(t,
+				riskLimitGroupRatioModel{Axis: types.StringValue("sample-axis"), Ratio: types.Float64Value(0.37)},
+				riskLimitGroupRatioModel{Axis: types.StringValue("another-sample-axis"), Ratio: types.Float64Value(0.25)},
+			),
+		},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("read risk limit output mismatch: got=%#v want=%#v", got, want)
@@ -99,10 +111,13 @@ func TestRiskLimitResourceUpdateClearsLimit(t *testing.T) {
 
 	ctx := context.Background()
 	resourceSchema := riskLimitResourceSchema(t)
-	plan := riskLimitPlan(t, resourceSchema.Schema, types.Float64Null())
-	priorState := riskLimitState(t, resourceSchema.Schema, types.Float64Value(0.37))
+	emptyRatios := emptyRiskLimitGroupRatios()
+	plan := riskLimitPlan(t, resourceSchema.Schema, emptyRatios)
+	priorState := riskLimitState(t, resourceSchema.Schema, riskLimitRatios(t,
+		riskLimitGroupRatioModel{Axis: types.StringValue("sample-axis"), Ratio: types.Float64Value(0.37)},
+	))
 	client, requests := newRiskLimitTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		writeRiskLimitResponse(t, w, http.StatusOK, `{"max_sector_ratio":null}`)
+		writeRiskLimitResponse(t, w, http.StatusOK, `{"max_group_ratios":[]}`)
 	})
 
 	response := resource.UpdateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: resourceSchema.Schema}}
@@ -116,9 +131,9 @@ func TestRiskLimitResourceUpdateClearsLimit(t *testing.T) {
 		Request: &riskLimitObservedRequest{
 			Method: http.MethodPut,
 			Path:   "/api/account/risk-policy",
-			Body:   `{"max_sector_ratio":null}`,
+			Body:   `{"max_group_ratios":[]}`,
 		},
-		State: riskLimitModel{ID: types.StringValue(riskLimitResourceID), MaxSectorRatio: types.Float64Null()},
+		State: riskLimitModel{ID: types.StringValue(riskLimitResourceID), MaxGroupRatios: emptyRatios},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("update risk limit output mismatch: got=%#v want=%#v", got, want)
@@ -158,7 +173,7 @@ func TestRiskLimitResourceImportState(t *testing.T) {
 
 	ctx := context.Background()
 	resourceSchema := riskLimitResourceSchema(t)
-	plan := riskLimitPlan(t, resourceSchema.Schema, types.Float64Null())
+	plan := riskLimitPlan(t, resourceSchema.Schema, emptyRiskLimitGroupRatios())
 	response := resource.ImportStateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: resourceSchema.Schema}}
 	(&riskLimitResource{}).ImportState(ctx, resource.ImportStateRequest{ID: riskLimitResourceID}, &response)
 	var id types.String
@@ -193,14 +208,14 @@ func TestRiskLimitResourceRejectsUnknownImportID(t *testing.T) {
 	}
 }
 
-func TestMaxSectorRatioValidator(t *testing.T) {
+func TestMaxGroupRatioValidator(t *testing.T) {
 	t.Parallel()
 
-	ratioPath := path.Root("max_sector_ratio")
+	ratioPath := path.Root("max_group_ratios").AtListIndex(0).AtName("ratio")
 	invalidRatio := diag.Diagnostics{diag.NewAttributeErrorDiagnostic(
 		ratioPath,
-		"Invalid max sector ratio",
-		"max_sector_ratio must be greater than 0 and less than or equal to 1.",
+		"Invalid group ratio",
+		"ratio must be greater than 0 and less than or equal to 1.",
 	)}
 	cases := []struct {
 		name  string
@@ -221,7 +236,7 @@ func TestMaxSectorRatioValidator(t *testing.T) {
 			t.Parallel()
 
 			var response validator.Float64Response
-			(maxSectorRatioValidator{}).ValidateFloat64(context.Background(), validator.Float64Request{
+			(maxGroupRatioValidator{}).ValidateFloat64(context.Background(), validator.Float64Request{
 				Path:        ratioPath,
 				ConfigValue: testCase.value,
 			}, &response)
@@ -239,12 +254,12 @@ func riskLimitResourceSchema(t *testing.T) resource.SchemaResponse {
 	return response
 }
 
-func riskLimitPlan(t *testing.T, resourceSchema schema.Schema, ratio types.Float64) tfsdk.Plan {
+func riskLimitPlan(t *testing.T, resourceSchema schema.Schema, groupRatios types.List) tfsdk.Plan {
 	t.Helper()
 	plan := tfsdk.Plan{Schema: resourceSchema}
 	diagnostics := plan.Set(context.Background(), riskLimitModel{
 		ID:             types.StringUnknown(),
-		MaxSectorRatio: ratio,
+		MaxGroupRatios: groupRatios,
 	})
 	if diagnostics.HasError() {
 		t.Fatalf("build risk limit plan: %v", diagnostics)
@@ -252,17 +267,26 @@ func riskLimitPlan(t *testing.T, resourceSchema schema.Schema, ratio types.Float
 	return plan
 }
 
-func riskLimitState(t *testing.T, resourceSchema schema.Schema, ratio types.Float64) tfsdk.State {
+func riskLimitState(t *testing.T, resourceSchema schema.Schema, groupRatios types.List) tfsdk.State {
 	t.Helper()
 	state := tfsdk.State{Schema: resourceSchema}
 	diagnostics := state.Set(context.Background(), riskLimitModel{
 		ID:             types.StringValue(riskLimitResourceID),
-		MaxSectorRatio: ratio,
+		MaxGroupRatios: groupRatios,
 	})
 	if diagnostics.HasError() {
 		t.Fatalf("build risk limit state: %v", diagnostics)
 	}
 	return state
+}
+
+func riskLimitRatios(t *testing.T, values ...riskLimitGroupRatioModel) types.List {
+	t.Helper()
+	groupRatios, diagnostics := types.ListValueFrom(context.Background(), riskLimitGroupRatioObjectType(), values)
+	if diagnostics.HasError() {
+		t.Fatalf("build risk limit group ratios: %v", diagnostics)
+	}
+	return groupRatios
 }
 
 func newRiskLimitTestClient(t *testing.T, handler riskLimitTestHandler) (*traderapi.Client, <-chan riskLimitObservedRequest) {

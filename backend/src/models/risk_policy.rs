@@ -1,26 +1,44 @@
-use core_application::account_risk_policy::AccountRiskPolicyData;
+use core_application::account_risk_policy::{
+    AccountRiskPolicyData, GroupRatio as ApplicationGroupRatio,
+};
 use rust_decimal::Decimal;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
+pub struct GroupRatio {
+    /// 分類軸のキー。
+    pub axis: String,
+    /// 分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。
+    pub ratio: Decimal,
+}
+
+impl From<ApplicationGroupRatio> for GroupRatio {
+    fn from(value: ApplicationGroupRatio) -> Self {
+        Self {
+            axis: value.axis,
+            ratio: value.ratio,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PutAccountRiskPolicyRequest {
-    /// セクターに属する保有銘柄の時価合計 (口座全体) / 口座全体の保有銘柄時価合計 の上限比率。
-    /// (0, 1] の範囲。`null` で上限を解除する
-    pub max_sector_ratio: Option<Decimal>,
+    /// 分類軸ごとのグループ比率上限。空配列なら上限なし。
+    pub max_group_ratios: Vec<GroupRatio>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AccountRiskPolicyResponse {
-    pub max_sector_ratio: Option<Decimal>,
+    /// 分類軸ごとのグループ比率上限。空配列なら上限なし。
+    pub max_group_ratios: Vec<GroupRatio>,
 }
 
 impl From<AccountRiskPolicyData> for AccountRiskPolicyResponse {
     fn from(data: AccountRiskPolicyData) -> Self {
         Self {
-            max_sector_ratio: data.max_sector_ratio,
+            max_group_ratios: data.max_group_ratios.into_iter().map(Into::into).collect(),
         }
     }
 }
