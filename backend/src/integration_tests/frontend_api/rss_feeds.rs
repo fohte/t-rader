@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use axum_test::TestServer;
@@ -19,8 +20,22 @@ mod tests {
                 "url": url,
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         let created: Value = res.json();
+        assert_eq!(
+            (res.status_code(), normalize(created.clone())),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "source": source,
+                    "display_name": display_name,
+                    "url": url,
+                    "enabled": true,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         created["id"].as_str().unwrap().to_owned()
     }
 
@@ -44,18 +59,20 @@ mod tests {
                 "url": "https://feeds.example.invalid/markets.xml",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "source": "sample-newswire",
-                "display_name": "Sample Newswire",
-                "url": "https://feeds.example.invalid/markets.xml",
-                "enabled": true,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "source": "sample-newswire",
+                    "display_name": "Sample Newswire",
+                    "url": "https://feeds.example.invalid/markets.xml",
+                    "enabled": true,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -71,28 +88,33 @@ mod tests {
         .await;
 
         let res = server.get(&format!("/api/rss-feeds/{id}")).await;
-        res.assert_status_ok();
         assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "source": "example-feed",
-                "display_name": "Example Feed",
-                "url": "https://example.com/feed.xml",
-                "enabled": true,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "source": "example-feed",
+                    "display_name": "Example Feed",
+                    "url": "https://example.com/feed.xml",
+                    "enabled": true,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
     #[backend_test_macros::database_test]
     async fn get_nonexistent_feed_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let res = server
-            .get("/api/rss-feeds/00000000-0000-4000-8000-000000000001")
-            .await;
-        res.assert_status(StatusCode::NOT_FOUND);
+        let missing_id = "00000000-0000-4000-8000-000000000001";
+        let res = server.get(&format!("/api/rss-feeds/{missing_id}")).await;
+        assert_response_eq(
+            &res,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("rss feed {missing_id} not found") })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -107,7 +129,13 @@ mod tests {
                 "unexpected": true,
             }))
             .await;
-        res.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        assert_response_eq(
+            &res,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Some(json!({
+                "error": "Failed to deserialize the JSON body into the target type: unexpected: unknown field `unexpected`, expected one of `source`, `display_name`, `url`, `enabled` at line 1 column 67"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -118,13 +146,29 @@ mod tests {
             "display_name": "Dup",
             "url": "https://example.com/a",
         });
-        server
-            .post("/api/rss-feeds")
-            .json(&body)
-            .await
-            .assert_status(StatusCode::CREATED);
+        let created = server.post("/api/rss-feeds").json(&body).await;
+        let created_body: Value = created.json();
+        assert_eq!(
+            (created.status_code(), normalize(created_body)),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "source": "dup",
+                    "display_name": "Dup",
+                    "url": "https://example.com/a",
+                    "enabled": true,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         let res = server.post("/api/rss-feeds").json(&body).await;
-        res.assert_status(StatusCode::CONFLICT);
+        assert_response_eq(
+            &res,
+            StatusCode::CONFLICT,
+            Some(json!({ "error": "rss feed with source 'dup' already exists" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -138,7 +182,13 @@ mod tests {
                 "url": "https://example.com/a",
             }))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({
+                "error": "source must match ^[a-z0-9_-]+$ (got 'Has Space')"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -152,7 +202,11 @@ mod tests {
                 "url": "not-a-url",
             }))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "url must be a valid http(s) URL (got 'not-a-url')" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -160,26 +214,42 @@ mod tests {
         let server = create_test_server(db).await;
         let a_id = create_feed(&server, "a", "A", "https://example.com/a").await;
         create_feed(&server, "b", "B", "https://example.com/b").await;
-        server
+        let disabled = server
             .patch(&format!("/api/rss-feeds/{a_id}"))
             .json(&json!({ "enabled": false }))
-            .await
-            .assert_status_ok();
+            .await;
+        assert_eq!(
+            (disabled.status_code(), normalize(disabled.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "source": "a",
+                    "display_name": "A",
+                    "url": "https://example.com/a",
+                    "enabled": false,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         let res = server.get("/api/rss-feeds?enabled_only=true").await;
-        res.assert_status_ok();
         let body: Vec<Value> = res.json();
         let normalized: Vec<Value> = body.into_iter().map(normalize).collect();
         assert_eq!(
-            normalized,
-            vec![json!({
-                "id": "<id>",
-                "source": "b",
-                "display_name": "B",
-                "url": "https://example.com/b",
-                "enabled": true,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            })],
+            (res.status_code(), normalized),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "id": "<id>",
+                    "source": "b",
+                    "display_name": "B",
+                    "url": "https://example.com/b",
+                    "enabled": true,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                })],
+            ),
         );
     }
 
@@ -191,18 +261,20 @@ mod tests {
             .patch(&format!("/api/rss-feeds/{id}"))
             .json(&json!({ "display_name": "New", "enabled": false }))
             .await;
-        res.assert_status_ok();
         assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "source": "x",
-                "display_name": "New",
-                "url": "https://example.com/a",
-                "enabled": false,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "source": "x",
+                    "display_name": "New",
+                    "url": "https://example.com/a",
+                    "enabled": false,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -224,20 +296,26 @@ mod tests {
                 "unexpected": true,
             }))
             .await;
-        res.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        assert_response_eq(
+            &res,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Some(json!({
+                "error": "Failed to deserialize the JSON body into the target type: unexpected: unknown field `unexpected`, expected one of `display_name`, `url`, `enabled` at line 1 column 43"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
     async fn delete_returns_204_then_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let id = create_feed(&server, "x", "x", "https://example.com/a").await;
-        server
-            .delete(&format!("/api/rss-feeds/{id}"))
-            .await
-            .assert_status(StatusCode::NO_CONTENT);
-        server
-            .delete(&format!("/api/rss-feeds/{id}"))
-            .await
-            .assert_status(StatusCode::NOT_FOUND);
+        let deleted = server.delete(&format!("/api/rss-feeds/{id}")).await;
+        assert_response_eq(&deleted, StatusCode::NO_CONTENT, None);
+        let missing = server.delete(&format!("/api/rss-feeds/{id}")).await;
+        assert_response_eq(
+            &missing,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("rss feed {id} not found") })),
+        );
     }
 }

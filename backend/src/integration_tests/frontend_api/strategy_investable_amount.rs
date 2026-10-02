@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::{create_strategy, create_test_server};
 
     #[backend_test_macros::database_test]
@@ -10,10 +11,10 @@ mod tests {
         let res = server
             .get(&format!("/api/strategies/{id}/investable-amount"))
             .await;
-        res.assert_status_ok();
-        assert_eq!(
-            res.json::<serde_json::Value>(),
-            serde_json::json!({ "amount_jpy": null, "effective_at": null }),
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({ "amount_jpy": null, "effective_at": null })),
         );
     }
 
@@ -33,14 +34,12 @@ mod tests {
                 "effective_at": "2020-01-01T00:00:00Z",
             }))
             .await;
-        put.assert_status_ok();
-        assert_eq!(put.json::<serde_json::Value>(), expected);
+        assert_response_eq(&put, axum::http::StatusCode::OK, Some(expected.clone()));
 
         let get = server
             .get(&format!("/api/strategies/{id}/investable-amount"))
             .await;
-        get.assert_status_ok();
-        assert_eq!(get.json::<serde_json::Value>(), expected);
+        assert_response_eq(&get, axum::http::StatusCode::OK, Some(expected));
     }
 
     #[backend_test_macros::database_test]
@@ -53,16 +52,25 @@ mod tests {
             .put(&format!("/api/strategies/{id}/investable-amount"))
             .json(&serde_json::json!({ "amount_jpy": 500000 }))
             .await;
-        put.assert_status_ok();
-        let body: serde_json::Value = put.json();
+        let mut body: serde_json::Value = put.json();
         let effective_at: chrono::DateTime<chrono::Utc> = body["effective_at"]
             .as_str()
             .expect("effective_at is a string")
             .parse()
             .expect("valid RFC3339 timestamp");
 
-        assert_eq!(body["amount_jpy"], serde_json::json!(500000));
-        assert!(effective_at >= before);
+        body["effective_at"] = serde_json::json!("<effective_at>");
+        assert_eq!(
+            (put.status_code(), body, effective_at >= before),
+            (
+                axum::http::StatusCode::OK,
+                serde_json::json!({
+                    "amount_jpy": 500000,
+                    "effective_at": "<effective_at>",
+                }),
+                true,
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -70,33 +78,47 @@ mod tests {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
-        server
+        let first = server
             .put(&format!("/api/strategies/{id}/investable-amount"))
             .json(&serde_json::json!({
                 "amount_jpy": 1000000,
                 "effective_at": "2020-01-01T00:00:00Z",
             }))
-            .await
-            .assert_status_ok();
-        server
+            .await;
+        assert_response_eq(
+            &first,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
+                "amount_jpy": 1000000,
+                "effective_at": "2020-01-01T00:00:00Z",
+            })),
+        );
+        let second = server
             .put(&format!("/api/strategies/{id}/investable-amount"))
             .json(&serde_json::json!({
                 "amount_jpy": 2000000,
                 "effective_at": "2020-06-01T00:00:00Z",
             }))
-            .await
-            .assert_status_ok();
+            .await;
+        assert_response_eq(
+            &second,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
+                "amount_jpy": 2000000,
+                "effective_at": "2020-06-01T00:00:00Z",
+            })),
+        );
 
         let get = server
             .get(&format!("/api/strategies/{id}/investable-amount"))
             .await;
-        get.assert_status_ok();
-        assert_eq!(
-            get.json::<serde_json::Value>(),
-            serde_json::json!({
+        assert_response_eq(
+            &get,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
                 "amount_jpy": 2000000,
                 "effective_at": "2020-06-01T00:00:00Z",
-            }),
+            })),
         );
     }
 
@@ -106,23 +128,21 @@ mod tests {
     ) {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
-        let mut write_statuses = Vec::new();
+        let mut write_outputs = Vec::new();
 
         for (amount_jpy, effective_at) in [
             (100000, "2020-01-01T00:00:00Z"),
             (200000, "2020-06-01T00:00:00Z"),
             (900000, "2099-01-01T00:00:00Z"),
         ] {
-            write_statuses.push(
-                server
-                    .put(&format!("/api/strategies/{id}/investable-amount"))
-                    .json(&serde_json::json!({
-                        "amount_jpy": amount_jpy,
-                        "effective_at": effective_at,
-                    }))
-                    .await
-                    .status_code(),
-            );
+            let response = server
+                .put(&format!("/api/strategies/{id}/investable-amount"))
+                .json(&serde_json::json!({
+                    "amount_jpy": amount_jpy,
+                    "effective_at": effective_at,
+                }))
+                .await;
+            write_outputs.push((response.status_code(), response.json::<serde_json::Value>()));
         }
 
         let current = server
@@ -131,15 +151,24 @@ mod tests {
 
         assert_eq!(
             (
-                write_statuses,
+                write_outputs,
                 current.status_code(),
-                current.json::<serde_json::Value>(),
+                current.json::<serde_json::Value>()
             ),
             (
                 vec![
-                    axum::http::StatusCode::OK,
-                    axum::http::StatusCode::OK,
-                    axum::http::StatusCode::OK,
+                    (
+                        axum::http::StatusCode::OK,
+                        serde_json::json!({ "amount_jpy": 100000, "effective_at": "2020-01-01T00:00:00Z" }),
+                    ),
+                    (
+                        axum::http::StatusCode::OK,
+                        serde_json::json!({ "amount_jpy": 200000, "effective_at": "2020-06-01T00:00:00Z" }),
+                    ),
+                    (
+                        axum::http::StatusCode::OK,
+                        serde_json::json!({ "amount_jpy": 900000, "effective_at": "2099-01-01T00:00:00Z" }),
+                    ),
                 ],
                 axum::http::StatusCode::OK,
                 serde_json::json!({
@@ -156,7 +185,13 @@ mod tests {
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/investable-amount")
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(
+                serde_json::json!({ "error": "strategy 00000000-0000-0000-0000-000000000000 not found" }),
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -166,7 +201,13 @@ mod tests {
             .put("/api/strategies/00000000-0000-0000-0000-000000000000/investable-amount")
             .json(&serde_json::json!({ "amount_jpy": 1000000 }))
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(
+                serde_json::json!({ "error": "strategy 00000000-0000-0000-0000-000000000000 not found" }),
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -178,6 +219,10 @@ mod tests {
             .put(&format!("/api/strategies/{id}/investable-amount"))
             .json(&serde_json::json!({ "amount_jpy": -1 }))
             .await;
-        res.assert_status(axum::http::StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::BAD_REQUEST,
+            Some(serde_json::json!({ "error": "amount_jpy must be non-negative" })),
+        );
     }
 }

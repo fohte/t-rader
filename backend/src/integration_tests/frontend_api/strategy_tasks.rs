@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use std::sync::Arc;
 
     use sea_orm::EntityTrait;
@@ -18,13 +19,16 @@ mod tests {
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::strategy_task;
 
-    /// JSON body から動的フィールド (created_at/updated_at/as_of) を除去し、
-    /// 単一の assert_eq! で残りのフィールドを比較できるようにする。
+    /// JSON body の動的時刻を正規化し、全フィールドを比較できるようにする。
     fn strip_timestamps(v: &mut serde_json::Value) {
         if let Some(obj) = v.as_object_mut() {
-            obj.remove("created_at");
-            obj.remove("updated_at");
-            obj.remove("as_of");
+            for key in ["created_at", "updated_at", "as_of"] {
+                if let Some(value) = obj.get_mut(key)
+                    && !value.is_null()
+                {
+                    *value = json!(format!("<{key}>"));
+                }
+            }
         }
     }
 
@@ -45,17 +49,18 @@ mod tests {
             .post(&format!("/api/strategies/{strategy_id}/chat"))
             .json(&json!({ "prompt": " inspect 7203 " }))
             .await;
-        res.assert_status(axum::http::StatusCode::ACCEPTED);
-
         let mut body: serde_json::Value = res.json();
         let task_id = Uuid::parse_str(body["task_id"].as_str().expect("task_id")).expect("uuid");
         body["task_id"] = json!("<uuid>");
         assert_eq!(
-            body,
-            json!({
-                "task_id": "<uuid>",
-                "a2a_task_id": "agent-task-1",
-            }),
+            (res.status_code(), body),
+            (
+                axum::http::StatusCode::ACCEPTED,
+                json!({
+                    "task_id": "<uuid>",
+                    "a2a_task_id": "agent-task-1",
+                }),
+            ),
         );
 
         let row = strategy_task::Entity::find_by_id(task_id)
@@ -148,7 +153,13 @@ mod tests {
             .post("/api/strategies/00000000-0000-0000-0000-000000000000/chat")
             .json(&json!({ "prompt": "x" }))
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({
+                "error": "strategy 00000000-0000-0000-0000-000000000000 not found"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -161,7 +172,11 @@ mod tests {
             .post(&format!("/api/strategies/{strategy_id}/chat"))
             .json(&json!({ "prompt": "   " }))
             .await;
-        res.assert_status(axum::http::StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "prompt must not be empty" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -179,10 +194,10 @@ mod tests {
             .post(&format!("/api/strategies/{strategy_id}/chat"))
             .json(&json!({ "prompt": "inspect 7203" }))
             .await;
-        res.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(
-            res.json::<serde_json::Value>(),
-            json!({ "error": "agent task client is not configured" }),
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Some(json!({ "error": "agent task client is not configured" })),
         );
     }
 
@@ -232,36 +247,48 @@ mod tests {
             .post(&format!("/api/strategies/{strategy_id}/chat"))
             .json(&json!({ "prompt": "p" }))
             .await;
-        submit.assert_status(axum::http::StatusCode::ACCEPTED);
-        let task_id = submit.json::<serde_json::Value>()["task_id"]
+        let submit_body = submit.json::<serde_json::Value>();
+        let task_id = submit_body["task_id"]
             .as_str()
             .map(|s| Uuid::parse_str(s).unwrap())
             .expect("task_id");
-        let a2a_task_id = submit.json::<serde_json::Value>()["a2a_task_id"]
+        let a2a_task_id = submit_body["a2a_task_id"]
             .as_str()
             .expect("a2a_task_id")
             .to_string();
+        assert_eq!(
+            (submit.status_code(), submit_body),
+            (
+                axum::http::StatusCode::ACCEPTED,
+                json!({ "task_id": task_id, "a2a_task_id": a2a_task_id }),
+            ),
+        );
 
         let res = server
             .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))
             .await;
-        res.assert_status_ok();
         let mut body: serde_json::Value = res.json();
         strip_timestamps(&mut body);
         assert_eq!(
-            body,
-            json!({
-                "task_id": task_id,
-                "strategy_id": strategy_id,
-                "a2a_task_id": a2a_task_id,
-                "source": "frontend",
-                "prompt": "p",
-                "phase": "running",
-                "error_summary": null,
-                "result_text": null,
-                "steps": [],
-                "purpose": "default",
-            }),
+            (res.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                json!({
+                    "task_id": task_id,
+                    "strategy_id": strategy_id,
+                    "a2a_task_id": a2a_task_id,
+                    "source": "frontend",
+                    "prompt": "p",
+                    "phase": "running",
+                    "error_summary": null,
+                    "result_text": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "steps": [],
+                    "purpose": "default",
+                    "as_of": "<as_of>",
+                }),
+            ),
         );
     }
 
@@ -276,7 +303,13 @@ mod tests {
                 "/api/strategies/{strategy_id}/tasks/00000000-0000-0000-0000-000000000000"
             ))
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({
+                "error": "strategy task 00000000-0000-0000-0000-000000000000 not found"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -293,16 +326,31 @@ mod tests {
             .post(&format!("/api/strategies/{strategy_a}/chat"))
             .json(&json!({ "prompt": "p" }))
             .await;
-        submit.assert_status(axum::http::StatusCode::ACCEPTED);
-        let task_id = submit.json::<serde_json::Value>()["task_id"]
+        let submit_body = submit.json::<serde_json::Value>();
+        let task_id = submit_body["task_id"]
             .as_str()
             .map(|s| Uuid::parse_str(s).unwrap())
             .expect("task_id");
+        let a2a_task_id = submit_body["a2a_task_id"]
+            .as_str()
+            .expect("a2a_task_id")
+            .to_string();
+        assert_eq!(
+            (submit.status_code(), submit_body),
+            (
+                axum::http::StatusCode::ACCEPTED,
+                json!({ "task_id": task_id, "a2a_task_id": a2a_task_id }),
+            ),
+        );
 
         let res = server
             .get(&format!("/api/strategies/{strategy_b}/tasks/{task_id}"))
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("strategy task {task_id} not found") })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -332,40 +380,51 @@ mod tests {
         let res = server
             .get(&format!("/api/strategies/{strategy_id}/tasks"))
             .await;
-        res.assert_status_ok();
         let mut body: Vec<serde_json::Value> = res.json();
         body.iter_mut().for_each(strip_timestamps);
         assert_eq!(
-            body,
-            vec![
-                json!({
-                    "task_id": task3,
-                    "strategy_id": strategy_id,
-                    "source": "frontend",
-                    "prompt": "third",
-                    "phase": "completed",
-                    "error_summary": null,
-                    "purpose": null,
-                }),
-                json!({
-                    "task_id": task2,
-                    "strategy_id": strategy_id,
-                    "source": "frontend",
-                    "prompt": "second",
-                    "phase": "completed",
-                    "error_summary": null,
-                    "purpose": null,
-                }),
-                json!({
-                    "task_id": task1,
-                    "strategy_id": strategy_id,
-                    "source": "frontend",
-                    "prompt": "first",
-                    "phase": "completed",
-                    "error_summary": null,
-                    "purpose": null,
-                }),
-            ],
+            (res.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                vec![
+                    json!({
+                        "task_id": task3,
+                        "strategy_id": strategy_id,
+                        "source": "frontend",
+                        "prompt": "third",
+                        "phase": "completed",
+                        "error_summary": null,
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "purpose": null,
+                        "as_of": "<as_of>",
+                    }),
+                    json!({
+                        "task_id": task2,
+                        "strategy_id": strategy_id,
+                        "source": "frontend",
+                        "prompt": "second",
+                        "phase": "completed",
+                        "error_summary": null,
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "purpose": null,
+                        "as_of": "<as_of>",
+                    }),
+                    json!({
+                        "task_id": task1,
+                        "strategy_id": strategy_id,
+                        "source": "frontend",
+                        "prompt": "first",
+                        "phase": "completed",
+                        "error_summary": null,
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "purpose": null,
+                        "as_of": "<as_of>",
+                    }),
+                ],
+            ),
         );
     }
 
@@ -377,7 +436,13 @@ mod tests {
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/tasks")
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({
+                "error": "strategy 00000000-0000-0000-0000-000000000000 not found"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -393,20 +458,25 @@ mod tests {
         let res = server
             .get(&format!("/api/strategies/{strategy_a}/tasks"))
             .await;
-        res.assert_status_ok();
         let mut body: Vec<serde_json::Value> = res.json();
         body.iter_mut().for_each(strip_timestamps);
         assert_eq!(
-            body,
-            vec![json!({
-                "task_id": task_a,
-                "strategy_id": strategy_a,
-                "source": "frontend",
-                "prompt": "for-a",
-                "phase": "completed",
-                "error_summary": null,
-                "purpose": null,
-            })],
+            (res.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                vec![json!({
+                    "task_id": task_a,
+                    "strategy_id": strategy_a,
+                    "source": "frontend",
+                    "prompt": "for-a",
+                    "phase": "completed",
+                    "error_summary": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "purpose": null,
+                    "as_of": "<as_of>",
+                })],
+            ),
         );
     }
 }

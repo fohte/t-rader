@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::models::bar::{Bar, Timeframe};
     use crate::testing::{create_test_server, create_test_server_with_db};
     use axum::http::StatusCode;
@@ -61,12 +62,10 @@ mod tests {
             .expect("upsert failed");
 
         let response = server.get("/api/bars?instrument_id=TEST-INSTRUMENT").await;
-        response.assert_status_ok();
-
-        let body: serde_json::Value = response.json();
-        assert_eq!(
-            body,
-            serde_json::json!([{
+        assert_response_eq(
+            &response,
+            StatusCode::OK,
+            Some(serde_json::json!([{
                 "instrument_id": "TEST-INSTRUMENT",
                 "timeframe": "1d",
                 "timestamp": "2025-01-06T00:00:00Z",
@@ -75,7 +74,7 @@ mod tests {
                 "low": 90,
                 "close": 100,
                 "volume": 1000,
-            }]),
+            }])),
         );
     }
 
@@ -84,16 +83,24 @@ mod tests {
         let server = create_test_server(db).await;
 
         let cases = [
-            ("empty_instrument_id", "?instrument_id="),
-            ("invalid_timeframe", "?instrument_id=7203&timeframe=5m"),
+            (
+                "empty_instrument_id",
+                "?instrument_id=",
+                serde_json::json!({ "error": "instrument_id must not be empty" }),
+            ),
+            (
+                "invalid_timeframe",
+                "?instrument_id=7203&timeframe=5m",
+                serde_json::json!({ "error": "invalid timeframe: 5m. valid values: [\"1d\"]" }),
+            ),
         ];
 
-        for (name, query) in cases {
+        for (name, query, expected_body) in cases {
             let response = server.get(&format!("/api/bars{query}")).await;
-            response.assert_status(StatusCode::BAD_REQUEST);
-            assert!(
-                response.text().contains("error"),
-                "case '{name}' should return JSON error body"
+            assert_eq!(
+                (response.status_code(), response.json::<serde_json::Value>()),
+                (StatusCode::BAD_REQUEST, expected_body),
+                "case '{name}'",
             );
         }
     }
@@ -103,10 +110,7 @@ mod tests {
         let server = create_test_server(db).await;
 
         let response = server.get("/api/bars?instrument_id=9999").await;
-        response.assert_status_ok();
-
-        let body: Vec<serde_json::Value> = response.json();
-        assert!(body.is_empty());
+        assert_response_eq(&response, StatusCode::OK, Some(serde_json::json!([])));
     }
 
     #[backend_test_macros::database_test]
@@ -138,11 +142,19 @@ mod tests {
         let response = server
             .get("/api/bars?instrument_id=7203&from=2025-01-07&to=2025-01-07")
             .await;
-        response.assert_status_ok();
-
-        let body: Vec<serde_json::Value> = response.json();
-        assert_eq!(body.len(), 1);
-        assert_eq!(body[0]["instrument_id"], "7203");
-        assert_eq!(body[0]["close"], 105.0);
+        assert_response_eq(
+            &response,
+            StatusCode::OK,
+            Some(serde_json::json!([{
+                "instrument_id": "7203",
+                "timeframe": "1d",
+                "timestamp": "2025-01-07T00:00:00Z",
+                "open": 105,
+                "high": 115,
+                "low": 95,
+                "close": 105,
+                "volume": 1000,
+            }])),
+        );
     }
 }

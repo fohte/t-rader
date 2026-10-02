@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::{create_strategy, create_test_server};
     use serde_json::{Value, json};
 
@@ -20,8 +21,21 @@ mod tests {
             .post("/api/strategies")
             .json(&json!({ "name": "strategy", "description": "initial" }))
             .await;
-        created.assert_status(axum::http::StatusCode::CREATED);
         let id = created.json::<Value>()["id"].as_str().unwrap().to_string();
+        assert_eq!(
+            (created.status_code(), normalize_strategy(created.json())),
+            (
+                axum::http::StatusCode::CREATED,
+                json!({
+                    "id": id,
+                    "name": "strategy",
+                    "description": "initial",
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         (server, id)
     }
 
@@ -32,13 +46,43 @@ mod tests {
             .post("/api/strategies")
             .json(&json!({ "name": "長期投資" }))
             .await;
-        res.assert_status(axum::http::StatusCode::CREATED);
+        let id = res.json::<Value>()["id"].as_str().unwrap().to_string();
+        assert_eq!(
+            (res.status_code(), normalize_strategy(res.json())),
+            (
+                axum::http::StatusCode::CREATED,
+                json!({
+                    "id": id,
+                    "name": "長期投資",
+                    "description": null,
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
 
         let list = server.get("/api/strategies").await;
-        list.assert_status_ok();
-        let body: Vec<serde_json::Value> = list.json();
-        assert_eq!(body.len(), 1);
-        assert_eq!(body[0]["name"], "長期投資");
+        assert_eq!(
+            (
+                list.status_code(),
+                list.json::<Vec<Value>>()
+                    .into_iter()
+                    .map(normalize_strategy)
+                    .collect::<Vec<_>>()
+            ),
+            (
+                axum::http::StatusCode::OK,
+                vec![json!({
+                    "id": id,
+                    "name": "長期投資",
+                    "description": null,
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                })],
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -48,17 +92,19 @@ mod tests {
             .patch(&format!("/api/strategies/{id}"))
             .json(&json!({}))
             .await;
-        updated.assert_status_ok();
         assert_eq!(
-            normalize_strategy(updated.json()),
-            json!({
-                "id": id,
-                "name": "strategy",
-                "description": "initial",
-                "sort_order": 0,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (updated.status_code(), normalize_strategy(updated.json())),
+            (
+                axum::http::StatusCode::OK,
+                json!({
+                    "id": id,
+                    "name": "strategy",
+                    "description": "initial",
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -69,17 +115,19 @@ mod tests {
             .patch(&format!("/api/strategies/{id}"))
             .json(&json!({ "description": null }))
             .await;
-        updated.assert_status_ok();
         assert_eq!(
-            normalize_strategy(updated.json()),
-            json!({
-                "id": id,
-                "name": "strategy",
-                "description": null,
-                "sort_order": 0,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (updated.status_code(), normalize_strategy(updated.json())),
+            (
+                axum::http::StatusCode::OK,
+                json!({
+                    "id": id,
+                    "name": "strategy",
+                    "description": null,
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -92,17 +140,19 @@ mod tests {
             .patch(&format!("/api/strategies/{id}"))
             .json(&json!({ "description": "replacement" }))
             .await;
-        updated.assert_status_ok();
         assert_eq!(
-            normalize_strategy(updated.json()),
-            json!({
-                "id": id,
-                "name": "strategy",
-                "description": "replacement",
-                "sort_order": 0,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (updated.status_code(), normalize_strategy(updated.json())),
+            (
+                axum::http::StatusCode::OK,
+                json!({
+                    "id": id,
+                    "name": "strategy",
+                    "description": "replacement",
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -112,7 +162,11 @@ mod tests {
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000")
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({ "error": "strategy 00000000-0000-0000-0000-000000000000 not found" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -121,9 +175,13 @@ mod tests {
         let id = create_strategy(&server, "to-delete").await;
 
         let deleted = server.delete(&format!("/api/strategies/{id}")).await;
-        deleted.assert_status(axum::http::StatusCode::NO_CONTENT);
+        assert_response_eq(&deleted, axum::http::StatusCode::NO_CONTENT, None);
 
         let get = server.get(&format!("/api/strategies/{id}")).await;
-        get.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &get,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("strategy {id} not found") })),
+        );
     }
 }

@@ -1,22 +1,46 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 
     use crate::testing::{create_test_server, create_test_server_with_db};
     use axum::http::StatusCode;
     use gateway_postgres::entities::change_history;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use uuid::Uuid;
+
+    fn normalize_strategy(mut body: serde_json::Value) -> serde_json::Value {
+        for key in ["created_at", "updated_at"] {
+            if let Some(value) = body.get_mut(key) {
+                *value = json!(format!("<{key}>"));
+            }
+        }
+        body
+    }
+
     async fn create_strategy(server: &axum_test::TestServer, name: &str) -> Uuid {
         let res = server
             .post("/api/strategies")
             .json(&json!({ "name": name }))
             .await;
-        res.assert_status(StatusCode::CREATED);
-        let id = res.json::<serde_json::Value>()["id"]
-            .as_str()
-            .map(str::to_string)
-            .expect("id");
+        let mut body = res.json::<serde_json::Value>();
+        let id = body["id"].as_str().map(str::to_string).expect("id");
+        let expected_id = id.clone();
+        body = normalize_strategy(body);
+        assert_eq!(
+            (res.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": expected_id,
+                    "name": name,
+                    "description": null,
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         Uuid::parse_str(&id).expect("uuid")
     }
 
@@ -37,24 +61,38 @@ mod tests {
         }
     }
 
-    /// 指定 indicator の最新の change_history 行を返す (`/api/history` は created_at 降順)
+    fn expected_history_row(target_id: &str, op: &str, diff_json: Value) -> Value {
+        json!({
+            "id": "<dyn>",
+            "target_kind": "custom_indicator",
+            "target_id": target_id,
+            "actor_kind": "human",
+            "actor_label": "user",
+            "op": op,
+            "diff_json": diff_json,
+            "summary": null,
+            "created_at": "<dyn>",
+        })
+    }
+
+    /// `/api/history` は created_at 降順で全件を返す。
     async fn latest_history_for(
         server: &axum_test::TestServer,
         indicator_id: &str,
-    ) -> serde_json::Value {
+        expected_rows: Vec<Value>,
+    ) {
         let res = server
             .get(&format!(
                 "/api/history?target_kind=custom_indicator&target_id={indicator_id}"
             ))
             .await;
-        res.assert_status_ok();
-        let mut rows = res.json::<Vec<serde_json::Value>>();
-        assert!(!rows.is_empty(), "expected at least one history row");
-        let mut row = rows.remove(0);
-        for key in ["id", "created_at"] {
-            row[key] = json!("<dyn>");
+        let mut rows = res.json::<Vec<Value>>();
+        for row in &mut rows {
+            for key in ["id", "created_at"] {
+                row[key] = json!("<dyn>");
+            }
         }
-        row
+        assert_eq!((res.status_code(), rows), (StatusCode::OK, expected_rows));
     }
 
     async fn set_history_created_at_to_epoch(db: &impl sea_orm::ConnectionTrait, target_id: &str) {
@@ -84,23 +122,25 @@ mod tests {
             .post("/api/indicators")
             .json(&create_payload("rsi", "print('{}')"))
             .await;
-        res.assert_status(StatusCode::CREATED);
         let mut body = res.json::<serde_json::Value>();
         normalize_dynamic(&mut body);
         assert_eq!(
-            body,
-            json!({
-                "indicator_id": "<dyn>",
-                "name": "rsi",
-                "scope": "global",
-                "strategy_id": null,
-                "code": "print('{}')",
-                "input_schema": {"type": "object"},
-                "output_schema": {"type": "object"},
-                "description": null,
-                "created_at": "<dyn>",
-                "updated_at": "<dyn>",
-            }),
+            (res.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "indicator_id": "<dyn>",
+                    "name": "rsi",
+                    "scope": "global",
+                    "strategy_id": null,
+                    "code": "print('{}')",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                    "description": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                }),
+            ),
         );
     }
 
@@ -113,23 +153,25 @@ mod tests {
             .post(&format!("/api/strategies/{strategy_id}/indicators"))
             .json(&create_payload("rsi", "print('{}')"))
             .await;
-        res.assert_status(StatusCode::CREATED);
         let mut body = res.json::<serde_json::Value>();
         normalize_dynamic(&mut body);
         assert_eq!(
-            body,
-            json!({
-                "indicator_id": "<dyn>",
-                "name": "rsi",
-                "scope": "strategy",
-                "strategy_id": strategy_id.to_string(),
-                "code": "print('{}')",
-                "input_schema": {"type": "object"},
-                "output_schema": {"type": "object"},
-                "description": null,
-                "created_at": "<dyn>",
-                "updated_at": "<dyn>",
-            }),
+            (res.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "indicator_id": "<dyn>",
+                    "name": "rsi",
+                    "scope": "strategy",
+                    "strategy_id": strategy_id.to_string(),
+                    "code": "print('{}')",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                    "description": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                }),
+            ),
         );
     }
 
@@ -145,20 +187,16 @@ mod tests {
             .map(str::to_string)
             .expect("id");
 
-        assert_eq!(
-            latest_history_for(&server, &id).await,
-            json!({
-                "id": "<dyn>",
-                "target_kind": "custom_indicator",
-                "target_id": id,
-                "actor_kind": "human",
-                "actor_label": "user",
-                "op": "create",
-                "diff_json": {"name": "rsi", "scope": "global", "strategy_id": null},
-                "summary": null,
-                "created_at": "<dyn>",
-            }),
-        );
+        latest_history_for(
+            &server,
+            &id,
+            vec![expected_history_row(
+                &id,
+                "create",
+                json!({"name": "rsi", "scope": "global", "strategy_id": null}),
+            )],
+        )
+        .await;
     }
 
     #[backend_test_macros::database_test]
@@ -168,7 +206,11 @@ mod tests {
             .post("/api/indicators")
             .json(&create_payload("   ", "print('{}')"))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "name must not be empty" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -177,7 +219,11 @@ mod tests {
         let mut payload = create_payload("rsi", "print('{}')");
         payload["input_schema"] = json!([1, 2, 3]);
         let res = server.post("/api/indicators").json(&payload).await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "input_schema must be a JSON object" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -186,7 +232,11 @@ mod tests {
         let mut payload = create_payload("rsi", "print('{}')");
         payload["output_schema"] = json!("not-object");
         let res = server.post("/api/indicators").json(&payload).await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "output_schema must be a JSON object" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -195,7 +245,11 @@ mod tests {
         let payload = create_payload("rsi", "print('{}')");
         server.post("/api/indicators").json(&payload).await;
         let second = server.post("/api/indicators").json(&payload).await;
-        second.assert_status(StatusCode::CONFLICT);
+        assert_response_eq(
+            &second,
+            StatusCode::CONFLICT,
+            Some(json!({ "error": "resource already exists" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -211,7 +265,11 @@ mod tests {
             .post(&format!("/api/strategies/{strategy_id}/indicators"))
             .json(&payload)
             .await;
-        second.assert_status(StatusCode::CONFLICT);
+        assert_response_eq(
+            &second,
+            StatusCode::CONFLICT,
+            Some(json!({ "error": "resource already exists" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -221,13 +279,41 @@ mod tests {
         let payload = create_payload("rsi", "print('{}')");
 
         let g = server.post("/api/indicators").json(&payload).await;
-        g.assert_status(StatusCode::CREATED);
+        let mut global_body = g.json::<serde_json::Value>();
+        normalize_dynamic(&mut global_body);
+        assert_eq!(
+            (g.status_code(), global_body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "indicator_id": "<dyn>", "name": "rsi", "scope": "global",
+                    "strategy_id": null, "code": "print('{}')",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"}, "description": null,
+                    "created_at": "<dyn>", "updated_at": "<dyn>",
+                }),
+            ),
+        );
 
         let s = server
             .post(&format!("/api/strategies/{strategy_id}/indicators"))
             .json(&payload)
             .await;
-        s.assert_status(StatusCode::CREATED);
+        let mut strategy_body = s.json::<serde_json::Value>();
+        normalize_dynamic(&mut strategy_body);
+        assert_eq!(
+            (s.status_code(), strategy_body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "indicator_id": "<dyn>", "name": "rsi", "scope": "strategy",
+                    "strategy_id": strategy_id.to_string(), "code": "print('{}')",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"}, "description": null,
+                    "created_at": "<dyn>", "updated_at": "<dyn>",
+                }),
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -251,16 +337,38 @@ mod tests {
         let list_a = server
             .get(&format!("/api/strategies/{s_a}/indicators"))
             .await;
-        list_a.assert_status_ok();
-        let body_a: Vec<serde_json::Value> = list_a.json();
-        let names_a: Vec<&str> = body_a.iter().map(|v| v["name"].as_str().unwrap()).collect();
-        assert_eq!(names_a, vec!["only-a"]);
+        let mut body_a: Vec<serde_json::Value> = list_a.json();
+        body_a.iter_mut().for_each(normalize_dynamic);
+        assert_eq!(
+            (list_a.status_code(), body_a),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "indicator_id": "<dyn>", "name": "only-a", "scope": "strategy",
+                    "strategy_id": s_a.to_string(), "code": "print('{}')",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"}, "description": null,
+                    "created_at": "<dyn>", "updated_at": "<dyn>",
+                })],
+            ),
+        );
 
         let globals = server.get("/api/indicators").await;
-        globals.assert_status_ok();
-        let body_g: Vec<serde_json::Value> = globals.json();
-        let names_g: Vec<&str> = body_g.iter().map(|v| v["name"].as_str().unwrap()).collect();
-        assert_eq!(names_g, vec!["global"]);
+        let mut body_g: Vec<serde_json::Value> = globals.json();
+        body_g.iter_mut().for_each(normalize_dynamic);
+        assert_eq!(
+            (globals.status_code(), body_g),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "indicator_id": "<dyn>", "name": "global", "scope": "global",
+                    "strategy_id": null, "code": "print('{}')",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"}, "description": null,
+                    "created_at": "<dyn>", "updated_at": "<dyn>",
+                })],
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -282,7 +390,11 @@ mod tests {
         let res = server
             .get(&format!("/api/strategies/{s_b}/indicators/{id}"))
             .await;
-        res.assert_status(StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("indicator {id} not found") })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -301,23 +413,25 @@ mod tests {
             .put(&format!("/api/indicators/{id}"))
             .json(&json!({"code": "new", "description": "rsi indicator"}))
             .await;
-        updated.assert_status_ok();
         let mut body = updated.json::<serde_json::Value>();
         normalize_dynamic(&mut body);
         assert_eq!(
-            body,
-            json!({
-                "indicator_id": "<dyn>",
-                "name": "rsi",
-                "scope": "global",
-                "strategy_id": null,
-                "code": "new",
-                "input_schema": {"type": "object"},
-                "output_schema": {"type": "object"},
-                "description": "rsi indicator",
-                "created_at": "<dyn>",
-                "updated_at": "<dyn>",
-            }),
+            (updated.status_code(), body),
+            (
+                StatusCode::OK,
+                json!({
+                    "indicator_id": "<dyn>",
+                    "name": "rsi",
+                    "scope": "global",
+                    "strategy_id": null,
+                    "code": "new",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                    "description": "rsi indicator",
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                }),
+            ),
         );
     }
 
@@ -334,29 +448,46 @@ mod tests {
             .expect("id");
         set_history_created_at_to_epoch(&db, &id).await;
 
-        server
+        let updated = server
             .put(&format!("/api/indicators/{id}"))
             .json(&json!({"code": "new", "description": "rsi indicator"}))
-            .await
-            .assert_status_ok();
-
+            .await;
+        let mut updated_body = updated.json::<serde_json::Value>();
+        normalize_dynamic(&mut updated_body);
         assert_eq!(
-            latest_history_for(&server, &id).await,
-            json!({
-                "id": "<dyn>",
-                "target_kind": "custom_indicator",
-                "target_id": id,
-                "actor_kind": "human",
-                "actor_label": "user",
-                "op": "update",
-                "diff_json": {
-                    "code": {"len_from": 3, "len_to": 3},
-                    "description": {"from": null, "to": "rsi indicator"},
-                },
-                "summary": null,
-                "created_at": "<dyn>",
-            }),
+            (updated.status_code(), updated_body),
+            (
+                StatusCode::OK,
+                json!({
+                    "indicator_id": "<dyn>", "name": "rsi", "scope": "global",
+                    "strategy_id": null, "code": "new",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"}, "description": "rsi indicator",
+                    "created_at": "<dyn>", "updated_at": "<dyn>",
+                }),
+            ),
         );
+
+        latest_history_for(
+            &server,
+            &id,
+            vec![
+                expected_history_row(
+                    &id,
+                    "update",
+                    json!({
+                        "code": {"len_from": 3, "len_to": 3},
+                        "description": {"from": null, "to": "rsi indicator"},
+                    }),
+                ),
+                expected_history_row(
+                    &id,
+                    "create",
+                    json!({"name": "rsi", "scope": "global", "strategy_id": null}),
+                ),
+            ],
+        )
+        .await;
     }
 
     #[backend_test_macros::database_test]
@@ -372,9 +503,13 @@ mod tests {
             .expect("id");
 
         let del = server.delete(&format!("/api/indicators/{id}")).await;
-        del.assert_status(StatusCode::NO_CONTENT);
+        assert_response_eq(&del, StatusCode::NO_CONTENT, None);
         let get = server.get(&format!("/api/indicators/{id}")).await;
-        get.assert_status(StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &get,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("indicator {id} not found") })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -390,25 +525,22 @@ mod tests {
             .expect("id");
         set_history_created_at_to_epoch(&db, &id).await;
 
-        server
-            .delete(&format!("/api/indicators/{id}"))
-            .await
-            .assert_status(StatusCode::NO_CONTENT);
+        let deleted = server.delete(&format!("/api/indicators/{id}")).await;
+        assert_response_eq(&deleted, StatusCode::NO_CONTENT, None);
 
-        assert_eq!(
-            latest_history_for(&server, &id).await,
-            json!({
-                "id": "<dyn>",
-                "target_kind": "custom_indicator",
-                "target_id": id,
-                "actor_kind": "human",
-                "actor_label": "user",
-                "op": "delete",
-                "diff_json": {},
-                "summary": null,
-                "created_at": "<dyn>",
-            }),
-        );
+        latest_history_for(
+            &server,
+            &id,
+            vec![
+                expected_history_row(&id, "delete", json!({})),
+                expected_history_row(
+                    &id,
+                    "create",
+                    json!({"name": "rsi", "scope": "global", "strategy_id": null}),
+                ),
+            ],
+        )
+        .await;
     }
 
     mod preview {
@@ -448,15 +580,15 @@ mod tests {
                     "args": {"period": 14},
                 }))
                 .await;
-            res.assert_status_ok();
-            assert_eq!(
-                res.json::<serde_json::Value>(),
-                json!({
+            assert_response_eq(
+                &res,
+                StatusCode::OK,
+                Some(json!({
                     "output": {"value": 42},
                     "stdout": "{\"value\": 42}\n",
                     "stderr": "",
                     "exit_code": 0,
-                }),
+                })),
             );
 
             let recorded = executor.requests.lock().await;
@@ -492,7 +624,13 @@ mod tests {
                     "args": {"period": "not-int"},
                 }))
                 .await;
-            res.assert_status(StatusCode::BAD_REQUEST);
+            assert_response_eq(
+                &res,
+                StatusCode::BAD_REQUEST,
+                Some(json!({
+                    "error": "value does not match input_schema: \"not-int\" is not of type \"integer\" at /period"
+                })),
+            );
             assert!(executor.requests.lock().await.is_empty());
         }
 
@@ -515,15 +653,15 @@ mod tests {
                     "import urllib.request; urllib.request.urlopen('http://x')",
                 ))
                 .await;
-            res.assert_status_ok();
-            assert_eq!(
-                res.json::<serde_json::Value>(),
-                json!({
+            assert_response_eq(
+                &res,
+                StatusCode::OK,
+                Some(json!({
                     "output": null,
                     "stdout": "",
                     "stderr": "PermissionError: network access denied",
                     "exit_code": 1,
-                }),
+                })),
             );
         }
 
@@ -534,7 +672,11 @@ mod tests {
                 .post("/api/indicators/preview")
                 .json(&preview_payload("print('{}')"))
                 .await;
-            res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+            assert_response_eq(
+                &res,
+                StatusCode::SERVICE_UNAVAILABLE,
+                Some(json!({ "error": "indicator runtime is not configured" })),
+            );
         }
 
         #[backend_test_macros::database_test]
@@ -556,7 +698,6 @@ mod tests {
                 .post("/api/indicators/preview")
                 .json(&preview_payload("print('not-json')"))
                 .await;
-            res.assert_status_ok();
             let mut body = res.json::<serde_json::Value>();
             // stderr の本文は jsonschema の詳細メッセージに依存して変動するため、
             // prefix が出ているかだけを spec として固定する。
@@ -565,13 +706,16 @@ mod tests {
                 .is_some_and(|s| s.starts_with("Output validation error: "));
             body["stderr"] = json!(stderr_starts_correctly);
             assert_eq!(
-                body,
-                json!({
-                    "output": null,
-                    "stdout": "not-json\n",
-                    "stderr": true,
-                    "exit_code": 0,
-                }),
+                (res.status_code(), body),
+                (
+                    StatusCode::OK,
+                    json!({
+                        "output": null,
+                        "stdout": "not-json\n",
+                        "stderr": true,
+                        "exit_code": 0,
+                    }),
+                ),
             );
         }
     }

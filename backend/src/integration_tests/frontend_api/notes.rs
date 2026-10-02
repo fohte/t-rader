@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use std::sync::Arc;
 
     use crate::testing::agent_config;
@@ -30,6 +31,41 @@ mod tests {
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
         "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
+
+    fn normalize_note_response(mut value: Value) -> Value {
+        for key in ["id", "version_id", "created_at", "updated_at"] {
+            value[key] = json!(format!("<{key}>"));
+        }
+        value
+    }
+
+    fn normalize_note_version(mut value: Value) -> Value {
+        for key in ["id", "note_id", "created_at", "reviewed_at"] {
+            if let Some(field) = value.as_object_mut().and_then(|object| object.get_mut(key)) {
+                *field = json!(format!("<{key}>"));
+            }
+        }
+        value
+    }
+
+    fn expected_note_version_response(version_no: i32, status: &str, is_current: bool) -> Value {
+        json!({
+            "id": "<id>",
+            "note_id": "<note_id>",
+            "version_no": version_no,
+            "title": format!("version {version_no}"),
+            "body_md": "body",
+            "frontmatter_json": {},
+            "graphs_json": [],
+            "status": status,
+            "is_current": is_current,
+            "change_reason": null,
+            "created_by_kind": "llm",
+            "execution_id": null,
+            "created_at": "<created_at>",
+            "reviewed_at": "<reviewed_at>",
+        })
+    }
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
@@ -86,9 +122,34 @@ mod tests {
                 "created_by_kind": created_by_kind,
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         let body: Value = res.json();
-        Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+        let note_id = Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid");
+        assert_eq!(
+            (res.status_code(), normalize_note_response(body)),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "strategy_id": strategy_id,
+                    "title": title,
+                    "body_md": body_md,
+                    "frontmatter_json": {},
+                    "kind": null,
+                    "status": if created_by_kind == "human" { "approved" } else { "unread" },
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": created_by_kind,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                }),
+            ),
+        );
+        note_id
     }
 
     async fn insert_test_version(
@@ -202,31 +263,35 @@ mod tests {
                 "body_md": "body",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
-        obj.remove("id");
-        obj.insert("version_id".into(), json!("<dyn>"));
-        obj.remove("created_at");
-        obj.remove("updated_at");
+        for key in ["id", "version_id", "created_at", "updated_at"] {
+            obj.insert(key.into(), json!(format!("<{key}>")));
+        }
         assert_eq!(
-            body,
-            json!({
-                "strategy_id": null,
-                "version_id": "<dyn>",
-                "version_no": 1,
-                "is_current": true,
-                "title": "市況ノート",
-                "body_md": "body",
-                "frontmatter_json": {},
-                "graphs_json": [],
-                "kind": null,
-                "status": "approved",
-                "trigger": null,
-                "trigger_label": null,
-                "created_by_kind": "human",
-                "execution_id": null,
-            }),
+            (res.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": null,
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": "市況ノート",
+                    "body_md": "body",
+                    "frontmatter_json": {},
+                    "graphs_json": [],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_id": null,
+                }),
+            ),
         );
     }
 
@@ -247,6 +312,7 @@ mod tests {
         let note_id = Uuid::parse_str(body["id"].as_str().expect("note id")).expect("uuid");
         let version_id =
             Uuid::parse_str(body["version_id"].as_str().expect("version id")).expect("uuid");
+        let normalized_body = normalize_note_response(body);
         let histories = change_history::Entity::find()
             .filter(change_history::Column::TargetId.eq(note_id))
             .all(&db)
@@ -267,9 +333,28 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            (res.status_code(), histories),
+            (res.status_code(), normalized_body, histories),
             (
                 StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "strategy_id": null,
+                    "title": "sample note",
+                    "body_md": "body",
+                    "frontmatter_json": {},
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                }),
                 vec![(
                     "note".to_string(),
                     note_id,
@@ -309,11 +394,13 @@ mod tests {
         assert_eq!(
             (
                 response.status_code(),
+                normalize_note_version(response.json()),
                 note_version_states(&db, note_id).await,
                 status_change_diff(&db, note_id).await,
             ),
             (
                 StatusCode::OK,
+                expected_note_version_response(4, "approved", true),
                 vec![
                     (1, "approved".to_string(), false),
                     (2, "superseded".to_string(), false),
@@ -365,11 +452,13 @@ mod tests {
         assert_eq!(
             (
                 response.status_code(),
+                normalize_note_version(response.json()),
                 note_version_states(&db, note_id).await,
                 status_change_diff(&db, note_id).await,
             ),
             (
                 StatusCode::OK,
+                expected_note_version_response(3, "approved", false),
                 vec![
                     (1, "approved".to_string(), false),
                     (2, "superseded".to_string(), false),
@@ -412,10 +501,12 @@ mod tests {
         assert_eq!(
             (
                 response.status_code(),
-                note_version_states(&db, untouched_note).await
+                normalize_note_version(response.json()),
+                note_version_states(&db, untouched_note).await,
             ),
             (
                 StatusCode::OK,
+                expected_note_version_response(3, "approved", true),
                 vec![
                     (1, "approved".to_string(), true),
                     (2, "unread".to_string(), false),
@@ -520,9 +611,34 @@ mod tests {
                 "created_by_kind": "llm",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
-        let note_id =
-            Uuid::parse_str(res.json::<Value>()["id"].as_str().expect("id")).expect("uuid");
+        let mut created_body = res.json::<Value>();
+        let note_id = Uuid::parse_str(created_body["id"].as_str().expect("id")).expect("uuid");
+        created_body = normalize_note_response(created_body);
+        assert_eq!(
+            (res.status_code(), created_body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "strategy_id": null,
+                    "title": "市況ノート",
+                    "body_md": "body",
+                    "frontmatter_json": {},
+                    "kind": null,
+                    "status": "unread",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "llm",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                }),
+            ),
+        );
         let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -535,28 +651,27 @@ mod tests {
             ))
             .json(&json!({"label": "確認事項"}))
             .await;
-        res.assert_status_ok();
-        let mut body: Value = res.json();
-        let obj = body.as_object_mut().unwrap();
-        obj.insert("id".into(), json!("<dyn>"));
-        obj.remove("created_at");
-        obj.remove("reviewed_at");
         assert_eq!(
-            body,
-            json!({
-                "id": "<dyn>",
-                "note_id": note_id,
-                "version_no": version.version_no,
-                "title": "市況ノート",
-                "body_md": "body",
-                "frontmatter_json": {},
-                "graphs_json": [],
-                "status": "rejected",
-                "is_current": true,
-                "change_reason": null,
-                "created_by_kind": "llm",
-                "execution_id": null,
-            }),
+            (res.status_code(), normalize_note_version(res.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "note_id": "<note_id>",
+                    "version_no": version.version_no,
+                    "title": "市況ノート",
+                    "body_md": "body",
+                    "frontmatter_json": {},
+                    "graphs_json": [],
+                    "status": "rejected",
+                    "is_current": true,
+                    "change_reason": null,
+                    "created_by_kind": "llm",
+                    "execution_id": null,
+                    "created_at": "<created_at>",
+                    "reviewed_at": "<reviewed_at>",
+                }),
+            ),
         );
 
         let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
@@ -587,27 +702,27 @@ mod tests {
             ))
             .json(&json!({"label": "確認事項"}))
             .await;
-        res.assert_status_ok();
-        let mut body: Value = res.json();
-        let obj = body.as_object_mut().unwrap();
-        obj.remove("id");
-        obj.remove("created_at");
-        obj.remove("reviewed_at");
         assert_eq!(
-            body,
-            json!({
-                "note_id": note_id,
-                "version_no": version.version_no,
-                "title": "タイトル",
-                "body_md": "body",
-                "frontmatter_json": {},
-                "graphs_json": [],
-                "status": "rejected",
-                "is_current": true,
-                "change_reason": null,
-                "created_by_kind": "llm",
-                "execution_id": null,
-            }),
+            (res.status_code(), normalize_note_version(res.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "note_id": "<note_id>",
+                    "version_no": version.version_no,
+                    "title": "タイトル",
+                    "body_md": "body",
+                    "frontmatter_json": {},
+                    "graphs_json": [],
+                    "status": "rejected",
+                    "is_current": true,
+                    "change_reason": null,
+                    "created_by_kind": "llm",
+                    "execution_id": null,
+                    "created_at": "<created_at>",
+                    "reviewed_at": "<reviewed_at>",
+                }),
+            ),
         );
 
         let tasks = strategy_task::Entity::find()
@@ -653,7 +768,28 @@ mod tests {
             ))
             .json(&json!({"label": "確認事項"}))
             .await;
-        first.assert_status_ok();
+        assert_eq!(
+            (first.status_code(), normalize_note_version(first.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "note_id": "<note_id>",
+                    "version_no": version.version_no,
+                    "title": "t",
+                    "body_md": "body",
+                    "frontmatter_json": {},
+                    "graphs_json": [],
+                    "status": "rejected",
+                    "is_current": true,
+                    "change_reason": null,
+                    "created_by_kind": "llm",
+                    "execution_id": null,
+                    "created_at": "<created_at>",
+                    "reviewed_at": "<reviewed_at>",
+                }),
+            ),
+        );
         let second = server
             .post(&format!(
                 "/api/notes/{note_id}/versions/{}/reject",
@@ -661,7 +797,16 @@ mod tests {
             ))
             .json(&json!({"label": "確認事項"}))
             .await;
-        second.assert_status(StatusCode::CONFLICT);
+        assert_response_eq(
+            &second,
+            StatusCode::CONFLICT,
+            Some(json!({
+                "error": format!(
+                    "note version {note_id}/{} is not pending",
+                    version.version_no
+                )
+            })),
+        );
 
         let tasks = strategy_task::Entity::find()
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
@@ -696,7 +841,11 @@ mod tests {
             ))
             .json(&json!({"label": "確認事項"}))
             .await;
-        res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+        assert_response_eq(
+            &res,
+            StatusCode::SERVICE_UNAVAILABLE,
+            Some(json!({ "error": "agent task client is not configured" })),
+        );
 
         let current_version = find_current_note_version(&db, note_id)
             .await
@@ -739,10 +888,32 @@ mod tests {
                 "end_line": 2,
             }))
             .await;
-        created_comment.assert_status(StatusCode::CREATED);
+        let mut created_comment_body = created_comment.json::<Value>();
         let comment_id =
-            Uuid::parse_str(created_comment.json::<Value>()["id"].as_str().expect("id"))
-                .expect("uuid");
+            Uuid::parse_str(created_comment_body["id"].as_str().expect("id")).expect("uuid");
+        created_comment_body["id"] = json!("<id>");
+        created_comment_body["created_at"] = json!("<created_at>");
+        assert_eq!(
+            (created_comment.status_code(), created_comment_body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "target_kind": "note_version",
+                    "target_id": version_id,
+                    "parent_id": null,
+                    "body": "fix this",
+                    "author_kind": "human",
+                    "author_label": "user",
+                    "created_at": "<created_at>",
+                    "resolved": false,
+                    "anchor_text": "line two",
+                    "start_line": 2,
+                    "end_line": 2,
+                    "anchor_side": "new",
+                }),
+            ),
+        );
 
         let res = server
             .patch(&format!("/api/notes/{note_id}"))
@@ -754,7 +925,35 @@ mod tests {
                     line three"},
             }))
             .await;
-        res.assert_status_ok();
+        assert_eq!(
+            (res.status_code(), normalize_note_response(res.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 2,
+                    "is_current": true,
+                    "strategy_id": strategy_id,
+                    "title": "note",
+                    "body_md": indoc::indoc! {"
+                        prefix
+                        line one
+                        line two
+                        line three"},
+                    "frontmatter_json": {},
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                }),
+            ),
+        );
 
         let mut updated_comment = comment::Entity::find_by_id(comment_id)
             .one(&db)

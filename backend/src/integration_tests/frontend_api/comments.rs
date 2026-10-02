@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
@@ -36,19 +37,87 @@ mod tests {
         value
     }
 
+    fn expected_comment(
+        target_kind: &str,
+        parent_id: Option<&str>,
+        body: &str,
+        anchor_text: Option<&str>,
+        anchor_side: Option<&str>,
+        start_line: Option<i64>,
+        end_line: Option<i64>,
+    ) -> Value {
+        json!({
+            "id": "<id>",
+            "target_kind": target_kind,
+            "target_id": "<target_id>",
+            "parent_id": parent_id,
+            "body": body,
+            "author_kind": "human",
+            "author_label": "user",
+            "resolved": false,
+            "created_at": "<created_at>",
+            "anchor_text": anchor_text,
+            "anchor_side": anchor_side,
+            "start_line": start_line,
+            "end_line": end_line,
+        })
+    }
+
+    fn normalize_note_response(mut value: Value) -> Value {
+        for key in ["id", "version_id", "created_at", "updated_at"] {
+            if let Some(value) = value.as_object_mut().and_then(|object| object.get_mut(key)) {
+                *value = Value::String(format!("<{key}>"));
+            }
+        }
+        value
+    }
+
+    fn normalize_note_version_list(mut value: Value) -> Value {
+        if let Some(versions) = value.as_array_mut() {
+            for version in versions {
+                for key in ["id", "created_at"] {
+                    if let Some(value) = version
+                        .as_object_mut()
+                        .and_then(|object| object.get_mut(key))
+                    {
+                        *value = Value::String(format!("<{key}>"));
+                    }
+                }
+            }
+        }
+        value
+    }
+
+    fn normalize_annotation_response(mut value: Value) -> Value {
+        for key in ["id", "created_at", "updated_at"] {
+            if let Some(value) = value.as_object_mut().and_then(|object| object.get_mut(key)) {
+                *value = Value::String(format!("<{key}>"));
+            }
+        }
+        value
+    }
+
     async fn create_note_comment(server: &axum_test::TestServer) -> Value {
         let strategy_id = crate::testing::create_strategy(server, "s").await;
         let note_id = create_note(server, &strategy_id, "body").await;
-        let version_id = first_note_version_id(server, &note_id).await;
-        server
+        let version_id = first_note_version_id(server, &note_id, "note", "body").await;
+        let response = server
             .post("/api/comments")
             .json(&json!({
                 "target_kind": "note_version",
                 "target_id": version_id,
                 "body": "fix this",
             }))
-            .await
-            .json()
+            .await;
+        let body = response.json::<Value>();
+        assert_eq!(
+            (response.status_code(), normalize(body.clone())),
+            (
+                StatusCode::CREATED,
+                expected_comment("note_version", None, "fix this", None, None, None, None),
+            ),
+        );
+        body
     }
 
     #[backend_test_macros::database_test]
@@ -66,6 +135,21 @@ mod tests {
                 "body": "sample reply",
             }))
             .await;
+        assert_eq!(
+            (reply.status_code(), normalize(reply.json::<Value>())),
+            (
+                StatusCode::CREATED,
+                expected_comment(
+                    "note_version",
+                    Some(root["id"].as_str().expect("root id")),
+                    "sample reply",
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            ),
+        );
         let list = server
             .get(&format!(
                 "/api/comments?target_kind=note_version&target_id={}",
@@ -73,13 +157,8 @@ mod tests {
             ))
             .await;
         assert_eq!(
+            (list.status_code(), normalize_comment_list(list.json())),
             (
-                reply.status_code(),
-                list.status_code(),
-                normalize_comment_list(list.json()),
-            ),
-            (
-                StatusCode::CREATED,
                 StatusCode::OK,
                 json!([
                     {
@@ -127,10 +206,11 @@ mod tests {
             .patch(&format!("/api/comments/{id}"))
             .json(&json!({ "resolved": true }))
             .await;
-        res.assert_status_ok();
         assert_eq!(
-            normalize(res.json()),
-            json!({
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::OK,
+                json!({
                 "id": "<id>",
                 "target_kind": "note_version",
                 "target_id": "<target_id>",
@@ -144,17 +224,19 @@ mod tests {
                 "anchor_side": null,
                 "start_line": null,
                 "end_line": null,
-            }),
+                }),
+            ),
         );
 
         let res = server
             .patch(&format!("/api/comments/{id}"))
             .json(&json!({ "resolved": false }))
             .await;
-        res.assert_status_ok();
         assert_eq!(
-            normalize(res.json()),
-            json!({
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::OK,
+                json!({
                 "id": "<id>",
                 "target_kind": "note_version",
                 "target_id": "<target_id>",
@@ -168,18 +250,24 @@ mod tests {
                 "anchor_side": null,
                 "start_line": null,
                 "end_line": null,
-            }),
+                }),
+            ),
         );
     }
 
     #[backend_test_macros::database_test]
     async fn update_comment_missing_id_is_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
+        let id = uuid::Uuid::new_v4();
         let res = server
-            .patch(&format!("/api/comments/{}", uuid::Uuid::new_v4()))
+            .patch(&format!("/api/comments/{id}"))
             .json(&json!({ "resolved": true }))
             .await;
-        res.assert_status(StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("comment {id} not found") })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -195,8 +283,22 @@ mod tests {
                 "body": "first reply",
             }))
             .await;
-        reply_response.assert_status(StatusCode::CREATED);
         let reply = reply_response.json::<Value>();
+        assert_eq!(
+            (reply_response.status_code(), normalize(reply.clone())),
+            (
+                StatusCode::CREATED,
+                expected_comment(
+                    "note_version",
+                    Some(root["id"].as_str().expect("root id")),
+                    "first reply",
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            ),
+        );
 
         let nested_response = server
             .post("/api/comments")
@@ -207,17 +309,12 @@ mod tests {
                 "body": "nested reply",
             }))
             .await;
-        assert_eq!(
-            (
-                nested_response.status_code(),
-                nested_response.json::<Value>()
-            ),
-            (
-                StatusCode::BAD_REQUEST,
-                json!({
-                    "error": "cannot reply to a reply; parent_id must reference a top-level comment",
-                }),
-            ),
+        assert_response_eq(
+            &nested_response,
+            StatusCode::BAD_REQUEST,
+            Some(json!({
+                "error": "cannot reply to a reply; parent_id must reference a top-level comment",
+            })),
         );
     }
 
@@ -234,20 +331,69 @@ mod tests {
                 "body_md": body_md,
             }))
             .await;
-        created.assert_status(StatusCode::CREATED);
-        created.json::<Value>()["id"]
-            .as_str()
-            .expect("id")
-            .to_string()
+        let body = created.json::<Value>();
+        assert_eq!(
+            (created.status_code(), normalize_note_response(body.clone())),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "strategy_id": strategy_id,
+                    "title": "note",
+                    "body_md": body_md,
+                    "frontmatter_json": {},
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                }),
+            ),
+        );
+        body["id"].as_str().expect("id").to_string()
     }
 
-    async fn first_note_version_id(server: &axum_test::TestServer, note_id: &str) -> String {
+    async fn first_note_version_id(
+        server: &axum_test::TestServer,
+        note_id: &str,
+        title: &str,
+        body_md: &str,
+    ) -> String {
         let versions = server.get(&format!("/api/notes/{note_id}/versions")).await;
-        versions.assert_status_ok();
-        versions.json::<Value>()[0]["id"]
-            .as_str()
-            .expect("version id")
-            .to_string()
+        let body = versions.json::<Value>();
+        assert_eq!(
+            (
+                versions.status_code(),
+                normalize_note_version_list(body.clone())
+            ),
+            (
+                StatusCode::OK,
+                json!([{
+                    "id": "<id>",
+                    "note_id": note_id,
+                    "version_no": 1,
+                    "title": title,
+                    "body_md": body_md,
+                    "frontmatter_json": {},
+                    "graphs_json": [],
+                    "status": "approved",
+                    "is_current": true,
+                    "change_reason": null,
+                    "created_by_kind": "human",
+                    "execution_id": null,
+                    "created_at": "<created_at>",
+                    "reviewed_at": null,
+                }]),
+            ),
+        );
+        body[0]["id"].as_str().expect("version id").to_string()
     }
 
     async fn create_annotation(server: &axum_test::TestServer, strategy_id: &str) -> String {
@@ -261,11 +407,33 @@ mod tests {
                 "text": "text",
             }))
             .await;
-        created.assert_status(StatusCode::CREATED);
-        created.json::<Value>()["id"]
-            .as_str()
-            .expect("id")
-            .to_string()
+        let body = created.json::<Value>();
+        assert_eq!(
+            (
+                created.status_code(),
+                normalize_annotation_response(body.clone())
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": strategy_id,
+                    "target_symbol": "7203",
+                    "target_kind": "observation",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "text",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
+        body["id"].as_str().expect("id").to_string()
     }
 
     #[backend_test_macros::database_test]
@@ -283,7 +451,16 @@ mod tests {
                 line three"},
         )
         .await;
-        let version_id = first_note_version_id(&server, &note_id).await;
+        let version_id = first_note_version_id(
+            &server,
+            &note_id,
+            "note",
+            indoc::indoc! {"
+                line one
+                line two
+                line three"},
+        )
+        .await;
 
         let res = server
             .post("/api/comments")
@@ -297,24 +474,20 @@ mod tests {
                 "end_line": 2,
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "target_kind": "note_version",
-                "target_id": "<target_id>",
-                "parent_id": null,
-                "body": "fix this line",
-                "author_kind": "human",
-                "author_label": "user",
-                "resolved": false,
-                "created_at": "<created_at>",
-                "anchor_text": "line two",
-                "anchor_side": "new",
-                "start_line": 2,
-                "end_line": 2,
-            }),
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::CREATED,
+                expected_comment(
+                    "note_version",
+                    None,
+                    "fix this line",
+                    Some("line two"),
+                    Some("new"),
+                    Some(2),
+                    Some(2),
+                ),
+            ),
         );
     }
 
@@ -333,7 +506,16 @@ mod tests {
                 line three"},
         )
         .await;
-        let version_id = first_note_version_id(&server, &note_id).await;
+        let version_id = first_note_version_id(
+            &server,
+            &note_id,
+            "note",
+            indoc::indoc! {"
+                line one
+                line two
+                line three"},
+        )
+        .await;
 
         let res = server
             .post("/api/comments")
@@ -347,24 +529,20 @@ mod tests {
                 "end_line": 3,
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "target_kind": "note_version",
-                "target_id": "<target_id>",
-                "parent_id": null,
-                "body": "fix this line",
-                "author_kind": "human",
-                "author_label": "user",
-                "resolved": false,
-                "created_at": "<created_at>",
-                "anchor_text": "line that no longer exists",
-                "anchor_side": "new",
-                "start_line": 3,
-                "end_line": 3,
-            }),
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::CREATED,
+                expected_comment(
+                    "note_version",
+                    None,
+                    "fix this line",
+                    Some("line that no longer exists"),
+                    Some("new"),
+                    Some(3),
+                    Some(3),
+                ),
+            ),
         );
     }
 
@@ -385,24 +563,20 @@ mod tests {
                 "anchor_text": "some selected text",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "target_kind": "annotation",
-                "target_id": "<target_id>",
-                "parent_id": null,
-                "body": "fix this",
-                "author_kind": "human",
-                "author_label": "user",
-                "resolved": false,
-                "created_at": "<created_at>",
-                "anchor_text": "some selected text",
-                "anchor_side": null,
-                "start_line": null,
-                "end_line": null,
-            }),
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::CREATED,
+                expected_comment(
+                    "annotation",
+                    None,
+                    "fix this",
+                    Some("some selected text"),
+                    None,
+                    None,
+                    None,
+                ),
+            ),
         );
     }
 }

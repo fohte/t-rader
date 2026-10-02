@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
 
@@ -28,13 +29,40 @@ mod tests {
                 "status": "unread",
             }))
             .await;
-        response.assert_status(StatusCode::CREATED);
-        let note = response.json::<Value>();
-        (
-            note["id"].as_str().expect("note id").to_string(),
-            note["version_id"].as_str().expect("version id").to_string(),
-            note["version_no"].as_i64().expect("version number"),
-        )
+        let mut note = response.json::<Value>();
+        let note_id = note["id"].as_str().expect("note id").to_string();
+        let version_id = note["version_id"].as_str().expect("version id").to_string();
+        let version_no = note["version_no"].as_i64().expect("version number");
+        note["id"] = json!("<id>");
+        note["version_id"] = json!("<version_id>");
+        note["created_at"] = json!("<created_at>");
+        note["updated_at"] = json!("<updated_at>");
+        assert_eq!(
+            (response.status_code(), note),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": null,
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": title,
+                    "body_md": body_md,
+                    "frontmatter_json": {},
+                    "graphs_json": [],
+                    "kind": null,
+                    "status": "unread",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "llm",
+                    "execution_id": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
+        (note_id, version_id, version_no)
     }
 
     #[backend_test_macros::database_test]
@@ -49,16 +77,39 @@ mod tests {
             line two"};
         let (anchored_note_id, anchored_version_id, anchored_version_no) =
             create_pending_note(&server, "anchored sample note", anchored_body).await;
-        server
+        let plain_comment = server
             .post("/api/comments")
             .json(&json!({
                 "target_kind": "note_version",
                 "target_id": plain_version_id,
                 "body": "sample comment",
             }))
-            .await
-            .assert_status(StatusCode::CREATED);
-        server
+            .await;
+        let mut plain_comment_body = plain_comment.json::<Value>();
+        plain_comment_body["id"] = json!("<id>");
+        plain_comment_body["created_at"] = json!("<created_at>");
+        assert_eq!(
+            (plain_comment.status_code(), plain_comment_body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "target_kind": "note_version",
+                    "target_id": plain_version_id,
+                    "parent_id": null,
+                    "body": "sample comment",
+                    "author_kind": "human",
+                    "author_label": "user",
+                    "created_at": "<created_at>",
+                    "resolved": false,
+                    "anchor_text": null,
+                    "start_line": null,
+                    "end_line": null,
+                    "anchor_side": null,
+                }),
+            ),
+        );
+        let anchored_comment = server
             .post("/api/comments")
             .json(&json!({
                 "target_kind": "note_version",
@@ -69,8 +120,31 @@ mod tests {
                 "start_line": 2,
                 "end_line": 2,
             }))
-            .await
-            .assert_status(StatusCode::CREATED);
+            .await;
+        let mut anchored_comment_body = anchored_comment.json::<Value>();
+        anchored_comment_body["id"] = json!("<id>");
+        anchored_comment_body["created_at"] = json!("<created_at>");
+        assert_eq!(
+            (anchored_comment.status_code(), anchored_comment_body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "target_kind": "note_version",
+                    "target_id": anchored_version_id,
+                    "parent_id": null,
+                    "body": "sample line comment",
+                    "author_kind": "human",
+                    "author_label": "user",
+                    "created_at": "<created_at>",
+                    "resolved": false,
+                    "anchor_text": "line two",
+                    "start_line": 2,
+                    "end_line": 2,
+                    "anchor_side": "new",
+                }),
+            ),
+        );
 
         let plain_rejection = server
             .post(&format!(
@@ -84,18 +158,19 @@ mod tests {
             ))
             .json(&json!({}))
             .await;
+        assert_response_eq(
+            &plain_rejection,
+            StatusCode::BAD_REQUEST,
+            Some(json!({
+                "error": "a rejection reason is required when no line comments are attached"
+            })),
+        );
         assert_eq!(
             (
-                plain_rejection.status_code(),
-                plain_rejection.json::<Value>(),
                 anchored_rejection.status_code(),
                 normalize_note_version(anchored_rejection.json()),
             ),
             (
-                StatusCode::BAD_REQUEST,
-                json!({
-                    "error": "a rejection reason is required when no line comments are attached"
-                }),
                 StatusCode::OK,
                 json!({
                     "id": "<id>",

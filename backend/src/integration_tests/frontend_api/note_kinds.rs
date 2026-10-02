@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use axum::http::StatusCode;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-    use serde_json::{Value, json};
+    use serde_json::json;
     use uuid::Uuid;
 
     use gateway_postgres::entities::{change_history, note, note_kind, note_version};
@@ -98,8 +99,17 @@ mod tests {
             .patch(&format!("/api/note-kinds/{kind_key}"))
             .json(&json!({ "requires_approval": false }))
             .await;
-        response.assert_status(StatusCode::OK);
-        let response_body: Value = response.json();
+        assert_response_eq(
+            &response,
+            StatusCode::OK,
+            Some(json!({
+                "key": kind_key,
+                "display_name": "Sample Kind",
+                "requires_approval": false,
+                "description": null,
+                "sort_order": 0,
+            })),
+        );
 
         let versions = note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(note_id))
@@ -136,15 +146,8 @@ mod tests {
         history.sort_by_key(|record| record.0.clone());
 
         assert_eq!(
-            (response_body, versions, history,),
+            (versions, history,),
             (
-                json!({
-                    "key": kind_key,
-                    "display_name": "Sample Kind",
-                    "requires_approval": false,
-                    "description": null,
-                    "sort_order": 0,
-                }),
                 vec![
                     (1, "approved".to_string(), false),
                     (2, "superseded".to_string(), false),

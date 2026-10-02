@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::{create_test_server, insert_test_group};
 
     #[backend_test_macros::database_test]
@@ -7,10 +8,10 @@ mod tests {
         let server = create_test_server(db).await;
 
         let res = server.get("/api/account/risk-policy").await;
-        res.assert_status_ok();
-        assert_eq!(
-            res.json::<serde_json::Value>(),
-            serde_json::json!({ "max_group_ratios": [] }),
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({ "max_group_ratios": [] })),
         );
     }
 
@@ -33,12 +34,10 @@ mod tests {
             ]
         });
         let put = server.put("/api/account/risk-policy").json(&expected).await;
-        put.assert_status_ok();
-        assert_eq!(put.json::<serde_json::Value>(), expected);
+        assert_response_eq(&put, axum::http::StatusCode::OK, Some(expected.clone()));
 
         let get = server.get("/api/account/risk-policy").await;
-        get.assert_status_ok();
-        assert_eq!(get.json::<serde_json::Value>(), expected);
+        assert_response_eq(&get, axum::http::StatusCode::OK, Some(expected));
     }
 
     #[backend_test_macros::database_test]
@@ -46,27 +45,40 @@ mod tests {
         insert_test_group(&db, "sample-axis", "sample-group", "Sample group").await;
         let server = create_test_server(db).await;
 
-        server
+        let first = server
             .put("/api/account/risk-policy")
             .json(&serde_json::json!({
                 "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.3 }]
             }))
-            .await
-            .assert_status_ok();
-        server
+            .await;
+        assert_response_eq(
+            &first,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.3 }]
+            })),
+        );
+        let second = server
             .put("/api/account/risk-policy")
             .json(&serde_json::json!({
                 "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.5 }]
             }))
-            .await
-            .assert_status_ok();
+            .await;
+        assert_response_eq(
+            &second,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.5 }]
+            })),
+        );
 
         let get = server.get("/api/account/risk-policy").await;
-        assert_eq!(
-            get.json::<serde_json::Value>(),
-            serde_json::json!({
+        assert_response_eq(
+            &get,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
                 "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.5 }]
-            }),
+            })),
         );
     }
 
@@ -75,21 +87,27 @@ mod tests {
         insert_test_group(&db, "sample-axis", "sample-group", "Sample group").await;
         let server = create_test_server(db).await;
 
-        server
+        let initial = server
             .put("/api/account/risk-policy")
             .json(&serde_json::json!({
                 "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.3 }]
             }))
-            .await
-            .assert_status_ok();
+            .await;
+        assert_response_eq(
+            &initial,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
+                "max_group_ratios": [{ "axis": "sample-axis", "ratio": 0.3 }]
+            })),
+        );
         let cleared = server
             .put("/api/account/risk-policy")
             .json(&serde_json::json!({ "max_group_ratios": [] }))
             .await;
-        cleared.assert_status_ok();
-        assert_eq!(
-            cleared.json::<serde_json::Value>(),
-            serde_json::json!({ "max_group_ratios": [] }),
+        assert_response_eq(
+            &cleared,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({ "max_group_ratios": [] })),
         );
     }
 
@@ -107,7 +125,13 @@ mod tests {
                     ]
                 }))
                 .await;
-            res.assert_status(axum::http::StatusCode::BAD_REQUEST);
+            assert_response_eq(
+                &res,
+                axum::http::StatusCode::BAD_REQUEST,
+                Some(serde_json::json!({
+                    "error": "ratio must be greater than 0 and less than or equal to 1"
+                })),
+            );
         }
     }
 
@@ -121,6 +145,10 @@ mod tests {
             }))
             .await;
 
-        res.assert_status(axum::http::StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::BAD_REQUEST,
+            Some(serde_json::json!({ "error": "unknown axis: unknown-axis" })),
+        );
     }
 }

@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
@@ -9,16 +10,56 @@ mod tests {
             .post("/api/strategies")
             .json(&json!({ "name": name }))
             .await;
-        res.assert_status(StatusCode::CREATED);
-        res.json::<Value>()["id"].as_str().unwrap().to_string()
+        let mut body = res.json::<Value>();
+        let id = body["id"].as_str().unwrap().to_string();
+        for key in ["created_at", "updated_at"] {
+            if let Some(value) = body.get_mut(key) {
+                *value = json!(format!("<{key}>"));
+            }
+        }
+        assert_eq!(
+            (res.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": id,
+                    "name": name,
+                    "description": null,
+                    "sort_order": 0,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
+        id
     }
 
     async fn create_agent_config(server: &axum_test::TestServer, purpose: &str) {
-        server
+        let res = server
             .post("/api/agent-configs")
             .json(&json!({ "purpose": purpose }))
-            .await
-            .assert_status(StatusCode::CREATED);
+            .await;
+        let mut body = res.json::<Value>();
+        for key in ["id", "created_at", "updated_at"] {
+            if let Some(value) = body.get_mut(key) {
+                *value = json!(format!("<{key}>"));
+            }
+        }
+        assert_eq!(
+            (res.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "purpose": purpose,
+                    "agents_md": "",
+                    "skills": {},
+                    "agent_graph": "",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
     }
 
     /// trigger response の時刻系フィールドを placeholder に正規化する。
@@ -56,11 +97,29 @@ mod tests {
                 "prompt_template": "x",
             }))
             .await;
-        created.assert_status(StatusCode::CREATED);
-        let tid = created.json::<Value>()["trigger_id"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let body = created.json::<Value>();
+        let tid = body["trigger_id"].as_str().unwrap().to_string();
+        let body = normalize_trigger(body, false);
+        assert_eq!(
+            (created.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>",
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "hook",
+                    "schedule": null,
+                    "hook_slug": "sample-hook",
+                    "event_match": {"event": {"eq": "initial"}},
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         (server, sid, tid)
     }
 
@@ -78,23 +137,25 @@ mod tests {
                 "prompt_template": "morning briefing for {{strategy.name}}",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         assert_eq!(
-            normalize_trigger(res.json(), false),
-            json!({
-                "trigger_id": "<trigger_id>",
-                "strategy_id": sid,
-                "purpose": "synthetic-purpose",
-                "kind": "cron",
-                "schedule": "0 9 * * 1-5",
-                "hook_slug": null,
-                "event_match": null,
-                "prompt_template": "morning briefing for {{strategy.name}}",
-                "enabled": true,
-                "last_fired_at": null,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (res.status_code(), normalize_trigger(res.json(), false)),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>",
+                    "strategy_id": sid,
+                    "purpose": "synthetic-purpose",
+                    "kind": "cron",
+                    "schedule": "0 9 * * 1-5",
+                    "hook_slug": null,
+                    "event_match": null,
+                    "prompt_template": "morning briefing for {{strategy.name}}",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -111,23 +172,25 @@ mod tests {
                 "prompt_template": "alert: {{payload.symbol}}",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         assert_eq!(
-            normalize_trigger(res.json(), false),
-            json!({
-                "trigger_id": "<trigger_id>",
-                "strategy_id": sid,
-                "purpose": null,
-                "kind": "hook",
-                "schedule": null,
-                "hook_slug": "tv-alert",
-                "event_match": {"event": {"eq": "fired"}},
-                "prompt_template": "alert: {{payload.symbol}}",
-                "enabled": true,
-                "last_fired_at": null,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (res.status_code(), normalize_trigger(res.json(), false)),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>",
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "hook",
+                    "schedule": null,
+                    "hook_slug": "tv-alert",
+                    "event_match": {"event": {"eq": "fired"}},
+                    "prompt_template": "alert: {{payload.symbol}}",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -139,7 +202,11 @@ mod tests {
             .post(&format!("/api/strategies/{sid}/triggers"))
             .json(&json!({"kind": "cron", "prompt_template": "x"}))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "schedule is required for kind=cron" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -155,7 +222,11 @@ mod tests {
                 "prompt_template": "x",
             }))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "schedule must be omitted for kind=hook" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -169,7 +240,11 @@ mod tests {
                 "prompt_template": "x",
             }))
             .await;
-        res.assert_status(StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": "strategy 00000000-0000-0000-0000-000000000000 not found" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -229,29 +304,32 @@ mod tests {
             .json();
         let tid = created["trigger_id"].as_str().unwrap().to_string();
 
-        server
-            .delete("/api/agent-configs/synthetic-purpose")
-            .await
-            .assert_status(StatusCode::NO_CONTENT);
+        let deleted = server.delete("/api/agent-configs/synthetic-purpose").await;
+        assert_response_eq(&deleted, StatusCode::NO_CONTENT, None);
         let trigger = server.get(&format!("/api/triggers/{tid}")).await;
-        trigger.assert_status_ok();
 
         assert_eq!(
-            normalize_trigger(trigger.json(), true),
-            json!({
-                "trigger_id": tid,
-                "strategy_id": sid,
-                "purpose": null,
-                "kind": "cron",
-                "schedule": "0 9 * * *",
-                "hook_slug": null,
-                "event_match": null,
-                "prompt_template": "x",
-                "enabled": true,
-                "last_fired_at": null,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (
+                trigger.status_code(),
+                normalize_trigger(trigger.json(), true)
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "cron",
+                    "schedule": "0 9 * * *",
+                    "hook_slug": null,
+                    "event_match": null,
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -264,66 +342,111 @@ mod tests {
             "hook_slug": "dup",
             "prompt_template": "x",
         });
-        server
+        let created = server
             .post(&format!("/api/strategies/{sid}/triggers"))
             .json(&body)
-            .await
-            .assert_status(StatusCode::CREATED);
+            .await;
+        assert_eq!(
+            (
+                created.status_code(),
+                normalize_trigger(created.json(), false)
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>", "strategy_id": sid, "purpose": null,
+                    "kind": "hook", "schedule": null, "hook_slug": "dup",
+                    "event_match": null, "prompt_template": "x", "enabled": true,
+                    "last_fired_at": null, "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         let res = server
             .post(&format!("/api/strategies/{sid}/triggers"))
             .json(&body)
             .await;
-        res.assert_status(StatusCode::CONFLICT);
+        assert_response_eq(
+            &res,
+            StatusCode::CONFLICT,
+            Some(json!({ "error": "resource already exists" })),
+        );
     }
 
     #[backend_test_macros::database_test]
     async fn list_filters_by_kind(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
-        server
+        let cron = server
             .post(&format!("/api/strategies/{sid}/triggers"))
             .json(&json!({
                 "kind": "cron",
                 "schedule": "* * * * *",
                 "prompt_template": "c",
             }))
-            .await
-            .assert_status(StatusCode::CREATED);
-        server
+            .await;
+        assert_eq!(
+            (cron.status_code(), normalize_trigger(cron.json(), false)),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>", "strategy_id": sid, "purpose": null,
+                    "kind": "cron", "schedule": "* * * * *", "hook_slug": null,
+                    "event_match": null, "prompt_template": "c", "enabled": true,
+                    "last_fired_at": null, "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
+        let hook = server
             .post(&format!("/api/strategies/{sid}/triggers"))
             .json(&json!({
                 "kind": "hook",
                 "hook_slug": "h",
                 "prompt_template": "h",
             }))
-            .await
-            .assert_status(StatusCode::CREATED);
+            .await;
+        assert_eq!(
+            (hook.status_code(), normalize_trigger(hook.json(), false)),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>", "strategy_id": sid, "purpose": null,
+                    "kind": "hook", "schedule": null, "hook_slug": "h",
+                    "event_match": null, "prompt_template": "h", "enabled": true,
+                    "last_fired_at": null, "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
 
         let cron_only = server
             .get(&format!("/api/strategies/{sid}/triggers?kind=cron"))
             .await;
-        cron_only.assert_status_ok();
         let body: Vec<Value> = cron_only.json();
         let normalized: Vec<Value> = body
             .into_iter()
             .map(|v| normalize_trigger(v, false))
             .collect();
         assert_eq!(
-            normalized,
-            vec![json!({
-                "trigger_id": "<trigger_id>",
-                "strategy_id": sid,
-                "purpose": null,
-                "kind": "cron",
-                "schedule": "* * * * *",
-                "hook_slug": null,
-                "event_match": null,
-                "prompt_template": "c",
-                "enabled": true,
-                "last_fired_at": null,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            })],
+            (cron_only.status_code(), normalized),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "trigger_id": "<trigger_id>",
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "cron",
+                    "schedule": "* * * * *",
+                    "hook_slug": null,
+                    "event_match": null,
+                    "prompt_template": "c",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                })],
+            ),
         );
     }
 
@@ -332,14 +455,28 @@ mod tests {
         let server = create_test_server(db).await;
         let s1 = create_strategy(&server, "a").await;
         let s2 = create_strategy(&server, "b").await;
-        server
+        let created = server
             .post(&format!("/api/strategies/{s1}/triggers"))
             .json(&json!({"kind": "cron", "schedule": "* * * * *", "prompt_template": "x"}))
-            .await
-            .assert_status(StatusCode::CREATED);
+            .await;
+        assert_eq!(
+            (
+                created.status_code(),
+                normalize_trigger(created.json(), false)
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>", "strategy_id": s1, "purpose": null,
+                    "kind": "cron", "schedule": "* * * * *", "hook_slug": null,
+                    "event_match": null, "prompt_template": "x", "enabled": true,
+                    "last_fired_at": null, "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
         let res = server.get(&format!("/api/strategies/{s2}/triggers")).await;
-        res.assert_status_ok();
-        assert_eq!(res.json::<Vec<Value>>(), Vec::<Value>::new());
+        assert_response_eq(&res, StatusCode::OK, Some(json!([])));
     }
 
     #[backend_test_macros::database_test]
@@ -364,7 +501,6 @@ mod tests {
                 "enabled": false,
             }))
             .await;
-        updated.assert_status_ok();
         let expected = json!({
             "trigger_id": tid,
             "strategy_id": sid,
@@ -379,17 +515,29 @@ mod tests {
             "created_at": "<created_at>",
             "updated_at": "<updated_at>",
         });
-        assert_eq!(normalize_trigger(updated.json(), true), expected);
+        assert_eq!(
+            (
+                updated.status_code(),
+                normalize_trigger(updated.json(), true)
+            ),
+            (StatusCode::OK, expected.clone()),
+        );
 
         let got = server.get(&format!("/api/triggers/{tid}")).await;
-        got.assert_status_ok();
-        assert_eq!(normalize_trigger(got.json(), true), expected);
+        assert_eq!(
+            (got.status_code(), normalize_trigger(got.json(), true)),
+            (StatusCode::OK, expected),
+        );
 
         let deleted = server.delete(&format!("/api/triggers/{tid}")).await;
-        deleted.assert_status(StatusCode::NO_CONTENT);
+        assert_response_eq(&deleted, StatusCode::NO_CONTENT, None);
 
         let after = server.get(&format!("/api/triggers/{tid}")).await;
-        after.assert_status(StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &after,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("trigger {tid} not found") })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -425,23 +573,28 @@ mod tests {
                 .put(&format!("/api/triggers/{tid}"))
                 .json(&body)
                 .await;
-            updated.assert_status_ok();
             assert_eq!(
-                normalize_trigger(updated.json(), true),
-                json!({
-                    "trigger_id": tid,
-                    "strategy_id": sid,
-                    "purpose": purpose,
-                    "kind": "cron",
-                    "schedule": "0 9 * * *",
-                    "hook_slug": null,
-                    "event_match": null,
-                    "prompt_template": "x",
-                    "enabled": true,
-                    "last_fired_at": null,
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                }),
+                (
+                    updated.status_code(),
+                    normalize_trigger(updated.json(), true)
+                ),
+                (
+                    StatusCode::OK,
+                    json!({
+                        "trigger_id": tid,
+                        "strategy_id": sid,
+                        "purpose": purpose,
+                        "kind": "cron",
+                        "schedule": "0 9 * * *",
+                        "hook_slug": null,
+                        "event_match": null,
+                        "prompt_template": "x",
+                        "enabled": true,
+                        "last_fired_at": null,
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                    }),
+                ),
             );
         }
     }
@@ -453,23 +606,28 @@ mod tests {
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({}))
             .await;
-        updated.assert_status_ok();
         assert_eq!(
-            normalize_trigger(updated.json(), true),
-            json!({
-                "trigger_id": tid,
-                "strategy_id": sid,
-                "purpose": null,
-                "kind": "hook",
-                "schedule": null,
-                "hook_slug": "sample-hook",
-                "event_match": {"event": {"eq": "initial"}},
-                "prompt_template": "x",
-                "enabled": true,
-                "last_fired_at": null,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (
+                updated.status_code(),
+                normalize_trigger(updated.json(), true)
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "hook",
+                    "schedule": null,
+                    "hook_slug": "sample-hook",
+                    "event_match": {"event": {"eq": "initial"}},
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -480,23 +638,28 @@ mod tests {
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({ "event_match": null }))
             .await;
-        updated.assert_status_ok();
         assert_eq!(
-            normalize_trigger(updated.json(), true),
-            json!({
-                "trigger_id": tid,
-                "strategy_id": sid,
-                "purpose": null,
-                "kind": "hook",
-                "schedule": null,
-                "hook_slug": "sample-hook",
-                "event_match": null,
-                "prompt_template": "x",
-                "enabled": true,
-                "last_fired_at": null,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (
+                updated.status_code(),
+                normalize_trigger(updated.json(), true)
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "hook",
+                    "schedule": null,
+                    "hook_slug": "sample-hook",
+                    "event_match": null,
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -509,23 +672,28 @@ mod tests {
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({ "event_match": {"source": {"eq": "replacement"}} }))
             .await;
-        updated.assert_status_ok();
         assert_eq!(
-            normalize_trigger(updated.json(), true),
-            json!({
-                "trigger_id": tid,
-                "strategy_id": sid,
-                "purpose": null,
-                "kind": "hook",
-                "schedule": null,
-                "hook_slug": "sample-hook",
-                "event_match": {"source": {"eq": "replacement"}},
-                "prompt_template": "x",
-                "enabled": true,
-                "last_fired_at": null,
-                "created_at": "<created_at>",
-                "updated_at": "<updated_at>",
-            }),
+            (
+                updated.status_code(),
+                normalize_trigger(updated.json(), true)
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "hook",
+                    "schedule": null,
+                    "hook_slug": "sample-hook",
+                    "event_match": {"source": {"eq": "replacement"}},
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 
@@ -547,6 +715,10 @@ mod tests {
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({"hook_slug": "x"}))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "hook_slug can only be set when kind=hook" })),
+        );
     }
 }

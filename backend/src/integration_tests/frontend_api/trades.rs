@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use axum::http::StatusCode;
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
@@ -12,10 +13,11 @@ mod tests {
     use gateway_postgres::entities::{change_history, trade};
 
     fn normalize_trade(mut value: Value) -> Value {
-        value["id"] = json!("<dyn>");
-        value["strategy_id"] = json!("<dyn>");
-        value["created_at"] = json!("<dyn>");
-        value["updated_at"] = json!("<dyn>");
+        for key in ["id", "strategy_id", "created_at", "updated_at"] {
+            if let Some(field) = value.get_mut(key) {
+                *field = json!("<dyn>");
+            }
+        }
         value
     }
 
@@ -95,29 +97,31 @@ mod tests {
         let response = server
             .get(&format!("/api/trades?strategy_id={strategy_id}"))
             .await;
-        response.assert_status_ok();
         let actual = response
             .json::<Vec<Value>>()
             .into_iter()
             .map(normalize_trade)
             .collect::<Vec<_>>();
         assert_eq!(
-            actual,
-            vec![json!({
-                "id": "<dyn>",
-                "strategy_id": "<dyn>",
-                "symbol": "fictional-symbol-123",
-                "side": "buy",
-                "qty": 1200,
-                "price": 275,
-                "fee": 1,
-                "date": "2026-02-03",
-                "source": "manual",
-                "note": null,
-                "created_at": "<dyn>",
-                "updated_at": "<dyn>",
-                "note_count": 0,
-            })],
+            (response.status_code(), actual),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "fictional-symbol-123",
+                    "side": "buy",
+                    "qty": 1200,
+                    "price": 275,
+                    "fee": 1,
+                    "date": "2026-02-03",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                    "note_count": 0,
+                })],
+            ),
         );
     }
 
@@ -289,19 +293,22 @@ mod tests {
             .await;
 
         assert_eq!(
-            response.json::<Value>(),
-            json!({
-                "strategy_id": strategy_id,
-                "trade_count": 3,
-                "realized_pnl": 3470,
-                "positions": [{
-                    "symbol": "FICTIONAL-SYMBOL",
-                    "qty": 50,
-                    "avg_cost": 120,
-                    "cost_basis": 6000,
+            (response.status_code(), response.json::<Value>()),
+            (
+                StatusCode::OK,
+                json!({
+                    "strategy_id": strategy_id,
+                    "trade_count": 3,
                     "realized_pnl": 3470,
-                }],
-            }),
+                    "positions": [{
+                        "symbol": "FICTIONAL-SYMBOL",
+                        "qty": 50,
+                        "avg_cost": 120,
+                        "cost_basis": 6000,
+                        "realized_pnl": 3470,
+                    }],
+                }),
+            ),
         );
     }
 
@@ -325,7 +332,7 @@ mod tests {
         .await;
 
         let response = server.delete(&format!("/api/trades/{trade_id}")).await;
-        let response_status = response.status_code();
+        assert_response_eq(&response, StatusCode::NO_CONTENT, None);
         let trade_exists = trade::Entity::find_by_id(trade_id)
             .one(&db)
             .await
@@ -334,9 +341,8 @@ mod tests {
         let history = history_snapshot(&db, trade_id).await;
 
         assert_eq!(
-            (response_status, trade_exists, history),
+            (trade_exists, history),
             (
-                StatusCode::NO_CONTENT,
                 false,
                 (
                     "trade".to_string(),

@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use chrono::{DateTime, FixedOffset, NaiveDate};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
@@ -84,10 +85,10 @@ mod tests {
         .await;
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
-        res.assert_status_ok();
-        assert_eq!(
-            res.json::<serde_json::Value>(),
-            serde_json::json!([
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!([
                 {
                     "prediction_id": first.prediction_id,
                     "strategy_id": sid,
@@ -112,7 +113,7 @@ mod tests {
                     "due_date": "2099-03-01",
                     "created_at": second.created_at,
                 },
-            ]),
+            ])),
         );
     }
 
@@ -123,17 +124,25 @@ mod tests {
         let nid = insert_test_note(&db, sid, "t", "b").await;
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
-        res.assert_status_ok();
-        assert_eq!(res.json::<serde_json::Value>(), serde_json::json!([]));
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!([])),
+        );
     }
 
     #[backend_test_macros::database_test]
     async fn list_for_unknown_note_returns_404(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
+        let missing_note_id = Uuid::new_v4();
         let res = server
-            .get(&format!("/api/notes/{}/predictions", Uuid::new_v4()))
+            .get(&format!("/api/notes/{missing_note_id}/predictions"))
             .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(serde_json::json!({ "error": format!("note {missing_note_id} not found") })),
+        );
     }
 }

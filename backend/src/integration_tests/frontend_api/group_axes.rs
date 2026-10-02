@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use axum::http::StatusCode;
     use rstest::{fixture, rstest};
     use sea_orm::ActiveValue::Set;
@@ -227,24 +228,17 @@ mod tests {
         create_group_axis(&server).await;
 
         let deleted = server.delete("/api/group-axes/sample-axis").await;
-        let deleted_output = (deleted.status_code(), deleted.text());
+        assert_response_eq(&deleted, StatusCode::NO_CONTENT, None);
         let fetched = server.get("/api/group-axes/sample-axis").await;
-        let fetched_output = (fetched.status_code(), fetched.json::<Value>());
-
-        assert_eq!(
-            (deleted_output, fetched_output),
-            (
-                (StatusCode::NO_CONTENT, String::new()),
-                (
-                    StatusCode::NOT_FOUND,
-                    json!({ "error": "group axis sample-axis not found" }),
-                ),
-            ),
+        assert_response_eq(
+            &fetched,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": "group axis sample-axis not found" })),
         );
     }
 
     async fn create_group_axis(server: &axum_test::TestServer) {
-        server
+        let created = server
             .post("/api/group-axes")
             .json(&json!({
                 "key": "sample-axis",
@@ -252,7 +246,16 @@ mod tests {
                 "description": "A synthetic classification axis",
                 "sync_source": "sample-source",
             }))
-            .await
-            .assert_status(StatusCode::CREATED);
+            .await;
+        assert_response_eq(
+            &created,
+            StatusCode::CREATED,
+            Some(json!({
+                "key": "sample-axis",
+                "name": "Sample Axis",
+                "description": "A synthetic classification axis",
+                "sync_source": "sample-source",
+            })),
+        );
     }
 }

@@ -1,3 +1,20 @@
+fn assert_response_eq(
+    response: &axum_test::TestResponse,
+    expected_status: axum::http::StatusCode,
+    expected_body: Option<serde_json::Value>,
+) {
+    let actual_body = if response.as_bytes().is_empty() {
+        None
+    } else {
+        Some(response.json::<serde_json::Value>())
+    };
+
+    assert_eq!(
+        (response.status_code(), actual_body),
+        (expected_status, expected_body),
+    );
+}
+
 mod agent_config;
 mod agent_options;
 mod annotations;

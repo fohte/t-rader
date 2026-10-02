@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use serde_json::{Value, json};
 
     use crate::testing::{
@@ -30,21 +31,23 @@ mod tests {
         .await;
 
         let response = server.get("/api/refs/stocks?q=Alpha").await;
-        response.assert_status_ok();
         let mut actual = response.json::<Value>();
         normalize_stock_timestamps(&mut actual);
 
         assert_eq!(
-            actual,
-            json!([{
-                "id": "MOCK_001",
-                "name": "Mock Alpha",
-                "market": null,
-                "sector_id": "synthetic-industry",
-                "created_at": "normalized timestamp",
-                "updated_at": "normalized timestamp",
-                "product_category": null,
-            }]),
+            (response.status_code(), actual),
+            (
+                axum::http::StatusCode::OK,
+                json!([{
+                    "id": "MOCK_001",
+                    "name": "Mock Alpha",
+                    "market": null,
+                    "sector_id": "synthetic-industry",
+                    "created_at": "normalized timestamp",
+                    "updated_at": "normalized timestamp",
+                    "product_category": null,
+                }]),
+            ),
         );
     }
 
@@ -54,7 +57,11 @@ mod tests {
 
         let response = server.get("/api/refs/stocks/UNKNOWN").await;
 
-        response.assert_status(axum::http::StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({ "error": "stock UNKNOWN not found" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -66,16 +73,14 @@ mod tests {
             .get("/api/refs/resolve?link=group%3Ademo-axis%2Fdemo-group")
             .await;
 
-        assert_eq!(
-            (response.status_code(), response.json::<Value>()),
-            (
-                axum::http::StatusCode::OK,
-                json!([{
-                    "kind": "group",
-                    "id": "demo-axis/demo-group",
-                    "name": "Sample Group",
-                }]),
-            ),
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(json!([{
+                "kind": "group",
+                "id": "demo-axis/demo-group",
+                "name": "Sample Group",
+            }])),
         );
     }
 
@@ -87,6 +92,10 @@ mod tests {
             .get("/api/refs/resolve?link=group%3Ademo-group")
             .await;
 
-        assert_eq!(response.status_code(), axum::http::StatusCode::BAD_REQUEST,);
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "invalid group ref_id: demo-group" })),
+        );
     }
 }

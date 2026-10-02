@@ -1,18 +1,20 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::{
         create_test_server, create_test_server_with_db, insert_test_strategy,
         insert_test_strategy_task,
     };
     use serde_json::json;
 
-    /// JSON body から動的フィールド (created_at/updated_at/as_of) を除去し、
-    /// 単一の assert_eq! で残りのフィールドを比較できるようにする。
-    fn strip_timestamps(v: &mut serde_json::Value) {
+    /// JSON body の動的時刻を固定値に置換し、全フィールドを比較できるようにする。
+    fn normalize_timestamps(v: &mut serde_json::Value) {
         if let Some(obj) = v.as_object_mut() {
-            obj.remove("created_at");
-            obj.remove("updated_at");
-            obj.remove("as_of");
+            for key in ["created_at", "updated_at", "as_of"] {
+                if obj.contains_key(key) {
+                    obj.insert(key.to_string(), serde_json::json!(format!("<{key}>")));
+                }
+            }
         }
     }
 
@@ -34,31 +36,39 @@ mod tests {
         .await;
 
         let res = server.get("/api/tasks").await;
-        res.assert_status_ok();
         let mut body: Vec<serde_json::Value> = res.json();
-        body.iter_mut().for_each(strip_timestamps);
+        body.iter_mut().for_each(normalize_timestamps);
         assert_eq!(
-            body,
-            vec![
-                json!({
-                    "task_id": task_b,
-                    "strategy_id": strategy_b,
-                    "source": "frontend",
-                    "prompt": "for-b",
-                    "phase": "completed",
-                    "error_summary": null,
-                    "purpose": null,
-                }),
-                json!({
-                    "task_id": task_a,
-                    "strategy_id": strategy_a,
-                    "source": "frontend",
-                    "prompt": "for-a",
-                    "phase": "completed",
-                    "error_summary": null,
-                    "purpose": null,
-                }),
-            ],
+            (res.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                vec![
+                    json!({
+                        "task_id": task_b,
+                        "strategy_id": strategy_b,
+                        "source": "frontend",
+                        "prompt": "for-b",
+                        "phase": "completed",
+                        "error_summary": null,
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "purpose": null,
+                        "as_of": "<as_of>",
+                    }),
+                    json!({
+                        "task_id": task_a,
+                        "strategy_id": strategy_a,
+                        "source": "frontend",
+                        "prompt": "for-a",
+                        "phase": "completed",
+                        "error_summary": null,
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "purpose": null,
+                        "as_of": "<as_of>",
+                    }),
+                ],
+            ),
         );
     }
 
@@ -75,20 +85,25 @@ mod tests {
         let res = server
             .get(&format!("/api/tasks?strategy_id={strategy_a}"))
             .await;
-        res.assert_status_ok();
         let mut body: Vec<serde_json::Value> = res.json();
-        body.iter_mut().for_each(strip_timestamps);
+        body.iter_mut().for_each(normalize_timestamps);
         assert_eq!(
-            body,
-            vec![json!({
-                "task_id": task_a,
-                "strategy_id": strategy_a,
-                "source": "frontend",
-                "prompt": "for-a",
-                "phase": "completed",
-                "error_summary": null,
-                "purpose": null,
-            })],
+            (res.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                vec![json!({
+                    "task_id": task_a,
+                    "strategy_id": strategy_a,
+                    "source": "frontend",
+                    "prompt": "for-a",
+                    "phase": "completed",
+                    "error_summary": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "purpose": null,
+                    "as_of": "<as_of>",
+                })],
+            ),
         );
     }
 
@@ -111,20 +126,25 @@ mod tests {
         .await;
 
         let res = server.get("/api/tasks?purpose=inspect").await;
-        res.assert_status_ok();
         let mut body: Vec<serde_json::Value> = res.json();
-        body.iter_mut().for_each(strip_timestamps);
+        body.iter_mut().for_each(normalize_timestamps);
         assert_eq!(
-            body,
-            vec![json!({
-                "task_id": task_inspect,
-                "strategy_id": strategy_id,
-                "source": "frontend",
-                "prompt": "inspect prompt",
-                "phase": "completed",
-                "error_summary": null,
-                "purpose": "inspect",
-            })],
+            (res.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                vec![json!({
+                    "task_id": task_inspect,
+                    "strategy_id": strategy_id,
+                    "source": "frontend",
+                    "prompt": "inspect prompt",
+                    "phase": "completed",
+                    "error_summary": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "purpose": "inspect",
+                    "as_of": "<as_of>",
+                })],
+            ),
         );
     }
 
@@ -137,8 +157,10 @@ mod tests {
         let res = server
             .get("/api/tasks?strategy_id=00000000-0000-0000-0000-000000000000")
             .await;
-        res.assert_status_ok();
-        let body: Vec<serde_json::Value> = res.json();
-        assert_eq!(body, Vec::<serde_json::Value>::new());
+        assert_response_eq(
+            &res,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!([])),
+        );
     }
 }

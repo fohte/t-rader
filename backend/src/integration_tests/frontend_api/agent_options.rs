@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use crate::testing::{create_test_server, create_test_server_with_llm_gateway};
 
     #[backend_test_macros::database_test]
@@ -8,10 +9,10 @@ mod tests {
     ) {
         let server = create_test_server(db).await;
         let response = server.get("/api/agent-models").await;
-        response.assert_status_ok();
-        assert_eq!(
-            response.json::<serde_json::Value>(),
-            serde_json::json!({ "models": [] }),
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({ "models": [] })),
         );
     }
 
@@ -38,10 +39,10 @@ mod tests {
 
         let server = create_test_server_with_llm_gateway(db, &llm_gateway.uri()).await;
         let response = server.get("/api/agent-models").await;
-        response.assert_status_ok();
-        assert_eq!(
-            response.json::<serde_json::Value>(),
-            serde_json::json!({
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
                 "models": [
                     {
                         "id": "sample-model",
@@ -51,7 +52,7 @@ mod tests {
                         "supports_reasoning": true,
                     },
                 ],
-            }),
+            })),
         );
     }
 
@@ -68,10 +69,10 @@ mod tests {
 
         let server = create_test_server_with_llm_gateway(db, &llm_gateway.uri()).await;
         let response = server.get("/api/agent-models").await;
-        response.assert_status_ok();
-        assert_eq!(
-            response.json::<serde_json::Value>(),
-            serde_json::json!({ "models": [] }),
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({ "models": [] })),
         );
     }
 
@@ -79,11 +80,11 @@ mod tests {
     async fn agent_tools_lists_known_strategy_mcp_tools(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let response = server.get("/api/agent-tools").await;
-        response.assert_status_ok();
         // ToolRouter::list_all() は name の昇順でソートして返す
-        assert_eq!(
-            response.json::<serde_json::Value>(),
-            serde_json::json!({
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(serde_json::json!({
                 "tools": [
                     {"name": "add_ref_terms", "description": "Add aliases (alternate spellings, abbreviations, former names, etc.) to a first-class reference (stock/indicator/group). Idempotent: terms already registered for the same (ref_kind, ref_id) are silently skipped and excluded from the returned added list. Blank terms are ignored."},
                     {"name": "add_stock_to_group", "description": "Add one stock to a group. Repeating an existing membership is a no-op. The stock ID must exist, and groups on synchronized axes cannot be changed by MCP."},
@@ -122,7 +123,7 @@ mod tests {
                     {"name": "update_stock_group", "description": "Update a stock group's name and/or description. Its axis key and group key are immutable; pass description as null to clear it. Groups on synchronized axes cannot be changed by MCP."},
                     {"name": "write_note", "description": "Create a new note or append a version to an existing note owned by the strategy. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."},
                 ],
-            }),
+            })),
         );
     }
 }

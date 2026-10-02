@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use std::sync::Arc;
 
     use crate::testing::agent_config;
@@ -51,9 +52,31 @@ mod tests {
                 "text": "text",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         let body: Value = res.json();
-        Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+        let id = Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid");
+        assert_eq!(
+            (res.status_code(), normalize_annotation_response(body)),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": strategy_id,
+                    "target_symbol": "7203",
+                    "target_kind": "observation",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "text",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
+        id
     }
 
     async fn create_annotation_at(
@@ -72,8 +95,33 @@ mod tests {
                 "text": "sample text",
             }))
             .await;
-        response.assert_status(StatusCode::CREATED);
-        response.json()
+        let body = response.json::<Value>();
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_annotation_response(body.clone())
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": strategy_id,
+                    "target_symbol": target_symbol,
+                    "target_kind": "sample-kind",
+                    "timestamp": timestamp,
+                    "price": null,
+                    "text": "sample text",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
+        body
     }
 
     fn normalize_annotation_response(mut value: Value) -> Value {
@@ -213,27 +261,32 @@ mod tests {
                 "text": "市況アノテーション",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
-        obj.remove("id");
-        obj.remove("created_at");
-        obj.remove("updated_at");
+        for key in ["id", "created_at", "updated_at"] {
+            obj.insert(key.into(), json!(format!("<{key}>")));
+        }
         assert_eq!(
-            body,
-            json!({
-                "strategy_id": null,
-                "target_symbol": "N225",
-                "target_kind": "observation",
-                "timestamp": "2026-01-01T00:00:00Z",
-                "price": null,
-                "text": "市況アノテーション",
-                "status": "unread",
-                "linked_note_id": null,
-                "created_by_kind": "human",
-                "execution_step_id": null,
-                "execution_task_id": null,
-            }),
+            (res.status_code(), body),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": null,
+                    "target_symbol": "N225",
+                    "target_kind": "observation",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "市況アノテーション",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
         );
     }
 
@@ -256,13 +309,34 @@ mod tests {
                 "text": "text",
             }))
             .await;
-        initial_annotation_res.assert_status(StatusCode::CREATED);
-        let annotation_id = Uuid::parse_str(
-            initial_annotation_res.json::<Value>()["id"]
-                .as_str()
-                .expect("id"),
-        )
-        .expect("uuid");
+        let initial_annotation_body = initial_annotation_res.json::<Value>();
+        let annotation_id =
+            Uuid::parse_str(initial_annotation_body["id"].as_str().expect("id")).expect("uuid");
+        assert_eq!(
+            (
+                initial_annotation_res.status_code(),
+                normalize_annotation_response(initial_annotation_body),
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": strategy_id,
+                    "target_symbol": "TEST-SYMBOL",
+                    "target_kind": "sample_kind",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "text",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
 
         let create_res = server
             .post("/api/annotations")
@@ -324,35 +398,59 @@ mod tests {
                 "text": "市況アノテーション",
             }))
             .await;
-        res.assert_status(StatusCode::CREATED);
-        let anno_id =
-            Uuid::parse_str(res.json::<Value>()["id"].as_str().expect("id")).expect("uuid");
+        let created_body = res.json::<Value>();
+        let anno_id = Uuid::parse_str(created_body["id"].as_str().expect("id")).expect("uuid");
+        assert_eq!(
+            (
+                res.status_code(),
+                normalize_annotation_response(created_body)
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": null,
+                    "target_symbol": "N225",
+                    "target_kind": "observation",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "市況アノテーション",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))
             .json(&json!({}))
             .await;
-        res.assert_status_ok();
-        let mut body: Value = res.json();
-        let obj = body.as_object_mut().unwrap();
-        obj.remove("id");
-        obj.remove("created_at");
-        obj.remove("updated_at");
         assert_eq!(
-            body,
-            json!({
-                "strategy_id": null,
-                "target_symbol": "N225",
-                "target_kind": "observation",
-                "timestamp": "2026-01-01T00:00:00Z",
-                "price": null,
-                "text": "市況アノテーション",
-                "status": "rejected",
-                "linked_note_id": null,
-                "created_by_kind": "human",
-                "execution_step_id": null,
-                "execution_task_id": null,
-            }),
+            (res.status_code(), normalize_annotation_response(res.json())),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": null,
+                    "target_symbol": "N225",
+                    "target_kind": "observation",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "市況アノテーション",
+                    "status": "rejected",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
         );
 
         let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
@@ -376,15 +474,12 @@ mod tests {
             .post(&format!("/api/annotations/{anno_id}/reject"))
             .json(&json!({}))
             .await;
-        res.assert_status_ok();
-        let mut body: Value = res.json();
-        let obj = body.as_object_mut().unwrap();
-        obj.remove("created_at");
-        obj.remove("updated_at");
         assert_eq!(
-            body,
-            json!({
-                "id": anno_id,
+            (res.status_code(), normalize_annotation_response(res.json())),
+            (
+                StatusCode::OK,
+                json!({
+                "id": "<id>",
                 "strategy_id": strategy_id,
                 "target_symbol": "7203",
                 "target_kind": "observation",
@@ -394,9 +489,12 @@ mod tests {
                 "status": "rejected",
                 "linked_note_id": null,
                 "created_by_kind": "human",
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
                 "execution_step_id": null,
                 "execution_task_id": null,
-            }),
+                }),
+            ),
         );
 
         let tasks = strategy_task::Entity::find()
@@ -436,7 +534,28 @@ mod tests {
                 .post(&format!("/api/annotations/{anno_id}/reject"))
                 .json(&json!({}))
                 .await;
-            res.assert_status_ok();
+            assert_eq!(
+                (res.status_code(), normalize_annotation_response(res.json())),
+                (
+                    StatusCode::OK,
+                    json!({
+                        "id": "<id>",
+                        "strategy_id": strategy_id,
+                        "target_symbol": "7203",
+                        "target_kind": "observation",
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "price": null,
+                        "text": "text",
+                        "status": "rejected",
+                        "linked_note_id": null,
+                        "created_by_kind": "human",
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "execution_step_id": null,
+                        "execution_task_id": null,
+                    }),
+                ),
+            );
         }
 
         let tasks = strategy_task::Entity::find()
@@ -465,7 +584,11 @@ mod tests {
             .post(&format!("/api/annotations/{anno_id}/reject"))
             .json(&json!({}))
             .await;
-        res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+        assert_response_eq(
+            &res,
+            StatusCode::SERVICE_UNAVAILABLE,
+            Some(json!({ "error": "agent task client is not configured" })),
+        );
 
         let anno = annotation::Entity::find_by_id(anno_id)
             .one(&db)

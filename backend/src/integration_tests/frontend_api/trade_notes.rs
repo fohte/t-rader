@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use super::super::assert_response_eq;
     use axum::http::StatusCode;
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
@@ -40,16 +41,69 @@ mod tests {
     }
 
     fn normalize_trade_note(mut v: serde_json::Value) -> serde_json::Value {
-        v["created_at"] = json!("<dyn>");
-        v["note_version_id"] = json!("<dyn>");
+        for key in ["created_at", "note_version_id"] {
+            if let Some(value) = v.get_mut(key) {
+                *value = json!("<dyn>");
+            }
+        }
         v
     }
 
     fn normalize_note(mut v: serde_json::Value) -> serde_json::Value {
-        v["created_at"] = json!("<dyn>");
-        v["updated_at"] = json!("<dyn>");
-        v["version_id"] = json!("<dyn>");
+        for key in ["created_at", "updated_at", "version_id"] {
+            if let Some(value) = v.get_mut(key) {
+                *value = json!("<dyn>");
+            }
+        }
         v
+    }
+
+    fn expected_note(id: Uuid, strategy_id: Uuid) -> serde_json::Value {
+        json!({
+            "id": id,
+            "version_id": "<dyn>",
+            "version_no": 1,
+            "is_current": true,
+            "strategy_id": strategy_id,
+            "title": "t",
+            "body_md": "b",
+            "frontmatter_json": {},
+            "kind": null,
+            "status": "unread",
+            "trigger": null,
+            "trigger_label": null,
+            "created_by_kind": "human",
+            "created_at": "<dyn>",
+            "updated_at": "<dyn>",
+            "graphs_json": [],
+            "execution_id": null,
+        })
+    }
+
+    async fn assert_trade_note_created(
+        server: &axum_test::TestServer,
+        trade_id: Uuid,
+        note_id: Uuid,
+    ) {
+        let response = server
+            .post(&format!("/api/trades/{trade_id}/notes"))
+            .json(&json!({ "note_id": note_id }))
+            .await;
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_trade_note(response.json()),
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trade_id": trade_id,
+                    "note_id": note_id,
+                    "note_version_id": "<dyn>",
+                    "created_at": "<dyn>",
+                }),
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -63,45 +117,28 @@ mod tests {
             .post(&format!("/api/trades/{tid}/notes"))
             .json(&json!({ "note_id": nid }))
             .await;
-        created.assert_status(StatusCode::CREATED);
         assert_eq!(
-            normalize_trade_note(created.json()),
-            json!({
-                "trade_id": tid,
-                "note_id": nid,
-                "note_version_id": "<dyn>",
-                "created_at": "<dyn>",
-            }),
+            (created.status_code(), normalize_trade_note(created.json()),),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trade_id": tid,
+                    "note_id": nid,
+                    "note_version_id": "<dyn>",
+                    "created_at": "<dyn>",
+                }),
+            ),
         );
 
         let list = server.get(&format!("/api/trades/{tid}/notes")).await;
-        list.assert_status_ok();
         let normalized: Vec<_> = list
             .json::<Vec<serde_json::Value>>()
             .into_iter()
             .map(normalize_note)
             .collect();
         assert_eq!(
-            normalized,
-            vec![json!({
-                "id": nid,
-                "version_id": "<dyn>",
-                "version_no": 1,
-                "is_current": true,
-                "strategy_id": sid,
-                "title": "t",
-                "body_md": "b",
-                "frontmatter_json": {},
-                "kind": null,
-                "status": "unread",
-                "trigger": null,
-                "trigger_label": null,
-                "created_by_kind": "human",
-                "created_at": "<dyn>",
-                "updated_at": "<dyn>",
-                "graphs_json": [],
-                "execution_id": null,
-            })],
+            (list.status_code(), normalized),
+            (StatusCode::OK, vec![expected_note(nid, sid)]),
         );
     }
 
@@ -113,16 +150,8 @@ mod tests {
         let n1 = seed_note(&db, Some(sid)).await;
         let n2 = seed_note(&db, Some(sid)).await;
 
-        server
-            .post(&format!("/api/trades/{tid}/notes"))
-            .json(&json!({ "note_id": n2 }))
-            .await
-            .assert_status(StatusCode::CREATED);
-        server
-            .post(&format!("/api/trades/{tid}/notes"))
-            .json(&json!({ "note_id": n1 }))
-            .await
-            .assert_status(StatusCode::CREATED);
+        assert_trade_note_created(&server, tid, n2).await;
+        assert_trade_note_created(&server, tid, n1).await;
 
         let link_time = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset();
         trade_note::ActiveModel {
@@ -145,13 +174,19 @@ mod tests {
         .expect("set second trade-note link time");
 
         let list = server.get(&format!("/api/trades/{tid}/notes")).await;
-        list.assert_status_ok();
-        let ids: Vec<Uuid> = list
+        let normalized: Vec<_> = list
             .json::<Vec<serde_json::Value>>()
             .iter()
-            .map(|v| Uuid::parse_str(v["id"].as_str().unwrap()).unwrap())
+            .cloned()
+            .map(normalize_note)
             .collect();
-        assert_eq!(ids, vec![n2, n1]);
+        assert_eq!(
+            (list.status_code(), normalized),
+            (
+                StatusCode::OK,
+                vec![expected_note(n2, sid), expected_note(n1, sid)],
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -166,7 +201,13 @@ mod tests {
             .post(&format!("/api/trades/{tid}/notes"))
             .json(&json!({ "note_id": nid }))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({
+                "error": "note_id must belong to the same strategy as the trade"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -175,11 +216,16 @@ mod tests {
         let sid = insert_test_strategy(&db, "s").await;
         let nid = seed_note(&db, Some(sid)).await;
 
+        let missing_trade_id = Uuid::new_v4();
         let res = server
-            .post(&format!("/api/trades/{}/notes", Uuid::new_v4()))
+            .post(&format!("/api/trades/{missing_trade_id}/notes"))
             .json(&json!({ "note_id": nid }))
             .await;
-        res.assert_status(StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &res,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("trade {missing_trade_id} not found") })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -192,7 +238,13 @@ mod tests {
             .post(&format!("/api/trades/{tid}/notes"))
             .json(&json!({ "note_id": Uuid::new_v4() }))
             .await;
-        res.assert_status(StatusCode::BAD_REQUEST);
+        assert_response_eq(
+            &res,
+            StatusCode::BAD_REQUEST,
+            Some(json!({
+                "error": "note_id must belong to the same strategy as the trade"
+            })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -202,17 +254,17 @@ mod tests {
         let tid = seed_trade(&db, sid).await;
         let nid = seed_note(&db, Some(sid)).await;
 
-        server
-            .post(&format!("/api/trades/{tid}/notes"))
-            .json(&json!({ "note_id": nid }))
-            .await
-            .assert_status(StatusCode::CREATED);
+        assert_trade_note_created(&server, tid, nid).await;
 
         let dup = server
             .post(&format!("/api/trades/{tid}/notes"))
             .json(&json!({ "note_id": nid }))
             .await;
-        dup.assert_status(StatusCode::CONFLICT);
+        assert_response_eq(
+            &dup,
+            StatusCode::CONFLICT,
+            Some(json!({ "error": "resource already exists" })),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -222,27 +274,25 @@ mod tests {
         let tid = seed_trade(&db, sid).await;
         let nid = seed_note(&db, Some(sid)).await;
 
-        server
-            .post(&format!("/api/trades/{tid}/notes"))
-            .json(&json!({ "note_id": nid }))
-            .await
-            .assert_status(StatusCode::CREATED);
+        assert_trade_note_created(&server, tid, nid).await;
 
         let deleted = server
             .delete(&format!("/api/trades/{tid}/notes/{nid}"))
             .await;
-        deleted.assert_status(StatusCode::NO_CONTENT);
+        assert_response_eq(&deleted, StatusCode::NO_CONTENT, None);
 
         let list = server.get(&format!("/api/trades/{tid}/notes")).await;
-        list.assert_status_ok();
-        assert_eq!(
-            list.json::<Vec<serde_json::Value>>(),
-            Vec::<serde_json::Value>::new()
-        );
+        assert_response_eq(&list, StatusCode::OK, Some(json!([])));
 
         let again = server
             .delete(&format!("/api/trades/{tid}/notes/{nid}"))
             .await;
-        again.assert_status(StatusCode::NOT_FOUND);
+        assert_response_eq(
+            &again,
+            StatusCode::NOT_FOUND,
+            Some(json!({
+                "error": format!("trade_note ({tid}, {nid}) not found")
+            })),
+        );
     }
 }
