@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{assert_response_eq, create_strategy};
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 
     use crate::testing::{create_test_server, create_test_server_with_db};
@@ -8,41 +8,6 @@ mod tests {
     use gateway_postgres::entities::change_history;
     use serde_json::{Value, json};
     use uuid::Uuid;
-
-    fn normalize_strategy(mut body: serde_json::Value) -> serde_json::Value {
-        for key in ["created_at", "updated_at"] {
-            if let Some(value) = body.get_mut(key) {
-                *value = json!(format!("<{key}>"));
-            }
-        }
-        body
-    }
-
-    async fn create_strategy(server: &axum_test::TestServer, name: &str) -> Uuid {
-        let res = server
-            .post("/api/strategies")
-            .json(&json!({ "name": name }))
-            .await;
-        let mut body = res.json::<serde_json::Value>();
-        let id = body["id"].as_str().map(str::to_string).expect("id");
-        let expected_id = id.clone();
-        body = normalize_strategy(body);
-        assert_eq!(
-            (res.status_code(), body),
-            (
-                StatusCode::CREATED,
-                json!({
-                    "id": expected_id,
-                    "name": name,
-                    "description": null,
-                    "sort_order": 0,
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                }),
-            ),
-        );
-        Uuid::parse_str(&id).expect("uuid")
-    }
 
     fn create_payload(name: &str, code: &str) -> serde_json::Value {
         json!({
@@ -147,7 +112,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn create_strategy_indicator_returns_201(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let strategy_id = create_strategy(&server, "s1").await;
+        let strategy_id = Uuid::parse_str(&create_strategy(&server, "s1").await).expect("uuid");
 
         let res = server
             .post(&format!("/api/strategies/{strategy_id}/indicators"))
@@ -255,7 +220,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn duplicate_strategy_name_returns_409(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let strategy_id = create_strategy(&server, "s1").await;
+        let strategy_id = Uuid::parse_str(&create_strategy(&server, "s1").await).expect("uuid");
         let payload = create_payload("rsi", "print('{}')");
         server
             .post(&format!("/api/strategies/{strategy_id}/indicators"))
@@ -275,7 +240,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn global_and_strategy_can_share_name(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let strategy_id = create_strategy(&server, "s1").await;
+        let strategy_id = Uuid::parse_str(&create_strategy(&server, "s1").await).expect("uuid");
         let payload = create_payload("rsi", "print('{}')");
 
         let g = server.post("/api/indicators").json(&payload).await;
@@ -319,8 +284,8 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn list_isolates_strategy_scopes(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let s_a = create_strategy(&server, "a").await;
-        let s_b = create_strategy(&server, "b").await;
+        let s_a = Uuid::parse_str(&create_strategy(&server, "a").await).expect("uuid");
+        let s_b = Uuid::parse_str(&create_strategy(&server, "b").await).expect("uuid");
         server
             .post(&format!("/api/strategies/{s_a}/indicators"))
             .json(&create_payload("only-a", "print('{}')"))
@@ -376,8 +341,8 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        let s_a = create_strategy(&server, "a").await;
-        let s_b = create_strategy(&server, "b").await;
+        let s_a = Uuid::parse_str(&create_strategy(&server, "a").await).expect("uuid");
+        let s_b = Uuid::parse_str(&create_strategy(&server, "b").await).expect("uuid");
         let created = server
             .post(&format!("/api/strategies/{s_a}/indicators"))
             .json(&create_payload("only-a", "print('{}')"))

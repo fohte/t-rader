@@ -90,7 +90,7 @@ mod tests {
             ),
             (
                 "invalid_timeframe",
-                "?instrument_id=7203&timeframe=5m",
+                "?instrument_id=demo-code&timeframe=5m",
                 serde_json::json!({ "error": "invalid timeframe: 5m. valid values: [\"1d\"]" }),
             ),
         ];
@@ -116,21 +116,21 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn list_bars_with_date_range_filters_correctly(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        insert_test_instrument(&db, "7203").await;
+        insert_test_instrument(&db, "demo-code").await;
 
         let bars = vec![
             make_test_bar(
-                "7203",
+                "demo-code",
                 NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date"),
                 100,
             ),
             make_test_bar(
-                "7203",
+                "demo-code",
                 NaiveDate::from_ymd_opt(2025, 1, 7).expect("invalid date"),
                 105,
             ),
             make_test_bar(
-                "7203",
+                "demo-code",
                 NaiveDate::from_ymd_opt(2025, 1, 8).expect("invalid date"),
                 103,
             ),
@@ -140,13 +140,13 @@ mod tests {
             .expect("upsert failed");
 
         let response = server
-            .get("/api/bars?instrument_id=7203&from=2025-01-07&to=2025-01-07")
+            .get("/api/bars?instrument_id=demo-code&from=2025-01-07&to=2025-01-07")
             .await;
         assert_response_eq(
             &response,
             StatusCode::OK,
             Some(serde_json::json!([{
-                "instrument_id": "7203",
+                "instrument_id": "demo-code",
                 "timeframe": "1d",
                 "timestamp": "2025-01-07T00:00:00Z",
                 "open": 105,

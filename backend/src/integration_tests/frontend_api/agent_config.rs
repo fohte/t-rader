@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{assert_response_eq, create_agent_config};
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
@@ -17,28 +17,6 @@ mod tests {
             }
         }
         value
-    }
-
-    async fn create_agent_config(server: &axum_test::TestServer) {
-        let response = server
-            .post("/api/agent-configs")
-            .json(&json!({ "purpose": "explore" }))
-            .await;
-        assert_eq!(
-            (response.status_code(), normalize(response.json())),
-            (
-                StatusCode::CREATED,
-                json!({
-                    "id": "<id>",
-                    "purpose": "explore",
-                    "agents_md": "",
-                    "skills": {},
-                    "agent_graph": "",
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                }),
-            ),
-        );
     }
 
     #[backend_test_macros::database_test]
@@ -86,7 +64,7 @@ mod tests {
     async fn duplicate_purpose_is_409(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let body = json!({ "purpose": "explore" });
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
         let res = server.post("/api/agent-configs").json(&body).await;
         assert_response_eq(
             &res,
@@ -125,7 +103,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn delete_agent_config_removes_row(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
 
         let deleted = server.delete("/api/agent-configs/explore").await;
         assert_response_eq(&deleted, StatusCode::NO_CONTENT, None);
@@ -140,7 +118,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn put_then_get_agents_md_round_trips(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
 
         let body = "# 方針\n慎重に運用する";
         let put = server
@@ -167,7 +145,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn single_skill_add_update_delete_lifecycle(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
 
         let first = server
             .put("/api/agent-configs/explore/skills/scout")
@@ -212,7 +190,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn delete_unknown_skill_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
         let res = server
             .delete("/api/agent-configs/explore/skills/missing")
             .await;
@@ -226,7 +204,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn put_then_get_agent_graph_round_trips(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
 
         let yaml = indoc::indoc! {"
             phases:
@@ -248,7 +226,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn put_agent_graph_rejects_invalid_yaml(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
 
         let res = server
             .put("/api/agent-configs/explore/agent-graph")
@@ -268,7 +246,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        create_agent_config(&server).await;
+        create_agent_config(&server, "explore").await;
 
         let agents_md = indoc::indoc! {"
             # 方針

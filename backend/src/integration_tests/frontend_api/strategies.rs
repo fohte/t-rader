@@ -1,41 +1,17 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
-    use crate::testing::{create_strategy, create_test_server};
+    use super::super::{
+        assert_response_eq, create_strategy,
+        create_strategy_with_description as create_strategy_request, normalize_strategy,
+    };
+    use crate::testing::create_test_server;
     use serde_json::{Value, json};
-
-    fn normalize_strategy(mut value: Value) -> Value {
-        for key in ["created_at", "updated_at"] {
-            if let Some(field) = value.get_mut(key) {
-                *field = Value::String(format!("<{key}>"));
-            }
-        }
-        value
-    }
 
     async fn create_strategy_with_description(
         db: gateway_postgres::DatabaseHandle,
     ) -> (axum_test::TestServer, String) {
         let server = create_test_server(db).await;
-        let created = server
-            .post("/api/strategies")
-            .json(&json!({ "name": "strategy", "description": "initial" }))
-            .await;
-        let id = created.json::<Value>()["id"].as_str().unwrap().to_string();
-        assert_eq!(
-            (created.status_code(), normalize_strategy(created.json())),
-            (
-                axum::http::StatusCode::CREATED,
-                json!({
-                    "id": id,
-                    "name": "strategy",
-                    "description": "initial",
-                    "sort_order": 0,
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                }),
-            ),
-        );
+        let id = create_strategy_request(&server, "strategy", Some("initial")).await;
         (server, id)
     }
 

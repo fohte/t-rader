@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
-    use crate::testing::{create_strategy, create_test_server};
+    use super::super::{assert_response_eq, create_strategy};
+    use crate::testing::create_test_server;
 
     #[backend_test_macros::database_test]
     async fn get_returns_null_when_unset(db: gateway_postgres::DatabaseHandle) {

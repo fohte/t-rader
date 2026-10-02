@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{assert_response_eq, normalize_timestamps};
     use std::sync::Arc;
 
     use sea_orm::EntityTrait;
@@ -19,19 +19,6 @@ mod tests {
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::strategy_task;
 
-    /// JSON body の動的時刻を正規化し、全フィールドを比較できるようにする。
-    fn strip_timestamps(v: &mut serde_json::Value) {
-        if let Some(obj) = v.as_object_mut() {
-            for key in ["created_at", "updated_at", "as_of"] {
-                if let Some(value) = obj.get_mut(key)
-                    && !value.is_null()
-                {
-                    *value = json!(format!("<{key}>"));
-                }
-            }
-        }
-    }
-
     #[backend_test_macros::database_test]
     async fn submit_chat_creates_task_row_and_submits_to_agent(
         db: gateway_postgres::DatabaseHandle,
@@ -47,7 +34,7 @@ mod tests {
 
         let res = server
             .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": " inspect 7203 " }))
+            .json(&json!({ "prompt": " inspect demo-code " }))
             .await;
         let mut body: serde_json::Value = res.json();
         let task_id = Uuid::parse_str(body["task_id"].as_str().expect("task_id")).expect("uuid");
@@ -84,7 +71,7 @@ mod tests {
                 strategy_id,
                 Some("agent-task-1".to_string()),
                 "frontend".to_string(),
-                "inspect 7203".to_string(),
+                "inspect demo-code".to_string(),
                 gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
                 None,
             ),
@@ -97,7 +84,10 @@ mod tests {
             .iter()
             .map(|s| (s.strategy_id, s.prompt.clone()))
             .collect();
-        assert_eq!(submitted, vec![(strategy_id, "inspect 7203".to_string())]);
+        assert_eq!(
+            submitted,
+            vec![(strategy_id, "inspect demo-code".to_string())]
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -192,7 +182,7 @@ mod tests {
 
         let res = server
             .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": "inspect 7203" }))
+            .json(&json!({ "prompt": "inspect demo-code" }))
             .await;
         assert_response_eq(
             &res,
@@ -268,7 +258,7 @@ mod tests {
             .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))
             .await;
         let mut body: serde_json::Value = res.json();
-        strip_timestamps(&mut body);
+        normalize_timestamps(&mut body);
         assert_eq!(
             (res.status_code(), body),
             (
@@ -381,7 +371,7 @@ mod tests {
             .get(&format!("/api/strategies/{strategy_id}/tasks"))
             .await;
         let mut body: Vec<serde_json::Value> = res.json();
-        body.iter_mut().for_each(strip_timestamps);
+        body.iter_mut().for_each(normalize_timestamps);
         assert_eq!(
             (res.status_code(), body),
             (
@@ -459,7 +449,7 @@ mod tests {
             .get(&format!("/api/strategies/{strategy_a}/tasks"))
             .await;
         let mut body: Vec<serde_json::Value> = res.json();
-        body.iter_mut().for_each(strip_timestamps);
+        body.iter_mut().for_each(normalize_timestamps);
         assert_eq!(
             (res.status_code(), body),
             (

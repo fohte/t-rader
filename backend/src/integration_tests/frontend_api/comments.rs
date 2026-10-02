@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{
+        assert_response_eq, create_strategy, normalize_annotation_response, normalize_note_response,
+    };
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
@@ -63,15 +65,6 @@ mod tests {
         })
     }
 
-    fn normalize_note_response(mut value: Value) -> Value {
-        for key in ["id", "version_id", "created_at", "updated_at"] {
-            if let Some(value) = value.as_object_mut().and_then(|object| object.get_mut(key)) {
-                *value = Value::String(format!("<{key}>"));
-            }
-        }
-        value
-    }
-
     fn normalize_note_version_list(mut value: Value) -> Value {
         if let Some(versions) = value.as_array_mut() {
             for version in versions {
@@ -88,17 +81,8 @@ mod tests {
         value
     }
 
-    fn normalize_annotation_response(mut value: Value) -> Value {
-        for key in ["id", "created_at", "updated_at"] {
-            if let Some(value) = value.as_object_mut().and_then(|object| object.get_mut(key)) {
-                *value = Value::String(format!("<{key}>"));
-            }
-        }
-        value
-    }
-
     async fn create_note_comment(server: &axum_test::TestServer) -> Value {
-        let strategy_id = crate::testing::create_strategy(server, "s").await;
+        let strategy_id = create_strategy(server, "s").await;
         let note_id = create_note(server, &strategy_id, "body").await;
         let version_id = first_note_version_id(server, &note_id, "note", "body").await;
         let response = server
@@ -401,8 +385,8 @@ mod tests {
             .post("/api/annotations")
             .json(&json!({
                 "strategy_id": strategy_id,
-                "target_symbol": "7203",
-                "target_kind": "observation",
+                "target_symbol": "demo-code",
+                "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "text": "text",
             }))
@@ -418,8 +402,8 @@ mod tests {
                 json!({
                     "id": "<id>",
                     "strategy_id": strategy_id,
-                    "target_symbol": "7203",
-                    "target_kind": "observation",
+                    "target_symbol": "demo-code",
+                    "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "text",
@@ -441,7 +425,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let strategy_id = create_strategy(&server, "s").await;
         let note_id = create_note(
             &server,
             &strategy_id,
@@ -496,7 +480,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let strategy_id = create_strategy(&server, "s").await;
         let note_id = create_note(
             &server,
             &strategy_id,
@@ -551,7 +535,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let strategy_id = create_strategy(&server, "s").await;
         let annotation_id = create_annotation(&server, &strategy_id).await;
 
         let res = server

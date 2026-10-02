@@ -1,10 +1,7 @@
-//! 戦略タスクの投入 (5 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
-//! scheduler job による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
+//! HTTP entrypoint の API 契約と戦略タスクの一連の処理を composition root から検証する。
 //!
-//! 各コンポーネント単体の挙動は `core_application::strategy_task` /
-//! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
-//! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
-//! されること) のみを扱う。
+//! `frontend_api` は DB-backed route を公開 router 経由で検証する。その他のテストは
+//! 複数の submission route、agent 実行、scheduler job を跨ぐ戦略タスクの契約を検証する。
 
 mod frontend_api;
 mod prediction_grading;

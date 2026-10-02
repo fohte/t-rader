@@ -1,22 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{assert_response_eq, normalize_timestamps};
     use crate::testing::{
         create_test_server, create_test_server_with_db, insert_test_strategy,
         insert_test_strategy_task,
     };
     use serde_json::json;
-
-    /// JSON body の動的時刻を固定値に置換し、全フィールドを比較できるようにする。
-    fn normalize_timestamps(v: &mut serde_json::Value) {
-        if let Some(obj) = v.as_object_mut() {
-            for key in ["created_at", "updated_at", "as_of"] {
-                if obj.contains_key(key) {
-                    obj.insert(key.to_string(), serde_json::json!(format!("<{key}>")));
-                }
-            }
-        }
-    }
 
     #[backend_test_macros::database_test]
     async fn list_tasks_returns_all_strategies_newest_first(db: gateway_postgres::DatabaseHandle) {

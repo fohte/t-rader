@@ -19,7 +19,7 @@ mod tests {
         trade::ActiveModel {
             id: Set(id),
             strategy_id: Set(strategy_id),
-            symbol: Set("7203".into()),
+            symbol: Set("demo-code".into()),
             side: Set("buy".into()),
             qty: Set(Decimal::from(100)),
             price: Set(Decimal::from(1000)),

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{TaskShape, assert_response_eq, normalize_annotation_response};
     use std::sync::Arc;
 
     use crate::testing::agent_config;
@@ -21,33 +21,13 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
-    #[derive(Debug, PartialEq, Eq)]
-    struct TaskShape {
-        strategy_id: Uuid,
-        source: String,
-        prompt: String,
-        phase: StrategyTaskPhase,
-    }
-
-    impl TaskShape {
-        fn from(row: &strategy_task::Model) -> Self {
-            Self {
-                strategy_id: row.strategy_id,
-                source: row.source.clone(),
-                prompt: row.prompt.clone(),
-                phase: row.phase.clone(),
-            }
-        }
-    }
-
     async fn create_test_annotation(server: &TestServer, strategy_id: Uuid) -> Uuid {
         let res = server
             .post("/api/annotations")
             .json(&json!({
                 "strategy_id": strategy_id,
-                "target_symbol": "7203",
-                "target_kind": "observation",
+                "target_symbol": "demo-code",
+                "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "text": "text",
             }))
@@ -61,8 +41,8 @@ mod tests {
                 json!({
                     "id": "<id>",
                     "strategy_id": strategy_id,
-                    "target_symbol": "7203",
-                    "target_kind": "observation",
+                    "target_symbol": "demo-code",
+                    "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "text",
@@ -122,27 +102,6 @@ mod tests {
             ),
         );
         body
-    }
-
-    fn normalize_annotation_response(mut value: Value) -> Value {
-        fn normalize_row(annotation: &mut Value) {
-            for key in ["id", "created_at", "updated_at"] {
-                if let Some(value) = annotation
-                    .as_object_mut()
-                    .and_then(|object| object.get_mut(key))
-                {
-                    *value = Value::String(format!("<{key}>"));
-                }
-            }
-        }
-        if let Some(rows) = value.as_array_mut() {
-            for row in rows {
-                normalize_row(row);
-            }
-        } else {
-            normalize_row(&mut value);
-        }
-        value
     }
 
     async fn create_annotation_read_context(
@@ -256,7 +215,7 @@ mod tests {
             .post("/api/annotations")
             .json(&json!({
                 "target_symbol": "N225",
-                "target_kind": "observation",
+                "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "text": "市況アノテーション",
             }))
@@ -274,7 +233,7 @@ mod tests {
                     "id": "<id>",
                     "strategy_id": null,
                     "target_symbol": "N225",
-                    "target_kind": "observation",
+                    "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "市況アノテーション",
@@ -393,7 +352,7 @@ mod tests {
             .post("/api/annotations")
             .json(&json!({
                 "target_symbol": "N225",
-                "target_kind": "observation",
+                "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "text": "市況アノテーション",
             }))
@@ -411,7 +370,7 @@ mod tests {
                     "id": "<id>",
                     "strategy_id": null,
                     "target_symbol": "N225",
-                    "target_kind": "observation",
+                    "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "市況アノテーション",
@@ -438,7 +397,7 @@ mod tests {
                     "id": "<id>",
                     "strategy_id": null,
                     "target_symbol": "N225",
-                    "target_kind": "observation",
+                    "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "市況アノテーション",
@@ -481,8 +440,8 @@ mod tests {
                 json!({
                 "id": "<id>",
                 "strategy_id": strategy_id,
-                "target_symbol": "7203",
-                "target_kind": "observation",
+                "target_symbol": "demo-code",
+                "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "price": null,
                 "text": "text",
@@ -508,7 +467,7 @@ mod tests {
                 strategy_id,
                 source: "review".to_string(),
                 prompt: format!(
-                    "アノテーション (id: {anno_id}, 対象: 7203) がレビューで却下されました。\
+                    "アノテーション (id: {anno_id}, 対象: demo-code) がレビューで却下されました。\
 付いているコメントを確認し、指摘を反映してください。"
                 ),
                 phase: StrategyTaskPhase::Running,
@@ -541,8 +500,8 @@ mod tests {
                     json!({
                         "id": "<id>",
                         "strategy_id": strategy_id,
-                        "target_symbol": "7203",
-                        "target_kind": "observation",
+                        "target_symbol": "demo-code",
+                        "target_kind": "sample-kind",
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
                         "text": "text",

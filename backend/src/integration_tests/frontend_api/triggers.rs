@@ -1,66 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{assert_response_eq, create_agent_config, create_strategy};
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
-
-    async fn create_strategy(server: &axum_test::TestServer, name: &str) -> String {
-        let res = server
-            .post("/api/strategies")
-            .json(&json!({ "name": name }))
-            .await;
-        let mut body = res.json::<Value>();
-        let id = body["id"].as_str().unwrap().to_string();
-        for key in ["created_at", "updated_at"] {
-            if let Some(value) = body.get_mut(key) {
-                *value = json!(format!("<{key}>"));
-            }
-        }
-        assert_eq!(
-            (res.status_code(), body),
-            (
-                StatusCode::CREATED,
-                json!({
-                    "id": id,
-                    "name": name,
-                    "description": null,
-                    "sort_order": 0,
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                }),
-            ),
-        );
-        id
-    }
-
-    async fn create_agent_config(server: &axum_test::TestServer, purpose: &str) {
-        let res = server
-            .post("/api/agent-configs")
-            .json(&json!({ "purpose": purpose }))
-            .await;
-        let mut body = res.json::<Value>();
-        for key in ["id", "created_at", "updated_at"] {
-            if let Some(value) = body.get_mut(key) {
-                *value = json!(format!("<{key}>"));
-            }
-        }
-        assert_eq!(
-            (res.status_code(), body),
-            (
-                StatusCode::CREATED,
-                json!({
-                    "id": "<id>",
-                    "purpose": purpose,
-                    "agents_md": "",
-                    "skills": {},
-                    "agent_graph": "",
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                }),
-            ),
-        );
-    }
 
     /// trigger response の時刻系フィールドを placeholder に正規化する。
     /// 全フィールドを 1 つの literal と equality で比較するためのヘルパ。

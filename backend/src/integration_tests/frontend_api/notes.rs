@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::assert_response_eq;
+    use super::super::{TaskShape, assert_response_eq, normalize_note_response};
     use std::sync::Arc;
 
     use crate::testing::agent_config;
@@ -32,13 +32,6 @@ mod tests {
         "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
 
-    fn normalize_note_response(mut value: Value) -> Value {
-        for key in ["id", "version_id", "created_at", "updated_at"] {
-            value[key] = json!(format!("<{key}>"));
-        }
-        value
-    }
-
     fn normalize_note_version(mut value: Value) -> Value {
         for key in ["id", "note_id", "created_at", "reviewed_at"] {
             if let Some(field) = value.as_object_mut().and_then(|object| object.get_mut(key)) {
@@ -65,26 +58,6 @@ mod tests {
             "created_at": "<created_at>",
             "reviewed_at": "<reviewed_at>",
         })
-    }
-
-    /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
-    #[derive(Debug, PartialEq, Eq)]
-    struct TaskShape {
-        strategy_id: Uuid,
-        source: String,
-        prompt: String,
-        phase: StrategyTaskPhase,
-    }
-
-    impl TaskShape {
-        fn from(row: &strategy_task::Model) -> Self {
-            Self {
-                strategy_id: row.strategy_id,
-                source: row.source.clone(),
-                prompt: row.prompt.clone(),
-                phase: row.phase.clone(),
-            }
-        }
     }
 
     async fn create_test_note_with_body(
