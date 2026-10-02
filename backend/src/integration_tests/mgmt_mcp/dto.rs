@@ -7,6 +7,7 @@ use uuid::Uuid;
 use core_application::rss_feed::RssFeed;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StrategySummary {
     pub strategy_id: Uuid,
     pub name: String,
@@ -16,6 +17,7 @@ pub struct StrategySummary {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListStrategiesResult {
     pub strategies: Vec<StrategySummary>,
 }
@@ -32,6 +34,7 @@ pub struct SubmitStrategyTaskParams {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SubmitStrategyTaskResult {
     pub task_id: Uuid,
     pub a2a_task_id: String,
@@ -48,12 +51,14 @@ pub struct ResumeStrategyTaskParams {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResumeStrategyTaskResult {
     pub task_id: Uuid,
     pub a2a_task_id: String,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GetStrategyTaskStatusResult {
     pub task_id: Uuid,
     pub strategy_id: Uuid,
@@ -73,6 +78,7 @@ pub struct ListRecentParams {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct NoteMeta {
     pub note_id: Uuid,
     pub title: String,
@@ -82,11 +88,13 @@ pub struct NoteMeta {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListRecentNotesResult {
     pub notes: Vec<NoteMeta>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AnnotationMeta {
     pub annotation_id: Uuid,
     pub target_symbol: String,
@@ -97,6 +105,7 @@ pub struct AnnotationMeta {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListRecentAnnotationsResult {
     pub annotations: Vec<AnnotationMeta>,
 }
@@ -109,6 +118,7 @@ pub struct ListRssFeedsParams {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RssFeedSummary {
     pub id: Uuid,
     pub source: String,
@@ -130,11 +140,13 @@ impl From<RssFeed> for RssFeedSummary {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ListRssFeedsResult {
     pub feeds: Vec<RssFeedSummary>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TriggerSummary {
     pub trigger_id: Uuid,
     pub purpose: Option<String>,
@@ -176,6 +188,7 @@ pub struct GetStrategyConfigParams {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GetStrategyConfigResult {
     pub strategy_id: Uuid,
     pub name: String,

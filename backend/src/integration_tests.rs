@@ -113,7 +113,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         &use_cases,
         agent_client.clone(),
     ));
-    let _: Value = mgmt_mcp::tests_common::call_tool(
+    let _: Value = mgmt_mcp::tests_common::call_tool_output(
         &mgmt,
         "submit_strategy_task",
         json!({

@@ -61,11 +61,11 @@ pub(crate) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &s
     id
 }
 
-pub(crate) async fn call_tool<T: DeserializeOwned>(
+pub(crate) async fn call_tool(
     server: &MgmtServer,
     name: &'static str,
     arguments: Value,
-) -> Result<T, McpError> {
+) -> Result<CallToolResponse, McpError> {
     let arguments = arguments
         .as_object()
         .cloned()
@@ -85,7 +85,15 @@ pub(crate) async fn call_tool<T: DeserializeOwned>(
         )
         .await;
     let _ = running.cancel().await;
-    let response = response?;
+    response
+}
+
+pub(crate) async fn call_tool_output<T: DeserializeOwned>(
+    server: &MgmtServer,
+    name: &'static str,
+    arguments: Value,
+) -> Result<T, McpError> {
+    let response = call_tool(server, name, arguments).await?;
     let CallToolResponse::Complete(response) = response else {
         return Err(McpError::internal_error(
             "test tool call did not return a complete result",
@@ -112,7 +120,7 @@ async fn invoke<TInput: Serialize, TOutput: DeserializeOwned>(
 ) -> Result<Json<TOutput>, McpError> {
     let arguments = serde_json::to_value(input)
         .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-    call_tool(server, name, arguments).await.map(Json)
+    call_tool_output(server, name, arguments).await.map(Json)
 }
 
 impl MgmtTestServer {
