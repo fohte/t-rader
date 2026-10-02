@@ -4,16 +4,15 @@
 //! `missing field` ではなく `unknown field ..., expected one of ...` として
 //! 返るため LLM が自力で直せる。
 //!
-//! 業務ルールの検証は core-domain に置き、ここでは HTTP / MCP の schema を定義する。
+//! 業務ルールの検証は core-domain に置き、ここでは HTTP schema を定義する。
 
 use core_domain::note_graph as domain;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 pub use domain::GraphValidationError;
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GraphDef {
     pub id: String,
@@ -23,7 +22,7 @@ pub struct GraphDef {
     pub edges: Vec<GraphEdge>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Layout {
     Flow,
@@ -32,7 +31,7 @@ pub enum Layout {
     Scatter,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GraphNode {
     pub id: String,
@@ -51,7 +50,7 @@ pub struct GraphNode {
     pub y: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GraphEdge {
     pub source: String,

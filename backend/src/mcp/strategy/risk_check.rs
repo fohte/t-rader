@@ -17,7 +17,8 @@ use rust_decimal::prelude::ToPrimitive;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
 use super::{
-    StrategyServer, app_error_to_mcp, decimal_to_f64, strategy_use_case_error_to_mcp, trade_error,
+    StrategyServer, decimal_to_f64, internal_failure, persistence_error_to_mcp,
+    strategy_use_case_error_to_mcp, trade_error,
 };
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
@@ -25,8 +26,12 @@ const LOT_SIZE: i64 = 100;
 
 fn account_risk_policy_error_to_mcp(error: AccountRiskPolicyRepositoryError) -> McpError {
     match error {
-        AccountRiskPolicyRepositoryError::Database(error) => app_error_to_mcp(error.into()),
+        AccountRiskPolicyRepositoryError::Database(error) => persistence_error_to_mcp(error),
     }
+}
+
+fn parse_account_risk_policy(value: serde_json::Value) -> Result<AccountRiskPolicyData, McpError> {
+    parse_risk_policy(value).map_err(|error| internal_failure(&error.to_string()))
 }
 
 impl StrategyServer {
@@ -40,14 +45,13 @@ impl StrategyServer {
         let symbol = params.symbol;
 
         let account_risk_policy = self
-            .use_cases
-            .account_risk_policies()
+            .dependencies
+            .account_risk_policies
             .find_current()
             .await
             .map_err(account_risk_policy_error_to_mcp)?;
         let max_group_ratios: Vec<(String, Decimal)> = match account_risk_policy {
-            Some(risk_policy) => parse_risk_policy::<AccountRiskPolicyData>(risk_policy)
-                .map_err(|error| app_error_to_mcp(error.into()))?
+            Some(risk_policy) => parse_account_risk_policy(risk_policy)?
                 .max_group_ratios
                 .into_iter()
                 .map(|group_ratio| (group_ratio.axis, group_ratio.ratio))
@@ -56,14 +60,14 @@ impl StrategyServer {
         };
 
         let account_summary = self
-            .use_cases
-            .trades()
+            .dependencies
+            .trades
             .summary(None)
             .await
             .map_err(trade_error)?;
         let strategy_summary = self
-            .use_cases
-            .trades()
+            .dependencies
+            .trades
             .summary(Some(strategy_id))
             .await
             .map_err(trade_error)?;
@@ -77,9 +81,9 @@ impl StrategyServer {
         let symbols: Vec<String> = symbols.into_iter().collect();
 
         let prices = self
-            .use_cases
-            .bars()
-            .fetch_latest_prices(self.daily_bar_source.as_deref(), &symbols)
+            .dependencies
+            .bars
+            .fetch_latest_prices(self.dependencies.daily_bar_source.as_deref(), &symbols)
             .await;
         let target_price = prices.prices.get(&symbol).copied();
 
@@ -97,8 +101,8 @@ impl StrategyServer {
             .into_iter()
             .collect();
         let memberships = self
-            .use_cases
-            .stock_groups()
+            .dependencies
+            .stock_groups
             .list_memberships(&symbols, &axis_keys)
             .await
             .map_err(super::stock_groups::stock_group_error)?;
@@ -143,8 +147,8 @@ impl StrategyServer {
         }
 
         let investable_amount_row = self
-            .use_cases
-            .strategies()
+            .dependencies
+            .strategies
             .current_investable_amount(scope)
             .await
             .map_err(strategy_use_case_error_to_mcp)?;
@@ -333,6 +337,17 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+
+    #[test]
+    fn malformed_risk_policy_maps_to_an_internal_error() {
+        assert_eq!(
+            parse_account_risk_policy(serde_json::json!(true)),
+            Err(rmcp::ErrorData::internal_error(
+                "database error: invalid risk_policy: invalid type: boolean `true`, expected struct AccountRiskPolicyData",
+                None,
+            ))
+        );
+    }
 
     #[rstest]
     #[case::negative_headroom(Decimal::new(-1, 0), Decimal::from(1000), 0)]

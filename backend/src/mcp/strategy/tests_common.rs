@@ -56,10 +56,13 @@ pub(super) fn build_server_with_source(
     db: impl Into<gateway_postgres::DatabaseHandle>,
     daily_bar_source: Option<SharedDailyBarSource>,
 ) -> StrategyServer {
-    StrategyServer::new(
-        crate::services::use_cases::build_use_cases(db),
+    let use_cases = crate::services::use_cases::build_use_cases(db);
+    StrategyServer::new(crate::mcp::strategy_server_dependencies(
+        &use_cases,
         daily_bar_source,
-    )
+        None,
+        None,
+    ))
 }
 
 /// DTO の比較で動的な timestamp を差し替えるための sentinel 値。

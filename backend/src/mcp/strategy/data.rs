@@ -64,8 +64,8 @@ impl StrategyServer {
             .map(|dt| dt.and_utc().fixed_offset());
 
         let rows = self
-            .use_cases
-            .bars()
+            .dependencies
+            .bars
             .find_bars_by_instruments(BarsByInstrumentsQuery {
                 instrument_ids: instrument_ids.clone(),
                 timeframe: "1d".to_string(),
@@ -94,13 +94,13 @@ impl StrategyServer {
         }
 
         let mut results = Vec::with_capacity(instrument_ids.len());
-        let evidence_use_cases = self.use_cases.strategy_task_step_evidence();
+        let evidence_use_cases = &self.dependencies.strategy_task_step_evidence;
         for instrument_id in &instrument_ids {
             let bars = bars_by_instrument.remove(instrument_id).unwrap_or_default();
 
             if let Some(execution_step_id) = execution_step_id
                 && let Err(err) = super::evidence::record_query_data(
-                    &evidence_use_cases,
+                    evidence_use_cases,
                     execution_step_id,
                     instrument_id,
                     params.from,

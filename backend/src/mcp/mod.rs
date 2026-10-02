@@ -9,6 +9,7 @@ pub mod strategy;
 #[cfg(test)]
 pub mod watcher;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::agent_client::SharedAgentTaskClient;
@@ -22,7 +23,7 @@ pub use mgmt::MgmtServer;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
-pub use strategy::StrategyServer;
+pub use strategy::{StrategyServer, StrategyServerDependencies};
 
 /// MCP ルータを構築する。
 ///
@@ -49,11 +50,12 @@ pub fn router(
     );
     let strategy = StreamableHttpService::new(
         move || {
-            Ok(
-                StrategyServer::new(use_cases.clone(), daily_bar_source.clone())
-                    .with_kata_executor(kata_executor.clone())
-                    .with_litellm_client(litellm_client.clone()),
-            )
+            Ok(StrategyServer::new(strategy_server_dependencies(
+                &use_cases,
+                daily_bar_source.clone(),
+                kata_executor.clone(),
+                litellm_client.clone(),
+            )))
         },
         session_manager().into(),
         build_config(&extra_allowed_hosts),
@@ -66,6 +68,45 @@ pub fn router(
             access_log::AccessLogState::new(),
             access_log::access_log,
         ))
+}
+
+pub(crate) fn strategy_server_dependencies(
+    use_cases: &UseCases,
+    daily_bar_source: Option<SharedDailyBarSource>,
+    kata_executor: Option<SharedKataExecutor>,
+    llm_client: Option<SharedLlmClient>,
+) -> StrategyServerDependencies {
+    StrategyServerDependencies {
+        account_risk_policies: use_cases.account_risk_policies(),
+        annotation_reads: use_cases.annotation_reads(),
+        annotations: use_cases.annotations(),
+        bars: use_cases.bars(),
+        comment_reads: use_cases.comment_reads(),
+        comments: use_cases.comments(),
+        custom_indicators: use_cases.custom_indicators(),
+        daily_bar_source,
+        financial_summaries: use_cases.financial_summaries(),
+        indicator_observations: use_cases.indicator_observations(),
+        kata_executor,
+        llm_client,
+        margins: use_cases.margins(),
+        mcp_tool_call_counts: use_cases.mcp_tool_call_counts(),
+        news: use_cases.news(),
+        note_kinds: use_cases.note_kinds(),
+        note_reads: use_cases.note_reads(),
+        notes: use_cases.notes(),
+        predictions: use_cases.predictions(),
+        refs: use_cases.refs(),
+        shareholding_structures: use_cases.shareholding_structures(),
+        short_ratios: use_cases.short_ratios(),
+        short_sale_reports: use_cases.short_sale_reports(),
+        stock_groups: use_cases.stock_groups(),
+        strategies: use_cases.strategies(),
+        strategy_scope: Arc::new(use_cases.strategy_scope()),
+        strategy_task_step_evidence: use_cases.strategy_task_step_evidence(),
+        trades: use_cases.trades(),
+        valuations: use_cases.valuations(),
+    }
 }
 
 /// `MCP_ALLOWED_HOSTS` (カンマ区切り) をパースする。未設定または空なら空 Vec。
@@ -116,16 +157,6 @@ fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
         }
     }
     config
-}
-
-/// 制約なしの JSON 値を表す schema。
-///
-/// schemars は `serde_json::Value` を JSON Schema の真偽値リテラル `true` として出力するが、
-/// MCP クライアント (`@modelcontextprotocol/sdk` の zod スキーマ) は `properties.*` の値が
-/// object であることを要求し boolean を reject するため、`#[schemars(schema_with = "...")]`
-/// でこの空 object schema `{}` (意味は `true` と同じく無制約) を代わりに使う。
-pub(crate) fn any_json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-    serde_json::Map::new().into()
 }
 
 /// tool の input/output スキーマの `properties` 直下 (ネストした `$defs` を含む) に、

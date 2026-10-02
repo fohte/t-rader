@@ -24,7 +24,7 @@ pub struct UpdateStockGroupParams {
     pub name: Option<String>,
     #[serde(
         default,
-        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+        deserialize_with = "super::serde_helpers::deserialize_nullable_option"
     )]
     pub description: Option<Option<String>>,
 }
@@ -138,8 +138,8 @@ impl StrategyServer {
         })
     }
 
-    fn stock_group_use_cases(&self) -> StockGroupUseCases {
-        self.use_cases.stock_groups()
+    fn stock_group_use_cases(&self) -> &StockGroupUseCases {
+        &self.dependencies.stock_groups
     }
 }
 

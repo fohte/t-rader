@@ -111,8 +111,8 @@ impl StrategyServer {
         })?;
         let limit = clamp_limit(params.limit);
         let rows = self
-            .use_cases
-            .short_ratios()
+            .dependencies
+            .short_ratios
             .read(
                 scope,
                 ShortRatioQuery {

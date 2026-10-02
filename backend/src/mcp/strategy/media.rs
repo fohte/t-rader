@@ -7,7 +7,7 @@
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 
-use crate::services::litellm_client::{ChatMessage, ContentPart, FilePart};
+use core_application::llm_client::{ChatMessage, ContentPart, FilePart};
 
 use super::dto::{QueryMediaParams, QueryMediaResult};
 use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
@@ -32,7 +32,8 @@ impl StrategyServer {
         }
 
         let client = self
-            .litellm_client
+            .dependencies
+            .llm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
 

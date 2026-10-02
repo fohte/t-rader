@@ -10,7 +10,7 @@ use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
-use crate::kata_exec::{ExecRequest, KataExecError};
+use core_application::kata_exec::{ExecRequest, KataExecError};
 
 use super::dto::{EvalPythonParams, EvalPythonResult};
 use super::{
