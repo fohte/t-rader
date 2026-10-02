@@ -6,11 +6,13 @@ mod tests {
     use uuid::Uuid;
 
     use super::super::dto::{
-        AnnotationDto, CreateAnnotationParams, ReadAnnotationsParams, ReadAnnotationsResult,
+        AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
+        ReadAnnotationsResult,
     };
     use super::super::tests_common::{
         ChangeHistoryShape, build_server, change_history_for, insert_strategy,
-        normalize_annotation, seed_comment, seed_foreign_note, ts_sentinel,
+        normalize_annotation, normalize_create_annotation, normalize_read_annotations,
+        normalize_read_annotations_unordered, seed_comment, seed_foreign_note, ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
     use gateway_postgres::entities::annotation;
@@ -44,7 +46,7 @@ mod tests {
             strategy_id,
             target_symbol: "7203".into(),
             target_kind: "custom-tag".into(),
-            timestamp: ts,
+            timestamp: ts.with_timezone(&chrono::Utc).fixed_offset(),
             price: Some(25000.0),
             text: "breakout".into(),
             status: DEFAULT_ANNOTATION_STATUS.into(),
@@ -54,8 +56,10 @@ mod tests {
             updated_at: ts_sentinel(),
         };
         assert_eq!(
-            normalize_annotation(created.into_value().annotation),
-            expected
+            normalize_create_annotation(created),
+            CreateAnnotationResult {
+                annotation: expected.clone(),
+            },
         );
 
         let list = server
@@ -69,14 +73,7 @@ mod tests {
             .await
             .expect("list");
         assert_eq!(
-            ReadAnnotationsResult {
-                annotations: list
-                    .into_value()
-                    .annotations
-                    .into_iter()
-                    .map(normalize_annotation)
-                    .collect(),
-            },
+            normalize_read_annotations(list),
             ReadAnnotationsResult {
                 annotations: vec![expected],
             },
@@ -120,7 +117,10 @@ mod tests {
             )
             .await
             .expect_err("empty target_kind expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params("target_kind must not be empty", None),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -148,7 +148,10 @@ mod tests {
             )
             .await
             .expect_err("cross-strategy linked note expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params("linked note belongs to a different strategy", None,),
+        );
     }
 
     /// resume で同じステップの新しい試行 (execution_task_id が変わる) が create_annotation を
@@ -208,12 +211,10 @@ mod tests {
             .await
             .expect("list");
         assert_eq!(
-            list.into_value()
-                .annotations
-                .into_iter()
-                .map(|a| a.annotation_id)
-                .collect::<Vec<_>>(),
-            vec![second.annotation.annotation_id],
+            normalize_read_annotations(list),
+            ReadAnnotationsResult {
+                annotations: vec![normalize_annotation(second.annotation.clone())],
+            },
         );
     }
 
@@ -280,19 +281,19 @@ mod tests {
             )
             .await
             .expect("list");
-        let mut ids: Vec<Uuid> = list
-            .into_value()
-            .annotations
-            .into_iter()
-            .map(|a| a.annotation_id)
-            .collect();
-        ids.sort();
+        let mut reviewed_annotation = reviewed.annotation.clone();
+        reviewed_annotation.status = "approved".into();
         let mut expected = vec![
-            reviewed.annotation.annotation_id,
-            second.annotation.annotation_id,
+            normalize_annotation(reviewed_annotation),
+            normalize_annotation(second.annotation.clone()),
         ];
-        expected.sort();
-        assert_eq!(ids, expected);
+        expected.sort_by_key(|annotation| annotation.annotation_id);
+        assert_eq!(
+            normalize_read_annotations_unordered(list),
+            ReadAnnotationsResult {
+                annotations: expected,
+            },
+        );
     }
 
     /// 前の試行が作った unread のアノテーションでも、既にコメントが付いている場合は
@@ -358,19 +359,17 @@ mod tests {
             )
             .await
             .expect("list");
-        let mut ids: Vec<Uuid> = list
-            .into_value()
-            .annotations
-            .into_iter()
-            .map(|a| a.annotation_id)
-            .collect();
-        ids.sort();
         let mut expected = vec![
-            commented.annotation.annotation_id,
-            second.annotation.annotation_id,
+            normalize_annotation(commented.annotation.clone()),
+            normalize_annotation(second.annotation.clone()),
         ];
-        expected.sort();
-        assert_eq!(ids, expected);
+        expected.sort_by_key(|annotation| annotation.annotation_id);
+        assert_eq!(
+            normalize_read_annotations_unordered(list),
+            ReadAnnotationsResult {
+                annotations: expected,
+            },
+        );
     }
 
     /// resume していない通常の実行 (同じ execution_task_id) で 1 ステップが複数件の
@@ -384,8 +383,9 @@ mod tests {
         let step_id = Uuid::new_v4();
         let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
 
+        let mut expected = Vec::new();
         for text in ["first", "second"] {
-            server
+            let created = server
                 .create_annotation(
                     strategy_id,
                     Some(step_id),
@@ -401,7 +401,9 @@ mod tests {
                 )
                 .await
                 .unwrap_or_else(|e| panic!("create {text} failed: {e}"));
+            expected.push(normalize_annotation(created.annotation.clone()));
         }
+        expected.sort_by_key(|annotation| annotation.annotation_id);
 
         let list = server
             .read_annotations(
@@ -413,13 +415,11 @@ mod tests {
             )
             .await
             .expect("list");
-        let mut texts: Vec<String> = list
-            .into_value()
-            .annotations
-            .into_iter()
-            .map(|a| a.text)
-            .collect();
-        texts.sort();
-        assert_eq!(texts, vec!["first".to_string(), "second".to_string()]);
+        assert_eq!(
+            normalize_read_annotations_unordered(list),
+            ReadAnnotationsResult {
+                annotations: expected,
+            },
+        );
     }
 }

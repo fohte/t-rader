@@ -1,13 +1,12 @@
 use chrono::NaiveDate;
 use core_application::short_sale_report::ShortSaleReportRepository;
 use core_domain::short_sale_report::ShortSaleReport;
-use sea_orm::{DatabaseBackend, DatabaseConnection, MockDatabase};
 use serde_json::json;
 use uuid::Uuid;
 
 use super::StrategyServer;
 use super::dto::ReadShortSaleReportsParams;
-use super::tests_common::{build_server, insert_strategy};
+use super::tests_common::{build_server, insert_strategy, mock_db_with_strategy};
 use gateway_postgres::PostgresShortSaleReportRepository;
 
 fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -38,14 +37,6 @@ fn report(
         prev_report_ratio: previous.map(|(_, ratio)| ratio.parse().expect("valid ratio")),
         notes: String::new(),
     }
-}
-
-fn mock_db_with_strategy(strategy_id: Uuid) -> DatabaseConnection {
-    let row =
-        std::collections::BTreeMap::from([("id".to_string(), sea_orm::Value::from(strategy_id))]);
-    MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([vec![row]])
-        .into_connection()
 }
 
 #[tokio::test]

@@ -1,10 +1,6 @@
-//! 戦略タスクの投入 (5 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
-//! scheduler job による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
+//! composition root 経由で公開 entrypoint の統合動作を検証する。
 //!
-//! 各コンポーネント単体の挙動は `core_application::strategy_task` /
-//! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
-//! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
-//! されること) のみを扱う。
+//! 戦略タスクの経路横断契約と、strategy MCP tool の tool dispatch を扱う。
 
 pub(crate) mod mcp_tool;
 mod prediction_grading;

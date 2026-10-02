@@ -1,6 +1,7 @@
 pub(crate) use crate::mcp::strategy::test_api::{
     DEFAULT_ANNOTATION_STATUS, EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_TIMEOUT_SECS, MAX_CODE_BYTES,
-    MAX_LIST_LIMIT, MAX_QUERY_DATA_INSTRUMENTS, STRATEGY_AGENT_ACTOR, dto, graph_dto, stock_groups,
+    MAX_LIST_LIMIT, MAX_QUERY_DATA_INSTRUMENTS, SEARCH_WEB_MAX_CALLS_PER_TASK,
+    STRATEGY_AGENT_ACTOR, dto, graph_dto, stock_groups,
 };
 
 mod annotations;

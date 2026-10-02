@@ -184,16 +184,6 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
-        self.list_notes_inner_with_pending_page_size(scope, params, PENDING_LIST_SCAN_PAGE_SIZE)
-            .await
-    }
-
-    pub(super) async fn list_notes_inner_with_pending_page_size(
-        &self,
-        scope: impl Into<StrategyScope>,
-        params: ListNotesParams,
-        pending_page_size: u64,
-    ) -> Result<ListNotesResult, McpError> {
         if let Some(status) = params.status.as_deref()
             && !ALLOWED_NOTE_STATUS.contains(&status)
         {
@@ -206,7 +196,7 @@ impl StrategyServer {
 
         if params.include_pending.unwrap_or(false) {
             return self
-                .list_notes_including_pending(scope, params, reference, pending_page_size)
+                .list_notes_including_pending(scope, params, reference, PENDING_LIST_SCAN_PAGE_SIZE)
                 .await;
         }
 

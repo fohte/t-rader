@@ -2,13 +2,12 @@ use chrono::NaiveDate;
 use core_application::short_ratio::ShortRatioRepository;
 use core_domain::short_ratio::ShortRatio;
 use rust_decimal::Decimal;
-use sea_orm::{DatabaseBackend, DatabaseConnection, MockDatabase};
 use serde_json::json;
 use uuid::Uuid;
 
 use super::StrategyServer;
 use super::dto::ReadSectorShortRatioParams;
-use super::tests_common::{build_server, insert_strategy};
+use super::tests_common::{build_server, insert_strategy, mock_db_with_strategy};
 use gateway_postgres::PostgresShortRatioRepository;
 
 fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -31,14 +30,6 @@ fn ratio(date: NaiveDate, sector33_code: &str, values: Option<(&str, &str, &str)
         short_with_restriction_value,
         short_without_restriction_value,
     }
-}
-
-fn mock_db_with_strategy(strategy_id: Uuid) -> DatabaseConnection {
-    let row =
-        std::collections::BTreeMap::from([("id".to_string(), sea_orm::Value::from(strategy_id))]);
-    MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([vec![row]])
-        .into_connection()
 }
 
 #[tokio::test]

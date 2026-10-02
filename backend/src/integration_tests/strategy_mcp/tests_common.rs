@@ -3,7 +3,10 @@
 use chrono::{DateTime, FixedOffset};
 use core_application::change_history::Actor;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, MockDatabase,
+    QueryFilter, QueryOrder,
+};
 use uuid::Uuid;
 
 use gateway_postgres::entities::{
@@ -12,8 +15,19 @@ use gateway_postgres::entities::{
 
 use crate::data_provider::SharedDailyBarSource;
 
-use super::dto::{AnnotationDto, CommentDto, ListNotesResult, NoteDto};
+use super::dto::{
+    AnnotationDto, CreateAnnotationResult, ListNotesResult, NoteDto, ReadAnnotationsResult,
+    ReadCommentsResult, ReplyCommentResult, ResolveCommentResult,
+};
 use super::{StrategyServer, ToolOutput};
+
+pub(super) fn mock_db_with_strategy(strategy_id: Uuid) -> DatabaseConnection {
+    let row =
+        std::collections::BTreeMap::from([("id".to_string(), sea_orm::Value::from(strategy_id))]);
+    MockDatabase::new(DatabaseBackend::Postgres)
+        .append_query_results([vec![row]])
+        .into_connection()
+}
 
 pub(super) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
@@ -93,6 +107,90 @@ pub(super) fn normalize_annotation(mut a: AnnotationDto) -> AnnotationDto {
     a
 }
 
+pub(super) fn normalize_create_annotation(
+    result: ToolOutput<CreateAnnotationResult>,
+) -> ToolOutput<CreateAnnotationResult> {
+    result.normalize_json(|value| {
+        value["annotation"]["created_at"] =
+            serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+        value["annotation"]["updated_at"] =
+            serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+    })
+}
+
+pub(super) fn normalize_read_annotations(
+    result: ToolOutput<ReadAnnotationsResult>,
+) -> ToolOutput<ReadAnnotationsResult> {
+    result.normalize_json(|value| {
+        for annotation in value["annotations"]
+            .as_array_mut()
+            .expect("annotations are an array")
+        {
+            annotation["created_at"] =
+                serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+            annotation["updated_at"] =
+                serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+        }
+    })
+}
+
+pub(super) fn normalize_read_annotations_unordered(
+    result: ToolOutput<ReadAnnotationsResult>,
+) -> ToolOutput<ReadAnnotationsResult> {
+    result.normalize_json(|value| {
+        for annotation in value["annotations"]
+            .as_array_mut()
+            .expect("annotations are an array")
+        {
+            annotation["created_at"] =
+                serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+            annotation["updated_at"] =
+                serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+        }
+        value["annotations"]
+            .as_array_mut()
+            .expect("annotations are an array")
+            .sort_by_key(|annotation| {
+                annotation["annotation_id"]
+                    .as_str()
+                    .expect("annotation id is a string")
+                    .to_string()
+            });
+    })
+}
+
+pub(super) fn normalize_read_comments(
+    result: ToolOutput<ReadCommentsResult>,
+) -> ToolOutput<ReadCommentsResult> {
+    result.normalize_json(|value| {
+        for comment in value["comments"]
+            .as_array_mut()
+            .expect("comments are an array")
+        {
+            comment["created_at"] =
+                serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+        }
+    })
+}
+
+pub(super) fn normalize_resolve_comment(
+    result: ToolOutput<ResolveCommentResult>,
+) -> ToolOutput<ResolveCommentResult> {
+    result.normalize_json(|value| {
+        value["comment"]["created_at"] =
+            serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+    })
+}
+
+pub(super) fn normalize_reply_comment(
+    result: ToolOutput<ReplyCommentResult>,
+) -> ToolOutput<ReplyCommentResult> {
+    result.normalize_json(|value| {
+        value["comment"]["created_at"] =
+            serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+    })
+}
+
 #[derive(Debug, PartialEq)]
 pub(super) struct ChangeHistoryShape {
     pub id: Uuid,
@@ -165,11 +263,6 @@ pub(super) async fn set_note_updated_at(
     .update(db)
     .await
     .expect("set note updated_at");
-}
-
-pub(super) fn normalize_comment(mut c: CommentDto) -> CommentDto {
-    c.created_at = ts_sentinel();
-    c
 }
 
 pub(super) fn normalize_comment_model(mut c: comment::Model) -> comment::Model {

@@ -1,25 +1,15 @@
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use sea_orm::{DatabaseBackend, MockDatabase};
     use serde_json::json;
     use uuid::Uuid;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    use super::super::tests_common::mock_db_with_strategy;
     use crate::services::litellm_client::LiteLlmClient;
 
     use super::super::dto::QueryMediaParams;
-
-    fn mock_db(strategy_id: Uuid) -> sea_orm::DatabaseConnection {
-        let row = std::collections::BTreeMap::from([(
-            "id".to_string(),
-            sea_orm::Value::from(strategy_id),
-        )]);
-        MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([vec![row]])
-            .into_connection()
-    }
 
     fn params(media_url: &str, prompt: &str) -> QueryMediaParams {
         QueryMediaParams {
@@ -41,7 +31,7 @@ mod tests {
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
         let strategy_id = Uuid::new_v4();
-        let server = super::super::tests_common::build_server(mock_db(strategy_id))
+        let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id))
             .with_litellm_client(Some(std::sync::Arc::new(client)));
 
         let out = server
@@ -78,7 +68,7 @@ mod tests {
     #[tokio::test]
     async fn query_media_requires_litellm_client() {
         let strategy_id = Uuid::new_v4();
-        let server = super::super::tests_common::build_server(mock_db(strategy_id));
+        let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id));
         let err = server
             .query_media(
                 strategy_id,
@@ -103,7 +93,7 @@ mod tests {
         #[case] expected_msg: &str,
     ) {
         let strategy_id = Uuid::new_v4();
-        let server = super::super::tests_common::build_server(mock_db(strategy_id));
+        let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id));
         let err = server
             .query_media(
                 strategy_id,

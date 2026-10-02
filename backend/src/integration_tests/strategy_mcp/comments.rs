@@ -1,12 +1,14 @@
 #[cfg(test)]
 mod tests {
     use super::super::dto::{
-        CommentDto, ReadCommentsParams, ReplyCommentParams, ResolveCommentParams,
+        CommentDto, ReadCommentsParams, ReadCommentsResult, ReplyCommentParams, ReplyCommentResult,
+        ResolveCommentParams, ResolveCommentResult,
     };
     use super::super::tests_common::{
         ChangeHistoryShape, build_server, change_history_for, current_note_version_id,
-        insert_strategy, normalize_comment, seed_comment, seed_foreign_annotation,
-        seed_foreign_note, ts_sentinel,
+        insert_strategy, normalize_read_comments, normalize_reply_comment,
+        normalize_resolve_comment, seed_comment, seed_foreign_annotation, seed_foreign_note,
+        ts_sentinel,
     };
     use gateway_postgres::entities::comment;
     use sea_orm::ActiveModelTrait;
@@ -71,44 +73,41 @@ mod tests {
             .expect("read_comments");
 
         assert_eq!(
-            result
-                .into_value()
-                .comments
-                .into_iter()
-                .map(normalize_comment)
-                .collect::<Vec<_>>(),
-            vec![
-                CommentDto {
-                    comment_id: root,
-                    target_kind: "note_version".into(),
-                    target_id: note_version_id,
-                    parent_id: None,
-                    body: "root comment".into(),
-                    author_kind: "human".into(),
-                    author_label: "user".into(),
-                    resolved: false,
-                    created_at: ts_sentinel(),
-                    anchor_text: None,
-                    anchor_side: None,
-                    start_line: None,
-                    end_line: None,
-                },
-                CommentDto {
-                    comment_id: reply,
-                    target_kind: "note_version".into(),
-                    target_id: note_version_id,
-                    parent_id: Some(root),
-                    body: "reply comment".into(),
-                    author_kind: "human".into(),
-                    author_label: "user".into(),
-                    resolved: false,
-                    created_at: ts_sentinel(),
-                    anchor_text: None,
-                    anchor_side: None,
-                    start_line: None,
-                    end_line: None,
-                },
-            ],
+            normalize_read_comments(result),
+            ReadCommentsResult {
+                comments: vec![
+                    CommentDto {
+                        comment_id: root,
+                        target_kind: "note_version".into(),
+                        target_id: note_version_id,
+                        parent_id: None,
+                        body: "root comment".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                    CommentDto {
+                        comment_id: reply,
+                        target_kind: "note_version".into(),
+                        target_id: note_version_id,
+                        parent_id: Some(root),
+                        body: "reply comment".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                ],
+            },
         );
     }
 
@@ -132,27 +131,24 @@ mod tests {
             .expect("read_comments");
 
         assert_eq!(
-            result
-                .into_value()
-                .comments
-                .into_iter()
-                .map(normalize_comment)
-                .collect::<Vec<_>>(),
-            vec![CommentDto {
-                comment_id,
-                target_kind: "annotation".into(),
-                target_id: annotation_id,
-                parent_id: None,
-                body: "looks wrong".into(),
-                author_kind: "human".into(),
-                author_label: "user".into(),
-                resolved: false,
-                created_at: ts_sentinel(),
-                anchor_text: None,
-                anchor_side: None,
-                start_line: None,
-                end_line: None,
-            }],
+            normalize_read_comments(result),
+            ReadCommentsResult {
+                comments: vec![CommentDto {
+                    comment_id,
+                    target_kind: "annotation".into(),
+                    target_id: annotation_id,
+                    parent_id: None,
+                    body: "looks wrong".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: false,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                }],
+            },
         );
     }
 
@@ -176,11 +172,8 @@ mod tests {
             .expect_err("missing annotation expected to be rejected");
 
         assert_eq!(
-            (error.code, error.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::RESOURCE_NOT_FOUND,
-                "annotation not found"
-            ),
+            error,
+            rmcp::ErrorData::resource_not_found("annotation not found", None),
         );
     }
 
@@ -200,7 +193,13 @@ mod tests {
             )
             .await
             .expect_err("invalid target_kind expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params(
+                "invalid target_kind: garbage (expected one of [\"note_version\", \"annotation\"])",
+                None,
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -222,7 +221,13 @@ mod tests {
             )
             .await
             .expect_err("cross-strategy note expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params(
+                format!("forbidden: note {note_id} belongs to another strategy"),
+                None,
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -243,7 +248,13 @@ mod tests {
             )
             .await
             .expect_err("cross-strategy annotation expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params(
+                format!("forbidden: annotation {annotation_id} belongs to another strategy"),
+                None,
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -277,27 +288,24 @@ mod tests {
             .await
             .expect("read_comments");
         assert_eq!(
-            unresolved_only
-                .into_value()
-                .comments
-                .into_iter()
-                .map(normalize_comment)
-                .collect::<Vec<_>>(),
-            vec![CommentDto {
-                comment_id: open,
-                target_kind: "note_version".into(),
-                target_id: note_version_id,
-                parent_id: None,
-                body: "still open".into(),
-                author_kind: "human".into(),
-                author_label: "user".into(),
-                resolved: false,
-                created_at: ts_sentinel(),
-                anchor_text: None,
-                anchor_side: None,
-                start_line: None,
-                end_line: None,
-            }],
+            normalize_read_comments(unresolved_only),
+            ReadCommentsResult {
+                comments: vec![CommentDto {
+                    comment_id: open,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
+                    parent_id: None,
+                    body: "still open".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: false,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                }],
+            },
         );
 
         let resolved_only = server
@@ -312,27 +320,24 @@ mod tests {
             .await
             .expect("read_comments");
         assert_eq!(
-            resolved_only
-                .into_value()
-                .comments
-                .into_iter()
-                .map(normalize_comment)
-                .collect::<Vec<_>>(),
-            vec![CommentDto {
-                comment_id: done,
-                target_kind: "note_version".into(),
-                target_id: note_version_id,
-                parent_id: None,
-                body: "already fixed".into(),
-                author_kind: "human".into(),
-                author_label: "user".into(),
-                resolved: true,
-                created_at: ts_sentinel(),
-                anchor_text: None,
-                anchor_side: None,
-                start_line: None,
-                end_line: None,
-            }],
+            normalize_read_comments(resolved_only),
+            ReadCommentsResult {
+                comments: vec![CommentDto {
+                    comment_id: done,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
+                    parent_id: None,
+                    body: "already fixed".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: true,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                }],
+            },
         );
     }
 
@@ -355,21 +360,23 @@ mod tests {
             .await
             .expect("resolve_comment");
         assert_eq!(
-            normalize_comment(result.into_value().comment),
-            CommentDto {
-                comment_id,
-                target_kind: "note_version".into(),
-                target_id: note_version_id,
-                parent_id: None,
-                body: "fix this".into(),
-                author_kind: "human".into(),
-                author_label: "user".into(),
-                resolved: true,
-                created_at: ts_sentinel(),
-                anchor_text: None,
-                anchor_side: None,
-                start_line: None,
-                end_line: None,
+            normalize_resolve_comment(result),
+            ResolveCommentResult {
+                comment: CommentDto {
+                    comment_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
+                    parent_id: None,
+                    body: "fix this".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: true,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                },
             },
         );
 
@@ -395,21 +402,23 @@ mod tests {
             .await
             .expect("resolve_comment");
         assert_eq!(
-            normalize_comment(result.into_value().comment),
-            CommentDto {
-                comment_id,
-                target_kind: "note_version".into(),
-                target_id: note_version_id,
-                parent_id: None,
-                body: "fix this".into(),
-                author_kind: "human".into(),
-                author_label: "user".into(),
-                resolved: false,
-                created_at: ts_sentinel(),
-                anchor_text: None,
-                anchor_side: None,
-                start_line: None,
-                end_line: None,
+            normalize_resolve_comment(result),
+            ResolveCommentResult {
+                comment: CommentDto {
+                    comment_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
+                    parent_id: None,
+                    body: "fix this".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: false,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                },
             },
         );
         assert_eq!(
@@ -445,18 +454,22 @@ mod tests {
     async fn resolve_comment_rejects_missing_comment(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
+        let comment_id = uuid::Uuid::new_v4();
 
         let err = server
             .resolve_comment(
                 strategy_id,
                 ResolveCommentParams {
-                    comment_id: uuid::Uuid::new_v4(),
+                    comment_id,
                     resolved: true,
                 },
             )
             .await
             .expect_err("missing comment expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::resource_not_found(format!("comment {comment_id} not found"), None,),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -478,7 +491,10 @@ mod tests {
             )
             .await
             .expect_err("cross-strategy comment expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params("comment target belongs to a different strategy", None,),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -501,24 +517,25 @@ mod tests {
             .await
             .expect("reply_comment");
 
-        let dto = normalize_comment(result.into_value().comment);
-        let comment_id = dto.comment_id;
+        let comment_id = result.comment.comment_id;
         assert_eq!(
-            dto,
-            CommentDto {
-                comment_id,
-                target_kind: "note_version".into(),
-                target_id: note_version_id,
-                parent_id: Some(parent_id),
-                body: "fixed in the latest revision".into(),
-                author_kind: super::super::STRATEGY_AGENT_ACTOR.into(),
-                author_label: "analyst".into(),
-                resolved: false,
-                created_at: ts_sentinel(),
-                anchor_text: None,
-                anchor_side: None,
-                start_line: None,
-                end_line: None,
+            normalize_reply_comment(result),
+            ReplyCommentResult {
+                comment: CommentDto {
+                    comment_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
+                    parent_id: Some(parent_id),
+                    body: "fixed in the latest revision".into(),
+                    author_kind: super::super::STRATEGY_AGENT_ACTOR.into(),
+                    author_label: "analyst".into(),
+                    resolved: false,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                },
             },
         );
         assert_eq!(
@@ -560,25 +577,35 @@ mod tests {
             )
             .await
             .expect_err("empty body expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params("body must not be empty", None),
+        );
     }
 
     #[backend_test_macros::database_test]
     async fn reply_comment_rejects_missing_parent(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
+        let parent_id = uuid::Uuid::new_v4();
 
         let err = server
             .reply_comment(
                 strategy_id,
                 ReplyCommentParams {
-                    parent_id: uuid::Uuid::new_v4(),
+                    parent_id,
                     body: "fixed".into(),
                 },
             )
             .await
             .expect_err("missing parent expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::resource_not_found(
+                format!("parent comment {parent_id} not found"),
+                None,
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -601,7 +628,10 @@ mod tests {
             )
             .await
             .expect_err("cross-strategy parent expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params("comment target belongs to a different strategy", None,),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -624,6 +654,12 @@ mod tests {
             )
             .await
             .expect_err("reply to a reply expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::invalid_params(
+                "cannot reply to a reply; parent_id must reference a top-level comment",
+                None,
+            ),
+        );
     }
 }

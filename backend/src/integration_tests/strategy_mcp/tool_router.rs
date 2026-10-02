@@ -6,18 +6,11 @@ use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use super::tests_common::mock_db_with_strategy;
 use crate::integration_tests::mcp_tool::call_tool;
 use crate::mcp::strategy::StrategyServer;
 use crate::services::litellm_client::LiteLlmClient;
 use crate::services::use_cases::build_use_cases;
-
-fn mock_db_with_strategy(strategy_id: Uuid) -> sea_orm::DatabaseConnection {
-    let row =
-        std::collections::BTreeMap::from([("id".to_string(), sea_orm::Value::from(strategy_id))]);
-    sea_orm::MockDatabase::new(sea_orm::DatabaseBackend::Postgres)
-        .append_query_results([vec![row]])
-        .into_connection()
-}
 
 fn server(
     db: impl Into<gateway_postgres::DatabaseHandle>,

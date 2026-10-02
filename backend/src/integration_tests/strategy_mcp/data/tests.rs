@@ -2,28 +2,18 @@ use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use rstest::rstest;
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{
-    ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, MockDatabase, QueryFilter, Set,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde_json::json;
 use uuid::Uuid;
 
+use super::super::MAX_QUERY_DATA_INSTRUMENTS;
 use super::super::StrategyServer;
 use super::super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
-use super::super::tests_common::insert_strategy;
-use super::MAX_QUERY_DATA_INSTRUMENTS;
+use super::super::tests_common::{insert_strategy, mock_db_with_strategy};
 use crate::models::Bar;
 use crate::models::bar::Timeframe;
 use gateway_postgres::entities::{instruments, strategy_task_step_evidence};
 use gateway_postgres::repositories::bars::upsert_bars;
-
-fn mock_db(strategy_id: Uuid) -> DatabaseConnection {
-    let row =
-        std::collections::BTreeMap::from([("id".to_string(), sea_orm::Value::from(strategy_id))]);
-    MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([vec![row]])
-        .into_connection()
-}
 
 async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
     instruments::Entity::insert(instruments::ActiveModel {
@@ -365,7 +355,7 @@ async fn query_data_rejects_invalid_params_through_tool_dispatch(
     #[case] expected_message: &str,
 ) {
     let strategy_id = Uuid::new_v4();
-    let server = super::super::tests_common::build_server(mock_db(strategy_id));
+    let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id));
     let err = server
         .query_data(
             strategy_id,
