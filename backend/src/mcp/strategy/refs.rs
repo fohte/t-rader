@@ -135,7 +135,6 @@ mod tests {
             id: Set(id.into()),
             name: Set(name.into()),
             market: Set(None),
-            sector_id: Set(None),
             product_category: Set(product_category.map(str::to_string)),
             created_at: NotSet,
             updated_at: NotSet,

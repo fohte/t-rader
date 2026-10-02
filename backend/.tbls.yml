@@ -435,10 +435,6 @@ comments:
       display_name: 'フィードの表示名。'
       url: 'RSS フィードの URL。'
       enabled: 'フィードを取り込み対象とするかどうか。'
-  - table: sector
-    tableComment: '銘柄が参照する業種を管理する。'
-    columnComments:
-      name: '業種名。'
   - table: short_ratio
     tableComment: '33 業種ごとの売買代金を日付別に保持する。'
     columnComments:
@@ -465,11 +461,10 @@ comments:
       prev_report_ratio: '直近の前回報告に記載された空売り残高割合。'
       notes: '報告書の備考。'
   - table: stock
-    tableComment: 'ノートや戦略などから参照する銘柄マスタ。'
+    tableComment: 'ノートや戦略などから参照する銘柄マスタ。銘柄の分類は stock_group_member で保持する。'
     columnComments:
       name: '銘柄名。'
       market: '市場区分名。'
-      sector_id: '銘柄が属する業種の ID。'
       product_category: '銘柄の商品区分コード。'
   - table: valuation
     tableComment: '銘柄ごとの株価評価指標を日付別に保持する。'
