@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use core_application::account_risk_policy::AccountRiskPolicyDataError;
 use core_application::bars::{BarsRepositoryError, BarsUseCaseError};
 use core_application::change_history::ChangeHistoryError;
 use core_application::group_axis::{GroupAxisRepositoryError, GroupAxisUseCaseError};
@@ -46,6 +47,15 @@ pub enum AppError {
 
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+}
+
+impl From<AccountRiskPolicyDataError> for AppError {
+    fn from(error: AccountRiskPolicyDataError) -> Self {
+        match error {
+            AccountRiskPolicyDataError::Validation(message) => Self::Validation(message),
+            error @ AccountRiskPolicyDataError::InvalidData(_) => Self::Internal(error.to_string()),
+        }
+    }
 }
 
 impl From<PersistenceError> for AppError {
