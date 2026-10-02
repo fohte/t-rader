@@ -22,6 +22,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::routing::get;
 use sea_orm::ConnectionTrait;
 use serde::Serialize;
 use utoipa::OpenApi;
@@ -52,7 +53,6 @@ impl From<sea_orm::DbErr> for AppError {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: DatabaseHandle,
     pub use_cases: crate::services::use_cases::UseCases,
     /// 日足データ取得元
     ///
@@ -96,6 +96,7 @@ impl AppState {
 
 #[derive(OpenApi)]
 #[openapi(
+    paths(health_check),
     tags(
         (name = "health", description = "ヘルスチェック"),
         (name = "bars", description = "バーデータ (OHLCV)"),
@@ -149,7 +150,6 @@ mod app_state_tests {
         let daily_bar_source: SharedDailyBarSource = Arc::new(client);
         let db = DatabaseHandle::from(mock_db());
         let state = AppState {
-            db: db.clone(),
             use_cases: crate::services::use_cases::build_use_cases(db),
             daily_bar_source: Some(daily_bar_source),
             jquants_client: None,
@@ -165,7 +165,6 @@ mod app_state_tests {
     fn test_daily_bar_source_returns_error_when_none() {
         let db = DatabaseHandle::from(mock_db());
         let state = AppState {
-            db: db.clone(),
             use_cases: crate::services::use_cases::build_use_cases(db),
             daily_bar_source: None,
             jquants_client: None,
@@ -189,7 +188,6 @@ struct HealthResponse {
 /// OpenAPI ルート定義を構築する
 fn build_openapi_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .routes(routes!(health_check))
         .routes(routes!(bars::list_bars))
         // strategies
         .routes(routes!(
@@ -364,20 +362,22 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
     router.to_openapi()
 }
 
-pub fn create_router(state: AppState) -> Router {
-    let db = state.db.clone();
+pub fn create_router(state: AppState, health_db: DatabaseHandle) -> Router {
     let agent_task_client = state.agent_task_client.clone();
     let use_cases = state.use_cases.clone();
     let daily_bar_source = state.daily_bar_source.clone();
     let kata_executor = state.kata_executor.clone();
     let llm_gateway_client = state.llm_gateway_client.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
+    let health_router = Router::new()
+        .route("/api/health", get(health_check))
+        .with_state(health_db);
 
     router
+        .merge(health_router)
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
         .merge(mcp::router(
-            db,
             use_cases,
             agent_task_client,
             daily_bar_source,
@@ -398,10 +398,10 @@ pub fn create_router(state: AppState) -> Router {
     )
 )]
 async fn health_check(
-    State(state): State<AppState>,
+    State(db): State<DatabaseHandle>,
 ) -> Result<(StatusCode, Json<HealthResponse>), AppError> {
     // DB 接続の正常性を確認
-    state.db.execute_unprepared("SELECT 1").await?;
+    db.execute_unprepared("SELECT 1").await?;
 
     Ok((
         StatusCode::OK,

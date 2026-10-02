@@ -1,15 +1,16 @@
 //! 戦略実行 MCP の統合テストで共有するヘルパー。
 
 use chrono::{DateTime, FixedOffset};
+use core_application::change_history::Actor;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionSession,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use gateway_postgres::entities::{
     annotation, change_history, comment, note, note_kind, note_version, strategy,
 };
+
+use crate::data_provider::SharedDailyBarSource;
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
@@ -48,7 +49,17 @@ pub(super) async fn insert_note_kind(
 }
 
 pub(super) fn build_server(db: impl Into<gateway_postgres::DatabaseHandle>) -> StrategyServer {
-    StrategyServer::new(db, None)
+    build_server_with_source(db, None)
+}
+
+pub(super) fn build_server_with_source(
+    db: impl Into<gateway_postgres::DatabaseHandle>,
+    daily_bar_source: Option<SharedDailyBarSource>,
+) -> StrategyServer {
+    StrategyServer::new(
+        crate::services::use_cases::build_use_cases(db),
+        daily_bar_source,
+    )
 }
 
 /// DTO の比較で動的な timestamp を差し替えるための sentinel 値。
@@ -113,7 +124,7 @@ pub(super) async fn set_note_status(
     note_id: Uuid,
     status: &str,
 ) {
-    let version = crate::services::note_versions::find_current_version(db, note_id)
+    let version = crate::testing::find_current_note_version(db, note_id)
         .await
         .expect("find current note version")
         .expect("current note version exists");
@@ -157,7 +168,7 @@ pub(super) async fn current_note_version_id(
     db: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
 ) -> Uuid {
-    crate::services::note_versions::find_current_version(db, note_id)
+    crate::testing::find_current_note_version(db, note_id)
         .await
         .expect("find current note version")
         .expect("current note version exists")
@@ -166,46 +177,21 @@ pub(super) async fn current_note_version_id(
 
 /// 指定戦略の所有として固定タイトルの note を seed する (cross-strategy violation 用)
 pub(super) async fn seed_foreign_note(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    db: &gateway_postgres::DatabaseHandle,
     owner: Uuid,
     title: &str,
 ) -> Uuid {
-    let id = Uuid::new_v4();
-    let txn = db.begin().await.expect("begin note transaction");
-    note::Entity::insert(note::ActiveModel {
-        id: Set(id),
-        strategy_id: Set(Some(owner)),
-        kind: Set(None),
-        trigger: Set(None),
-        trigger_label: Set(None),
-        created_at: NotSet,
-        updated_at: NotSet,
-        execution_id: Set(None),
-    })
-    .exec_without_returning(&txn)
-    .await
-    .expect("seed note");
-    crate::services::note_versions::append_version(
-        &txn,
-        id,
-        crate::services::note_versions::AppendVersion {
-            title: title.to_string(),
-            body_md: "body".into(),
-            frontmatter_json: serde_json::json!({}),
-            graphs_json: serde_json::json!([]),
-            created_by_kind: super::STRATEGY_AGENT_ACTOR.into(),
-            execution_id: None,
-            change_reason: None,
-            change_diff: None,
-            actor: crate::services::change_history::Actor::Llm {
-                label: super::STRATEGY_AGENT_ACTOR,
-            },
+    crate::testing::insert_test_note_as(
+        db,
+        Some(owner),
+        title,
+        "body",
+        super::STRATEGY_AGENT_ACTOR,
+        Actor::Llm {
+            label: super::STRATEGY_AGENT_ACTOR,
         },
     )
     .await
-    .expect("append note version");
-    txn.commit().await.expect("commit note transaction");
-    id
 }
 
 /// 指定戦略の所有として固定パラメータの annotation を seed する (cross-strategy violation 用)

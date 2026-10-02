@@ -691,7 +691,7 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db_with_strategy(strategy_id), None)
+        let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id))
             .with_litellm_client(Some(std::sync::Arc::new(client)));
         let (ctx, running) = request_context(
             &server,
@@ -763,7 +763,7 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db_with_strategy(strategy_id), None)
+        let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id))
             .with_litellm_client(Some(std::sync::Arc::new(client)));
         let (ctx, running) = request_context(
             &server,
@@ -820,7 +820,7 @@ mod tests {
         let db = MockDatabase::new(DatabaseBackend::Postgres)
             .append_query_results([Vec::<gateway_postgres::entities::strategy::Model>::new()])
             .into_connection();
-        let server = StrategyServer::new(db, None);
+        let server = super::super::tests_common::build_server(db);
         let (ctx, running) = request_context(&server, strategy_id, None);
 
         assert_eq!(

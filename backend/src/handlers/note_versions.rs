@@ -9,7 +9,7 @@ use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::comments::map_comment_read_error;
 use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, NoteVersionResponse};
-use crate::services::note_versions::INITIAL_NOTE_STATUS;
+use core_application::note::INITIAL_NOTE_STATUS;
 
 /// ノートの全バージョンを古い順に返す。
 #[utoipa::path(

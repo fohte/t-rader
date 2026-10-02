@@ -375,7 +375,6 @@ async fn main() -> Result<(), AppError> {
         let llm_gateway_client =
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
         let state = AppState {
-            db: app_db,
             use_cases,
             daily_bar_source,
             jquants_client,
@@ -384,7 +383,7 @@ async fn main() -> Result<(), AppError> {
             kata_executor,
             llm_gateway_client,
         };
-        Some(create_router(state))
+        Some(create_router(state, app_db))
     } else {
         None
     };

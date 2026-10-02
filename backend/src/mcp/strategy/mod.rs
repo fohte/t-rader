@@ -48,7 +48,6 @@ use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 use crate::services::use_cases::UseCases;
-use gateway_postgres::DatabaseHandle;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -138,23 +137,7 @@ pub struct StrategyServer {
 }
 
 impl StrategyServer {
-    pub fn new(
-        db: impl Into<DatabaseHandle>,
-        daily_bar_source: Option<SharedDailyBarSource>,
-    ) -> Self {
-        let db = db.into();
-        Self::with_use_cases(
-            db.clone(),
-            crate::services::use_cases::build_use_cases(db),
-            daily_bar_source,
-        )
-    }
-
-    pub fn with_use_cases(
-        _db: impl Into<DatabaseHandle>,
-        use_cases: UseCases,
-        daily_bar_source: Option<SharedDailyBarSource>,
-    ) -> Self {
+    pub fn new(use_cases: UseCases, daily_bar_source: Option<SharedDailyBarSource>) -> Self {
         Self {
             use_cases,
             daily_bar_source,

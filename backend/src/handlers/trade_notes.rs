@@ -134,10 +134,7 @@ mod tests {
         id
     }
 
-    async fn seed_note(
-        db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
-        strategy_id: Option<Uuid>,
-    ) -> Uuid {
+    async fn seed_note(db: &gateway_postgres::DatabaseHandle, strategy_id: Option<Uuid>) -> Uuid {
         insert_test_note_in_scope(db, strategy_id, "t", "b").await
     }
 

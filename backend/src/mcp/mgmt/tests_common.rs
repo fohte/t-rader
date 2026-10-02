@@ -31,5 +31,8 @@ pub(super) fn build_server(
     db: impl Into<gateway_postgres::DatabaseHandle>,
     fake: Arc<FakeAgentTaskClient>,
 ) -> MgmtServer {
-    MgmtServer::new(db, fake as SharedAgentTaskClient)
+    MgmtServer::new(
+        crate::services::use_cases::build_use_cases(db),
+        fake as SharedAgentTaskClient,
+    )
 }

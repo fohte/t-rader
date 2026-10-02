@@ -12,6 +12,7 @@ thiserror = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+indoc = { workspace = true }
 rstest = { workspace = true }
 
 [lints]

@@ -1,16 +1,3 @@
-//! 期限到来した予測の採点を application のユースケースへ委譲する。
-
-#[cfg(test)]
-use core_application::prediction::{GradingStats, PredictionUseCaseError, PredictionUseCases};
-
-#[cfg(test)]
-async fn run_once(
-    predictions: &PredictionUseCases,
-) -> Result<GradingStats, PredictionUseCaseError> {
-    predictions.grade_due_today().await
-}
-
-#[cfg(test)]
 mod tests {
     use crate::models::Bar;
     use crate::models::bar::Timeframe;
@@ -29,7 +16,7 @@ mod tests {
         db: &DatabaseHandle,
     ) -> Result<GradingStats, PredictionUseCaseError> {
         let use_cases = crate::services::use_cases::build_use_cases(db.clone());
-        super::run_once(&use_cases.predictions()).await
+        use_cases.predictions().grade_due_today().await
     }
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {

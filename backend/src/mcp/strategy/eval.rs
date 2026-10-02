@@ -106,7 +106,8 @@ mod tests {
 
     fn build_server(executor: Arc<FakeKataExecutor>) -> (StrategyServer, SharedKataExecutor) {
         let shared: SharedKataExecutor = executor;
-        let server = StrategyServer::new(mock_db(), None).with_kata_executor(Some(shared.clone()));
+        let server = super::super::tests_common::build_server(mock_db())
+            .with_kata_executor(Some(shared.clone()));
         (server, shared)
     }
 
@@ -274,7 +275,7 @@ mod tests {
 
     #[tokio::test]
     async fn eval_python_errors_when_executor_not_configured() {
-        let server = StrategyServer::new(mock_db(), None);
+        let server = super::super::tests_common::build_server(mock_db());
         let sid = Uuid::new_v4();
         let err = server
             .eval_python_inner(sid, params("print(1)"))

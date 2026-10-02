@@ -11,7 +11,7 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::{IndicatorResponse, RefResolution, StockResponse};
-use crate::services::note_refs::ALLOWED_REF_KINDS;
+use core_domain::note_reference::ALLOWED_REF_KINDS;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

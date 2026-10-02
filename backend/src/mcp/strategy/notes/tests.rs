@@ -16,7 +16,7 @@ mod tests {
         seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
-    use crate::services::note_versions::find_current_version;
+    use crate::testing::find_current_note_version;
     use gateway_postgres::entities::{comment, note, note_ref, note_version};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
@@ -1458,7 +1458,7 @@ mod tests {
             .await
             .expect("create note");
 
-        let current_version = find_current_version(&db, created.note_id)
+        let current_version = find_current_note_version(&db, created.note_id)
             .await
             .expect("load current version")
             .expect("current version exists");
@@ -2135,7 +2135,7 @@ mod tests {
             )
             .await
             .unwrap();
-        let current = find_current_version(&db, note_id).await.unwrap().unwrap();
+        let current = find_current_note_version(&db, note_id).await.unwrap().unwrap();
         assert_eq!(
             (result, current.title, current.body_md),
             (
