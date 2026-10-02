@@ -6,6 +6,7 @@
 //! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
 
+mod frontend_api;
 mod prediction_grading;
 mod trigger;
 
