@@ -45,7 +45,7 @@ impl JQuantsClient {
 }
 
 /// 空文字列を「値なし」として `None` に正規化する。J-Quants は該当なしを空文字列で
-/// 返す場合があるため、`Some("")` のまま DB に書き込むと空文字の sector 行が
+/// 返す場合があるため、`Some("")` のまま同期すると空のグループ key が
 /// 作られてしまう。
 fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|s| !s.trim().is_empty())

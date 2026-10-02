@@ -15,7 +15,7 @@ use crate::{AppState, create_router};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::{
-    group_axis, stock, stock_group, strategy, strategy_task, trigger,
+    group_axis, stock, stock_group, stock_group_member, strategy, strategy_task, trigger,
 };
 
 mod note;
@@ -192,7 +192,6 @@ pub async fn insert_test_stock(db: &impl ConnectionTrait, id: &str, name: &str) 
         id: Set(id.to_string()),
         name: Set(name.to_string()),
         market: Set(None),
-        sector_id: Set(None),
         product_category: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
@@ -209,19 +208,52 @@ pub async fn insert_test_group(
     group_key: &str,
     name: &str,
 ) -> String {
+    insert_test_group_with_sync_source(db, axis_key, group_key, name, None)
+        .await
+        .0
+}
+
+pub async fn insert_test_group_membership(
+    db: &impl ConnectionTrait,
+    stock_id: &str,
+    axis_key: &str,
+    group_key: &str,
+    name: &str,
+    sync_source: Option<&str>,
+) {
+    let (_, group_id) =
+        insert_test_group_with_sync_source(db, axis_key, group_key, name, sync_source).await;
+    stock_group_member::ActiveModel {
+        stock_id: Set(stock_id.into()),
+        group_id: Set(group_id),
+        created_at: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("insert test group membership");
+}
+
+async fn insert_test_group_with_sync_source(
+    db: &impl ConnectionTrait,
+    axis_key: &str,
+    group_key: &str,
+    name: &str,
+    sync_source: Option<&str>,
+) -> (String, Uuid) {
     let axis_id = Uuid::new_v4();
     group_axis::ActiveModel {
         id: Set(axis_id),
         key: Set(axis_key.into()),
         name: Set("Sample Axis".into()),
         description: Set("Sample axis for tests".into()),
-        sync_source: Set(None),
+        sync_source: Set(sync_source.map(str::to_string)),
     }
     .insert(db)
     .await
     .expect("insert test group axis");
+    let group_id = Uuid::new_v4();
     stock_group::ActiveModel {
-        id: Set(Uuid::new_v4()),
+        id: Set(group_id),
         axis_id: Set(axis_id),
         key: Set(group_key.into()),
         name: Set(name.into()),
@@ -230,7 +262,7 @@ pub async fn insert_test_group(
     .insert(db)
     .await
     .expect("insert test stock group");
-    format!("{axis_key}/{group_key}")
+    (format!("{axis_key}/{group_key}"), group_id)
 }
 
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。

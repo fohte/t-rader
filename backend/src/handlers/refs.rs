@@ -213,7 +213,10 @@ fn map_ref_error(error: RefUseCaseError) -> AppError {
 mod tests {
     use serde_json::{Value, json};
 
-    use crate::testing::{create_test_server_with_db, insert_test_group, insert_test_stock};
+    use crate::testing::{
+        create_test_server_with_db, insert_test_group, insert_test_group_membership,
+        insert_test_stock,
+    };
 
     fn normalize_stock_timestamps(stocks: &mut Value) {
         for stock in stocks.as_array_mut().expect("stock list") {
@@ -227,6 +230,15 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         insert_test_stock(&db, "MOCK_001", "Mock Alpha").await;
         insert_test_stock(&db, "MOCK_002", "Mock Beta").await;
+        insert_test_group_membership(
+            &db,
+            "MOCK_001",
+            "synthetic-jquants-axis",
+            "synthetic-industry",
+            "Sample Industry",
+            Some("jquants"),
+        )
+        .await;
 
         let response = server.get("/api/refs/stocks?q=Alpha").await;
         response.assert_status_ok();
@@ -239,7 +251,7 @@ mod tests {
                 "id": "MOCK_001",
                 "name": "Mock Alpha",
                 "market": null,
-                "sector_id": null,
+                "sector_id": "synthetic-industry",
                 "created_at": "normalized timestamp",
                 "updated_at": "normalized timestamp",
                 "product_category": null,

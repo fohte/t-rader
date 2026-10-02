@@ -3,8 +3,8 @@ use rust_decimal::Decimal;
 
 /// 業種別空売り比率 1 件
 ///
-/// `sector33_code` は 33 業種コードをそのまま保持する。既存の `sector` テーブルとの
-/// 対応付けは行わず、読む側に委ねる。
+/// `sector33_code` は市場データ側の 33 業種コードをそのまま保持する。
+/// 業種グループ key との対応付けは読む側に委ねる。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShortRatio {
     /// 対象日
