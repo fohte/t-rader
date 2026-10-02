@@ -161,7 +161,6 @@ impl TradeRepository for PostgresTradeRepository {
             id: Set(symbol.to_string()),
             name: Set(resolved_name.to_string()),
             market: Set(None),
-            sector_id: Set(None),
             product_category: Set(None),
             created_at: NotSet,
             updated_at: NotSet,

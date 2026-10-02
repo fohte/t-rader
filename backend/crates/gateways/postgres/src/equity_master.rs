@@ -10,7 +10,7 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::{group_axis, sector, stock, stock_group, stock_group_member};
+use crate::entities::{group_axis, stock, stock_group, stock_group_member};
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
@@ -26,33 +26,11 @@ impl EquityMasterRepository for PostgresEquityMasterRepository {
     ) -> Result<usize, EquityMasterRepositoryError> {
         let transaction = postgres_transaction_ref(transaction)
             .ok_or(EquityMasterRepositoryError::InvalidTransaction)?;
-        let sectors = entries
-            .iter()
-            .filter_map(|entry| entry.sector_name.as_deref())
-            .collect::<HashSet<_>>();
-        if !sectors.is_empty() {
-            let models = sectors.into_iter().map(|name| sector::ActiveModel {
-                id: Set(name.to_owned()),
-                name: Set(name.to_owned()),
-            });
-            // ON CONFLICT DO NOTHING では RETURNING 行がないため、exec_without_returning を使う。
-            sector::Entity::insert_many(models)
-                .on_conflict(
-                    OnConflict::column(sector::Column::Id)
-                        .do_nothing()
-                        .to_owned(),
-                )
-                .exec_without_returning(transaction)
-                .await
-                .map_err(repository_error)?;
-        }
-
         let now = Utc::now().fixed_offset();
         let models = entries.iter().map(|entry| stock::ActiveModel {
             id: Set(entry.id.clone()),
             name: Set(entry.name.clone()),
             market: Set(entry.market.clone()),
-            sector_id: Set(entry.sector_name.clone()),
             product_category: Set(entry.product_category.clone()),
             created_at: Set(now),
             updated_at: Set(now),
@@ -63,7 +41,6 @@ impl EquityMasterRepository for PostgresEquityMasterRepository {
                     .update_columns([
                         stock::Column::Name,
                         stock::Column::Market,
-                        stock::Column::SectorId,
                         stock::Column::ProductCategory,
                         stock::Column::UpdatedAt,
                     ])
@@ -84,7 +61,7 @@ async fn sync_sector_groups(
     entries: &[EquityMasterEntry],
 ) -> Result<(), EquityMasterRepositoryError> {
     let axes = group_axis::Entity::find()
-        .filter(group_axis::Column::SyncSource.eq("jquants"))
+        .filter(group_axis::Column::SyncSource.eq(crate::JQUANTS_SYNC_SOURCE))
         .all(transaction)
         .await
         .map_err(repository_error)?;
@@ -250,7 +227,7 @@ mod tests {
     use sea_orm::EntityTrait;
 
     use super::PostgresEquityMasterRepository;
-    use crate::entities::{group_axis, stock, stock_group, stock_group_member};
+    use crate::entities::{group_axis, stock_group, stock_group_member};
     use crate::{DatabaseHandle, PostgresUnitOfWork};
 
     type GroupSnapshot = Vec<(String, String, String)>;
@@ -410,6 +387,7 @@ mod tests {
             entry("ZZ91", Some("架空業種A")),
             entry("ZZ92", Some("架空業種B")),
             entry("ZZ93", None),
+            entry("ZZ94", Some("架空業種A")),
         ];
 
         let count = upsert(&db, &entries).await;
@@ -418,7 +396,7 @@ mod tests {
         assert_eq!(
             (count, actual),
             (
-                3,
+                4,
                 expected_snapshot(
                     vec![
                         expected_group("synthetic-axis-a", "架空業種A"),
@@ -431,6 +409,8 @@ mod tests {
                         expected_member("ZZ91", "synthetic-axis-b", "架空業種A"),
                         expected_member("ZZ92", "synthetic-axis-a", "架空業種B"),
                         expected_member("ZZ92", "synthetic-axis-b", "架空業種B"),
+                        expected_member("ZZ94", "synthetic-axis-a", "架空業種A"),
+                        expected_member("ZZ94", "synthetic-axis-b", "架空業種A"),
                     ],
                 ),
             ),
@@ -548,11 +528,6 @@ mod tests {
         let updated_count = upsert(&db, &updated_entries).await;
 
         let actual = snapshot(&db).await;
-        let stock_sector = stock::Entity::find_by_id("ZZ94".to_owned())
-            .one(&db)
-            .await
-            .expect("find updated stock")
-            .and_then(|stock| stock.sector_id);
         let expected = (
             vec![
                 expected_group("synthetic-manual-axis", "架空手動分類"),
@@ -563,9 +538,6 @@ mod tests {
                 expected_member("ZZ94", "synthetic-other-axis", "架空外部分類"),
             ],
         );
-        assert_eq!(
-            (initial_count, updated_count, actual, stock_sector),
-            (1, 1, expected, Some("架空業種B".to_owned())),
-        );
+        assert_eq!((initial_count, updated_count, actual), (1, 1, expected),);
     }
 }

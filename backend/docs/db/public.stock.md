@@ -2,33 +2,30 @@
 
 ## Description
 
-ノートや戦略などから参照する銘柄マスタ。
+ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。
 
 ## Columns
 
-| Name             | Type                     | Default           | Nullable | Children                                                                                            | Parents                           | Comment                 |
-| ---------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------- | --------------------------------- | ----------------------- |
-| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) [public.stock_group_member](public.stock_group_member.md) |                                   |                         |
-| name             | varchar                  |                   | false    |                                                                                                     |                                   | 銘柄名。                |
-| market           | varchar                  |                   | true     |                                                                                                     |                                   | 市場区分名。            |
-| sector_id        | varchar                  |                   | true     |                                                                                                     | [public.sector](public.sector.md) | 銘柄が属する業種の ID。 |
-| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |                                   |                         |
-| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |                                   |                         |
-| product_category | varchar                  |                   | true     |                                                                                                     |                                   | 銘柄の商品区分コード。  |
+| Name             | Type                     | Default           | Nullable | Children                                                                                            | Parents | Comment                |
+| ---------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------- | ------- | ---------------------- |
+| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) [public.stock_group_member](public.stock_group_member.md) |         |                        |
+| name             | varchar                  |                   | false    |                                                                                                     |         | 銘柄名。               |
+| market           | varchar                  |                   | true     |                                                                                                     |         | 市場区分名。           |
+| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |         |                        |
+| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |         |                        |
+| product_category | varchar                  |                   | true     |                                                                                                     |         | 銘柄の商品区分コード。 |
 
 ## Constraints
 
-| Name                 | Type        | Definition                                                       |
-| -------------------- | ----------- | ---------------------------------------------------------------- |
-| stock_sector_id_fkey | FOREIGN KEY | FOREIGN KEY (sector_id) REFERENCES sector(id) ON DELETE SET NULL |
-| stock_pkey           | PRIMARY KEY | PRIMARY KEY (id)                                                 |
+| Name       | Type        | Definition       |
+| ---------- | ----------- | ---------------- |
+| stock_pkey | PRIMARY KEY | PRIMARY KEY (id) |
 
 ## Indexes
 
-| Name                | Definition                                                               |
-| ------------------- | ------------------------------------------------------------------------ |
-| stock_pkey          | CREATE UNIQUE INDEX stock_pkey ON public.stock USING btree (id)          |
-| idx_stock_sector_id | CREATE INDEX idx_stock_sector_id ON public.stock USING btree (sector_id) |
+| Name       | Definition                                                      |
+| ---------- | --------------------------------------------------------------- |
+| stock_pkey | CREATE UNIQUE INDEX stock_pkey ON public.stock USING btree (id) |
 
 ## Relations
 
@@ -38,13 +35,11 @@ erDiagram
 "public.prediction" }o--|| "public.stock" : "FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)"
 "public.prediction" }o--|| "public.stock" : "FOREIGN KEY (target_stock_id) REFERENCES stock(id)"
 "public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
-"public.stock" }o--o| "public.sector" : "FOREIGN KEY (sector_id) REFERENCES sector(id) ON DELETE SET NULL"
 
 "public.stock" {
   varchar id
   varchar name
   varchar market
-  varchar sector_id FK
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   varchar product_category
@@ -65,10 +60,6 @@ erDiagram
   varchar stock_id FK
   uuid group_id FK
   timestamp_with_time_zone created_at
-}
-"public.sector" {
-  varchar id
-  varchar name
 }
 ```
 

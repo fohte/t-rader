@@ -7,13 +7,13 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
+use core_application::account_risk_policy::{
+    AccountRiskPolicyData, AccountRiskPolicyRepositoryError, parse_risk_policy,
+};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-
-use crate::models::AccountRiskPolicyData;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
 use super::{
@@ -31,8 +31,7 @@ fn account_risk_policy_error_to_mcp(error: AccountRiskPolicyRepositoryError) -> 
 }
 
 fn parse_account_risk_policy(value: serde_json::Value) -> Result<AccountRiskPolicyData, McpError> {
-    serde_json::from_value(value)
-        .map_err(|error| internal_failure(&format!("invalid risk_policy: {error}")))
+    parse_risk_policy(value).map_err(|error| internal_failure(&error.to_string()))
 }
 
 impl StrategyServer {
@@ -543,9 +542,10 @@ mod integration_tests {
     use sea_orm::EntityTrait;
     use uuid::Uuid;
 
+    use core_domain::bar::{Bar, Timeframe};
+
     use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::models::{Bar, Timeframe};
     use core_application::change_history::Actor;
     use core_application::strategy_scope::StrategyScope;
     use gateway_postgres::entities::{
@@ -614,7 +614,6 @@ mod integration_tests {
             id: Set(symbol.to_string()),
             name: Set(symbol.to_string()),
             market: Set(None),
-            sector_id: Set(None),
             product_category: Set(None),
             created_at: NotSet,
             updated_at: NotSet,

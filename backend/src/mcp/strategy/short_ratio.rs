@@ -1,9 +1,9 @@
 //! 戦略実行 MCP の `read_sector_short_ratio` tool。`short_ratio` (J-Quants
 //! `/markets/short-ratio` の業種別空売り比率) を業種名・期間で読む。
 //!
-//! `short_ratio.sector33_code` は 33 業種コードのまま保持されているが、tool の入力は
-//! `sector` テーブル / `check_buyable_qty` と同じ業種名で受け取る
-//! (プロジェクト方針)。33 業種は東証の固定分類のため、対応表はここに定数で持つ。
+//! tool の入力は `sync_source = 'jquants'` の分類軸にあるグループ key で受け取る。
+//! `short_ratio.sector33_code` は市場データ側の 33 業種コードのため、グループ key から
+//! 対応するコードを引く表をここに持つ。
 //! 空売り比率の定義 (空売り (価格規制あり+なし) の売買代金 / 実注文と空売りを合わせた
 //! 売買代金) は JPX の空売り集計公表ページに基づく。戦略に属さない市場データのため
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
@@ -56,10 +56,10 @@ const SECTOR33_CODES: &[(&str, &str)] = &[
     ("その他", "9999"),
 ];
 
-fn sector33_code_for_name(sector: &str) -> Option<&'static str> {
+fn sector33_code_for_group_key(group_key: &str) -> Option<&'static str> {
     SECTOR33_CODES
         .iter()
-        .find(|(name, _)| *name == sector)
+        .find(|(name, _)| *name == group_key)
         .map(|(_, code)| *code)
 }
 
@@ -103,8 +103,12 @@ impl StrategyServer {
         params: ReadSectorShortRatioParams,
     ) -> Result<ReadSectorShortRatioResult, McpError> {
         let scope = scope.into();
-        let sector33_code = sector33_code_for_name(&params.sector)
-            .ok_or_else(|| invalid_params(format!("unknown sector name: {:?}", params.sector)))?;
+        let sector33_code = sector33_code_for_group_key(&params.sector).ok_or_else(|| {
+            invalid_params(format!(
+                "unknown J-Quants industry group key: {:?}",
+                params.sector
+            ))
+        })?;
         let limit = clamp_limit(params.limit);
         let rows = self
             .dependencies
@@ -147,7 +151,7 @@ mod tests {
         ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto,
     };
     use super::super::tests_common::build_server;
-    use super::{compute_short_ratio, sector33_code_for_name};
+    use super::{compute_short_ratio, sector33_code_for_group_key};
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -183,8 +187,8 @@ mod tests {
     #[case::halfwidth_dot_name("石油･石炭製品", Some("3300"))]
     #[case::catch_all("その他", Some("9999"))]
     #[case::unknown("合成業種", None)]
-    fn sector33_code_for_name_cases(#[case] sector: &str, #[case] expected: Option<&str>) {
-        assert_eq!(sector33_code_for_name(sector), expected);
+    fn sector33_code_for_group_key_cases(#[case] group_key: &str, #[case] expected: Option<&str>) {
+        assert_eq!(sector33_code_for_group_key(group_key), expected);
     }
 
     #[rstest]
@@ -204,7 +208,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_unknown_sector_name() {
+    async fn rejects_unknown_group_key() {
         let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
         let error = build_server(db)
             .read_sector_short_ratio_inner(
@@ -217,9 +221,15 @@ mod tests {
                 },
             )
             .await
-            .expect_err("unknown sector should be rejected");
+            .expect_err("unknown group key should be rejected");
 
-        assert_eq!(error.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            (error.code, error.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "unknown J-Quants industry group key: \"合成業種\"",
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]

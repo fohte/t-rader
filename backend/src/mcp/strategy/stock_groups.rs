@@ -228,7 +228,6 @@ mod tests {
             id: Set(stock_id.into()),
             name: Set("Sample stock".into()),
             market: Set(None),
-            sector_id: Set(None),
             created_at: NotSet,
             updated_at: NotSet,
             product_category: Set(None),

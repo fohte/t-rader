@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use core_application::account_risk_policy::AccountRiskPolicyDataError;
 use core_application::bars::{BarsRepositoryError, BarsUseCaseError};
 use core_application::change_history::ChangeHistoryError;
 use core_application::group_axis::{GroupAxisRepositoryError, GroupAxisUseCaseError};
@@ -46,6 +47,15 @@ pub enum AppError {
 
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+}
+
+impl From<AccountRiskPolicyDataError> for AppError {
+    fn from(error: AccountRiskPolicyDataError) -> Self {
+        match error {
+            AccountRiskPolicyDataError::Validation(message) => Self::Validation(message),
+            error @ AccountRiskPolicyDataError::InvalidData(_) => Self::Internal(error.to_string()),
+        }
+    }
 }
 
 impl From<PersistenceError> for AppError {
@@ -187,6 +197,7 @@ impl IntoResponse for AppError {
 #[cfg(test)]
 mod tests {
     use axum::body::to_bytes;
+    use core_application::account_risk_policy::{AccountRiskPolicyData, parse_risk_policy};
     use rstest::rstest;
     use serde_json::json;
 
@@ -246,6 +257,27 @@ mod tests {
             .await
             .expect("read body");
         let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
+
+        assert_eq!(
+            (status, body),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "error": "internal server error" }),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_account_risk_policy_maps_to_http_internal_response() {
+        let error =
+            parse_risk_policy::<AccountRiskPolicyData>(json!({ "max_group_ratios": "invalid" }))
+                .expect_err("malformed policy must fail to parse");
+        let response = AppError::from(error).into_response();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse json body");
 
         assert_eq!(
             (status, body),

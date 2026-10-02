@@ -243,7 +243,7 @@ impl Paginated for ShortRatioResponse {
 pub(crate) struct ShortRatioRecord {
     #[serde(rename = "Date")]
     pub date: String,
-    /// 33 業種コード。`sector` テーブルとの対応付けは読む側に委ねる
+    /// 33 業種コード。業種グループ key との対応付けは読む側に委ねる
     #[serde(rename = "S33")]
     pub s33: String,
     #[serde(
