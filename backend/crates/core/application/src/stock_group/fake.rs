@@ -8,7 +8,7 @@ use crate::persistence::PersistenceError;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{GroupAxis, StockGroupRepository, StockGroupRepositoryError};
-use super::types::{NewStockGroup, StockGroup};
+use super::types::{NewStockGroup, StockGroup, StockGroupMembership};
 
 #[derive(Default)]
 pub struct FakeStockGroupRepository {
@@ -147,6 +147,33 @@ impl StockGroupRepository for FakeStockGroupRepository {
             .collect();
         stock_ids.sort();
         Ok(stock_ids)
+    }
+
+    async fn list_memberships(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        stock_ids: &[String],
+        axis_keys: &[String],
+    ) -> Result<Vec<StockGroupMembership>, StockGroupRepositoryError> {
+        self.record_transaction(transaction).await?;
+        let stock_ids = stock_ids.iter().collect::<HashSet<_>>();
+        let axis_keys = axis_keys.iter().collect::<HashSet<_>>();
+        let groups = self.groups.lock().await;
+        let axes = self.axes.lock().await;
+        let members = self.members.lock().await;
+        Ok(members
+            .iter()
+            .filter(|(_, stock_id)| stock_ids.contains(stock_id))
+            .filter_map(|(group_id, stock_id)| {
+                let group = groups.get(group_id)?;
+                let axis = axes.get(&group.axis_key)?;
+                axis_keys.contains(&axis.key).then(|| StockGroupMembership {
+                    axis_key: axis.key.clone(),
+                    group_key: group.key.clone(),
+                    stock_id: stock_id.clone(),
+                })
+            })
+            .collect())
     }
 
     async fn add_stock(

@@ -14,7 +14,7 @@
         "tags": [
           "account"
         ],
-        "summary": "口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す",
+        "summary": "口座全体の分類軸ごとのグループ集中度上限を取得。",
         "operationId": "get_account_risk_policy",
         "responses": {
           "200": {
@@ -43,7 +43,7 @@
         "tags": [
           "account"
         ],
-        "summary": "口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する",
+        "summary": "口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。",
         "operationId": "put_account_risk_policy",
         "requestBody": {
           "content": {
@@ -6969,13 +6969,16 @@
     "schemas": {
       "AccountRiskPolicyResponse": {
         "type": "object",
+        "required": [
+          "max_group_ratios"
+        ],
         "properties": {
-          "max_sector_ratio": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
+          "max_group_ratios": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupRatio"
+            },
+            "description": "分類軸ごとのグループ比率上限。空配列なら上限なし。"
           }
         }
       },
@@ -8160,6 +8163,24 @@
           }
         }
       },
+      "GroupRatio": {
+        "type": "object",
+        "required": [
+          "axis",
+          "ratio"
+        ],
+        "properties": {
+          "axis": {
+            "type": "string",
+            "description": "分類軸のキー。"
+          },
+          "ratio": {
+            "type": "number",
+            "format": "double",
+            "description": "分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。"
+          }
+        }
+      },
       "HealthResponse": {
         "type": "object",
         "description": "ヘルスチェックレスポンス",
@@ -8848,14 +8869,16 @@
       },
       "PutAccountRiskPolicyRequest": {
         "type": "object",
+        "required": [
+          "max_group_ratios"
+        ],
         "properties": {
-          "max_sector_ratio": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "セクターに属する保有銘柄の時価合計 (口座全体) / 口座全体の保有銘柄時価合計 の上限比率。\n(0, 1] の範囲。`null` で上限を解除する"
+          "max_group_ratios": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupRatio"
+            },
+            "description": "分類軸ごとのグループ比率上限。空配列なら上限なし。"
           }
         },
         "additionalProperties": false

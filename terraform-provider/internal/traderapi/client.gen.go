@@ -39,7 +39,8 @@ func (e TriggerKind) Valid() bool {
 
 // AccountRiskPolicyResponse defines model for AccountRiskPolicyResponse.
 type AccountRiskPolicyResponse struct {
-	MaxSectorRatio nullable.Nullable[float64] `json:"max_sector_ratio,omitempty"`
+	// MaxGroupRatios 分類軸ごとのグループ比率上限。空配列なら上限なし。
+	MaxGroupRatios []GroupRatio `json:"max_group_ratios"`
 }
 
 // AgentConfig defines model for AgentConfig.
@@ -171,6 +172,15 @@ type GroupAxis struct {
 	SyncSource  nullable.Nullable[string] `json:"sync_source,omitempty"`
 }
 
+// GroupRatio defines model for GroupRatio.
+type GroupRatio struct {
+	// Axis 分類軸のキー。
+	Axis string `json:"axis"`
+
+	// Ratio 分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。
+	Ratio float64 `json:"ratio"`
+}
+
 // HookResponse hook 受信レスポンス。
 //
 // `fired = true`: trigger に紐づく strategy_task が作成された。
@@ -222,9 +232,8 @@ type PreviewIndicatorResponse struct {
 
 // PutAccountRiskPolicyRequest defines model for PutAccountRiskPolicyRequest.
 type PutAccountRiskPolicyRequest struct {
-	// MaxSectorRatio セクターに属する保有銘柄の時価合計 (口座全体) / 口座全体の保有銘柄時価合計 の上限比率。
-	// (0, 1] の範囲。`null` で上限を解除する
-	MaxSectorRatio nullable.Nullable[float64] `json:"max_sector_ratio,omitempty"`
+	// MaxGroupRatios 分類軸ごとのグループ比率上限。空配列なら上限なし。
+	MaxGroupRatios []GroupRatio `json:"max_group_ratios"`
 }
 
 // PutInvestableAmountRequest 戦略の投資可能額を新しい history 行として記録するリクエスト。
@@ -571,19 +580,19 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
-	// GetAccountRiskPolicy 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す
+	// GetAccountRiskPolicy 口座全体の分類軸ごとのグループ集中度上限を取得。
 	//
 	// Corresponds with GET /api/account/risk-policy (the `GetAccountRiskPolicy` operationId).
 	GetAccountRiskPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PutAccountRiskPolicyWithBody 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+	// PutAccountRiskPolicyWithBody 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PUT /api/account/risk-policy (the `PutAccountRiskPolicy` operationId).
 	PutAccountRiskPolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PutAccountRiskPolicy 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+	// PutAccountRiskPolicy 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -1075,7 +1084,7 @@ type ClientInterface interface {
 	UpdateTrigger(ctx context.Context, triggerId openapi_types.UUID, body UpdateTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-// GetAccountRiskPolicy 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す
+// GetAccountRiskPolicy 口座全体の分類軸ごとのグループ集中度上限を取得。
 //
 // Corresponds with GET /api/account/risk-policy (the `GetAccountRiskPolicy` operationId).
 func (c *OpenAPIClient) GetAccountRiskPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1090,7 +1099,7 @@ func (c *OpenAPIClient) GetAccountRiskPolicy(ctx context.Context, reqEditors ...
 	return c.Client.Do(req)
 }
 
-// PutAccountRiskPolicyWithBody 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+// PutAccountRiskPolicyWithBody 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 //
 // Takes any type of body and a specified content type.
 //
@@ -1107,7 +1116,7 @@ func (c *OpenAPIClient) PutAccountRiskPolicyWithBody(ctx context.Context, conten
 	return c.Client.Do(req)
 }
 
-// PutAccountRiskPolicy 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+// PutAccountRiskPolicy 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4564,21 +4573,21 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// GetAccountRiskPolicyWithResponse 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す
+	// GetAccountRiskPolicyWithResponse 口座全体の分類軸ごとのグループ集中度上限を取得。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/account/risk-policy (the `GetAccountRiskPolicy` operationId).
 	GetAccountRiskPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetAccountRiskPolicyResult, error)
 
-	// PutAccountRiskPolicyWithBodyWithResponse 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+	// PutAccountRiskPolicyWithBodyWithResponse 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /api/account/risk-policy (the `PutAccountRiskPolicy` operationId).
 	PutAccountRiskPolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAccountRiskPolicyResult, error)
 
-	// PutAccountRiskPolicyWithResponse 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+	// PutAccountRiskPolicyWithResponse 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8673,7 +8682,7 @@ func (r UpdateTriggerResult) ContentType() string {
 	return ""
 }
 
-// GetAccountRiskPolicyWithResponse 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す
+// GetAccountRiskPolicyWithResponse 口座全体の分類軸ごとのグループ集中度上限を取得。
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -8686,7 +8695,7 @@ func (c *ClientWithResponses) GetAccountRiskPolicyWithResponse(ctx context.Conte
 	return ParseGetAccountRiskPolicyResult(rsp)
 }
 
-// PutAccountRiskPolicyWithBodyWithResponse 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+// PutAccountRiskPolicyWithBodyWithResponse 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -8699,7 +8708,7 @@ func (c *ClientWithResponses) PutAccountRiskPolicyWithBodyWithResponse(ctx conte
 	return ParsePutAccountRiskPolicyResult(rsp)
 }
 
-// PutAccountRiskPolicyWithResponse 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する
+// PutAccountRiskPolicyWithResponse 口座全体の分類軸ごとのグループ集中度上限を更新 (upsert)。空配列で上限を解除する。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

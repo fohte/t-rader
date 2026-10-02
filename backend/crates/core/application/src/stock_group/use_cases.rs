@@ -7,7 +7,10 @@ use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::StockGroupUseCaseError;
 use super::repository::{GroupAxis, SharedStockGroupRepository, StockGroupRepositoryError};
-use super::types::{CreateStockGroupCommand, NewStockGroup, StockGroup, UpdateStockGroupCommand};
+use super::types::{
+    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupMembership,
+    UpdateStockGroupCommand,
+};
 
 #[derive(Clone)]
 pub struct StockGroupUseCases {
@@ -143,6 +146,27 @@ impl StockGroupUseCases {
             .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(stock_ids)
+    }
+
+    pub async fn list_memberships(
+        &self,
+        stock_ids: &[String],
+        axis_keys: &[String],
+    ) -> Result<Vec<StockGroupMembership>, StockGroupUseCaseError> {
+        let transaction = self.unit_of_work.begin().await?;
+        let mut memberships = self
+            .repository
+            .list_memberships(&transaction, stock_ids, axis_keys)
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
+        memberships.sort_by(|left, right| {
+            (&left.axis_key, &left.group_key, &left.stock_id).cmp(&(
+                &right.axis_key,
+                &right.group_key,
+                &right.stock_id,
+            ))
+        });
+        Ok(memberships)
     }
 
     pub async fn add_stock(

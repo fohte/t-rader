@@ -84,8 +84,8 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn save_upserts_the_singleton_row(db: DatabaseHandle) {
         let repository = PostgresAccountRiskPolicyRepository::new(db.clone());
-        let first = json!({ "max_sector_ratio": "0.3" });
-        let latest = json!({ "max_sector_ratio": "0.4" });
+        let first = json!({ "max_group_ratios": [] });
+        let latest = json!({ "max_group_ratios": [] });
 
         let created = repository.save(first).await.expect("create policy");
         let updated = repository
@@ -101,7 +101,7 @@ mod tests {
         assert_eq!(
             (created, updated, rows.len(), saved_row),
             (
-                json!({ "max_sector_ratio": "0.3" }),
+                json!({ "max_group_ratios": [] }),
                 latest.clone(),
                 1,
                 Some((1, latest)),

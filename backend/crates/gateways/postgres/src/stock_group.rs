@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use core_application::stock_group::{
-    GroupAxis, NewStockGroup, StockGroup, StockGroupRepository, StockGroupRepositoryError,
+    GroupAxis, NewStockGroup, StockGroup, StockGroupMembership, StockGroupRepository,
+    StockGroupRepositoryError,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
+    RelationTrait,
+};
 use uuid::Uuid;
 
 use crate::entities::{group_axis, stock, stock_group, stock_group_member};
@@ -132,6 +136,47 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             .map_err(repository_error)
     }
 
+    async fn list_memberships(
+        &self,
+        unit_of_work: &UnitOfWorkTransaction,
+        stock_ids: &[String],
+        axis_keys: &[String],
+    ) -> Result<Vec<StockGroupMembership>, StockGroupRepositoryError> {
+        if stock_ids.is_empty() || axis_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let transaction =
+            transaction_ref(unit_of_work).ok_or(StockGroupRepositoryError::InvalidTransaction)?;
+        stock_group_member::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                stock_group_member::Relation::StockGroup.def(),
+            )
+            .join(JoinType::InnerJoin, stock_group::Relation::GroupAxis.def())
+            .select_only()
+            .column_as(group_axis::Column::Key, "axis_key")
+            .column_as(stock_group::Column::Key, "group_key")
+            .column(stock_group_member::Column::StockId)
+            .filter(stock_group_member::Column::StockId.is_in(stock_ids.to_vec()))
+            .filter(group_axis::Column::Key.is_in(axis_keys.to_vec()))
+            .order_by_asc(group_axis::Column::Key)
+            .order_by_asc(stock_group::Column::Key)
+            .order_by_asc(stock_group_member::Column::StockId)
+            .into_model::<StockGroupMembershipRow>()
+            .all(transaction)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| StockGroupMembership {
+                        axis_key: row.axis_key,
+                        group_key: row.group_key,
+                        stock_id: row.stock_id,
+                    })
+                    .collect()
+            })
+            .map_err(repository_error)
+    }
+
     async fn add_stock(
         &self,
         unit_of_work: &UnitOfWorkTransaction,
@@ -175,6 +220,13 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             .map(|result| result.rows_affected > 0)
             .map_err(repository_error)
     }
+}
+
+#[derive(Debug, sea_orm::FromQueryResult)]
+struct StockGroupMembershipRow {
+    axis_key: String,
+    group_key: String,
+    stock_id: String,
 }
 
 fn repository_error(error: sea_orm::DbErr) -> StockGroupRepositoryError {
