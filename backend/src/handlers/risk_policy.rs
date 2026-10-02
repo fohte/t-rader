@@ -61,22 +61,18 @@ pub async fn put_account_risk_policy(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<PutAccountRiskPolicyRequest>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
-    let group_ratios = payload
+    let group_ratios: Vec<ApplicationGroupRatio> = payload
         .max_group_ratios
-        .iter()
-        .map(|value| ApplicationGroupRatio {
-            axis: value.axis.clone(),
-            ratio: value.ratio,
-        })
-        .collect::<Vec<_>>();
+        .into_iter()
+        .map(Into::into)
+        .collect();
     validate_group_ratios(&group_ratios)?;
     let axes = state.use_cases.group_axes().list().await?;
     let known_axes = axes
         .into_iter()
         .map(|axis| axis.key)
         .collect::<HashSet<_>>();
-    if let Some(value) = payload
-        .max_group_ratios
+    if let Some(value) = group_ratios
         .iter()
         .find(|value| !known_axes.contains(&value.axis))
     {

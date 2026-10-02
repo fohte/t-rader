@@ -22,6 +22,15 @@ impl From<ApplicationGroupRatio> for GroupRatio {
     }
 }
 
+impl From<GroupRatio> for ApplicationGroupRatio {
+    fn from(value: GroupRatio) -> Self {
+        Self {
+            axis: value.axis,
+            ratio: value.ratio,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PutAccountRiskPolicyRequest {
