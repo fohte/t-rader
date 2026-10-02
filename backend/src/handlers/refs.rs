@@ -203,9 +203,9 @@ fn map_ref_error(error: RefUseCaseError) -> AppError {
         | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
         RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
-        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => AppError::Database(
-            sea_orm::DbErr::Custom("reference transaction has an unexpected type".into()),
-        ),
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            AppError::Internal("reference transaction has an unexpected type".into())
+        }
     }
 }
 

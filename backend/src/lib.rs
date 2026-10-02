@@ -44,6 +44,12 @@ use crate::services::litellm_client::SharedLlmClient;
 use gateway_jquants::JQuantsClient;
 use gateway_postgres::DatabaseHandle;
 
+impl From<sea_orm::DbErr> for AppError {
+    fn from(error: sea_orm::DbErr) -> Self {
+        Self::Internal(error.to_string())
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseHandle,

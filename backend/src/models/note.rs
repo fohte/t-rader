@@ -1,10 +1,9 @@
-use sea_orm::entity::prelude::Json;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as Json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::services::graph::GraphDef;
-use gateway_postgres::entities::{note, note_version};
 
 /// ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
@@ -72,32 +71,6 @@ impl NoteResponse {
             updated_at: snapshot.note.updated_at,
             graphs_json: snapshot.version.graphs_json,
             execution_id: snapshot.note.execution_id,
-        }
-    }
-
-    pub fn from_version(
-        note: note::Model,
-        version: note_version::Model,
-        created_by_kind: String,
-    ) -> Self {
-        Self {
-            id: note.id,
-            version_id: version.id,
-            version_no: version.version_no,
-            is_current: version.is_current,
-            strategy_id: note.strategy_id,
-            title: version.title,
-            body_md: version.body_md,
-            frontmatter_json: version.frontmatter_json,
-            kind: note.kind,
-            status: version.status,
-            trigger: note.trigger,
-            trigger_label: note.trigger_label,
-            created_by_kind,
-            created_at: note.created_at,
-            updated_at: note.updated_at,
-            graphs_json: version.graphs_json,
-            execution_id: note.execution_id,
         }
     }
 }

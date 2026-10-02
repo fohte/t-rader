@@ -215,8 +215,8 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
     McpError::invalid_params(msg, None)
 }
 
-pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
-    tracing::error!(error = %err, "strategy mcp db error");
+pub(super) fn internal_failure(err: &str) -> McpError {
+    tracing::error!(error = %err, "strategy mcp internal failure");
     internal_error(format!("database error: {err}"))
 }
 
@@ -393,7 +393,7 @@ pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
 pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
     use crate::error::AppError;
     match err {
-        AppError::Database(e) => db_error(e),
+        AppError::Internal(message) => internal_failure(&message),
         AppError::Validation(msg) => invalid_params(msg),
         other => internal_error(format!("{other}")),
     }

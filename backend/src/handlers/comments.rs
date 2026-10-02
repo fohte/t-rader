@@ -179,7 +179,7 @@ fn map_comment_error(error: CommentUseCaseError) -> AppError {
         | CommentUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | CommentUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | CommentUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 

@@ -1,6 +1,6 @@
 use core_application::custom_indicator::CustomIndicator;
-use sea_orm::entity::prelude::Json;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as Json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

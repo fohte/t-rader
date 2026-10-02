@@ -329,7 +329,7 @@ fn map_annotation_error(error: AnnotationUseCaseError) -> AppError {
         | AnnotationUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
             error.into()
         }
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 

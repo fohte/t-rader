@@ -89,7 +89,7 @@ fn map_note_kind_error(err: NoteKindUseCaseError) -> McpError {
     match AppError::from(err) {
         AppError::Validation(message) | AppError::Conflict(message) => invalid_params(message),
         AppError::NotFound(message) => McpError::resource_not_found(message, None),
-        AppError::Database(database_error) => super::db_error(database_error),
+        AppError::Internal(message) => super::internal_failure(&message),
         other => super::internal_error(other.to_string()),
     }
 }

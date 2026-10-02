@@ -56,7 +56,7 @@ pub async fn receive_agent_task_notification(
         .strategy_task_reconcile_job()
         .enqueue_reconciliation()
         .await
-        .map_err(|error| AppError::Database(sea_orm::DbErr::Custom(error.to_string())))?;
+        .map_err(|error| AppError::Internal(error.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 

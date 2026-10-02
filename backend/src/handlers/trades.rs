@@ -244,7 +244,7 @@ pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
         | TradeUseCaseError::StrategyExistence(
             core_application::strategy_existence::StrategyExistenceError::Database(error),
         ) => error.into(),
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 

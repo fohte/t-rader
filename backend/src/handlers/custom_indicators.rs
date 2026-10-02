@@ -286,7 +286,7 @@ fn map_custom_indicator_error(error: CustomIndicatorUseCaseError) -> AppError {
         | CustomIndicatorUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
             error.into()
         }
-        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+        other => AppError::Internal(other.to_string()),
     }
 }
 

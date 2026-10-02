@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, FixedOffset};
 use core_application::agent_config::AgentConfig;
-use sea_orm::entity::prelude::Json;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as Json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
