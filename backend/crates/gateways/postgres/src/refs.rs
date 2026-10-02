@@ -132,20 +132,22 @@ impl RefRepository for PostgresRefRepository {
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>()
             .join(", ");
+        let sync_source_placeholder = ids.len() + 1;
         let sql = format!(
             "SELECT s.id AS stock_id, \
                     MIN(sg.key) FILTER (WHERE ga.id IS NOT NULL) AS sector_id \
              FROM stock s \
              LEFT JOIN stock_group_member sgm ON sgm.stock_id = s.id \
              LEFT JOIN stock_group sg ON sg.id = sgm.group_id \
-             LEFT JOIN group_axis ga ON ga.id = sg.axis_id AND ga.sync_source = 'jquants' \
+             LEFT JOIN group_axis ga ON ga.id = sg.axis_id AND ga.sync_source = ${sync_source_placeholder} \
              WHERE s.id IN ({placeholders}) \
              GROUP BY s.id"
         );
-        let values = ids
+        let mut values = ids
             .iter()
             .map(|id| id.clone().into())
             .collect::<Vec<sea_orm::Value>>();
+        values.push(crate::JQUANTS_SYNC_SOURCE.to_owned().into());
         self.db
             .query_all_raw(Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Postgres,

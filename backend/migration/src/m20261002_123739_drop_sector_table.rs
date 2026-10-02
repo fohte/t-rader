@@ -1,16 +1,32 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261002_123739_drop_sector_table"
-    }
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let db = manager.get_connection();
+        db.execute_unprepared(
+            "INSERT INTO stock_group (axis_id, key, name) \
+             SELECT ga.id, sector.id, sector.name \
+             FROM sector \
+             CROSS JOIN group_axis ga \
+             WHERE ga.sync_source = 'jquants' \
+             ON CONFLICT (axis_id, key) DO NOTHING",
+        )
+        .await?;
+        db.execute_unprepared(
+            "INSERT INTO stock_group_member (stock_id, group_id) \
+             SELECT s.id, sg.id \
+             FROM stock s \
+             JOIN stock_group sg ON sg.key = s.sector_id \
+             JOIN group_axis ga ON ga.id = sg.axis_id AND ga.sync_source = 'jquants' \
+             WHERE s.sector_id IS NOT NULL \
+             ON CONFLICT (stock_id, group_id) DO NOTHING",
+        )
+        .await?;
+
         manager
             .alter_table(
                 Table::alter()

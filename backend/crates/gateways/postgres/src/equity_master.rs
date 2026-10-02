@@ -61,7 +61,7 @@ async fn sync_sector_groups(
     entries: &[EquityMasterEntry],
 ) -> Result<(), EquityMasterRepositoryError> {
     let axes = group_axis::Entity::find()
-        .filter(group_axis::Column::SyncSource.eq("jquants"))
+        .filter(group_axis::Column::SyncSource.eq(crate::JQUANTS_SYNC_SOURCE))
         .all(transaction)
         .await
         .map_err(repository_error)?;
@@ -387,6 +387,7 @@ mod tests {
             entry("ZZ91", Some("架空業種A")),
             entry("ZZ92", Some("架空業種B")),
             entry("ZZ93", None),
+            entry("ZZ94", Some("架空業種A")),
         ];
 
         let count = upsert(&db, &entries).await;
@@ -395,7 +396,7 @@ mod tests {
         assert_eq!(
             (count, actual),
             (
-                3,
+                4,
                 expected_snapshot(
                     vec![
                         expected_group("synthetic-axis-a", "架空業種A"),
@@ -408,6 +409,8 @@ mod tests {
                         expected_member("ZZ91", "synthetic-axis-b", "架空業種A"),
                         expected_member("ZZ92", "synthetic-axis-a", "架空業種B"),
                         expected_member("ZZ92", "synthetic-axis-b", "架空業種B"),
+                        expected_member("ZZ94", "synthetic-axis-a", "架空業種A"),
+                        expected_member("ZZ94", "synthetic-axis-b", "架空業種A"),
                     ],
                 ),
             ),

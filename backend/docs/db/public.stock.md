@@ -2,7 +2,7 @@
 
 ## Description
 
-ノートや戦略などから参照する銘柄マスタ。銘柄の分類は stock_group_member で保持する。
+ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。
 
 ## Columns
 

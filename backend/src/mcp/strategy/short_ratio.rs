@@ -223,7 +223,13 @@ mod tests {
             .await
             .expect_err("unknown group key should be rejected");
 
-        assert_eq!(error.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            (error.code, error.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "unknown J-Quants industry group key: \"合成業種\"",
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]
