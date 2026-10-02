@@ -62,8 +62,8 @@ impl StrategyServer {
         let scope = scope.into();
         let price = params.price.map(f64_to_decimal).transpose()?;
         let created = self
-            .use_cases
-            .annotations()
+            .dependencies
+            .annotations
             .create(CreateAnnotationCommand {
                 scope: Some(scope),
                 actor: Actor::Llm { label: "analyst" },
@@ -102,8 +102,8 @@ impl StrategyServer {
             limit: Some(clamp_limit(params.limit)),
         };
         let annotations = self
-            .use_cases
-            .annotation_reads()
+            .dependencies
+            .annotation_reads
             .list_annotations(query, Some(scope.into()))
             .await
             .map_err(annotation_read_error_to_mcp)?;
@@ -125,7 +125,7 @@ pub(super) fn annotation_read_error_to_mcp(error: AnnotationReadUseCaseError) ->
             "forbidden: annotation {id} belongs to another strategy"
         )),
         AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {
-            super::app_error_to_mcp(error.into())
+            super::persistence_error_to_mcp(error)
         }
     }
 }

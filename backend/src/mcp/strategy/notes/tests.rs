@@ -15,7 +15,7 @@ mod tests {
         normalize_comment_model, normalize_note, seed_foreign_note,
         seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
-    use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
+    use super::super::graph_dto::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::testing::find_current_note_version;
     use gateway_postgres::entities::{comment, note, note_ref, note_version};
 

@@ -16,8 +16,8 @@ impl StrategyServer {
     ) -> Result<SearchNewsResult, McpError> {
         let scope = scope.into();
         let rows = self
-            .use_cases
-            .news()
+            .dependencies
+            .news
             .search_news(
                 scope,
                 SearchNewsQuery {

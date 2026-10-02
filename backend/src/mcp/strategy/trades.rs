@@ -44,8 +44,8 @@ impl StrategyServer {
             .filter(|symbol| !symbol.is_empty())
             .map(ToOwned::to_owned);
         let rows = self
-            .use_cases
-            .trades()
+            .dependencies
+            .trades
             .list(TradeQuery {
                 strategy_id: None,
                 symbol,

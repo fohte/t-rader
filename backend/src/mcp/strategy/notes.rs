@@ -2,14 +2,17 @@
 //!
 //! 戦略境界の検査はノート読み取りユースケースが担う。
 
-use core_application::change_history::Actor;
-use core_application::note::{NoteUseCaseError, NoteWriteCommand};
+use core_application::change_history::{Actor, ChangeHistoryError};
+use core_application::note::{NoteRepositoryError, NoteUseCaseError, NoteWriteCommand};
+use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
+use core_application::strategy_existence::StrategyExistenceError;
 use core_application::strategy_scope::StrategyScope;
+use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{ListNoteKindsResult, NoteKindDto, WriteNoteParams, WriteNoteResult};
 use super::{
-    STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, internal_error, invalid_params,
+    STRATEGY_AGENT_ACTOR, StrategyServer, internal_error, internal_failure, invalid_params,
 };
 
 mod read;
@@ -33,14 +36,52 @@ fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
     }
 }
 
+fn note_kind_use_case_to_mcp(error: NoteKindUseCaseError) -> McpError {
+    match error {
+        NoteKindUseCaseError::Validation(message) => invalid_params(message),
+        NoteKindUseCaseError::NotFound(message) => internal_error(format!("not found: {message}")),
+        NoteKindUseCaseError::Conflict(message) => internal_error(format!("conflict: {message}")),
+        NoteKindUseCaseError::Repository(NoteKindRepositoryError::Database(error))
+        | NoteKindUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            super::persistence_error_to_mcp(error)
+        }
+        NoteKindUseCaseError::Note(error) => note_kind_note_use_case_to_mcp(error),
+        other => internal_failure(&other.to_string()),
+    }
+}
+
+fn note_kind_note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
+    match error {
+        NoteUseCaseError::Validation(message) => invalid_params(message),
+        NoteUseCaseError::UnknownNoteKind(kind) => {
+            invalid_params(format!("unknown note kind: {kind}"))
+        }
+        NoteUseCaseError::NotFound(message) => internal_error(format!("not found: {message}")),
+        NoteUseCaseError::ReferencedNoteKindNotFound(kind) => {
+            internal_error(format!("not found: note kind {kind} not found"))
+        }
+        NoteUseCaseError::Conflict(message) => internal_error(format!("conflict: {message}")),
+        NoteUseCaseError::Repository(NoteRepositoryError::Database(error))
+        | NoteUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
+        | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
+            super::persistence_error_to_mcp(error)
+        }
+        other => internal_failure(&other.to_string()),
+    }
+}
+
 impl StrategyServer {
     pub(crate) async fn list_note_kinds_inner(&self) -> Result<ListNoteKindsResult, McpError> {
         let note_kinds = self
-            .use_cases
-            .note_kinds()
+            .dependencies
+            .note_kinds
             .list()
             .await
-            .map_err(|error| app_error_to_mcp(error.into()))?
+            .map_err(note_kind_use_case_to_mcp)?
             .into_iter()
             .map(|kind| NoteKindDto {
                 key: kind.key,
@@ -70,8 +111,8 @@ impl StrategyServer {
             })
             .transpose()?;
         let result = self
-            .use_cases
-            .notes()
+            .dependencies
+            .notes
             .write(NoteWriteCommand {
                 scope: Some(scope),
                 strategy_id: Some(scope.id()),

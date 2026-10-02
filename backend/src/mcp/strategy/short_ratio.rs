@@ -107,8 +107,8 @@ impl StrategyServer {
             .ok_or_else(|| invalid_params(format!("unknown sector name: {:?}", params.sector)))?;
         let limit = clamp_limit(params.limit);
         let rows = self
-            .use_cases
-            .short_ratios()
+            .dependencies
+            .short_ratios
             .read(
                 scope,
                 ShortRatioQuery {

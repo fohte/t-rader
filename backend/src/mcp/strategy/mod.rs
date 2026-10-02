@@ -7,11 +7,13 @@
 pub(super) mod annotations;
 pub(super) mod comments;
 pub(super) mod data;
+mod dependencies;
 pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
 pub(super) mod fin_summary;
+mod graph_dto;
 pub(super) mod holdings;
 pub(super) mod macro_indicator;
 pub(super) mod margin;
@@ -24,6 +26,7 @@ pub(super) mod predictions;
 pub(super) mod ref_terms;
 pub(super) mod refs;
 pub(super) mod risk_check;
+mod serde_helpers;
 pub(super) mod short_ratio;
 pub(super) mod short_sale_report;
 pub(super) mod stock_groups;
@@ -37,6 +40,9 @@ pub(in crate::mcp) mod tests_common;
 
 use std::collections::BTreeMap;
 
+use core_application::kata_exec::{KataExecError, SharedKataExecutor};
+use core_application::llm_client::{LlmClientError as LiteLlmError, SharedLlmClient};
+use core_application::persistence::PersistenceError;
 use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
 use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
@@ -44,10 +50,7 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use uuid::Uuid;
 
-use crate::data_provider::SharedDailyBarSource;
-use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
-use crate::services::use_cases::UseCases;
+pub use dependencies::StrategyServerDependencies;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -96,8 +99,7 @@ pub(super) fn check_exec_upper_bound(
 
 /// `KataExecError` の MCP エラー変換。tracing は呼び出し側で行うこと
 /// (tool 固有のコンテキストフィールドを残せるため)。
-pub(super) fn kata_exec_to_mcp_err(err: crate::kata_exec::KataExecError) -> McpError {
-    use crate::kata_exec::KataExecError;
+pub(super) fn kata_exec_to_mcp_err(err: KataExecError) -> McpError {
     match err {
         KataExecError::Timeout(d) => invalid_params(format!("execution timed out after {:?}", d)),
         KataExecError::OutputTooLarge { limit } => {
@@ -130,35 +132,28 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 
 #[derive(Clone)]
 pub struct StrategyServer {
-    pub(super) use_cases: UseCases,
-    daily_bar_source: Option<SharedDailyBarSource>,
-    pub(super) kata_executor: Option<SharedKataExecutor>,
-    pub(super) litellm_client: Option<SharedLlmClient>,
+    pub(super) dependencies: StrategyServerDependencies,
 }
 
 impl StrategyServer {
-    pub fn new(use_cases: UseCases, daily_bar_source: Option<SharedDailyBarSource>) -> Self {
-        Self {
-            use_cases,
-            daily_bar_source,
-            kata_executor: None,
-            litellm_client: None,
-        }
+    pub fn new(dependencies: StrategyServerDependencies) -> Self {
+        Self { dependencies }
     }
 
     pub fn with_kata_executor(mut self, kata_executor: Option<SharedKataExecutor>) -> Self {
-        self.kata_executor = kata_executor;
+        self.dependencies.kata_executor = kata_executor;
         self
     }
 
     pub fn with_litellm_client(mut self, litellm_client: Option<SharedLlmClient>) -> Self {
-        self.litellm_client = litellm_client;
+        self.dependencies.llm_client = litellm_client;
         self
     }
 
     /// `KATA_EXEC_API_URL` が未設定だと executor は `None` のまま起動する。
     pub(super) fn kata_executor(&self) -> Result<&SharedKataExecutor, McpError> {
-        self.kata_executor
+        self.dependencies
+            .kata_executor
             .as_ref()
             .ok_or_else(|| internal_error("kata executor is not configured"))
     }
@@ -168,8 +163,8 @@ impl StrategyServer {
         ctx: &RequestContext<RoleServer>,
     ) -> Result<StrategyScope, McpError> {
         let id = strategy_id_from_ctx(ctx)?;
-        self.use_cases
-            .strategy_scope()
+        self.dependencies
+            .strategy_scope
             .verify(id)
             .await
             .map_err(|error| match error {
@@ -367,13 +362,18 @@ pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
     })
 }
 
-/// `AppError` の MCP エラー変換。リスクポリシーのパースエラーを MCP エラーへ変換する。
-pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
-    use crate::error::AppError;
-    match err {
-        AppError::Internal(message) => internal_failure(&message),
-        AppError::Validation(msg) => invalid_params(msg),
-        other => internal_error(format!("{other}")),
+/// `PersistenceError` の MCP エラー変換。
+pub(super) fn persistence_error_to_mcp(error: PersistenceError) -> McpError {
+    match error {
+        PersistenceError::Database(message) => internal_failure(&message),
+        PersistenceError::MissingReference(_) => {
+            invalid_params("referenced resource does not exist")
+        }
+        PersistenceError::Conflict(_) => internal_error("conflict: resource already exists"),
+        PersistenceError::ConstraintViolation(_) => {
+            invalid_params("value violates database constraint")
+        }
+        PersistenceError::RecordNotUpdated(_) => internal_error("not found: resource not found"),
     }
 }
 

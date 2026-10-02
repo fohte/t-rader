@@ -23,14 +23,14 @@ impl StrategyServer {
         let scope = scope.into();
         let strategy_id = scope.id();
         let account_summary = self
-            .use_cases
-            .trades()
+            .dependencies
+            .trades
             .summary(None)
             .await
             .map_err(trade_error)?;
         let strategy_summary = self
-            .use_cases
-            .trades()
+            .dependencies
+            .trades
             .summary(Some(strategy_id))
             .await
             .map_err(trade_error)?;
@@ -41,9 +41,9 @@ impl StrategyServer {
         let symbols: Vec<String> = symbols.into_iter().collect();
 
         let prices = self
-            .use_cases
-            .bars()
-            .fetch_latest_prices(self.daily_bar_source.as_deref(), &symbols)
+            .dependencies
+            .bars
+            .fetch_latest_prices(self.dependencies.daily_bar_source.as_deref(), &symbols)
             .await;
 
         let account_positions = to_position_dtos(account_summary.positions, &prices.prices);
@@ -63,8 +63,8 @@ impl StrategyServer {
         let strategy_positions = to_position_dtos(strategy_summary.positions, &prices.prices);
 
         let investable_amount_row = self
-            .use_cases
-            .strategies()
+            .dependencies
+            .strategies
             .current_investable_amount(scope)
             .await
             .map_err(strategy_use_case_error_to_mcp)?;

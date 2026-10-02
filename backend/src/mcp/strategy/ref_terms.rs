@@ -52,8 +52,8 @@ impl StrategyServer {
         params: AddRefTermsParams,
     ) -> Result<AddRefTermsResult, McpError> {
         let added = self
-            .use_cases
-            .refs()
+            .dependencies
+            .refs
             .add_terms(&params.ref_kind, &params.ref_id, &params.terms)
             .await
             .map_err(ref_terms_error)?;
@@ -67,8 +67,8 @@ impl StrategyServer {
         params: RemoveRefTermsParams,
     ) -> Result<RemoveRefTermsResult, McpError> {
         let removed = self
-            .use_cases
-            .refs()
+            .dependencies
+            .refs
             .remove_terms(&params.ref_kind, &params.ref_id, &params.terms)
             .await
             .map_err(ref_terms_error)?;
