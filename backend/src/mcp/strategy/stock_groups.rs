@@ -24,6 +24,7 @@ pub struct UpdateStockGroupParams {
     pub name: Option<String>,
     #[serde(
         default,
+        skip_serializing_if = "Option::is_none",
         deserialize_with = "super::serde_helpers::deserialize_nullable_option"
     )]
     pub description: Option<Option<String>>,

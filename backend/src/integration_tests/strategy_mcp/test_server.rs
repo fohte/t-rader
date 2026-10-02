@@ -51,18 +51,8 @@ impl StrategyServer {
         TInput: Serialize,
         TOutput: DeserializeOwned + Serialize,
     {
-        let mut arguments = serde_json::to_value(input)
+        let arguments = serde_json::to_value(input)
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-        if name == "write_note"
-            && arguments
-                .get("kind")
-                .is_some_and(serde_json::Value::is_null)
-        {
-            arguments
-                .as_object_mut()
-                .expect("serialized tool arguments are an object")
-                .remove("kind");
-        }
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-strategy-id",

@@ -222,6 +222,43 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn update_stock_group_preserves_omitted_description(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        insert_axis(&db, None).await;
+        let server = build_server(db.clone()).await;
+        let created = create_group(&server).await.expect("create stock group");
+        clear_change_history(&db, created.id).await;
+
+        let updated = server
+            .update_stock_group(UpdateStockGroupParams {
+                axis_key: "sample-axis".into(),
+                group_key: "sample-group".into(),
+                name: None,
+                description: None,
+            })
+            .await
+            .expect("update stock group");
+
+        assert_eq!(
+            (
+                normalize_group(updated).as_json().clone(),
+                change_history_for(&db, created.id).await,
+            ),
+            (
+                json!({
+                    "id": Uuid::nil(),
+                    "axis_key": "sample-axis",
+                    "group_key": "sample-group",
+                    "name": "Sample group",
+                    "description": "Sample description",
+                }),
+                vec![],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn add_stock_to_group_is_idempotent_and_audited(db: gateway_postgres::DatabaseHandle) {
         insert_axis(&db, None).await;
         insert_stock(&db, "0002").await;

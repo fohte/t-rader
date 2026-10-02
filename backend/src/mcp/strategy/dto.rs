@@ -205,7 +205,11 @@ pub struct WriteNoteParams {
     /// `@current` を付けると以降の現行バージョンに追従する。
     pub body_md: Option<String>,
     /// 新規作成時の種別。既存ノートの種別は変更できない。
-    #[serde(default, deserialize_with = "deserialize_nullable_option")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_nullable_option"
+    )]
     pub kind: Option<Option<String>>,
     /// 承認必須種別の 2 件目以降で必須となる変更理由。
     pub change_reason: Option<String>,
@@ -316,7 +320,7 @@ pub struct CreateAnnotationParams {
     pub linked_note_id: Option<Uuid>,
 }
 
-#[cfg_attr(test, derive(serde::Deserialize))]
+#[cfg_attr(test, derive(Clone, serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct AnnotationDto {
     pub annotation_id: Uuid,
@@ -360,7 +364,7 @@ pub struct ReadCommentsParams {
     pub resolved: Option<bool>,
 }
 
-#[cfg_attr(test, derive(serde::Deserialize))]
+#[cfg_attr(test, derive(Clone, serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct CommentDto {
     pub comment_id: Uuid,
