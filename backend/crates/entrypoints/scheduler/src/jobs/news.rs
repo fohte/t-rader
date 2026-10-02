@@ -8,7 +8,7 @@ use super::{DAILY_TIMEOUT, run_with_ingest_run_log_state};
 pub struct NewsAggregation;
 
 impl TaskHandler for NewsAggregation {
-    const IDENTIFIER: &'static str = "news_aggregation";
+    const IDENTIFIER: &'static str = core_application::ingest_status::NEWS_AGGREGATION_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(

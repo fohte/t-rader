@@ -69,7 +69,7 @@ mod tests {
     async fn save_stores_and_returns_policy() {
         let use_cases =
             AccountRiskPolicyUseCases::new(Arc::new(FakeAccountRiskPolicyRepository::default()));
-        let policy = json!({ "max_sector_ratio": "0.3" });
+        let policy = json!({ "max_group_ratios": [] });
 
         let saved = use_cases.save(policy.clone()).await.expect("save policy");
         let current = use_cases.find_current().await.expect("read saved policy");

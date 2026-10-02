@@ -7,8 +7,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::{
-    CreateStockGroupCommand, FakeStockGroupRepository, StockGroup, StockGroupUseCaseError,
-    StockGroupUseCases, UpdateStockGroupCommand,
+    CreateStockGroupCommand, FakeStockGroupRepository, StockGroup, StockGroupMembership,
+    StockGroupUseCaseError, StockGroupUseCases, UpdateStockGroupCommand,
 };
 use crate::stock_group::SharedStockGroupRepository;
 
@@ -437,5 +437,60 @@ async fn synchronized_axes_reject_group_and_membership_mutations(harness: Harnes
             0,
             0,
         ),
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn list_memberships_returns_every_group_for_requested_stocks_and_axes(harness: Harness) {
+    let first_group = create_group(&harness)
+        .await
+        .expect("group creation succeeds");
+    harness.repository.insert_axis("other-axis", None).await;
+    let second_group = harness
+        .use_cases
+        .create(CreateStockGroupCommand {
+            axis_key: "other-axis".into(),
+            key: "other-group".into(),
+            name: "Other group".into(),
+            description: None,
+        })
+        .await
+        .expect("group creation succeeds");
+    harness.repository.insert_stock("demo-stock").await;
+    harness
+        .use_cases
+        .add_stock("sample-axis", "sample-group", "demo-stock")
+        .await
+        .expect("stock membership succeeds");
+    harness
+        .use_cases
+        .add_stock("other-axis", "other-group", "demo-stock")
+        .await
+        .expect("stock membership succeeds");
+
+    let memberships = harness
+        .use_cases
+        .list_memberships(
+            &["demo-stock".to_string(), "unrelated-stock".to_string()],
+            &["sample-axis".to_string(), "other-axis".to_string()],
+        )
+        .await
+        .expect("membership listing succeeds");
+
+    assert_eq!(
+        memberships,
+        vec![
+            StockGroupMembership {
+                axis_key: "other-axis".into(),
+                group_key: second_group.key,
+                stock_id: "demo-stock".into(),
+            },
+            StockGroupMembership {
+                axis_key: "sample-axis".into(),
+                group_key: first_group.key,
+                stock_id: "demo-stock".into(),
+            },
+        ],
     );
 }
