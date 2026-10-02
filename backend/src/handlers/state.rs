@@ -11,7 +11,6 @@ use core_application::bars::BarsUseCases;
 use core_application::change_history::ChangeHistoryUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
-use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::group_axis::GroupAxisUseCases;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
@@ -50,13 +49,11 @@ pub struct AppState {
     pub trigger_use_cases: TriggerUseCases,
     pub trade_note_use_cases: TradeNoteUseCases,
     pub trade_use_cases: TradeUseCases,
-    pub daily_bar_source: Option<SharedDailyBarSource>,
     pub agent_task_client: SharedAgentTaskClient,
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_gateway_client: Option<SharedLlmClient>,
     pub agent_tool_summaries: Vec<(String, Option<String>)>,
     pub agent_task_notifications: AgentTaskNotificationsState,
-    pub external_hooks: ExternalHookState,
 }
 
 #[derive(Clone)]
@@ -79,7 +76,10 @@ impl FromRef<AppState> for AgentTaskNotificationsState {
 
 impl FromRef<AppState> for ExternalHookState {
     fn from_ref(state: &AppState) -> Self {
-        state.external_hooks.clone()
+        Self {
+            trigger_use_cases: state.trigger_use_cases.clone(),
+            agent_task_client: state.agent_task_client.clone(),
+        }
     }
 }
 

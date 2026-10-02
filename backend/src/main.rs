@@ -376,13 +376,12 @@ async fn main() -> Result<(), AppError> {
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
         let state = build_http_state(
             &use_cases,
-            daily_bar_source,
             agent_task_client,
             Arc::from(agent_webhook_token),
             kata_executor,
             llm_gateway_client,
         );
-        Some(create_router(state, use_cases, app_db))
+        Some(create_router(state, use_cases, daily_bar_source, app_db))
     } else {
         None
     };

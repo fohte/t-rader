@@ -54,7 +54,6 @@ impl From<sea_orm::DbErr> for AppError {
 /// composition root の UseCases から HTTP entrypoint の依存 state を組み立てる。
 pub fn build_http_state(
     use_cases: &crate::services::use_cases::UseCases,
-    daily_bar_source: Option<SharedDailyBarSource>,
     agent_task_client: SharedAgentTaskClient,
     agent_webhook_token: Arc<str>,
     kata_executor: Option<SharedKataExecutor>,
@@ -66,11 +65,6 @@ pub fn build_http_state(
         strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
         webhook_token: agent_webhook_token,
     };
-    let external_hooks = ExternalHookState {
-        trigger_use_cases: trigger_use_cases.clone(),
-        agent_task_client: agent_task_client.clone(),
-    };
-
     AppState {
         account_risk_policy_use_cases: use_cases.account_risk_policies(),
         agent_config_use_cases: use_cases.agent_configs(),
@@ -94,13 +88,11 @@ pub fn build_http_state(
         trigger_use_cases,
         trade_note_use_cases: use_cases.trade_notes(),
         trade_use_cases: use_cases.trades(),
-        daily_bar_source,
         agent_task_client,
         kata_executor,
         llm_gateway_client,
         agent_tool_summaries,
         agent_task_notifications,
-        external_hooks,
     }
 }
 
@@ -324,10 +316,10 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 pub fn create_router(
     state: AppState,
     mcp_use_cases: crate::services::use_cases::UseCases,
+    mcp_daily_bar_source: Option<SharedDailyBarSource>,
     health_db: DatabaseHandle,
 ) -> Router {
     let agent_task_client = state.agent_task_client.clone();
-    let daily_bar_source = state.daily_bar_source.clone();
     let kata_executor = state.kata_executor.clone();
     let llm_gateway_client = state.llm_gateway_client.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
@@ -342,7 +334,7 @@ pub fn create_router(
         .merge(mcp::router(
             mcp_use_cases,
             agent_task_client,
-            daily_bar_source,
+            mcp_daily_bar_source,
             kata_executor,
             llm_gateway_client,
             mcp::allowed_hosts_from_env(),
