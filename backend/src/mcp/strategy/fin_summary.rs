@@ -15,8 +15,8 @@ impl StrategyServer {
         params: ReadFinSummaryParams,
     ) -> Result<ReadFinSummaryResult, McpError> {
         let summaries = self
-            .use_cases
-            .financial_summaries()
+            .dependencies
+            .financial_summaries
             .find_for_symbol(scope.into(), &params.symbol, clamp_limit(params.limit))
             .await
             .map_err(financial_summary_error)?;

@@ -78,8 +78,8 @@ impl StrategyServer {
         validate_symbol(&params.symbol)?;
         let limit = clamp_limit(params.limit);
         let shareholding = self
-            .use_cases
-            .shareholding_structures()
+            .dependencies
+            .shareholding_structures
             .find_for_symbol(scope, &params.symbol, limit)
             .await
             .map_err(|error| {

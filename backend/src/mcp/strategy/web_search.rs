@@ -33,10 +33,11 @@ impl StrategyServer {
         }
 
         let client = self
-            .litellm_client
+            .dependencies
+            .llm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
-        let tool_call_counts = self.use_cases.mcp_tool_call_counts();
+        let tool_call_counts = &self.dependencies.mcp_tool_call_counts;
 
         // task_execution_id はヘッダ欠落時 (手動呼び出し等) に None になる。その場合は
         // 呼び出し回数の追跡をスキップし、fail-open で検索を実行する。

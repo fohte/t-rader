@@ -2,56 +2,55 @@
 
 ## Tables
 
-| Name                                                                                        | Columns | Comment                                                                                | Type       |
-| ------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------- | ---------- |
-| [public.instruments](public.instruments.md)                                                 | 4       | 価格データの取得対象となる金融商品を管理する。                                         | BASE TABLE |
-| [public.bars](public.bars.md)                                                               | 8       | 銘柄ごとの日足価格と出来高を保持する。                                                 | BASE TABLE |
-| [public.strategy](public.strategy.md)                                                       | 6       | 投資判断と関連データを分けて管理する永続的な戦略ワークスペース。                       | BASE TABLE |
-| [public.sector](public.sector.md)                                                           | 2       | 銘柄が参照する業種を管理する。                                                         | BASE TABLE |
-| [public.stock](public.stock.md)                                                             | 7       | ノートや戦略などから参照する銘柄マスタ。                                               | BASE TABLE |
-| [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                     | BASE TABLE |
-| [public.note](public.note.md)                                                               | 8       | 戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。 | BASE TABLE |
-| [public.note_ref](public.note_ref.md)                                                       | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                           | BASE TABLE |
-| [public.annotation](public.annotation.md)                                                   | 14      | 戦略に属する銘柄などの対象へ付与したテキスト注釈を保持する。                           | BASE TABLE |
-| [public.comment](public.comment.md)                                                         | 13      | ノートやアノテーションに付けるコメントと返信を保持する。                               | BASE TABLE |
-| [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                     | BASE TABLE |
-| [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                               | BASE TABLE |
-| [public.strategy_task](public.strategy_task.md)                                             | 14      | 戦略に対して投入したエージェントタスクの内容と実行状態を記録する。                     | BASE TABLE |
-| [public.trigger](public.trigger.md)                                                         | 12      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                             | BASE TABLE |
-| [public.custom_indicator](public.custom_indicator.md)                                       | 10      | 共有または戦略ごとに定義する実行可能なカスタム指標。                                   | BASE TABLE |
-| [public.news_item](public.news_item.md)                                                     | 7       | RSS フィードなどから取得したニュース記事情報を保持する。                               | BASE TABLE |
-| [public.rss_feed](public.rss_feed.md)                                                       | 7       | ニュース取り込み元となる RSS フィードを管理する。                                      | BASE TABLE |
-| [public.strategy_investable_amount](public.strategy_investable_amount.md)                   | 5       | 戦略ごとに設定した投資可能額の履歴。                                                   | BASE TABLE |
-| [public.account_risk_policy](public.account_risk_policy.md)                                 | 3       | 口座全体に適用するリスク制限設定を保持する。                                           | BASE TABLE |
-| [public.agent_config](public.agent_config.md)                                               | 7       | purpose ごとのエージェント実行設定を保持する。                                         | BASE TABLE |
-| [public.strategy_task_step](public.strategy_task_step.md)                                   | 15      | エージェントタスクを構成する実行ステップの状態と結果を記録する。                       | BASE TABLE |
-| [public.strategy_task_step_evidence](public.strategy_task_step_evidence.md)                 | 8       | 実行ステップが取得したデータのスナップショットと時刻を記録する。                       | BASE TABLE |
-| [public.checkpoint](public.checkpoint.md)                                                   | 8       | 戦略・処理グラフごとに外部 stream の読み進め位置を保持する。                           | BASE TABLE |
-| [public.trade_note](public.trade_note.md)                                                   | 4       | 取引と関連ノートおよび関連付け時のノートバージョンを結び付ける。                       | BASE TABLE |
-| [public.mcp_tool_call_count](public.mcp_tool_call_count.md)                                 | 6       | タスク実行ごとの MCP ツール呼び出し数を追跡する。                                      | BASE TABLE |
-| [public.margin_interest](public.margin_interest.md)                                         | 15      | 銘柄ごとの信用取引残高を日付と銘柄区分別に保持する。                                   | BASE TABLE |
-| [public.margin_alert](public.margin_alert.md)                                               | 16      | 日々公表銘柄の信用取引残高情報を保持する。                                             | BASE TABLE |
-| [public.short_sale_report](public.short_sale_report.md)                                     | 14      | 銘柄別の空売り残高報告と報告者情報を保持する。                                         | BASE TABLE |
-| [public.short_ratio](public.short_ratio.md)                                                 | 5       | 33 業種ごとの売買代金を日付別に保持する。                                              | BASE TABLE |
-| [public.ref_term](public.ref_term.md)                                                       | 5       | 銘柄・指標・グループに対する別名を保持する。                                           | BASE TABLE |
-| [public.indicator_observation](public.indicator_observation.md)                             | 3       | 日付ごとの指標観測値を保持する。                                                       | BASE TABLE |
-| [public.jquants_daily_bars_ingested_date](public.jquants_daily_bars_ingested_date.md)       | 1       | 全銘柄の日足データを取り込んだ営業日を記録する。                                       | BASE TABLE |
-| [public.prediction](public.prediction.md)                                                   | 10      | 戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。                         | BASE TABLE |
-| [public.jquants_earnings_date](public.jquants_earnings_date.md)                             | 7       | 銘柄ごとの決算発表日と決算期情報を保持する。                                           | BASE TABLE |
-| [public.prediction_grade](public.prediction_grade.md)                                       | 9       | 予測期間の株価データから算出した予測の採点結果。                                       | BASE TABLE |
-| [public.valuation](public.valuation.md)                                                     | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                             | BASE TABLE |
-| [public.valuation_ingested_date](public.valuation_ingested_date.md)                         | 1       | 株価評価指標データの取り込み済み日付を記録する。                                       | BASE TABLE |
-| [public.note_kind](public.note_kind.md)                                                     | 5       | ノートの分類と、その分類に適用するレビュー設定を定義する。                             | BASE TABLE |
-| [public.note_version](public.note_version.md)                                               | 14      | ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。                     | BASE TABLE |
-| [public.note_link](public.note_link.md)                                                     | 3       | ノートバージョン本文から別のノートへのリンクを保持する。                               | BASE TABLE |
-| [public.financial_summary](public.financial_summary.md)                                     | 37      | 銘柄ごとの決算開示内容と業績予想を保持する。                                           | BASE TABLE |
-| [public.large_volume_shareholding_documents](public.large_volume_shareholding_documents.md) | 7       | EDINET の大量保有報告書と保有状況の明細を保持する。                                    | BASE TABLE |
-| [public.major_shareholder_documents](public.major_shareholder_documents.md)                 | 7       | EDINET の主要株主書類と順位付き株主情報を保持する。                                    | BASE TABLE |
-| [public.cross_shareholding_documents](public.cross_shareholding_documents.md)               | 7       | EDINET の政策保有株式に関する提出書類と明細を保持する。                                | BASE TABLE |
-| [public.group_axis](public.group_axis.md)                                                   | 5       | 銘柄グループを分類する軸を定義する。                                                   | BASE TABLE |
-| [public.stock_group](public.stock_group.md)                                                 | 5       | 分類軸の中で銘柄をまとめるグループを定義する。                                         | BASE TABLE |
-| [public.stock_group_member](public.stock_group_member.md)                                   | 3       | 銘柄と銘柄グループの所属関係を保持する。                                               | BASE TABLE |
-| [public.ingest_run](public.ingest_run.md)                                                   | 7       | データ取り込みジョブの実行履歴と結果を記録する。                                       | BASE TABLE |
+| Name                                                                                        | Columns | Comment                                                                                                | Type       |
+| ------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------ | ---------- |
+| [public.instruments](public.instruments.md)                                                 | 4       | 価格データの取得対象となる金融商品を管理する。                                                         | BASE TABLE |
+| [public.bars](public.bars.md)                                                               | 8       | 銘柄ごとの日足価格と出来高を保持する。                                                                 | BASE TABLE |
+| [public.strategy](public.strategy.md)                                                       | 6       | 投資判断と関連データを分けて管理する永続的な戦略ワークスペース。                                       | BASE TABLE |
+| [public.stock](public.stock.md)                                                             | 6       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。 | BASE TABLE |
+| [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                                     | BASE TABLE |
+| [public.note](public.note.md)                                                               | 8       | 戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。                 | BASE TABLE |
+| [public.note_ref](public.note_ref.md)                                                       | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                                           | BASE TABLE |
+| [public.annotation](public.annotation.md)                                                   | 14      | 戦略に属する銘柄などの対象へ付与したテキスト注釈を保持する。                                           | BASE TABLE |
+| [public.comment](public.comment.md)                                                         | 13      | ノートやアノテーションに付けるコメントと返信を保持する。                                               | BASE TABLE |
+| [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                                     | BASE TABLE |
+| [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                                               | BASE TABLE |
+| [public.strategy_task](public.strategy_task.md)                                             | 14      | 戦略に対して投入したエージェントタスクの内容と実行状態を記録する。                                     | BASE TABLE |
+| [public.trigger](public.trigger.md)                                                         | 12      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                                             | BASE TABLE |
+| [public.custom_indicator](public.custom_indicator.md)                                       | 10      | 共有または戦略ごとに定義する実行可能なカスタム指標。                                                   | BASE TABLE |
+| [public.news_item](public.news_item.md)                                                     | 7       | RSS フィードなどから取得したニュース記事情報を保持する。                                               | BASE TABLE |
+| [public.rss_feed](public.rss_feed.md)                                                       | 7       | ニュース取り込み元となる RSS フィードを管理する。                                                      | BASE TABLE |
+| [public.strategy_investable_amount](public.strategy_investable_amount.md)                   | 5       | 戦略ごとに設定した投資可能額の履歴。                                                                   | BASE TABLE |
+| [public.account_risk_policy](public.account_risk_policy.md)                                 | 3       | 口座全体に適用するリスク制限設定を保持する。                                                           | BASE TABLE |
+| [public.agent_config](public.agent_config.md)                                               | 7       | purpose ごとのエージェント実行設定を保持する。                                                         | BASE TABLE |
+| [public.strategy_task_step](public.strategy_task_step.md)                                   | 15      | エージェントタスクを構成する実行ステップの状態と結果を記録する。                                       | BASE TABLE |
+| [public.strategy_task_step_evidence](public.strategy_task_step_evidence.md)                 | 8       | 実行ステップが取得したデータのスナップショットと時刻を記録する。                                       | BASE TABLE |
+| [public.checkpoint](public.checkpoint.md)                                                   | 8       | 戦略・処理グラフごとに外部 stream の読み進め位置を保持する。                                           | BASE TABLE |
+| [public.trade_note](public.trade_note.md)                                                   | 4       | 取引と関連ノートおよび関連付け時のノートバージョンを結び付ける。                                       | BASE TABLE |
+| [public.mcp_tool_call_count](public.mcp_tool_call_count.md)                                 | 6       | タスク実行ごとの MCP ツール呼び出し数を追跡する。                                                      | BASE TABLE |
+| [public.margin_interest](public.margin_interest.md)                                         | 15      | 銘柄ごとの信用取引残高を日付と銘柄区分別に保持する。                                                   | BASE TABLE |
+| [public.margin_alert](public.margin_alert.md)                                               | 16      | 日々公表銘柄の信用取引残高情報を保持する。                                                             | BASE TABLE |
+| [public.short_sale_report](public.short_sale_report.md)                                     | 14      | 銘柄別の空売り残高報告と報告者情報を保持する。                                                         | BASE TABLE |
+| [public.short_ratio](public.short_ratio.md)                                                 | 5       | 33 業種ごとの売買代金を日付別に保持する。                                                              | BASE TABLE |
+| [public.ref_term](public.ref_term.md)                                                       | 5       | 銘柄・指標・グループに対する別名を保持する。                                                           | BASE TABLE |
+| [public.indicator_observation](public.indicator_observation.md)                             | 3       | 日付ごとの指標観測値を保持する。                                                                       | BASE TABLE |
+| [public.jquants_daily_bars_ingested_date](public.jquants_daily_bars_ingested_date.md)       | 1       | 全銘柄の日足データを取り込んだ営業日を記録する。                                                       | BASE TABLE |
+| [public.prediction](public.prediction.md)                                                   | 10      | 戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。                                         | BASE TABLE |
+| [public.jquants_earnings_date](public.jquants_earnings_date.md)                             | 7       | 銘柄ごとの決算発表日と決算期情報を保持する。                                                           | BASE TABLE |
+| [public.prediction_grade](public.prediction_grade.md)                                       | 9       | 予測期間の株価データから算出した予測の採点結果。                                                       | BASE TABLE |
+| [public.valuation](public.valuation.md)                                                     | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                                             | BASE TABLE |
+| [public.valuation_ingested_date](public.valuation_ingested_date.md)                         | 1       | 株価評価指標データの取り込み済み日付を記録する。                                                       | BASE TABLE |
+| [public.note_kind](public.note_kind.md)                                                     | 5       | ノートの分類と、その分類に適用するレビュー設定を定義する。                                             | BASE TABLE |
+| [public.note_version](public.note_version.md)                                               | 14      | ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。                                     | BASE TABLE |
+| [public.note_link](public.note_link.md)                                                     | 3       | ノートバージョン本文から別のノートへのリンクを保持する。                                               | BASE TABLE |
+| [public.financial_summary](public.financial_summary.md)                                     | 37      | 銘柄ごとの決算開示内容と業績予想を保持する。                                                           | BASE TABLE |
+| [public.large_volume_shareholding_documents](public.large_volume_shareholding_documents.md) | 7       | EDINET の大量保有報告書と保有状況の明細を保持する。                                                    | BASE TABLE |
+| [public.major_shareholder_documents](public.major_shareholder_documents.md)                 | 7       | EDINET の主要株主書類と順位付き株主情報を保持する。                                                    | BASE TABLE |
+| [public.cross_shareholding_documents](public.cross_shareholding_documents.md)               | 7       | EDINET の政策保有株式に関する提出書類と明細を保持する。                                                | BASE TABLE |
+| [public.group_axis](public.group_axis.md)                                                   | 5       | 銘柄グループを分類する軸を定義する。                                                                   | BASE TABLE |
+| [public.stock_group](public.stock_group.md)                                                 | 5       | 分類軸の中で銘柄をまとめるグループを定義する。                                                         | BASE TABLE |
+| [public.stock_group_member](public.stock_group_member.md)                                   | 3       | 銘柄と銘柄グループの所属関係を保持する。                                                               | BASE TABLE |
+| [public.ingest_run](public.ingest_run.md)                                                   | 7       | データ取り込みジョブの実行履歴と結果を記録する。                                                       | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -175,7 +174,6 @@
 erDiagram
 
 "public.bars" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
-"public.stock" }o--o| "public.sector" : "FOREIGN KEY (sector_id) REFERENCES sector(id) ON DELETE SET NULL"
 "public.note" }o--o| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.note" }o--o| "public.note_kind" : "FOREIGN KEY (kind) REFERENCES note_kind(key) ON DELETE RESTRICT"
 "public.note_ref" }o--|| "public.note" : "FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE"
@@ -231,15 +229,10 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }
-"public.sector" {
-  varchar id
-  varchar name
-}
 "public.stock" {
   varchar id
   varchar name
   varchar market
-  varchar sector_id FK
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   varchar product_category

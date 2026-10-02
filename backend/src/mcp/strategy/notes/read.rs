@@ -1,4 +1,4 @@
-use crate::services::graph::GraphDef;
+use super::super::graph_dto::GraphDef;
 use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot,
 };
@@ -7,7 +7,7 @@ use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
 use rmcp::ErrorData as McpError;
 
 use super::super::dto::{ListNotesParams, ListNotesResult, NoteDto, NoteLinkDto, ReadNoteParams};
-use super::super::{StrategyServer, app_error_to_mcp, clamp_limit, internal_error, invalid_params};
+use super::super::{StrategyServer, clamp_limit, internal_error, invalid_params};
 
 /// note_version.status の CHECK 制約と一致させる。
 const ALLOWED_NOTE_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -95,7 +95,7 @@ pub(crate) fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
             McpError::resource_not_found("note version not found", None)
         }
         NoteReadUseCaseError::Query(NoteReadQueryError::Database(error)) => {
-            app_error_to_mcp(error.into())
+            super::super::persistence_error_to_mcp(error)
         }
         NoteReadUseCaseError::Query(NoteReadQueryError::InvalidData(message)) => {
             internal_error(message)
@@ -110,12 +110,15 @@ impl StrategyServer {
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let scope = scope.into();
-        let use_cases = self.use_cases.note_reads();
-        let snapshot = use_cases
+        let snapshot = self
+            .dependencies
+            .note_reads
             .get_note(params.note_id, params.version_id, true, Some(scope))
             .await
             .map_err(note_read_error_to_mcp)?;
-        let links = use_cases
+        let links = self
+            .dependencies
+            .note_reads
             .find_links_from_version(snapshot.version.id)
             .await
             .map_err(note_read_error_to_mcp)?
@@ -144,8 +147,8 @@ impl StrategyServer {
 
         loop {
             let page = self
-                .use_cases
-                .note_reads()
+                .dependencies
+                .note_reads
                 .list_notes(
                     Some(scope),
                     NoteListQuery {
@@ -208,8 +211,8 @@ impl StrategyServer {
         }
 
         let page = self
-            .use_cases
-            .note_reads()
+            .dependencies
+            .note_reads
             .list_notes(
                 Some(scope),
                 NoteListQuery {

@@ -16,8 +16,8 @@ impl StrategyServer {
         params: ReadMacroIndicatorParams,
     ) -> Result<ReadMacroIndicatorResult, McpError> {
         let result = self
-            .use_cases
-            .indicator_observations()
+            .dependencies
+            .indicator_observations
             .read(
                 scope.into(),
                 IndicatorObservationQuery {

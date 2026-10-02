@@ -10,7 +10,6 @@ pub struct Model {
     pub id: String,
     pub name: String,
     pub market: Option<String>,
-    pub sector_id: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     pub product_category: Option<String>,
@@ -18,22 +17,8 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::sector::Entity",
-        from = "Column::SectorId",
-        to = "super::sector::Column::Id",
-        on_update = "NoAction",
-        on_delete = "SetNull"
-    )]
-    Sector,
     #[sea_orm(has_many = "super::stock_group_member::Entity")]
     StockGroupMember,
-}
-
-impl Related<super::sector::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Sector.def()
-    }
 }
 
 impl Related<super::stock_group_member::Entity> for Entity {

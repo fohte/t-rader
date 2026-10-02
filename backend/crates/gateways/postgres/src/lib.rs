@@ -5,6 +5,8 @@ use sea_orm::{
     IsolationLevel, QueryResult, Statement, TransactionError, TransactionOptions, TransactionTrait,
 };
 
+const JQUANTS_SYNC_SOURCE: &str = "jquants";
+
 extern crate self as gateway_postgres;
 
 mod account_risk_policy;

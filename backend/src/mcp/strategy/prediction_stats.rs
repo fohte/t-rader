@@ -14,8 +14,8 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
     ) -> Result<ReadPredictionStatsResult, McpError> {
         let stats = self
-            .use_cases
-            .predictions()
+            .dependencies
+            .predictions
             .stats(scope.into())
             .await
             .map_err(prediction_stats_error_to_mcp)?;

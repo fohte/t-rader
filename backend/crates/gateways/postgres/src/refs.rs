@@ -60,6 +60,12 @@ struct RefSearchRow {
     product_category: Option<String>,
 }
 
+#[derive(Debug, FromQueryResult)]
+struct StockSectorRow {
+    stock_id: String,
+    sector_id: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct PostgresRefRepository {
     db: DatabaseHandle,
@@ -83,19 +89,36 @@ impl RefRepository for PostgresRefRepository {
                     .add(stock::Column::Name.like(&pattern)),
             );
         }
-        find.limit(50)
+        let stocks = find
+            .limit(50)
             .all(&self.db)
             .await
-            .map(|rows| rows.into_iter().map(to_stock_ref).collect())
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        let ids = stocks
+            .iter()
+            .map(|stock| stock.id.clone())
+            .collect::<Vec<_>>();
+        let sectors = self.stock_sectors(&ids).await?;
+        Ok(stocks
+            .into_iter()
+            .map(|stock| {
+                let sector_id = sectors.get(&stock.id).cloned().flatten();
+                to_stock_ref(stock, sector_id)
+            })
+            .collect())
     }
 
     async fn find_stock(&self, id: &str) -> Result<Option<StockRef>, RefRepositoryError> {
-        stock::Entity::find_by_id(id.to_string())
+        let stock = stock::Entity::find_by_id(id.to_string())
             .one(&self.db)
             .await
-            .map(|row| row.map(to_stock_ref))
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        let Some(stock) = stock else {
+            return Ok(None);
+        };
+        let sectors = self.stock_sectors(std::slice::from_ref(&stock.id)).await?;
+        let sector_id = sectors.get(&stock.id).cloned().flatten();
+        Ok(Some(to_stock_ref(stock, sector_id)))
     }
 
     async fn stock_sectors(
@@ -105,16 +128,41 @@ impl RefRepository for PostgresRefRepository {
         if ids.is_empty() {
             return Ok(HashMap::new());
         }
-        stock::Entity::find()
-            .filter(stock::Column::Id.is_in(ids.to_vec()))
-            .all(&self.db)
+        let placeholders = (1..=ids.len())
+            .map(|index| format!("${index}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sync_source_placeholder = ids.len() + 1;
+        let sql = format!(
+            "SELECT s.id AS stock_id, \
+                    MIN(sg.key) FILTER (WHERE ga.id IS NOT NULL) AS sector_id \
+             FROM stock s \
+             LEFT JOIN stock_group_member sgm ON sgm.stock_id = s.id \
+             LEFT JOIN stock_group sg ON sg.id = sgm.group_id \
+             LEFT JOIN group_axis ga ON ga.id = sg.axis_id AND ga.sync_source = ${sync_source_placeholder} \
+             WHERE s.id IN ({placeholders}) \
+             GROUP BY s.id"
+        );
+        let mut values = ids
+            .iter()
+            .map(|id| id.clone().into())
+            .collect::<Vec<sea_orm::Value>>();
+        values.push(crate::JQUANTS_SYNC_SOURCE.to_owned().into());
+        self.db
+            .query_all_raw(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                sql,
+                values,
+            ))
             .await
-            .map(|rows| {
-                rows.into_iter()
-                    .map(|row| (row.id, row.sector_id))
-                    .collect()
+            .map_err(repository_error)?
+            .iter()
+            .map(|row| {
+                StockSectorRow::from_query_result(row, "")
+                    .map(|row| (row.stock_id, row.sector_id))
+                    .map_err(repository_error)
             })
-            .map_err(repository_error)
+            .collect()
     }
 
     async fn list_indicators(
@@ -314,12 +362,12 @@ fn repository_error(error: sea_orm::DbErr) -> RefRepositoryError {
     RefRepositoryError::Database(persistence_error(error))
 }
 
-fn to_stock_ref(model: stock::Model) -> StockRef {
+fn to_stock_ref(model: stock::Model, sector_id: Option<String>) -> StockRef {
     StockRef {
         id: model.id,
         name: model.name,
         market: model.market,
-        sector_id: model.sector_id,
+        sector_id,
         created_at: model.created_at,
         updated_at: model.updated_at,
         product_category: model.product_category,
@@ -344,7 +392,9 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
 
     use super::PostgresRefRepository;
-    use crate::entities::{group_axis, indicator, ref_term, sector, stock, stock_group};
+    use crate::entities::{
+        group_axis, indicator, ref_term, stock, stock_group, stock_group_member,
+    };
     use crate::unit_of_work::PostgresUnitOfWork;
     use uuid::Uuid;
 
@@ -377,29 +427,6 @@ mod tests {
             id: Set(id.into()),
             name: Set(name.into()),
             market: Set(None),
-            sector_id: Set(None),
-            product_category: Set(None),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("seed stock");
-    }
-
-    async fn seed_stock_with_sector(db: &impl sea_orm::ConnectionTrait, id: &str, sector_id: &str) {
-        sector::ActiveModel {
-            id: Set(sector_id.into()),
-            name: Set(sector_id.into()),
-        }
-        .insert(db)
-        .await
-        .expect("seed sector");
-        stock::ActiveModel {
-            id: Set(id.into()),
-            name: Set(id.into()),
-            market: Set(None),
-            sector_id: Set(Some(sector_id.into())),
             product_category: Set(None),
             created_at: NotSet,
             updated_at: NotSet,
@@ -425,20 +452,22 @@ mod tests {
         axis_key: &str,
         group_key: &str,
         name: &str,
-    ) -> String {
+        sync_source: Option<&str>,
+    ) -> (String, Uuid) {
         let axis_id = Uuid::new_v4();
         group_axis::ActiveModel {
             id: Set(axis_id),
             key: Set(axis_key.into()),
             name: Set("Sample Axis".into()),
             description: Set("Sample axis for tests".into()),
-            sync_source: Set(None),
+            sync_source: Set(sync_source.map(str::to_string)),
         }
         .insert(db)
         .await
         .expect("seed group axis");
+        let group_id = Uuid::new_v4();
         stock_group::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(group_id),
             axis_id: Set(axis_id),
             key: Set(group_key.into()),
             name: Set(name.into()),
@@ -447,13 +476,45 @@ mod tests {
         .insert(db)
         .await
         .expect("seed stock group");
-        format!("{axis_key}/{group_key}")
+        (format!("{axis_key}/{group_key}"), group_id)
+    }
+
+    async fn seed_membership(db: &impl sea_orm::ConnectionTrait, stock_id: &str, group_id: Uuid) {
+        stock_group_member::ActiveModel {
+            stock_id: Set(stock_id.into()),
+            group_id: Set(group_id),
+            created_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("seed group membership");
     }
 
     #[backend_test_macros::database_test]
-    async fn stock_sectors_returns_assignments_for_existing_stocks(db: crate::DatabaseHandle) {
-        seed_stock_with_sector(&db, "DEMO-STOCK-A", "DEMO-SECTOR").await;
+    async fn stock_sectors_returns_jquants_group_keys_and_ignores_other_axes(
+        db: crate::DatabaseHandle,
+    ) {
+        seed_stock(&db, "DEMO-STOCK-A", "Demo Stock A").await;
         seed_stock(&db, "DEMO-STOCK-B", "Demo Stock B").await;
+        let (_, industry_group_id) = seed_group(
+            &db,
+            "synthetic-jquants-axis",
+            "synthetic-industry",
+            "Sample Industry",
+            Some("jquants"),
+        )
+        .await;
+        let (_, manual_group_id) = seed_group(
+            &db,
+            "synthetic-manual-axis",
+            "synthetic-group",
+            "Sample Group",
+            None,
+        )
+        .await;
+        seed_membership(&db, "DEMO-STOCK-A", industry_group_id).await;
+        seed_membership(&db, "DEMO-STOCK-A", manual_group_id).await;
+        seed_membership(&db, "DEMO-STOCK-B", manual_group_id).await;
 
         let result = build_use_cases(db)
             .stock_sectors(&[
@@ -467,7 +528,7 @@ mod tests {
         assert_eq!(
             result,
             std::collections::HashMap::from([
-                ("DEMO-STOCK-A".into(), Some("DEMO-SECTOR".into())),
+                ("DEMO-STOCK-A".into(), Some("synthetic-industry".into())),
                 ("DEMO-STOCK-B".into(), None),
             ]),
         );
@@ -512,8 +573,9 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn resolve_looks_up_group_by_axis_and_group_keys(db: crate::DatabaseHandle) {
-        seed_group(&db, "demo-axis-a", "demo-group", "Other Group").await;
-        let group_id = seed_group(&db, "demo-axis-b", "demo-group", "Sample Group").await;
+        seed_group(&db, "demo-axis-a", "demo-group", "Other Group", None).await;
+        let (group_id, _) =
+            seed_group(&db, "demo-axis-b", "demo-group", "Sample Group", None).await;
 
         let result = build_use_cases(db)
             .resolve(&[("group".into(), group_id.clone())])
