@@ -9,7 +9,7 @@ use super::MgmtServer;
 use super::dto::{
     AnnotationMeta, ListRecentAnnotationsResult, ListRecentNotesResult, ListRecentParams, NoteMeta,
 };
-use super::{clamp_limit, internal_error, invalid_params, map_app_error};
+use super::{clamp_limit, internal_error, invalid_params, map_persistence_error};
 
 fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
     match error {
@@ -34,7 +34,7 @@ fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
             McpError::resource_not_found("note version not found", None)
         }
         NoteReadUseCaseError::Query(NoteReadQueryError::Database(error)) => {
-            map_app_error(error.into())
+            map_persistence_error(error)
         }
         NoteReadUseCaseError::Query(NoteReadQueryError::InvalidData(message)) => {
             internal_error(message)
@@ -49,8 +49,8 @@ impl MgmtServer {
     ) -> Result<ListRecentNotesResult, McpError> {
         let limit = clamp_limit(params.limit);
         let page = self
-            .use_cases
-            .note_reads()
+            .dependencies
+            .note_reads
             .list_notes(
                 None,
                 NoteListQuery {
@@ -83,13 +83,13 @@ impl MgmtServer {
     ) -> Result<ListRecentAnnotationsResult, McpError> {
         let limit = clamp_limit(params.limit);
         let rows = self
-            .use_cases
-            .annotation_reads()
+            .dependencies
+            .annotation_reads
             .list_recent_annotations(params.strategy_id, limit)
             .await
             .map_err(|error| match error {
                 AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {
-                    map_app_error(error.into())
+                    map_persistence_error(error)
                 }
                 other => internal_error(format!("{other}")),
             })?;

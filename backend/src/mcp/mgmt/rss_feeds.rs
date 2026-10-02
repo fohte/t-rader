@@ -13,8 +13,8 @@ impl MgmtServer {
         params: ListRssFeedsParams,
     ) -> Result<ListRssFeedsResult, McpError> {
         let rows = self
-            .use_cases
-            .rss_feeds()
+            .dependencies
+            .rss_feeds
             .list(params.enabled_only.unwrap_or(false))
             .await
             .map_err(map_rss_feed_error)?;
@@ -60,8 +60,8 @@ mod tests {
     async fn list_rss_feeds_returns_configured_feeds(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
         server
-            .use_cases
-            .rss_feeds()
+            .dependencies
+            .rss_feeds
             .create(CreateRssFeedCommand {
                 source: "sample-newswire".into(),
                 display_name: "Sample Newswire".into(),

@@ -9,16 +9,17 @@ pub mod strategy;
 #[cfg(test)]
 pub mod watcher;
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
 use crate::services::use_cases::UseCases;
 use axum::Router;
+use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::strategy_task::DEADLINE_DURATION;
-pub use mgmt::MgmtServer;
+pub use mgmt::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
@@ -36,14 +37,19 @@ pub fn router(
     litellm_client: Option<SharedLlmClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
-    let mgmt_use_cases = use_cases.clone();
+    let mgmt_dependencies = MgmtDependencies {
+        strategies: use_cases.strategies(),
+        strategy_scope: Arc::new(use_cases.strategy_scope()),
+        strategy_tasks: use_cases.strategy_tasks(),
+        triggers: use_cases.triggers(),
+        note_kinds: use_cases.note_kinds(),
+        note_reads: use_cases.note_reads(),
+        annotation_reads: use_cases.annotation_reads(),
+        rss_feeds: use_cases.rss_feeds(),
+        agent_client,
+    };
     let mgmt = StreamableHttpService::new(
-        move || {
-            Ok(MgmtServer::new(
-                mgmt_use_cases.clone(),
-                agent_client.clone(),
-            ))
-        },
+        move || Ok(MgmtServer::new(mgmt_dependencies.clone())),
         session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
