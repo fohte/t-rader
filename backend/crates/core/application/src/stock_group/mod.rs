@@ -10,7 +10,10 @@ pub use error::StockGroupUseCaseError;
 pub use repository::{
     GroupAxis, SharedStockGroupRepository, StockGroupRepository, StockGroupRepositoryError,
 };
-pub use types::{CreateStockGroupCommand, NewStockGroup, StockGroup, UpdateStockGroupCommand};
+pub use types::{
+    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupMembership,
+    UpdateStockGroupCommand,
+};
 pub use use_cases::StockGroupUseCases;
 
 #[cfg(feature = "test-support")]

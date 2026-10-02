@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{NewStockGroup, StockGroup};
+use super::types::{NewStockGroup, StockGroup, StockGroupMembership};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupAxis {
@@ -61,6 +61,13 @@ pub trait StockGroupRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         group_id: Uuid,
     ) -> Result<Vec<String>, StockGroupRepositoryError>;
+
+    async fn list_memberships(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        stock_ids: &[String],
+        axis_keys: &[String],
+    ) -> Result<Vec<StockGroupMembership>, StockGroupRepositoryError>;
 
     async fn add_stock(
         &self,

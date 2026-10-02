@@ -61,8 +61,39 @@ terraform -chdir="$workspace" plan -input=false -no-color -detailed-exitcode
 rm "$workspace/strategy.tf"
 terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
 
+cat > "$workspace/risk-limit.tf" << EOF
+resource "trader_group_axis" "integration" {
+  key         = "sample-axis"
+  name        = "Synthetic axis"
+  description = "Axis for testing Terraform risk limit planning."
+}
+
+resource "trader_risk_limit" "integration" {
+  max_group_ratios = [{
+    axis  = trader_group_axis.integration.key
+    ratio = 0.25
+  }]
+}
+EOF
+terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
+
+cat > "$workspace/risk-limit.tf" << EOF
+resource "trader_group_axis" "integration" {
+  key         = "sample-axis"
+  name        = "Synthetic axis"
+  description = "Axis for testing Terraform risk limit planning."
+}
+
+resource "trader_risk_limit" "integration" {}
+EOF
+terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
+terraform -chdir="$workspace" plan -input=false -no-color -detailed-exitcode
+
+rm "$workspace/risk-limit.tf"
+terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
+
 remaining_resources="$(terraform -chdir="$workspace" state list)"
 if [[ -n "$remaining_resources" ]]; then
-  printf 'Expected empty Terraform state after deleting the strategy, got:\n%s\n' "$remaining_resources" >&2
+  printf 'Expected empty Terraform state after deleting test resources, got:\n%s\n' "$remaining_resources" >&2
   exit 1
 fi

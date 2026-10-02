@@ -7,7 +7,7 @@ use super::{WEEKLY_TIMEOUT, run_with_ingest_run_log_state};
 pub struct PredictionGrading;
 
 impl TaskHandler for PredictionGrading {
-    const IDENTIFIER: &'static str = "prediction_grading";
+    const IDENTIFIER: &'static str = core_application::ingest_status::PREDICTION_GRADING_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(

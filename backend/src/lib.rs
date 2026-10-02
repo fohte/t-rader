@@ -35,7 +35,7 @@ use crate::error::{AppError, ErrorResponse};
 pub use crate::handlers::state::{AgentTaskNotificationsState, AppState, ExternalHookState};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, group_axes, history, hooks, imports, note_kinds, note_links,
+    custom_indicators, group_axes, history, hooks, imports, ingest_status, note_kinds, note_links,
     note_predictions, note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks,
     trade_notes, trades, triggers,
 };
@@ -117,6 +117,7 @@ pub fn build_http_state(
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
         (name = "group_axes", description = "銘柄を分類する軸"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
+        (name = "ingest_status", description = "取り込み job の状態"),
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
         (name = "config", description = "frontend 向けランタイム設定値"),
         (name = "account", description = "口座全体の設定"),
@@ -139,6 +140,7 @@ struct HealthResponse {
 /// OpenAPI ルート定義を構築する
 fn build_openapi_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .routes(routes!(ingest_status::get_ingest_status))
         .routes(routes!(bars::list_bars))
         // strategies
         .routes(routes!(

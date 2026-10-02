@@ -12,7 +12,7 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct ValuationIngest;
 
 impl TaskHandler for ValuationIngest {
-    const IDENTIFIER: &'static str = "valuation_ingest";
+    const IDENTIFIER: &'static str = core_application::ingest_status::VALUATION_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
         run_with_ingest_run_log_state(
