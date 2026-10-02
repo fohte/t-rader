@@ -66,6 +66,26 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             .map_err(repository_error)
     }
 
+    async fn find_sync_source_codes(
+        &self,
+        unit_of_work: &UnitOfWorkTransaction,
+        sync_source: &str,
+        group_key: &str,
+    ) -> Result<Vec<Option<String>>, StockGroupRepositoryError> {
+        let transaction =
+            transaction_ref(unit_of_work).ok_or(StockGroupRepositoryError::InvalidTransaction)?;
+        stock_group::Entity::find()
+            .join(JoinType::InnerJoin, stock_group::Relation::GroupAxis.def())
+            .select_only()
+            .column(stock_group::Column::SyncSourceCode)
+            .filter(group_axis::Column::SyncSource.eq(sync_source))
+            .filter(stock_group::Column::Key.eq(group_key))
+            .into_tuple::<Option<String>>()
+            .all(transaction)
+            .await
+            .map_err(repository_error)
+    }
+
     async fn insert_group(
         &self,
         unit_of_work: &UnitOfWorkTransaction,
@@ -79,6 +99,7 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             key: Set(group.key),
             name: Set(group.name),
             description: Set(group.description),
+            sync_source_code: Set(None),
         })
         .exec_with_returning(transaction)
         .await
@@ -99,6 +120,7 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             key: Unchanged(group.key),
             name: Set(group.name),
             description: Set(group.description),
+            sync_source_code: NotSet,
         }
         .update(transaction)
         .await

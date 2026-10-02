@@ -521,6 +521,7 @@ pub struct MockEquitiesMasterEntry {
     pub company_name: &'static str,
     pub market_name: Option<&'static str>,
     pub sector_name: Option<&'static str>,
+    pub sector_code: Option<&'static str>,
     pub product_category: Option<&'static str>,
 }
 
@@ -546,6 +547,7 @@ impl<'a> MockEquitiesMasterBuilder<'a> {
                     "CoName": e.company_name,
                     "MktNm": e.market_name,
                     "S33Nm": e.sector_name,
+                    "S33": e.sector_code,
                     "ProdCat": e.product_category,
                 })
             })

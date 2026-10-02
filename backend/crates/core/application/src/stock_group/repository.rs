@@ -38,6 +38,13 @@ pub trait StockGroupRepository: Send + Sync {
         group_key: &str,
     ) -> Result<Option<StockGroup>, StockGroupRepositoryError>;
 
+    async fn find_sync_source_codes(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        sync_source: &str,
+        group_key: &str,
+    ) -> Result<Vec<Option<String>>, StockGroupRepositoryError>;
+
     async fn insert_group(
         &self,
         transaction: &UnitOfWorkTransaction,

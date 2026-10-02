@@ -1,6 +1,14 @@
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StockGroupSyncSourceCodeLookup {
+    NotFound,
+    Missing,
+    Found(String),
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StockGroupMembership {
     pub axis_key: String,
     pub group_key: String,

@@ -1,4 +1,5 @@
 use serde_json::{Map, Value, json};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
@@ -9,7 +10,7 @@ use super::error::StockGroupUseCaseError;
 use super::repository::{GroupAxis, SharedStockGroupRepository, StockGroupRepositoryError};
 use super::types::{
     CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupMembership,
-    UpdateStockGroupCommand,
+    StockGroupSyncSourceCodeLookup, UpdateStockGroupCommand,
 };
 
 #[derive(Clone)]
@@ -146,6 +147,35 @@ impl StockGroupUseCases {
             .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(stock_ids)
+    }
+
+    pub async fn find_sync_source_code(
+        &self,
+        sync_source: &str,
+        group_key: &str,
+    ) -> Result<StockGroupSyncSourceCodeLookup, StockGroupUseCaseError> {
+        let transaction = self.unit_of_work.begin().await?;
+        let codes = self
+            .repository
+            .find_sync_source_codes(&transaction, sync_source, group_key)
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
+
+        if codes.is_empty() {
+            return Ok(StockGroupSyncSourceCodeLookup::NotFound);
+        }
+        if codes.iter().any(Option::is_none) {
+            return Ok(StockGroupSyncSourceCodeLookup::Missing);
+        }
+
+        let unique_codes = codes.into_iter().flatten().collect::<HashSet<_>>();
+        if unique_codes.len() != 1 {
+            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
+        }
+        let Some(code) = unique_codes.into_iter().next() else {
+            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
+        };
+        Ok(StockGroupSyncSourceCodeLookup::Found(code))
     }
 
     pub async fn list_memberships(

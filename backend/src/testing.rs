@@ -259,6 +259,7 @@ async fn insert_test_group_with_sync_source(
         key: Set(group_key.into()),
         name: Set(name.into()),
         description: Set(None),
+        sync_source_code: Set(None),
     }
     .insert(db)
     .await

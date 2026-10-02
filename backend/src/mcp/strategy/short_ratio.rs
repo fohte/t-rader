@@ -1,14 +1,15 @@
 //! 戦略実行 MCP の `read_sector_short_ratio` tool。`short_ratio` (J-Quants
-//! `/markets/short-ratio` の業種別空売り比率) を業種名・期間で読む。
+//! `/markets/short-ratio` の業種別空売り比率) をグループ key・期間で読む。
 //!
 //! tool の入力は `sync_source = 'jquants'` の分類軸にあるグループ key で受け取る。
-//! `short_ratio.sector33_code` は市場データ側の 33 業種コードのため、グループ key から
-//! 対応するコードを引く表をここに持つ。
+//! `short_ratio.sector33_code` は市場データ側のコードのため、対応する同期元コードを
+//! stock_group から取得する。
 //! 空売り比率の定義 (空売り (価格規制あり+なし) の売買代金 / 実注文と空売りを合わせた
 //! 売買代金) は JPX の空売り集計公表ページに基づく。戦略に属さない市場データのため
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
 use core_application::short_ratio::ShortRatioQuery;
+use core_application::stock_group::StockGroupSyncSourceCodeLookup;
 use core_application::strategy_scope::StrategyScope;
 use core_domain::short_ratio::ShortRatio;
 use rmcp::ErrorData as McpError;
@@ -17,51 +18,7 @@ use rust_decimal::Decimal;
 use super::dto::{ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto};
 use super::{StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params};
 
-/// 33 業種名 -> 33 業種コード。
-/// https://jpx-jquants.com/ja/spec/eq-master/sector33code
-const SECTOR33_CODES: &[(&str, &str)] = &[
-    ("水産・農林業", "0050"),
-    ("鉱業", "1050"),
-    ("建設業", "2050"),
-    ("食料品", "3050"),
-    ("繊維製品", "3100"),
-    ("パルプ・紙", "3150"),
-    ("化学", "3200"),
-    ("医薬品", "3250"),
-    ("石油･石炭製品", "3300"),
-    ("ゴム製品", "3350"),
-    ("ガラス･土石製品", "3400"),
-    ("鉄鋼", "3450"),
-    ("非鉄金属", "3500"),
-    ("金属製品", "3550"),
-    ("機械", "3600"),
-    ("電気機器", "3650"),
-    ("輸送用機器", "3700"),
-    ("精密機器", "3750"),
-    ("その他製品", "3800"),
-    ("電気･ガス業", "4050"),
-    ("陸運業", "5050"),
-    ("海運業", "5100"),
-    ("空運業", "5150"),
-    ("倉庫･運輸関連業", "5200"),
-    ("情報･通信業", "5250"),
-    ("卸売業", "6050"),
-    ("小売業", "6100"),
-    ("銀行業", "7050"),
-    ("証券･商品先物取引業", "7100"),
-    ("保険業", "7150"),
-    ("その他金融業", "7200"),
-    ("不動産業", "8050"),
-    ("サービス業", "9050"),
-    ("その他", "9999"),
-];
-
-fn sector33_code_for_group_key(group_key: &str) -> Option<&'static str> {
-    SECTOR33_CODES
-        .iter()
-        .find(|(name, _)| *name == group_key)
-        .map(|(_, code)| *code)
-}
+const JQUANTS_SYNC_SOURCE: &str = "jquants";
 
 /// 空売り比率 = 空売り (価格規制あり+なし) の売買代金 / (実注文+空売り) の売買代金合計。
 /// いずれかが null (売買が無い日) なら null。合計が 0 のときも 0 除算を避けて null にする。
@@ -103,12 +60,36 @@ impl StrategyServer {
         params: ReadSectorShortRatioParams,
     ) -> Result<ReadSectorShortRatioResult, McpError> {
         let scope = scope.into();
-        let sector33_code = sector33_code_for_group_key(&params.sector).ok_or_else(|| {
-            invalid_params(format!(
-                "unknown J-Quants industry group key: {:?}",
-                params.sector
-            ))
-        })?;
+        let sector33_code = self
+            .dependencies
+            .stock_groups
+            .find_sync_source_code(JQUANTS_SYNC_SOURCE, &params.sector)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "strategy mcp stock group lookup failed");
+                internal_error(format!("database error: {error}"))
+            })?;
+        let sector33_code = match sector33_code {
+            StockGroupSyncSourceCodeLookup::NotFound => {
+                return Err(invalid_params(format!(
+                    "unknown J-Quants industry group key: {:?}",
+                    params.sector
+                )));
+            }
+            StockGroupSyncSourceCodeLookup::Missing => {
+                return Err(internal_error(format!(
+                    "J-Quants code for industry group {:?} is not synchronized yet",
+                    params.sector
+                )));
+            }
+            StockGroupSyncSourceCodeLookup::Found(code) => code,
+            StockGroupSyncSourceCodeLookup::Ambiguous => {
+                return Err(internal_error(format!(
+                    "J-Quants code for industry group {:?} is ambiguous",
+                    params.sector
+                )));
+            }
+        };
         let limit = clamp_limit(params.limit);
         let rows = self
             .dependencies
@@ -116,7 +97,7 @@ impl StrategyServer {
             .read(
                 scope,
                 ShortRatioQuery {
-                    sector33_code: sector33_code.to_string(),
+                    sector33_code,
                     from: params.from,
                     to: params.to,
                     limit,
@@ -142,16 +123,18 @@ mod tests {
     use core_domain::short_ratio::ShortRatio;
     use rstest::rstest;
     use rust_decimal::Decimal;
-    use sea_orm::{DatabaseBackend, MockDatabase};
+    use sea_orm::ActiveValue::Set;
+    use sea_orm::EntityTrait;
     use uuid::Uuid;
 
+    use gateway_postgres::entities::{group_axis, stock_group};
     use gateway_postgres::{DatabaseHandle, PostgresShortRatioRepository};
 
     use super::super::dto::{
         ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto,
     };
     use super::super::tests_common::build_server;
-    use super::{compute_short_ratio, sector33_code_for_group_key};
+    use super::compute_short_ratio;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -182,13 +165,28 @@ mod tests {
         }
     }
 
-    #[rstest]
-    #[case::plain_name("輸送用機器", Some("3700"))]
-    #[case::halfwidth_dot_name("石油･石炭製品", Some("3300"))]
-    #[case::catch_all("その他", Some("9999"))]
-    #[case::unknown("合成業種", None)]
-    fn sector33_code_for_group_key_cases(#[case] group_key: &str, #[case] expected: Option<&str>) {
-        assert_eq!(sector33_code_for_group_key(group_key), expected);
+    async fn insert_jquants_group(db: &DatabaseHandle, group_key: &str, source_code: Option<&str>) {
+        let axis = group_axis::Entity::insert(group_axis::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            key: Set("sample-jquants-axis".into()),
+            name: Set("Sample synchronized axis".into()),
+            description: Set("Synthetic test axis".into()),
+            sync_source: Set(Some("jquants".into())),
+        })
+        .exec_with_returning(db)
+        .await
+        .expect("insert group axis");
+        stock_group::Entity::insert(stock_group::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            axis_id: Set(axis.id),
+            key: Set(group_key.into()),
+            name: Set(group_key.into()),
+            description: Set(None),
+            sync_source_code: Set(source_code.map(str::to_owned)),
+        })
+        .exec_without_returning(db)
+        .await
+        .expect("insert stock group");
     }
 
     #[rstest]
@@ -207,9 +205,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn rejects_unknown_group_key() {
-        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
+    #[backend_test_macros::database_test]
+    async fn rejects_unknown_group_key(db: DatabaseHandle) {
         let error = build_server(db)
             .read_sector_short_ratio_inner(
                 Uuid::new_v4(),
@@ -233,12 +230,38 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn reports_when_group_code_has_not_been_synchronized(db: DatabaseHandle) {
+        insert_jquants_group(&db, "その他", None).await;
+        let error = build_server(db)
+            .read_sector_short_ratio_inner(
+                Uuid::new_v4(),
+                ReadSectorShortRatioParams {
+                    sector: "その他".into(),
+                    from: None,
+                    to: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect_err("missing synchronized code should be reported");
+
+        assert_eq!(
+            (error.code, error.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INTERNAL_ERROR,
+                "J-Quants code for industry group \"その他\" is not synchronized yet",
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn reads_sector_rows_and_maps_values_to_result(db: DatabaseHandle) {
+        insert_jquants_group(&db, "その他", Some("1234")).await;
         PostgresShortRatioRepository::new(db.clone())
             .upsert(vec![
-                ratio(ymd(2025, 1, 5), "9999", Some(("700", "200", "100"))),
-                ratio(ymd(2025, 1, 6), "9999", None),
-                ratio(ymd(2025, 1, 6), "9050", Some(("100", "50", "50"))),
+                ratio(ymd(2025, 1, 5), "1234", Some(("700", "200", "100"))),
+                ratio(ymd(2025, 1, 6), "1234", None),
+                ratio(ymd(2025, 1, 6), "5678", Some(("100", "50", "50"))),
             ])
             .await
             .expect("seed short ratios");
