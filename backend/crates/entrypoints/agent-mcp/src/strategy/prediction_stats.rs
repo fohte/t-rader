@@ -1,4 +1,4 @@
-//! 自戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する読み取り専用 tool。
+//! 採点済み予測を Brier score と確率刻みごとの的中率で集計する読み取り専用 tool。
 
 use core_application::prediction::{PredictionRepositoryError, PredictionUseCaseError};
 use core_application::strategy_scope::StrategyScope;
@@ -43,9 +43,6 @@ fn prediction_stats_error_to_mcp(error: PredictionUseCaseError) -> McpError {
             format!("prediction stats validation failed: {message}")
         }
         PredictionUseCaseError::NoteNotFound(note_id) => format!("note {note_id} not found"),
-        PredictionUseCaseError::Forbidden(note_id) => {
-            format!("note {note_id} belongs to another strategy")
-        }
         PredictionUseCaseError::Repository(PredictionRepositoryError::Database(error))
         | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {

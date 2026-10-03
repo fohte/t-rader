@@ -1,4 +1,4 @@
-// backend の thiserror 文言 (backend/src/services/agent_graph.rs の
+// backend の thiserror 文言 (backend/crates/core/application/src/agent_config/graph.rs の
 // `AgentGraphError` 各 `#[error(...)]`) にパターンマッチしている。文言が変わると phase
 // 特定は静かに壊れる (エラー自体は消えず、カードへの紐付けだけが外れる)。
 const PHASE_KEY_PATTERN = /^phase(?: key)? "([^"]+)"/

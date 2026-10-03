@@ -159,7 +159,7 @@ pub struct NoteLinkDto {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
-    pub strategy_id: Uuid,
+    pub strategy_id: Option<Uuid>,
     pub version_id: Uuid,
     pub version_no: i32,
     pub title: String,
@@ -205,7 +205,7 @@ pub struct CreateAnnotationParams {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct AnnotationDto {
     pub annotation_id: Uuid,
-    pub strategy_id: Uuid,
+    pub strategy_id: Option<Uuid>,
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,

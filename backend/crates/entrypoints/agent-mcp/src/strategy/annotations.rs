@@ -1,6 +1,6 @@
 //! アノテーション操作の inner method 実装。
 //!
-//! 戦略境界の検証はユースケースが担う。
+//! 作成時は実行中の戦略を記録し、読み取りは全戦略を対象にする。
 
 use core_application::annotation::{
     AnnotationListQuery, AnnotationReadQueryError, AnnotationReadUseCaseError,
@@ -25,19 +25,10 @@ fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
     Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
 }
 
-/// 戦略 MCP の annotation は strategy 所属が必須なので、欠落時は明示的に失敗させる。
-fn annotation_use_case_to_dto(
-    m: core_application::annotation::Annotation,
-) -> Result<AnnotationDto, McpError> {
-    let strategy_id = m.strategy_id.ok_or_else(|| {
-        internal_error(format!(
-            "annotation {} has no strategy_id despite session scoping",
-            m.id
-        ))
-    })?;
-    Ok(AnnotationDto {
+fn annotation_use_case_to_dto(m: core_application::annotation::Annotation) -> AnnotationDto {
+    AnnotationDto {
         annotation_id: m.id,
-        strategy_id,
+        strategy_id: m.strategy_id,
         target_symbol: m.target_symbol,
         target_kind: m.target_kind,
         timestamp: m.timestamp,
@@ -48,7 +39,7 @@ fn annotation_use_case_to_dto(
         created_by_kind: m.created_by_kind,
         created_at: m.created_at,
         updated_at: m.updated_at,
-    })
+    }
 }
 
 impl StrategyServer {
@@ -82,13 +73,12 @@ impl StrategyServer {
             .await
             .map_err(annotation_use_case_error)?;
         Ok(CreateAnnotationResult {
-            annotation: annotation_use_case_to_dto(created)?,
+            annotation: annotation_use_case_to_dto(created),
         })
     }
 
     pub(crate) async fn read_annotations_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: ReadAnnotationsParams,
     ) -> Result<ReadAnnotationsResult, McpError> {
         let query = AnnotationListQuery {
@@ -104,14 +94,14 @@ impl StrategyServer {
         let annotations = self
             .dependencies
             .annotation_reads
-            .list_annotations(query, Some(scope.into()))
+            .list_annotations(query)
             .await
             .map_err(annotation_read_error_to_mcp)?;
         Ok(ReadAnnotationsResult {
             annotations: annotations
                 .into_iter()
                 .map(annotation_use_case_to_dto)
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect(),
         })
     }
 }
@@ -121,9 +111,6 @@ pub(super) fn annotation_read_error_to_mcp(error: AnnotationReadUseCaseError) ->
         AnnotationReadUseCaseError::NotFound(_) => {
             McpError::resource_not_found("annotation not found", None)
         }
-        AnnotationReadUseCaseError::Forbidden(id) => invalid_params(format!(
-            "forbidden: annotation {id} belongs to another strategy"
-        )),
         AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {
             super::persistence_error_to_mcp(error)
         }
@@ -139,12 +126,59 @@ fn annotation_use_case_error(error: AnnotationUseCaseError) -> McpError {
         AnnotationUseCaseError::LinkedNoteNotFound(_) => {
             McpError::resource_not_found("note not found", None)
         }
-        AnnotationUseCaseError::ScopeMismatch => {
-            invalid_params("annotation belongs to a different strategy")
-        }
         other => {
             tracing::error!(error = %other, "strategy mcp annotation operation failed");
             internal_error(format!("database error: {other}"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::DateTime;
+    use core_application::annotation::Annotation;
+    use uuid::Uuid;
+
+    use super::{AnnotationDto, annotation_use_case_to_dto};
+
+    #[test]
+    fn annotation_dto_preserves_missing_strategy_id() {
+        let id = Uuid::nil();
+        let timestamp =
+            DateTime::parse_from_rfc3339("2000-01-01T00:00:00+00:00").expect("valid timestamp");
+        let actual = annotation_use_case_to_dto(Annotation {
+            id,
+            strategy_id: None,
+            target_symbol: "demo-code".into(),
+            target_kind: "stock".into(),
+            timestamp,
+            price: None,
+            text: "Example annotation".into(),
+            status: "unread".into(),
+            linked_note_id: None,
+            created_by_kind: "human".into(),
+            created_at: timestamp,
+            updated_at: timestamp,
+            execution_step_id: None,
+            execution_task_id: None,
+        });
+
+        assert_eq!(
+            actual,
+            AnnotationDto {
+                annotation_id: id,
+                strategy_id: None,
+                target_symbol: "demo-code".into(),
+                target_kind: "stock".into(),
+                timestamp,
+                price: None,
+                text: "Example annotation".into(),
+                status: "unread".into(),
+                linked_note_id: None,
+                created_by_kind: "human".into(),
+                created_at: timestamp,
+                updated_at: timestamp,
+            }
+        );
     }
 }

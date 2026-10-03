@@ -237,3 +237,119 @@ fn version_matches_reference(
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use core_application::note::{NoteListQuery, NoteReadQuery};
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ActiveModelTrait, EntityTrait};
+    use uuid::Uuid;
+
+    use super::super::PostgresNoteReadQuery;
+    use crate::DatabaseHandle;
+    use crate::entities::{note, note_version, strategy};
+
+    #[backend_test_macros::database_test]
+    async fn list_without_strategy_filter_includes_other_strategies_and_unscoped_notes(
+        db: DatabaseHandle,
+    ) {
+        let strategy_a = insert_strategy(&db, "strategy-a").await;
+        let strategy_b = insert_strategy(&db, "strategy-b").await;
+        let strategy_note_id = insert_note(&db, Some(strategy_a)).await;
+        let other_strategy_note_id = insert_note(&db, Some(strategy_b)).await;
+        let unscoped_note_id = insert_note(&db, None).await;
+        let query = PostgresNoteReadQuery::new(db);
+
+        let current = query
+            .list_notes(NoteListQuery {
+                strategy_id: None,
+                ..Default::default()
+            })
+            .await
+            .expect("list current notes without a strategy filter");
+        let including_pending = query
+            .list_notes(NoteListQuery {
+                strategy_id: None,
+                include_pending: true,
+                ..Default::default()
+            })
+            .await
+            .expect("list notes including pending without a strategy filter");
+
+        let normalize = |notes: Vec<core_application::note::NoteSnapshot>| {
+            let mut notes = notes
+                .into_iter()
+                .map(|snapshot| (snapshot.note.id, snapshot.note.strategy_id))
+                .collect::<Vec<_>>();
+            notes.sort_by_key(|(id, _)| *id);
+            notes
+        };
+        let expected = {
+            let mut notes = vec![
+                (strategy_note_id, Some(strategy_a)),
+                (other_strategy_note_id, Some(strategy_b)),
+                (unscoped_note_id, None),
+            ];
+            notes.sort_by_key(|(id, _)| *id);
+            notes
+        };
+
+        assert_eq!(
+            (normalize(current.notes), normalize(including_pending.notes)),
+            (expected.clone(), expected),
+        );
+    }
+
+    async fn insert_strategy(db: &DatabaseHandle, name: &str) -> Uuid {
+        let id = Uuid::new_v4();
+        strategy::ActiveModel {
+            id: Set(id),
+            name: Set(name.to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("insert test strategy");
+        id
+    }
+
+    async fn insert_note(db: &DatabaseHandle, strategy_id: Option<Uuid>) -> Uuid {
+        let note_id = Uuid::new_v4();
+        note::Entity::insert(note::ActiveModel {
+            id: Set(note_id),
+            strategy_id: Set(strategy_id),
+            kind: Set(None),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+            execution_id: Set(None),
+        })
+        .exec_without_returning(db)
+        .await
+        .expect("insert test note");
+        note_version::Entity::insert(note_version::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            note_id: Set(note_id),
+            version_no: Set(1),
+            title: Set("sample note".to_string()),
+            body_md: Set("sample body".to_string()),
+            frontmatter_json: Set(serde_json::json!({})),
+            graphs_json: Set(serde_json::json!([])),
+            status: Set("approved".to_string()),
+            is_current: Set(true),
+            change_reason: Set(None),
+            created_by_kind: Set("human".to_string()),
+            execution_id: Set(None),
+            created_at: NotSet,
+            reviewed_at: Set(None),
+        })
+        .exec_without_returning(db)
+        .await
+        .expect("insert test note version");
+        note_id
+    }
+}

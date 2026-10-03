@@ -1,5 +1,7 @@
 mod create_update;
 mod error;
+#[cfg(any(test, feature = "test-support"))]
+mod fake;
 mod query;
 mod read;
 mod repository;
@@ -12,6 +14,8 @@ mod version_write;
 pub const INITIAL_NOTE_STATUS: &str = "unread";
 
 pub use error::NoteUseCaseError;
+#[cfg(any(test, feature = "test-support"))]
+pub use fake::FakeNoteReadQuery;
 pub use query::{NoteReadQuery, NoteReadQueryError, SharedNoteReadQuery};
 pub use read::{NoteReadUseCaseError, NoteReadUseCases};
 pub use repository::{NoteRepository, NoteRepositoryError, SharedNoteRepository};

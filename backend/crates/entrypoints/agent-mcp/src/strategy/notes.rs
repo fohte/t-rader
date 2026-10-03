@@ -1,6 +1,5 @@
 //! ノート操作の inner method 実装。
 //!
-//! 戦略境界の検査はノート読み取りユースケースが担う。
 
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::note::{NoteRepositoryError, NoteUseCaseError, NoteWriteCommand};
@@ -29,9 +28,6 @@ fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
             internal_error(format!("note kind {kind} not found"))
         }
         NoteUseCaseError::NotFound(_) => McpError::resource_not_found("note not found", None),
-        NoteUseCaseError::Forbidden(note_id) => invalid_params(format!(
-            "forbidden: note {note_id} belongs to another strategy"
-        )),
         other => internal_error(format!("{other}")),
     }
 }

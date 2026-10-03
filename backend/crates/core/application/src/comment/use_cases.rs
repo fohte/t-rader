@@ -61,7 +61,7 @@ impl CommentUseCases {
                 ));
             }
         }
-        self.ensure_scope(&transaction, command.scope, target_kind, command.target_id)
+        self.ensure_target_exists(&transaction, target_kind, command.target_id)
             .await?;
         let (start_line, end_line) = self
             .validate_anchor(
@@ -124,8 +124,10 @@ impl CommentUseCases {
             ));
         }
         let target_kind = parse_target_kind(&parent.target_kind)?;
-        self.ensure_scope(&transaction, command.scope, target_kind, parent.target_id)
-            .await?;
+        if command.require_target_exists {
+            self.ensure_target_exists(&transaction, target_kind, parent.target_id)
+                .await?;
+        }
 
         let id = Uuid::new_v4();
         let created = self
@@ -166,8 +168,10 @@ impl CommentUseCases {
                 CommentUseCaseError::NotFound(format!("comment {} not found", command.id))
             })?;
         let target_kind = parse_target_kind(&current.target_kind)?;
-        self.ensure_scope(&transaction, command.scope, target_kind, current.target_id)
-            .await?;
+        if command.require_target_exists {
+            self.ensure_target_exists(&transaction, target_kind, current.target_id)
+                .await?;
+        }
         if current.resolved == command.resolved {
             self.unit_of_work.commit(transaction).await?;
             return Ok(current);
@@ -199,16 +203,12 @@ impl CommentUseCases {
 
     pub async fn delete(&self, command: DeleteCommentCommand) -> Result<(), CommentUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let current = self
-            .repository
+        self.repository
             .find_by_id(&transaction, command.id)
             .await?
             .ok_or_else(|| {
                 CommentUseCaseError::NotFound(format!("comment {} not found", command.id))
             })?;
-        let target_kind = parse_target_kind(&current.target_kind)?;
-        self.ensure_scope(&transaction, command.scope, target_kind, current.target_id)
-            .await?;
         if !self.repository.delete(&transaction, command.id).await? {
             return Err(CommentUseCaseError::NotFound(format!(
                 "comment {} not found",
@@ -232,26 +232,16 @@ impl CommentUseCases {
         Ok(())
     }
 
-    async fn ensure_scope(
+    async fn ensure_target_exists(
         &self,
         transaction: &UnitOfWorkTransaction,
-        scope: Option<crate::strategy_scope::StrategyScope>,
         target_kind: CommentTargetKind,
         target_id: Uuid,
     ) -> Result<(), CommentUseCaseError> {
-        let Some(scope) = scope else {
-            return Ok(());
-        };
-        let target_strategy_id = self
-            .repository
+        self.repository
             .target_strategy_id(transaction, target_kind, target_id)
             .await?
             .ok_or_else(|| CommentUseCaseError::NotFound("comment target not found".into()))?;
-        if target_strategy_id != Some(scope.id()) {
-            return Err(CommentUseCaseError::Forbidden(
-                "comment target belongs to a different strategy".into(),
-            ));
-        }
         Ok(())
     }
 
