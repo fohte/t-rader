@@ -354,7 +354,7 @@ mod tests {
             .await
             .expect("set isolated schema");
         transaction
-            .execute_unprepared(
+            .execute_unprepared(indoc::indoc! {
                 "CREATE TABLE jquants_earnings_date (
                     code text NOT NULL,
                     fq_name text NOT NULL,
@@ -363,12 +363,12 @@ mod tests {
                     fye text NOT NULL,
                     co_name text NOT NULL,
                     co_name_en text NOT NULL
-                )",
-            )
+                )"
+            })
             .await
             .expect("create source table");
         transaction
-            .execute_unprepared(
+            .execute_unprepared(indoc::indoc! {
                 "INSERT INTO jquants_earnings_date
                     (code, fq_name, pub_date, sch_date, fye, co_name, co_name_en)
                  VALUES
@@ -377,8 +377,8 @@ mod tests {
                     ('AA123', 'FY', '2042-08-15', NULL, '1231', '別の架空社', 'Another Fictional Co'),
                     ('ZZ100', '1Q', '2042-07-06', '2043-01-05', '1231', '四半期社', 'Quarter Co'),
                     ('ZZ100', '2Q', '2042-07-06', '2043-01-05', '1231', '四半期社', 'Quarter Co'),
-                    ('ZZ100', '3Q', '2042-07-06', '2043-01-05', '1231', '四半期社', 'Quarter Co')",
-            )
+                    ('ZZ100', '3Q', '2042-07-06', '2043-01-05', '1231', '四半期社', 'Quarter Co')"
+            })
             .await
             .expect("insert source schedules");
 
