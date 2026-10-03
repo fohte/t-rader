@@ -13,8 +13,9 @@ use crate::{
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_application::kata_exec::SharedKataExecutor;
+use core_domain::bar::Bar;
+use core_domain::instrument::Instrument;
 use entrypoint_frontend_api::FrontendApiState;
-use entrypoint_frontend_api::models::{Bar, Instrument};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::{

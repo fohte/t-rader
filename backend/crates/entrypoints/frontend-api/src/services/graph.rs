@@ -10,6 +10,7 @@ use core_domain::note_graph as domain;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+#[cfg(test)]
 pub use domain::GraphValidationError;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ToSchema)]
@@ -62,7 +63,8 @@ pub struct GraphEdge {
     pub cite: Option<String>,
 }
 
-pub fn validate_graphs(graphs: &[GraphDef]) -> Result<(), GraphValidationError> {
+#[cfg(test)]
+fn validate_graphs(graphs: &[GraphDef]) -> Result<(), GraphValidationError> {
     let graphs = graphs.iter().cloned().map(Into::into).collect::<Vec<_>>();
     domain::validate_graphs(&graphs)
 }

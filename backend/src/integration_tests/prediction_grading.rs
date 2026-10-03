@@ -2,8 +2,7 @@ mod tests {
     use crate::testing::{insert_test_stock, insert_test_strategy};
     use chrono::NaiveDate;
     use core_application::prediction::{GradingStats, PredictionUseCaseError};
-    use entrypoint_frontend_api::models::Bar;
-    use entrypoint_frontend_api::models::bar::Timeframe;
+    use core_domain::bar::{Bar, Timeframe};
     use gateway_postgres::DatabaseHandle;
     use gateway_postgres::entities::{instruments, prediction, prediction_grade};
     use gateway_postgres::repositories::bars::upsert_bars;

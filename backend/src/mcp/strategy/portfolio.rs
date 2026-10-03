@@ -139,8 +139,8 @@ mod tests {
 
     use crate::data_provider::SharedDailyBarSource;
     use crate::testing::MockProvider;
-    use entrypoint_frontend_api::models::bar::{Bar, Timeframe};
-    use entrypoint_frontend_api::models::instrument::{Instrument, Market};
+    use core_domain::bar::{Bar, Timeframe};
+    use core_domain::instrument::{Instrument, Market};
     use gateway_postgres::entities::trade;
 
     use super::super::dto::{

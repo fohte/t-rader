@@ -56,15 +56,6 @@ pub enum TriggerKind {
     Hook,
 }
 
-impl TriggerKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            TriggerKind::Cron => "cron",
-            TriggerKind::Hook => "hook",
-        }
-    }
-}
-
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateTriggerRequest {

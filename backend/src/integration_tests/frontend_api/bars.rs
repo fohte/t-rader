@@ -4,7 +4,7 @@ mod tests {
     use crate::testing::{create_test_server, create_test_server_with_db};
     use axum::http::StatusCode;
     use chrono::{NaiveDate, TimeZone, Utc};
-    use entrypoint_frontend_api::models::bar::{Bar, Timeframe};
+    use core_domain::bar::{Bar, Timeframe};
     use gateway_postgres::entities::instruments;
     use gateway_postgres::repositories;
     use rust_decimal::Decimal;
