@@ -180,16 +180,38 @@ pub async fn reject_note_version(
         ));
     }
 
-    let strategy_id = version
-        .execution_id
-        .as_deref()
-        .and_then(|execution_id| Uuid::parse_str(execution_id).ok());
-    let strategy_id = match strategy_id {
-        Some(execution_step_id) => state
-            .strategy_task_use_cases
-            .find_strategy_id_by_execution_step_id(execution_step_id)
-            .await
-            .map_err(map_get_task_error)?,
+    let execution_step_id = version.execution_id.as_deref().and_then(|execution_id| {
+        match Uuid::parse_str(execution_id) {
+            Ok(execution_step_id) => Some(execution_step_id),
+            Err(error) => {
+                tracing::warn!(
+                    note_id = %note_id,
+                    version_id = %version.id,
+                    execution_id = %execution_id,
+                    error = %error,
+                    "cannot parse note version execution ID"
+                );
+                None
+            }
+        }
+    });
+    let strategy_id = match execution_step_id {
+        Some(execution_step_id) => {
+            let strategy_id = state
+                .strategy_task_use_cases
+                .find_strategy_id_by_execution_step_id(execution_step_id)
+                .await
+                .map_err(map_get_task_error)?;
+            if strategy_id.is_none() {
+                tracing::warn!(
+                    note_id = %note_id,
+                    version_id = %version.id,
+                    execution_step_id = %execution_step_id,
+                    "note version execution step is not recorded"
+                );
+            }
+            strategy_id
+        }
         None => None,
     };
     if let Some(strategy_id) = strategy_id {

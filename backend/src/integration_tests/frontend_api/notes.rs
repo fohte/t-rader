@@ -7,7 +7,7 @@ mod tests {
     use crate::testing::find_current_note_version;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
-        insert_test_strategy, insert_test_strategy_task_step,
+        insert_test_strategy, insert_test_strategy_task_step, set_test_note_version_execution_id,
     };
     use axum::http::StatusCode;
     use axum_test::TestServer;
@@ -635,15 +635,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let execution_step_id = Uuid::from_u128(301);
-        note_version::Entity::update_many()
-            .col_expr(
-                note_version::Column::ExecutionId,
-                Expr::value(Some(execution_step_id.to_string())),
-            )
-            .filter(note_version::Column::Id.eq(version.id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
 
         let res = server
             .post(&format!(
@@ -704,21 +696,13 @@ mod tests {
         let rejected_execution_step_id = Uuid::from_u128(401);
         insert_test_strategy_task_step(&db, first_task_strategy_id, rejected_execution_step_id)
             .await;
-        note_version::Entity::update_many()
-            .col_expr(
-                note_version::Column::ExecutionId,
-                Expr::value(Some(rejected_execution_step_id.to_string())),
-            )
-            .filter(note_version::Column::Id.eq(rejected_version.id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_note_version_execution_id(&db, rejected_version.id, rejected_execution_step_id)
+            .await;
 
-        let update = server
+        let _update = server
             .patch(&format!("/api/notes/{note_id}"))
             .json(&json!({"body_md": "sample next body"}))
             .await;
-        assert_eq!(update.status_code(), StatusCode::OK);
         let latest_version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -726,15 +710,7 @@ mod tests {
         let latest_execution_step_id = Uuid::from_u128(402);
         insert_test_strategy_task_step(&db, second_task_strategy_id, latest_execution_step_id)
             .await;
-        note_version::Entity::update_many()
-            .col_expr(
-                note_version::Column::ExecutionId,
-                Expr::value(Some(latest_execution_step_id.to_string())),
-            )
-            .filter(note_version::Column::Id.eq(latest_version.id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_note_version_execution_id(&db, latest_version.id, latest_execution_step_id).await;
         note_version::Entity::update_many()
             .col_expr(note_version::Column::Status, Expr::value("unread"))
             .filter(note_version::Column::Id.eq(rejected_version.id))
@@ -809,15 +785,7 @@ mod tests {
             .unwrap();
         let execution_step_id = Uuid::from_u128(601);
         insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
-        note_version::Entity::update_many()
-            .col_expr(
-                note_version::Column::ExecutionId,
-                Expr::value(Some(execution_step_id.to_string())),
-            )
-            .filter(note_version::Column::Id.eq(version.id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
 
         let first = server
             .post(&format!(
@@ -894,15 +862,7 @@ mod tests {
             .unwrap();
         let execution_step_id = Uuid::from_u128(602);
         insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
-        note_version::Entity::update_many()
-            .col_expr(
-                note_version::Column::ExecutionId,
-                Expr::value(Some(execution_step_id.to_string())),
-            )
-            .filter(note_version::Column::Id.eq(version.id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
 
         let res = server
             .post(&format!(

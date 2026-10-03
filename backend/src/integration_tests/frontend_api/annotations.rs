@@ -7,6 +7,7 @@ mod tests {
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client, insert_test_note,
         insert_test_strategy, insert_test_strategy_task_step,
+        set_test_annotation_execution_step_id,
     };
     use axum::http::StatusCode;
     use axum_test::TestServer;
@@ -17,7 +18,6 @@ mod tests {
     use gateway_postgres::entities::annotation;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
-    use sea_orm::sea_query::Expr;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
     use uuid::Uuid;
@@ -451,15 +451,7 @@ mod tests {
         let anno_id =
             create_test_annotation_with_symbol(&server, strategy_id, "sample-symbol").await;
         let execution_step_id = Uuid::from_u128(501);
-        annotation::Entity::update_many()
-            .col_expr(
-                annotation::Column::ExecutionStepId,
-                Expr::value(Some(execution_step_id)),
-            )
-            .filter(annotation::Column::Id.eq(anno_id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))
@@ -511,15 +503,7 @@ mod tests {
                 .await;
         let execution_step_id = Uuid::from_u128(502);
         insert_test_strategy_task_step(&db, task_strategy_id, execution_step_id).await;
-        annotation::Entity::update_many()
-            .col_expr(
-                annotation::Column::ExecutionStepId,
-                Expr::value(Some(execution_step_id)),
-            )
-            .filter(annotation::Column::Id.eq(anno_id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))
@@ -580,15 +564,7 @@ mod tests {
         let anno_id = create_test_annotation(&server, strategy_id).await;
         let execution_step_id = Uuid::from_u128(603);
         insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
-        annotation::Entity::update_many()
-            .col_expr(
-                annotation::Column::ExecutionStepId,
-                Expr::value(Some(execution_step_id)),
-            )
-            .filter(annotation::Column::Id.eq(anno_id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;
 
         for _ in 0..2 {
             let res = server
@@ -643,15 +619,7 @@ mod tests {
         let anno_id = create_test_annotation(&server, strategy_id).await;
         let execution_step_id = Uuid::from_u128(604);
         insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
-        annotation::Entity::update_many()
-            .col_expr(
-                annotation::Column::ExecutionStepId,
-                Expr::value(Some(execution_step_id)),
-            )
-            .filter(annotation::Column::Id.eq(anno_id))
-            .exec(&db)
-            .await
-            .unwrap();
+        set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))

@@ -17,7 +17,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
-use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, Statement};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -27,6 +26,7 @@ use crate::testing::agent_config;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy, insert_test_strategy_task_step,
+    set_test_note_version_execution_id,
 };
 use core_application::agent_task_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
@@ -34,7 +34,7 @@ use core_application::agent_task_client::{
 use core_application::strategy_task::DEFAULT_PURPOSE;
 use entrypoint_control_plane_mcp::MgmtServer;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-use gateway_postgres::entities::{note_version, strategy_task};
+use gateway_postgres::entities::strategy_task;
 
 #[backend_test_macros::database_test]
 async fn postgres_queue_enqueues_one_keyed_strategy_task_reconcile_job(
@@ -176,15 +176,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .unwrap();
     let execution_step_id = Uuid::from_u128(605);
     insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
-    note_version::Entity::update_many()
-        .col_expr(
-            note_version::Column::ExecutionId,
-            Expr::value(Some(execution_step_id.to_string())),
-        )
-        .filter(note_version::Column::Id.eq(version.id))
-        .exec(&db)
-        .await
-        .unwrap();
+    set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
     let res = server
         .post(&format!(
             "/api/notes/{note_id}/versions/{}/reject",
