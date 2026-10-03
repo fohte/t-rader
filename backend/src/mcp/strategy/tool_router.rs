@@ -622,227 +622,7 @@ impl ServerHandler for StrategyServer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    use crate::services::litellm_client::LiteLlmClient;
-
-    fn mock_db_with_strategy(strategy_id: uuid::Uuid) -> sea_orm::DatabaseConnection {
-        use sea_orm::{DatabaseBackend, MockDatabase};
-
-        let row = std::collections::BTreeMap::from([(
-            "id".to_string(),
-            sea_orm::Value::from(strategy_id),
-        )]);
-        MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([vec![row]])
-            .into_connection()
-    }
-
-    fn request_context(
-        server: &StrategyServer,
-        strategy_id: uuid::Uuid,
-        tool_models_header: Option<&str>,
-    ) -> (
-        RequestContext<RoleServer>,
-        rmcp::service::RunningService<RoleServer, StrategyServer>,
-    ) {
-        use rmcp::model::NumberOrString;
-        use rmcp::service::serve_directly;
-
-        let (server_io, _client_io) = tokio::io::duplex(64);
-        let (reader, writer) = tokio::io::split(server_io);
-        let running = serve_directly::<RoleServer, _, _, std::io::Error, _>(
-            server.clone(),
-            (reader, writer),
-            None,
-        );
-
-        let mut parts = axum::http::Request::new(()).into_parts().0;
-        parts.headers.insert(
-            "x-strategy-id",
-            strategy_id.to_string().parse().expect("valid header value"),
-        );
-        if let Some(tool_models_header) = tool_models_header {
-            parts.headers.insert(
-                "x-tool-models",
-                tool_models_header.parse().expect("valid header value"),
-            );
-        }
-        let mut ctx = RequestContext::new(NumberOrString::Number(1), running.peer().clone());
-        ctx.extensions.insert(parts);
-        (ctx, running)
-    }
-
-    #[tokio::test]
-    async fn query_media_uses_model_from_tool_models_header() {
-        use crate::mcp::strategy::dto::{QueryMediaParams, QueryMediaResult};
-
-        let strategy_id = uuid::Uuid::new_v4();
-        let litellm = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "choices": [{"message": {"content": "mock media summary"}}],
-            })))
-            .mount(&litellm)
-            .await;
-
-        let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id))
-            .with_litellm_client(Some(std::sync::Arc::new(client)));
-        let (ctx, running) = request_context(
-            &server,
-            strategy_id,
-            Some(r#"{"search_web":"example-model-search","query_media":"example-model-media"}"#),
-        );
-        let result = server
-            .query_media(
-                Parameters(QueryMediaParams {
-                    media_url: "https://example.com/video.mp4".into(),
-                    prompt: "summarize the clip".into(),
-                }),
-                ctx,
-            )
-            .await
-            .map(|Json(result)| result);
-        let requests = litellm
-            .received_requests()
-            .await
-            .expect("recorded requests");
-        let request = requests
-            .first()
-            .expect("handler should send a LiteLLM request");
-        let body: serde_json::Value = request.body_json().expect("parse request body");
-
-        assert_eq!(
-            (result, body),
-            (
-                Ok(QueryMediaResult {
-                    text: "mock media summary".into(),
-                }),
-                json!({
-                    "model": "example-model-media",
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "summarize the clip"},
-                            {"type": "file", "file": {"file_id": "https://example.com/video.mp4"}},
-                        ],
-                    }],
-                }),
-            ),
-        );
-
-        running.cancel().await.expect("stop the test server");
-    }
-
-    #[tokio::test]
-    async fn search_web_uses_model_from_tool_models_header() {
-        use indoc::indoc;
-
-        use crate::mcp::strategy::dto::{SearchWebParams, SearchWebResult};
-
-        let strategy_id = uuid::Uuid::new_v4();
-        let litellm = MockServer::start().await;
-        let response_body = format!(
-            indoc! {"
-                data: {}
-
-                data: [DONE]
-
-            "},
-            json!({"choices": [{"delta": {"content": "mock search result"}}]})
-        );
-        Mock::given(method("POST"))
-            .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
-            .mount(&litellm)
-            .await;
-
-        let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id))
-            .with_litellm_client(Some(std::sync::Arc::new(client)));
-        let (ctx, running) = request_context(
-            &server,
-            strategy_id,
-            Some(r#"{"search_web":"example-model-search","query_media":"example-model-media"}"#),
-        );
-        let result = server
-            .search_web(
-                Parameters(SearchWebParams {
-                    query: "example query".into(),
-                }),
-                ctx,
-            )
-            .await
-            .map(|Json(result)| result);
-        let requests = litellm
-            .received_requests()
-            .await
-            .expect("recorded requests");
-        let request = requests
-            .first()
-            .expect("handler should send a LiteLLM request");
-        let body: serde_json::Value = request.body_json().expect("parse request body");
-
-        assert_eq!(
-            (result, body),
-            (
-                Ok(SearchWebResult {
-                    text: "mock search result".into(),
-                    citations: vec![],
-                }),
-                json!({
-                    "model": "example-model-search",
-                    "messages": [{
-                        "role": "user",
-                        "content": [{"type": "text", "text": "example query"}],
-                    }],
-                    "stream": true,
-                    "web_search_options": {},
-                    "allowed_openai_params": ["web_search_options"],
-                }),
-            ),
-        );
-
-        running.cancel().await.expect("stop the test server");
-    }
-
-    #[tokio::test]
-    async fn query_data_rejects_nonexistent_strategy() {
-        use sea_orm::{DatabaseBackend, MockDatabase};
-        use uuid::Uuid;
-
-        let strategy_id = Uuid::new_v4();
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([Vec::<gateway_postgres::entities::strategy::Model>::new()])
-            .into_connection();
-        let server = super::super::tests_common::build_server(db);
-        let (ctx, running) = request_context(&server, strategy_id, None);
-
-        assert_eq!(
-            server
-                .query_data(
-                    Parameters(QueryDataParams {
-                        instrument_ids: Vec::new(),
-                        from: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid test date"),
-                        to: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid test date"),
-                    }),
-                    ctx,
-                )
-                .await
-                .map(|Json(result)| result),
-            Err(McpError::invalid_params(
-                format!("strategy {strategy_id} not found"),
-                None,
-            )),
-        );
-
-        running.cancel().await.expect("stop the test server");
-    }
+    use super::StrategyServer;
 
     #[test]
     fn read_only_hint_matches_read_write_split() {
@@ -853,7 +633,8 @@ mod tests {
                 .map(|tool| {
                     (
                         tool.name.into_owned(),
-                        tool.annotations.and_then(|a| a.read_only_hint),
+                        tool.annotations
+                            .and_then(|annotations| annotations.read_only_hint),
                     )
                 })
                 .collect();
@@ -900,13 +681,10 @@ mod tests {
             ]
             .into_iter()
             .map(|(name, hint)| (name.to_string(), hint))
-            .collect::<std::collections::BTreeMap<_, _>>(),
+            .collect(),
         );
     }
 
-    /// 生成された JSON Schema が MCP クライアント (zod ベースの SDK) に拒否される裸の
-    /// boolean スキーマを含まないことの回帰テスト。`serde_json::Value` 型のフィールドが
-    /// 将来追加されても機械的に検出できる。
     #[test]
     fn tool_schemas_have_no_boolean_property_schemas() {
         for tool in StrategyServer::tool_router().list_all() {

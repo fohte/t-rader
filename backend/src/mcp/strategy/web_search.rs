@@ -16,7 +16,7 @@ pub(super) const TOOL_NAME: &str = "search_web";
 
 /// 1 回の戦略タスク実行 (`task_execution_id` = `x-execution-id` の `a2a_task_id` 部分) あたりの
 /// `search_web` 呼び出し回数上限。
-const SEARCH_WEB_MAX_CALLS_PER_TASK: u32 = 20;
+pub(super) const SEARCH_WEB_MAX_CALLS_PER_TASK: u32 = 20;
 
 impl StrategyServer {
     pub(crate) async fn search_web_inner(
@@ -98,6 +98,3 @@ fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

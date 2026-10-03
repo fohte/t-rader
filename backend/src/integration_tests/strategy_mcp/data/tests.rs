@@ -2,23 +2,17 @@ use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use rstest::rstest;
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{
-    ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, MockDatabase, QueryFilter, Set,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde_json::json;
 use uuid::Uuid;
 
+use super::super::MAX_QUERY_DATA_INSTRUMENTS;
 use super::super::StrategyServer;
 use super::super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
-use super::super::tests_common::insert_strategy;
-use super::MAX_QUERY_DATA_INSTRUMENTS;
+use super::super::tests_common::{insert_strategy, mock_db_with_strategy};
 use core_domain::bar::{Bar, Timeframe};
 use gateway_postgres::entities::{instruments, strategy_task_step_evidence};
 use gateway_postgres::repositories::bars::upsert_bars;
-
-fn mock_db() -> DatabaseConnection {
-    MockDatabase::new(DatabaseBackend::Postgres).into_connection()
-}
 
 async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
     instruments::Entity::insert(instruments::ActiveModel {
@@ -138,7 +132,7 @@ async fn query_data_returns_bars_for_each_requested_instrument(
     let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
     let result = server
-        .query_data_inner(
+        .query_data(
             strategy_id,
             None,
             QueryDataParams {
@@ -183,7 +177,7 @@ async fn query_data_returns_empty_bars_for_instrument_with_no_data(
     let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
     let result = server
-        .query_data_inner(
+        .query_data(
             strategy_id,
             None,
             QueryDataParams {
@@ -226,7 +220,7 @@ async fn query_data_records_evidence_per_instrument_when_execution_step_id_prese
     let execution_step_id = Uuid::new_v4();
 
     server
-        .query_data_inner(
+        .query_data(
             strategy_id,
             Some(execution_step_id),
             QueryDataParams {
@@ -302,7 +296,7 @@ async fn query_data_records_no_evidence_when_execution_step_id_absent(
     let (db, server, strategy_id) = setup_server_with_bars(db).await;
 
     server
-        .query_data_inner(
+        .query_data(
             strategy_id,
             None,
             QueryDataParams {
@@ -353,16 +347,17 @@ async fn query_data_records_no_evidence_when_execution_step_id_absent(
         "from must be on or before to"
     )]
 #[tokio::test]
-async fn query_data_inner_rejects_invalid_params(
+async fn query_data_rejects_invalid_params_through_tool_dispatch(
     #[case] instrument_ids: Vec<String>,
     #[case] from: &str,
     #[case] to: &str,
     #[case] expected_message: &str,
 ) {
-    let server = super::super::tests_common::build_server(mock_db());
+    let strategy_id = Uuid::new_v4();
+    let server = super::super::tests_common::build_server(mock_db_with_strategy(strategy_id));
     let err = server
-        .query_data_inner(
-            Uuid::new_v4(),
+        .query_data(
+            strategy_id,
             None,
             QueryDataParams {
                 instrument_ids,
@@ -373,7 +368,7 @@ async fn query_data_inner_rejects_invalid_params(
         .await
         .expect_err("expected invalid params");
     assert_eq!(
-        (err.code, err.message.as_ref()),
-        (rmcp::model::ErrorCode::INVALID_PARAMS, expected_message),
+        err,
+        rmcp::ErrorData::invalid_params(expected_message.to_string(), None),
     );
 }

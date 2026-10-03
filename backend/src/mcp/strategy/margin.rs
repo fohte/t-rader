@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params};
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadMarginParams {
     /// 対象銘柄コード (4 桁、例: "1234")
     pub symbol: String,
@@ -23,6 +23,7 @@ pub struct ReadMarginParams {
 }
 
 /// 信用取引週末残高 (2026-09-28 以降の切替後は日次の信用取引残高) 1 行分。
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct MarginInterestDto {
     pub date: NaiveDate,
@@ -69,6 +70,7 @@ impl From<MarginInterestRecord> for MarginInterestDto {
 
 /// 日々公表信用取引残高 1 行分。取引所が日々公表銘柄に指定した銘柄のみが対象であり、
 /// この一覧に載っていないことは残高ゼロを意味しない。
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct MarginAlertDto {
     /// 申込日。同一 app_date に訂正が複数あれば公表日 (pub_date) が最新の 1 件のみ返る
@@ -117,6 +119,7 @@ impl From<MarginAlertRecord> for MarginAlertDto {
 }
 
 /// 日々公表信用取引残高の公表理由フラグ。
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct MarginPubReasonDto {
     pub restricted: bool,
@@ -140,6 +143,7 @@ impl From<PubReason> for MarginPubReasonDto {
     }
 }
 
+#[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadMarginResult {
     /// 信用取引週末残高 (日次切替後は信用取引残高)。新しい順

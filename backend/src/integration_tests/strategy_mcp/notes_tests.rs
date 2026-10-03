@@ -6,16 +6,16 @@ mod tests {
     use sea_orm::ActiveValue::Set;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
-    use super::super::STRATEGY_AGENT_ACTOR;
     use super::super::dto::{
         ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
     };
+    use super::super::graph_dto::{GraphDef, GraphEdge, GraphNode, Layout};
     use super::super::tests_common::{
         build_server, current_note_version_id, insert_note_kind, insert_strategy,
-        normalize_comment_model, normalize_note, seed_foreign_note,
+        normalize_comment_model, normalize_list_notes, normalize_note, seed_foreign_note,
         seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
-    use super::super::graph_dto::{GraphDef, GraphEdge, GraphNode, Layout};
+    use super::super::{MAX_LIST_LIMIT, STRATEGY_AGENT_ACTOR};
     use crate::testing::find_current_note_version;
     use gateway_postgres::entities::{comment, note, note_ref, note_version};
 
@@ -95,7 +95,7 @@ mod tests {
         let strategy_id = insert_strategy(db, "a").await;
         insert_note_kind(db, "sample-kind", true).await;
         let current = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -114,7 +114,7 @@ mod tests {
         let mut pending_graph = sample_graph("g1");
         pending_graph.nodes[0].r#ref = Some("group:graph-axis/graph-group".into());
         let pending = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -130,7 +130,7 @@ mod tests {
             .await
             .expect("write pending note");
         server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -225,7 +225,7 @@ mod tests {
         let server = build_server(db);
 
         let written = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -243,7 +243,7 @@ mod tests {
         assert!(written.created);
 
         let read = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: written.note_id,
@@ -282,7 +282,7 @@ mod tests {
         let server = build_server(db.clone());
 
         let error = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -333,7 +333,7 @@ mod tests {
         graph.nodes[0].r#ref = Some("stock:demo-code".into());
 
         let written = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -366,7 +366,7 @@ mod tests {
         let server = build_server(db.clone());
 
         let created = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -387,7 +387,7 @@ mod tests {
         );
 
         server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -423,7 +423,7 @@ mod tests {
 
         for (label, initial_status) in [("already_unread", None), ("rejected", Some("rejected"))] {
             let created = server
-                .write_note_inner(
+                .write_note(
                     strategy_id,
                     None,
                     WriteNoteParams {
@@ -443,7 +443,7 @@ mod tests {
             }
 
             let updated = server
-                .write_note_inner(
+                .write_note(
                     strategy_id,
                     None,
                     WriteNoteParams {
@@ -468,7 +468,7 @@ mod tests {
             );
 
             let read = server
-                .read_note_inner(
+                .read_note(
                     strategy_id,
                     ReadNoteParams {
                         note_id: created.note_id,
@@ -526,7 +526,7 @@ mod tests {
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
 
         let err = server
-            .write_note_inner(
+            .write_note(
                 strategy_a,
                 None,
                 WriteNoteParams {
@@ -552,7 +552,7 @@ mod tests {
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
 
         let err = server
-            .read_note_inner(
+            .read_note(
                 strategy_a,
                 ReadNoteParams {
                     note_id,
@@ -572,7 +572,7 @@ mod tests {
 
         for (sid, title) in [(strategy_a, "a1"), (strategy_a, "a2"), (strategy_b, "b1")] {
             server
-                .write_note_inner(
+                .write_note(
                     sid,
                     None,
                     WriteNoteParams {
@@ -590,7 +590,7 @@ mod tests {
         }
 
         let result = server
-            .list_notes_inner(strategy_a, ListNotesParams::default())
+            .list_notes(strategy_a, ListNotesParams::default())
             .await
             .expect("list");
         // 戦略 B のノートは含まれず、戦略 A の 2 件のみが新しい順に並ぶ
@@ -610,7 +610,7 @@ mod tests {
         let server = build_server(db);
 
         let matching = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -630,7 +630,7 @@ mod tests {
             ("wrong kind", "other-kind", "[[stock:demo-code]]"),
         ] {
             server
-                .write_note_inner(
+                .write_note(
                     strategy_id,
                     None,
                     WriteNoteParams {
@@ -648,7 +648,7 @@ mod tests {
         }
 
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 strategy_id,
                 ListNotesParams {
                     limit: Some(1),
@@ -661,27 +661,25 @@ mod tests {
             .expect("list matching note");
 
         assert_eq!(
-            result
-                .notes
-                .into_iter()
-                .map(normalize_note)
-                .collect::<Vec<_>>(),
-            vec![NoteDto {
-                note_id: matching.note_id,
-                strategy_id,
-                version_id: Uuid::nil(),
-                version_no: 1,
-                title: "matching".into(),
-                body_md: Some("[[stock:demo-code]]".into()),
-                frontmatter_json: serde_json::Map::new(),
-                kind: Some("sample-kind".into()),
-                status: "unread".into(),
-                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
-                created_at: ts_sentinel(),
-                updated_at: ts_sentinel(),
-                graphs: vec![],
-                links: None,
-            }],
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![NoteDto {
+                    note_id: matching.note_id,
+                    strategy_id,
+                    version_id: Uuid::nil(),
+                    version_no: 1,
+                    title: "matching".into(),
+                    body_md: Some("[[stock:demo-code]]".into()),
+                    frontmatter_json: serde_json::Map::new(),
+                    kind: Some("sample-kind".into()),
+                    status: "unread".into(),
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                    graphs: vec![],
+                    links: None,
+                }],
+            },
         );
     }
 
@@ -697,7 +695,7 @@ mod tests {
             "group:demo-group",
         ] {
             let error = server
-                .list_notes_inner(
+                .list_notes(
                     strategy_id,
                     ListNotesParams {
                         r#ref: Some(reference.into()),
@@ -736,20 +734,18 @@ mod tests {
         let server = build_server(db.clone());
         let fixture = create_pending_note_fixture(&db, &server).await;
         let result = server
-            .list_notes_inner(fixture.strategy_id, ListNotesParams::default())
+            .list_notes(fixture.strategy_id, ListNotesParams::default())
             .await
             .expect("list current notes");
 
         assert_eq!(
-            result
-                .notes
-                .into_iter()
-                .map(normalize_note)
-                .collect::<Vec<_>>(),
-            vec![expected_current_note(
-                fixture.current_note_id,
-                fixture.strategy_id,
-            )],
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![expected_current_note(
+                    fixture.current_note_id,
+                    fixture.strategy_id,
+                )],
+            },
         );
     }
 
@@ -758,7 +754,7 @@ mod tests {
         let server = build_server(db.clone());
         let fixture = create_pending_note_fixture(&db, &server).await;
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 fixture.strategy_id,
                 ListNotesParams {
                     kind: Some("sample-kind".into()),
@@ -770,12 +766,10 @@ mod tests {
             .expect("list pending notes by kind");
 
         assert_eq!(
-            result
-                .notes
-                .into_iter()
-                .map(normalize_note)
-                .collect::<Vec<_>>(),
-            vec![expected_latest_pending_note(&fixture, "unread")],
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![expected_latest_pending_note(&fixture, "unread")],
+            },
         );
     }
 
@@ -786,7 +780,7 @@ mod tests {
         let server = build_server(db.clone());
         let fixture = create_pending_note_fixture(&db, &server).await;
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 fixture.strategy_id,
                 ListNotesParams {
                     include_pending: Some(true),
@@ -797,15 +791,13 @@ mod tests {
             .expect("list including pending notes");
 
         assert_eq!(
-            result
-                .notes
-                .into_iter()
-                .map(normalize_note)
-                .collect::<Vec<_>>(),
-            vec![
-                expected_latest_pending_note(&fixture, "unread"),
-                expected_current_note(fixture.current_note_id, fixture.strategy_id),
-            ],
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![
+                    expected_latest_pending_note(&fixture, "unread"),
+                    expected_current_note(fixture.current_note_id, fixture.strategy_id),
+                ],
+            },
         );
     }
 
@@ -815,31 +807,27 @@ mod tests {
     ) {
         let server = build_server(db.clone());
         let fixture = create_pending_note_fixture(&db, &server).await;
-        let non_matching = server
-            .write_note_inner(
-                fixture.strategy_id,
-                None,
-                WriteNoteParams {
-                    note_id: None,
-                    title: Some("newer pending".into()),
-                    body_md: Some("[[theme:demo-theme]]".into()),
-                    kind: Some(Some("sample-kind".into())),
-                    frontmatter_json: None,
-                    change_reason: None,
-                    graphs: None,
-                },
-            )
-            .await
-            .expect("write non-matching pending note");
-        set_note_updated_at(
-            &db,
-            non_matching.note_id,
-            ts_sentinel() + chrono::Duration::seconds(3),
-        )
-        .await;
+        for index in 0..MAX_LIST_LIMIT {
+            server
+                .write_note(
+                    fixture.strategy_id,
+                    None,
+                    WriteNoteParams {
+                        note_id: None,
+                        title: Some(format!("non-matching pending {index}")),
+                        body_md: Some("no matching reference".into()),
+                        kind: Some(Some("sample-kind".into())),
+                        frontmatter_json: None,
+                        change_reason: None,
+                        graphs: None,
+                    },
+                )
+                .await
+                .unwrap_or_else(|error| panic!("write non-matching pending note failed: {error}"));
+        }
 
         let result = server
-            .list_notes_inner_with_pending_page_size(
+            .list_notes(
                 fixture.strategy_id,
                 ListNotesParams {
                     limit: Some(1),
@@ -847,18 +835,15 @@ mod tests {
                     include_pending: Some(true),
                     ..Default::default()
                 },
-                1,
             )
             .await
             .expect("list matching pending note after an unmatched page");
 
         assert_eq!(
-            result
-                .notes
-                .into_iter()
-                .map(normalize_note)
-                .collect::<Vec<_>>(),
-            vec![expected_latest_pending_note(&fixture, "unread")],
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![expected_latest_pending_note(&fixture, "unread")],
+            },
         );
     }
 
@@ -869,7 +854,7 @@ mod tests {
         let server = build_server(db.clone());
         let fixture = create_pending_note_fixture(&db, &server).await;
         let selected_ref = server
-            .list_notes_inner(
+            .list_notes(
                 fixture.strategy_id,
                 ListNotesParams {
                     r#ref: Some("stock:demo-code".into()),
@@ -880,7 +865,7 @@ mod tests {
             .await
             .expect("list pending note by selected body reference");
         let previous_version_ref = server
-            .list_notes_inner(
+            .list_notes(
                 fixture.strategy_id,
                 ListNotesParams {
                     r#ref: Some("group:body-axis/body-group".into()),
@@ -893,16 +878,12 @@ mod tests {
 
         assert_eq!(
             (
-                selected_ref
-                    .notes
-                    .into_iter()
-                    .map(normalize_note)
-                    .collect::<Vec<_>>(),
-                previous_version_ref.notes,
+                normalize_list_notes(selected_ref).as_json().clone(),
+                normalize_list_notes(previous_version_ref).as_json().clone(),
             ),
             (
-                vec![expected_latest_pending_note(&fixture, "unread")],
-                vec![],
+                serde_json::json!({"notes": [expected_latest_pending_note(&fixture, "unread")]}),
+                serde_json::json!({"notes": []}),
             ),
         );
     }
@@ -912,7 +893,7 @@ mod tests {
         let server = build_server(db.clone());
         let fixture = create_pending_note_fixture(&db, &server).await;
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 fixture.strategy_id,
                 ListNotesParams {
                     r#ref: Some("group:graph-axis/graph-group".into()),
@@ -924,12 +905,10 @@ mod tests {
             .expect("list pending notes by graph reference");
 
         assert_eq!(
-            result
-                .notes
-                .into_iter()
-                .map(normalize_note)
-                .collect::<Vec<_>>(),
-            vec![expected_latest_pending_note(&fixture, "unread")],
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![expected_latest_pending_note(&fixture, "unread")],
+            },
         );
     }
 
@@ -939,7 +918,7 @@ mod tests {
         let fixture = create_pending_note_fixture(&db, &server).await;
         set_latest_note_version_status(&db, fixture.pending_note_id, "rejected").await;
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 fixture.strategy_id,
                 ListNotesParams {
                     status: Some("rejected".into()),
@@ -951,12 +930,10 @@ mod tests {
             .expect("list rejected pending notes");
 
         assert_eq!(
-            result
-                .notes
-                .into_iter()
-                .map(normalize_note)
-                .collect::<Vec<_>>(),
-            vec![expected_latest_pending_note(&fixture, "rejected")],
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![expected_latest_pending_note(&fixture, "rejected")],
+            },
         );
     }
 
@@ -970,7 +947,7 @@ mod tests {
         let mut graph = sample_graph("g1");
         graph.nodes[0].r#ref = Some("unknown-kind:demo-id".into());
         server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -986,7 +963,7 @@ mod tests {
             .await
             .expect("write pending note with invalid reference");
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 strategy_id,
                 ListNotesParams {
                     r#ref: Some("stock:demo-code".into()),
@@ -997,7 +974,7 @@ mod tests {
             .await
             .expect("unparsable pending references should not fail the list");
 
-        assert_eq!(result.notes, vec![]);
+        assert_eq!(result.as_json().clone(), serde_json::json!({"notes": []}));
     }
 
     #[backend_test_macros::database_test]
@@ -1011,7 +988,7 @@ mod tests {
             ("r", Some("rejected")),
         ] {
             let created = server
-                .write_note_inner(
+                .write_note(
                     strategy_id,
                     None,
                     WriteNoteParams {
@@ -1032,7 +1009,7 @@ mod tests {
         }
 
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 strategy_id,
                 ListNotesParams {
                     status: Some("approved".into()),
@@ -1051,7 +1028,7 @@ mod tests {
         let server = build_server(db);
 
         let err = server
-            .list_notes_inner(
+            .list_notes(
                 strategy_id,
                 ListNotesParams {
                     status: Some("bogus".into()),
@@ -1069,7 +1046,7 @@ mod tests {
         let server = build_server(db.clone());
 
         let old = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1085,7 +1062,7 @@ mod tests {
             .await
             .expect("write old");
         let new = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1106,7 +1083,7 @@ mod tests {
         set_note_updated_at(&db, new.note_id, now - chrono::Duration::hours(1)).await;
 
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 strategy_id,
                 ListNotesParams {
                     updated_after: Some(now - chrono::Duration::days(1)),
@@ -1125,7 +1102,7 @@ mod tests {
         let server = build_server(db);
 
         server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1142,7 +1119,7 @@ mod tests {
             .expect("write");
 
         let result = server
-            .list_notes_inner(
+            .list_notes(
                 strategy_id,
                 ListNotesParams {
                     include_body: Some(false),
@@ -1164,7 +1141,7 @@ mod tests {
 
         let graph = sample_graph("g1");
         let written = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1181,7 +1158,7 @@ mod tests {
             .expect("write_note");
 
         let read = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: written.note_id,
@@ -1220,7 +1197,7 @@ mod tests {
         let server = build_server(db);
 
         let err = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1238,10 +1215,10 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
 
         let result = server
-            .list_notes_inner(strategy_id, ListNotesParams::default())
+            .list_notes(strategy_id, ListNotesParams::default())
             .await
             .expect("list");
-        assert_eq!(result.notes, vec![]);
+        assert_eq!(result.as_json().clone(), serde_json::json!({"notes": []}));
     }
 
     #[backend_test_macros::database_test]
@@ -1254,7 +1231,7 @@ mod tests {
         graph.nodes[0].r#ref = Some("foo:bar".into());
 
         let err = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1270,7 +1247,7 @@ mod tests {
             .await
             .expect_err("invalid body tokens should be rejected");
         let notes = server
-            .list_notes_inner(strategy_id, ListNotesParams::default())
+            .list_notes(strategy_id, ListNotesParams::default())
             .await
             .expect("list notes");
 
@@ -1291,7 +1268,7 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
         let created = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1308,7 +1285,7 @@ mod tests {
             .expect("create note");
 
         let err = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1324,7 +1301,7 @@ mod tests {
             .await
             .expect_err("invalid body tokens should be rejected");
         let note = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
@@ -1335,7 +1312,7 @@ mod tests {
             .expect("read note");
 
         assert_eq!(
-            (err.code, err.message.to_string(), note.body_md),
+            (err.code, err.message.to_string(), note.body_md.clone()),
             (
                 rmcp::model::ErrorCode::INVALID_PARAMS,
                 INVALID_BODY_TOKEN_ERROR.to_string(),
@@ -1369,7 +1346,7 @@ mod tests {
             ),
         ] {
             let created = server
-                .write_note_inner(
+                .write_note(
                     strategy_id,
                     None,
                     WriteNoteParams {
@@ -1386,7 +1363,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("case {label}: create failed: {e}"));
 
             server
-                .write_note_inner(
+                .write_note(
                     strategy_id,
                     None,
                     WriteNoteParams {
@@ -1403,7 +1380,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("case {label}: update failed: {e}"));
 
             let read = server
-                .read_note_inner(
+                .read_note(
                     strategy_id,
                     ReadNoteParams {
                         note_id: created.note_id,
@@ -1442,7 +1419,7 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let created = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1472,7 +1449,7 @@ mod tests {
         .expect("seed legacy body");
 
         let updated = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1488,7 +1465,7 @@ mod tests {
             .await
             .expect("graphs-only update");
         let note = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
@@ -1501,7 +1478,7 @@ mod tests {
         assert_eq!(
             (
                 updated.created,
-                note.body_md,
+                note.body_md.clone(),
                 note.graphs
                     .iter()
                     .map(|graph| graph.id.clone())
@@ -1526,7 +1503,7 @@ mod tests {
         let server = build_server(db.clone());
 
         let created = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1544,7 +1521,7 @@ mod tests {
         set_note_status(&db, created.note_id, "approved").await;
 
         server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1561,7 +1538,7 @@ mod tests {
             .expect("update graphs only");
 
         let read = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
@@ -1582,7 +1559,7 @@ mod tests {
 
         let graph = sample_graph("g1");
         let created = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1599,7 +1576,7 @@ mod tests {
             .expect("create");
 
         let err = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1617,7 +1594,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
 
         let read = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
@@ -1655,7 +1632,7 @@ mod tests {
         let server = build_server(db.clone());
 
         let created = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1680,7 +1657,7 @@ mod tests {
         let comment_id = seed_note_version_comment_with_anchor(&db, version_id, "line two").await;
 
         server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1736,7 +1713,7 @@ mod tests {
         let server = build_server(db.clone());
 
         let created = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1761,7 +1738,7 @@ mod tests {
         let comment_id = seed_note_version_comment_with_anchor(&db, version_id, "line two").await;
 
         server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1812,9 +1789,9 @@ mod tests {
         let server = build_server(db);
 
         let first = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
-                Some("exec-1".into()),
+                Some(Uuid::from_u128(1)),
                 WriteNoteParams {
                     note_id: None,
                     title: Some("first".into()),
@@ -1830,9 +1807,9 @@ mod tests {
         assert!(first.created);
 
         let second = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
-                Some("exec-1".into()),
+                Some(Uuid::from_u128(1)),
                 WriteNoteParams {
                     note_id: None,
                     title: Some("second".into()),
@@ -1854,7 +1831,7 @@ mod tests {
         );
 
         let read = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: first.note_id,
@@ -1893,9 +1870,9 @@ mod tests {
         let server = build_server(db);
 
         let first = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
-                Some("exec-1".into()),
+                Some(Uuid::from_u128(1)),
                 WriteNoteParams {
                     note_id: None,
                     title: Some("a".into()),
@@ -1909,9 +1886,9 @@ mod tests {
             .await
             .expect("first write");
         let second = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
-                Some("exec-2".into()),
+                Some(Uuid::from_u128(2)),
                 WriteNoteParams {
                     note_id: None,
                     title: Some("b".into()),
@@ -1926,7 +1903,7 @@ mod tests {
             .expect("second write");
 
         let result = server
-            .list_notes_inner(strategy_id, ListNotesParams::default())
+            .list_notes(strategy_id, ListNotesParams::default())
             .await
             .expect("list");
         let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
@@ -1951,7 +1928,7 @@ mod tests {
         let server = build_server(db);
 
         let first = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1967,7 +1944,7 @@ mod tests {
             .await
             .expect("first write");
         let second = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -1984,7 +1961,7 @@ mod tests {
             .expect("second write");
 
         let result = server
-            .list_notes_inner(strategy_id, ListNotesParams::default())
+            .list_notes(strategy_id, ListNotesParams::default())
             .await
             .expect("list");
         let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
@@ -2008,11 +1985,11 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
-        // note B: execution_id "exec-1" に紐づく既存ノート
+        // note B: step ID に紐づく既存ノート
         let note_b = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
-                Some("exec-1".into()),
+                Some(Uuid::from_u128(1)),
                 WriteNoteParams {
                     note_id: None,
                     title: Some("note b".into()),
@@ -2028,7 +2005,7 @@ mod tests {
 
         // note A: execution_id を持たない別ノート
         let note_a = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
                 None,
                 WriteNoteParams {
@@ -2047,9 +2024,9 @@ mod tests {
         // note_id: Some(note_a) かつ execution_id: Some("exec-1") (note b を指す) →
         // 明示的な note_id が優先され note a が更新される。
         let updated = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
-                Some("exec-1".into()),
+                Some(Uuid::from_u128(1)),
                 WriteNoteParams {
                     note_id: Some(note_a.note_id),
                     title: None,
@@ -2071,7 +2048,7 @@ mod tests {
         );
 
         let read_a = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: note_a.note_id,
@@ -2081,7 +2058,7 @@ mod tests {
             .await
             .expect("read note a");
         let read_b = server
-            .read_note_inner(
+            .read_note(
                 strategy_id,
                 ReadNoteParams {
                     note_id: note_b.note_id,
@@ -2092,8 +2069,8 @@ mod tests {
             .expect("read note b");
         assert_eq!(
             (
-                normalize_note(read_a).body_md,
-                normalize_note(read_b).body_md
+                normalize_note(read_a).body_md.clone(),
+                normalize_note(read_b).body_md.clone()
             ),
             (
                 Some("a body updated".to_string()),
@@ -2115,14 +2092,14 @@ mod tests {
             strategy_id,
             "winner",
             "winner body",
-            "exec-1",
+            &Uuid::from_u128(1).to_string(),
         )
         .await;
 
         let result = server
-            .write_note_inner(
+            .write_note(
                 strategy_id,
-                Some("exec-1".into()),
+                Some(Uuid::from_u128(1)),
                 WriteNoteParams {
                     note_id: None,
                     title: Some("revised title".into()),
@@ -2135,14 +2112,14 @@ mod tests {
             )
             .await
             .unwrap();
-        let current = find_current_note_version(&db, note_id).await.unwrap().unwrap();
+        let current = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
-            (result, current.title, current.body_md),
+            (result.as_json().clone(), current.title, current.body_md),
             (
-                WriteNoteResult {
-                    note_id,
-                    created: false,
-                },
+                serde_json::json!({"note_id": note_id, "created": false}),
                 "revised title".into(),
                 "revised body".into(),
             ),
