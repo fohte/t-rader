@@ -15,7 +15,7 @@ use gateway_postgres::entities::strategy;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
 
-pub(crate) use crate::integration_tests::mcp_tool::call_tool_output;
+use crate::integration_tests::mcp_tool::call_tool_output;
 
 use super::dto::{
     GetStrategyConfigResult, GetStrategyTaskStatusResult, ListRecentAnnotationsResult,
