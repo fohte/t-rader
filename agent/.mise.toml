@@ -1,0 +1,4 @@
+[env]
+DATABASE_URL = "{{ exec(command=config_root ~ '/../scripts/db-url agent dev') }}"
+TEST_DATABASE_URL = "{{ exec(command=config_root ~ '/../scripts/db-url agent test') }}"
+_.file = ['.env', '.env.local']

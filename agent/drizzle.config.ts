@@ -10,7 +10,7 @@ const url =
 if (url === undefined) {
   // eslint-disable-next-line no-restricted-syntax -- drizzle-kit の config 読み込み時の起動時検証、fail fast
   throw new Error(
-    'DATABASE_URL is required (run `docker compose -f ../docker-compose.infra.yml port db 5432` for the local Postgres URL)',
+    'DATABASE_URL is required (enter this package directory with mise enabled, or set DATABASE_URL explicitly)',
   )
 }
 
