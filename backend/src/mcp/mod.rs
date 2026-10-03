@@ -4,7 +4,6 @@
 //! - `/mcp/strategy`: 戦略 Agent が叩く戦略実行 MCP
 
 mod access_log;
-pub mod mgmt;
 pub mod strategy;
 #[cfg(test)]
 pub mod watcher;
@@ -19,7 +18,7 @@ use crate::services::use_cases::UseCases;
 use axum::Router;
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::strategy_task::DEADLINE_DURATION;
-pub use mgmt::{MgmtDependencies, MgmtServer};
+use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
@@ -176,7 +175,7 @@ fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
 ///
 /// schemars は制約なしの型 (`serde_json::Value` 等) をこの形で出力するが、MCP クライアント
 /// (`@modelcontextprotocol/sdk` の zod スキーマ) はプロパティ値が object であることを要求し
-/// boolean を reject する。`mcp::strategy` / `mcp::mgmt` の各 tool_router テストから呼ぶ。
+/// boolean を reject する。`mcp::strategy` の tool_router テストから呼ぶ。
 #[cfg(test)]
 pub(crate) fn assert_no_boolean_property_schemas(tool: &rmcp::model::Tool) {
     fn walk(value: &serde_json::Value, path: &str) {
