@@ -1,12 +1,7 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261003_163435_drop_note_annotation_strategy_id"
-    }
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
