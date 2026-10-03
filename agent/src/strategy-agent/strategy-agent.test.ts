@@ -188,6 +188,52 @@ const buildPhaseAgentUnderTest = (
     },
   })
 
+type PhaseAgentResult = Awaited<ReturnType<CompiledPhaseAgent['invoke']>>
+
+const normalizeSuccessfulRetry = (
+  result: PhaseAgentResult,
+  requestBodies: readonly string[],
+) => ({
+  structuredResponse: result.structuredResponse,
+  requestBodies,
+})
+
+const normalizeSuccessfulRetryWithWarnings = (
+  result: PhaseAgentResult,
+  requestBodies: readonly string[],
+  retryWarnings: readonly { readonly name: string }[],
+) => ({
+  ...normalizeSuccessfulRetry(result, requestBodies),
+  retryWarnings,
+})
+
+const normalizeAttemptOutcome = (callCount: number, outcome: string) => ({
+  callCount,
+  outcome,
+})
+
+const normalizeTimedRetry = (
+  result: PhaseAgentResult,
+  requestBodies: readonly string[],
+  signals: readonly (AbortSignal | undefined)[],
+) => ({
+  ...normalizeSuccessfulRetry(result, requestBodies),
+  signalsAborted: signals.map((signal) => signal?.aborted ?? false),
+  signalsAreDistinct: signals[0] !== signals[1],
+})
+
+const normalizeDeadlineOutcome = <T>(
+  callCount: number,
+  outcome: string,
+  signal: AbortSignal | undefined,
+  warnCalls: T,
+) => ({
+  callCount,
+  outcome,
+  signalAborted: signal?.aborted ?? false,
+  warnCalls,
+})
+
 describe('runStrategyAgent', () => {
   it('passes the as_of time to the phase agent when agent_graph is configured', async () => {
     let invokedMessages: unknown
@@ -638,13 +684,25 @@ describe('createStrategyAgentDeps', () => {
     NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
   >['fetch']
 
-  const buildStubModel = (fetch: ChatOpenAIFetch): ChatOpenAI =>
+  const buildStubModel = (
+    fetch: ChatOpenAIFetch,
+    streaming = false,
+  ): ChatOpenAI =>
     new ChatOpenAI({
       apiKey: 'test-key',
       model: 'example-model-test-stream',
       maxRetries: 0,
+      streaming,
       configuration: { baseURL: 'http://localhost', fetch },
     })
+
+  type ChatOpenAIRequestInit = Parameters<NonNullable<ChatOpenAIFetch>>[1]
+
+  const getRequestBody = (init: ChatOpenAIRequestInit): string => {
+    const body = init?.body
+    if (typeof body !== 'string') throw new Error('expected string body')
+    return body
+  }
 
   const chatCompletionsRequestSchema = z.object({
     messages: z.array(z.object({ role: z.string(), content: z.unknown() })),
@@ -721,6 +779,75 @@ describe('createStrategyAgentDeps', () => {
       throw new Error('expected a structured-output tool to be declared')
     }
     return name
+  }
+
+  const buildStructuredOutputResponse = (
+    callId: string,
+    requestBody: string,
+  ): Response => {
+    const { tools } = toolCallRequestSchema.parse(JSON.parse(requestBody))
+    return buildToolCallResponse(callId, {
+      name: pickStructuredOutputToolName(tools),
+      arguments: JSON.stringify({ status: 'completed', message: 'done' }),
+    })
+  }
+
+  const buildStructuredOutputStreamResponse = (
+    callId: string,
+    requestBody: string,
+  ): Response => {
+    const { tools } = toolCallRequestSchema.parse(JSON.parse(requestBody))
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              id: callId,
+              model: 'example-model-test-stream',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: null,
+                  delta: {
+                    role: 'assistant',
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: callId,
+                        type: 'function',
+                        function: {
+                          name: pickStructuredOutputToolName(tools),
+                          arguments: JSON.stringify({
+                            status: 'completed',
+                            message: 'done',
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            })}\n\n`,
+          ),
+        )
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              id: callId,
+              model: 'example-model-test-stream',
+              choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }],
+            })}\n\n`,
+          ),
+        )
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      },
+    })
+    return new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })
   }
 
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
@@ -938,10 +1065,316 @@ describe('createStrategyAgentDeps', () => {
     },
   )
 
-  it('aborts the underlying HTTP request once llmCallTimeoutMs elapses, even mid-stream', async () => {
-    let capturedSignal: AbortSignal | undefined
+  it('retries a model request after a 5xx response with the same input', async () => {
+    const requestBodies: string[] = []
+    let callCount = 0
     const model = buildStubModel((_url, init) => {
-      capturedSignal = init?.signal ?? undefined
+      callCount += 1
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      if (callCount === 1) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: { message: 'temporary failure', type: 'server_error' },
+            }),
+            {
+              status: 503,
+              headers: { 'content-type': 'application/json' },
+            },
+          ),
+        )
+      }
+      return Promise.resolve(
+        buildStructuredOutputResponse(`call-${String(callCount)}`, body),
+      )
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+    const firstRequestBody = requestBodies[0]
+
+    expect(normalizeSuccessfulRetry(result, requestBodies)).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestBodies: [firstRequestBody, firstRequestBody],
+    })
+  })
+
+  it('retries after a statusless SSE error event during streaming', async () => {
+    const requestBodies: string[] = []
+    let callCount = 0
+    const encoder = new TextEncoder()
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      if (callCount === 1) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: 'call-1',
+                  model: 'example-model-test-stream',
+                  choices: [
+                    {
+                      index: 0,
+                      finish_reason: null,
+                      delta: { role: 'assistant', content: 'partial' },
+                    },
+                  ],
+                })}\n\n`,
+              ),
+            )
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  error: {
+                    message: 'stream interrupted',
+                    type: 'server_error',
+                  },
+                })}\n\n`,
+              ),
+            )
+            controller.close()
+          },
+        })
+        return Promise.resolve(
+          new Response(stream, {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          }),
+        )
+      }
+      return Promise.resolve(
+        buildStructuredOutputStreamResponse(`call-${String(callCount)}`, body),
+      )
+    }, true)
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+    const firstRequestBody = requestBodies[0]
+
+    expect(normalizeSuccessfulRetry(result, requestBodies)).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestBodies: [firstRequestBody, firstRequestBody],
+    })
+  })
+
+  it('retries after a connection closes during streaming', async () => {
+    const requestBodies: string[] = []
+    let callCount = 0
+    const encoder = new TextEncoder()
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      if (callCount === 1) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: 'call-1',
+                  model: 'example-model-test-stream',
+                  choices: [
+                    {
+                      index: 0,
+                      finish_reason: null,
+                      delta: { role: 'assistant', content: 'partial' },
+                    },
+                  ],
+                })}\n\n`,
+              ),
+            )
+            controller.error(new TypeError('stream connection closed'))
+          },
+        })
+        return Promise.resolve(
+          new Response(stream, {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          }),
+        )
+      }
+      return Promise.resolve(
+        buildStructuredOutputStreamResponse(`call-${String(callCount)}`, body),
+      )
+    }, true)
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+    const firstRequestBody = requestBodies[0]
+
+    expect(normalizeSuccessfulRetry(result, requestBodies)).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestBodies: [firstRequestBody, firstRequestBody],
+    })
+  })
+
+  it.each([
+    {
+      name: 'a fetch connection error',
+      makeError: () => new TypeError('connection closed'),
+    },
+    {
+      name: 'a request timeout',
+      makeError: () => new DOMException('request timed out', 'TimeoutError'),
+    },
+  ])('retries after $name and logs its cause', async ({ makeError }) => {
+    const requestBodies: string[] = []
+    let callCount = 0
+    const cause = makeError()
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      if (callCount === 1) return Promise.reject(cause)
+      return Promise.resolve(
+        buildStructuredOutputResponse(`call-${String(callCount)}`, body),
+      )
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+
+    try {
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+      const firstRequestBody = requestBodies[0]
+      const retryWarnings = warnSpy.mock.calls
+        .filter(
+          ([, message]) =>
+            message === 'model call failed with a retryable error',
+        )
+        .map(([fields]) => {
+          const error = fields['err']
+          return error instanceof Error
+            ? { name: error.name }
+            : { name: 'missing error' }
+        })
+
+      expect(
+        normalizeSuccessfulRetryWithWarnings(
+          result,
+          requestBodies,
+          retryWarnings,
+        ),
+      ).toEqual({
+        structuredResponse: { status: 'completed', message: 'done' },
+        requestBodies: [firstRequestBody, firstRequestBody],
+        retryWarnings: [{ name: cause.name }],
+      })
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('stops after two retries when each model call returns a 5xx response', async () => {
+    let callCount = 0
+    const model = buildStubModel(() => {
+      callCount += 1
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: { message: 'temporary failure', type: 'server_error' },
+          }),
+          { status: 503, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+    const outcome = await agent
+      .invoke({ messages: [new HumanMessage('hi')] })
+      .then(
+        () => 'resolved',
+        () => 'rejected',
+      )
+
+    expect(normalizeAttemptOutcome(callCount, outcome)).toEqual({
+      callCount: 3,
+      outcome: 'rejected',
+    })
+  })
+
+  it.each([{ status: 400 }, { status: 401 }, { status: 404 }, { status: 429 }])(
+    'does not retry after an HTTP $status response',
+    async ({ status }) => {
+      let callCount = 0
+      const model = buildStubModel(() => {
+        callCount += 1
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                message: 'request rejected',
+                type: 'invalid_request_error',
+              },
+            }),
+            {
+              status,
+              headers: { 'content-type': 'application/json' },
+            },
+          ),
+        )
+      })
+      const deps = createStrategyAgentDeps(baseConfig)
+      const agent = buildPhaseAgentUnderTest(deps, {
+        model,
+        tools: [],
+        systemPrompt: 'you are a helpful bot',
+      })
+      const outcome = await agent
+        .invoke({ messages: [new HumanMessage('hi')] })
+        .then(
+          () => 'resolved',
+          () => 'rejected',
+        )
+
+      expect(normalizeAttemptOutcome(callCount, outcome)).toEqual({
+        callCount: 1,
+        outcome: 'rejected',
+      })
+    },
+  )
+
+  it('retries with a fresh signal after llmCallTimeoutMs elapses mid-stream', async () => {
+    const capturedSignals: Array<AbortSignal | undefined> = []
+    const requestBodies: string[] = []
+    let callCount = 0
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      capturedSignals.push(init?.signal ?? undefined)
+      if (callCount > 1) {
+        return Promise.resolve(
+          buildStructuredOutputResponse(`call-${String(callCount)}`, body),
+        )
+      }
       // ストリームが流れ続けて resolve/reject しない応答を模す。signal が
       // 実際に fetch まで届いて abort されない限り、この Promise は解決しない。
       return new Promise((_resolve, reject) => {
@@ -961,16 +1394,25 @@ describe('createStrategyAgentDeps', () => {
       systemPrompt: 'you are a helpful bot',
     })
 
-    await expect(
-      agent.invoke({ messages: [new HumanMessage('hi')] }),
-    ).rejects.toThrow('aborted')
-    expect(capturedSignal?.aborted).toBe(true)
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+    const firstRequestBody = requestBodies[0]
+
+    expect(normalizeTimedRetry(result, requestBodies, capturedSignals)).toEqual(
+      {
+        structuredResponse: { status: 'completed', message: 'done' },
+        requestBodies: [firstRequestBody, firstRequestBody],
+        signalsAborted: [true, false],
+        signalsAreDistinct: true,
+      },
+    )
   })
 
   it('aborts the underlying HTTP request when deadlineSignal is aborted mid-stream', async () => {
     const controller = new AbortController()
     let capturedSignal: AbortSignal | undefined
+    let callCount = 0
     const model = buildStubModel((_url, init) => {
+      callCount += 1
       capturedSignal = init?.signal ?? undefined
       // 実リクエストが飛んだ後に deadline 超過を模して abort する。
       setTimeout(() => {
@@ -995,18 +1437,35 @@ describe('createStrategyAgentDeps', () => {
 
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     try {
-      await expect(
-        agent.invoke({ messages: [new HumanMessage('hi')] }),
-      ).rejects.toThrow(
-        'deadlineMiddleware: aborted model call after strategy task deadline exceeded',
-      )
-      expect(capturedSignal?.aborted).toBe(true)
-      expect(warnSpy.mock.calls).toEqual([
-        [
-          {},
-          'deadlineMiddleware: aborted model call after strategy task deadline exceeded',
+      const outcome = await agent
+        .invoke({ messages: [new HumanMessage('hi')] })
+        .then(
+          () => 'resolved',
+          (error: unknown) =>
+            error instanceof Error
+              ? `${error.name}: ${error.message}`
+              : String(error),
+        )
+
+      expect(
+        normalizeDeadlineOutcome(
+          callCount,
+          outcome,
+          capturedSignal,
+          warnSpy.mock.calls,
+        ),
+      ).toEqual({
+        callCount: 1,
+        outcome:
+          'Error: deadlineMiddleware: aborted model call after strategy task deadline exceeded',
+        signalAborted: true,
+        warnCalls: [
+          [
+            {},
+            'deadlineMiddleware: aborted model call after strategy task deadline exceeded',
+          ],
         ],
-      ])
+      })
     } finally {
       warnSpy.mockRestore()
     }
