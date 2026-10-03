@@ -2007,6 +2007,8 @@ dependencies = [
  "reqwest",
  "rstest",
  "serde",
+ "tokio",
+ "wiremock",
 ]
 
 [[package]]
