@@ -635,6 +635,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "sqlx",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
