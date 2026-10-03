@@ -3,8 +3,8 @@ use chrono::{NaiveDate, TimeZone, Utc};
 use rust_decimal::Decimal;
 
 use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange};
-use crate::models::bar::{Bar, Timeframe};
-use crate::models::instrument::{Instrument, Market};
+use core_domain::bar::{Bar, Timeframe};
+use core_domain::instrument::{Instrument, Market};
 
 /// テスト用のモックデータプロバイダー
 ///

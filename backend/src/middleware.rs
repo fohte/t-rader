@@ -5,7 +5,7 @@ use axum::http::header::CONTENT_TYPE;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-use crate::error::ErrorResponse;
+use entrypoint_frontend_api::ErrorResponse;
 
 /// JSON 値の文字列フィールドに null バイトが含まれているかを再帰的にチェックする
 fn json_contains_null_byte(value: &serde_json::Value) -> bool {

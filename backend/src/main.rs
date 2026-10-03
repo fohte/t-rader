@@ -1,7 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use backend::AppState;
 use backend::agent_client::{
     AgentTaskClient, AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
     SharedAgentTaskClient,
@@ -25,6 +24,7 @@ use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::valuation_source::SharedValuationSource;
+use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
 use gateway_fred::FredClient;
@@ -234,7 +234,7 @@ async fn main() -> Result<(), StartupError> {
             tracing::warn!(
                 "TRADER_AGENT_API_URL=disabled: agent task client を無効化して起動します (dev 用 opt-out)"
             );
-            AppState::disabled_agent_task_client()
+            FrontendApiState::disabled_agent_task_client()
         }
     };
 

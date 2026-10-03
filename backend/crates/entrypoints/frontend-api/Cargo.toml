@@ -3,5 +3,27 @@ name = "entrypoint-frontend-api"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+core-application = { workspace = true }
+core-domain = { workspace = true }
+csv = { workspace = true }
+encoding_rs = { workspace = true }
+jsonschema = { workspace = true }
+rust_decimal = { workspace = true, features = ["serde-float", "serde-arbitrary-precision"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+utoipa = { workspace = true, features = ["chrono", "uuid", "decimal_float", "axum_extras"] }
+utoipa-axum = { workspace = true }
+uuid = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+indoc = { workspace = true }
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+
 [lints]
 workspace = true

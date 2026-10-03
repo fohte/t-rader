@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
     use super::super::assert_response_eq;
-    use crate::models::bar::{Bar, Timeframe};
     use crate::testing::{create_test_server, create_test_server_with_db};
     use axum::http::StatusCode;
     use chrono::{NaiveDate, TimeZone, Utc};
+    use core_domain::bar::{Bar, Timeframe};
     use gateway_postgres::entities::instruments;
     use gateway_postgres::repositories;
     use rust_decimal::Decimal;
