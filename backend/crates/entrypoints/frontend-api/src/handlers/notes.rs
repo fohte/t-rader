@@ -73,16 +73,13 @@ pub async fn list_notes(
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
     let page = state
         .note_read_use_cases
-        .list_notes(
-            None,
-            NoteListQuery {
-                strategy_id: params.strategy_id,
-                status: params.status.filter(|status| !status.is_empty()),
-                kind: params.kind.filter(|kind| !kind.is_empty()),
-                limit: None,
-                ..NoteListQuery::default()
-            },
-        )
+        .list_notes(NoteListQuery {
+            strategy_id: params.strategy_id,
+            status: params.status.filter(|status| !status.is_empty()),
+            kind: params.kind.filter(|kind| !kind.is_empty()),
+            limit: None,
+            ..NoteListQuery::default()
+        })
         .await
         .map_err(map_note_read_error)?;
     let responses = page.notes.into_iter().map(note_snapshot_response).collect();
@@ -112,7 +109,7 @@ pub async fn get_note(
 ) -> Result<Json<NoteResponse>, AppError> {
     let snapshot = state
         .note_read_use_cases
-        .get_note(id, params.version_id, false, None)
+        .get_note(id, params.version_id, false)
         .await
         .map_err(map_note_read_error)?;
     Ok(Json(note_snapshot_response(snapshot)))

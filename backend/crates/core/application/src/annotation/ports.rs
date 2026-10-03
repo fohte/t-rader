@@ -65,7 +65,6 @@ pub struct CreateAnnotationCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UpdateAnnotationCommand {
-    pub scope: Option<StrategyScope>,
     pub actor: Actor,
     pub id: Uuid,
     pub target_symbol: Option<String>,
@@ -78,7 +77,6 @@ pub struct UpdateAnnotationCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChangeAnnotationStatusCommand {
-    pub scope: Option<StrategyScope>,
     pub actor: Actor,
     pub id: Uuid,
     pub status: String,
@@ -87,7 +85,6 @@ pub struct ChangeAnnotationStatusCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeleteAnnotationCommand {
-    pub scope: Option<StrategyScope>,
     pub actor: Actor,
     pub id: Uuid,
 }

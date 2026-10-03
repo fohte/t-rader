@@ -682,43 +682,45 @@ mod tests {
             .await
             .expect("reply to comment on a note from another strategy");
         let comment_id = result.comment.comment_id;
+        let change_history = change_history_for(&db, comment_id).await;
+        let normalized_reply = normalize_reply_comment(result);
         assert_eq!(
-            normalize_reply_comment(result),
-            ReplyCommentResult {
-                comment: CommentDto {
-                    comment_id,
-                    target_kind: "note_version".into(),
-                    target_id: note_version_id,
-                    parent_id: Some(parent_id),
-                    body: "fixed".into(),
-                    author_kind: super::super::STRATEGY_AGENT_ACTOR.into(),
-                    author_label: "analyst".into(),
-                    resolved: false,
+            (normalized_reply.as_json().clone(), change_history),
+            (
+                serde_json::to_value(ReplyCommentResult {
+                    comment: CommentDto {
+                        comment_id,
+                        target_kind: "note_version".into(),
+                        target_id: note_version_id,
+                        parent_id: Some(parent_id),
+                        body: "fixed".into(),
+                        author_kind: super::super::STRATEGY_AGENT_ACTOR.into(),
+                        author_label: "analyst".into(),
+                        resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                })
+                .expect("serialize expected reply"),
+                vec![ChangeHistoryShape {
+                    id: uuid::Uuid::nil(),
+                    target_kind: "comment".into(),
+                    target_id: comment_id,
+                    actor_kind: "llm".into(),
+                    actor_label: "analyst".into(),
+                    op: "create".into(),
+                    diff_json: serde_json::json!({
+                        "target_kind": "note_version",
+                        "target_id": note_version_id,
+                        "parent_id": parent_id,
+                    }),
+                    summary: None,
                     created_at: ts_sentinel(),
-                    anchor_text: None,
-                    anchor_side: None,
-                    start_line: None,
-                    end_line: None,
-                },
-            },
-        );
-        assert_eq!(
-            change_history_for(&db, comment_id).await,
-            vec![ChangeHistoryShape {
-                id: uuid::Uuid::nil(),
-                target_kind: "comment".into(),
-                target_id: comment_id,
-                actor_kind: "llm".into(),
-                actor_label: "analyst".into(),
-                op: "create".into(),
-                diff_json: serde_json::json!({
-                    "target_kind": "note_version",
-                    "target_id": note_version_id,
-                    "parent_id": parent_id,
-                }),
-                summary: None,
-                created_at: ts_sentinel(),
-            }],
+                }],
+            ),
         );
     }
 

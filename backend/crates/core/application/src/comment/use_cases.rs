@@ -124,8 +124,10 @@ impl CommentUseCases {
             ));
         }
         let target_kind = parse_target_kind(&parent.target_kind)?;
-        self.ensure_target_exists(&transaction, target_kind, parent.target_id)
-            .await?;
+        if command.require_target_exists {
+            self.ensure_target_exists(&transaction, target_kind, parent.target_id)
+                .await?;
+        }
 
         let id = Uuid::new_v4();
         let created = self
@@ -166,8 +168,10 @@ impl CommentUseCases {
                 CommentUseCaseError::NotFound(format!("comment {} not found", command.id))
             })?;
         let target_kind = parse_target_kind(&current.target_kind)?;
-        self.ensure_target_exists(&transaction, target_kind, current.target_id)
-            .await?;
+        if command.require_target_exists {
+            self.ensure_target_exists(&transaction, target_kind, current.target_id)
+                .await?;
+        }
         if current.resolved == command.resolved {
             self.unit_of_work.commit(transaction).await?;
             return Ok(current);
@@ -199,16 +203,12 @@ impl CommentUseCases {
 
     pub async fn delete(&self, command: DeleteCommentCommand) -> Result<(), CommentUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let current = self
-            .repository
+        self.repository
             .find_by_id(&transaction, command.id)
             .await?
             .ok_or_else(|| {
                 CommentUseCaseError::NotFound(format!("comment {} not found", command.id))
             })?;
-        let target_kind = parse_target_kind(&current.target_kind)?;
-        self.ensure_target_exists(&transaction, target_kind, current.target_id)
-            .await?;
         if !self.repository.delete(&transaction, command.id).await? {
             return Err(CommentUseCaseError::NotFound(format!(
                 "comment {} not found",
@@ -238,8 +238,7 @@ impl CommentUseCases {
         target_kind: CommentTargetKind,
         target_id: Uuid,
     ) -> Result<(), CommentUseCaseError> {
-        let _target_strategy_id = self
-            .repository
+        self.repository
             .target_strategy_id(transaction, target_kind, target_id)
             .await?
             .ok_or_else(|| CommentUseCaseError::NotFound("comment target not found".into()))?;

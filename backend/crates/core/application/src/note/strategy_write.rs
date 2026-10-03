@@ -648,34 +648,6 @@ mod tests {
             .expect("a note owned by another strategy can be updated");
 
         result.snapshot.version.id = NORMALIZED_VERSION_ID;
-        assert_eq!(
-            result,
-            NoteWriteResult {
-                note_id: SOURCE_NOTE_ID,
-                created: false,
-                snapshot: NoteSnapshot {
-                    note: source_note(),
-                    version: NoteVersion {
-                        id: NORMALIZED_VERSION_ID,
-                        note_id: SOURCE_NOTE_ID,
-                        version_no: 2,
-                        title: "Updated title".into(),
-                        body_md: format!("[[note:{TARGET_NOTE_ID}@current]]"),
-                        frontmatter_json: json!({}),
-                        graphs_json: json!([]),
-                        status: INITIAL_NOTE_STATUS.into(),
-                        is_current: true,
-                        change_reason: None,
-                        created_by_kind: "llm".into(),
-                        execution_id: None,
-                        created_at: timestamp(),
-                        reviewed_at: None,
-                    },
-                    created_by_kind: "human".into(),
-                },
-            },
-        );
-
         let links = repository
             .inserted_links
             .lock()
@@ -688,12 +660,38 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            links,
-            vec![NewNoteLink {
-                from_version_id: NORMALIZED_VERSION_ID,
-                to_note_id: TARGET_NOTE_ID,
-                to_version_id: None,
-            }],
+            (result, links),
+            (
+                NoteWriteResult {
+                    note_id: SOURCE_NOTE_ID,
+                    created: false,
+                    snapshot: NoteSnapshot {
+                        note: source_note(),
+                        version: NoteVersion {
+                            id: NORMALIZED_VERSION_ID,
+                            note_id: SOURCE_NOTE_ID,
+                            version_no: 2,
+                            title: "Updated title".into(),
+                            body_md: format!("[[note:{TARGET_NOTE_ID}@current]]"),
+                            frontmatter_json: json!({}),
+                            graphs_json: json!([]),
+                            status: INITIAL_NOTE_STATUS.into(),
+                            is_current: true,
+                            change_reason: None,
+                            created_by_kind: "llm".into(),
+                            execution_id: None,
+                            created_at: timestamp(),
+                            reviewed_at: None,
+                        },
+                        created_by_kind: "human".into(),
+                    },
+                },
+                vec![NewNoteLink {
+                    from_version_id: NORMALIZED_VERSION_ID,
+                    to_note_id: TARGET_NOTE_ID,
+                    to_version_id: None,
+                }],
+            ),
         );
     }
 }

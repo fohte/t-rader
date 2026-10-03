@@ -79,7 +79,6 @@ impl StrategyServer {
 
     pub(crate) async fn read_annotations_inner(
         &self,
-        _scope: impl Into<StrategyScope>,
         params: ReadAnnotationsParams,
     ) -> Result<ReadAnnotationsResult, McpError> {
         let query = AnnotationListQuery {
@@ -95,7 +94,7 @@ impl StrategyServer {
         let annotations = self
             .dependencies
             .annotation_reads
-            .list_annotations(query, None)
+            .list_annotations(query)
             .await
             .map_err(annotation_read_error_to_mcp)?;
         Ok(ReadAnnotationsResult {

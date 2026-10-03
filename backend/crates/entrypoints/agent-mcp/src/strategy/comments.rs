@@ -7,7 +7,6 @@ use core_application::comment::{
     CommentListQuery, CommentReadQueryError, CommentReadUseCaseError, CommentTargetKind,
     CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand,
 };
-use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{
@@ -37,7 +36,6 @@ fn comment_use_case_to_dto(m: core_application::comment::Comment) -> CommentDto 
 impl StrategyServer {
     pub(crate) async fn read_comments_inner(
         &self,
-        _scope: impl Into<StrategyScope>,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
         let target_kind = CommentTargetKind::parse(&params.target_kind).ok_or_else(|| {
@@ -56,7 +54,7 @@ impl StrategyServer {
                     target_id: params.target_id,
                     resolved: params.resolved,
                 },
-                None,
+                true,
             )
             .await
             .map_err(comment_read_error)?;
@@ -67,14 +65,13 @@ impl StrategyServer {
 
     pub(crate) async fn resolve_comment_inner(
         &self,
-        _scope: impl Into<StrategyScope>,
         params: ResolveCommentParams,
     ) -> Result<ResolveCommentResult, McpError> {
         let updated = self
             .dependencies
             .comments
             .resolve(ResolveCommentCommand {
-                scope: None,
+                require_target_exists: true,
                 actor: Actor::Llm { label: "analyst" },
                 id: params.comment_id,
                 resolved: params.resolved,
@@ -88,14 +85,13 @@ impl StrategyServer {
 
     pub(crate) async fn reply_comment_inner(
         &self,
-        _scope: impl Into<StrategyScope>,
         params: ReplyCommentParams,
     ) -> Result<ReplyCommentResult, McpError> {
         let created = self
             .dependencies
             .comments
             .reply(ReplyCommentCommand {
-                scope: None,
+                require_target_exists: true,
                 actor: Actor::Llm { label: "analyst" },
                 parent_id: params.parent_id,
                 body: params.body,

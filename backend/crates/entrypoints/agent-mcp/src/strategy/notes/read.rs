@@ -2,7 +2,6 @@ use super::super::graph_dto::GraphDef;
 use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot,
 };
-use core_application::strategy_scope::StrategyScope;
 use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
 use rmcp::ErrorData as McpError;
 
@@ -97,13 +96,12 @@ pub(crate) fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
 impl StrategyServer {
     pub(crate) async fn read_note_inner(
         &self,
-        _scope: impl Into<StrategyScope>,
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let snapshot = self
             .dependencies
             .note_reads
-            .get_note(params.note_id, params.version_id, true, None)
+            .get_note(params.note_id, params.version_id, true)
             .await
             .map_err(note_read_error_to_mcp)?;
         let links = self
@@ -138,19 +136,16 @@ impl StrategyServer {
             let page = self
                 .dependencies
                 .note_reads
-                .list_notes(
-                    None,
-                    NoteListQuery {
-                        kind: params.kind.clone(),
-                        status: params.status.clone(),
-                        reference: reference.clone(),
-                        updated_after: params.updated_after,
-                        include_pending: true,
-                        cursor,
-                        limit: Some(page_size),
-                        ..NoteListQuery::default()
-                    },
-                )
+                .list_notes(NoteListQuery {
+                    kind: params.kind.clone(),
+                    status: params.status.clone(),
+                    reference: reference.clone(),
+                    updated_after: params.updated_after,
+                    include_pending: true,
+                    cursor,
+                    limit: Some(page_size),
+                    ..NoteListQuery::default()
+                })
                 .await
                 .map_err(note_read_error_to_mcp)?;
             for snapshot in page.notes {
@@ -170,7 +165,6 @@ impl StrategyServer {
 
     pub(crate) async fn list_notes_inner(
         &self,
-        _scope: impl Into<StrategyScope>,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
         if let Some(status) = params.status.as_deref()
@@ -191,17 +185,14 @@ impl StrategyServer {
         let page = self
             .dependencies
             .note_reads
-            .list_notes(
-                None,
-                NoteListQuery {
-                    kind: params.kind,
-                    reference,
-                    status: params.status,
-                    updated_after: params.updated_after,
-                    limit: Some(clamp_limit(params.limit)),
-                    ..NoteListQuery::default()
-                },
-            )
+            .list_notes(NoteListQuery {
+                kind: params.kind,
+                reference,
+                status: params.status,
+                updated_after: params.updated_after,
+                limit: Some(clamp_limit(params.limit)),
+                ..NoteListQuery::default()
+            })
             .await
             .map_err(note_read_error_to_mcp)?;
         let include_body = params.include_body.unwrap_or(true);

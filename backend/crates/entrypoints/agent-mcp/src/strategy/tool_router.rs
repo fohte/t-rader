@@ -106,8 +106,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadNoteParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<NoteDto>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_note_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_note_inner(params).await.map(Json)
     }
 
     /// 全ノート一覧を返す (新しい順)
@@ -121,8 +121,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ListNotesParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ListNotesResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.list_notes_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.list_notes_inner(params).await.map(Json)
     }
 
     /// アノテーションを作成する
@@ -154,8 +154,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadAnnotationsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadAnnotationsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_annotations_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_annotations_inner(params).await.map(Json)
     }
 
     /// ノート / アノテーションに付いたレビューコメントを読み出す
@@ -169,8 +169,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadCommentsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadCommentsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_comments_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_comments_inner(params).await.map(Json)
     }
 
     /// レビューコメントを解決済み/未解決に切り替える
@@ -183,8 +183,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ResolveCommentParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ResolveCommentResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.resolve_comment_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.resolve_comment_inner(params).await.map(Json)
     }
 
     /// レビューコメントに返信する
@@ -197,8 +197,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReplyCommentParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReplyCommentResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.reply_comment_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.reply_comment_inner(params).await.map(Json)
     }
 
     /// Python コードを exec Pod で実行する

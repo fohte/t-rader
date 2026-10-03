@@ -51,7 +51,7 @@ pub async fn list_comments(
                 target_id: p.target_id,
                 resolved: None,
             },
-            None,
+            false,
         )
         .await
         .map_err(map_comment_read_error)?;
@@ -83,7 +83,6 @@ pub async fn create_comment(
     let created = state
         .comment_use_cases
         .create(CreateCommentCommand {
-            scope: None,
             actor: Actor::Human,
             target_kind: p.target_kind,
             target_id: p.target_id,
@@ -126,7 +125,7 @@ pub async fn update_comment(
     let updated = state
         .comment_use_cases
         .resolve(ResolveCommentCommand {
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Human,
             id,
             resolved: payload.resolved,
@@ -157,7 +156,6 @@ pub async fn delete_comment(
     state
         .comment_use_cases
         .delete(DeleteCommentCommand {
-            scope: None,
             actor: Actor::Human,
             id,
         })

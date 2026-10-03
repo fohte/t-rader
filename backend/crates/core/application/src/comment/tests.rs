@@ -142,7 +142,7 @@ async fn reply_reports_a_missing_parent_as_not_found(fixture: Fixture) {
             body: "reply body".into(),
             author_kind: "llm".into(),
             author_label: "analyst".into(),
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await;
@@ -170,7 +170,7 @@ async fn reply_rejects_a_reply_parent(fixture: Fixture) {
             body: "reply body".into(),
             author_kind: "llm".into(),
             author_label: "analyst".into(),
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await;
@@ -380,7 +380,7 @@ async fn reply_inherits_parent_target_and_records_the_supplied_actor(fixture: Fi
             body: "reply body".into(),
             author_kind: "llm".into(),
             author_label: "analyst".into(),
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await
@@ -453,7 +453,7 @@ async fn resolve_skips_update_and_history_when_status_is_unchanged(fixture: Fixt
         .resolve(ResolveCommentCommand {
             id: PARENT_ID,
             resolved: false,
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Human,
         })
         .await
@@ -482,7 +482,7 @@ async fn resolve_records_a_status_change_in_the_write_transaction(fixture: Fixtu
         .resolve(ResolveCommentCommand {
             id: PARENT_ID,
             resolved: true,
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await
@@ -530,7 +530,6 @@ async fn delete_records_history_with_the_supplied_actor(fixture: Fixture) {
         .use_cases
         .delete(DeleteCommentCommand {
             id: PARENT_ID,
-            scope: None,
             actor: Actor::Llm { label: "analyst" },
         })
         .await
@@ -642,7 +641,6 @@ fn create_command(target_kind: &str, target_id: Uuid, body: &str) -> CreateComme
         anchor_side: None,
         start_line: None,
         end_line: None,
-        scope: None,
         actor: Actor::Human,
     }
 }

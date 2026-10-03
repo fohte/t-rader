@@ -47,14 +47,11 @@ impl MgmtServer {
         let page = self
             .dependencies
             .note_reads
-            .list_notes(
-                None,
-                NoteListQuery {
-                    strategy_id: Some(params.strategy_id),
-                    limit: Some(limit),
-                    ..NoteListQuery::default()
-                },
-            )
+            .list_notes(NoteListQuery {
+                strategy_id: Some(params.strategy_id),
+                limit: Some(limit),
+                ..NoteListQuery::default()
+            })
             .await
             .map_err(note_read_error_to_mcp)?;
         let notes = page

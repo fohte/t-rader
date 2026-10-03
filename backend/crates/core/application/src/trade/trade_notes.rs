@@ -40,7 +40,7 @@ impl TradeNoteUseCases {
         for link in links {
             snapshots.push(
                 self.note_read_use_cases
-                    .get_note(link.note_id, Some(link.note_version_id), false, None)
+                    .get_note(link.note_id, Some(link.note_version_id), false)
                     .await
                     .map_err(map_note_read_error)?,
             );
@@ -57,7 +57,7 @@ impl TradeNoteUseCases {
         self.require_trade(&transaction, trade_id).await?;
         let snapshot = self
             .note_read_use_cases
-            .get_note(note_id, None, false, None)
+            .get_note(note_id, None, false)
             .await
             .map_err(map_note_read_error)?;
         let link = self
@@ -124,134 +124,17 @@ fn map_note_read_error(error: NoteReadUseCaseError) -> TradeUseCaseError {
 mod tests {
     use std::sync::Arc;
 
-    use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
     use rust_decimal::Decimal;
-    use serde_json::json;
 
     use super::*;
-    use crate::note::{
-        Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteReadQuery, NoteReadQueryError,
-        NoteVersion,
-    };
+    use crate::note::{FakeNoteReadQuery, NoteReadUseCases};
     use crate::trade::{FakeTradeRepository, Trade};
     use crate::unit_of_work::FakeUnitOfWork;
 
     const TRADE_ID: Uuid = Uuid::from_u128(1);
     const NOTE_ID: Uuid = Uuid::from_u128(2);
     const VERSION_ID: Uuid = Uuid::from_u128(3);
-
-    struct UnassignedNoteQuery;
-
-    #[async_trait]
-    impl NoteReadQuery for UnassignedNoteQuery {
-        async fn find_note(&self, note_id: Uuid) -> Result<Option<Note>, NoteReadQueryError> {
-            Ok((note_id == NOTE_ID).then(note))
-        }
-
-        async fn find_note_for_version(
-            &self,
-            version_id: Uuid,
-        ) -> Result<Option<Note>, NoteReadQueryError> {
-            Ok((version_id == VERSION_ID).then(note))
-        }
-
-        async fn find_note_version(
-            &self,
-            note_id: Uuid,
-            version_id: Option<Uuid>,
-            _use_latest_if_no_current: bool,
-        ) -> Result<Option<NoteVersion>, NoteReadQueryError> {
-            Ok((note_id == NOTE_ID && version_id.is_none()).then(version))
-        }
-
-        async fn find_initial_created_by_kind(
-            &self,
-            note_id: Uuid,
-        ) -> Result<Option<String>, NoteReadQueryError> {
-            Ok((note_id == NOTE_ID).then(|| "human".into()))
-        }
-
-        async fn list_note_versions(
-            &self,
-            note_id: Uuid,
-        ) -> Result<Vec<NoteVersion>, NoteReadQueryError> {
-            Ok((note_id == NOTE_ID).then(version).into_iter().collect())
-        }
-
-        async fn find_note_version_by_number(
-            &self,
-            note_id: Uuid,
-            version_no: i32,
-        ) -> Result<Option<NoteVersion>, NoteReadQueryError> {
-            Ok((note_id == NOTE_ID && version_no == 1).then(version))
-        }
-
-        async fn list_pending_note_versions(&self) -> Result<Vec<NoteVersion>, NoteReadQueryError> {
-            Ok(Vec::new())
-        }
-
-        async fn list_notes(
-            &self,
-            _query: NoteListQuery,
-        ) -> Result<NoteListPage, NoteReadQueryError> {
-            Ok(NoteListPage {
-                notes: Vec::new(),
-                cursor: None,
-                has_more: false,
-            })
-        }
-
-        async fn find_links_from_version(
-            &self,
-            _version_id: Uuid,
-        ) -> Result<Vec<NoteLink>, NoteReadQueryError> {
-            Ok(Vec::new())
-        }
-
-        async fn list_note_links(
-            &self,
-            _note_id: Uuid,
-            _source_version_id: Uuid,
-        ) -> Result<NoteLinks, NoteReadQueryError> {
-            Ok(NoteLinks {
-                outgoing: Vec::new(),
-                incoming: Vec::new(),
-            })
-        }
-    }
-
-    fn note() -> Note {
-        Note {
-            id: NOTE_ID,
-            strategy_id: None,
-            kind: None,
-            trigger: None,
-            trigger_label: None,
-            created_at: timestamp(),
-            updated_at: timestamp(),
-            execution_id: None,
-        }
-    }
-
-    fn version() -> NoteVersion {
-        NoteVersion {
-            id: VERSION_ID,
-            note_id: NOTE_ID,
-            version_no: 1,
-            title: "Example note".into(),
-            body_md: "body".into(),
-            frontmatter_json: json!({}),
-            graphs_json: json!([]),
-            status: "approved".into(),
-            is_current: true,
-            change_reason: None,
-            created_by_kind: "human".into(),
-            execution_id: None,
-            created_at: timestamp(),
-            reviewed_at: None,
-        }
-    }
 
     fn trade() -> Trade {
         Trade {
@@ -279,7 +162,8 @@ mod tests {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let trade_repository = Arc::new(FakeTradeRepository::new());
         trade_repository.insert_trade(trade()).await;
-        let note_reads = NoteReadUseCases::new(Arc::new(UnassignedNoteQuery));
+        let note_reads =
+            NoteReadUseCases::new(Arc::new(FakeNoteReadQuery::new(NOTE_ID, None, VERSION_ID)));
         let use_cases = TradeNoteUseCases::new(unit_of_work, trade_repository.clone(), note_reads);
 
         let link = use_cases

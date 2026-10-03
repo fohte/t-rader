@@ -1,8 +1,6 @@
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::strategy_scope::StrategyScope;
-
 use super::ports::Annotation;
 use super::query::{
     AnnotationListQuery, AnnotationReadQueryError, RecentAnnotation, SharedAnnotationReadQuery,
@@ -26,11 +24,7 @@ impl AnnotationReadUseCases {
         Self { query }
     }
 
-    pub async fn get_annotation(
-        &self,
-        id: Uuid,
-        _scope: Option<StrategyScope>,
-    ) -> Result<Annotation, AnnotationReadUseCaseError> {
+    pub async fn get_annotation(&self, id: Uuid) -> Result<Annotation, AnnotationReadUseCaseError> {
         let annotation = self
             .query
             .find_by_id(id)
@@ -42,7 +36,6 @@ impl AnnotationReadUseCases {
     pub async fn list_annotations(
         &self,
         query: AnnotationListQuery,
-        _scope: Option<StrategyScope>,
     ) -> Result<Vec<Annotation>, AnnotationReadUseCaseError> {
         Ok(self.query.list(query).await?)
     }

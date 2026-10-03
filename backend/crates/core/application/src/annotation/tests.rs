@@ -128,7 +128,7 @@ async fn get_annotation_accepts_annotations_with_any_strategy_owner(
     let use_cases = AnnotationReadUseCases::new(query);
 
     let result = use_cases
-        .get_annotation(target.id, Some(Uuid::from_u128(43).into()))
+        .get_annotation(target.id)
         .await
         .expect("an annotation is readable from a different strategy scope");
 
@@ -155,7 +155,7 @@ async fn list_annotations_preserves_the_query_strategy_filter() {
     };
 
     use_cases
-        .list_annotations(requested_query.clone(), Some(Uuid::from_u128(48).into()))
+        .list_annotations(requested_query.clone())
         .await
         .expect("listing succeeds");
 
@@ -387,7 +387,6 @@ async fn update_allows_annotation_from_another_strategy() {
     let (use_cases, _, repository, _, _) = build_use_cases();
     let id = Uuid::from_u128(30);
     let owner_strategy_id = Uuid::from_u128(31);
-    let scope_strategy_id = Uuid::from_u128(32);
     repository
         .insert_annotation(annotation(
             id,
@@ -399,7 +398,6 @@ async fn update_allows_annotation_from_another_strategy() {
 
     let updated = use_cases
         .update(UpdateAnnotationCommand {
-            scope: Some(scope_strategy_id.into()),
             actor: Actor::Llm { label: "analyst" },
             id,
             target_symbol: None,
@@ -442,7 +440,6 @@ async fn change_status_does_not_update_or_record_history_when_status_is_unchange
 
     let returned = use_cases
         .change_status(ChangeAnnotationStatusCommand {
-            scope: None,
             actor: Actor::Human,
             id,
             status: "approved".into(),

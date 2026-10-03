@@ -47,14 +47,11 @@ pub async fn list_annotations(
 ) -> Result<Json<Vec<AnnotationResponse>>, AppError> {
     let annotations = state
         .annotation_read_use_cases
-        .list_annotations(
-            AnnotationListQuery {
-                strategy_id: params.strategy_id,
-                target_symbol: params.target_symbol.filter(|symbol| !symbol.is_empty()),
-                limit: None,
-            },
-            None,
-        )
+        .list_annotations(AnnotationListQuery {
+            strategy_id: params.strategy_id,
+            target_symbol: params.target_symbol.filter(|symbol| !symbol.is_empty()),
+            limit: None,
+        })
         .await
         .map_err(map_annotation_read_error)?;
     Ok(Json(
@@ -84,7 +81,7 @@ pub async fn get_annotation(
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let annotation = state
         .annotation_read_use_cases
-        .get_annotation(id, None)
+        .get_annotation(id)
         .await
         .map_err(map_annotation_read_error)?;
     Ok(Json(annotation.into()))
@@ -157,7 +154,6 @@ pub async fn update_annotation(
     let updated = state
         .annotation_use_cases
         .update(UpdateAnnotationCommand {
-            scope: None,
             actor: Actor::Human,
             id,
             target_symbol: p.target_symbol,
@@ -196,7 +192,6 @@ pub async fn approve_annotation(
     let updated = state
         .annotation_use_cases
         .change_status(ChangeAnnotationStatusCommand {
-            scope: None,
             actor: Actor::Human,
             id,
             status: "approved".into(),
@@ -231,7 +226,7 @@ pub async fn reject_annotation(
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let current = state
         .annotation_read_use_cases
-        .get_annotation(id, None)
+        .get_annotation(id)
         .await
         .map_err(map_annotation_read_error)?;
     // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
@@ -261,7 +256,6 @@ pub async fn reject_annotation(
     let updated = state
         .annotation_use_cases
         .change_status(ChangeAnnotationStatusCommand {
-            scope: None,
             actor: Actor::Human,
             id,
             status: "rejected".into(),
@@ -292,7 +286,6 @@ pub async fn delete_annotation(
     state
         .annotation_use_cases
         .delete(DeleteAnnotationCommand {
-            scope: None,
             actor: Actor::Human,
             id,
         })
