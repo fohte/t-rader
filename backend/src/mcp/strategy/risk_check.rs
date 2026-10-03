@@ -651,6 +651,7 @@ mod integration_tests {
             key: Set(key.to_string()),
             name: Set("Sample group".to_string()),
             description: Set(None),
+            sync_source_code: Set(None),
         })
         .exec(db)
         .await

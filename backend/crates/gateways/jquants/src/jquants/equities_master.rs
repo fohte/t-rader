@@ -38,6 +38,7 @@ impl JQuantsClient {
                 name: m.company_name,
                 market: non_empty(m.market_name),
                 sector_name: non_empty(m.sector_name),
+                sector_code: non_empty(m.sector_code),
                 product_category: non_empty(m.product_category),
             })
             .collect())

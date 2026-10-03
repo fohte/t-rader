@@ -9,7 +9,7 @@ use super::error::StockGroupUseCaseError;
 use super::repository::{GroupAxis, SharedStockGroupRepository, StockGroupRepositoryError};
 use super::types::{
     CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupMembership,
-    UpdateStockGroupCommand,
+    StockGroupSyncSourceCodeLookup, UpdateStockGroupCommand,
 };
 
 #[derive(Clone)]
@@ -146,6 +146,35 @@ impl StockGroupUseCases {
             .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(stock_ids)
+    }
+
+    pub async fn find_sync_source_code(
+        &self,
+        sync_source: &str,
+        group_key: &str,
+    ) -> Result<StockGroupSyncSourceCodeLookup, StockGroupUseCaseError> {
+        let transaction = self.unit_of_work.begin().await?;
+        let codes = self
+            .repository
+            .find_sync_source_codes(&transaction, sync_source, group_key)
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
+
+        if codes.is_empty() {
+            return Ok(StockGroupSyncSourceCodeLookup::NotFound);
+        }
+        if codes.iter().any(Option::is_none) {
+            return Ok(StockGroupSyncSourceCodeLookup::Missing);
+        }
+
+        let mut codes = codes.into_iter().flatten();
+        let Some(code) = codes.next() else {
+            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
+        };
+        if codes.any(|other| other != code) {
+            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
+        }
+        Ok(StockGroupSyncSourceCodeLookup::Found(code))
     }
 
     pub async fn list_memberships(

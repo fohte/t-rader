@@ -158,6 +158,7 @@ comments:
       key: '同じ分類軸の中でグループを識別するキー。'
       name: 'グループの表示名。'
       description: 'グループの説明。'
+      sync_source_code: '同期元がグループに付与したコード。同期対象の分類軸でのみ使用する。'
   - table: stock_group_member
     tableComment: '銘柄と銘柄グループの所属関係を保持する。'
     columnComments:

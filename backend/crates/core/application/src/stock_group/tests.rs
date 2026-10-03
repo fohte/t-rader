@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use super::{
     CreateStockGroupCommand, FakeStockGroupRepository, StockGroup, StockGroupMembership,
-    StockGroupUseCaseError, StockGroupUseCases, UpdateStockGroupCommand,
+    StockGroupSyncSourceCodeLookup, StockGroupUseCaseError, StockGroupUseCases,
+    UpdateStockGroupCommand,
 };
 use crate::stock_group::SharedStockGroupRepository;
 
@@ -51,6 +52,68 @@ async fn create_group(harness: &Harness) -> Result<StockGroup, StockGroupUseCase
             description: Some("Sample description".into()),
         })
         .await
+}
+
+#[rstest]
+#[tokio::test]
+async fn source_code_lookup_distinguishes_missing_and_ambiguous_groups(harness: Harness) {
+    harness
+        .repository
+        .insert_axis("sample-axis-a", Some("synthetic-source"))
+        .await;
+    harness
+        .repository
+        .insert_axis("sample-axis-b", Some("synthetic-source"))
+        .await;
+    harness
+        .repository
+        .insert_sync_group("sample-axis-a", "sample-coded", Some("1234"))
+        .await;
+    harness
+        .repository
+        .insert_sync_group("sample-axis-a", "sample-pending", None)
+        .await;
+    harness
+        .repository
+        .insert_sync_group("sample-axis-a", "sample-conflict", Some("1234"))
+        .await;
+    harness
+        .repository
+        .insert_sync_group("sample-axis-b", "sample-conflict", Some("5678"))
+        .await;
+
+    let results = vec![
+        harness
+            .use_cases
+            .find_sync_source_code("synthetic-source", "sample-unknown")
+            .await,
+        harness
+            .use_cases
+            .find_sync_source_code("synthetic-source", "sample-pending")
+            .await,
+        harness
+            .use_cases
+            .find_sync_source_code("synthetic-source", "sample-coded")
+            .await,
+        harness
+            .use_cases
+            .find_sync_source_code("synthetic-source", "sample-conflict")
+            .await,
+    ];
+    let results = results
+        .into_iter()
+        .map(|result| result.map_err(|error| error.to_string()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        results,
+        vec![
+            Ok(StockGroupSyncSourceCodeLookup::NotFound),
+            Ok(StockGroupSyncSourceCodeLookup::Missing),
+            Ok(StockGroupSyncSourceCodeLookup::Found("1234".into())),
+            Ok(StockGroupSyncSourceCodeLookup::Ambiguous),
+        ],
+    );
 }
 
 #[rstest]
