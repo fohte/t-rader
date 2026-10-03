@@ -29,7 +29,7 @@ const LATEST_DATA_DATE_QUERIES: &[(&str, &str)] = &[
     ),
     (
         EARNINGS_SCHEDULE_INGEST_JOB,
-        "SELECT MAX(pub_date) FROM public.jquants_earnings_date",
+        "SELECT MAX(date) FROM public.earnings_schedule_ingested_date",
     ),
     (
         FINANCIAL_SUMMARY_INGEST_JOB,
