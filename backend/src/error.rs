@@ -249,9 +249,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sea_orm_error_maps_to_http_internal_response() {
-        let response =
-            AppError::from(sea_orm::DbErr::Custom("database unavailable".into())).into_response();
+    async fn internal_error_maps_to_http_internal_response() {
+        let response = AppError::Internal("database unavailable".into()).into_response();
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await

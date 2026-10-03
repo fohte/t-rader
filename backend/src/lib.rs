@@ -45,12 +45,6 @@ use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use gateway_postgres::DatabaseHandle;
 
-impl From<sea_orm::DbErr> for AppError {
-    fn from(error: sea_orm::DbErr) -> Self {
-        Self::Internal(error.to_string())
-    }
-}
-
 /// composition root の UseCases から frontend-api の依存 state を組み立てる。
 pub fn build_http_state(
     use_cases: &crate::services::use_cases::UseCases,
@@ -380,7 +374,9 @@ async fn health_check(
     State(db): State<DatabaseHandle>,
 ) -> Result<(StatusCode, Json<HealthResponse>), AppError> {
     // DB 接続の正常性を確認
-    db.execute_unprepared("SELECT 1").await?;
+    db.execute_unprepared("SELECT 1")
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
 
     Ok((
         StatusCode::OK,

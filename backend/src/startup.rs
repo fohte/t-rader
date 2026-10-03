@@ -1,36 +1,53 @@
-use backend::error::AppError;
 use gateway_jquants::JQuantsPlan;
+use sea_orm::DbErr;
 
-fn parse_jquants_plan(value: Option<String>) -> Result<JQuantsPlan, AppError> {
+#[derive(Debug, thiserror::Error)]
+pub(super) enum StartupError {
+    #[error("internal error: {0}")]
+    Internal(String),
+
+    #[error("configuration error: {0}")]
+    Config(String),
+}
+
+impl From<DbErr> for StartupError {
+    fn from(error: DbErr) -> Self {
+        Self::Internal(error.to_string())
+    }
+}
+
+fn parse_jquants_plan(value: Option<String>) -> Result<JQuantsPlan, StartupError> {
     let value = value.filter(|value| !value.is_empty()).ok_or_else(|| {
-        AppError::Config("JQUANTS_PLAN is required when JQUANTS_API_KEY is configured".to_string())
+        StartupError::Config(
+            "JQUANTS_PLAN is required when JQUANTS_API_KEY is configured".to_string(),
+        )
     })?;
-    value
-        .parse()
-        .map_err(|error| AppError::Config(format!("invalid JQUANTS_PLAN value '{value}': {error}")))
+    value.parse().map_err(|error| {
+        StartupError::Config(format!("invalid JQUANTS_PLAN value '{value}': {error}"))
+    })
 }
 
 fn jquants_config(
     api_key: Option<String>,
     plan: Option<String>,
-) -> Result<Option<(String, JQuantsPlan)>, AppError> {
+) -> Result<Option<(String, JQuantsPlan)>, StartupError> {
     match api_key.filter(|api_key| !api_key.is_empty()) {
         Some(api_key) => Ok(Some((api_key, parse_jquants_plan(plan)?))),
         None => Ok(None),
     }
 }
 
-pub(super) fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>, AppError> {
+pub(super) fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>, StartupError> {
     jquants_config(
         std::env::var("JQUANTS_API_KEY").ok(),
         std::env::var("JQUANTS_PLAN").ok(),
     )
 }
 
-pub(super) fn required_redis_url(value: Option<String>) -> Result<String, AppError> {
-    value
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| AppError::Config("REDIS_URL environment variable is not set".to_string()))
+pub(super) fn required_redis_url(value: Option<String>) -> Result<String, StartupError> {
+    value.filter(|value| !value.is_empty()).ok_or_else(|| {
+        StartupError::Config("REDIS_URL environment variable is not set".to_string())
+    })
 }
 
 #[cfg(test)]
@@ -82,6 +99,14 @@ mod tests {
         assert_eq!(
             required_redis_url(value).map_err(|error| error.to_string()),
             expected.map(str::to_owned).map_err(str::to_owned),
+        );
+    }
+
+    #[test]
+    fn database_error_keeps_internal_error_display() {
+        assert_eq!(
+            StartupError::from(DbErr::Custom("database unavailable".into())).to_string(),
+            "internal error: Custom Error: database unavailable",
         );
     }
 }
