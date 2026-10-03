@@ -4,7 +4,7 @@ t-rader-backend は Kubernetes クラスタに配備する。1 つの bin で `-
 
 ## Service と接続経路
 
-- `api` / `both` は API 用 port `3000` を listen する (`BACKEND_PORT` で変更可)。`worker` / `both` は Graphile Worker 管理 UI 用に別 port (`GRAPHILE_WORKER_ADMIN_UI_PORT`, 既定 `3001`) を listen する。管理 UI は Cloudflare Access の `Cf-Access-Authenticated-User-Email` header を検証し、UI の token 欄は空で使用できる。`api` では管理 UI を listen しない。
+- `api` / `both` は API 用 port `3000` を listen する (`BACKEND_PORT` で変更可)。`worker` / `both` は Graphile Worker 管理 UI 用に別 port (`GRAPHILE_WORKER_ADMIN_UI_PORT`, 既定 `3001`) を listen する。管理 UI は受信した `Cf-Access-Authenticated-User-Email` header の値を `GRAPHILE_WORKER_ADMIN_UI_ACCESS_EMAIL` と照合するが、header の付与元は検証しない。管理 UI port は Cloudflare Access を通る信頼済み proxy からのみ到達可能にし、backend Service や Pod IP への直接アクセスを NetworkPolicy 等で遮断すること。UI の token 欄は空で使用でき、Cloudflare Access が header を転送する。`api` では管理 UI を listen しない。
 - frontend Pod 内 nginx が `/api` を backend Service にリバースプロキシし、SPA から見て同一オリジン構成にする (frontend の Dockerfile と `nginx.conf.template` 参照)。
 - MCP クライアントは MCP path (`/mcp/strategy`, `/mcp/mgmt`) を叩く。戦略 Agent は in-cluster Service DNS 経由、管理 MCP の外部コントロールプレーンクライアントは Ingress/Tunnel 経由の公開ホスト名を叩くことが多い。いずれの場合も、クライアントが実際に送る `Host` ヘッダの値を `MCP_ALLOWED_HOSTS` に追加しないと `rmcp` の DNS rebinding 保護で 403 になる ([`docs/mcp.md`](./mcp.md))。
 - backend Service への外部からの経路は環境に応じて構成する (例: `/mcp/mgmt` のみ Ingress/Tunnel で外部公開し、他は frontend 経由に閉じる)。`MCP_ALLOWED_HOSTS` は DNS rebinding 対策の `Host` ヘッダ allowlist であり認証機構ではないため、外部公開時は Ingress/Tunnel 側で別途認証を課すこと ([`docs/mcp.md`](./mcp.md) の管理 MCP 節を参照)。

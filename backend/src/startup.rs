@@ -64,13 +64,10 @@ pub(super) fn required_redis_url(value: Option<String>) -> Result<String, Startu
     })
 }
 
-fn required_admin_ui_allowed_email(
-    value: Option<String>,
-    environment_variable: &str,
-) -> Result<String, StartupError> {
+fn required_admin_ui_allowed_email(value: Option<String>) -> Result<String, StartupError> {
     value.filter(|value| !value.is_empty()).ok_or_else(|| {
         StartupError::Config(format!(
-            "{environment_variable} environment variable is not set"
+            "{WORKER_ADMIN_UI_ALLOWED_EMAIL_ENV} environment variable is not set"
         ))
     })
 }
@@ -95,10 +92,7 @@ fn worker_admin_ui_settings(
 
     Ok(WorkerAdminUiSettings {
         listen_addr: SocketAddr::from(([0, 0, 0, 0], port)),
-        allowed_email: required_admin_ui_allowed_email(
-            allowed_email,
-            WORKER_ADMIN_UI_ALLOWED_EMAIL_ENV,
-        )?,
+        allowed_email: required_admin_ui_allowed_email(allowed_email)?,
     })
 }
 

@@ -77,33 +77,53 @@ pub(super) async fn server(
 
 #[cfg(test)]
 mod tests {
-    use graphile_worker_admin_ui::PublicAuthMode;
+    use std::error::Error;
+    use std::net::SocketAddr;
+
+    use axum::http::StatusCode;
+    use axum_test::TestServer;
+    use rstest::{fixture, rstest};
+    use sqlx::PgPool;
 
     use super::*;
 
-    #[test]
-    fn auth_uses_cloudflare_access_identity_header() {
-        let allowed_email = "worker-admin@access.invalid";
-        let actual = auth_config(allowed_email.to_string())
-            .map(|auth| {
-                let summary = auth.summary();
-                (
-                    matches!(summary.mode, PublicAuthMode::Header),
-                    summary.header_name,
-                    auth.secret_for_display().map(str::to_owned),
-                    summary.generated_secret,
-                )
-            })
-            .map_err(|error| error.to_string());
+    const TEST_ALLOWED_EMAIL: &str = "worker-admin@access.invalid";
 
-        assert_eq!(
-            actual,
-            Ok((
-                true,
-                Some("cf-access-authenticated-user-email".to_string()),
-                Some(allowed_email.to_string()),
-                false,
-            )),
-        );
+    #[fixture]
+    fn admin_ui_test_server() -> Result<TestServer, Box<dyn Error>> {
+        let pool = PgPool::connect_lazy("postgres://test:test@localhost/test")?;
+        let config = AdminServerConfig::builder(
+            pool.clone(),
+            WorkerUtils::new(pool, GRAPHILE_WORKER_SCHEMA),
+        )
+        .schema_name(GRAPHILE_WORKER_SCHEMA)
+        .listen_addr(SocketAddr::from(([0, 0, 0, 0], 3001)))
+        .auth(auth_config(TEST_ALLOWED_EMAIL.to_string())?)
+        .read_only(false)
+        .build()?;
+        let router = build_admin_ui_router(config)?;
+
+        Ok(TestServer::new(router)?)
+    }
+
+    #[rstest]
+    #[case::allowed_identity(Some(TEST_ALLOWED_EMAIL), StatusCode::OK)]
+    #[case::missing_identity(None, StatusCode::UNAUTHORIZED)]
+    #[case::different_identity(Some("other-worker@access.invalid"), StatusCode::UNAUTHORIZED)]
+    #[tokio::test]
+    async fn api_session_requires_the_configured_identity(
+        admin_ui_test_server: Result<TestServer, Box<dyn Error>>,
+        #[case] identity: Option<&str>,
+        #[case] expected_status: StatusCode,
+    ) -> Result<(), Box<dyn Error>> {
+        let server = admin_ui_test_server?;
+        let request = server.get("/api/session");
+        let response = match identity {
+            Some(identity) => request.add_header(ACCESS_HEADER_NAME, identity).await,
+            None => request.await,
+        };
+
+        assert_eq!(response.status_code(), expected_status);
+        Ok(())
     }
 }

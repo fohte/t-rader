@@ -152,6 +152,7 @@ gateway-jquants = { workspace = true, features = ["test-support"] }
 gateway-postgres = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
+sqlx = { workspace = true, features = ["postgres"] }
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = { workspace = true }
 
