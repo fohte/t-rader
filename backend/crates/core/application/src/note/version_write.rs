@@ -130,7 +130,7 @@ impl NoteUseCases {
                 )
                 .await?;
             }
-            self.sync_note_links(transaction, note, &version).await?;
+            self.sync_note_links(transaction, &version).await?;
         } else {
             if becomes_current && graphs_changed {
                 self.sync_note_references(
@@ -211,7 +211,6 @@ impl NoteUseCases {
     async fn sync_note_links(
         &self,
         transaction: &UnitOfWorkTransaction,
-        source_note: &Note,
         source_version: &NoteVersion,
     ) -> Result<(), NoteUseCaseError> {
         let mut target_policies = BTreeMap::new();
@@ -256,12 +255,6 @@ impl NoteUseCases {
                     "参照先のノート {target_id} が存在しません"
                 )));
             };
-            if source_note.strategy_id != target.strategy_id {
-                return Err(NoteUseCaseError::Validation(
-                    "参照先のノートは同じ戦略に属している必要があります".into(),
-                ));
-            }
-
             let to_version_id = if follows_current {
                 None
             } else if let Some(version_id) = target.current_version_id {

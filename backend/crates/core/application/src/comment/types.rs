@@ -2,7 +2,6 @@ use chrono::{DateTime, FixedOffset};
 use uuid::Uuid;
 
 use crate::change_history::Actor;
-use crate::strategy_scope::StrategyScope;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CommentTargetKind {
@@ -78,7 +77,6 @@ pub struct CreateCommentCommand {
     pub anchor_side: Option<String>,
     pub start_line: Option<i32>,
     pub end_line: Option<i32>,
-    pub scope: Option<StrategyScope>,
     pub actor: Actor,
 }
 
@@ -88,7 +86,7 @@ pub struct ReplyCommentCommand {
     pub body: String,
     pub author_kind: String,
     pub author_label: String,
-    pub scope: Option<StrategyScope>,
+    pub require_target_exists: bool,
     pub actor: Actor,
 }
 
@@ -96,13 +94,12 @@ pub struct ReplyCommentCommand {
 pub struct ResolveCommentCommand {
     pub id: Uuid,
     pub resolved: bool,
-    pub scope: Option<StrategyScope>,
+    pub require_target_exists: bool,
     pub actor: Actor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteCommentCommand {
     pub id: Uuid,
-    pub scope: Option<StrategyScope>,
     pub actor: Actor,
 }

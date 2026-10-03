@@ -78,7 +78,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or append a version to an existing note owned by the strategy. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -98,7 +98,7 @@ impl StrategyServer {
     /// ノートを読み出す
     #[tool(
         name = "read_note",
-        description = "Read a single note owned by the strategy, including its graphs and linked note versions. Omit version_id to read the current version.",
+        description = "Read any note, including its graphs and linked note versions. Omit version_id to read the current version.",
         annotations(read_only_hint = true)
     )]
     async fn read_note(
@@ -106,14 +106,14 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadNoteParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<NoteDto>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_note_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_note_inner(params).await.map(Json)
     }
 
-    /// 戦略のノート一覧を返す (新しい順)
+    /// 全ノート一覧を返す (新しい順)
     #[tool(
         name = "list_notes",
-        description = "List notes owned by the strategy, newest first. Filter by kind, ref (kind:id), status, and/or updated_after. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
+        description = "List all notes, newest first. Filter by kind, ref (kind:id), status, and/or updated_after. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
         annotations(read_only_hint = true)
     )]
     async fn list_notes(
@@ -121,14 +121,14 @@ impl StrategyServer {
         Parameters(params): Parameters<ListNotesParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ListNotesResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.list_notes_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.list_notes_inner(params).await.map(Json)
     }
 
     /// アノテーションを作成する
     #[tool(
         name = "create_annotation",
-        description = "Create a chart annotation owned by the strategy. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."
+        description = "Create a chart annotation. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."
     )]
     async fn create_annotation(
         &self,
@@ -143,10 +143,10 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// 戦略のアノテーション一覧を返す
+    /// 全アノテーション一覧を返す
     #[tool(
         name = "read_annotations",
-        description = "List annotations owned by the strategy. Optionally filter by target_symbol.",
+        description = "List all annotations. Optionally filter by target_symbol.",
         annotations(read_only_hint = true)
     )]
     async fn read_annotations(
@@ -154,14 +154,14 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadAnnotationsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadAnnotationsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_annotations_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_annotations_inner(params).await.map(Json)
     }
 
     /// ノート / アノテーションに付いたレビューコメントを読み出す
     #[tool(
         name = "read_comments",
-        description = "List review comments attached to a note version or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved.",
+        description = "List review comments attached to any note version or annotation, oldest first. Threads are represented via parent_id. Optionally filter by resolved.",
         annotations(read_only_hint = true)
     )]
     async fn read_comments(
@@ -169,36 +169,36 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadCommentsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadCommentsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_comments_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_comments_inner(params).await.map(Json)
     }
 
     /// レビューコメントを解決済み/未解決に切り替える
     #[tool(
         name = "resolve_comment",
-        description = "Mark a review comment owned by the strategy as resolved or unresolved."
+        description = "Mark a review comment as resolved or unresolved."
     )]
     async fn resolve_comment(
         &self,
         Parameters(params): Parameters<ResolveCommentParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ResolveCommentResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.resolve_comment_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.resolve_comment_inner(params).await.map(Json)
     }
 
     /// レビューコメントに返信する
     #[tool(
         name = "reply_comment",
-        description = "Reply to an existing review comment owned by the strategy. Posted with author_kind=llm, author_label=analyst."
+        description = "Reply to an existing review comment. Posted with author_kind=llm, author_label=analyst."
     )]
     async fn reply_comment(
         &self,
         Parameters(params): Parameters<ReplyCommentParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReplyCommentResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.reply_comment_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.reply_comment_inner(params).await.map(Json)
     }
 
     /// Python コードを exec Pod で実行する
@@ -281,7 +281,7 @@ impl StrategyServer {
     /// 個々の約定を account-wide (全戦略横断) で返す
     #[tool(
         name = "read_trades",
-        description = "Return individual trade executions (date, symbol, side, qty, price) across the entire account, using the same account-wide scope as read_portfolio (not limited to the connecting strategy; each trade carries its own strategy_id). Each trade has a notes array of linked note_id/note_version_id pairs; trades without linked notes have an empty array. For trades belonging to the connecting strategy, pass these as note_id/version_id to read_note to inspect the linked version. Optionally filter by symbol and a lower bound on trade date. Use this to inspect the actual fills behind a past decision, newest first.",
+        description = "Return individual trade executions (date, symbol, side, qty, price) across the entire account, using the same account-wide scope as read_portfolio (not limited to the connecting strategy; each trade carries its own strategy_id). Each trade has a notes array of linked note_id/note_version_id pairs; trades without linked notes have an empty array. Pass a linked note_id/version_id to read_note to inspect its version. Optionally filter by symbol and a lower bound on trade date. Use this to inspect the actual fills behind a past decision, newest first.",
         annotations(read_only_hint = true)
     )]
     async fn read_trades(

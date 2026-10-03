@@ -485,7 +485,7 @@ jobs:
           GRAPHILE_WORKER_ADMIN_UI_ACCESS_EMAIL: ci-admin@access.invalid
           RUST_LOG: info
         run: |
-          cargo run > /tmp/backend.log 2>&1 &
+          cargo run -p backend > /tmp/backend.log 2>&1 &
           # サーバーが起動するまで待機
           for i in $(seq 1 30); do
             if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then

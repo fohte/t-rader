@@ -5,7 +5,7 @@ services:
       dockerfile: backend/Dockerfile
       target: dev
     working_dir: /app/backend
-    command: cargo watch -x run
+    command: cargo watch -x 'run -p backend'
     env_file:
       - path: .env
         required: true

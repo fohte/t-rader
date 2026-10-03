@@ -6,7 +6,6 @@ use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
 use crate::note::types::{Note, NoteSnapshot};
 use crate::strategy_existence::SharedStrategyExistence;
-use crate::strategy_scope::StrategyScope;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 pub(super) fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCaseError> {
@@ -51,19 +50,6 @@ impl NoteUseCases {
             .find_note(transaction, note_id)
             .await?
             .ok_or_else(|| NoteUseCaseError::NotFound(format!("note {note_id} not found")))
-    }
-
-    pub(super) fn ensure_scope(
-        &self,
-        note: &Note,
-        scope: Option<StrategyScope>,
-    ) -> Result<(), NoteUseCaseError> {
-        if let Some(scope) = scope
-            && note.strategy_id != Some(scope.id())
-        {
-            return Err(NoteUseCaseError::Forbidden(note.id));
-        }
-        Ok(())
     }
 
     pub(super) async fn ensure_strategy_exists(

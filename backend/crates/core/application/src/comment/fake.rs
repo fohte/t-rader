@@ -28,6 +28,11 @@ impl FakeCommentRepository {
     }
 
     pub fn insert_existing(&self, comment: Comment) {
+        if let Some(target_kind) = CommentTargetKind::parse(&comment.target_kind) {
+            lock(&self.target_strategy_ids)
+                .entry((target_kind, comment.target_id))
+                .or_insert(None);
+        }
         lock(&self.comments).insert(comment.id, comment);
     }
 
@@ -49,6 +54,9 @@ impl FakeCommentRepository {
         note_version_id: Uuid,
         bodies: NoteVersionAnchorBodies,
     ) {
+        lock(&self.target_strategy_ids)
+            .entry((CommentTargetKind::NoteVersion, note_version_id))
+            .or_insert(None);
         lock(&self.note_version_bodies).insert(note_version_id, bodies);
     }
 

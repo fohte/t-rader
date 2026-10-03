@@ -55,7 +55,7 @@ impl AnnotationUseCases {
                 .await?;
         }
         if let Some(note_id) = command.linked_note_id {
-            self.ensure_linked_note_scope(&transaction, note_id, command.strategy_id)
+            self.ensure_linked_note_exists(&transaction, note_id)
                 .await?;
         }
 
@@ -121,7 +121,6 @@ impl AnnotationUseCases {
             .find_by_id_in_transaction(&transaction, command.id)
             .await?
             .ok_or(AnnotationUseCaseError::NotFound(command.id))?;
-        ensure_scope_owns(command.scope, current.strategy_id)?;
 
         let mut next = current.clone();
         let mut diff = Map::new();
@@ -164,8 +163,7 @@ impl AnnotationUseCases {
             next.text = value;
         }
         if let Some(value) = command.linked_note_id {
-            self.ensure_linked_note_scope(&transaction, value, current.strategy_id)
-                .await?;
+            self.ensure_linked_note_exists(&transaction, value).await?;
             diff.insert(
                 "linked_note_id".into(),
                 json!({ "from": current.linked_note_id, "to": value }),
@@ -201,7 +199,6 @@ impl AnnotationUseCases {
             .find_by_id_in_transaction(&transaction, command.id)
             .await?
             .ok_or(AnnotationUseCaseError::NotFound(command.id))?;
-        ensure_scope_owns(command.scope, current.strategy_id)?;
         if current.status == command.status {
             return Ok(current);
         }
@@ -232,12 +229,10 @@ impl AnnotationUseCases {
         command: DeleteAnnotationCommand,
     ) -> Result<(), AnnotationUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let current = self
-            .repository
+        self.repository
             .find_by_id_in_transaction(&transaction, command.id)
             .await?
             .ok_or(AnnotationUseCaseError::NotFound(command.id))?;
-        ensure_scope_owns(command.scope, current.strategy_id)?;
         if !self.repository.delete(&transaction, command.id).await? {
             return Err(AnnotationUseCaseError::NotFound(command.id));
         }
@@ -271,22 +266,16 @@ impl AnnotationUseCases {
         Ok(())
     }
 
-    async fn ensure_linked_note_scope(
+    async fn ensure_linked_note_exists(
         &self,
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
-        strategy_id: Option<Uuid>,
     ) -> Result<(), AnnotationUseCaseError> {
-        let note_strategy_id = self
+        let _strategy_id = self
             .repository
             .note_strategy_id_in_transaction(transaction, note_id)
             .await?
             .ok_or(AnnotationUseCaseError::LinkedNoteNotFound(note_id))?;
-        if note_strategy_id != strategy_id {
-            return Err(AnnotationUseCaseError::Validation(
-                "linked note belongs to a different strategy".into(),
-            ));
-        }
         Ok(())
     }
 
@@ -371,16 +360,6 @@ fn validate_scope_strategy(
         return Err(AnnotationUseCaseError::Validation(
             "strategy_id must match the strategy scope".into(),
         ));
-    }
-    Ok(())
-}
-
-fn ensure_scope_owns(
-    scope: Option<StrategyScope>,
-    strategy_id: Option<Uuid>,
-) -> Result<(), AnnotationUseCaseError> {
-    if scope.is_some_and(|scope| strategy_id != Some(scope.id())) {
-        return Err(AnnotationUseCaseError::ScopeMismatch);
     }
     Ok(())
 }
