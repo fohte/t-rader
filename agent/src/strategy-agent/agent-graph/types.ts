@@ -1,4 +1,4 @@
-// `for_each`/`label_field` は backend/src/services/agent_graph.rs と同じ
+// `for_each`/`label_field` は backend/crates/core/application/src/agent_config/graph.rs と同じ
 // "<phase_key>.<field>" / 自由文字列の規約に従う。
 export interface AgentGraphPhase {
   readonly key: string

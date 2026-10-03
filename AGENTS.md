@@ -58,7 +58,7 @@ fohte 個人用の日本株投資プラットフォーム。
 mise run db:up
 
 # バックエンド (ローカル)
-cd backend && cargo run
+cd backend && cargo run -p backend
 cd backend && cargo test
 cd backend && cargo clippy -- -D warnings
 

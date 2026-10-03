@@ -90,7 +90,7 @@ describe('loadEnv', () => {
       BACKEND_WEBHOOK_TOKEN: 'webhook-token',
       A2A_WATCHDOG_TIMEOUT_MS: 60000,
       A2A_RETENTION_DAYS: 7,
-      LLM_CALL_TIMEOUT_MS: 10 * 60 * 1000,
+      LLM_CALL_TIMEOUT_MS: 5 * 60 * 1000,
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       LLM_API_KEY: 'llm-key',
       LLM_BASE_URL: 'https://litellm.example.com/v1',
