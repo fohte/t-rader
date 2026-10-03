@@ -17,7 +17,7 @@ export interface Env {
 
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_RETENTION_DAYS = 30
-const DEFAULT_LLM_CALL_TIMEOUT_MS = 10 * 60 * 1000
+const DEFAULT_LLM_CALL_TIMEOUT_MS = 5 * 60 * 1000
 
 export class EnvError extends Error {
   constructor(
