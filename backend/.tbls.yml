@@ -350,16 +350,23 @@ comments:
     tableComment: '全銘柄の日足データを取り込んだ営業日を記録する。'
     columnComments:
       date: '全銘柄の日足データの取り込みが完了した営業日。'
-  - table: jquants_earnings_date
-    tableComment: '銘柄ごとの決算発表日と決算期情報を保持する。'
+  - table: calendar_event
+    tableComment: '指標、中銀イベント、決算などの予定を取得元ごとに保持する。'
     columnComments:
-      code: '銘柄コード。'
-      fq_name: '決算期名。'
-      pub_date: '決算発表日。'
-      sch_date: '決算発表予定日。未定の場合は null。'
-      fye: '会計年度末。'
-      co_name: '日本語の会社名。'
-      co_name_en: '英語の会社名。'
+      source: '予定を取得した取得元の識別子。'
+      external_id: '取得元内でイベントを識別するキー。'
+      category: 'イベントの分類。indicator、central_bank、earnings のいずれか。'
+      country: '指標・中銀イベントの対象地域、または決算の上場市場。'
+      title: 'イベント名、または決算会社名。'
+      stock_id: '決算対象の銘柄 ID。決算以外では null。'
+      fiscal_period: '決算期。決算以外では null。'
+      event_date: 'イベントが予定されている JST の日付。'
+      event_at: '時刻が分かる場合のイベント日時。'
+      time_of_day: '時刻の代わりに寄り前または引け後が分かる場合の区分。'
+  - table: earnings_schedule_ingested_date
+    tableComment: '決算予定を取得した公表日を記録する。'
+    columnComments:
+      date: '決算予定を保存できた公表日。'
   - table: large_volume_shareholding_documents
     tableComment: 'EDINET の大量保有報告書と保有状況の明細を保持する。'
     columnComments:

@@ -1,25 +1,33 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
+use core_application::calendar::repository::{
+    CalendarEventRepository, CalendarEventRepositoryError,
+};
 use core_application::earnings_schedule::{
     EarningsScheduleRepository, EarningsScheduleRepositoryError,
 };
+use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
 use core_domain::earnings_schedule::EarningsSchedule;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{EntityTrait, QueryOrder};
 
-use crate::DatabaseHandle;
-use crate::entities::jquants_earnings_date;
+use crate::entities::earnings_schedule_ingested_date;
 use crate::persistence::persistence_error;
+use crate::{DatabaseHandle, PostgresCalendarEventRepository};
 
 #[derive(Clone)]
 pub struct PostgresEarningsScheduleRepository {
     db: DatabaseHandle,
+    calendar_events: PostgresCalendarEventRepository,
 }
 
 impl PostgresEarningsScheduleRepository {
     pub fn new(db: DatabaseHandle) -> Self {
-        Self { db }
+        Self {
+            calendar_events: PostgresCalendarEventRepository::new(db.clone()),
+            db,
+        }
     }
 }
 
@@ -28,11 +36,11 @@ impl EarningsScheduleRepository for PostgresEarningsScheduleRepository {
     async fn latest_published_date(
         &self,
     ) -> Result<Option<NaiveDate>, EarningsScheduleRepositoryError> {
-        jquants_earnings_date::Entity::find()
-            .order_by_desc(jquants_earnings_date::Column::PubDate)
+        earnings_schedule_ingested_date::Entity::find()
+            .order_by_desc(earnings_schedule_ingested_date::Column::Date)
             .one(&self.db)
             .await
-            .map(|row| row.map(|model| model.pub_date))
+            .map(|row| row.map(|model| model.date))
             .map_err(repository_error)
     }
 
@@ -44,30 +52,34 @@ impl EarningsScheduleRepository for PostgresEarningsScheduleRepository {
             return Ok(0);
         }
 
-        let models = schedules
+        let count = schedules.len();
+        let dates = schedules
+            .iter()
+            .map(|schedule| schedule.published_date)
+            .collect::<std::collections::BTreeSet<_>>();
+        let events = schedules
             .into_iter()
-            .map(to_active_model)
-            .collect::<Vec<_>>();
-        let count = models.len();
-        jquants_earnings_date::Entity::insert_many(models)
-            .on_conflict(
-                OnConflict::columns([
-                    jquants_earnings_date::Column::Code,
-                    jquants_earnings_date::Column::FqName,
-                    jquants_earnings_date::Column::PubDate,
-                ])
-                .update_columns([
-                    jquants_earnings_date::Column::SchDate,
-                    jquants_earnings_date::Column::Fye,
-                    jquants_earnings_date::Column::CoName,
-                    jquants_earnings_date::Column::CoNameEn,
-                ])
-                .to_owned(),
-            )
-            .exec_without_returning(&self.db)
+            .filter_map(to_calendar_event)
+            .collect();
+        self.calendar_events
+            .upsert(events)
             .await
-            .map(|_| count)
-            .map_err(repository_error)
+            .map_err(calendar_repository_error)?;
+        earnings_schedule_ingested_date::Entity::insert_many(
+            dates
+                .into_iter()
+                .map(|date| earnings_schedule_ingested_date::ActiveModel { date: Set(date) }),
+        )
+        .on_conflict(
+            OnConflict::column(earnings_schedule_ingested_date::Column::Date)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(&self.db)
+        .await
+        .map_err(repository_error)?;
+
+        Ok(count)
     }
 }
 
@@ -75,15 +87,28 @@ fn repository_error(error: sea_orm::DbErr) -> EarningsScheduleRepositoryError {
     EarningsScheduleRepositoryError::Database(persistence_error(error))
 }
 
-fn to_active_model(schedule: EarningsSchedule) -> jquants_earnings_date::ActiveModel {
-    jquants_earnings_date::ActiveModel {
-        code: Set(schedule.code),
-        fq_name: Set(schedule.fiscal_quarter_name),
-        pub_date: Set(schedule.published_date),
-        sch_date: Set(schedule.scheduled_date),
-        fye: Set(schedule.fiscal_year_end),
-        co_name: Set(schedule.company_name),
-        co_name_en: Set(schedule.company_name_en),
+fn to_calendar_event(schedule: EarningsSchedule) -> Option<CalendarEvent> {
+    Some(CalendarEvent {
+        source: "jquants".into(),
+        external_id: format!("{}:{}", schedule.code, schedule.fiscal_quarter_name),
+        category: CalendarEventCategory::Earnings,
+        country: "JP".into(),
+        title: schedule.company_name,
+        stock_id: Some(schedule.code),
+        fiscal_period: Some(schedule.fiscal_quarter_name),
+        event_date: schedule.scheduled_date?,
+        event_at: None,
+        time_of_day: None,
+    })
+}
+
+fn calendar_repository_error(
+    error: CalendarEventRepositoryError,
+) -> EarningsScheduleRepositoryError {
+    match error {
+        CalendarEventRepositoryError::Database(error) => {
+            EarningsScheduleRepositoryError::Database(error)
+        }
     }
 }
 
@@ -92,11 +117,24 @@ mod tests {
     use chrono::NaiveDate;
     use core_application::earnings_schedule::EarningsScheduleRepository;
     use core_domain::earnings_schedule::EarningsSchedule;
-    use sea_orm::EntityTrait;
+    use sea_orm::{EntityTrait, QueryOrder};
 
     use super::PostgresEarningsScheduleRepository;
     use crate::DatabaseHandle;
-    use crate::entities::jquants_earnings_date;
+    use crate::entities::{calendar_event, earnings_schedule_ingested_date};
+
+    fn event_fields(
+        row: calendar_event::Model,
+    ) -> (String, String, String, String, String, NaiveDate) {
+        (
+            row.source,
+            row.external_id,
+            row.category,
+            row.country,
+            row.title,
+            row.event_date,
+        )
+    }
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
@@ -127,24 +165,35 @@ mod tests {
             .upsert(vec![value.clone()])
             .await
             .expect("insert row");
-        let rows = jquants_earnings_date::Entity::find()
+        let rows = calendar_event::Entity::find()
+            .order_by_asc(calendar_event::Column::ExternalId)
             .all(&db)
             .await
-            .expect("list rows");
+            .expect("list events")
+            .into_iter()
+            .map(event_fields)
+            .collect::<Vec<_>>();
+        let dates = earnings_schedule_ingested_date::Entity::find()
+            .all(&db)
+            .await
+            .expect("list ingested dates")
+            .into_iter()
+            .map(|row| row.date)
+            .collect::<Vec<_>>();
 
         assert_eq!(
-            (count, rows),
+            (count, rows, dates),
             (
                 1,
-                vec![jquants_earnings_date::Model {
-                    code: value.code,
-                    fq_name: value.fiscal_quarter_name,
-                    pub_date: value.published_date,
-                    sch_date: value.scheduled_date,
-                    fye: value.fiscal_year_end,
-                    co_name: value.company_name,
-                    co_name_en: value.company_name_en,
-                }],
+                vec![(
+                    "jquants".into(),
+                    "ZZ999:FY-QX".into(),
+                    "earnings".into(),
+                    "JP".into(),
+                    value.company_name,
+                    date(2042, 8, 10),
+                )],
+                vec![published_date],
             ),
         );
     }
@@ -154,7 +203,7 @@ mod tests {
         let repository = PostgresEarningsScheduleRepository::new(db.clone());
         let published_date = date(2042, 7, 6);
         let original = schedule(published_date, Some(date(2042, 8, 10)), "架空社");
-        let updated = schedule(published_date, None, "架空社更新");
+        let updated = schedule(published_date, Some(date(2042, 8, 12)), "架空社更新");
         repository
             .upsert(vec![original])
             .await
@@ -164,24 +213,27 @@ mod tests {
             .upsert(vec![updated.clone()])
             .await
             .expect("update row");
-        let rows = jquants_earnings_date::Entity::find()
+        let rows = calendar_event::Entity::find()
+            .order_by_asc(calendar_event::Column::ExternalId)
             .all(&db)
             .await
-            .expect("list rows");
+            .expect("list events")
+            .into_iter()
+            .map(event_fields)
+            .collect::<Vec<_>>();
 
         assert_eq!(
             (count, rows),
             (
                 1,
-                vec![jquants_earnings_date::Model {
-                    code: updated.code,
-                    fq_name: updated.fiscal_quarter_name,
-                    pub_date: updated.published_date,
-                    sch_date: updated.scheduled_date,
-                    fye: updated.fiscal_year_end,
-                    co_name: updated.company_name,
-                    co_name_en: updated.company_name_en,
-                }],
+                vec![(
+                    "jquants".into(),
+                    "ZZ999:FY-QX".into(),
+                    "earnings".into(),
+                    "JP".into(),
+                    updated.company_name,
+                    date(2042, 8, 12),
+                )],
             ),
         );
     }
@@ -191,12 +243,42 @@ mod tests {
         let repository = PostgresEarningsScheduleRepository::new(db.clone());
 
         let count = repository.upsert(Vec::new()).await.expect("empty upsert");
-        let rows = jquants_earnings_date::Entity::find()
+        let rows = calendar_event::Entity::find()
             .all(&db)
             .await
-            .expect("list rows");
+            .expect("list events");
+        let dates = earnings_schedule_ingested_date::Entity::find()
+            .all(&db)
+            .await
+            .expect("list ingested dates");
 
-        assert_eq!((count, rows), (0, Vec::new()));
+        assert_eq!((count, rows, dates), (0, Vec::new(), Vec::new()));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn undecided_schedules_are_not_stored_as_events_but_advance_the_cursor(
+        db: DatabaseHandle,
+    ) {
+        let repository = PostgresEarningsScheduleRepository::new(db.clone());
+        let published_date = date(2042, 7, 6);
+
+        let count = repository
+            .upsert(vec![schedule(published_date, None, "架空社")])
+            .await
+            .expect("record undecided schedule");
+        let events = calendar_event::Entity::find()
+            .all(&db)
+            .await
+            .expect("list events");
+        let latest_date = repository
+            .latest_published_date()
+            .await
+            .expect("latest date");
+
+        assert_eq!(
+            (count, events, latest_date),
+            (1, Vec::new(), Some(published_date))
+        );
     }
 
     #[backend_test_macros::database_test]

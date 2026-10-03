@@ -4,18 +4,10 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "jquants_earnings_date")]
+#[sea_orm(table_name = "earnings_schedule_ingested_date")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub code: String,
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub fq_name: String,
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub pub_date: Date,
-    pub sch_date: Option<Date>,
-    pub fye: String,
-    pub co_name: String,
-    pub co_name_en: String,
+    pub date: Date,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
