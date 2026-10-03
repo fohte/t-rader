@@ -1,7 +1,7 @@
 /**
  * agent_graph (YAML) の 1 フェーズをフォームで編集するための型。
  *
- * backend の `AgentGraphPhase` (backend/src/services/agent_graph.rs) と同じ形だが、
+ * backend の `AgentGraphPhase` (backend/crates/core/application/src/agent_config/graph.rs) と同じ形だが、
  * `runs` は含めない。`for_each` の有無で実行回数が決まり `runs` は実行時に読み捨てられる
  * ため (agent/src/strategy-agent/agent-graph/types.ts 冒頭コメント参照)、フォームの型としても
  * 前提にしない。

@@ -6,7 +6,7 @@ import type { components } from '#lib/api/schema.gen'
 
 type AgentTool = components['schemas']['AgentTool']
 
-// backend/src/handlers/agent_options.rs に実在する登録済み tool 名
+// backend/crates/entrypoints/frontend-api/src/handlers/agent_options.rs に実在する登録済み tool 名
 const TOOLS: AgentTool[] = [
   { name: 'list_notes', description: null },
   { name: 'query_data', description: null },
