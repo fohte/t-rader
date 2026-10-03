@@ -12,8 +12,8 @@ use crate::models::{CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::note::NoteRepositoryError;
 use core_application::note::{
-    NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot, NoteUseCaseError,
-    NoteWriteCommand, UpdateNoteCommand,
+    NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteUseCaseError, NoteWriteCommand,
+    UpdateNoteCommand,
 };
 use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
@@ -24,6 +24,8 @@ pub struct ListNotesQuery {
     pub strategy_id: Option<Uuid>,
     pub status: Option<String>,
     pub kind: Option<String>,
+    /// `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -31,28 +33,6 @@ pub struct ListNotesQuery {
 pub struct GetNoteQuery {
     /// 省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。
     pub version_id: Option<Uuid>,
-}
-
-fn note_snapshot_response(snapshot: NoteSnapshot) -> NoteResponse {
-    NoteResponse {
-        id: snapshot.note.id,
-        version_id: snapshot.version.id,
-        version_no: snapshot.version.version_no,
-        is_current: snapshot.version.is_current,
-        strategy_id: snapshot.note.strategy_id,
-        title: snapshot.version.title,
-        body_md: snapshot.version.body_md,
-        frontmatter_json: snapshot.version.frontmatter_json,
-        kind: snapshot.note.kind,
-        status: snapshot.version.status,
-        trigger: snapshot.note.trigger,
-        trigger_label: snapshot.note.trigger_label,
-        created_by_kind: snapshot.created_by_kind,
-        created_at: snapshot.note.created_at,
-        updated_at: snapshot.note.updated_at,
-        graphs_json: snapshot.version.graphs_json,
-        execution_id: snapshot.note.execution_id,
-    }
 }
 
 /// ノート一覧
@@ -77,12 +57,17 @@ pub async fn list_notes(
             strategy_id: params.strategy_id,
             status: params.status.filter(|status| !status.is_empty()),
             kind: params.kind.filter(|kind| !kind.is_empty()),
+            tag: params.tag.filter(|tag| !tag.is_empty()),
             limit: None,
             ..NoteListQuery::default()
         })
         .await
         .map_err(map_note_read_error)?;
-    let responses = page.notes.into_iter().map(note_snapshot_response).collect();
+    let responses = page
+        .notes
+        .into_iter()
+        .map(NoteResponse::from_snapshot)
+        .collect();
     Ok(Json(responses))
 }
 
@@ -112,7 +97,7 @@ pub async fn get_note(
         .get_note(id, params.version_id, false)
         .await
         .map_err(map_note_read_error)?;
-    Ok(Json(note_snapshot_response(snapshot)))
+    Ok(Json(NoteResponse::from_snapshot(snapshot)))
 }
 
 pub(super) fn map_note_read_error(error: NoteReadUseCaseError) -> AppError {
@@ -194,7 +179,7 @@ pub async fn create_note(
         .map_err(map_note_error)?;
     Ok((
         StatusCode::CREATED,
-        Json(note_snapshot_response(snapshot.snapshot)),
+        Json(NoteResponse::from_snapshot(snapshot.snapshot)),
     ))
 }
 
@@ -234,7 +219,7 @@ pub async fn update_note(
         )
         .await
         .map_err(map_note_error)?;
-    Ok(Json(note_snapshot_response(snapshot)))
+    Ok(Json(NoteResponse::from_snapshot(snapshot)))
 }
 
 /// ノート削除

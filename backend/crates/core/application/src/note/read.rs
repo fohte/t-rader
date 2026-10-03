@@ -202,10 +202,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_notes_preserves_the_query_strategy_filter() {
+    async fn list_notes_preserves_strategy_and_tag_filters() {
         let (use_cases, query) = build_use_cases();
         let requested_query = NoteListQuery {
             strategy_id: Some(Uuid::from_u128(4)),
+            tag: Some("demo-focus".into()),
             ..NoteListQuery::default()
         };
 

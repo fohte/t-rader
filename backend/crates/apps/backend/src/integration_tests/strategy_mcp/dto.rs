@@ -165,6 +165,7 @@ pub struct NoteDto {
     pub title: String,
     pub body_md: Option<String>,
     pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
+    pub tags: Vec<String>,
     pub kind: Option<String>,
     pub status: String,
     pub created_by_kind: String,
@@ -185,6 +186,7 @@ pub struct ListNotesParams {
     pub updated_after: Option<DateTime<FixedOffset>>,
     pub include_body: Option<bool>,
     pub include_pending: Option<bool>,
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]

@@ -1675,6 +1675,7 @@ export interface components {
       status: string
       /** Format: uuid */
       strategy_id?: string | null
+      tags: string[]
       title: string
       trigger?: string | null
       trigger_label?: string | null
@@ -4774,6 +4775,8 @@ export interface operations {
         strategy_id?: string
         status?: string
         kind?: string
+        /** @description `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。 */
+        tag?: string
       }
       header?: never
       path?: never

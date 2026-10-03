@@ -2,6 +2,7 @@ use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{
     NewNote, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand, NoteWriteResult,
 };
@@ -34,6 +35,7 @@ impl NoteUseCases {
         }
         if let Some(frontmatter_json) = command.frontmatter_json.as_ref() {
             ensure_frontmatter_object(frontmatter_json)?;
+            ensure_frontmatter_tags_are_strings(frontmatter_json)?;
         }
         if let Some(graphs_json) = command.graphs_json.as_ref() {
             let graphs: Vec<core_domain::note_graph::GraphDef> =

@@ -259,6 +259,7 @@ pub struct NoteDto {
     /// `read_note` の結果では常に値を含む
     pub body_md: Option<String>,
     pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
+    pub tags: Vec<String>,
     pub kind: Option<String>,
     pub status: String,
     pub created_by_kind: String,
@@ -302,6 +303,8 @@ pub struct ListNotesParams {
     pub include_body: Option<bool>,
     /// true を指定すると現行バージョンがないノートも返す。最新バージョンを使用する
     pub include_pending: Option<bool>,
+    /// `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。
+    pub tag: Option<String>,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]
