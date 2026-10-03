@@ -10,6 +10,9 @@ pub use error::RssFeedUseCaseError;
 #[cfg(feature = "test-support")]
 pub use fake::FakeRssFeedRepository;
 pub use repository::{RssFeedRepository, RssFeedRepositoryError, SharedRssFeedRepository};
-pub use types::{CreateRssFeedCommand, NewRssFeed, RssFeed, UpdateRssFeedPatch};
+pub use types::{
+    ContentSource, CreateRssFeedCommand, NewRssFeed, RssFeed, UpdateRssFeedCommand,
+    UpdateRssFeedPatch,
+};
 pub use url_validator::{RssFeedUrlValidator, SharedRssFeedUrlValidator};
 pub use use_cases::RssFeedUseCases;

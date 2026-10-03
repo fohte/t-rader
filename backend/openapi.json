@@ -7775,7 +7775,7 @@
         "properties": {
           "content_source": {
             "type": "string",
-            "description": "本文取得元。none は本文なし、feed は RSS 本文、crawl はリンク先取得。省略時は none"
+            "description": "本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。"
           },
           "display_name": {
             "type": "string",
@@ -9846,7 +9846,7 @@
               "string",
               "null"
             ],
-            "description": "本文取得元。none / feed / crawl のいずれか。省略時は現在の設定を維持する。"
+            "description": "本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。"
           },
           "display_name": {
             "type": [

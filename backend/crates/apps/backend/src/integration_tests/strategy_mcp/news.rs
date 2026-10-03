@@ -8,6 +8,7 @@ mod tests {
     use super::super::tests_common::{build_server, insert_strategy};
     use core_application::news::NewsItemRepository;
     use core_application::news_aggregator::NewsItem;
+    use core_application::rss_feed::ContentSource;
     use core_application::unit_of_work::UnitOfWork;
     use gateway_postgres::{DatabaseHandle, PostgresNewsItemRepository, PostgresUnitOfWork};
 
@@ -40,7 +41,7 @@ mod tests {
                     url: url.into(),
                     title: title.into(),
                     body_snippet: body_snippet.map(str::to_string),
-                    content_source: "none".into(),
+                    content_source: ContentSource::None,
                     content: None,
                     published_at: published_at.with_timezone(&chrono::Utc),
                 }],

@@ -143,7 +143,7 @@ impl From<RssFeed> for RssFeedSummary {
             display_name: m.display_name,
             url: m.url,
             enabled: m.enabled,
-            content_source: m.content_source,
+            content_source: m.content_source.as_str().to_owned(),
         }
     }
 }

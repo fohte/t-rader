@@ -1,6 +1,8 @@
 //! 管理 MCP の RSS フィード一覧・設定更新 tool。
 
-use core_application::rss_feed::{RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch};
+use core_application::rss_feed::{
+    RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedCommand,
+};
 use rmcp::ErrorData as McpError;
 
 use super::MgmtServer;
@@ -31,7 +33,7 @@ impl MgmtServer {
             .rss_feeds
             .update(
                 params.id,
-                UpdateRssFeedPatch {
+                UpdateRssFeedCommand {
                     content_source: params.content_source,
                     ..Default::default()
                 },

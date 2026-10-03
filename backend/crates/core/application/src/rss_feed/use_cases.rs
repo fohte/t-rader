@@ -3,13 +3,16 @@ use uuid::Uuid;
 
 use super::error::RssFeedUseCaseError;
 use super::repository::SharedRssFeedRepository;
-use super::types::{CreateRssFeedCommand, NewRssFeed, RssFeed, UpdateRssFeedPatch};
+use super::types::{
+    ContentSource, CreateRssFeedCommand, NewRssFeed, RssFeed, UpdateRssFeedCommand,
+    UpdateRssFeedPatch,
+};
 use super::url_validator::SharedRssFeedUrlValidator;
 use crate::unit_of_work::SharedUnitOfWork;
 
 /// `source` は機械処理向けの slug、`display_name` は利用者向けの表示名。
 const SOURCE_PATTERN_DESC: &str = "^[a-z0-9_-]+$";
-const CONTENT_SOURCES: [&str; 3] = ["none", "feed", "crawl"];
+const CONTENT_SOURCES: &str = "none, feed, crawl";
 
 #[derive(Clone)]
 pub struct RssFeedUseCases {
@@ -72,7 +75,7 @@ impl RssFeedUseCases {
     pub async fn update(
         &self,
         id: Uuid,
-        patch: UpdateRssFeedPatch,
+        command: UpdateRssFeedCommand,
     ) -> Result<RssFeed, RssFeedUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
         if self
@@ -84,16 +87,16 @@ impl RssFeedUseCases {
             return Err(RssFeedUseCaseError::NotFound(id));
         }
         let patch = UpdateRssFeedPatch {
-            display_name: patch
+            display_name: command
                 .display_name
                 .map(|name| validate_display_name(&name))
                 .transpose()?,
-            url: patch
+            url: command
                 .url
                 .map(|url| validate_url(&url, self.url_validator.as_ref()))
                 .transpose()?,
-            enabled: patch.enabled,
-            content_source: patch
+            enabled: command.enabled,
+            content_source: command
                 .content_source
                 .map(|source| validate_content_source(&source))
                 .transpose()?,
@@ -157,14 +160,12 @@ fn validate_display_name(name: &str) -> Result<String, RssFeedUseCaseError> {
     Ok(trimmed.to_string())
 }
 
-fn validate_content_source(source: &str) -> Result<String, RssFeedUseCaseError> {
-    if !CONTENT_SOURCES.contains(&source) {
-        return Err(RssFeedUseCaseError::Validation(format!(
-            "content_source must be one of {} (got '{source}')",
-            CONTENT_SOURCES.join(", "),
-        )));
-    }
-    Ok(source.to_string())
+fn validate_content_source(source: &str) -> Result<ContentSource, RssFeedUseCaseError> {
+    ContentSource::parse(source).ok_or_else(|| {
+        RssFeedUseCaseError::Validation(format!(
+            "content_source must be one of {CONTENT_SOURCES} (got '{source}')"
+        ))
+    })
 }
 
 #[cfg(all(test, feature = "test-support"))]
@@ -177,8 +178,8 @@ mod tests {
 
     use super::RssFeedUseCases;
     use crate::rss_feed::{
-        CreateRssFeedCommand, FakeRssFeedRepository, RssFeed, RssFeedRepository,
-        RssFeedUrlValidator, UpdateRssFeedPatch,
+        ContentSource, CreateRssFeedCommand, FakeRssFeedRepository, RssFeed, RssFeedRepository,
+        RssFeedUrlValidator, UpdateRssFeedCommand,
     };
     use crate::unit_of_work::FakeUnitOfWork;
 
@@ -208,7 +209,7 @@ mod tests {
             display_name: display_name.into(),
             url: url.into(),
             enabled,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             created_at: timestamp(),
             updated_at: timestamp(),
         }
@@ -241,7 +242,7 @@ mod tests {
             display_name: display_name.into(),
             url: url.into(),
             enabled: true,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             created_at: timestamp(),
             updated_at: timestamp(),
         }
@@ -328,7 +329,7 @@ mod tests {
             "Sample publication",
             "https://example.invalid/feed.xml",
         );
-        expected.content_source = content_source.into();
+        expected.content_source = ContentSource::parse(content_source).expect("supported source");
 
         assert_eq!(actual, Ok(expected));
     }
@@ -453,7 +454,7 @@ mod tests {
             display_name: "Alpha publication".into(),
             url: "https://feeds.example.invalid/feed-alpha.xml".into(),
             enabled: true,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             created_at: timestamp(),
             updated_at: timestamp(),
         };
@@ -502,7 +503,7 @@ mod tests {
                     display_name: "Alpha publication".into(),
                     url: "https://feeds.example.invalid/feed-alpha.xml".into(),
                     enabled: true,
-                    content_source: "none".into(),
+                    content_source: ContentSource::None,
                     created_at: timestamp(),
                     updated_at: timestamp(),
                 }],
@@ -523,7 +524,7 @@ mod tests {
         let updated = use_cases
             .update(
                 id,
-                UpdateRssFeedPatch {
+                UpdateRssFeedCommand {
                     display_name: Some("Updated publication".into()),
                     url: None,
                     enabled: None,
@@ -544,7 +545,7 @@ mod tests {
             display_name: "Updated publication".into(),
             url: "https://feeds.example.invalid/feed-alpha.xml".into(),
             enabled: true,
-            content_source: "crawl".into(),
+            content_source: ContentSource::Crawl,
             created_at: timestamp(),
             updated_at: timestamp(),
         };
@@ -556,6 +557,44 @@ mod tests {
                 used_one_transaction,
             ),
             (expected.clone(), vec![expected], true),
+        );
+    }
+
+    #[tokio::test]
+    async fn update_rejects_unsupported_content_source_without_changing_existing_feed() {
+        let existing = feed(
+            "feed-alpha",
+            "Alpha publication",
+            "https://feeds.example.invalid/feed-alpha.xml",
+            true,
+        );
+        let id = existing.id;
+        let (use_cases, repository) = use_cases(vec![existing.clone()]);
+        let result = use_cases
+            .update(
+                id,
+                UpdateRssFeedCommand {
+                    content_source: Some("external".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map(normalize)
+            .map_err(|error| error.to_string());
+        let feeds = repository
+            .list(false)
+            .await
+            .expect("feeds list")
+            .into_iter()
+            .map(normalize)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (result, feeds),
+            (
+                Err("content_source must be one of none, feed, crawl (got 'external')".into()),
+                vec![normalize(existing)],
+            ),
         );
     }
 

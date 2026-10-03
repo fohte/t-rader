@@ -17,7 +17,7 @@ pub struct CreateRssFeedRequest {
     /// 省略時は true
     #[serde(default)]
     pub enabled: Option<bool>,
-    /// 本文取得元。none は本文なし、feed は RSS 本文、crawl はリンク先取得。省略時は none
+    /// 本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。
     #[serde(default = "default_content_source")]
     pub content_source: String,
 }
@@ -31,7 +31,7 @@ pub struct UpdateRssFeedRequest {
     pub url: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
-    /// 本文取得元。none / feed / crawl のいずれか。省略時は現在の設定を維持する。
+    /// 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。
     #[serde(default)]
     pub content_source: Option<String>,
 }
@@ -71,7 +71,7 @@ impl From<RssFeed> for RssFeedResponse {
             display_name: model.display_name,
             url: model.url,
             enabled: model.enabled,
-            content_source: model.content_source,
+            content_source: model.content_source.as_str().to_owned(),
             created_at: model.created_at,
             updated_at: model.updated_at,
         }

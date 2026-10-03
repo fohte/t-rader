@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use core_application::news::{
-    FetchedNewsItemContent, NewsArticle, NewsItemRepository, NewsItemRepositoryError,
-    NewsItemUpsertResult, NewsSearchCriteria, UpsertedNewsItem, sanitize_search_keyword,
+    FetchedNewsItemContent, NewsArticle, NewsItemContentStatus, NewsItemRepository,
+    NewsItemRepositoryError, NewsSearchCriteria, UpsertedNewsItem, sanitize_search_keyword,
 };
 use core_application::news_aggregator::NewsItem;
 use core_application::unit_of_work::UnitOfWorkTransaction;
@@ -33,12 +33,9 @@ impl NewsItemRepository for PostgresNewsItemRepository {
         &self,
         transaction: &UnitOfWorkTransaction,
         items: &[NewsItem],
-    ) -> Result<NewsItemUpsertResult, NewsItemRepositoryError> {
+    ) -> Result<Vec<UpsertedNewsItem>, NewsItemRepositoryError> {
         if items.is_empty() {
-            return Ok(NewsItemUpsertResult {
-                fetched: 0,
-                items: Vec::new(),
-            });
+            return Ok(Vec::new());
         }
         let transaction = transaction_ref(transaction)?;
         let fetched_at = Utc::now().fixed_offset();
@@ -112,10 +109,7 @@ impl NewsItemRepository for PostgresNewsItemRepository {
             })
             .collect::<Result<Vec<_>, NewsItemRepositoryError>>()?;
 
-        Ok(NewsItemUpsertResult {
-            fetched: upserted_items.len(),
-            items: upserted_items,
-        })
+        Ok(upserted_items)
     }
 
     async fn create_pending_contents(
@@ -131,7 +125,7 @@ impl NewsItemRepository for PostgresNewsItemRepository {
             .iter()
             .map(|id| news_item_content::ActiveModel {
                 news_item_id: Set(*id),
-                status: Set("pending".into()),
+                status: Set(NewsItemContentStatus::Pending.as_str().to_owned()),
                 body: Set(None),
                 error: Set(None),
                 created_at: sea_orm::ActiveValue::NotSet,
@@ -264,6 +258,7 @@ mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
     use core_application::news::{NewsItemRepository, NewsSearchCriteria};
     use core_application::news_aggregator::NewsItem;
+    use core_application::rss_feed::ContentSource;
     use core_application::unit_of_work::UnitOfWork;
     use sea_orm::ConnectionTrait;
     use uuid::Uuid;
@@ -295,7 +290,7 @@ mod tests {
             url: "https://example.invalid/article".into(),
             title: "Initial title".into(),
             body_snippet: None,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             content: None,
             published_at,
         };
@@ -336,15 +331,13 @@ mod tests {
 
         assert_eq!(
             (
-                initial_result.fetched,
+                initial_result.len(),
                 initial_result
-                    .items
                     .iter()
                     .map(|item| item.inserted)
                     .collect::<Vec<_>>(),
-                updated_result.fetched,
+                updated_result.len(),
                 updated_result
-                    .items
                     .iter()
                     .map(|item| item.inserted)
                     .collect::<Vec<_>>(),
@@ -379,7 +372,7 @@ mod tests {
             url: "https://example.invalid/crawl-article".into(),
             title: "Crawl headline".into(),
             body_snippet: None,
-            content_source: "crawl".into(),
+            content_source: ContentSource::Crawl,
             content: None,
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
@@ -389,7 +382,7 @@ mod tests {
             .await
             .expect("crawl article saves");
         repository
-            .create_pending_contents(&transaction, &[crawl_result.items[0].id])
+            .create_pending_contents(&transaction, &[crawl_result[0].id])
             .await
             .expect("pending content saves");
         unit_of_work
@@ -403,7 +396,7 @@ mod tests {
             .await
             .expect("crawl article updates");
         repository
-            .create_pending_contents(&transaction, &[crawl_result_again.items[0].id])
+            .create_pending_contents(&transaction, &[crawl_result_again[0].id])
             .await
             .expect("duplicate pending content is ignored");
         let feed_item = NewsItem {
@@ -411,7 +404,7 @@ mod tests {
             url: "https://example.invalid/feed-article".into(),
             title: "Feed headline".into(),
             body_snippet: None,
-            content_source: "feed".into(),
+            content_source: ContentSource::Feed,
             content: Some("Initial body".into()),
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
@@ -423,7 +416,7 @@ mod tests {
             .upsert_fetched_contents(
                 &transaction,
                 &[core_application::news::FetchedNewsItemContent {
-                    news_item_id: feed_result.items[0].id,
+                    news_item_id: feed_result[0].id,
                     body: "Initial body".into(),
                 }],
             )
@@ -447,7 +440,7 @@ mod tests {
             .upsert_fetched_contents(
                 &transaction,
                 &[core_application::news::FetchedNewsItemContent {
-                    news_item_id: updated_feed_result.items[0].id,
+                    news_item_id: updated_feed_result[0].id,
                     body: "Updated body".into(),
                 }],
             )
@@ -485,10 +478,10 @@ mod tests {
 
         assert_eq!(
             (
-                crawl_result.items[0].inserted,
-                crawl_result_again.items[0].inserted,
-                feed_result.items[0].inserted,
-                updated_feed_result.items[0].inserted,
+                crawl_result[0].inserted,
+                crawl_result_again[0].inserted,
+                feed_result[0].inserted,
+                updated_feed_result[0].inserted,
                 content_snapshot,
             ),
             (
@@ -523,7 +516,7 @@ mod tests {
             url: "https://example.invalid/constraint-check".into(),
             title: "Sample headline".into(),
             body_snippet: None,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             content: None,
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
@@ -531,8 +524,7 @@ mod tests {
         let item_id = repository
             .upsert(&transaction, &[item])
             .await
-            .expect("article saves")
-            .items[0]
+            .expect("article saves")[0]
             .id;
         unit_of_work
             .commit(transaction)

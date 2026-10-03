@@ -107,7 +107,7 @@ type CreateNoteKindRequest struct {
 
 // CreateRssFeedRequest defines model for CreateRssFeedRequest.
 type CreateRssFeedRequest struct {
-	// ContentSource 本文取得元。none は本文なし、feed は RSS 本文、crawl はリンク先取得。省略時は none
+	// ContentSource 本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。
 	ContentSource *string `json:"content_source,omitempty"`
 
 	// DisplayName UI 表示用名前
@@ -391,7 +391,7 @@ type UpdateNoteKindRequest struct {
 
 // UpdateRssFeedRequest defines model for UpdateRssFeedRequest.
 type UpdateRssFeedRequest struct {
-	// ContentSource 本文取得元。none / feed / crawl のいずれか。省略時は現在の設定を維持する。
+	// ContentSource 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。
 	ContentSource nullable.Nullable[string] `json:"content_source,omitempty"`
 	DisplayName   nullable.Nullable[string] `json:"display_name,omitempty"`
 	Enabled       nullable.Nullable[bool]   `json:"enabled,omitempty"`

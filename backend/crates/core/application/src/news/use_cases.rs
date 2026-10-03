@@ -1,5 +1,5 @@
 use crate::news_aggregator::{NewsAggregator, NewsFeed};
-use crate::rss_feed::SharedRssFeedRepository;
+use crate::rss_feed::{ContentSource, SharedRssFeedRepository};
 use crate::strategy_scope::StrategyScope;
 use crate::unit_of_work::SharedUnitOfWork;
 
@@ -77,9 +77,8 @@ impl NewsUseCases {
         let transaction = self.unit_of_work.begin().await?;
         let result = self.news_repository.upsert(&transaction, &fetched).await?;
         let pending_ids = result
-            .items
             .iter()
-            .filter(|item| item.inserted && item.item.content_source == "crawl")
+            .filter(|item| item.inserted && item.item.content_source == ContentSource::Crawl)
             .map(|item| item.id)
             .collect::<Vec<_>>();
         if !pending_ids.is_empty() {
@@ -88,10 +87,9 @@ impl NewsUseCases {
                 .await?;
         }
         let fetched_contents = result
-            .items
             .iter()
             .filter_map(|item| {
-                (item.item.content_source == "feed")
+                (item.item.content_source == ContentSource::Feed)
                     .then(|| item.item.content.as_ref().map(|body| (item.id, body)))
                     .flatten()
             })
@@ -107,7 +105,7 @@ impl NewsUseCases {
         }
         self.unit_of_work.commit(transaction).await?;
         Ok(AggregationStats {
-            fetched: result.fetched,
+            fetched: result.len(),
         })
     }
 }
@@ -120,11 +118,11 @@ mod tests {
     use rstest::rstest;
     use uuid::Uuid;
 
-    use crate::news::FakeNewsItemRepository;
     use crate::news::repository::NewsSearchCriteria;
     use crate::news::types::{AggregationStats, NewsArticle, SearchNewsQuery};
+    use crate::news::{FakeNewsItemRepository, NewsItemContentStatus};
     use crate::news_aggregator::{FakeNewsAggregator, NewsItem};
-    use crate::rss_feed::{FakeRssFeedRepository, RssFeed};
+    use crate::rss_feed::{ContentSource, FakeRssFeedRepository, RssFeed};
     use crate::strategy_scope::StrategyScope;
 
     use super::NewsUseCases;
@@ -137,7 +135,7 @@ mod tests {
             display_name: display_name.into(),
             url: format!("https://example.invalid/{source}"),
             enabled,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             created_at: timestamp,
             updated_at: timestamp,
         }
@@ -171,7 +169,7 @@ mod tests {
             url: "https://example.invalid/article".into(),
             title: "Sample headline".into(),
             body_snippet: Some("Sample summary".into()),
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             content: None,
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
@@ -192,12 +190,12 @@ mod tests {
                     crate::news_aggregator::NewsFeed {
                         source: "Alpha publication".into(),
                         url: "https://example.invalid/feed-alpha".into(),
-                        content_source: "none".into(),
+                        content_source: ContentSource::None,
                     },
                     crate::news_aggregator::NewsFeed {
                         source: "Zulu publication".into(),
                         url: "https://example.invalid/feed-zulu".into(),
-                        content_source: "none".into(),
+                        content_source: ContentSource::None,
                     },
                 ]],
                 vec![vec![article]],
@@ -229,11 +227,11 @@ mod tests {
     #[tokio::test]
     async fn aggregation_cycle_creates_content_rows_for_new_items_and_updates_feed_bodies() {
         let mut crawl_feed = feed("crawl-source", "Crawl source", true);
-        crawl_feed.content_source = "crawl".into();
+        crawl_feed.content_source = ContentSource::Crawl;
         let mut feed_content = feed("feed-source", "Feed source", true);
-        feed_content.content_source = "feed".into();
+        feed_content.content_source = ContentSource::Feed;
         let mut empty_feed_content = feed("empty-source", "Empty source", true);
-        empty_feed_content.content_source = "feed".into();
+        empty_feed_content.content_source = ContentSource::Feed;
         let none_feed = feed("none-source", "No content source", true);
         let (use_cases, repository) = use_cases(vec![
             crawl_feed,
@@ -248,7 +246,7 @@ mod tests {
                 url: "https://example.invalid/crawl-article".into(),
                 title: "Crawl headline".into(),
                 body_snippet: None,
-                content_source: "crawl".into(),
+                content_source: ContentSource::Crawl,
                 content: None,
                 published_at: DateTime::<Utc>::UNIX_EPOCH,
             },
@@ -257,7 +255,7 @@ mod tests {
                 url: "https://example.invalid/feed-article".into(),
                 title: "Feed headline".into(),
                 body_snippet: None,
-                content_source: "feed".into(),
+                content_source: ContentSource::Feed,
                 content: Some("Original body".into()),
                 published_at: DateTime::<Utc>::UNIX_EPOCH,
             },
@@ -266,7 +264,7 @@ mod tests {
                 url: "https://example.invalid/feed-without-body".into(),
                 title: "Empty feed headline".into(),
                 body_snippet: None,
-                content_source: "feed".into(),
+                content_source: ContentSource::Feed,
                 content: None,
                 published_at: DateTime::<Utc>::UNIX_EPOCH,
             },
@@ -275,7 +273,7 @@ mod tests {
                 url: "https://example.invalid/none-article".into(),
                 title: "No content headline".into(),
                 body_snippet: None,
-                content_source: "none".into(),
+                content_source: ContentSource::None,
                 content: Some("Ignored body".into()),
                 published_at: DateTime::<Utc>::UNIX_EPOCH,
             },
@@ -303,7 +301,7 @@ mod tests {
                 content_rows.get(&article.id).map(|content| {
                     (
                         article.url.clone(),
-                        content.status.clone(),
+                        content.status,
                         content.body.clone(),
                         content.error.clone(),
                     )
@@ -322,57 +320,57 @@ mod tests {
                         crate::news_aggregator::NewsFeed {
                             source: "Crawl source".into(),
                             url: "https://example.invalid/crawl-source".into(),
-                            content_source: "crawl".into(),
+                            content_source: ContentSource::Crawl,
                         },
                         crate::news_aggregator::NewsFeed {
                             source: "Empty source".into(),
                             url: "https://example.invalid/empty-source".into(),
-                            content_source: "feed".into(),
+                            content_source: ContentSource::Feed,
                         },
                         crate::news_aggregator::NewsFeed {
                             source: "Feed source".into(),
                             url: "https://example.invalid/feed-source".into(),
-                            content_source: "feed".into(),
+                            content_source: ContentSource::Feed,
                         },
                         crate::news_aggregator::NewsFeed {
                             source: "No content source".into(),
                             url: "https://example.invalid/none-source".into(),
-                            content_source: "none".into(),
+                            content_source: ContentSource::None,
                         },
                     ],
                     vec![
                         crate::news_aggregator::NewsFeed {
                             source: "Crawl source".into(),
                             url: "https://example.invalid/crawl-source".into(),
-                            content_source: "crawl".into(),
+                            content_source: ContentSource::Crawl,
                         },
                         crate::news_aggregator::NewsFeed {
                             source: "Empty source".into(),
                             url: "https://example.invalid/empty-source".into(),
-                            content_source: "feed".into(),
+                            content_source: ContentSource::Feed,
                         },
                         crate::news_aggregator::NewsFeed {
                             source: "Feed source".into(),
                             url: "https://example.invalid/feed-source".into(),
-                            content_source: "feed".into(),
+                            content_source: ContentSource::Feed,
                         },
                         crate::news_aggregator::NewsFeed {
                             source: "No content source".into(),
                             url: "https://example.invalid/none-source".into(),
-                            content_source: "none".into(),
+                            content_source: ContentSource::None,
                         },
                     ],
                 ],
                 vec![
                     (
                         "https://example.invalid/crawl-article".into(),
-                        "pending".into(),
+                        NewsItemContentStatus::Pending,
                         None,
                         None,
                     ),
                     (
                         "https://example.invalid/feed-article".into(),
-                        "fetched".into(),
+                        NewsItemContentStatus::Fetched,
                         Some("Updated body".into()),
                         None,
                     ),
@@ -400,7 +398,7 @@ mod tests {
             url: "https://example.invalid/source-change".into(),
             title: "Sample headline".into(),
             body_snippet: None,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             content: None,
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
@@ -410,8 +408,8 @@ mod tests {
             .run_aggregation_cycle(&aggregator)
             .await
             .expect("first aggregation cycle succeeds");
-        feed_repository.feeds.lock().await[0].content_source = "crawl".into();
-        item.content_source = "crawl".into();
+        feed_repository.feeds.lock().await[0].content_source = ContentSource::Crawl;
+        item.content_source = ContentSource::Crawl;
         *aggregator.items.lock().await = vec![item];
         let second = use_cases
             .run_aggregation_cycle(&aggregator)
@@ -430,12 +428,12 @@ mod tests {
                     vec![crate::news_aggregator::NewsFeed {
                         source: "Sample source".into(),
                         url: "https://example.invalid/sample-source".into(),
-                        content_source: "none".into(),
+                        content_source: ContentSource::None,
                     }],
                     vec![crate::news_aggregator::NewsFeed {
                         source: "Sample source".into(),
                         url: "https://example.invalid/sample-source".into(),
-                        content_source: "crawl".into(),
+                        content_source: ContentSource::Crawl,
                     }],
                 ],
             ),
@@ -473,7 +471,7 @@ mod tests {
             url: "https://example.invalid/article".into(),
             title: "Sample headline".into(),
             body_snippet: None,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             content: None,
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
@@ -501,7 +499,7 @@ mod tests {
             url: "https://example.invalid/article".into(),
             title: "Quarterly headline".into(),
             body_snippet: Some("Quarterly summary".into()),
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             content: None,
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };

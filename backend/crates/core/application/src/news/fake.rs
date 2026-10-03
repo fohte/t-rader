@@ -8,7 +8,7 @@ use crate::news_aggregator::NewsItem;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{
-    FetchedNewsItemContent, NewsItemRepository, NewsItemRepositoryError, NewsItemUpsertResult,
+    FetchedNewsItemContent, NewsItemContentStatus, NewsItemRepository, NewsItemRepositoryError,
     NewsSearchCriteria, UpsertedNewsItem, sanitize_search_keyword,
 };
 use super::types::NewsArticle;
@@ -24,7 +24,7 @@ pub struct FakeNewsItemRepository {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FakeNewsItemContent {
-    pub status: String,
+    pub status: NewsItemContentStatus,
     pub body: Option<String>,
     pub error: Option<String>,
 }
@@ -53,14 +53,13 @@ impl NewsItemRepository for FakeNewsItemRepository {
         &self,
         transaction: &UnitOfWorkTransaction,
         items: &[NewsItem],
-    ) -> Result<NewsItemUpsertResult, NewsItemRepositoryError> {
+    ) -> Result<Vec<UpsertedNewsItem>, NewsItemRepositoryError> {
         self.record_transaction(transaction).await?;
         if let Some(message) = self.upsert_error.lock().await.clone() {
             return Err(NewsItemRepositoryError::Persistence(
                 crate::persistence::PersistenceError::Database(message),
             ));
         }
-        let urls: HashSet<_> = items.iter().map(|item| item.url.as_str()).collect();
         let mut articles = self.articles.lock().await;
         let mut seen = HashSet::new();
         let mut upserted_items = Vec::new();
@@ -97,10 +96,7 @@ impl NewsItemRepository for FakeNewsItemRepository {
         }
         drop(articles);
         self.upserts.lock().await.push(items.to_vec());
-        Ok(NewsItemUpsertResult {
-            fetched: urls.len(),
-            items: upserted_items,
-        })
+        Ok(upserted_items)
     }
 
     async fn create_pending_contents(
@@ -114,7 +110,7 @@ impl NewsItemRepository for FakeNewsItemRepository {
             content_rows
                 .entry(*id)
                 .or_insert_with(|| FakeNewsItemContent {
-                    status: "pending".into(),
+                    status: NewsItemContentStatus::Pending,
                     body: None,
                     error: None,
                 });
@@ -133,7 +129,7 @@ impl NewsItemRepository for FakeNewsItemRepository {
             content_rows.insert(
                 content.news_item_id,
                 FakeNewsItemContent {
-                    status: "fetched".into(),
+                    status: NewsItemContentStatus::Fetched,
                     body: Some(content.body.clone()),
                     error: None,
                 },

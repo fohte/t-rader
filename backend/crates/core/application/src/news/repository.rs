@@ -23,10 +23,21 @@ pub struct UpsertedNewsItem {
     pub inserted: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewsItemUpsertResult {
-    pub fetched: usize,
-    pub items: Vec<UpsertedNewsItem>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewsItemContentStatus {
+    Pending,
+    Fetched,
+    Failed,
+}
+
+impl NewsItemContentStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Fetched => "fetched",
+            Self::Failed => "failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +68,7 @@ pub trait NewsItemRepository: Send + Sync {
         &self,
         transaction: &UnitOfWorkTransaction,
         items: &[NewsItem],
-    ) -> Result<NewsItemUpsertResult, NewsItemRepositoryError>;
+    ) -> Result<Vec<UpsertedNewsItem>, NewsItemRepositoryError>;
     async fn create_pending_contents(
         &self,
         transaction: &UnitOfWorkTransaction,

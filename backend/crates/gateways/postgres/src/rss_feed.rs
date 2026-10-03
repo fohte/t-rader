@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use core_application::rss_feed::{
-    NewRssFeed, RssFeed, RssFeedRepository, RssFeedRepositoryError, UpdateRssFeedPatch,
+    ContentSource, NewRssFeed, RssFeed, RssFeedRepository, RssFeedRepositoryError,
+    UpdateRssFeedPatch,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
@@ -30,20 +31,20 @@ impl RssFeedRepository for PostgresRssFeedRepository {
         if enabled_only {
             query = query.filter(rss_feed::Column::Enabled.eq(true));
         }
-        query
+        let rows = query
             .order_by_asc(rss_feed::Column::DisplayName)
             .all(&self.db)
             .await
-            .map(|rows| rows.into_iter().map(to_application).collect())
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        rows.into_iter().map(to_application).collect()
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<RssFeed>, RssFeedRepositoryError> {
-        rss_feed::Entity::find_by_id(id)
+        let row = rss_feed::Entity::find_by_id(id)
             .one(&self.db)
             .await
-            .map(|row| row.map(to_application))
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        row.map(to_application).transpose()
     }
 
     async fn find_by_id_in_transaction(
@@ -52,11 +53,11 @@ impl RssFeedRepository for PostgresRssFeedRepository {
         id: Uuid,
     ) -> Result<Option<RssFeed>, RssFeedRepositoryError> {
         let transaction = transaction_ref(transaction)?;
-        rss_feed::Entity::find_by_id(id)
+        let row = rss_feed::Entity::find_by_id(id)
             .one(transaction)
             .await
-            .map(|row| row.map(to_application))
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        row.map(to_application).transpose()
     }
 
     async fn create(
@@ -72,20 +73,20 @@ impl RssFeedRepository for PostgresRssFeedRepository {
             display_name: Set(feed.display_name),
             url: Set(feed.url),
             enabled: Set(feed.enabled),
-            content_source: Set(feed.content_source),
+            content_source: Set(feed.content_source.as_str().to_owned()),
             created_at: NotSet,
             updated_at: NotSet,
         };
-        rss_feed::Entity::insert(model)
+        let model = rss_feed::Entity::insert(model)
             .exec_with_returning(transaction)
             .await
-            .map(to_application)
             .map_err(|error| match persistence_error(error) {
                 core_application::persistence::PersistenceError::Conflict(_) => {
                     RssFeedRepositoryError::DuplicateSource(source)
                 }
                 error => RssFeedRepositoryError::Persistence(error),
-            })
+            })?;
+        to_application(model)
     }
 
     async fn update(
@@ -102,15 +103,15 @@ impl RssFeedRepository for PostgresRssFeedRepository {
             display_name: patch.display_name.map_or(NotSet, Set),
             url: patch.url.map_or(NotSet, Set),
             enabled: patch.enabled.map_or(NotSet, Set),
-            content_source: patch.content_source.map_or(NotSet, Set),
+            content_source: patch
+                .content_source
+                .map(|content_source| content_source.as_str().to_owned())
+                .map_or(NotSet, Set),
             created_at: NotSet,
             updated_at: Set(updated_at),
         };
-        model
-            .update(transaction)
-            .await
-            .map(to_application)
-            .map_err(repository_error)
+        let model = model.update(transaction).await.map_err(repository_error)?;
+        to_application(model)
     }
 
     async fn delete(
@@ -138,23 +139,28 @@ fn repository_error(error: sea_orm::DbErr) -> RssFeedRepositoryError {
     RssFeedRepositoryError::Persistence(persistence_error(error))
 }
 
-fn to_application(model: rss_feed::Model) -> RssFeed {
-    RssFeed {
+fn to_application(model: rss_feed::Model) -> Result<RssFeed, RssFeedRepositoryError> {
+    let content_source = ContentSource::parse(&model.content_source).ok_or_else(|| {
+        RssFeedRepositoryError::InvalidContentSource(model.content_source.clone())
+    })?;
+    Ok(RssFeed {
         id: model.id,
         source: model.source,
         display_name: model.display_name,
         url: model.url,
         enabled: model.enabled,
-        content_source: model.content_source,
+        content_source,
         created_at: model.created_at,
         updated_at: model.updated_at,
-    }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use core_application::rss_feed::{NewRssFeed, RssFeed, RssFeedRepository, UpdateRssFeedPatch};
+    use core_application::rss_feed::{
+        ContentSource, NewRssFeed, RssFeed, RssFeedRepository, UpdateRssFeedPatch,
+    };
     use core_application::unit_of_work::UnitOfWork;
     use uuid::Uuid;
 
@@ -183,7 +189,7 @@ mod tests {
             display_name: display_name.into(),
             url: format!("https://feeds.example.invalid/{source}.xml"),
             enabled,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
         }
     }
 
@@ -227,7 +233,7 @@ mod tests {
             display_name: "Alpha publication".into(),
             url: "https://feeds.example.invalid/feed-alpha.xml".into(),
             enabled: true,
-            content_source: "none".into(),
+            content_source: ContentSource::None,
             created_at: epoch(),
             updated_at: epoch(),
         };
@@ -267,7 +273,7 @@ mod tests {
                 display_name: "Sample publication".into(),
                 url: "https://example.invalid/feed.xml".into(),
                 enabled: true,
-                content_source: "none".into(),
+                content_source: ContentSource::None,
                 created_at: epoch(),
                 updated_at: epoch(),
             },
@@ -322,7 +328,7 @@ mod tests {
                     display_name: Some("Updated publication".into()),
                     url: None,
                     enabled: Some(false),
-                    content_source: Some("crawl".into()),
+                    content_source: Some(ContentSource::Crawl),
                 },
                 Utc::now().fixed_offset(),
             )
@@ -338,7 +344,7 @@ mod tests {
             normalize(RssFeed {
                 display_name: "Updated publication".into(),
                 enabled: false,
-                content_source: "crawl".into(),
+                content_source: ContentSource::Crawl,
                 ..created
             }),
         );

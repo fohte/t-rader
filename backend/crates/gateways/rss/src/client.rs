@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 use core_application::news_aggregator::{NewsAggregator, NewsAggregatorError, NewsFeed, NewsItem};
+use core_application::rss_feed::ContentSource;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use reqwest::Url;
@@ -46,7 +47,7 @@ impl RssNewsAggregator {
             .text()
             .await
             .map_err(|e| NewsAggregatorError::Network(e.to_string()))?;
-        parse_rss(&feed.source, &feed.content_source, &body)
+        parse_rss(&feed.source, feed.content_source, &body)
     }
 }
 
@@ -83,7 +84,7 @@ impl NewsAggregator for RssNewsAggregator {
 /// Atom 化が判明したフィードは設定から外す運用前提。
 fn parse_rss(
     source: &str,
-    content_source: &str,
+    content_source: ContentSource,
     body: &str,
 ) -> Result<Vec<NewsItem>, NewsAggregatorError> {
     let mut reader = Reader::from_str(body);
@@ -229,7 +230,7 @@ fn append_text(
 
 fn build_item(
     source: &str,
-    content_source: &str,
+    content_source: ContentSource,
     title: &str,
     link: &str,
     description: &str,
@@ -253,7 +254,7 @@ fn build_item(
         url: link.to_string(),
         title: title.trim().to_string(),
         body_snippet: snippet,
-        content_source: content_source.to_string(),
+        content_source,
         content: None,
         published_at,
     })
@@ -440,12 +441,12 @@ mod tests {
             NewsFeed {
                 source: "Broken feed".into(),
                 url: format!("{}/broken", server.uri()),
-                content_source: "none".into(),
+                content_source: ContentSource::None,
             },
             NewsFeed {
                 source: "Healthy feed".into(),
                 url: format!("{}/healthy", server.uri()),
-                content_source: "none".into(),
+                content_source: ContentSource::None,
             },
         ];
 
@@ -458,7 +459,7 @@ mod tests {
                 url: "https://example.invalid/news/1".into(),
                 title: "Example headline".into(),
                 body_snippet: None,
-                content_source: "none".into(),
+                content_source: ContentSource::None,
                 content: None,
                 published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
             }],
@@ -489,7 +490,7 @@ mod tests {
             .fetch_news(&[NewsFeed {
                 source: "Redirected feed".into(),
                 url: format!("{}/redirect", server.uri()),
-                content_source: "crawl".into(),
+                content_source: ContentSource::Crawl,
             }])
             .await
             .expect("feed fetch succeeds");
@@ -501,7 +502,7 @@ mod tests {
                 url: "https://example.invalid/news/1".into(),
                 title: "Redirected headline".into(),
                 body_snippet: None,
-                content_source: "crawl".into(),
+                content_source: ContentSource::Crawl,
                 content: None,
                 published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
             }],
@@ -529,12 +530,12 @@ mod tests {
             NewsFeed {
                 source: "First feed".into(),
                 url: format!("{}/first", server.uri()),
-                content_source: "none".into(),
+                content_source: ContentSource::None,
             },
             NewsFeed {
                 source: "Second feed".into(),
                 url: format!("{}/second", server.uri()),
-                content_source: "none".into(),
+                content_source: ContentSource::None,
             },
         ];
 
@@ -547,7 +548,7 @@ mod tests {
                 url: url.into(),
                 title: "First headline".into(),
                 body_snippet: None,
-                content_source: "none".into(),
+                content_source: ContentSource::None,
                 content: None,
                 published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
             }],
@@ -563,7 +564,7 @@ mod tests {
             .fetch_news(&[NewsFeed {
                 source: "Broken feed".into(),
                 url: format!("{}/broken", server.uri()),
-                content_source: "none".into(),
+                content_source: ContentSource::None,
             }])
             .await
             .expect("feed failures are skipped");
@@ -595,14 +596,14 @@ mod tests {
         "#};
 
         assert_eq!(
-            parse_rss("Test", "none", xml).expect("parse ok"),
+            parse_rss("Test", ContentSource::None, xml).expect("parse ok"),
             vec![
                 NewsItem {
                     source: "Test".into(),
                     url: "https://example.com/news/1".into(),
                     title: "トヨタ自動車 通期決算発表".into(),
                     body_snippet: Some("自動車セクター好調。".into()),
-                    content_source: "none".into(),
+                    content_source: ContentSource::None,
                     content: None,
                     published_at: ymd_hms(2026, 6, 25, 0, 0, 0),
                 },
@@ -611,7 +612,7 @@ mod tests {
                     url: "https://example.com/news/2".into(),
                     title: "半導体 関連株が上昇".into(),
                     body_snippet: Some("半導体テーマで物色。".into()),
-                    content_source: "none".into(),
+                    content_source: ContentSource::None,
                     content: None,
                     published_at: ymd_hms(2026, 6, 25, 1, 30, 0),
                 },
@@ -638,13 +639,13 @@ mod tests {
         "#};
 
         assert_eq!(
-            parse_rss("Test", "none", xml).expect("parse ok"),
+            parse_rss("Test", ContentSource::None, xml).expect("parse ok"),
             vec![NewsItem {
                 source: "Test".into(),
                 url: "https://ex.com/n".into(),
                 title: "テスト".into(),
                 body_snippet: Some("前中後".into()),
-                content_source: "none".into(),
+                content_source: ContentSource::None,
                 content: None,
                 published_at: ymd_hms(2026, 6, 25, 0, 0, 0),
             }],
@@ -676,13 +677,13 @@ mod tests {
         "#};
 
         assert_eq!(
-            parse_rss("Test", "none", xml).expect("parse ok"),
+            parse_rss("Test", ContentSource::None, xml).expect("parse ok"),
             vec![NewsItem {
                 source: "Test".into(),
                 url: "https://example.com/news/5".into(),
                 title: "有効".into(),
                 body_snippet: None,
-                content_source: "none".into(),
+                content_source: ContentSource::None,
                 content: None,
                 published_at: ymd_hms(2026, 6, 25, 2, 0, 0),
             }],
