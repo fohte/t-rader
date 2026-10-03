@@ -40,6 +40,8 @@ mod tests {
                     url: url.into(),
                     title: title.into(),
                     body_snippet: body_snippet.map(str::to_string),
+                    content_source: "none".into(),
+                    content: None,
                     published_at: published_at.with_timezone(&chrono::Utc),
                 }],
             )

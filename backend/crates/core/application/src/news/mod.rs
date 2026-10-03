@@ -9,8 +9,8 @@ pub use error::NewsUseCaseError;
 #[cfg(feature = "test-support")]
 pub use fake::FakeNewsItemRepository;
 pub use repository::{
-    NewsItemRepository, NewsItemRepositoryError, NewsSearchCriteria, SharedNewsItemRepository,
-    sanitize_search_keyword,
+    FetchedNewsItemContent, NewsItemRepository, NewsItemRepositoryError, NewsItemUpsertResult,
+    NewsSearchCriteria, SharedNewsItemRepository, UpsertedNewsItem, sanitize_search_keyword,
 };
 pub use types::{AggregationStats, NewsArticle, SearchNewsQuery};
 pub use use_cases::NewsUseCases;

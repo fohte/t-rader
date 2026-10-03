@@ -107,6 +107,9 @@ type CreateNoteKindRequest struct {
 
 // CreateRssFeedRequest defines model for CreateRssFeedRequest.
 type CreateRssFeedRequest struct {
+	// ContentSource 本文取得元。none は本文なし、feed は RSS 本文、crawl はリンク先取得。省略時は none
+	ContentSource *string `json:"content_source,omitempty"`
+
 	// DisplayName UI 表示用名前
 	DisplayName string `json:"display_name"`
 
@@ -247,13 +250,15 @@ type PutInvestableAmountRequest struct {
 
 // RssFeed defines model for RssFeed.
 type RssFeed struct {
-	CreatedAt   time.Time          `json:"created_at"`
-	DisplayName string             `json:"display_name"`
-	Enabled     bool               `json:"enabled"`
-	Id          openapi_types.UUID `json:"id"`
-	Source      string             `json:"source"`
-	UpdatedAt   time.Time          `json:"updated_at"`
-	Url         string             `json:"url"`
+	// ContentSource 本文の取得方式。none / feed / crawl のいずれか。
+	ContentSource string             `json:"content_source"`
+	CreatedAt     time.Time          `json:"created_at"`
+	DisplayName   string             `json:"display_name"`
+	Enabled       bool               `json:"enabled"`
+	Id            openapi_types.UUID `json:"id"`
+	Source        string             `json:"source"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	Url           string             `json:"url"`
 }
 
 // SkillBody defines model for SkillBody.
@@ -386,9 +391,11 @@ type UpdateNoteKindRequest struct {
 
 // UpdateRssFeedRequest defines model for UpdateRssFeedRequest.
 type UpdateRssFeedRequest struct {
-	DisplayName nullable.Nullable[string] `json:"display_name,omitempty"`
-	Enabled     nullable.Nullable[bool]   `json:"enabled,omitempty"`
-	Url         nullable.Nullable[string] `json:"url,omitempty"`
+	// ContentSource 本文取得元。none / feed / crawl のいずれか。省略時は現在の設定を維持する。
+	ContentSource nullable.Nullable[string] `json:"content_source,omitempty"`
+	DisplayName   nullable.Nullable[string] `json:"display_name,omitempty"`
+	Enabled       nullable.Nullable[bool]   `json:"enabled,omitempty"`
+	Url           nullable.Nullable[string] `json:"url,omitempty"`
 }
 
 // UpdateStrategyRequest defines model for UpdateStrategyRequest.

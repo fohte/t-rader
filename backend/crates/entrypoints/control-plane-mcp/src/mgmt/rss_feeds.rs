@@ -1,10 +1,10 @@
-//! 管理 MCP の RSS フィード一覧 tool。
+//! 管理 MCP の RSS フィード一覧・設定更新 tool。
 
-use core_application::rss_feed::{RssFeedRepositoryError, RssFeedUseCaseError};
+use core_application::rss_feed::{RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch};
 use rmcp::ErrorData as McpError;
 
 use super::MgmtServer;
-use super::dto::{ListRssFeedsParams, ListRssFeedsResult};
+use super::dto::{ListRssFeedsParams, ListRssFeedsResult, RssFeedSummary, UpdateRssFeedParams};
 use super::invalid_params;
 
 impl MgmtServer {
@@ -21,6 +21,24 @@ impl MgmtServer {
         Ok(ListRssFeedsResult {
             feeds: rows.into_iter().map(Into::into).collect(),
         })
+    }
+
+    pub(super) async fn update_rss_feed_inner(
+        &self,
+        params: UpdateRssFeedParams,
+    ) -> Result<RssFeedSummary, McpError> {
+        self.dependencies
+            .rss_feeds
+            .update(
+                params.id,
+                UpdateRssFeedPatch {
+                    content_source: params.content_source,
+                    ..Default::default()
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_rss_feed_error)
     }
 }
 fn map_rss_feed_error(err: RssFeedUseCaseError) -> McpError {

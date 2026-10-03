@@ -107,6 +107,7 @@ pub async fn create_rss_feed(
             display_name: payload.display_name,
             url: payload.url,
             enabled: payload.enabled,
+            content_source: payload.content_source,
         })
         .await
         .map_err(map_err)?;
@@ -142,6 +143,7 @@ pub async fn update_rss_feed(
                 display_name: payload.display_name,
                 url: payload.url,
                 enabled: payload.enabled,
+                content_source: payload.content_source,
             },
         )
         .await

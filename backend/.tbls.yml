@@ -422,6 +422,14 @@ comments:
       body_snippet: 'フィードの説明文から切り出した記事本文の抜粋。'
       published_at: '記事の公開日時。'
       fetched_at: '記事を取得した日時。'
+  - table: news_item_content
+    tableComment: 'ニュース記事の本文と取得状態を保持する。'
+    columnComments:
+      news_item_id: '本文を保持するニュース記事の ID。'
+      status: '本文の取得状態。pending / fetched / failed のいずれか。'
+      body: 'Markdown 形式の記事本文。'
+      error: '本文取得に失敗した理由。'
+
   - table: ref_term
     tableComment: '銘柄・指標・グループに対する別名を保持する。'
     columnComments:
@@ -436,6 +444,7 @@ comments:
       display_name: 'フィードの表示名。'
       url: 'RSS フィードの URL。'
       enabled: 'フィードを取り込み対象とするかどうか。'
+      content_source: '本文の取得元。none / feed / crawl のいずれか。'
   - table: short_ratio
     tableComment: '33 業種ごとの売買代金を日付別に保持する。'
     columnComments:

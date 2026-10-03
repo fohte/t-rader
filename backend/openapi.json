@@ -7773,6 +7773,10 @@
           "url"
         ],
         "properties": {
+          "content_source": {
+            "type": "string",
+            "description": "本文取得元。none は本文なし、feed は RSS 本文、crawl はリンク先取得。省略時は none"
+          },
           "display_name": {
             "type": "string",
             "description": "UI 表示用名前"
@@ -8938,10 +8942,15 @@
           "display_name",
           "url",
           "enabled",
+          "content_source",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "content_source": {
+            "type": "string",
+            "description": "本文の取得方式。none / feed / crawl のいずれか。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -9832,6 +9841,13 @@
       "UpdateRssFeedRequest": {
         "type": "object",
         "properties": {
+          "content_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "本文取得元。none / feed / crawl のいずれか。省略時は現在の設定を維持する。"
+          },
           "display_name": {
             "type": [
               "string",

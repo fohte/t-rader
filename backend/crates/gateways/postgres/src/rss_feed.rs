@@ -72,6 +72,7 @@ impl RssFeedRepository for PostgresRssFeedRepository {
             display_name: Set(feed.display_name),
             url: Set(feed.url),
             enabled: Set(feed.enabled),
+            content_source: Set(feed.content_source),
             created_at: NotSet,
             updated_at: NotSet,
         };
@@ -101,6 +102,7 @@ impl RssFeedRepository for PostgresRssFeedRepository {
             display_name: patch.display_name.map_or(NotSet, Set),
             url: patch.url.map_or(NotSet, Set),
             enabled: patch.enabled.map_or(NotSet, Set),
+            content_source: patch.content_source.map_or(NotSet, Set),
             created_at: NotSet,
             updated_at: Set(updated_at),
         };
@@ -143,6 +145,7 @@ fn to_application(model: rss_feed::Model) -> RssFeed {
         display_name: model.display_name,
         url: model.url,
         enabled: model.enabled,
+        content_source: model.content_source,
         created_at: model.created_at,
         updated_at: model.updated_at,
     }
@@ -180,6 +183,7 @@ mod tests {
             display_name: display_name.into(),
             url: format!("https://feeds.example.invalid/{source}.xml"),
             enabled,
+            content_source: "none".into(),
         }
     }
 
@@ -223,6 +227,7 @@ mod tests {
             display_name: "Alpha publication".into(),
             url: "https://feeds.example.invalid/feed-alpha.xml".into(),
             enabled: true,
+            content_source: "none".into(),
             created_at: epoch(),
             updated_at: epoch(),
         };
@@ -233,6 +238,39 @@ mod tests {
                 listed.into_iter().map(normalize).collect::<Vec<_>>(),
             ),
             (expected.clone(), vec![expected]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn database_defaults_content_source_to_none(db: DatabaseHandle) {
+        use sea_orm::ConnectionTrait;
+
+        let id = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "INSERT INTO rss_feed (id, source, display_name, url, enabled) \
+             VALUES ('{id}', 'sample-feed', 'Sample publication', 'https://example.invalid/feed.xml', true)"
+        ))
+        .await
+        .expect("feed inserts without content_source");
+        let repository = PostgresRssFeedRepository::new(db);
+        let feed = repository
+            .find_by_id(id)
+            .await
+            .expect("feed loads")
+            .expect("feed exists");
+
+        assert_eq!(
+            normalize(feed),
+            RssFeed {
+                id: Uuid::nil(),
+                source: "sample-feed".into(),
+                display_name: "Sample publication".into(),
+                url: "https://example.invalid/feed.xml".into(),
+                enabled: true,
+                content_source: "none".into(),
+                created_at: epoch(),
+                updated_at: epoch(),
+            },
         );
     }
 
@@ -284,6 +322,7 @@ mod tests {
                     display_name: Some("Updated publication".into()),
                     url: None,
                     enabled: Some(false),
+                    content_source: Some("crawl".into()),
                 },
                 Utc::now().fixed_offset(),
             )
@@ -299,6 +338,7 @@ mod tests {
             normalize(RssFeed {
                 display_name: "Updated publication".into(),
                 enabled: false,
+                content_source: "crawl".into(),
                 ..created
             }),
         );
@@ -329,6 +369,7 @@ mod tests {
                     display_name: None,
                     url: Some("https://feeds.example.invalid/concurrent.xml".into()),
                     enabled: None,
+                    content_source: None,
                 },
                 Utc::now().fixed_offset(),
             )
@@ -347,6 +388,7 @@ mod tests {
                     display_name: Some("Updated publication".into()),
                     url: None,
                     enabled: None,
+                    content_source: None,
                 },
                 Utc::now().fixed_offset(),
             )

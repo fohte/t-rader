@@ -9,6 +9,7 @@ use crate::unit_of_work::SharedUnitOfWork;
 
 /// `source` は機械処理向けの slug、`display_name` は利用者向けの表示名。
 const SOURCE_PATTERN_DESC: &str = "^[a-z0-9_-]+$";
+const CONTENT_SOURCES: [&str; 3] = ["none", "feed", "crawl"];
 
 #[derive(Clone)]
 pub struct RssFeedUseCases {
@@ -48,6 +49,7 @@ impl RssFeedUseCases {
         let source = validate_source(&command.source)?;
         let display_name = validate_display_name(&command.display_name)?;
         let url = validate_url(&command.url, self.url_validator.as_ref())?;
+        let content_source = validate_content_source(&command.content_source)?;
         let transaction = self.unit_of_work.begin().await?;
         let feed = self
             .repository
@@ -59,6 +61,7 @@ impl RssFeedUseCases {
                     display_name,
                     url,
                     enabled: command.enabled.unwrap_or(true),
+                    content_source,
                 },
             )
             .await?;
@@ -90,6 +93,10 @@ impl RssFeedUseCases {
                 .map(|url| validate_url(&url, self.url_validator.as_ref()))
                 .transpose()?,
             enabled: patch.enabled,
+            content_source: patch
+                .content_source
+                .map(|source| validate_content_source(&source))
+                .transpose()?,
         };
         let updated = self
             .repository
@@ -150,6 +157,16 @@ fn validate_display_name(name: &str) -> Result<String, RssFeedUseCaseError> {
     Ok(trimmed.to_string())
 }
 
+fn validate_content_source(source: &str) -> Result<String, RssFeedUseCaseError> {
+    if !CONTENT_SOURCES.contains(&source) {
+        return Err(RssFeedUseCaseError::Validation(format!(
+            "content_source must be one of {} (got '{source}')",
+            CONTENT_SOURCES.join(", "),
+        )));
+    }
+    Ok(source.to_string())
+}
+
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
     use std::sync::Arc;
@@ -191,6 +208,7 @@ mod tests {
             display_name: display_name.into(),
             url: url.into(),
             enabled,
+            content_source: "none".into(),
             created_at: timestamp(),
             updated_at: timestamp(),
         }
@@ -212,6 +230,7 @@ mod tests {
             display_name: display_name.into(),
             url: url.into(),
             enabled: Some(true),
+            content_source: "none".into(),
         }
     }
 
@@ -222,6 +241,7 @@ mod tests {
             display_name: display_name.into(),
             url: url.into(),
             enabled: true,
+            content_source: "none".into(),
             created_at: timestamp(),
             updated_at: timestamp(),
         }
@@ -282,6 +302,60 @@ mod tests {
         .await;
 
         assert_eq!(actual, Err(expected_error.to_string()));
+    }
+
+    #[rstest]
+    #[case::none("none")]
+    #[case::feed("feed")]
+    #[case::crawl("crawl")]
+    #[tokio::test]
+    async fn content_source_accepts_supported_values(#[case] content_source: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let mut command = create_command(
+            "feed-alpha",
+            "Sample publication",
+            "https://example.invalid/feed.xml",
+        );
+        command.content_source = content_source.into();
+
+        let actual = use_cases
+            .create(command)
+            .await
+            .map(normalize)
+            .map_err(|error| error.to_string());
+        let mut expected = expected_feed(
+            "feed-alpha",
+            "Sample publication",
+            "https://example.invalid/feed.xml",
+        );
+        expected.content_source = content_source.into();
+
+        assert_eq!(actual, Ok(expected));
+    }
+
+    #[rstest]
+    #[case::empty("")]
+    #[case::unknown("external")]
+    #[tokio::test]
+    async fn content_source_rejects_unsupported_values(#[case] content_source: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let mut command = create_command(
+            "feed-alpha",
+            "Sample publication",
+            "https://example.invalid/feed.xml",
+        );
+        command.content_source = content_source.into();
+
+        assert_eq!(
+            use_cases
+                .create(command)
+                .await
+                .map(|_| ())
+                .map_err(|error| error.to_string()),
+            Err(format!(
+                "content_source must be one of none, feed, crawl (got '{content_source}')"
+            )),
+        );
     }
 
     #[rstest]
@@ -368,6 +442,7 @@ mod tests {
                 display_name: " Alpha publication ".into(),
                 url: " https://feeds.example.invalid/feed-alpha.xml ".into(),
                 enabled: None,
+                content_source: "none".into(),
             })
             .await
             .expect("feed creates");
@@ -378,6 +453,7 @@ mod tests {
             display_name: "Alpha publication".into(),
             url: "https://feeds.example.invalid/feed-alpha.xml".into(),
             enabled: true,
+            content_source: "none".into(),
             created_at: timestamp(),
             updated_at: timestamp(),
         };
@@ -406,6 +482,7 @@ mod tests {
                 display_name: "Another publication".into(),
                 url: "https://feeds.example.invalid/another.xml".into(),
                 enabled: None,
+                content_source: "none".into(),
             })
             .await
             .map(|_| ())
@@ -425,6 +502,7 @@ mod tests {
                     display_name: "Alpha publication".into(),
                     url: "https://feeds.example.invalid/feed-alpha.xml".into(),
                     enabled: true,
+                    content_source: "none".into(),
                     created_at: timestamp(),
                     updated_at: timestamp(),
                 }],
@@ -449,6 +527,7 @@ mod tests {
                     display_name: Some("Updated publication".into()),
                     url: None,
                     enabled: None,
+                    content_source: Some("crawl".into()),
                 },
             )
             .await
@@ -465,6 +544,7 @@ mod tests {
             display_name: "Updated publication".into(),
             url: "https://feeds.example.invalid/feed-alpha.xml".into(),
             enabled: true,
+            content_source: "crawl".into(),
             created_at: timestamp(),
             updated_at: timestamp(),
         };
