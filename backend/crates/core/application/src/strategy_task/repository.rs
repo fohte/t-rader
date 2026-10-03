@@ -48,6 +48,10 @@ pub trait StrategyTaskRepository: Send + Sync {
         &self,
         a2a_task_id: &str,
     ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError>;
+    async fn find_strategy_id_by_execution_step_id(
+        &self,
+        execution_step_id: Uuid,
+    ) -> Result<Option<Uuid>, StrategyTaskRepositoryError>;
     async fn list(
         &self,
         query: TaskListQuery,
