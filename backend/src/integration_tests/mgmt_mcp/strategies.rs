@@ -7,9 +7,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::agent_client::FakeAgentTaskClient;
     use crate::testing::agent_config;
     use core_application::agent_task_client::AgentTaskError;
+    use core_application::agent_task_client::FakeAgentTaskClient;
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::{annotation, strategy_task};

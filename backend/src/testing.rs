@@ -316,7 +316,7 @@ pub async fn create_test_server_with_llm_gateway(
 ) -> TestServer {
     let mut states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
     states.app_state.llm_gateway_client = Some(Arc::new(
-        crate::services::litellm_client::LiteLlmClient::new(llm_gateway_base_url, None)
+        gateway_litellm::LiteLlmClient::new(llm_gateway_base_url, None)
             .expect("build llm gateway client"),
     ));
     let router = create_test_router(states, db);

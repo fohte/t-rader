@@ -8,8 +8,8 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use crate::agent_client::FakeAgentTaskClient;
     use crate::testing::insert_test_cron_trigger;
+    use core_application::agent_task_client::FakeAgentTaskClient;
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;

@@ -13,7 +13,7 @@ use gateway_postgres::entities::{
     annotation, change_history, comment, note, note_kind, note_version, strategy,
 };
 
-use crate::data_provider::SharedDailyBarSource;
+use core_application::daily_bar_source::SharedDailyBarSource;
 
 use super::dto::{
     AnnotationDto, CreateAnnotationResult, ListNotesResult, NoteDto, ReadAnnotationsResult,

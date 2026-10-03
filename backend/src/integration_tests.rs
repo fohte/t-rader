@@ -4,9 +4,12 @@
 //! その他のテストは複数の submission route、agent 実行、scheduler job を跨ぐ契約を検証する。
 
 mod agent_webhook;
+mod data_provider_mock;
+mod equity_master_sync;
 mod external_webhook;
 mod frontend_api;
 pub(crate) mod mcp_tool;
+mod mcp_watcher;
 mod mgmt_mcp;
 mod prediction_grading;
 mod strategy_mcp;
@@ -20,14 +23,14 @@ use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryF
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::agent_client::{
-    AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
-};
 use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy,
+};
+use core_application::agent_task_client::{
+    AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
 use core_application::strategy_task::DEFAULT_PURPOSE;
 use entrypoint_control_plane_mcp::MgmtServer;

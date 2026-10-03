@@ -8,8 +8,8 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
     use uuid::Uuid;
 
-    use crate::data_provider::SharedDailyBarSource;
     use crate::testing::MockProvider;
+    use core_application::daily_bar_source::SharedDailyBarSource;
     use core_domain::bar::{Bar, Timeframe};
     use core_domain::instrument::{Instrument, Market};
     use gateway_postgres::entities::{strategy_investable_amount, trade};

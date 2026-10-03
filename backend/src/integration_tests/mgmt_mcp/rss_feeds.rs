@@ -9,7 +9,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::*;
-    use crate::agent_client::FakeAgentTaskClient;
+    use core_application::agent_task_client::FakeAgentTaskClient;
     use core_application::rss_feed::CreateRssFeedCommand;
 
     #[backend_test_macros::database_test]

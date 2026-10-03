@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{NaiveDate, TimeZone, Utc};
 use rust_decimal::Decimal;
 
-use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange};
+use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::{Instrument, Market};
 

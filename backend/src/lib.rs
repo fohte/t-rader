@@ -1,9 +1,6 @@
-pub mod agent_client;
 pub mod cli;
-pub mod data_provider;
 #[cfg(test)]
 mod integration_tests;
-pub mod kata_exec;
 pub mod mcp;
 pub mod middleware;
 pub mod migrations;
