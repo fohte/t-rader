@@ -10,8 +10,9 @@ use uuid::Uuid;
 
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto as strategy_dto;
-use crate::mcp::strategy::StrategyServer as EntrypointStrategyServer;
-use crate::mcp::strategy::test_api::{ref_terms, refs, stock_groups};
+use crate::mcp::StrategyServer as EntrypointStrategyServer;
+
+use super::test_api::{ref_terms, refs, stock_groups};
 
 #[derive(Clone)]
 pub(super) struct StrategyServer {

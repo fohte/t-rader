@@ -8,7 +8,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::tests_common::mock_db_with_strategy;
 use crate::integration_tests::mcp_tool::call_tool_output_with_headers;
-use crate::mcp::strategy::StrategyServer;
+use crate::mcp::StrategyServer;
 use crate::services::litellm_client::LiteLlmClient;
 use crate::services::use_cases::build_use_cases;
 

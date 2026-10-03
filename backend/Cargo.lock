@@ -1398,6 +1398,21 @@ dependencies = [
 [[package]]
 name = "entrypoint-agent-mcp"
 version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "core-application",
+ "core-domain",
+ "jsonschema",
+ "rmcp",
+ "rstest",
+ "rust_decimal",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
 
 [[package]]
 name = "entrypoint-agent-webhook"

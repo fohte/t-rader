@@ -6,7 +6,9 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
 
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::mcp::strategy::test_api::refs::{RefDto, SearchRefsParams, SearchRefsResult};
+    use crate::integration_tests::strategy_mcp::test_api::refs::{
+        RefDto, SearchRefsParams, SearchRefsResult,
+    };
     use gateway_postgres::entities::{indicator, ref_term, stock};
 
     async fn seed_ref_term(
