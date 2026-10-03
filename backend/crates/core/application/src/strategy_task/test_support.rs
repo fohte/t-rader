@@ -160,6 +160,13 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
             .cloned())
     }
 
+    async fn find_strategy_id_by_execution_step_id(
+        &self,
+        _execution_step_id: Uuid,
+    ) -> Result<Option<Uuid>, StrategyTaskRepositoryError> {
+        Ok(None)
+    }
+
     async fn list(
         &self,
         _query: TaskListQuery,

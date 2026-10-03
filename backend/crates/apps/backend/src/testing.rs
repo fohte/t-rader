@@ -17,15 +17,19 @@ use core_domain::bar::Bar;
 use core_domain::instrument::Instrument;
 use entrypoint_frontend_api::FrontendApiState;
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+use gateway_postgres::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
 use gateway_postgres::entities::{
-    group_axis, stock, stock_group, stock_group_member, strategy, strategy_task, trigger,
+    group_axis, stock, stock_group, stock_group_member, strategy, strategy_task,
+    strategy_task_step, trigger,
 };
 
+mod annotation;
 mod note;
+pub use annotation::set_test_annotation_execution_step_id;
 pub use note::{
     find_current_note_version, insert_test_note, insert_test_note_as, insert_test_note_in_scope,
     insert_test_note_with_execution_id, insert_test_note_with_status,
+    set_test_note_version_execution_id,
 };
 
 /// テスト全体で共通の webhook トークン。agent webhook の認証テストで使う。
@@ -123,12 +127,24 @@ pub async fn insert_test_strategy_task(
     purpose: Option<&str>,
     created_at: DateTime<chrono::FixedOffset>,
 ) -> Uuid {
+    insert_test_strategy_task_with_source(db, strategy_id, "frontend", prompt, purpose, created_at)
+        .await
+}
+
+async fn insert_test_strategy_task_with_source(
+    db: &impl ConnectionTrait,
+    strategy_id: Uuid,
+    source: &str,
+    prompt: &str,
+    purpose: Option<&str>,
+    created_at: DateTime<chrono::FixedOffset>,
+) -> Uuid {
     let task_id = Uuid::new_v4();
     strategy_task::ActiveModel {
         task_id: Set(task_id),
         strategy_id: Set(strategy_id),
         a2a_task_id: Set(None),
-        source: Set("frontend".to_string()),
+        source: Set(source.to_string()),
         prompt: Set(prompt.to_string()),
         phase: Set(StrategyTaskPhase::Completed),
         error_summary: Set(None),
@@ -143,6 +159,45 @@ pub async fn insert_test_strategy_task(
     .insert(db)
     .await
     .expect("insert test strategy task");
+    task_id
+}
+
+/// テストで strategy_task_step を 1 件 seed し、親の strategy_task ID を返す。
+pub async fn insert_test_strategy_task_step(
+    db: &impl ConnectionTrait,
+    strategy_id: Uuid,
+    execution_step_id: Uuid,
+) -> Uuid {
+    let now = Utc::now().fixed_offset();
+    let task_id = insert_test_strategy_task_with_source(
+        db,
+        strategy_id,
+        "sample",
+        "sample prompt",
+        None,
+        now,
+    )
+    .await;
+    strategy_task_step::ActiveModel {
+        execution_step_id: Set(execution_step_id),
+        task_id: Set(task_id),
+        phase_key: Set("sample-phase".to_string()),
+        label: Set("Sample step".to_string()),
+        model: Set("fictional-model".to_string()),
+        status: Set(StrategyTaskStepStatus::Completed),
+        item: Set(None),
+        item_label: Set(None),
+        output: Set(None),
+        started_at: Set(now),
+        finished_at: Set(Some(now)),
+        trace_id: Set("sample-trace".to_string()),
+        span_id: Set("sample-span".to_string()),
+        error: Set(None),
+        seq: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("insert test strategy task step");
     task_id
 }
 
