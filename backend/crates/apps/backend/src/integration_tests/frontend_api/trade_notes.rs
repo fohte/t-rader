@@ -66,7 +66,7 @@ mod tests {
             "body_md": "b",
             "frontmatter_json": {},
             "kind": null,
-            "status": "unread",
+            "status": "approved",
             "trigger": null,
             "trigger_label": null,
             "created_by_kind": "human",
@@ -184,15 +184,15 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_links_notes_without_strategy_ownership(db: gateway_postgres::DatabaseHandle) {
+    async fn create_links_multiple_notes_to_trade(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let a = insert_test_strategy(&db, "a").await;
         let tid = seed_trade(&db, a).await;
-        let cross_strategy_note_id = seed_note(&db).await;
-        let unscoped_note_id = seed_note(&db).await;
+        let first_note_id = seed_note(&db).await;
+        let second_note_id = seed_note(&db).await;
 
-        assert_trade_note_created(&server, tid, cross_strategy_note_id).await;
-        assert_trade_note_created(&server, tid, unscoped_note_id).await;
+        assert_trade_note_created(&server, tid, first_note_id).await;
+        assert_trade_note_created(&server, tid, second_note_id).await;
     }
 
     #[backend_test_macros::database_test]

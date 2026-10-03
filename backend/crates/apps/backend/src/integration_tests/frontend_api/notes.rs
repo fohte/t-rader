@@ -21,7 +21,7 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::sea_query::Expr;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+    use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder, RuntimeErr};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
@@ -211,8 +211,25 @@ mod tests {
             .await
             .expect("first execution id inserts");
         let duplicate = make_note().insert(&db).await;
+        let normalized_error = duplicate.err().and_then(|error| match error {
+            DbErr::Exec(RuntimeErr::SqlxError(error))
+            | DbErr::Query(RuntimeErr::SqlxError(error)) => match error.as_ref() {
+                sea_orm::SqlxError::Database(error) => Some((
+                    error.code().map(|code| code.into_owned()),
+                    error.constraint().map(str::to_owned),
+                )),
+                _ => None,
+            },
+            _ => None,
+        });
 
-        assert!(duplicate.is_err());
+        assert_eq!(
+            normalized_error,
+            Some((
+                Some("23505".to_owned()),
+                Some("idx_note_execution_id".to_owned()),
+            )),
+        );
     }
 
     #[backend_test_macros::database_test]

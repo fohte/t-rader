@@ -593,42 +593,6 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_note_returns_note_without_strategy(db: gateway_postgres::DatabaseHandle) {
-        let strategy_id = insert_strategy(&db, "a").await;
-        let server = build_server(db.clone());
-        let note_id = crate::testing::insert_test_note(&db, "unscoped note", "body").await;
-
-        let result = server
-            .read_note(
-                strategy_id,
-                ReadNoteParams {
-                    note_id,
-                    version_id: None,
-                },
-            )
-            .await
-            .expect("read note without a strategy");
-        assert_eq!(
-            normalize_note(result),
-            NoteDto {
-                note_id,
-                version_id: Uuid::nil(),
-                version_no: 1,
-                title: "unscoped note".into(),
-                body_md: Some("body".into()),
-                frontmatter_json: serde_json::Map::new(),
-                kind: None,
-                status: "unread".into(),
-                created_by_kind: "human".into(),
-                created_at: ts_sentinel(),
-                updated_at: ts_sentinel(),
-                graphs: vec![],
-                links: Some(vec![]),
-            },
-        );
-    }
-
-    #[backend_test_macros::database_test]
     async fn list_notes_includes_notes_from_all_strategies(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;

@@ -104,13 +104,6 @@ mod tests {
         body
     }
 
-    async fn create_annotation_read_context(
-        db: gateway_postgres::DatabaseHandle,
-    ) -> (gateway_postgres::DatabaseHandle, TestServer) {
-        let (db, server) = create_test_server_with_db(db).await;
-        (db, server)
-    }
-
     fn expected_annotation_response(timestamp: &str) -> Value {
         json!({
             "id": "<id>",
@@ -131,7 +124,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn list_annotations_filters_by_symbol_newest_first(db: gateway_postgres::DatabaseHandle) {
-        let (_db, server) = create_annotation_read_context(db).await;
+        let (_db, server) = create_test_server_with_db(db).await;
         create_annotation_at(&server, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
         create_annotation_at(&server, "SAMPLE-B", "2026-06-03T00:00:00Z").await;
         create_annotation_at(&server, "SAMPLE-A", "2026-06-02T00:00:00Z").await;
@@ -156,7 +149,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn get_annotation_returns_annotation(db: gateway_postgres::DatabaseHandle) {
-        let (_db, server) = create_annotation_read_context(db).await;
+        let (_db, server) = create_test_server_with_db(db).await;
         let created = create_annotation_at(&server, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
         let response = server
             .get(&format!(
@@ -179,7 +172,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn get_annotation_returns_not_found_for_missing_id(db: gateway_postgres::DatabaseHandle) {
-        let (_db, server) = create_annotation_read_context(db).await;
+        let (_db, server) = create_test_server_with_db(db).await;
         let missing_id = Uuid::nil();
         let response = server.get(&format!("/api/annotations/{missing_id}")).await;
 
@@ -193,9 +186,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_succeeds_without_strategy_ownership(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
+    async fn create_annotation_succeeds_without_strategy_id(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
@@ -236,12 +227,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_and_update_accept_linked_notes_without_strategy_ownership(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
+    async fn create_and_update_accept_linked_notes(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        let foreign_note_id = insert_test_note(&db, "foreign note", "body").await;
-        let unscoped_note_id = insert_test_note(&db, "unscoped note", "body").await;
+        let created_note_id = insert_test_note(&db, "created note", "body").await;
+        let updated_note_id = insert_test_note(&db, "updated note", "body").await;
         let initial_annotation_res = server
             .post("/api/annotations")
             .json(&json!({
@@ -286,7 +275,7 @@ mod tests {
                 "target_kind": "sample_kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "text": "text",
-                "linked_note_id": foreign_note_id,
+                "linked_note_id": created_note_id,
             }))
             .await;
         let created_annotation_body = create_res.json::<Value>();
@@ -299,7 +288,7 @@ mod tests {
 
         let update_res = server
             .patch(&format!("/api/annotations/{annotation_id}"))
-            .json(&json!({ "linked_note_id": unscoped_note_id }))
+            .json(&json!({ "linked_note_id": updated_note_id }))
             .await;
         let update_result = (
             update_res.status_code(),
@@ -315,8 +304,8 @@ mod tests {
             .collect::<Vec<_>>();
         saved_annotation_links.sort_unstable_by_key(|(id, _)| *id);
         let mut expected_annotation_links = vec![
-            (annotation_id, Some(unscoped_note_id)),
-            (created_annotation_id, Some(foreign_note_id)),
+            (annotation_id, Some(updated_note_id)),
+            (created_annotation_id, Some(created_note_id)),
         ];
         expected_annotation_links.sort_unstable_by_key(|(id, _)| *id);
 
@@ -333,7 +322,7 @@ mod tests {
                         "price": null,
                         "text": "text",
                         "status": "unread",
-                        "linked_note_id": foreign_note_id,
+                        "linked_note_id": created_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
@@ -351,7 +340,7 @@ mod tests {
                         "price": null,
                         "text": "text",
                         "status": "unread",
-                        "linked_note_id": unscoped_note_id,
+                        "linked_note_id": updated_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",

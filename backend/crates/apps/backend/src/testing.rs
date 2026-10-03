@@ -28,8 +28,7 @@ mod note;
 pub use annotation::set_test_annotation_execution_step_id;
 pub use note::{
     find_current_note_version, insert_test_note, insert_test_note_as,
-    insert_test_note_with_execution_id, insert_test_note_with_status,
-    set_test_note_version_execution_id,
+    insert_test_note_with_execution_id, set_test_note_version_execution_id,
 };
 
 /// テスト全体で共通の webhook トークン。agent webhook の認証テストで使う。

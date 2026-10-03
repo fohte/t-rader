@@ -2,8 +2,6 @@ use core_application::change_history::Actor;
 use core_application::note::NoteWriteCommand;
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::note_version;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
@@ -13,7 +11,6 @@ struct TestNoteOptions<'a> {
     body_md: &'a str,
     execution_id: Option<String>,
     created_by_kind: &'a str,
-    status: &'a str,
     actor: Actor,
 }
 
@@ -25,7 +22,6 @@ pub async fn insert_test_note(db: &DatabaseHandle, title: &str, body_md: &str) -
             body_md,
             execution_id: None,
             created_by_kind: "human",
-            status: "unread",
             actor: Actor::Human,
         },
     )
@@ -46,28 +42,7 @@ pub async fn insert_test_note_as(
             body_md,
             execution_id: None,
             created_by_kind,
-            status: "unread",
             actor,
-        },
-    )
-    .await
-}
-
-pub async fn insert_test_note_with_status(
-    db: &DatabaseHandle,
-    title: &str,
-    body_md: &str,
-    status: &str,
-) -> Uuid {
-    insert_test_note_with_options(
-        db,
-        TestNoteOptions {
-            title,
-            body_md,
-            execution_id: None,
-            created_by_kind: "human",
-            status,
-            actor: Actor::Human,
         },
     )
     .await
@@ -86,7 +61,6 @@ pub async fn insert_test_note_with_execution_id(
             body_md,
             execution_id: Some(execution_id.to_string()),
             created_by_kind: "llm",
-            status: "unread",
             actor: Actor::Human,
         },
     )
@@ -130,17 +104,6 @@ async fn insert_test_note_with_options(db: &DatabaseHandle, options: TestNoteOpt
         })
         .await
         .expect("create test note");
-
-    if result.snapshot.version.status != options.status {
-        note_version::ActiveModel {
-            id: Set(result.snapshot.version.id),
-            status: Set(options.status.to_string()),
-            ..Default::default()
-        }
-        .update(db)
-        .await
-        .expect("set test note version status");
-    }
 
     result.note_id
 }
