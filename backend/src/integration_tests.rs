@@ -1,9 +1,11 @@
-//! composition root 経由で公開 entrypoint の統合動作を検証する。
+//! HTTP と MCP entrypoint の API 契約と戦略タスクの一連の処理を composition root から検証する。
 //!
-//! 戦略タスクの経路横断契約と、各 entrypoint の統合動作を扱う。
+//! entrypoint ごとの integration test は公開 router または MCP tool 経由で公開面を検証する。
+//! その他のテストは複数の submission route、agent 実行、scheduler job を跨ぐ契約を検証する。
 
 mod agent_webhook;
 mod external_webhook;
+mod frontend_api;
 pub(crate) mod mcp_tool;
 mod mgmt_mcp;
 mod prediction_grading;
