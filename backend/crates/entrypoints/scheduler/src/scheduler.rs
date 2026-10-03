@@ -1,7 +1,9 @@
 use std::{future::Future, time::Duration};
 
 use chrono::Weekday;
-use core_application::strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME;
+use core_application::{
+    ingest_status::FRED_RELEASE_DATES_INGEST_JOB, strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME,
+};
 use graphile_worker::{
     Cron, Crontab, CrontabFill, CrontabTimer, CrontabTimerError, TaskHandler, Worker, WorkerOptions,
 };
@@ -33,8 +35,9 @@ const JQUANTS_QUEUE: &str = "jquants";
 const FRED_QUEUE: &str = "fred";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 12] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 13] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (FredReleaseDatesIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShortSaleReportIngest::IDENTIFIER, DAILY_TIMEOUT),
     (MarginIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -147,7 +150,7 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
     }
     if configured.fred_release_dates {
         crontabs.push(daily_cron::<FredReleaseDatesIngest>(
-            "fred_release_dates_ingest",
+            FRED_RELEASE_DATES_INGEST_JOB,
             11,
             45,
             Some(FRED_QUEUE),

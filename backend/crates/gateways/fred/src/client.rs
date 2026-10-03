@@ -1,6 +1,7 @@
-//! FRED (Federal Reserve Economic Data) API からマクロ指標の観測値を取得するクライアント。
+//! FRED (Federal Reserve Economic Data) API からマクロ指標の観測値と release dates を取得するクライアント。
 //!
 //! <https://fred.stlouisfed.org/docs/api/fred/series_observations.html>
+//! <https://fred.stlouisfed.org/docs/api/fred/release_dates.html>
 
 use std::str::FromStr;
 

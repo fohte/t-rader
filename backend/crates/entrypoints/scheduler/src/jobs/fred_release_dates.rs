@@ -1,18 +1,22 @@
 use chrono::Utc;
-use core_application::calendar::{source::CalendarEventSource, use_cases::CalendarEventUseCases};
+use core_application::calendar::use_cases::CalendarEventIngestStats;
+use core_application::{
+    calendar::{source::CalendarEventSource, use_cases::CalendarEventUseCases},
+    ingest_status::FRED_RELEASE_DATES_INGEST_JOB,
+};
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{DAILY_TIMEOUT, require_source, run_with_state};
+use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FredReleaseDatesIngest;
 
 impl TaskHandler for FredReleaseDatesIngest {
-    const IDENTIFIER: &'static str = "fred_release_dates_ingest";
+    const IDENTIFIER: &'static str = FRED_RELEASE_DATES_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
+        run_with_ingest_run_log_state(
             context,
             Self::IDENTIFIER,
             DAILY_TIMEOUT,
@@ -31,7 +35,7 @@ impl TaskHandler for FredReleaseDatesIngest {
 async fn ingest_calendar_events(
     use_cases: &CalendarEventUseCases,
     source: &dyn CalendarEventSource,
-) -> Result<(), String> {
+) -> Result<CalendarEventIngestStats, String> {
     let stats = use_cases
         .run_ingest_cycle(source, Utc::now().date_naive())
         .await
@@ -41,5 +45,5 @@ async fn ingest_calendar_events(
         deleted = stats.deleted,
         "FRED release dates ingest cycle completed"
     );
-    Ok(())
+    Ok(stats)
 }

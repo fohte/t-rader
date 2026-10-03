@@ -17,6 +17,8 @@ serde_json = { workspace = true }
 [dev-dependencies]
 indoc = "=2.0.7"
 rstest = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
 
 [lints]
 workspace = true

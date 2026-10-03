@@ -13,6 +13,7 @@ use crate::FredClient;
 
 const RELEASE_DATES_LIMIT: usize = 10_000;
 const LOOKAHEAD_MONTHS: u32 = 7;
+const SOURCE: &str = "fred";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ReleaseDefinition {
@@ -148,7 +149,7 @@ impl FredClient {
 #[async_trait]
 impl CalendarEventSource for FredClient {
     fn source(&self) -> &str {
-        "fred"
+        SOURCE
     }
 
     async fn fetch_calendar_events(
@@ -239,7 +240,7 @@ fn calendar_event(
     let event_date = event_at.with_timezone(&Tokyo).date_naive();
 
     Ok(CalendarEvent {
-        source: "fred".to_string(),
+        source: SOURCE.to_string(),
         external_id: format!("{}:{release_date}", release.id),
         category: release.category,
         country: "US".to_string(),
@@ -255,14 +256,21 @@ fn calendar_event(
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-    use core_application::calendar::source::CalendarEventSourceError;
+    use core_application::calendar::source::{
+        CalendarEventBatch, CalendarEventSource, CalendarEventSourceError,
+    };
     use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
     use indoc::indoc;
     use rstest::rstest;
+    use serde_json::json;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use crate::FredClient;
 
-    use super::{ParsedReleaseDates, ReleaseDefinition, calendar_event, parse_release_dates};
+    use super::{
+        ParsedReleaseDates, ReleaseDefinition, SOURCE, calendar_event, parse_release_dates,
+    };
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
@@ -355,7 +363,7 @@ mod tests {
         assert_eq!(
             calendar_event(release, release_date),
             Ok(CalendarEvent {
-                source: "fred".to_string(),
+                source: SOURCE.to_string(),
                 external_id: format!("{}:{release_date}", release.id),
                 category: release.category,
                 country: "US".to_string(),
@@ -385,6 +393,81 @@ mod tests {
         assert_eq!(
             url.as_str(),
             "https://api.example.test/release/dates?release_id=9001&api_key=sample-key&file_type=json&limit=10000&offset=20&sort_order=asc&include_release_dates_with_no_data=true"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_calendar_events_filters_by_tokyo_event_date() {
+        let server = MockServer::start().await;
+        let release_dates = [
+            (
+                10,
+                json!({"count": 1, "release_dates": [{"release_id": 10, "date": "2040-08-01"}]}),
+            ),
+            (50, json!({"count": 0, "release_dates": []})),
+            (54, json!({"count": 0, "release_dates": []})),
+            (53, json!({"count": 0, "release_dates": []})),
+            (9, json!({"count": 0, "release_dates": []})),
+            (
+                101,
+                json!({"count": 2, "release_dates": [
+                    {"release_id": 101, "date": "2040-07-31"},
+                    {"release_id": 101, "date": "2040-08-01"}
+                ]}),
+            ),
+        ];
+        for (release_id, response) in release_dates {
+            Mock::given(method("GET"))
+                .and(path("/release/dates"))
+                .and(query_param("release_id", release_id.to_string()))
+                .respond_with(ResponseTemplate::new(200).set_body_json(response))
+                .mount(&server)
+                .await;
+        }
+        let release_dates_url = format!("{}/release/dates", server.uri());
+        let client = FredClient::with_base_urls(
+            "sample-key".to_string(),
+            "https://api.example.test/observations",
+            &release_dates_url,
+        )
+        .expect("client");
+
+        let actual = client.fetch_calendar_events(date(2040, 1, 1)).await;
+
+        assert_eq!(
+            actual,
+            Ok(CalendarEventBatch {
+                date_range: core_application::daily_bar_source::DateRange {
+                    from: date(2040, 1, 1),
+                    to: date(2040, 8, 1),
+                },
+                events: vec![
+                    CalendarEvent {
+                        source: SOURCE.to_string(),
+                        external_id: "101:2040-07-31".to_string(),
+                        category: CalendarEventCategory::CentralBank,
+                        country: "US".to_string(),
+                        title: "FOMC 声明".to_string(),
+                        stock_id: None,
+                        fiscal_period: None,
+                        event_date: date(2040, 8, 1),
+                        event_at: Some(utc(2040, 7, 31, 18, 0)),
+                        time_of_day: None,
+                    },
+                    CalendarEvent {
+                        source: SOURCE.to_string(),
+                        external_id: "10:2040-08-01".to_string(),
+                        category: CalendarEventCategory::Indicator,
+                        country: "US".to_string(),
+                        title: "消費者物価指数 (CPI)".to_string(),
+                        stock_id: None,
+                        fiscal_period: None,
+                        event_date: date(2040, 8, 1),
+                        event_at: Some(utc(2040, 8, 1, 12, 30)),
+                        time_of_day: None,
+                    },
+                ],
+            }),
         );
     }
 
