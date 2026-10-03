@@ -6,7 +6,7 @@ mod tests {
     use crate::testing::agent_config;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client, insert_test_note,
-        insert_test_strategy,
+        insert_test_strategy, insert_test_strategy_task_step,
     };
     use axum::http::StatusCode;
     use axum_test::TestServer;
@@ -17,16 +17,25 @@ mod tests {
     use gateway_postgres::entities::annotation;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
+    use sea_orm::sea_query::Expr;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
     async fn create_test_annotation(server: &TestServer, strategy_id: Uuid) -> Uuid {
+        create_test_annotation_with_symbol(server, strategy_id, "demo-code").await
+    }
+
+    async fn create_test_annotation_with_symbol(
+        server: &TestServer,
+        strategy_id: Uuid,
+        target_symbol: &str,
+    ) -> Uuid {
         let res = server
             .post("/api/annotations")
             .json(&json!({
                 "strategy_id": strategy_id,
-                "target_symbol": "demo-code",
+                "target_symbol": target_symbol,
                 "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "text": "text",
@@ -41,7 +50,7 @@ mod tests {
                 json!({
                     "id": "<id>",
                     "strategy_id": strategy_id,
-                    "target_symbol": "demo-code",
+                    "target_symbol": target_symbol,
                     "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
@@ -388,66 +397,36 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_annotation_without_strategy_id_does_not_submit_task(
+    async fn reject_annotation_without_execution_step_does_not_submit_task(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-
-        let res = server
-            .post("/api/annotations")
-            .json(&json!({
-                "target_symbol": "N225",
-                "target_kind": "sample-kind",
-                "timestamp": "2026-01-01T00:00:00Z",
-                "text": "市況アノテーション",
-            }))
-            .await;
-        let created_body = res.json::<Value>();
-        let anno_id = Uuid::parse_str(created_body["id"].as_str().expect("id")).expect("uuid");
-        assert_eq!(
-            (
-                res.status_code(),
-                normalize_annotation_response(created_body)
-            ),
-            (
-                StatusCode::CREATED,
-                json!({
-                    "id": "<id>",
-                    "strategy_id": null,
-                    "target_symbol": "N225",
-                    "target_kind": "sample-kind",
-                    "timestamp": "2026-01-01T00:00:00Z",
-                    "price": null,
-                    "text": "市況アノテーション",
-                    "status": "unread",
-                    "linked_note_id": null,
-                    "created_by_kind": "human",
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                    "execution_step_id": null,
-                    "execution_task_id": null,
-                }),
-            ),
-        );
+        let strategy_id = insert_test_strategy(&db, "sample-annotation-strategy").await;
+        let anno_id =
+            create_test_annotation_with_symbol(&server, strategy_id, "sample-symbol").await;
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))
             .json(&json!({}))
             .await;
         assert_eq!(
-            (res.status_code(), normalize_annotation_response(res.json())),
+            (
+                res.status_code(),
+                normalize_annotation_response(res.json()),
+                strategy_task::Entity::find().all(&db).await.unwrap(),
+            ),
             (
                 StatusCode::OK,
                 json!({
                     "id": "<id>",
-                    "strategy_id": null,
-                    "target_symbol": "N225",
+                    "strategy_id": strategy_id,
+                    "target_symbol": "sample-symbol",
                     "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
-                    "text": "市況アノテーション",
+                    "text": "text",
                     "status": "rejected",
                     "linked_note_id": null,
                     "created_by_kind": "human",
@@ -456,38 +435,113 @@ mod tests {
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
+                vec![],
             ),
         );
-
-        let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
-        assert_eq!(tasks, vec![]);
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_annotation_submits_single_review_task_referencing_annotation(
+    async fn reject_annotation_with_unrecorded_execution_step_does_not_submit_task(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
-        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        let strategy_id = insert_test_strategy(&db, "sample-annotation-strategy").await;
+        let anno_id =
+            create_test_annotation_with_symbol(&server, strategy_id, "sample-symbol").await;
+        let execution_step_id = Uuid::from_u128(501);
+        annotation::Entity::update_many()
+            .col_expr(
+                annotation::Column::ExecutionStepId,
+                Expr::value(Some(execution_step_id)),
+            )
+            .filter(annotation::Column::Id.eq(anno_id))
+            .exec(&db)
             .await
-            .expect("insert test agent_config");
-        let anno_id = create_test_annotation(&server, strategy_id).await;
+            .unwrap();
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))
             .json(&json!({}))
             .await;
         assert_eq!(
-            (res.status_code(), normalize_annotation_response(res.json())),
+            (
+                res.status_code(),
+                normalize_annotation_response(res.json()),
+                strategy_task::Entity::find().all(&db).await.unwrap(),
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "strategy_id": strategy_id,
+                    "target_symbol": "sample-symbol",
+                    "target_kind": "sample-kind",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "text",
+                    "status": "rejected",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": execution_step_id,
+                    "execution_task_id": null,
+                }),
+                vec![],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn reject_annotation_uses_execution_strategy_for_review_task(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
+        let annotation_strategy_id = insert_test_strategy(&db, "sample-annotation-strategy").await;
+        let task_strategy_id = insert_test_strategy(&db, "sample-task-strategy").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
+        let anno_id =
+            create_test_annotation_with_symbol(&server, annotation_strategy_id, "sample-symbol")
+                .await;
+        let execution_step_id = Uuid::from_u128(502);
+        insert_test_strategy_task_step(&db, task_strategy_id, execution_step_id).await;
+        annotation::Entity::update_many()
+            .col_expr(
+                annotation::Column::ExecutionStepId,
+                Expr::value(Some(execution_step_id)),
+            )
+            .filter(annotation::Column::Id.eq(anno_id))
+            .exec(&db)
+            .await
+            .unwrap();
+
+        let res = server
+            .post(&format!("/api/annotations/{anno_id}/reject"))
+            .json(&json!({}))
+            .await;
+        let tasks = strategy_task::Entity::find()
+            .filter(strategy_task::Column::Source.eq("review"))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                res.status_code(),
+                normalize_annotation_response(res.json()),
+                tasks.iter().map(TaskShape::from).collect::<Vec<_>>(),
+            ),
             (
                 StatusCode::OK,
                 json!({
                 "id": "<id>",
-                "strategy_id": strategy_id,
-                "target_symbol": "demo-code",
+                "strategy_id": annotation_strategy_id,
+                "target_symbol": "sample-symbol",
                 "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "price": null,
@@ -497,28 +551,18 @@ mod tests {
                 "created_by_kind": "human",
                 "created_at": "<created_at>",
                 "updated_at": "<updated_at>",
-                "execution_step_id": null,
+                "execution_step_id": execution_step_id,
                 "execution_task_id": null,
                 }),
+                vec![TaskShape {
+                    strategy_id: task_strategy_id,
+                    source: "review".to_string(),
+                    prompt: format!(
+                        "アノテーション (id: {anno_id}, 対象: sample-symbol) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。"
+                    ),
+                    phase: StrategyTaskPhase::Running,
+                }],
             ),
-        );
-
-        let tasks = strategy_task::Entity::find()
-            .filter(strategy_task::Column::StrategyId.eq(strategy_id))
-            .all(&db)
-            .await
-            .unwrap();
-        assert_eq!(
-            tasks.iter().map(TaskShape::from).collect::<Vec<_>>(),
-            vec![TaskShape {
-                strategy_id,
-                source: "review".to_string(),
-                prompt: format!(
-                    "アノテーション (id: {anno_id}, 対象: demo-code) がレビューで却下されました。\
-付いているコメントを確認し、指摘を反映してください。"
-                ),
-                phase: StrategyTaskPhase::Running,
-            }],
         );
     }
 
@@ -534,6 +578,17 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let anno_id = create_test_annotation(&server, strategy_id).await;
+        let execution_step_id = Uuid::from_u128(603);
+        insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
+        annotation::Entity::update_many()
+            .col_expr(
+                annotation::Column::ExecutionStepId,
+                Expr::value(Some(execution_step_id)),
+            )
+            .filter(annotation::Column::Id.eq(anno_id))
+            .exec(&db)
+            .await
+            .unwrap();
 
         for _ in 0..2 {
             let res = server
@@ -557,7 +612,7 @@ mod tests {
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
-                        "execution_step_id": null,
+                        "execution_step_id": execution_step_id,
                         "execution_task_id": null,
                     }),
                 ),
@@ -565,6 +620,7 @@ mod tests {
         }
 
         let tasks = strategy_task::Entity::find()
+            .filter(strategy_task::Column::Source.eq("review"))
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
             .all(&db)
             .await
@@ -585,6 +641,17 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let anno_id = create_test_annotation(&server, strategy_id).await;
+        let execution_step_id = Uuid::from_u128(604);
+        insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
+        annotation::Entity::update_many()
+            .col_expr(
+                annotation::Column::ExecutionStepId,
+                Expr::value(Some(execution_step_id)),
+            )
+            .filter(annotation::Column::Id.eq(anno_id))
+            .exec(&db)
+            .await
+            .unwrap();
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))

@@ -7,7 +7,7 @@ use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::comments::map_comment_read_error;
-use crate::handlers::strategies::map_submit_error;
+use crate::handlers::strategies::{map_get_task_error, map_submit_error};
 use crate::models::{ChangeStatusRequest, NoteVersionResponse};
 use core_application::note::INITIAL_NOTE_STATUS;
 
@@ -180,11 +180,18 @@ pub async fn reject_note_version(
         ));
     }
 
-    let strategy_id = state
-        .note_read_use_cases
-        .get_note_strategy_id(note_id)
-        .await
-        .map_err(crate::handlers::notes::map_note_read_error)?;
+    let strategy_id = version
+        .execution_id
+        .as_deref()
+        .and_then(|execution_id| Uuid::parse_str(execution_id).ok());
+    let strategy_id = match strategy_id {
+        Some(execution_step_id) => state
+            .strategy_task_use_cases
+            .find_strategy_id_by_execution_step_id(execution_step_id)
+            .await
+            .map_err(map_get_task_error)?,
+        None => None,
+    };
     if let Some(strategy_id) = strategy_id {
         let reason = label
             .as_deref()

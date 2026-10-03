@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
-use crate::handlers::strategies::map_submit_error;
+use crate::handlers::strategies::{map_get_task_error, map_submit_error};
 use crate::models::{
     AnnotationResponse, ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest,
 };
@@ -235,7 +235,15 @@ pub async fn reject_annotation(
         return Ok(Json(current.into()));
     }
 
-    if let Some(strategy_id) = current.strategy_id {
+    let strategy_id = match current.execution_step_id {
+        Some(execution_step_id) => state
+            .strategy_task_use_cases
+            .find_strategy_id_by_execution_step_id(execution_step_id)
+            .await
+            .map_err(map_get_task_error)?,
+        None => None,
+    };
+    if let Some(strategy_id) = strategy_id {
         let prompt = format!(
             "アノテーション (id: {}, 対象: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
             current.id, current.target_symbol
