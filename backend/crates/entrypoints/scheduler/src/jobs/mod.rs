@@ -9,6 +9,7 @@ use tokio::time::timeout;
 use crate::state::SchedulerState;
 
 pub mod daily_bars;
+pub mod e_stat_calendar;
 pub mod earnings_schedule;
 pub mod edinet_holdings;
 pub mod equity_master;

@@ -22,6 +22,7 @@ entrypoint-external-webhook = { path = "crates/entrypoints/external-webhook" }
 entrypoint-frontend-api = { path = "crates/entrypoints/frontend-api" }
 entrypoint-scheduler = { path = "crates/entrypoints/scheduler" }
 gateway-fred = { path = "crates/gateways/fred" }
+gateway-e-stat = { path = "crates/gateways/e-stat" }
 gateway-ibkr = { path = "crates/gateways/ibkr" }
 gateway-jquants = { path = "crates/gateways/jquants" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }
@@ -58,6 +59,7 @@ sea-orm-migration = "=2.0.3"
 serde = "=1.0.229"
 serde_json = { version = "=1.0.151", features = ["arbitrary_precision"] }
 serde_yaml_ng = "=0.10.0"
+scraper = "=0.27.0"
 sqlx = "=0.9.0"
 thiserror = "=2.0.20"
 tokio = "=1.53.1"
