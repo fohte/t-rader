@@ -894,4 +894,6 @@ jobs:
         run: pnpm --filter frontend run generate:routes
 
       - name: Run knip
+        env:
+          DATABASE_URL: postgresql://example.invalid/agent_dev
         run: pnpm exec knip
