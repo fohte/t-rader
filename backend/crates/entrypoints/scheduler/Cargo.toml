@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 chrono = { workspace = true, features = ["clock"] }
+chrono-tz = { workspace = true }
 core-application = { workspace = true }
 graphile_worker = { workspace = true }
 futures-util = { workspace = true }
