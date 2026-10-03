@@ -13,7 +13,7 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
@@ -38,7 +38,7 @@ pub struct ListCommentsQuery {
     )
 )]
 pub async fn list_comments(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(p): JsonQuery<ListCommentsQuery>,
 ) -> Result<Json<Vec<CommentResponse>>, AppError> {
     let target_kind = CommentTargetKind::parse(&p.target_kind)
@@ -75,7 +75,7 @@ pub async fn list_comments(
     )
 )]
 pub async fn create_comment(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(p): JsonBody<CreateCommentRequest>,
 ) -> Result<(StatusCode, Json<CommentResponse>), AppError> {
     let author_kind = p.author_kind.as_deref().unwrap_or("human").to_string();
@@ -119,7 +119,7 @@ pub async fn create_comment(
     )
 )]
 pub async fn update_comment(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateCommentRequest>,
 ) -> Result<Json<CommentResponse>, AppError> {
@@ -151,7 +151,7 @@ pub async fn update_comment(
     )
 )]
 pub async fn delete_comment(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state

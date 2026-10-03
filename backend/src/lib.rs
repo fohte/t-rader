@@ -1,7 +1,6 @@
 pub mod agent_client;
 pub mod cli;
 pub mod data_provider;
-pub use entrypoint_frontend_api::{error, extractors, handlers, models};
 #[cfg(test)]
 mod integration_tests;
 pub mod kata_exec;
@@ -19,27 +18,17 @@ use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::get;
-use sea_orm::ConnectionTrait;
-use serde::Serialize;
-use utoipa::OpenApi;
-use utoipa::ToSchema;
-use utoipa_axum::router::OpenApiRouter;
-use utoipa_axum::routes;
-use utoipa_swagger_ui::SwaggerUi;
-
-use crate::error::{AppError, ErrorResponse};
-pub use crate::handlers::state::AppState;
-use crate::handlers::{
-    agent_config, agent_options, annotations, bars, comments, config, custom_indicators,
-    group_axes, history, imports, ingest_status, note_kinds, note_links, note_predictions,
-    note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
-    triggers,
-};
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
+use entrypoint_frontend_api::{AppError, ErrorResponse, FrontendApiState};
 use gateway_postgres::DatabaseHandle;
+use sea_orm::ConnectionTrait;
+use serde::Serialize;
+use utoipa::OpenApi;
+use utoipa::ToSchema;
+use utoipa_swagger_ui::SwaggerUi;
 
 /// composition root の UseCases から frontend-api の依存 state を組み立てる。
 pub fn build_http_state(
@@ -47,10 +36,10 @@ pub fn build_http_state(
     agent_task_client: SharedAgentTaskClient,
     kata_executor: Option<SharedKataExecutor>,
     llm_gateway_client: Option<SharedLlmClient>,
-) -> AppState {
+) -> FrontendApiState {
     let agent_tool_summaries = mcp::StrategyServer::list_tool_summaries();
     let trigger_use_cases = use_cases.triggers();
-    AppState {
+    FrontendApiState {
         account_risk_policy_use_cases: use_cases.account_risk_policies(),
         agent_config_use_cases: use_cases.agent_configs(),
         annotation_read_use_cases: use_cases.annotation_reads(),
@@ -102,38 +91,8 @@ pub fn build_external_webhook_state(
 }
 
 #[derive(OpenApi)]
-#[openapi(
-    paths(health_check),
-    tags(
-        (name = "health", description = "ヘルスチェック"),
-        (name = "bars", description = "バーデータ (OHLCV)"),
-        (name = "strategies", description = "戦略 (ワークスペース)"),
-        (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
-        (name = "refs", description = "一級参照型 (stock / indicator / group)"),
-        (name = "notes", description = "ノート"),
-        (name = "note_kinds", description = "ノート種別"),
-        (name = "annotations", description = "アノテーション"),
-        (name = "comments", description = "コメントスレッド"),
-        (name = "history", description = "変更履歴"),
-        (name = "trades", description = "取引履歴と損益サマリ"),
-        (name = "tasks", description = "戦略タスクの実行履歴 (口座横断)"),
-        (name = "triggers", description = "戦略 trigger (cron / hook)"),
-        (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
-        (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
-        (name = "group_axes", description = "銘柄を分類する軸"),
-        (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
-        (name = "ingest_status", description = "取り込み job の状態"),
-        (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
-        (name = "config", description = "frontend 向けランタイム設定値"),
-        (name = "account", description = "口座全体の設定"),
-    ),
-    info(
-        title = "T-Rader API",
-        version = "0.1.0",
-        description = "日本株投資プラットフォーム T-Rader の API",
-    ),
-)]
-struct ApiDoc;
+#[openapi(paths(health_check))]
+struct HealthDoc;
 
 /// ヘルスチェックレスポンス
 #[derive(Serialize, ToSchema)]
@@ -142,184 +101,17 @@ struct HealthResponse {
     status: String,
 }
 
-/// OpenAPI ルート定義を構築する
-fn build_openapi_router() -> OpenApiRouter<AppState> {
-    OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .routes(routes!(ingest_status::get_ingest_status))
-        .routes(routes!(bars::list_bars))
-        // strategies
-        .routes(routes!(
-            strategies::list_strategies,
-            strategies::create_strategy
-        ))
-        .routes(routes!(
-            strategies::get_strategy,
-            strategies::update_strategy,
-            strategies::delete_strategy
-        ))
-        .routes(routes!(strategies::submit_strategy_chat))
-        .routes(routes!(strategies::get_strategy_task))
-        .routes(routes!(strategies::list_strategy_tasks))
-        // tasks
-        .routes(routes!(tasks::list_tasks))
-        .routes(routes!(
-            strategies::get_investable_amount,
-            strategies::put_investable_amount
-        ))
-        // agent_config (目的別 agent 設定)
-        .routes(routes!(
-            agent_config::list_agent_configs,
-            agent_config::create_agent_config
-        ))
-        .routes(routes!(
-            agent_config::get_agent_config,
-            agent_config::delete_agent_config
-        ))
-        .routes(routes!(
-            agent_config::get_agents_md,
-            agent_config::put_agents_md
-        ))
-        .routes(routes!(agent_config::get_skills, agent_config::put_skills))
-        .routes(routes!(agent_config::put_skill, agent_config::delete_skill))
-        .routes(routes!(
-            agent_config::get_agent_graph,
-            agent_config::put_agent_graph
-        ))
-        .routes(routes!(agent_config::get_agent_config_bundle))
-        // refs
-        .routes(routes!(refs::list_stocks))
-        .routes(routes!(refs::get_stock))
-        .routes(routes!(refs::list_indicators))
-        .routes(routes!(refs::get_indicator))
-        .routes(routes!(refs::resolve_refs))
-        // notes
-        .routes(routes!(notes::list_notes, notes::create_note))
-        .routes(routes!(
-            notes::get_note,
-            notes::update_note,
-            notes::delete_note
-        ))
-        .routes(routes!(note_versions::list_note_versions))
-        .routes(routes!(note_versions::get_note_version))
-        .routes(routes!(note_versions::approve_note_version))
-        .routes(routes!(note_versions::reject_note_version))
-        .routes(routes!(note_versions::make_note_version_current))
-        .routes(routes!(note_versions::list_pending_note_versions))
-        .routes(routes!(note_links::get_note_links))
-        // note predictions
-        .routes(routes!(note_predictions::list_note_predictions))
-        // annotations
-        .routes(routes!(
-            annotations::list_annotations,
-            annotations::create_annotation
-        ))
-        .routes(routes!(
-            annotations::get_annotation,
-            annotations::update_annotation,
-            annotations::delete_annotation
-        ))
-        .routes(routes!(annotations::approve_annotation))
-        .routes(routes!(annotations::reject_annotation))
-        // comments
-        .routes(routes!(comments::list_comments, comments::create_comment))
-        .routes(routes!(comments::update_comment, comments::delete_comment))
-        // history
-        .routes(routes!(history::list_history))
-        .routes(routes!(history::get_history))
-        // trades — summary before {id} to avoid path conflict
-        .routes(routes!(trades::trades_summary))
-        .routes(routes!(trades::list_trades, trades::create_trade))
-        .routes(routes!(
-            trades::get_trade,
-            trades::update_trade,
-            trades::delete_trade
-        ))
-        // trade notes
-        .routes(routes!(
-            trade_notes::list_trade_notes,
-            trade_notes::create_trade_note
-        ))
-        .routes(routes!(trade_notes::delete_trade_note))
-        // triggers
-        .routes(routes!(
-            triggers::list_strategy_triggers,
-            triggers::create_strategy_trigger
-        ))
-        .routes(routes!(
-            triggers::get_trigger,
-            triggers::update_trigger,
-            triggers::delete_trigger
-        ))
-        // imports
-        .routes(routes!(imports::sbi_preview))
-        .routes(routes!(imports::sbi_commit))
-        // custom indicators
-        .routes(routes!(
-            custom_indicators::list_global_indicators,
-            custom_indicators::create_global_indicator
-        ))
-        .routes(routes!(
-            custom_indicators::get_indicator,
-            custom_indicators::update_indicator,
-            custom_indicators::delete_indicator
-        ))
-        .routes(routes!(
-            custom_indicators::list_strategy_indicators,
-            custom_indicators::create_strategy_indicator
-        ))
-        .routes(routes!(custom_indicators::get_strategy_indicator))
-        .routes(routes!(custom_indicators::preview_indicator))
-        // rss feeds
-        .routes(routes!(
-            rss_feeds::list_rss_feeds,
-            rss_feeds::create_rss_feed
-        ))
-        .routes(routes!(
-            rss_feeds::get_rss_feed,
-            rss_feeds::update_rss_feed,
-            rss_feeds::delete_rss_feed
-        ))
-        // note kinds
-        .routes(routes!(
-            note_kinds::list_note_kinds,
-            note_kinds::create_note_kind
-        ))
-        .routes(routes!(
-            note_kinds::update_note_kind,
-            note_kinds::delete_note_kind
-        ))
-        // group axes
-        .routes(routes!(
-            group_axes::list_group_axes,
-            group_axes::create_group_axis
-        ))
-        .routes(routes!(
-            group_axes::get_group_axis,
-            group_axes::update_group_axis,
-            group_axes::delete_group_axis
-        ))
-        // agent options (agent 設定フォームの選択肢)
-        .routes(routes!(agent_options::get_agent_models))
-        .routes(routes!(agent_options::get_agent_tools))
-        // config (frontend 向けランタイム設定値)
-        .routes(routes!(config::get_config))
-        // account (口座全体の設定)
-        .routes(routes!(
-            risk_policy::get_account_risk_policy,
-            risk_policy::put_account_risk_policy
-        ))
-}
-
 /// OpenAPI スペックを生成する (DB 接続不要)
 pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
-    let mut openapi = build_openapi_router().into_openapi();
+    let mut openapi = entrypoint_frontend_api::router().into_openapi();
+    openapi.merge(HealthDoc::openapi());
     openapi.merge(entrypoint_agent_webhook::router().into_openapi());
     openapi.merge(entrypoint_external_webhook::router().into_openapi());
     openapi
 }
 
 pub fn create_router(
-    state: AppState,
+    state: FrontendApiState,
     agent_webhook_state: entrypoint_agent_webhook::AgentWebhookState,
     external_webhook_state: entrypoint_external_webhook::ExternalWebhookState,
     mcp_use_cases: crate::services::use_cases::UseCases,
@@ -333,11 +125,12 @@ pub fn create_router(
         entrypoint_agent_webhook::router().with_state::<()>(agent_webhook_state);
     let external_webhook_router =
         entrypoint_external_webhook::router().with_state::<()>(external_webhook_state);
-    let (router, api) = build_openapi_router()
+    let (router, mut api) = entrypoint_frontend_api::router()
         .with_state::<()>(state)
         .merge(agent_webhook_router)
         .merge(external_webhook_router)
         .split_for_parts();
+    api.merge(HealthDoc::openapi());
     let health_router = Router::new()
         .route("/api/health", get(health_check))
         .with_state(health_db);
@@ -369,7 +162,6 @@ pub fn create_router(
 async fn health_check(
     State(db): State<DatabaseHandle>,
 ) -> Result<(StatusCode, Json<HealthResponse>), AppError> {
-    // DB 接続の正常性を確認
     db.execute_unprepared("SELECT 1")
         .await
         .map_err(|error| AppError::Internal(error.to_string()))?;

@@ -1,9 +1,9 @@
 use std::time::Duration;
 
+use core_application::kata_exec::{ExecRequest, KataExecError, SharedKataExecutor};
 use serde_json::Value as JsonValue;
 
 use crate::error::AppError;
-use crate::kata_exec::{ExecRequest, KataExecError, SharedKataExecutor};
 
 /// MCP 層と HTTP preview 層の両方で適用する exec 上限。
 /// MCP 側 (`backend/src/mcp/strategy/mod.rs`) と数値を揃えること。

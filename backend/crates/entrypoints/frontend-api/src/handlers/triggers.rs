@@ -7,7 +7,7 @@ use core_application::trigger::{
 };
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
@@ -31,7 +31,7 @@ use crate::models::{
     )
 )]
 pub async fn list_strategy_triggers(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonQuery(query): JsonQuery<ListTriggersQuery>,
 ) -> Result<Json<Vec<TriggerResponse>>, AppError> {
@@ -64,7 +64,7 @@ pub async fn list_strategy_triggers(
     )
 )]
 pub async fn create_strategy_trigger(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateTriggerRequest>,
 ) -> Result<(StatusCode, Json<TriggerResponse>), AppError> {
@@ -102,7 +102,7 @@ pub async fn create_strategy_trigger(
     )
 )]
 pub async fn get_trigger(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<Json<TriggerResponse>, AppError> {
     let trigger = state
@@ -131,7 +131,7 @@ pub async fn get_trigger(
     )
 )]
 pub async fn update_trigger(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateTriggerRequest>,
 ) -> Result<Json<TriggerResponse>, AppError> {
@@ -177,7 +177,7 @@ pub async fn update_trigger(
     )
 )]
 pub async fn delete_trigger(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let current = state

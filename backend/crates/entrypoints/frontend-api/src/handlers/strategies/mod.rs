@@ -12,7 +12,7 @@ use core_application::strategy_scope::{
 use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, StrategyResponse, UpdateStrategyRequest};
@@ -31,7 +31,7 @@ pub use tasks::{
 pub(crate) use tasks::{map_list_task_error, map_submit_error};
 
 pub(super) async fn strategy_scope_or_404(
-    state: &AppState,
+    state: &FrontendApiState,
     id: Uuid,
 ) -> Result<StrategyScope, AppError> {
     state
@@ -76,7 +76,7 @@ pub(crate) fn map_strategy_error(error: StrategyUseCaseError) -> AppError {
     )
 )]
 pub async fn list_strategies(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<Vec<StrategyResponse>>, AppError> {
     let items = state
         .strategy_use_cases
@@ -102,7 +102,7 @@ pub async fn list_strategies(
     )
 )]
 pub async fn get_strategy(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<StrategyResponse>, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;
@@ -129,7 +129,7 @@ pub async fn get_strategy(
     )
 )]
 pub async fn create_strategy(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<CreateStrategyRequest>,
 ) -> Result<(StatusCode, Json<StrategyResponse>), AppError> {
     let created = state
@@ -165,7 +165,7 @@ pub async fn create_strategy(
     )
 )]
 pub async fn update_strategy(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateStrategyRequest>,
 ) -> Result<Json<StrategyResponse>, AppError> {
@@ -201,7 +201,7 @@ pub async fn update_strategy(
     )
 )]
 pub async fn delete_strategy(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;

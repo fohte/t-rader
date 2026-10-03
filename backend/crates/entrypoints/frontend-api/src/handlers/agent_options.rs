@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::extract::State;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::models::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 
 /// 戦略 Agent 設定フォームに供給するモデル一覧を取得する。
@@ -12,7 +12,7 @@ use crate::models::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsRespon
     tag = "agent_options",
     responses((status = 200, body = AgentModelsResponse)),
 )]
-pub async fn get_agent_models(State(state): State<AppState>) -> Json<AgentModelsResponse> {
+pub async fn get_agent_models(State(state): State<FrontendApiState>) -> Json<AgentModelsResponse> {
     let models = match &state.llm_gateway_client {
         Some(client) => client.list_models().await.unwrap_or_else(|e| {
             tracing::warn!(
@@ -45,7 +45,7 @@ pub async fn get_agent_models(State(state): State<AppState>) -> Json<AgentModels
     tag = "agent_options",
     responses((status = 200, body = AgentToolsResponse)),
 )]
-pub async fn get_agent_tools(State(state): State<AppState>) -> Json<AgentToolsResponse> {
+pub async fn get_agent_tools(State(state): State<FrontendApiState>) -> Json<AgentToolsResponse> {
     let tools = state
         .agent_tool_summaries
         .iter()

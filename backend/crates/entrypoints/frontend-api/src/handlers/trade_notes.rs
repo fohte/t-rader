@@ -3,7 +3,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateTradeNoteRequest, NoteResponse, TradeNoteResponse};
@@ -22,7 +22,7 @@ use crate::models::{CreateTradeNoteRequest, NoteResponse, TradeNoteResponse};
     )
 )]
 pub async fn list_trade_notes(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(trade_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
     let snapshots = state
@@ -54,7 +54,7 @@ pub async fn list_trade_notes(
     )
 )]
 pub async fn create_trade_note(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(trade_id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<CreateTradeNoteRequest>,
 ) -> Result<(StatusCode, Json<TradeNoteResponse>), AppError> {
@@ -83,7 +83,7 @@ pub async fn create_trade_note(
     )
 )]
 pub async fn delete_trade_note(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((trade_id, note_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<StatusCode, AppError> {
     state

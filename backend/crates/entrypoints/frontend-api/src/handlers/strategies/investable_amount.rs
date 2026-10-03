@@ -6,7 +6,7 @@ use core_application::strategy::InvestableAmount;
 use uuid::Uuid;
 
 use super::{map_strategy_error, strategy_scope_or_404};
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{InvestableAmountResponse, PutInvestableAmountRequest};
@@ -33,7 +33,7 @@ fn to_response(current: Option<InvestableAmount>) -> InvestableAmountResponse {
     )
 )]
 pub async fn get_investable_amount(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<InvestableAmountResponse>, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;
@@ -62,7 +62,7 @@ pub async fn get_investable_amount(
     )
 )]
 pub async fn put_investable_amount(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<PutInvestableAmountRequest>,
 ) -> Result<Json<InvestableAmountResponse>, AppError> {

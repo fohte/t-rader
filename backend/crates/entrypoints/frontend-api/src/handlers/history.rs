@@ -5,7 +5,7 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::ChangeHistoryResponse;
@@ -43,7 +43,7 @@ pub struct ListHistoryQuery {
     )
 )]
 pub async fn list_history(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(p): JsonQuery<ListHistoryQuery>,
 ) -> Result<Json<Vec<ChangeHistoryResponse>>, AppError> {
     let entries = state
@@ -73,7 +73,7 @@ pub async fn list_history(
     )
 )]
 pub async fn get_history(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<ChangeHistoryResponse>, AppError> {
     let entry = state

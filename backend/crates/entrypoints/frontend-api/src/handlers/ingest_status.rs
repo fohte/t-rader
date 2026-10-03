@@ -2,7 +2,7 @@ use axum::Json;
 use axum::extract::State;
 use chrono::{Duration, Utc};
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::models::IngestStatusResponse;
 
@@ -17,7 +17,7 @@ use crate::models::IngestStatusResponse;
     )
 )]
 pub async fn get_ingest_status(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<IngestStatusResponse>, AppError> {
     let today_in_japan = (Utc::now() + Duration::hours(9)).date_naive();
     let status = state.ingest_status_use_case.get(today_in_japan).await?;

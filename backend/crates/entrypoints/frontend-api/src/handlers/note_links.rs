@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 
@@ -49,7 +49,7 @@ pub struct NoteLinksResponse {
     )
 )]
 pub async fn get_note_links(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(note_id): JsonPath<Uuid>,
     JsonQuery(params): JsonQuery<GetNoteLinksQuery>,
 ) -> Result<Json<NoteLinksResponse>, AppError> {

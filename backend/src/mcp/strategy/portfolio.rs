@@ -138,9 +138,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::data_provider::SharedDailyBarSource;
-    use crate::models::bar::{Bar, Timeframe};
-    use crate::models::instrument::{Instrument, Market};
     use crate::testing::MockProvider;
+    use entrypoint_frontend_api::models::bar::{Bar, Timeframe};
+    use entrypoint_frontend_api::models::instrument::{Instrument, Market};
     use gateway_postgres::entities::trade;
 
     use super::super::dto::{

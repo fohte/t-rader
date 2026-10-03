@@ -9,7 +9,7 @@ use core_application::account_risk_policy::{
     RISK_POLICY_SCHEMA_VERSION, parse_risk_policy, serialize_risk_policy, validate_group_ratios,
 };
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
@@ -25,7 +25,7 @@ use crate::models::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
     )
 )]
 pub async fn get_account_risk_policy(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
     let risk_policy = state
         .account_risk_policy_use_cases
@@ -57,7 +57,7 @@ pub async fn get_account_risk_policy(
     )
 )]
 pub async fn put_account_risk_policy(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<PutAccountRiskPolicyRequest>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
     let group_ratios: Vec<ApplicationGroupRatio> = payload

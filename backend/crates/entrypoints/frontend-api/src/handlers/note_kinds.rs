@@ -8,7 +8,7 @@ use core_application::note_kind::{CreateNoteKindCommand, UpdateNoteKindCommand};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::NoteKindResponse;
@@ -52,7 +52,7 @@ pub struct UpdateNoteKindRequest {
     )
 )]
 pub async fn list_note_kinds(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<Vec<NoteKindResponse>>, AppError> {
     Ok(Json(
         state
@@ -81,7 +81,7 @@ pub async fn list_note_kinds(
     )
 )]
 pub async fn create_note_kind(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<CreateNoteKindRequest>,
 ) -> Result<(StatusCode, Json<NoteKindResponse>), AppError> {
     let created = state
@@ -117,7 +117,7 @@ pub async fn create_note_kind(
     )
 )]
 pub async fn update_note_kind(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(key): JsonPath<String>,
     JsonBody(payload): JsonBody<UpdateNoteKindRequest>,
 ) -> Result<Json<NoteKindResponse>, AppError> {
@@ -151,7 +151,7 @@ pub async fn update_note_kind(
     )
 )]
 pub async fn delete_note_kind(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(key): JsonPath<String>,
 ) -> Result<StatusCode, AppError> {
     state.note_kind_use_cases.delete(Actor::Human, &key).await?;

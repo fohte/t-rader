@@ -7,7 +7,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
@@ -35,7 +35,7 @@ fn map_err(error: AgentConfigUseCaseError) -> AppError {
     }
 }
 
-fn use_cases(state: &AppState) -> AgentConfigUseCases {
+fn use_cases(state: &FrontendApiState) -> AgentConfigUseCases {
     state.agent_config_use_cases.clone()
 }
 
@@ -50,7 +50,7 @@ fn use_cases(state: &AppState) -> AgentConfigUseCases {
     )
 )]
 pub async fn list_agent_configs(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<Vec<AgentConfigItemResponse>>, AppError> {
     let items = use_cases(&state).list().await.map_err(map_err)?;
     Ok(Json(
@@ -77,7 +77,7 @@ pub async fn list_agent_configs(
     )
 )]
 pub async fn create_agent_config(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<CreateAgentConfigRequest>,
 ) -> Result<(StatusCode, Json<AgentConfigItemResponse>), AppError> {
     let created = use_cases(&state)
@@ -101,7 +101,7 @@ pub async fn create_agent_config(
     )
 )]
 pub async fn get_agent_config(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentConfigItemResponse>, AppError> {
     let model = use_cases(&state).get(&purpose).await.map_err(map_err)?;
@@ -123,7 +123,7 @@ pub async fn get_agent_config(
     )
 )]
 pub async fn get_agent_config_bundle(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentConfigResponse>, AppError> {
     let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
@@ -148,7 +148,7 @@ pub async fn get_agent_config_bundle(
     )
 )]
 pub async fn delete_agent_config(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<StatusCode, AppError> {
     use_cases(&state).delete(&purpose).await.map_err(map_err)?;
@@ -169,7 +169,7 @@ pub async fn delete_agent_config(
     )
 )]
 pub async fn get_agents_md(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentsMdBody>, AppError> {
     let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
@@ -195,7 +195,7 @@ pub async fn get_agents_md(
     )
 )]
 pub async fn put_agents_md(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
     JsonBody(payload): JsonBody<AgentsMdBody>,
 ) -> Result<Json<AgentsMdBody>, AppError> {
@@ -220,7 +220,7 @@ pub async fn put_agents_md(
     )
 )]
 pub async fn get_skills(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<SkillsBody>, AppError> {
     let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
@@ -247,7 +247,7 @@ pub async fn get_skills(
     )
 )]
 pub async fn put_skills(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
     JsonBody(payload): JsonBody<SkillsBody>,
 ) -> Result<Json<SkillsBody>, AppError> {
@@ -281,7 +281,7 @@ pub async fn put_skills(
     )
 )]
 pub async fn put_skill(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((purpose, name)): JsonPath<(String, String)>,
     JsonBody(payload): JsonBody<SkillBody>,
 ) -> Result<Json<SkillBody>, AppError> {
@@ -311,7 +311,7 @@ pub async fn put_skill(
     )
 )]
 pub async fn delete_skill(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((purpose, name)): JsonPath<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     use_cases(&state)
@@ -335,7 +335,7 @@ pub async fn delete_skill(
     )
 )]
 pub async fn get_agent_graph(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentGraphBody>, AppError> {
     let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
@@ -362,7 +362,7 @@ pub async fn get_agent_graph(
     )
 )]
 pub async fn put_agent_graph(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(purpose): JsonPath<String>,
     JsonBody(payload): JsonBody<AgentGraphBody>,
 ) -> Result<Json<AgentGraphBody>, AppError> {

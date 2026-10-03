@@ -11,7 +11,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use core_application::trade::{SbiImportRow, TradeMatchQuery};
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
@@ -36,7 +36,7 @@ use crate::services::import::sbi;
     )
 )]
 pub async fn sbi_preview(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     body: Bytes,
 ) -> Result<Json<SbiPreviewResponse>, AppError> {
     let parsed = sbi::parse_bytes(&body).map_err(|e| AppError::Validation(e.to_string()))?;
@@ -103,7 +103,7 @@ pub async fn sbi_preview(
     )
 )]
 pub async fn sbi_commit(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(p): JsonBody<SbiCommitRequest>,
 ) -> Result<Json<SbiCommitResponse>, AppError> {
     let result = state

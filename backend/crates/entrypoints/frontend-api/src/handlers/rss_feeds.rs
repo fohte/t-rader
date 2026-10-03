@@ -11,7 +11,7 @@ use core_application::rss_feed::{
     CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch,
 };
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
@@ -49,7 +49,7 @@ fn map_err(err: RssFeedUseCaseError) -> AppError {
     )
 )]
 pub async fn list_rss_feeds(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(query): JsonQuery<ListRssFeedsQuery>,
 ) -> Result<Json<Vec<RssFeedResponse>>, AppError> {
     let rows = state
@@ -74,7 +74,7 @@ pub async fn list_rss_feeds(
     )
 )]
 pub async fn get_rss_feed(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<RssFeedResponse>, AppError> {
     let feed = state.rss_feed_use_cases.get(id).await.map_err(map_err)?;
@@ -97,7 +97,7 @@ pub async fn get_rss_feed(
     )
 )]
 pub async fn create_rss_feed(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<CreateRssFeedRequest>,
 ) -> Result<(StatusCode, Json<RssFeedResponse>), AppError> {
     let created = state
@@ -130,7 +130,7 @@ pub async fn create_rss_feed(
     )
 )]
 pub async fn update_rss_feed(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateRssFeedRequest>,
 ) -> Result<Json<RssFeedResponse>, AppError> {
@@ -163,7 +163,7 @@ pub async fn update_rss_feed(
     )
 )]
 pub async fn delete_rss_feed(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state.rss_feed_use_cases.delete(id).await.map_err(map_err)?;

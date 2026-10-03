@@ -4,7 +4,7 @@ use core_application::prediction::{PredictionRepositoryError, PredictionUseCaseE
 use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonPath;
 use crate::models::PredictionResponse;
@@ -23,7 +23,7 @@ use crate::models::PredictionResponse;
     )
 )]
 pub async fn list_note_predictions(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(note_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<PredictionResponse>>, AppError> {
     let rows = state

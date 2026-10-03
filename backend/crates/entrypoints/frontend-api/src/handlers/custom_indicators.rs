@@ -10,7 +10,7 @@ use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
@@ -40,7 +40,7 @@ fn ensure_json_object(field: &str, value: &serde_json::Value) -> Result<(), AppE
     )
 )]
 pub async fn list_global_indicators(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     let items = state
         .custom_indicator_use_cases
@@ -64,7 +64,7 @@ pub async fn list_global_indicators(
     )
 )]
 pub async fn list_strategy_indicators(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     let items = state
@@ -89,7 +89,7 @@ pub async fn list_strategy_indicators(
     )
 )]
 pub async fn get_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
@@ -116,7 +116,7 @@ pub async fn get_indicator(
     )
 )]
 pub async fn create_global_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
     let indicator = state
@@ -152,7 +152,7 @@ pub async fn create_global_indicator(
     )
 )]
 pub async fn create_strategy_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
@@ -189,7 +189,7 @@ pub async fn create_strategy_indicator(
     )
 )]
 pub async fn update_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateCustomIndicatorRequest>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
@@ -224,7 +224,7 @@ pub async fn update_indicator(
     )
 )]
 pub async fn delete_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state
@@ -252,7 +252,7 @@ pub async fn delete_indicator(
     )
 )]
 pub async fn get_strategy_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((strategy_id, indicator_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
@@ -298,7 +298,7 @@ fn map_custom_indicator_error(error: CustomIndicatorUseCaseError) -> AppError {
     )
 )]
 pub async fn preview_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<PreviewIndicatorRequest>,
 ) -> Result<Json<PreviewIndicatorResponse>, AppError> {
     ensure_json_object("input_schema", &payload.input_schema)?;

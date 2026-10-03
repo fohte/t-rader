@@ -7,14 +7,14 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::ConnectionTrait;
 use uuid::Uuid;
 
-use crate::models::{Bar, Instrument};
 use crate::{
-    AppState, build_agent_webhook_state, build_external_webhook_state, build_http_state,
-    create_router,
+    build_agent_webhook_state, build_external_webhook_state, build_http_state, create_router,
 };
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_application::kata_exec::SharedKataExecutor;
+use entrypoint_frontend_api::FrontendApiState;
+use entrypoint_frontend_api::models::{Bar, Instrument};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::{
@@ -33,7 +33,7 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 /// テスト用 router state を組み立てる。
 struct TestRouterState {
     use_cases: crate::services::use_cases::UseCases,
-    app_state: AppState,
+    app_state: FrontendApiState,
     agent_webhook_state: entrypoint_agent_webhook::AgentWebhookState,
     external_webhook_state: entrypoint_external_webhook::ExternalWebhookState,
 }
@@ -62,7 +62,7 @@ fn create_test_router(states: TestRouterState, db: DatabaseHandle) -> axum::Rout
 
 /// `#[backend_test_macros::database_test]` から注入された transaction を使って TestServer を作成する。
 pub async fn create_test_server(db: DatabaseHandle) -> TestServer {
-    let states = base_state(db.clone(), AppState::disabled_agent_task_client());
+    let states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
     let router = create_test_router(states, db);
     TestServer::new(router).expect("failed to create test server")
 }
@@ -291,7 +291,7 @@ pub async fn insert_test_group_with_sync_source_code(
 
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。
 pub async fn create_test_server_with_db(db: DatabaseHandle) -> (DatabaseHandle, TestServer) {
-    let states = base_state(db.clone(), AppState::disabled_agent_task_client());
+    let states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
     let router = create_test_router(states, db.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (db, server)
@@ -302,7 +302,7 @@ pub async fn create_test_server_with_kata(
     db: DatabaseHandle,
     executor: SharedKataExecutor,
 ) -> TestServer {
-    let mut states = base_state(db.clone(), AppState::disabled_agent_task_client());
+    let mut states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
     states.app_state.kata_executor = Some(executor);
     let router = create_test_router(states, db);
     TestServer::new(router).expect("failed to create test server")
@@ -313,7 +313,7 @@ pub async fn create_test_server_with_llm_gateway(
     db: DatabaseHandle,
     llm_gateway_base_url: &str,
 ) -> TestServer {
-    let mut states = base_state(db.clone(), AppState::disabled_agent_task_client());
+    let mut states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
     states.app_state.llm_gateway_client = Some(Arc::new(
         crate::services::litellm_client::LiteLlmClient::new(llm_gateway_base_url, None)
             .expect("build llm gateway client"),
@@ -348,7 +348,7 @@ pub async fn create_test_server_with_graphile_worker(db: DatabaseHandle) -> Test
     crate::migrations::migrate_graphile_worker_schema(pool)
         .await
         .expect("migrate Graphile Worker schema");
-    let states = base_state(db.clone(), AppState::disabled_agent_task_client());
+    let states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
     let router = create_test_router(states, db);
     TestServer::new(router).expect("failed to create test server")
 }

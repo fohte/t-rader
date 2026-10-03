@@ -7,7 +7,7 @@ use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::{IndicatorResponse, RefResolution, StockResponse};
@@ -33,7 +33,7 @@ pub struct SearchQuery {
     )
 )]
 pub async fn list_stocks(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<StockResponse>>, AppError> {
     let items = state
@@ -60,7 +60,7 @@ pub async fn list_stocks(
     )
 )]
 pub async fn get_stock(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<StockResponse>, AppError> {
     let m = state
@@ -84,7 +84,7 @@ pub async fn get_stock(
     )
 )]
 pub async fn list_indicators(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<IndicatorResponse>>, AppError> {
     let items = state
@@ -112,7 +112,7 @@ pub async fn list_indicators(
     )
 )]
 pub async fn get_indicator(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<IndicatorResponse>, AppError> {
     let m = state
@@ -149,7 +149,7 @@ pub struct ResolveQuery {
     )
 )]
 pub async fn resolve_refs(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(params): JsonQuery<ResolveQuery>,
 ) -> Result<Json<Vec<RefResolution>>, AppError> {
     const MAX_LINKS: usize = 200;

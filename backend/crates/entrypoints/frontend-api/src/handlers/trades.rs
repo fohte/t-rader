@@ -12,7 +12,7 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
@@ -39,7 +39,7 @@ pub struct ListTradesQuery {
     )
 )]
 pub async fn list_trades(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(p): JsonQuery<ListTradesQuery>,
 ) -> Result<Json<Vec<TradeListItem>>, AppError> {
     let rows = state
@@ -79,7 +79,7 @@ pub async fn list_trades(
     )
 )]
 pub async fn get_trade(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<TradeResponse>, AppError> {
     let trade = state
@@ -105,7 +105,7 @@ pub async fn get_trade(
     )
 )]
 pub async fn create_trade(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(p): JsonBody<CreateTradeRequest>,
 ) -> Result<(StatusCode, Json<TradeResponse>), AppError> {
     let created = state
@@ -143,7 +143,7 @@ pub async fn create_trade(
     )
 )]
 pub async fn update_trade(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<UpdateTradeRequest>,
 ) -> Result<Json<TradeResponse>, AppError> {
@@ -182,7 +182,7 @@ pub async fn update_trade(
     )
 )]
 pub async fn delete_trade(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state
@@ -213,7 +213,7 @@ pub struct SummaryQuery {
     )
 )]
 pub async fn trades_summary(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(p): JsonQuery<SummaryQuery>,
 ) -> Result<Json<PerformanceSummary>, AppError> {
     let summary = state

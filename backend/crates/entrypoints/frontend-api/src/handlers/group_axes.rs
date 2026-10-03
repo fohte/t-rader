@@ -7,7 +7,7 @@ use core_application::group_axis::{CreateGroupAxisCommand, UpdateGroupAxisComman
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::GroupAxisResponse;
@@ -47,7 +47,7 @@ pub struct UpdateGroupAxisRequest {
     )
 )]
 pub async fn list_group_axes(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<Vec<GroupAxisResponse>>, AppError> {
     Ok(Json(
         state
@@ -76,7 +76,7 @@ pub async fn list_group_axes(
     )
 )]
 pub async fn create_group_axis(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<CreateGroupAxisRequest>,
 ) -> Result<(StatusCode, Json<GroupAxisResponse>), AppError> {
     let created = state
@@ -104,7 +104,7 @@ pub async fn create_group_axis(
     )
 )]
 pub async fn get_group_axis(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(key): JsonPath<String>,
 ) -> Result<Json<GroupAxisResponse>, AppError> {
     let axis = state.group_axis_use_cases.get(&key).await?;
@@ -128,7 +128,7 @@ pub async fn get_group_axis(
     )
 )]
 pub async fn update_group_axis(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(key): JsonPath<String>,
     JsonBody(payload): JsonBody<UpdateGroupAxisRequest>,
 ) -> Result<Json<GroupAxisResponse>, AppError> {
@@ -160,7 +160,7 @@ pub async fn update_group_axis(
     )
 )]
 pub async fn delete_group_axis(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(key): JsonPath<String>,
 ) -> Result<StatusCode, AppError> {
     state.group_axis_use_cases.delete(&key).await?;

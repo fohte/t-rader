@@ -5,7 +5,7 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
 use crate::handlers::strategies::map_list_task_error;
@@ -31,7 +31,7 @@ pub struct ListTasksQuery {
     )
 )]
 pub async fn list_tasks(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(p): JsonQuery<ListTasksQuery>,
 ) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
     let views = state

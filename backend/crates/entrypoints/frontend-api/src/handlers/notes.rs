@@ -5,7 +5,7 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateNoteRequest, NoteResponse, UpdateNoteRequest};
@@ -68,7 +68,7 @@ fn note_snapshot_response(snapshot: NoteSnapshot) -> NoteResponse {
     )
 )]
 pub async fn list_notes(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(params): JsonQuery<ListNotesQuery>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
     let page = state
@@ -106,7 +106,7 @@ pub async fn list_notes(
     )
 )]
 pub async fn get_note(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonQuery(params): JsonQuery<GetNoteQuery>,
 ) -> Result<Json<NoteResponse>, AppError> {
@@ -163,7 +163,7 @@ pub(super) fn map_note_read_error(error: NoteReadUseCaseError) -> AppError {
     )
 )]
 pub async fn create_note(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(payload): JsonBody<CreateNoteRequest>,
 ) -> Result<(StatusCode, Json<NoteResponse>), AppError> {
     let created_by_kind = payload.created_by_kind.unwrap_or_else(|| "human".into());
@@ -221,7 +221,7 @@ pub async fn create_note(
     )
 )]
 pub async fn update_note(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateNoteRequest>,
 ) -> Result<Json<NoteResponse>, AppError> {
@@ -257,7 +257,7 @@ pub async fn update_note(
     )
 )]
 pub async fn delete_note(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state

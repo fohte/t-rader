@@ -14,7 +14,7 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::handlers::strategies::map_submit_error;
@@ -42,7 +42,7 @@ pub struct ListAnnotationsQuery {
     )
 )]
 pub async fn list_annotations(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(params): JsonQuery<ListAnnotationsQuery>,
 ) -> Result<Json<Vec<AnnotationResponse>>, AppError> {
     let annotations = state
@@ -79,7 +79,7 @@ pub async fn list_annotations(
     )
 )]
 pub async fn get_annotation(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let annotation = state
@@ -105,7 +105,7 @@ pub async fn get_annotation(
     )
 )]
 pub async fn create_annotation(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonBody(p): JsonBody<CreateAnnotationRequest>,
 ) -> Result<(StatusCode, Json<AnnotationResponse>), AppError> {
     let status = p.status.as_deref().unwrap_or("unread").to_string();
@@ -150,7 +150,7 @@ pub async fn create_annotation(
     )
 )]
 pub async fn update_annotation(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<UpdateAnnotationRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
@@ -189,7 +189,7 @@ pub async fn update_annotation(
     )
 )]
 pub async fn approve_annotation(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
@@ -225,7 +225,7 @@ pub async fn approve_annotation(
     )
 )]
 pub async fn reject_annotation(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
@@ -286,7 +286,7 @@ pub async fn reject_annotation(
     )
 )]
 pub async fn delete_annotation(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state

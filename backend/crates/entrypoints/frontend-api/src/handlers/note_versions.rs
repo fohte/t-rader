@@ -3,7 +3,7 @@ use axum::extract::State;
 use core_application::strategy_task::TaskSource;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::comments::map_comment_read_error;
@@ -25,7 +25,7 @@ use core_application::note::INITIAL_NOTE_STATUS;
     )
 )]
 pub async fn list_note_versions(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(note_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
     let versions = state
@@ -53,7 +53,7 @@ pub async fn list_note_versions(
     )
 )]
 pub async fn get_note_version(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     Ok(Json(
@@ -77,7 +77,7 @@ pub async fn get_note_version(
     )
 )]
 pub async fn list_pending_note_versions(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
 ) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
     let versions = state
         .note_read_use_cases
@@ -118,7 +118,7 @@ fn ensure_pending_version(version: &core_application::note::NoteVersion) -> Resu
     )
 )]
 pub async fn approve_note_version(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
@@ -152,7 +152,7 @@ pub async fn approve_note_version(
     )
 )]
 pub async fn reject_note_version(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
@@ -233,7 +233,7 @@ pub async fn reject_note_version(
     )
 )]
 pub async fn make_note_version_current(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     let updated = state

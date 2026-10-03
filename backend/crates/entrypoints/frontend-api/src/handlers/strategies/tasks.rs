@@ -10,7 +10,7 @@ use core_application::strategy_task::{
 use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
@@ -65,7 +65,7 @@ fn map_get_task_error(error: GetTaskError) -> AppError {
 }
 
 async fn verify_strategy_scope(
-    state: &AppState,
+    state: &FrontendApiState,
     strategy_id: Uuid,
     not_found_message: String,
 ) -> Result<StrategyScope, AppError> {
@@ -99,7 +99,7 @@ async fn verify_strategy_scope(
     )
 )]
 pub async fn submit_strategy_chat(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<StrategyChatRequest>,
 ) -> Result<(StatusCode, Json<StrategyChatResponse>), AppError> {
@@ -146,7 +146,7 @@ pub async fn submit_strategy_chat(
     )
 )]
 pub async fn get_strategy_task(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath((strategy_id, task_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<Json<StrategyTaskStatusResponse>, AppError> {
     let scope = verify_strategy_scope(
@@ -191,7 +191,7 @@ pub async fn get_strategy_task(
     )
 )]
 pub async fn list_strategy_tasks(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
     let scope = verify_strategy_scope(

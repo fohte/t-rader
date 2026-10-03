@@ -5,7 +5,7 @@ use core_application::bars::BarsQuery;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-use crate::AppState;
+use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
 use crate::models::BarResponse;
@@ -42,7 +42,7 @@ fn default_timeframe() -> String {
     )
 )]
 pub async fn list_bars(
-    State(state): State<AppState>,
+    State(state): State<FrontendApiState>,
     JsonQuery(params): JsonQuery<BarsQueryParams>,
 ) -> Result<Json<Vec<BarResponse>>, AppError> {
     if params.instrument_id.trim().is_empty() {
