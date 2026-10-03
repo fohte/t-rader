@@ -24,6 +24,8 @@ fohte 個人用の日本株投資プラットフォーム。
 
 ### 起動
 
+Graphile Worker 管理 UI は reverse proxy header 認証を設定できます。header 名と照合値の両方を設定するとその header で認証し、両方を空欄にすると認証なしで backend は `127.0.0.1` に bind します。片方だけ設定した場合は起動に失敗します。この loopback 設定で UI を使う場合は backend をホスト上で直接起動してください。Docker Compose の port publish からは UI に到達できません。Docker Compose で使う場合は認証 header の組を設定し、信頼済み proxy を経由してください。
+
 ```bash
 # ツールのインストール
 mise install
@@ -53,15 +55,17 @@ docker compose -f docker-compose.app.yml up
 
 # 割り当てられたポートを確認 (アプリコンテナの一覧: docker compose -f docker-compose.app.yml ps)
 docker compose -f docker-compose.app.yml port backend 3000
+docker compose -f docker-compose.app.yml port backend 3001
 docker compose -f docker-compose.app.yml port frontend 5173
 docker compose -f docker-compose.app.yml port agent 8080
 ```
 
 ## データベース
 
-- PostgreSQL 17 + TimescaleDB を使い、DB と Redis は `mise run db:up` で起動する
-- backend と agent にそれぞれ dev / test DB が作成される。`backend/` と `agent/` の `.mise.toml` が `DATABASE_URL` と `TEST_DATABASE_URL` を設定する
+- PostgreSQL 17 + TimescaleDB と Redis は `mise run db:up` で起動する
+- backend と agent にそれぞれ dev / test DB が作成され、各 package の `.mise.toml` が `DATABASE_URL` と `TEST_DATABASE_URL` を解決する
 - DB schema docs は使い捨て DB に migration を適用して生成する
+- backend の migration は SeaORM を使用する
 
 ```bash
 mise run db:doc
@@ -69,7 +73,7 @@ mise run db:doc
 
 ### 既存の共有 DB を使っている場合
 
-既存の DB volume はそのまま再利用します。旧構成で作成した DB と role の名前を、新構成の名前へ一度だけ変更してください。アプリを停止し、旧 checkout で次を実行してから新構成へ切り替えます。
+既存の DB volume はそのまま再利用します。旧構成の role と database 名を、新構成の名前に一度だけ変更してください。アプリを停止し、旧 checkout で次を実行してから新構成へ切り替えます。
 
 ```bash
 docker compose -f docker-compose.infra.yml exec -T db psql -U t_rader -d postgres <<'SQL'
@@ -79,7 +83,7 @@ ALTER DATABASE t_rader_agent_development RENAME TO "t-rader_agent_dev";
 SQL
 ```
 
-切り替え後に `mise run db:up` を実行すると、test DB が作成されます。volume の削除は不要です。
+切り替え後に `mise run db:up` を実行すると test DB が作成されます。volume の削除は不要です。
 
 ### マイグレーションの追加
 
@@ -120,7 +124,7 @@ docker compose exec db psql -U t-rader -d t-rader_backend_dev \
 - internal API: `POST /internal/tasks` (`{strategy_id, prompt}` -> `{task_id}`) / `GET /internal/tasks/{task_id}` (-> `{task_id, state, result_text?, error_message?, error_kind?}`)
 
 ```bash
-# agent 単体でテスト実行 (mise が TEST_DATABASE_URL を設定する)
+# agent 単体でテスト実行 (`agent/.mise.toml` が TEST_DATABASE_URL を設定する)
 cd agent && pnpm test
 ```
 
@@ -159,28 +163,30 @@ pnpm run format   # ESLint + Prettier によるフォーマット
 
 ## 環境変数
 
-| 変数                     | 説明                                                                                                                                                                                                                                                 | デフォルト                   |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `DATABASE_URL`           | package ごとの PostgreSQL 接続 URL (`backend/.mise.toml` / `agent/.mise.toml` が解決する)                                                                                                                                                            | -                            |
-| `TEST_DATABASE_URL`      | package ごとの test DB 接続 URL (`backend/.mise.toml` / `agent/.mise.toml` が解決する)                                                                                                                                                               | -                            |
-| `REDIS_URL`              | Redis 接続 URL (`.mise.toml` が `scripts/redis-url` を都度実行して解決する)                                                                                                                                                                          | -                            |
-| `BACKEND_PORT`           | backend プロセスのリッスンポート (`cargo run -p backend` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                                                                  | `3000`                       |
-| `TRADER_AGENT_PORT`      | agent プロセスのリッスンポート (`pnpm dev` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                                                                                | `8080`                       |
-| `TRADER_AGENT_URL`       | agent が自身の A2A Agent Card に載せる URL                                                                                                                                                                                                           | -                            |
-| `TRADER_AGENT_API_URL`   | backend が戦略タスクを投入する t-rader-agent の internal API base URL。値 `disabled` は dev 用 sentinel で agent へのタスク投入を無効化する                                                                                                          | -                            |
-| `TRADER_AGENT_API_TOKEN` | backend が agent の internal API 呼び出し時に送る bearer token (agent 側の `INTERNAL_API_TOKEN` と同じ値、`TRADER_AGENT_API_URL=disabled` の場合は不要)                                                                                              | -                            |
-| `INTERNAL_API_TOKEN`     | backend -> agent の internal API 呼び出しを認証する bearer token                                                                                                                                                                                     | -                            |
-| `BACKEND_WEBHOOK_TOKEN`  | agent -> backend の push notification 送信を認証する bearer token                                                                                                                                                                                    | -                            |
-| `AGENT_WEBHOOK_TOKEN`    | backend が agent からの push notification を認証する bearer token (`BACKEND_WEBHOOK_TOKEN` と同じ値)                                                                                                                                                 | -                            |
-| `BACKEND_API_BASE_URL`   | agent が backend API、webhook、MCP endpoint に接続するベース URL                                                                                                                                                                                     | -                            |
-| `LLM_API_KEY`            | agent が戦略 Agent の LLM 呼び出しに使う API キー (`LLM_BASE_URL` を差し替えた場合はその接続先の API キー)。未設定だと agent の起動に失敗する。`docker-compose.app.yml` の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること | -                            |
-| `LLM_BASE_URL`           | agent が戦略 Agent の LLM 呼び出しに使う OpenAI 互換エンドポイントの base URL。任意の互換エンドポイント (LiteLLM Proxy 等) に差し替えられる                                                                                                          | OpenCode Go のエンドポイント |
-| `JQUANTS_API_KEY`        | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)。設定する場合は provider の選択にかかわらず `JQUANTS_PLAN` が必要                                                                                                                               | -                            |
-| `JQUANTS_PLAN`           | J-Quants の契約プラン (`free` / `light` / `standard` / `premium`)。API キー設定時に未設定または不正な値だと backend の起動に失敗する。API キー未設定時は無視する                                                                                     | -                            |
-| `VITE_API_URL`           | Vite 開発サーバーのプロキシ先 URL                                                                                                                                                                                                                    | `http://localhost:3000`      |
-| `API_BACKEND_URL`        | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                                                                                                                                        | -                            |
-| `NGINX_RESOLVER`         | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                                                                                                                              | -                            |
-| `MCP_ALLOWED_HOSTS`      | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                                                                                                                                  | -                            |
+| 変数                                                                                       | 説明                                                                                                                                                                                                                                                 | デフォルト                   |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `DATABASE_URL`                                                                             | package ごとの PostgreSQL 接続 URL (`backend/.mise.toml` / `agent/.mise.toml` が解決する)                                                                                                                                                            | -                            |
+| `TEST_DATABASE_URL`                                                                        | package ごとの test DB 接続 URL (`backend/.mise.toml` / `agent/.mise.toml` が解決する)                                                                                                                                                               | -                            |
+| `REDIS_URL`                                                                                | Redis 接続 URL (`.mise.toml` が `scripts/redis-url` を都度実行して解決する)                                                                                                                                                                          | -                            |
+| `BACKEND_PORT`                                                                             | backend プロセスのリッスンポート (`cargo run -p backend` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                                                                  | `3000`                       |
+| `TRADER_AGENT_PORT`                                                                        | agent プロセスのリッスンポート (`pnpm dev` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                                                                                | `8080`                       |
+| `TRADER_AGENT_URL`                                                                         | agent が自身の A2A Agent Card に載せる URL                                                                                                                                                                                                           | -                            |
+| `TRADER_AGENT_API_URL`                                                                     | backend が戦略タスクを投入する t-rader-agent の internal API base URL。値 `disabled` は dev 用 sentinel で agent へのタスク投入を無効化する                                                                                                          | -                            |
+| `TRADER_AGENT_API_TOKEN`                                                                   | backend が agent の internal API 呼び出し時に送る bearer token (agent 側の `INTERNAL_API_TOKEN` と同じ値、`TRADER_AGENT_API_URL=disabled` の場合は不要)                                                                                              | -                            |
+| `INTERNAL_API_TOKEN`                                                                       | backend -> agent の internal API 呼び出しを認証する bearer token                                                                                                                                                                                     | -                            |
+| `BACKEND_WEBHOOK_TOKEN`                                                                    | agent -> backend の push notification 送信を認証する bearer token                                                                                                                                                                                    | -                            |
+| `AGENT_WEBHOOK_TOKEN`                                                                      | backend が agent からの push notification を認証する bearer token (`BACKEND_WEBHOOK_TOKEN` と同じ値)                                                                                                                                                 | -                            |
+| `BACKEND_API_BASE_URL`                                                                     | agent が backend API、webhook、MCP endpoint に接続するベース URL                                                                                                                                                                                     | -                            |
+| `LLM_API_KEY`                                                                              | agent が戦略 Agent の LLM 呼び出しに使う API キー (`LLM_BASE_URL` を差し替えた場合はその接続先の API キー)。未設定だと agent の起動に失敗する。`docker-compose.app.yml` の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること | -                            |
+| `LLM_BASE_URL`                                                                             | agent が戦略 Agent の LLM 呼び出しに使う OpenAI 互換エンドポイントの base URL。任意の互換エンドポイント (LiteLLM Proxy 等) に差し替えられる                                                                                                          | OpenCode Go のエンドポイント |
+| `JQUANTS_API_KEY`                                                                          | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)。設定する場合は provider の選択にかかわらず `JQUANTS_PLAN` が必要                                                                                                                               | -                            |
+| `JQUANTS_PLAN`                                                                             | J-Quants の契約プラン (`free` / `light` / `standard` / `premium`)。API キー設定時に未設定または不正な値だと backend の起動に失敗する。API キー未設定時は無視する                                                                                     | -                            |
+| `VITE_API_URL`                                                                             | Vite 開発サーバーのプロキシ先 URL                                                                                                                                                                                                                    | `http://localhost:3000`      |
+| `API_BACKEND_URL`                                                                          | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                                                                                                                                        | -                            |
+| `NGINX_RESOLVER`                                                                           | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                                                                                                                              | -                            |
+| `MCP_ALLOWED_HOSTS`                                                                        | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                                                                                                                                  | -                            |
+| `GRAPHILE_WORKER_ADMIN_UI_AUTH_HEADER_NAME` / `GRAPHILE_WORKER_ADMIN_UI_AUTH_HEADER_VALUE` | backend の `worker` / `both` で管理 UI が照合する reverse proxy header 名と値。両方を空欄にすると loopback で認証なし、片方だけの設定は起動失敗                                                                                                      | -                            |
+| `GRAPHILE_WORKER_ADMIN_UI_PORT`                                                            | Graphile Worker 管理 UI の listen port                                                                                                                                                                                                               | `3001`                       |
 
 ### DataProvider 切替
 

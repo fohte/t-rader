@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
 
-use super::types::{Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteVersion};
+use super::types::{
+    Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot, NoteVersion,
+};
 
 #[derive(Debug, Error)]
 pub enum NoteReadQueryError {
@@ -44,6 +46,10 @@ pub trait NoteReadQuery: Send + Sync {
     ) -> Result<Option<NoteVersion>, NoteReadQueryError>;
     async fn list_pending_note_versions(&self) -> Result<Vec<NoteVersion>, NoteReadQueryError>;
     async fn list_notes(&self, query: NoteListQuery) -> Result<NoteListPage, NoteReadQueryError>;
+    async fn list_notes_written_by_task(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<NoteSnapshot>, NoteReadQueryError>;
     async fn find_links_from_version(
         &self,
         version_id: Uuid,

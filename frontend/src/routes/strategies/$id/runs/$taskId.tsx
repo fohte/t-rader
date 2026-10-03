@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import {
   parseAgentGraphPhases,
@@ -9,6 +9,10 @@ import { TaskRunView } from '#components/strategy-shell/task-run-view'
 import { $api } from '#lib/api/client'
 
 const POLL_INTERVAL_MS = 2000
+
+function isTaskActive(phase: string | undefined): boolean {
+  return phase === 'pending' || phase === 'running'
+}
 
 export const Route = createFileRoute('/strategies/$id/runs/$taskId')({
   component: TaskRunPage,
@@ -24,13 +28,12 @@ function TaskRunPage() {
     {
       refetchInterval: (query) => {
         const phase = query.state.data?.phase
-        return phase === 'pending' || phase === 'running'
-          ? POLL_INTERVAL_MS
-          : false
+        return isTaskActive(phase) ? POLL_INTERVAL_MS : false
       },
     },
   )
   const task = taskQuery.data
+  const taskPhase = task?.phase
   const purpose = task?.purpose ?? null
 
   const purposeAgentGraphQuery = $api.useQuery(
@@ -50,19 +53,20 @@ function TaskRunPage() {
 
   const notesQuery = $api.useQuery(
     'get',
-    '/api/notes',
-    { params: { query: { strategy_id: id } } },
-    { enabled: task != null },
+    '/api/strategies/{id}/tasks/{task_id}/notes',
+    { params: { path: { id, task_id: taskId } } },
+    {
+      enabled: task != null,
+      refetchInterval: () =>
+        isTaskActive(taskPhase) ? POLL_INTERVAL_MS : false,
+    },
   )
-  // floating-chat.tsx の generatedNotes とは別実装。あちらはクライアント時刻起点 +
-  // skew 許容 (継続中タスクの投入直後を拾うため)。ここは backend が確定させた
-  // created_at/updated_at のみで完結する境界指定で足りる。
-  const generatedNotesCount = useMemo(() => {
-    if (task == null) return 0
-    return (notesQuery.data ?? []).filter(
-      (n) => n.created_at >= task.created_at && n.created_at <= task.updated_at,
-    ).length
-  }, [task, notesQuery.data])
+  useEffect(() => {
+    if (taskPhase == null || isTaskActive(taskPhase)) return
+    void notesQuery.refetch()
+  }, [taskPhase, notesQuery.refetch])
+
+  const generatedNotesCount = notesQuery.data?.length ?? 0
 
   return (
     <TaskRunView

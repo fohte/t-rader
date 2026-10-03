@@ -13,8 +13,10 @@ use uuid::Uuid;
 use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
+use crate::handlers::notes::map_note_read_error;
 use crate::models::{
-    StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,
+    NoteResponse, StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse,
+    StrategyTaskSummary,
 };
 use core_application::agent_task_client::AgentTaskError;
 pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
@@ -175,6 +177,50 @@ pub async fn get_strategy_task(
         purpose: view.purpose,
         as_of: view.as_of,
     }))
+}
+
+/// 戦略タスクが書いたノートを現行バージョンで返す。
+#[utoipa::path(
+    get,
+    path = "/api/strategies/{id}/tasks/{task_id}/notes",
+    tag = "strategies",
+    params(
+        ("id" = Uuid, Path, description = "戦略 ID"),
+        ("task_id" = Uuid, Path, description = "戦略タスク ID"),
+    ),
+    responses(
+        (status = 200, body = Vec<NoteResponse>),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_strategy_task_notes(
+    State(state): State<FrontendApiState>,
+    JsonPath((strategy_id, task_id)): JsonPath<(Uuid, Uuid)>,
+) -> Result<Json<Vec<NoteResponse>>, AppError> {
+    let scope = verify_strategy_scope(
+        &state,
+        strategy_id,
+        format!("strategy task {task_id} not found"),
+    )
+    .await?;
+    state
+        .strategy_task_use_cases
+        .get_for_strategy(scope, task_id)
+        .await
+        .map_err(map_get_task_error)?;
+    let snapshots = state
+        .note_read_use_cases
+        .list_notes_written_by_task(task_id)
+        .await
+        .map_err(map_note_read_error)?;
+    Ok(Json(
+        snapshots
+            .into_iter()
+            .map(NoteResponse::from_snapshot)
+            .collect(),
+    ))
 }
 
 /// 戦略の過去タスクを新しい順に一覧取得する
