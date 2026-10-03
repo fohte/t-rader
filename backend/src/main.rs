@@ -135,12 +135,16 @@ async fn main() -> Result<(), AppError> {
     // 1 にして evict のたびに Close させる
     opt.map_sqlx_postgres_opts(|opts| opts.statement_cache_capacity(1));
 
-    let db = Database::connect(opt).await?;
+    let db = Database::connect(opt)
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
 
     // --skip-migration が指定されていない場合のみマイグレーションを実行する
     if !cli.skip_migration {
         tracing::info!("running database migrations");
-        Migrator::up(&db, None).await?;
+        Migrator::up(&db, None)
+            .await
+            .map_err(|error| AppError::Internal(error.to_string()))?;
         backend::migrations::migrate_graphile_worker_schema(
             db.get_postgres_connection_pool().clone(),
         )

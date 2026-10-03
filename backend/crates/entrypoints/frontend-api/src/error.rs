@@ -3,7 +3,10 @@ use axum::response::{IntoResponse, Response};
 use core_application::account_risk_policy::AccountRiskPolicyDataError;
 use core_application::bars::{BarsRepositoryError, BarsUseCaseError};
 use core_application::change_history::ChangeHistoryError;
+use core_application::daily_bar_source::DailyBarSourceError;
+use core_application::equity_master_source::EquityMasterSourceError;
 use core_application::group_axis::{GroupAxisRepositoryError, GroupAxisUseCaseError};
+use core_application::market_daily_bar_source::MarketDailyBarSourceError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
@@ -11,10 +14,6 @@ use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Serialize;
 use utoipa::ToSchema;
-
-use crate::data_provider::{
-    DailyBarSourceError, EquityMasterSourceError, MarketDailyBarSourceError,
-};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -249,9 +248,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sea_orm_error_maps_to_http_internal_response() {
-        let response =
-            AppError::from(sea_orm::DbErr::Custom("database unavailable".into())).into_response();
+    async fn internal_error_maps_to_http_internal_response() {
+        let response = AppError::Internal("database unavailable".into()).into_response();
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await

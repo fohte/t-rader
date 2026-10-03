@@ -1,17 +1,13 @@
 pub mod agent_client;
 pub mod cli;
 pub mod data_provider;
-pub mod error;
-pub mod extractors;
-pub mod handlers;
+pub use entrypoint_frontend_api::{error, extractors, handlers, models};
 #[cfg(test)]
 mod integration_tests;
 pub mod kata_exec;
 pub mod mcp;
 pub mod middleware;
 pub mod migrations;
-pub mod models;
-pub(crate) mod serde_helpers;
 pub mod services;
 #[cfg(test)]
 pub mod testing;
@@ -44,12 +40,6 @@ use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use gateway_postgres::DatabaseHandle;
-
-impl From<sea_orm::DbErr> for AppError {
-    fn from(error: sea_orm::DbErr) -> Self {
-        Self::Internal(error.to_string())
-    }
-}
 
 /// composition root の UseCases から frontend-api の依存 state を組み立てる。
 pub fn build_http_state(
@@ -380,7 +370,9 @@ async fn health_check(
     State(db): State<DatabaseHandle>,
 ) -> Result<(StatusCode, Json<HealthResponse>), AppError> {
     // DB 接続の正常性を確認
-    db.execute_unprepared("SELECT 1").await?;
+    db.execute_unprepared("SELECT 1")
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
 
     Ok((
         StatusCode::OK,
