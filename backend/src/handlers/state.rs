@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use axum::extract::FromRef;
 use core_application::account_risk_policy::AccountRiskPolicyUseCases;
 use core_application::agent_config::AgentConfigUseCases;
 use core_application::agent_task_client::{
@@ -22,7 +21,7 @@ use core_application::refs::RefUseCases;
 use core_application::rss_feed::RssFeedUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
-use core_application::strategy_task::{StrategyTaskReconcileJobUseCases, StrategyTaskUseCases};
+use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::trade::{TradeNoteUseCases, TradeUseCases};
 use core_application::trigger::TriggerUseCases;
 
@@ -55,34 +54,6 @@ pub struct AppState {
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_gateway_client: Option<SharedLlmClient>,
     pub agent_tool_summaries: Vec<(String, Option<String>)>,
-    pub agent_task_notifications: AgentTaskNotificationsState,
-}
-
-#[derive(Clone)]
-pub struct AgentTaskNotificationsState {
-    pub strategy_task_reconcile_job_use_cases: StrategyTaskReconcileJobUseCases,
-    pub webhook_token: Arc<str>,
-}
-
-#[derive(Clone)]
-pub struct ExternalHookState {
-    pub trigger_use_cases: TriggerUseCases,
-    pub agent_task_client: SharedAgentTaskClient,
-}
-
-impl FromRef<AppState> for AgentTaskNotificationsState {
-    fn from_ref(state: &AppState) -> Self {
-        state.agent_task_notifications.clone()
-    }
-}
-
-impl FromRef<AppState> for ExternalHookState {
-    fn from_ref(state: &AppState) -> Self {
-        Self {
-            trigger_use_cases: state.trigger_use_cases.clone(),
-            agent_task_client: state.agent_task_client.clone(),
-        }
-    }
 }
 
 impl AppState {

@@ -1,9 +1,10 @@
 //! HTTP と MCP entrypoint の API 契約と戦略タスクの一連の処理を composition root から検証する。
 //!
-//! `frontend_api` は DB-backed route を公開 router 経由で検証し、`mgmt_mcp` は MCP tool を
-//! 経由して公開面を検証する。その他のテストは複数の submission route、agent 実行、scheduler
-//! job を跨ぐ戦略タスクの契約を検証する。
+//! entrypoint ごとの integration test は公開 router または MCP tool 経由で公開面を検証する。
+//! その他のテストは複数の submission route、agent 実行、scheduler job を跨ぐ戦略タスクの契約を検証する。
 
+mod agent_webhook;
+mod external_webhook;
 mod frontend_api;
 mod mgmt_mcp;
 mod prediction_grading;
