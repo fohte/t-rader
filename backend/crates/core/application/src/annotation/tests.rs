@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, FixedOffset, Utc};
 use rstest::rstest;
 use serde_json::json;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::fake::FakeAnnotationRepository;
@@ -76,6 +77,92 @@ fn create_command(strategy_id: Option<Uuid>) -> CreateAnnotationCommand {
         execution_step_id: None,
         execution_task_id: None,
     }
+}
+
+struct FakeAnnotationReadQuery {
+    annotation: Annotation,
+    listed_queries: Mutex<Vec<AnnotationListQuery>>,
+}
+
+#[async_trait::async_trait]
+impl AnnotationReadQuery for FakeAnnotationReadQuery {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Annotation>, AnnotationReadQueryError> {
+        Ok((self.annotation.id == id).then(|| self.annotation.clone()))
+    }
+
+    async fn list(
+        &self,
+        query: AnnotationListQuery,
+    ) -> Result<Vec<Annotation>, AnnotationReadQueryError> {
+        self.listed_queries.lock().await.push(query);
+        Ok(vec![self.annotation.clone()])
+    }
+
+    async fn list_recent(
+        &self,
+        _strategy_id: Uuid,
+        _limit: u64,
+    ) -> Result<Vec<RecentAnnotation>, AnnotationReadQueryError> {
+        Ok(Vec::new())
+    }
+}
+
+#[rstest]
+#[case::unassigned(None)]
+#[case::another_strategy(Some(Uuid::from_u128(49)))]
+#[tokio::test]
+async fn get_annotation_accepts_annotations_with_any_strategy_owner(
+    #[case] strategy_id: Option<Uuid>,
+) {
+    let mut target = annotation(
+        Uuid::from_u128(40),
+        Uuid::from_u128(41),
+        Uuid::from_u128(42),
+        "task",
+    );
+    target.strategy_id = strategy_id;
+    let query = Arc::new(FakeAnnotationReadQuery {
+        annotation: target.clone(),
+        listed_queries: Mutex::new(Vec::new()),
+    });
+    let use_cases = AnnotationReadUseCases::new(query);
+
+    let result = use_cases
+        .get_annotation(target.id)
+        .await
+        .expect("an annotation is readable from a different strategy scope");
+
+    assert_eq!(result, target);
+}
+
+#[tokio::test]
+async fn list_annotations_preserves_the_query_strategy_filter() {
+    let annotation = annotation(
+        Uuid::from_u128(44),
+        Uuid::from_u128(45),
+        Uuid::from_u128(46),
+        "task",
+    );
+    let query = Arc::new(FakeAnnotationReadQuery {
+        annotation,
+        listed_queries: Mutex::new(Vec::new()),
+    });
+    let use_cases = AnnotationReadUseCases::new(query.clone());
+    let requested_query = AnnotationListQuery {
+        strategy_id: Some(Uuid::from_u128(47)),
+        target_symbol: Some("FICTIONAL-ASSET".into()),
+        limit: Some(5),
+    };
+
+    use_cases
+        .list_annotations(requested_query.clone())
+        .await
+        .expect("listing succeeds");
+
+    assert_eq!(
+        query.listed_queries.lock().await.clone(),
+        vec![requested_query],
+    );
 }
 
 #[tokio::test]
@@ -262,30 +349,70 @@ async fn create_rejects_strategy_scope_mismatch() {
     );
 }
 
+#[rstest]
+#[case::another_strategy(Some(Uuid::from_u128(21)))]
+#[case::no_strategy(None)]
 #[tokio::test]
-async fn create_rejects_linked_note_from_another_strategy() {
+async fn create_allows_linked_note_from_any_strategy(#[case] note_strategy_id: Option<Uuid>) {
     let (use_cases, unit_of_work, repository, strategy_existence, change_history) =
         build_use_cases();
     let strategy_id = Uuid::from_u128(20);
-    let other_strategy_id = Uuid::from_u128(21);
     let note_id = Uuid::from_u128(22);
     strategy_existence.insert_strategy(strategy_id).await;
     repository
-        .set_note_strategy(note_id, Some(other_strategy_id))
+        .set_note_strategy(note_id, note_strategy_id)
         .await;
     let mut command = create_command(Some(strategy_id));
     command.linked_note_id = Some(note_id);
 
-    let result = use_cases.create(command).await;
+    let created = use_cases
+        .create(command)
+        .await
+        .expect("linked note from any strategy is accepted");
 
     assert_eq!(
         (
-            matches!(result, Err(AnnotationUseCaseError::Validation(_))),
+            created.strategy_id,
+            created.linked_note_id,
             repository.annotations.lock().await.len(),
             change_history.entries.lock().await.len(),
             unit_of_work.committed.lock().await.len(),
         ),
-        (true, 0, 0, 0),
+        (Some(strategy_id), Some(note_id), 1, 1, 1),
+    );
+}
+
+#[tokio::test]
+async fn update_allows_annotation_from_another_strategy() {
+    let (use_cases, _, repository, _, _) = build_use_cases();
+    let id = Uuid::from_u128(30);
+    let owner_strategy_id = Uuid::from_u128(31);
+    repository
+        .insert_annotation(annotation(
+            id,
+            owner_strategy_id,
+            Uuid::from_u128(33),
+            "task",
+        ))
+        .await;
+
+    let updated = use_cases
+        .update(UpdateAnnotationCommand {
+            actor: Actor::Llm { label: "analyst" },
+            id,
+            target_symbol: None,
+            target_kind: None,
+            timestamp: None,
+            price: None,
+            text: Some("updated text".into()),
+            linked_note_id: None,
+        })
+        .await
+        .expect("annotation from another strategy is updateable");
+
+    assert_eq!(
+        (updated.id, updated.strategy_id, updated.text),
+        (id, Some(owner_strategy_id), "updated text".into()),
     );
 }
 
@@ -313,7 +440,6 @@ async fn change_status_does_not_update_or_record_history_when_status_is_unchange
 
     let returned = use_cases
         .change_status(ChangeAnnotationStatusCommand {
-            scope: None,
             actor: Actor::Human,
             id,
             status: "approved".into(),

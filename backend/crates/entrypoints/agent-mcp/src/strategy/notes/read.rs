@@ -2,7 +2,6 @@ use super::super::graph_dto::GraphDef;
 use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot,
 };
-use core_application::strategy_scope::StrategyScope;
 use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
 use rmcp::ErrorData as McpError;
 
@@ -34,12 +33,6 @@ fn parse_note_ref(value: &str) -> Result<(String, String), McpError> {
 }
 
 fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, McpError> {
-    let strategy_id = snapshot.note.strategy_id.ok_or_else(|| {
-        internal_error(format!(
-            "note {} has no strategy_id despite session scoping",
-            snapshot.note.id
-        ))
-    })?;
     let graphs: Vec<GraphDef> =
         serde_json::from_value(snapshot.version.graphs_json).map_err(|error| {
             internal_error(format!(
@@ -54,7 +47,7 @@ fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, Mc
         .ok_or_else(|| internal_error("note_version.frontmatter_json is not a JSON object"))?;
     Ok(NoteDto {
         note_id: snapshot.note.id,
-        strategy_id,
+        strategy_id: snapshot.note.strategy_id,
         version_id: snapshot.version.id,
         version_no: snapshot.version.version_no,
         title: snapshot.version.title,
@@ -73,9 +66,6 @@ fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, Mc
 pub(crate) fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
     match error {
         NoteReadUseCaseError::NotFound(_) => McpError::resource_not_found("note not found", None),
-        NoteReadUseCaseError::Forbidden(note_id) => invalid_params(format!(
-            "forbidden: note {note_id} belongs to another strategy"
-        )),
         NoteReadUseCaseError::VersionDoesNotBelong {
             note_id,
             version_id,
@@ -106,14 +96,12 @@ pub(crate) fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
 impl StrategyServer {
     pub(crate) async fn read_note_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
-        let scope = scope.into();
         let snapshot = self
             .dependencies
             .note_reads
-            .get_note(params.note_id, params.version_id, true, Some(scope))
+            .get_note(params.note_id, params.version_id, true)
             .await
             .map_err(note_read_error_to_mcp)?;
         let links = self
@@ -135,7 +123,6 @@ impl StrategyServer {
 
     async fn list_notes_including_pending(
         &self,
-        scope: StrategyScope,
         params: ListNotesParams,
         reference: Option<(String, String)>,
         page_size: u64,
@@ -149,19 +136,16 @@ impl StrategyServer {
             let page = self
                 .dependencies
                 .note_reads
-                .list_notes(
-                    Some(scope),
-                    NoteListQuery {
-                        kind: params.kind.clone(),
-                        status: params.status.clone(),
-                        reference: reference.clone(),
-                        updated_after: params.updated_after,
-                        include_pending: true,
-                        cursor,
-                        limit: Some(page_size),
-                        ..NoteListQuery::default()
-                    },
-                )
+                .list_notes(NoteListQuery {
+                    kind: params.kind.clone(),
+                    status: params.status.clone(),
+                    reference: reference.clone(),
+                    updated_after: params.updated_after,
+                    include_pending: true,
+                    cursor,
+                    limit: Some(page_size),
+                    ..NoteListQuery::default()
+                })
                 .await
                 .map_err(note_read_error_to_mcp)?;
             for snapshot in page.notes {
@@ -181,7 +165,6 @@ impl StrategyServer {
 
     pub(crate) async fn list_notes_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
         if let Some(status) = params.status.as_deref()
@@ -191,29 +174,25 @@ impl StrategyServer {
                 "invalid status: {status} (expected one of {ALLOWED_NOTE_STATUS:?})"
             )));
         }
-        let scope = scope.into();
         let reference = params.r#ref.as_deref().map(parse_note_ref).transpose()?;
 
         if params.include_pending.unwrap_or(false) {
             return self
-                .list_notes_including_pending(scope, params, reference, PENDING_LIST_SCAN_PAGE_SIZE)
+                .list_notes_including_pending(params, reference, PENDING_LIST_SCAN_PAGE_SIZE)
                 .await;
         }
 
         let page = self
             .dependencies
             .note_reads
-            .list_notes(
-                Some(scope),
-                NoteListQuery {
-                    kind: params.kind,
-                    reference,
-                    status: params.status,
-                    updated_after: params.updated_after,
-                    limit: Some(clamp_limit(params.limit)),
-                    ..NoteListQuery::default()
-                },
-            )
+            .list_notes(NoteListQuery {
+                kind: params.kind,
+                reference,
+                status: params.status,
+                updated_after: params.updated_after,
+                limit: Some(clamp_limit(params.limit)),
+                ..NoteListQuery::default()
+            })
             .await
             .map_err(note_read_error_to_mcp)?;
         let include_body = params.include_body.unwrap_or(true);
@@ -223,5 +202,75 @@ impl StrategyServer {
             .map(|snapshot| note_to_dto(snapshot, include_body))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ListNotesResult { notes })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::DateTime;
+    use core_application::note::{Note, NoteVersion};
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::{NoteDto, NoteSnapshot, note_to_dto};
+
+    #[test]
+    fn note_dto_preserves_missing_strategy_id() {
+        let id = Uuid::nil();
+        let timestamp =
+            DateTime::parse_from_rfc3339("2000-01-01T00:00:00+00:00").expect("valid timestamp");
+        let actual = note_to_dto(
+            NoteSnapshot {
+                note: Note {
+                    id,
+                    strategy_id: None,
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                    created_at: timestamp,
+                    updated_at: timestamp,
+                    execution_id: None,
+                },
+                version: NoteVersion {
+                    id,
+                    note_id: id,
+                    version_no: 1,
+                    title: "Example note".into(),
+                    body_md: "Example body".into(),
+                    frontmatter_json: json!({}),
+                    graphs_json: json!([]),
+                    status: "approved".into(),
+                    is_current: true,
+                    change_reason: None,
+                    created_by_kind: "human".into(),
+                    execution_id: None,
+                    created_at: timestamp,
+                    reviewed_at: None,
+                },
+                created_by_kind: "human".into(),
+            },
+            true,
+        )
+        .expect("note without a strategy converts to a DTO");
+
+        assert_eq!(
+            actual,
+            NoteDto {
+                note_id: id,
+                strategy_id: None,
+                version_id: id,
+                version_no: 1,
+                title: "Example note".into(),
+                body_md: Some("Example body".into()),
+                frontmatter_json: serde_json::Map::new(),
+                kind: None,
+                status: "approved".into(),
+                created_by_kind: "human".into(),
+                created_at: timestamp,
+                updated_at: timestamp,
+                graphs: Vec::new(),
+                links: None,
+            }
+        );
     }
 }

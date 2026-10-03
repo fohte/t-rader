@@ -18,8 +18,6 @@ pub enum CommentUseCaseError {
     Validation(String),
     #[error("{0}")]
     NotFound(String),
-    #[error("{0}")]
-    Forbidden(String),
     #[error(transparent)]
     Repository(#[from] CommentRepositoryError),
     #[error(transparent)]

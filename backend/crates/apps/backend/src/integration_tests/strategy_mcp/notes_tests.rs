@@ -161,7 +161,7 @@ mod tests {
     fn expected_current_note(note_id: Uuid, strategy_id: Uuid) -> NoteDto {
         NoteDto {
             note_id,
-            strategy_id,
+            strategy_id: Some(strategy_id),
             version_id: Uuid::nil(),
             version_no: 1,
             title: "current".into(),
@@ -180,7 +180,7 @@ mod tests {
     fn expected_latest_pending_note(fixture: &PendingNoteFixture, status: &str) -> NoteDto {
         NoteDto {
             note_id: fixture.pending_note_id,
-            strategy_id: fixture.strategy_id,
+            strategy_id: Some(fixture.strategy_id),
             version_id: Uuid::nil(),
             version_no: 2,
             title: "pending latest".into(),
@@ -257,7 +257,7 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: written.note_id,
-                strategy_id,
+                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "first note".into(),
@@ -481,7 +481,7 @@ mod tests {
                 normalize_note(read),
                 NoteDto {
                     note_id: created.note_id,
-                    strategy_id,
+                    strategy_id: Some(strategy_id),
                     version_id: Uuid::nil(),
                     version_no: 2,
                     title: "original".into(),
@@ -501,20 +501,20 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_rejects_cross_strategy_update(db: gateway_postgres::DatabaseHandle) {
+    async fn write_note_updates_note_from_another_strategy(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
 
-        let err = server
+        let result = server
             .write_note(
                 strategy_a,
                 None,
                 WriteNoteParams {
                     note_id: Some(note_id),
-                    title: None,
-                    body_md: Some("hijack".into()),
+                    title: Some("revised note".into()),
+                    body_md: Some("revised body".into()),
                     kind: None,
                     frontmatter_json: None,
                     change_reason: None,
@@ -522,18 +522,16 @@ mod tests {
                 },
             )
             .await
-            .expect_err("cross-strategy update expected to fail");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
-    }
+            .expect("update note from another strategy");
+        assert_eq!(
+            result,
+            super::super::dto::WriteNoteResult {
+                note_id,
+                created: false,
+            },
+        );
 
-    #[backend_test_macros::database_test]
-    async fn read_note_rejects_cross_strategy(db: gateway_postgres::DatabaseHandle) {
-        let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
-        let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
-
-        let err = server
+        let read = server
             .read_note(
                 strategy_a,
                 ReadNoteParams {
@@ -542,18 +540,113 @@ mod tests {
                 },
             )
             .await
-            .expect_err("cross-strategy read expected to fail");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+            .expect("read updated note from another strategy");
+        assert_eq!(
+            normalize_note(read),
+            NoteDto {
+                note_id,
+                strategy_id: Some(strategy_b),
+                version_id: Uuid::nil(),
+                version_no: 2,
+                title: "revised note".into(),
+                body_md: Some("revised body".into()),
+                frontmatter_json: serde_json::Map::new(),
+                kind: None,
+                status: "unread".into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: Some(vec![]),
+            },
+        );
     }
 
     #[backend_test_macros::database_test]
-    async fn list_notes_filters_by_strategy(db: gateway_postgres::DatabaseHandle) {
+    async fn read_note_returns_note_from_another_strategy(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
+        let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
 
+        let result = server
+            .read_note(
+                strategy_a,
+                ReadNoteParams {
+                    note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read note from another strategy");
+        assert_eq!(
+            normalize_note(result),
+            NoteDto {
+                note_id,
+                strategy_id: Some(strategy_b),
+                version_id: Uuid::nil(),
+                version_no: 1,
+                title: "b's note".into(),
+                body_md: Some("body".into()),
+                frontmatter_json: serde_json::Map::new(),
+                kind: None,
+                status: "unread".into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: Some(vec![]),
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn read_note_returns_note_without_strategy(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db, "a").await;
+        let server = build_server(db.clone());
+        let note_id =
+            crate::testing::insert_test_note_in_scope(&db, None, "unscoped note", "body").await;
+
+        let result = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read note without a strategy");
+        assert_eq!(
+            normalize_note(result),
+            NoteDto {
+                note_id,
+                strategy_id: None,
+                version_id: Uuid::nil(),
+                version_no: 1,
+                title: "unscoped note".into(),
+                body_md: Some("body".into()),
+                frontmatter_json: serde_json::Map::new(),
+                kind: None,
+                status: "unread".into(),
+                created_by_kind: "human".into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: Some(vec![]),
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_includes_notes_from_all_strategies(db: gateway_postgres::DatabaseHandle) {
+        let strategy_a = insert_strategy(&db, "a").await;
+        let strategy_b = insert_strategy(&db, "b").await;
+        let server = build_server(db.clone());
+
+        let mut note_ids = Vec::new();
         for (sid, title) in [(strategy_a, "a1"), (strategy_a, "a2"), (strategy_b, "b1")] {
-            server
+            let written = server
                 .write_note(
                     sid,
                     None,
@@ -569,18 +662,32 @@ mod tests {
                 )
                 .await
                 .expect("write");
+            note_ids.push(written.note_id);
+        }
+        note_ids
+            .push(crate::testing::insert_test_note_in_scope(&db, None, "unscoped", "body").await);
+        for (index, note_id) in note_ids.iter().enumerate() {
+            set_note_updated_at(
+                &db,
+                *note_id,
+                ts_sentinel() + chrono::Duration::seconds(index as i64),
+            )
+            .await;
         }
 
         let result = server
             .list_notes(strategy_a, ListNotesParams::default())
             .await
             .expect("list");
-        // 戦略 B のノートは含まれず、戦略 A の 2 件のみが新しい順に並ぶ
+        // 戦略の有無を問わず、全件が更新日時の降順で並ぶ
         let titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
-        let strategies: Vec<Uuid> = result.notes.iter().map(|n| n.strategy_id).collect();
+        let strategies: Vec<Option<Uuid>> = result.notes.iter().map(|n| n.strategy_id).collect();
         assert_eq!(
             (titles, strategies),
-            (vec!["a2", "a1"], vec![strategy_a, strategy_a]),
+            (
+                vec!["unscoped", "b1", "a2", "a1"],
+                vec![None, Some(strategy_b), Some(strategy_a), Some(strategy_a)],
+            ),
         );
     }
 
@@ -647,7 +754,7 @@ mod tests {
             super::super::dto::ListNotesResult {
                 notes: vec![NoteDto {
                     note_id: matching.note_id,
-                    strategy_id,
+                    strategy_id: Some(strategy_id),
                     version_id: Uuid::nil(),
                     version_no: 1,
                     title: "matching".into(),
@@ -1154,7 +1261,7 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: written.note_id,
-                strategy_id,
+                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "note with graph".into(),
@@ -1375,7 +1482,7 @@ mod tests {
                 normalize_note(read),
                 NoteDto {
                     note_id: created.note_id,
-                    strategy_id,
+                    strategy_id: Some(strategy_id),
                     version_id: Uuid::nil(),
                     version_no: 2,
                     title: "t".into(),
@@ -1589,7 +1696,7 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: created.note_id,
-                strategy_id,
+                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "t".into(),
@@ -1826,7 +1933,7 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: first.note_id,
-                strategy_id,
+                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 2,
                 title: "second".into(),

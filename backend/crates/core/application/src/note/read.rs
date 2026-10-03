@@ -1,8 +1,6 @@
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::strategy_scope::StrategyScope;
-
 use super::query::{NoteReadQueryError, SharedNoteReadQuery};
 use super::types::{
     Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot, NoteVersion,
@@ -12,8 +10,6 @@ use super::types::{
 pub enum NoteReadUseCaseError {
     #[error("{0}")]
     NotFound(String),
-    #[error("note {0} belongs to another strategy")]
-    Forbidden(Uuid),
     #[error("version_id {version_id} does not belong to note {note_id}")]
     VersionDoesNotBelong { note_id: Uuid, version_id: Uuid },
     #[error("note {0} has no version")]
@@ -40,12 +36,8 @@ impl NoteReadUseCases {
 
     pub async fn list_notes(
         &self,
-        scope: Option<StrategyScope>,
-        mut query: NoteListQuery,
+        query: NoteListQuery,
     ) -> Result<NoteListPage, NoteReadUseCaseError> {
-        if let Some(scope) = scope {
-            query.strategy_id = Some(scope.id());
-        }
         Ok(self.query.list_notes(query).await?)
     }
 
@@ -54,10 +46,8 @@ impl NoteReadUseCases {
         note_id: Uuid,
         version_id: Option<Uuid>,
         use_latest_if_no_current: bool,
-        scope: Option<StrategyScope>,
     ) -> Result<NoteSnapshot, NoteReadUseCaseError> {
         let note = self.require_note(note_id).await?;
-        Self::ensure_scope(&note, scope)?;
         let version = self
             .query
             .find_note_version(note_id, version_id, use_latest_if_no_current)
@@ -130,10 +120,8 @@ impl NoteReadUseCases {
         &self,
         note_id: Uuid,
         version_id: Option<Uuid>,
-        scope: Option<StrategyScope>,
     ) -> Result<NoteLinks, NoteReadUseCaseError> {
-        let note = self.require_note(note_id).await?;
-        Self::ensure_scope(&note, scope)?;
+        self.require_note(note_id).await?;
         let source_version = self
             .query
             .find_note_version(note_id, version_id, false)
@@ -153,18 +141,15 @@ impl NoteReadUseCases {
             .await?)
     }
 
-    pub async fn ensure_note_version_scope(
+    pub async fn note_version_exists(
         &self,
         version_id: Uuid,
-        scope: StrategyScope,
-    ) -> Result<Note, NoteReadUseCaseError> {
-        let note = self
+    ) -> Result<bool, NoteReadUseCaseError> {
+        Ok(self
             .query
             .find_note_for_version(version_id)
             .await?
-            .ok_or(NoteReadUseCaseError::NoteVersionNotFound)?;
-        Self::ensure_scope(&note, Some(scope))?;
-        Ok(note)
+            .is_some())
     }
 
     async fn require_note(&self, note_id: Uuid) -> Result<Note, NoteReadUseCaseError> {
@@ -173,13 +158,62 @@ impl NoteReadUseCases {
             .await?
             .ok_or_else(|| NoteReadUseCaseError::NotFound(format!("note {note_id} not found")))
     }
+}
 
-    fn ensure_scope(note: &Note, scope: Option<StrategyScope>) -> Result<(), NoteReadUseCaseError> {
-        if let Some(scope) = scope
-            && note.strategy_id != Some(scope.id())
-        {
-            return Err(NoteReadUseCaseError::Forbidden(note.id));
-        }
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use rstest::rstest;
+
+    use super::*;
+    use crate::note::FakeNoteReadQuery;
+
+    const NOTE_ID: Uuid = Uuid::from_u128(1);
+    const VERSION_ID: Uuid = Uuid::from_u128(2);
+
+    fn build_use_cases() -> (NoteReadUseCases, Arc<FakeNoteReadQuery>) {
+        let query = Arc::new(FakeNoteReadQuery::new(NOTE_ID, None, VERSION_ID));
+        (NoteReadUseCases::new(query.clone()), query)
+    }
+
+    #[rstest]
+    #[case::unassigned(None)]
+    #[case::another_strategy(Some(Uuid::from_u128(4)))]
+    #[tokio::test]
+    async fn get_note_accepts_notes_with_any_strategy_owner(#[case] strategy_id: Option<Uuid>) {
+        let query = Arc::new(FakeNoteReadQuery::new(NOTE_ID, strategy_id, VERSION_ID));
+        let use_cases = NoteReadUseCases::new(query.clone());
+        let target_note = query.note();
+
+        let result = use_cases
+            .get_note(NOTE_ID, None, false)
+            .await
+            .expect("a note is readable from a different strategy scope");
+
+        assert_eq!(
+            result,
+            NoteSnapshot {
+                note: target_note,
+                version: query.version(),
+                created_by_kind: "human".into(),
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn list_notes_preserves_the_query_strategy_filter() {
+        let (use_cases, query) = build_use_cases();
+        let requested_query = NoteListQuery {
+            strategy_id: Some(Uuid::from_u128(4)),
+            ..NoteListQuery::default()
+        };
+
+        use_cases
+            .list_notes(requested_query.clone())
+            .await
+            .expect("listing succeeds");
+
+        assert_eq!(query.listed_queries().await, vec![requested_query],);
     }
 }

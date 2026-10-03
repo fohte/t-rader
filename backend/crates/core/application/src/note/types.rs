@@ -119,7 +119,7 @@ pub struct NoteListCursor {
     pub note_id: Uuid,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct NoteListQuery {
     pub strategy_id: Option<Uuid>,
     pub kind: Option<String>,

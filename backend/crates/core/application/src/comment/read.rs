@@ -1,12 +1,10 @@
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::query::{CommentListQuery, CommentReadQueryError, SharedCommentReadQuery};
+use super::types::Comment;
 use crate::annotation::{AnnotationReadUseCaseError, AnnotationReadUseCases};
 use crate::note::{NoteReadUseCaseError, NoteReadUseCases};
-use crate::strategy_scope::StrategyScope;
-
-use super::query::{CommentListQuery, CommentReadQueryError, SharedCommentReadQuery};
-use super::types::{Comment, CommentTargetKind};
 
 #[derive(Debug, Error)]
 pub enum CommentReadUseCaseError {
@@ -41,18 +39,18 @@ impl CommentReadUseCases {
     pub async fn list_comments(
         &self,
         query: CommentListQuery,
-        scope: Option<StrategyScope>,
+        require_target_exists: bool,
     ) -> Result<Vec<Comment>, CommentReadUseCaseError> {
-        if let Some(scope) = scope {
+        if require_target_exists {
             match query.target_kind {
-                CommentTargetKind::NoteVersion => {
-                    self.note_reads
-                        .ensure_note_version_scope(query.target_id, scope)
-                        .await?;
+                super::types::CommentTargetKind::NoteVersion => {
+                    if !self.note_reads.note_version_exists(query.target_id).await? {
+                        return Err(NoteReadUseCaseError::NoteVersionNotFound.into());
+                    }
                 }
-                CommentTargetKind::Annotation => {
+                super::types::CommentTargetKind::Annotation => {
                     self.annotation_reads
-                        .get_annotation(query.target_id, Some(scope))
+                        .get_annotation(query.target_id)
                         .await?;
                 }
             }

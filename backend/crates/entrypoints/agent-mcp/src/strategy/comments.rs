@@ -1,13 +1,12 @@
 //! コメント操作の inner method 実装。
 //!
-//! 戦略境界の検証はユースケースが担う。
+//! ノートとアノテーションは戦略をまたいで操作する。
 
 use core_application::change_history::Actor;
 use core_application::comment::{
     CommentListQuery, CommentReadQueryError, CommentReadUseCaseError, CommentTargetKind,
     CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand,
 };
-use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{
@@ -37,10 +36,8 @@ fn comment_use_case_to_dto(m: core_application::comment::Comment) -> CommentDto 
 impl StrategyServer {
     pub(crate) async fn read_comments_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
-        let scope = scope.into();
         let target_kind = CommentTargetKind::parse(&params.target_kind).ok_or_else(|| {
             let expected = CommentTargetKind::ALL.map(CommentTargetKind::as_str);
             invalid_params(format!(
@@ -57,7 +54,7 @@ impl StrategyServer {
                     target_id: params.target_id,
                     resolved: params.resolved,
                 },
-                Some(scope),
+                true,
             )
             .await
             .map_err(comment_read_error)?;
@@ -68,14 +65,13 @@ impl StrategyServer {
 
     pub(crate) async fn resolve_comment_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: ResolveCommentParams,
     ) -> Result<ResolveCommentResult, McpError> {
         let updated = self
             .dependencies
             .comments
             .resolve(ResolveCommentCommand {
-                scope: Some(scope.into()),
+                require_target_exists: true,
                 actor: Actor::Llm { label: "analyst" },
                 id: params.comment_id,
                 resolved: params.resolved,
@@ -89,14 +85,13 @@ impl StrategyServer {
 
     pub(crate) async fn reply_comment_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         params: ReplyCommentParams,
     ) -> Result<ReplyCommentResult, McpError> {
         let created = self
             .dependencies
             .comments
             .reply(ReplyCommentCommand {
-                scope: Some(scope.into()),
+                require_target_exists: true,
                 actor: Actor::Llm { label: "analyst" },
                 parent_id: params.parent_id,
                 body: params.body,
@@ -127,7 +122,6 @@ fn comment_use_case_error(error: CommentUseCaseError) -> McpError {
     match error {
         CommentUseCaseError::Validation(message) => invalid_params(message),
         CommentUseCaseError::NotFound(message) => McpError::resource_not_found(message, None),
-        CommentUseCaseError::Forbidden(message) => invalid_params(message),
         other => {
             tracing::error!(error = %other, "strategy mcp comment operation failed");
             internal_error(format!("database error: {other}"))

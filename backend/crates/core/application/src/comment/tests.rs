@@ -1,15 +1,12 @@
 #![cfg(feature = "test-support")]
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use rstest::{fixture, rstest};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::change_history::{Actor, ChangeHistoryRecord, FakeChangeHistory, Op, TargetKind};
-use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
 use crate::unit_of_work::FakeUnitOfWork;
 
 use super::error::CommentUseCaseError;
@@ -24,7 +21,6 @@ const TARGET_ID: Uuid = Uuid::from_u128(10);
 const OTHER_TARGET_ID: Uuid = Uuid::from_u128(11);
 const PARENT_ID: Uuid = Uuid::from_u128(12);
 const GRANDPARENT_ID: Uuid = Uuid::from_u128(13);
-const STRATEGY_ID: Uuid = Uuid::from_u128(14);
 const OTHER_STRATEGY_ID: Uuid = Uuid::from_u128(15);
 const NORMALIZED_ID: Uuid = Uuid::from_u128(16);
 
@@ -146,7 +142,7 @@ async fn reply_reports_a_missing_parent_as_not_found(fixture: Fixture) {
             body: "reply body".into(),
             author_kind: "llm".into(),
             author_label: "analyst".into(),
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await;
@@ -174,7 +170,7 @@ async fn reply_rejects_a_reply_parent(fixture: Fixture) {
             body: "reply body".into(),
             author_kind: "llm".into(),
             author_label: "analyst".into(),
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await;
@@ -236,14 +232,20 @@ async fn create_rejects_invalid_line_anchor_shapes(
     #[case] version_no: i32,
     #[case] expected_error: &str,
 ) {
-    fixture.repository.set_note_version_anchor_bodies(
-        TARGET_ID,
-        NoteVersionAnchorBodies {
-            version_no,
-            current_body: "line".into(),
-            previous_body: Some("line".into()),
-        },
-    );
+    if target_kind == "note_version" {
+        fixture.repository.set_note_version_anchor_bodies(
+            TARGET_ID,
+            NoteVersionAnchorBodies {
+                version_no,
+                current_body: "line".into(),
+                previous_body: Some("line".into()),
+            },
+        );
+    } else {
+        fixture
+            .repository
+            .set_target_without_strategy(CommentTargetKind::Annotation, TARGET_ID);
+    }
     let mut command = create_command(target_kind, TARGET_ID, "comment");
     command.anchor_side = anchor_side.map(ToOwned::to_owned);
     command.start_line = start_line;
@@ -378,7 +380,7 @@ async fn reply_inherits_parent_target_and_records_the_supplied_actor(fixture: Fi
             body: "reply body".into(),
             author_kind: "llm".into(),
             author_label: "analyst".into(),
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await
@@ -451,7 +453,7 @@ async fn resolve_skips_update_and_history_when_status_is_unchanged(fixture: Fixt
         .resolve(ResolveCommentCommand {
             id: PARENT_ID,
             resolved: false,
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Human,
         })
         .await
@@ -480,7 +482,7 @@ async fn resolve_records_a_status_change_in_the_write_transaction(fixture: Fixtu
         .resolve(ResolveCommentCommand {
             id: PARENT_ID,
             resolved: true,
-            scope: None,
+            require_target_exists: false,
             actor: Actor::Llm { label: "analyst" },
         })
         .await
@@ -528,7 +530,6 @@ async fn delete_records_history_with_the_supplied_actor(fixture: Fixture) {
         .use_cases
         .delete(DeleteCommentCommand {
             id: PARENT_ID,
-            scope: None,
             actor: Actor::Llm { label: "analyst" },
         })
         .await
@@ -564,20 +565,14 @@ async fn delete_records_history_with_the_supplied_actor(fixture: Fixture) {
 }
 
 #[rstest]
-#[case::different_strategy(
-    Some(Some(OTHER_STRATEGY_ID)),
-    ("forbidden", "comment target belongs to a different strategy")
-)]
-#[case::target_without_strategy(
-    Some(None),
-    ("forbidden", "comment target belongs to a different strategy")
-)]
-#[case::missing_target(None, ("not_found", "comment target not found"))]
+#[case::different_strategy(Some(Some(OTHER_STRATEGY_ID)), None)]
+#[case::target_without_strategy(Some(None), None)]
+#[case::missing_target(None, Some("comment target not found"))]
 #[tokio::test]
-async fn scoped_creation_rejects_targets_outside_the_strategy(
+async fn create_allows_any_existing_target_and_rejects_missing_targets(
     fixture: Fixture,
     #[case] target_strategy_id: Option<Option<Uuid>>,
-    #[case] expected_error: (&'static str, &'static str),
+    #[case] expected_error: Option<&'static str>,
 ) {
     match target_strategy_id {
         Some(Some(strategy_id)) => fixture.repository.set_target_strategy_id(
@@ -590,24 +585,32 @@ async fn scoped_creation_rejects_targets_outside_the_strategy(
             .set_target_without_strategy(CommentTargetKind::NoteVersion, TARGET_ID),
         None => {}
     }
-    let scope = verified_scope(STRATEGY_ID).await;
-    let mut command = create_command("note_version", TARGET_ID, "comment");
-    command.scope = Some(scope);
+    if expected_error.is_none() {
+        fixture.repository.set_note_version_anchor_bodies(
+            TARGET_ID,
+            NoteVersionAnchorBodies {
+                version_no: 1,
+                current_body: "commented version".into(),
+                previous_body: None,
+            },
+        );
+    }
+    let command = create_command("note_version", TARGET_ID, "comment");
 
     let result = fixture.use_cases.create(command).await;
 
     assert_eq!(
         (
-            scoped_target_error(result),
-            fixture.repository.comments(),
-            fixture.history_records().await,
-            fixture.committed().await,
+            not_found_error(result),
+            fixture.repository.comments().len(),
+            fixture.history_records().await.len(),
+            fixture.committed().await.len(),
         ),
         (
-            Some((expected_error.0, expected_error.1.into())),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
+            expected_error.map(str::to_string),
+            usize::from(expected_error.is_none()),
+            usize::from(expected_error.is_none()),
+            usize::from(expected_error.is_none()),
         ),
     );
 }
@@ -626,28 +629,6 @@ fn fixture() -> Fixture {
     }
 }
 
-struct FixedScopeSource {
-    ids: HashSet<Uuid>,
-}
-
-#[async_trait]
-impl StrategyScopeSource for FixedScopeSource {
-    async fn existing_ids(&self, _ids: &[Uuid]) -> Result<HashSet<Uuid>, StrategyScopeSourceError> {
-        Ok(self.ids.clone())
-    }
-}
-
-async fn verified_scope(id: Uuid) -> StrategyScope {
-    StrategyScope::verify(
-        id,
-        &FixedScopeSource {
-            ids: HashSet::from([id]),
-        },
-    )
-    .await
-    .expect("strategy exists")
-}
-
 fn create_command(target_kind: &str, target_id: Uuid, body: &str) -> CreateCommentCommand {
     CreateCommentCommand {
         target_kind: target_kind.into(),
@@ -660,7 +641,6 @@ fn create_command(target_kind: &str, target_id: Uuid, body: &str) -> CreateComme
         anchor_side: None,
         start_line: None,
         end_line: None,
-        scope: None,
         actor: Actor::Human,
     }
 }
@@ -703,16 +683,6 @@ fn validation_error<T>(result: Result<T, CommentUseCaseError>) -> Option<String>
 fn not_found_error<T>(result: Result<T, CommentUseCaseError>) -> Option<String> {
     match result {
         Err(CommentUseCaseError::NotFound(message)) => Some(message),
-        _ => None,
-    }
-}
-
-fn scoped_target_error<T>(
-    result: Result<T, CommentUseCaseError>,
-) -> Option<(&'static str, String)> {
-    match result {
-        Err(CommentUseCaseError::NotFound(message)) => Some(("not_found", message)),
-        Err(CommentUseCaseError::Forbidden(message)) => Some(("forbidden", message)),
         _ => None,
     }
 }

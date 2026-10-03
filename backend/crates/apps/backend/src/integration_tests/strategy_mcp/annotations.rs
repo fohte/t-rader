@@ -12,7 +12,8 @@ mod tests {
     use super::super::tests_common::{
         ChangeHistoryShape, build_server, change_history_for, insert_strategy,
         normalize_annotation, normalize_create_annotation, normalize_read_annotations,
-        normalize_read_annotations_unordered, seed_comment, seed_foreign_note, ts_sentinel,
+        normalize_read_annotations_unordered, seed_comment, seed_foreign_note,
+        seed_unscoped_annotation, ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
     use gateway_postgres::entities::annotation;
@@ -43,7 +44,7 @@ mod tests {
         let annotation_id = created.annotation.annotation_id;
         let expected = AnnotationDto {
             annotation_id,
-            strategy_id,
+            strategy_id: Some(strategy_id),
             target_symbol: "7203".into(),
             target_kind: "custom-tag".into(),
             timestamp: ts.with_timezone(&chrono::Utc).fixed_offset(),
@@ -98,6 +99,46 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn read_annotations_includes_annotations_without_strategy(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let annotation_id = seed_unscoped_annotation(&db).await;
+        let server = build_server(db);
+        let timestamp: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
+
+        let result = server
+            .read_annotations(
+                strategy_id,
+                ReadAnnotationsParams {
+                    target_symbol: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("read annotations without a strategy");
+        assert_eq!(
+            normalize_read_annotations(result),
+            ReadAnnotationsResult {
+                annotations: vec![AnnotationDto {
+                    annotation_id,
+                    strategy_id: None,
+                    target_symbol: "demo-code".into(),
+                    target_kind: "sample-tag".into(),
+                    timestamp: timestamp.with_timezone(&chrono::Utc).fixed_offset(),
+                    price: None,
+                    text: "breakout".into(),
+                    status: DEFAULT_ANNOTATION_STATUS.into(),
+                    linked_note_id: None,
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                }],
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn create_annotation_rejects_empty_target_kind(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
@@ -124,7 +165,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_rejects_cross_strategy_linked_note(
+    async fn create_annotation_links_note_from_another_strategy(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
@@ -132,25 +173,42 @@ mod tests {
         let server = build_server(db.clone());
         let foreign_note = seed_foreign_note(&db, strategy_b, "b").await;
 
-        let err = server
+        let timestamp = "2026-06-01T00:00:00Z".parse().expect("ts");
+        let result = server
             .create_annotation(
                 strategy_a,
                 None,
                 None,
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
-                    target_kind: "signal".into(),
-                    timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
+                    target_kind: "custom-tag".into(),
+                    timestamp,
                     price: None,
                     text: "x".into(),
                     linked_note_id: Some(foreign_note),
                 },
             )
             .await
-            .expect_err("cross-strategy linked note expected to be rejected");
+            .expect("link note from another strategy");
+        let annotation_id = result.annotation.annotation_id;
         assert_eq!(
-            err,
-            rmcp::ErrorData::invalid_params("linked note belongs to a different strategy", None,),
+            normalize_create_annotation(result),
+            CreateAnnotationResult {
+                annotation: AnnotationDto {
+                    annotation_id,
+                    strategy_id: Some(strategy_a),
+                    target_symbol: "7203".into(),
+                    target_kind: "custom-tag".into(),
+                    timestamp: timestamp.with_timezone(&chrono::Utc).fixed_offset(),
+                    price: None,
+                    text: "x".into(),
+                    status: DEFAULT_ANNOTATION_STATUS.into(),
+                    linked_note_id: Some(foreign_note),
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                },
+            },
         );
     }
 
