@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { extractPhaseKeyFromSaveError } from '#components/strategy-settings/agent-graph/save-error'
 
-// メッセージは backend/src/services/agent_graph.rs の AgentGraphError (thiserror) の
+// メッセージは backend/crates/core/application/src/agent_config/graph.rs の AgentGraphError (thiserror) の
 // #[error(...)] 文言そのまま。実際の Display 出力例を使う。
 describe('extractPhaseKeyFromSaveError', () => {
   it.each([
