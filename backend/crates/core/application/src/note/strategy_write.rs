@@ -47,7 +47,6 @@ impl NoteUseCases {
         if let Some(note_id) = command.note_id {
             let transaction = self.unit_of_work.begin().await?;
             let note = self.require_note(&transaction, note_id).await?;
-            self.ensure_scope(&note, command.scope)?;
             let result = self
                 .update_strategy_note(&transaction, note, command)
                 .await?;
@@ -74,7 +73,6 @@ impl NoteUseCases {
                 )
                 .await?
         {
-            self.ensure_scope(&note, command.scope)?;
             let result = self
                 .update_strategy_note(&transaction, note, command)
                 .await?;
@@ -137,7 +135,6 @@ impl NoteUseCases {
                         "note disappeared after execution_id conflict".into(),
                     )
                 })?;
-            self.ensure_scope(&note, command.scope)?;
             let result = self
                 .update_strategy_note(&transaction, note, command)
                 .await?;
@@ -337,5 +334,366 @@ impl NoteUseCases {
                 created_by_kind,
             },
         })
+    }
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use chrono::{DateTime, FixedOffset, Utc};
+    use serde_json::json;
+    use tokio::sync::Mutex;
+
+    use super::*;
+    use crate::change_history::{Actor, FakeChangeHistory};
+    use crate::note::repository::{NoteRepository, NoteRepositoryError};
+    use crate::note::types::{
+        NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
+        NoteVersionUpdate,
+    };
+    use crate::strategy_existence::FakeStrategyExistence;
+    use crate::unit_of_work::FakeUnitOfWork;
+
+    const SOURCE_NOTE_ID: Uuid = Uuid::from_u128(1);
+    const TARGET_NOTE_ID: Uuid = Uuid::from_u128(2);
+    const SOURCE_VERSION_ID: Uuid = Uuid::from_u128(3);
+    const TARGET_VERSION_ID: Uuid = Uuid::from_u128(4);
+    const RUNNING_STRATEGY_ID: Uuid = Uuid::from_u128(5);
+    const OTHER_STRATEGY_ID: Uuid = Uuid::from_u128(6);
+    const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
+
+    struct LinkNoteRepository {
+        source_note: Note,
+        source_version: NoteVersion,
+        target: NoteLinkTarget,
+        inserted_links: Mutex<Vec<NewNoteLink>>,
+    }
+
+    #[async_trait]
+    impl NoteRepository for LinkNoteRepository {
+        async fn find_note(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            note_id: Uuid,
+        ) -> Result<Option<Note>, NoteRepositoryError> {
+            Ok((note_id == SOURCE_NOTE_ID).then(|| self.source_note.clone()))
+        }
+
+        async fn find_note_by_execution_id(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _strategy_id: Uuid,
+            _execution_id: &str,
+        ) -> Result<Option<Note>, NoteRepositoryError> {
+            Ok(None)
+        }
+
+        async fn find_note_kind_requires_approval(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _kind: &str,
+        ) -> Result<Option<bool>, NoteRepositoryError> {
+            Ok(Some(false))
+        }
+
+        async fn find_current_version(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            note_id: Uuid,
+        ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
+            Ok((note_id == SOURCE_NOTE_ID).then(|| self.source_version.clone()))
+        }
+
+        async fn find_latest_version(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            note_id: Uuid,
+        ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
+            Ok((note_id == SOURCE_NOTE_ID).then(|| self.source_version.clone()))
+        }
+
+        async fn find_latest_pending_versions_by_kind(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _kind: &str,
+        ) -> Result<Vec<NoteVersion>, NoteRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn find_version_by_number(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _note_id: Uuid,
+            _version_no: i32,
+        ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
+            Ok(None)
+        }
+
+        async fn supersede_pending_versions_before(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _note_id: Uuid,
+            _version_no: i32,
+        ) -> Result<Vec<Uuid>, NoteRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn find_initial_created_by_kind(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            note_id: Uuid,
+        ) -> Result<Option<String>, NoteRepositoryError> {
+            Ok((note_id == SOURCE_NOTE_ID).then(|| "human".into()))
+        }
+
+        async fn insert_note(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _note: NewNote,
+        ) -> Result<Option<Note>, NoteRepositoryError> {
+            Ok(None)
+        }
+
+        async fn update_note(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _update: NoteMetadataUpdate,
+        ) -> Result<Note, NoteRepositoryError> {
+            Ok(self.source_note.clone())
+        }
+
+        async fn delete_note(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _note_id: Uuid,
+        ) -> Result<bool, NoteRepositoryError> {
+            Ok(false)
+        }
+
+        async fn insert_version(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            version: NewNoteVersion,
+        ) -> Result<NoteVersion, NoteRepositoryError> {
+            Ok(NoteVersion {
+                id: version.id,
+                note_id: version.note_id,
+                version_no: version.version_no,
+                title: version.title,
+                body_md: version.body_md,
+                frontmatter_json: version.frontmatter_json,
+                graphs_json: version.graphs_json,
+                status: version.status,
+                is_current: version.is_current,
+                change_reason: version.change_reason,
+                created_by_kind: version.created_by_kind,
+                execution_id: version.execution_id,
+                created_at: timestamp(),
+                reviewed_at: None,
+            })
+        }
+
+        async fn update_version(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            update: NoteVersionUpdate,
+        ) -> Result<NoteVersion, NoteRepositoryError> {
+            let mut version = self.source_version.clone();
+            if version.id != update.id {
+                version.id = update.id;
+            }
+            if let Some(is_current) = update.is_current {
+                version.is_current = is_current;
+            }
+            if let Some(status) = update.status {
+                version.status = status;
+            }
+            if let Some(reviewed_at) = update.reviewed_at {
+                version.reviewed_at = Some(reviewed_at);
+            }
+            Ok(version)
+        }
+
+        async fn update_note_timestamp(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _note_id: Uuid,
+            _updated_at: DateTime<FixedOffset>,
+        ) -> Result<(), NoteRepositoryError> {
+            Ok(())
+        }
+
+        async fn replace_references(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _note_id: Uuid,
+            _references: Vec<(String, String)>,
+        ) -> Result<(), NoteRepositoryError> {
+            Ok(())
+        }
+
+        async fn find_note_link_targets(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            note_ids: &[Uuid],
+        ) -> Result<Vec<NoteLinkTarget>, NoteRepositoryError> {
+            Ok(note_ids
+                .contains(&self.target.id)
+                .then_some(self.target)
+                .into_iter()
+                .collect())
+        }
+
+        async fn insert_note_links(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            links: Vec<NewNoteLink>,
+        ) -> Result<(), NoteRepositoryError> {
+            self.inserted_links.lock().await.extend(links);
+            Ok(())
+        }
+
+        async fn copy_note_links(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _from_version_id: Uuid,
+            _to_version_id: Uuid,
+        ) -> Result<(), NoteRepositoryError> {
+            Ok(())
+        }
+    }
+
+    fn source_note() -> Note {
+        Note {
+            id: SOURCE_NOTE_ID,
+            strategy_id: Some(OTHER_STRATEGY_ID),
+            kind: None,
+            trigger: None,
+            trigger_label: None,
+            created_at: timestamp(),
+            updated_at: timestamp(),
+            execution_id: None,
+        }
+    }
+
+    fn source_version() -> NoteVersion {
+        NoteVersion {
+            id: SOURCE_VERSION_ID,
+            note_id: SOURCE_NOTE_ID,
+            version_no: 1,
+            title: "Previous title".into(),
+            body_md: "Previous body".into(),
+            frontmatter_json: json!({}),
+            graphs_json: json!([]),
+            status: "approved".into(),
+            is_current: true,
+            change_reason: None,
+            created_by_kind: "human".into(),
+            execution_id: None,
+            created_at: timestamp(),
+            reviewed_at: None,
+        }
+    }
+
+    fn timestamp() -> DateTime<FixedOffset> {
+        DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
+    }
+
+    #[tokio::test]
+    async fn write_updates_a_note_owned_by_another_strategy_and_links_across_strategies() {
+        let repository = Arc::new(LinkNoteRepository {
+            source_note: source_note(),
+            source_version: source_version(),
+            target: NoteLinkTarget {
+                id: TARGET_NOTE_ID,
+                strategy_id: Some(RUNNING_STRATEGY_ID),
+                current_version_id: Some(TARGET_VERSION_ID),
+            },
+            inserted_links: Mutex::new(Vec::new()),
+        });
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let strategy_existence = Arc::new(FakeStrategyExistence::new());
+        strategy_existence
+            .insert_strategy(RUNNING_STRATEGY_ID)
+            .await;
+        let use_cases = NoteUseCases::new(
+            unit_of_work,
+            repository.clone(),
+            strategy_existence,
+            Arc::new(FakeChangeHistory::new()),
+        );
+
+        let mut result = use_cases
+            .write(NoteWriteCommand {
+                scope: Some(RUNNING_STRATEGY_ID.into()),
+                strategy_id: Some(RUNNING_STRATEGY_ID),
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: Some(format!("[[note:{TARGET_NOTE_ID}@current]]")),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: None,
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await
+            .expect("a note owned by another strategy can be updated");
+
+        result.snapshot.version.id = NORMALIZED_VERSION_ID;
+        assert_eq!(
+            result,
+            NoteWriteResult {
+                note_id: SOURCE_NOTE_ID,
+                created: false,
+                snapshot: NoteSnapshot {
+                    note: source_note(),
+                    version: NoteVersion {
+                        id: NORMALIZED_VERSION_ID,
+                        note_id: SOURCE_NOTE_ID,
+                        version_no: 2,
+                        title: "Updated title".into(),
+                        body_md: format!("[[note:{TARGET_NOTE_ID}@current]]"),
+                        frontmatter_json: json!({}),
+                        graphs_json: json!([]),
+                        status: INITIAL_NOTE_STATUS.into(),
+                        is_current: true,
+                        change_reason: None,
+                        created_by_kind: "llm".into(),
+                        execution_id: None,
+                        created_at: timestamp(),
+                        reviewed_at: None,
+                    },
+                    created_by_kind: "human".into(),
+                },
+            },
+        );
+
+        let links = repository
+            .inserted_links
+            .lock()
+            .await
+            .iter()
+            .map(|link| NewNoteLink {
+                from_version_id: NORMALIZED_VERSION_ID,
+                ..*link
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            links,
+            vec![NewNoteLink {
+                from_version_id: NORMALIZED_VERSION_ID,
+                to_note_id: TARGET_NOTE_ID,
+                to_version_id: None,
+            }],
+        );
     }
 }

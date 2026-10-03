@@ -14,9 +14,6 @@ use super::{clamp_limit, internal_error, invalid_params, map_persistence_error};
 fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
     match error {
         NoteReadUseCaseError::NotFound(_) => McpError::resource_not_found("note not found", None),
-        NoteReadUseCaseError::Forbidden(note_id) => invalid_params(format!(
-            "forbidden: note {note_id} belongs to another strategy"
-        )),
         NoteReadUseCaseError::VersionDoesNotBelong {
             note_id,
             version_id,

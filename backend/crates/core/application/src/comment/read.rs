@@ -6,7 +6,7 @@ use crate::note::{NoteReadUseCaseError, NoteReadUseCases};
 use crate::strategy_scope::StrategyScope;
 
 use super::query::{CommentListQuery, CommentReadQueryError, SharedCommentReadQuery};
-use super::types::{Comment, CommentTargetKind};
+use super::types::Comment;
 
 #[derive(Debug, Error)]
 pub enum CommentReadUseCaseError {
@@ -41,20 +41,18 @@ impl CommentReadUseCases {
     pub async fn list_comments(
         &self,
         query: CommentListQuery,
-        scope: Option<StrategyScope>,
+        _scope: Option<StrategyScope>,
     ) -> Result<Vec<Comment>, CommentReadUseCaseError> {
-        if let Some(scope) = scope {
-            match query.target_kind {
-                CommentTargetKind::NoteVersion => {
-                    self.note_reads
-                        .ensure_note_version_scope(query.target_id, scope)
-                        .await?;
-                }
-                CommentTargetKind::Annotation => {
-                    self.annotation_reads
-                        .get_annotation(query.target_id, Some(scope))
-                        .await?;
-                }
+        match query.target_kind {
+            super::types::CommentTargetKind::NoteVersion => {
+                self.note_reads
+                    .ensure_note_version_exists(query.target_id)
+                    .await?;
+            }
+            super::types::CommentTargetKind::Annotation => {
+                self.annotation_reads
+                    .get_annotation(query.target_id, None)
+                    .await?;
             }
         }
         Ok(self.query.list_comments(query).await?)

@@ -310,9 +310,6 @@ fn map_annotation_error(error: AnnotationUseCaseError) -> AppError {
         AnnotationUseCaseError::LinkedNoteNotFound(_) => {
             AppError::Validation("referenced resource does not exist".into())
         }
-        AnnotationUseCaseError::ScopeMismatch => {
-            AppError::Validation("annotation belongs to a different strategy".into())
-        }
         AnnotationUseCaseError::Repository(AnnotationRepositoryError::Database(error))
         | AnnotationUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | AnnotationUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
@@ -328,9 +325,6 @@ pub(super) fn map_annotation_read_error(error: AnnotationReadUseCaseError) -> Ap
     match error {
         AnnotationReadUseCaseError::NotFound(id) => {
             AppError::NotFound(format!("annotation {id} not found"))
-        }
-        AnnotationReadUseCaseError::Forbidden(_) => {
-            AppError::Validation("annotation belongs to a different strategy".into())
         }
         AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {
             error.into()

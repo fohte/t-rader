@@ -290,7 +290,7 @@ pub(super) async fn current_note_version_id(
         .id
 }
 
-/// 指定戦略の所有として固定タイトルの note を seed する (cross-strategy violation 用)
+/// 指定した戦略に属する note を seed する。
 pub(super) async fn seed_foreign_note(
     db: &gateway_postgres::DatabaseHandle,
     owner: Uuid,
@@ -309,17 +309,25 @@ pub(super) async fn seed_foreign_note(
     .await
 }
 
-/// 指定戦略の所有として固定パラメータの annotation を seed する (cross-strategy violation 用)
+/// 指定した戦略に属する annotation を seed する。
 pub(super) async fn seed_foreign_annotation(
     db: &impl sea_orm::ConnectionTrait,
     owner: Uuid,
 ) -> Uuid {
+    seed_annotation(db, Some(owner)).await
+}
+
+pub(super) async fn seed_unscoped_annotation(db: &impl sea_orm::ConnectionTrait) -> Uuid {
+    seed_annotation(db, None).await
+}
+
+async fn seed_annotation(db: &impl sea_orm::ConnectionTrait, strategy_id: Option<Uuid>) -> Uuid {
     let id = Uuid::new_v4();
     annotation::ActiveModel {
         id: Set(id),
-        strategy_id: Set(Some(owner)),
-        target_symbol: Set("7203".into()),
-        target_kind: Set("signal".into()),
+        strategy_id: Set(strategy_id),
+        target_symbol: Set("demo-code".into()),
+        target_kind: Set("sample-tag".into()),
         timestamp: Set("2026-06-01T00:00:00Z".parse().expect("ts")),
         price: Set(None),
         text: Set("breakout".into()),

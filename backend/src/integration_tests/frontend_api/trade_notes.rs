@@ -190,24 +190,16 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_cross_strategy_note(db: gateway_postgres::DatabaseHandle) {
+    async fn create_links_notes_from_any_strategy_scope(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let a = insert_test_strategy(&db, "a").await;
         let b = insert_test_strategy(&db, "b").await;
         let tid = seed_trade(&db, a).await;
-        let nid = seed_note(&db, Some(b)).await;
+        let cross_strategy_note_id = seed_note(&db, Some(b)).await;
+        let unscoped_note_id = seed_note(&db, None).await;
 
-        let res = server
-            .post(&format!("/api/trades/{tid}/notes"))
-            .json(&json!({ "note_id": nid }))
-            .await;
-        assert_response_eq(
-            &res,
-            StatusCode::BAD_REQUEST,
-            Some(json!({
-                "error": "note_id must belong to the same strategy as the trade"
-            })),
-        );
+        assert_trade_note_created(&server, tid, cross_strategy_note_id).await;
+        assert_trade_note_created(&server, tid, unscoped_note_id).await;
     }
 
     #[backend_test_macros::database_test]
@@ -229,21 +221,20 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_for_unknown_note_returns_400(db: gateway_postgres::DatabaseHandle) {
+    async fn create_for_unknown_note_returns_404(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
+        let missing_note_id = Uuid::new_v4();
 
         let res = server
             .post(&format!("/api/trades/{tid}/notes"))
-            .json(&json!({ "note_id": Uuid::new_v4() }))
+            .json(&json!({ "note_id": missing_note_id }))
             .await;
         assert_response_eq(
             &res,
-            StatusCode::BAD_REQUEST,
-            Some(json!({
-                "error": "note_id must belong to the same strategy as the trade"
-            })),
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("note {missing_note_id} not found") })),
         );
     }
 

@@ -170,7 +170,6 @@ fn map_comment_error(error: CommentUseCaseError) -> AppError {
     match error {
         CommentUseCaseError::Validation(message) => AppError::Validation(message),
         CommentUseCaseError::NotFound(message) => AppError::NotFound(message),
-        CommentUseCaseError::Forbidden(message) => AppError::Validation(message),
         CommentUseCaseError::Repository(CommentRepositoryError::Database(error))
         | CommentUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | CommentUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))

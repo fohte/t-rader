@@ -71,15 +71,13 @@ impl PredictionUseCases {
 
         let transaction = self.unit_of_work.begin().await?;
         if let Some(note_id) = command.note_id {
-            let Some(owner) = self
+            let note_exists = self
                 .repository
                 .find_note_owner(&transaction, note_id)
                 .await?
-            else {
+                .is_some();
+            if !note_exists {
                 return Err(PredictionUseCaseError::NoteNotFound(note_id));
-            };
-            if owner.strategy_id != Some(scope.id()) {
-                return Err(PredictionUseCaseError::Forbidden(note_id));
             }
         }
         for stock_id in [&target_stock_id, &benchmark_stock_id] {
@@ -143,5 +141,173 @@ impl PredictionUseCases {
         &self,
     ) -> Result<super::types::GradingStats, PredictionUseCaseError> {
         self.grade_due(Utc::now().date_naive()).await
+    }
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use chrono::{DateTime, NaiveDate, Utc};
+    use core_domain::bar::Bar;
+    use rstest::rstest;
+    use rust_decimal::Decimal;
+    use tokio::sync::Mutex;
+
+    use super::*;
+    use crate::prediction::repository::{PredictionRepository, PredictionRepositoryError};
+    use crate::prediction::types::{GradedPrediction, NewPredictionGrade, NoteOwner, Prediction};
+    use crate::unit_of_work::FakeUnitOfWork;
+
+    const NOTE_ID: Uuid = Uuid::from_u128(1);
+    const RUNNING_STRATEGY_ID: Uuid = Uuid::from_u128(2);
+    const OWNER_STRATEGY_ID: Uuid = Uuid::from_u128(3);
+    const NORMALIZED_PREDICTION_ID: Uuid = Uuid::from_u128(4);
+
+    struct FakePredictionRepository {
+        owner_strategy_id: Option<Uuid>,
+        inserted: Mutex<Vec<NewPrediction>>,
+    }
+
+    #[async_trait]
+    impl PredictionRepository for FakePredictionRepository {
+        async fn find_note_owner(
+            &self,
+            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+            note_id: Uuid,
+        ) -> Result<Option<NoteOwner>, PredictionRepositoryError> {
+            Ok((note_id == NOTE_ID).then_some(NoteOwner {
+                strategy_id: self.owner_strategy_id,
+            }))
+        }
+
+        async fn stock_exists(
+            &self,
+            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+            _stock_id: &str,
+        ) -> Result<bool, PredictionRepositoryError> {
+            Ok(true)
+        }
+
+        async fn insert(
+            &self,
+            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+            prediction: NewPrediction,
+        ) -> Result<Prediction, PredictionRepositoryError> {
+            self.inserted.lock().await.push(prediction.clone());
+            Ok(Prediction {
+                id: prediction.id,
+                strategy_id: prediction.strategy_id,
+                note_id: prediction.note_id,
+                target_stock_id: prediction.target_stock_id,
+                benchmark_stock_id: prediction.benchmark_stock_id,
+                direction: prediction.direction,
+                probability: prediction.probability,
+                base_date: prediction.base_date,
+                due_date: prediction.due_date,
+                created_at: DateTime::<Utc>::UNIX_EPOCH.fixed_offset(),
+            })
+        }
+
+        async fn list_by_strategy(
+            &self,
+            _strategy_id: Uuid,
+            _query: PredictionListQuery,
+        ) -> Result<Vec<Prediction>, PredictionRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn list_by_note(
+            &self,
+            _note_id: Uuid,
+        ) -> Result<Option<Vec<Prediction>>, PredictionRepositoryError> {
+            Ok(Some(Vec::new()))
+        }
+
+        async fn list_graded_by_strategy(
+            &self,
+            _strategy_id: Uuid,
+        ) -> Result<Vec<GradedPrediction>, PredictionRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn list_ungraded_due(
+            &self,
+            _due_on_or_before: NaiveDate,
+        ) -> Result<Vec<Prediction>, PredictionRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn find_latest_daily_bar_on_or_before(
+            &self,
+            _stock_id: &str,
+            _date: NaiveDate,
+        ) -> Result<Option<Bar>, PredictionRepositoryError> {
+            Ok(None)
+        }
+
+        async fn insert_grade(
+            &self,
+            _grade: NewPredictionGrade,
+        ) -> Result<(), PredictionRepositoryError> {
+            Ok(())
+        }
+    }
+
+    #[rstest]
+    #[case::another_strategy(Some(OWNER_STRATEGY_ID))]
+    #[case::unassigned(None)]
+    #[tokio::test]
+    async fn record_accepts_a_note_owned_by_any_strategy(#[case] owner_strategy_id: Option<Uuid>) {
+        let repository = Arc::new(FakePredictionRepository {
+            owner_strategy_id,
+            inserted: Mutex::new(Vec::new()),
+        });
+        let use_cases =
+            PredictionUseCases::new(Arc::new(FakeUnitOfWork::new()), repository.clone());
+        let command = RecordPredictionCommand {
+            note_id: Some(NOTE_ID),
+            target_stock_id: "FICTIONAL-ASSET-A".into(),
+            benchmark_stock_id: "FICTIONAL-ASSET-B".into(),
+            direction: "outperform".into(),
+            probability: Decimal::new(70, 2),
+            base_date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+            due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
+        };
+
+        let prediction = use_cases
+            .record(RUNNING_STRATEGY_ID.into(), command)
+            .await
+            .expect("prediction can refer to a note from another strategy");
+        let inserted = repository
+            .inserted
+            .lock()
+            .await
+            .iter()
+            .map(|prediction| NewPrediction {
+                id: NORMALIZED_PREDICTION_ID,
+                ..prediction.clone()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (prediction.strategy_id, prediction.note_id, inserted,),
+            (
+                RUNNING_STRATEGY_ID,
+                Some(NOTE_ID),
+                vec![NewPrediction {
+                    id: NORMALIZED_PREDICTION_ID,
+                    strategy_id: RUNNING_STRATEGY_ID,
+                    note_id: Some(NOTE_ID),
+                    target_stock_id: "FICTIONAL-ASSET-A".into(),
+                    benchmark_stock_id: "FICTIONAL-ASSET-B".into(),
+                    direction: "outperform".into(),
+                    probability: Decimal::new(70, 2),
+                    base_date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+                    due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
+                }],
+            ),
+        );
     }
 }

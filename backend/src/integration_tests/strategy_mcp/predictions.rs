@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_rejects_cross_strategy_linked_note(
+    async fn record_prediction_links_note_from_another_strategy(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
@@ -212,16 +212,26 @@ mod tests {
 
         let mut params = base_params("TGT1", "BM1");
         params.note_id = Some(foreign_note);
-        let err = server
+        let result = server
             .record_prediction(strategy_a, params)
             .await
-            .expect_err("cross-strategy linked note expected to be rejected");
+            .expect("record prediction with note from another strategy");
         assert_eq!(
-            err,
-            rmcp::ErrorData::invalid_params(
-                format!("forbidden: note {foreign_note} belongs to another strategy"),
-                None,
-            ),
+            normalize_record_result(result),
+            super::super::dto::RecordPredictionResult {
+                prediction: PredictionDto {
+                    prediction_id: uuid::Uuid::nil(),
+                    strategy_id: strategy_a,
+                    note_id: Some(foreign_note),
+                    target_stock_id: "TGT1".into(),
+                    benchmark_stock_id: "BM1".into(),
+                    direction: "outperform".into(),
+                    probability: 0.65,
+                    base_date: NaiveDate::from_ymd_opt(2026, 6, 1).expect("date"),
+                    due_date: NaiveDate::from_ymd_opt(2026, 7, 1).expect("date"),
+                    created_at: ts_sentinel(),
+                },
+            },
         );
     }
 

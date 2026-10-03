@@ -138,9 +138,6 @@ pub(super) fn map_note_read_error(error: NoteReadUseCaseError) -> AppError {
         NoteReadUseCaseError::NoteVersionNotFound => {
             AppError::NotFound("note version not found".into())
         }
-        NoteReadUseCaseError::Forbidden(note_id) => {
-            AppError::Validation(format!("note {note_id} is not accessible"))
-        }
         NoteReadUseCaseError::Query(NoteReadQueryError::Database(error)) => error.into(),
         NoteReadUseCaseError::Query(NoteReadQueryError::InvalidData(message)) => {
             AppError::Internal(message)
