@@ -3511,6 +3511,7 @@ version = "0.1.0"
 dependencies = [
  "indoc",
  "rstest",
+ "sea-orm",
  "sea-orm-cli",
  "sea-orm-migration",
  "tokio",

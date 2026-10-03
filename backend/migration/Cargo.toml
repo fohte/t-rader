@@ -14,3 +14,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 rstest = { workspace = true }
+sea-orm = { workspace = true, features = [
+    "runtime-tokio-native-tls",
+    "sqlx-postgres",
+] }

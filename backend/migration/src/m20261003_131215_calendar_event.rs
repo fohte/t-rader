@@ -58,7 +58,7 @@ impl MigrationTrait for Migration {
                         FROM jquants_earnings_date
                         WHERE sch_date IS NOT NULL
                           AND (
-                              fq_name NOT IN ('1Q', '2Q', '3Q', '4Q')
+                              fq_name NOT IN ('1Q', '2Q', '3Q', '4Q', 'FY')
                               OR fye !~ '^(0[1-9]|1[0-2])[0-9]{2}$'
                           )
                     ) THEN
@@ -201,7 +201,12 @@ impl MigrationTrait for Migration {
                                 (
                                     (
                                         substring(schedule.fye FROM 1 FOR 2)::integer
-                                        - (4 - substring(schedule.fq_name FROM 1 FOR 1)::integer) * 3
+                                        - (
+                                            4 - CASE schedule.fq_name
+                                                WHEN 'FY' THEN 4
+                                                ELSE substring(schedule.fq_name FROM 1 FOR 1)::integer
+                                            END
+                                        ) * 3
                                         - 1 + 12
                                     ) % 12
                                 ) + 1,
@@ -210,7 +215,7 @@ impl MigrationTrait for Migration {
                         )::date AS quarter_end
                     ) AS quarter_end_in_schedule_year
                     WHERE schedule.sch_date IS NOT NULL
-                      AND schedule.fq_name IN ('1Q', '2Q', '3Q', '4Q')
+                      AND schedule.fq_name IN ('1Q', '2Q', '3Q', '4Q', 'FY')
                       AND schedule.fye ~ '^(0[1-9]|1[0-2])[0-9]{2}$'
                 ), latest_dated_candidates AS (
                     SELECT DISTINCT ON (code, quarter_end)
@@ -316,5 +321,122 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        reason = "テスト準備の失敗時に詳細を表示するため"
+    )]
+
+    use sea_orm::sea_query::{Alias, Expr, Order, Query, SelectExprTrait};
+    use sea_orm::{ConnectionTrait, Database, TransactionTrait};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+    use super::Migration;
+
+    #[tokio::test]
+    async fn migration_moves_fiscal_year_events_and_preserves_other_quarters() {
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let database = Database::connect(database_url)
+            .await
+            .expect("connect to test database");
+        let transaction = database.begin().await.expect("begin transaction");
+        let schema = format!("calendar_event_fy_test_{}", std::process::id());
+        transaction
+            .execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .expect("create isolated schema");
+        transaction
+            .execute_unprepared(&format!("SET LOCAL search_path TO {schema}"))
+            .await
+            .expect("set isolated schema");
+        transaction
+            .execute_unprepared(
+                "CREATE TABLE jquants_earnings_date (
+                    code text NOT NULL,
+                    fq_name text NOT NULL,
+                    pub_date date NOT NULL,
+                    sch_date date,
+                    fye text NOT NULL,
+                    co_name text NOT NULL,
+                    co_name_en text NOT NULL
+                )",
+            )
+            .await
+            .expect("create source table");
+        transaction
+            .execute_unprepared(
+                "INSERT INTO jquants_earnings_date
+                    (code, fq_name, pub_date, sch_date, fye, co_name, co_name_en)
+                 VALUES
+                    ('ZZ999', 'FY', '2042-07-06', '2043-03-05', '0297', '架空社', 'Fictional Co'),
+                    ('AA123', 'FY', '2042-07-06', '2042-10-01', '1231', '別の架空社', 'Another Fictional Co'),
+                    ('AA123', 'FY', '2042-08-15', NULL, '1231', '別の架空社', 'Another Fictional Co'),
+                    ('ZZ100', '1Q', '2042-07-06', '2043-01-05', '1231', '四半期社', 'Quarter Co'),
+                    ('ZZ100', '2Q', '2042-07-06', '2043-01-05', '1231', '四半期社', 'Quarter Co'),
+                    ('ZZ100', '3Q', '2042-07-06', '2043-01-05', '1231', '四半期社', 'Quarter Co')",
+            )
+            .await
+            .expect("insert source schedules");
+
+        Migration
+            .up(&SchemaManager::new(&transaction))
+            .await
+            .expect("run calendar event migration");
+
+        let rows = transaction
+            .query_all(
+                &Query::select()
+                    .column(Alias::new("external_id"))
+                    .column(Alias::new("fiscal_period"))
+                    .expr(Expr::cust("event_date::text").alias("event_date"))
+                    .from(Alias::new("calendar_event"))
+                    .order_by(Alias::new("external_id"), Order::Asc)
+                    .to_owned(),
+            )
+            .await
+            .expect("read migrated events")
+            .into_iter()
+            .map(|row| {
+                (
+                    row.try_get::<String>("", "external_id")
+                        .expect("read external id"),
+                    row.try_get::<String>("", "fiscal_period")
+                        .expect("read fiscal period"),
+                    row.try_get::<String>("", "event_date")
+                        .expect("read event date"),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "ZZ100:1Q:2042-03-31".into(),
+                    "2042-03-31".into(),
+                    "2043-01-05".into(),
+                ),
+                (
+                    "ZZ100:2Q:2042-06-30".into(),
+                    "2042-06-30".into(),
+                    "2043-01-05".into(),
+                ),
+                (
+                    "ZZ100:3Q:2042-09-30".into(),
+                    "2042-09-30".into(),
+                    "2043-01-05".into(),
+                ),
+                (
+                    "ZZ999:FY:2043-02-28".into(),
+                    "2043-02-28".into(),
+                    "2043-03-05".into(),
+                ),
+            ],
+        );
+        transaction.rollback().await.expect("roll back test schema");
     }
 }
