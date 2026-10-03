@@ -55,6 +55,7 @@ docker compose up
 
 # 割り当てられたポートを確認 (起動中の全コンテナを一覧するなら docker compose ps)
 docker compose port backend 3000
+docker compose port backend 3001
 docker compose port frontend 5173
 docker compose port agent 8080
 ```
