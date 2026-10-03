@@ -9,9 +9,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::data_provider::SharedDailyBarSource;
-    use crate::models::bar::{Bar, Timeframe};
-    use crate::models::instrument::{Instrument, Market};
     use crate::testing::MockProvider;
+    use core_domain::bar::{Bar, Timeframe};
+    use core_domain::instrument::{Instrument, Market};
     use gateway_postgres::entities::{strategy_investable_amount, trade};
 
     use super::super::dto::{

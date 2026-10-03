@@ -10,8 +10,7 @@ use super::super::MAX_QUERY_DATA_INSTRUMENTS;
 use super::super::StrategyServer;
 use super::super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
 use super::super::tests_common::{insert_strategy, mock_db_with_strategy};
-use crate::models::Bar;
-use crate::models::bar::Timeframe;
+use core_domain::bar::{Bar, Timeframe};
 use gateway_postgres::entities::{instruments, strategy_task_step_evidence};
 use gateway_postgres::repositories::bars::upsert_bars;
 
