@@ -1,4 +1,4 @@
-//! 戦略タスク照合の既存 DB テストで使う単発 helper。
+//! 戦略タスク照合を DB と fake agent client で検証する integration test。
 
 use core_application::agent_task_client::SharedAgentTaskClient;
 use gateway_postgres::DatabaseHandle;

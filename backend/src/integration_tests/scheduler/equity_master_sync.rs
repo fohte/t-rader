@@ -1,8 +1,4 @@
-//! J-Quants の全上場銘柄マスタを `stock` に同期する処理。
-//!
-//! 全上場銘柄を `stock` に upsert し、名前・市場区分・商品区分を最新に保つ。
-//! 業種は `sync_source = 'jquants'` の分類軸にグループと所属として同期する。
-//! master に含まれなくなった行 (上場廃止した保有銘柄等) は削除せずそのまま残す。
+//! 銘柄マスタ同期 use case の DB integration test。
 
 #[cfg(test)]
 mod tests {
