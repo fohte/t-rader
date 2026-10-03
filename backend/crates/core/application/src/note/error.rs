@@ -1,5 +1,4 @@
 use thiserror::Error;
-use uuid::Uuid;
 
 use crate::change_history::ChangeHistoryError;
 use crate::note::repository::NoteRepositoryError;
@@ -18,8 +17,6 @@ pub enum NoteUseCaseError {
     ReferencedNoteKindNotFound(String),
     #[error("{0}")]
     Conflict(String),
-    #[error("note {0} belongs to another strategy")]
-    Forbidden(Uuid),
     #[error(transparent)]
     Repository(#[from] NoteRepositoryError),
     #[error(transparent)]

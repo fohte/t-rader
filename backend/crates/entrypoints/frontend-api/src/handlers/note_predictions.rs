@@ -40,9 +40,6 @@ fn map_prediction_error(error: PredictionUseCaseError) -> AppError {
         PredictionUseCaseError::NoteNotFound(note_id) => {
             AppError::NotFound(format!("note {note_id} not found"))
         }
-        PredictionUseCaseError::Forbidden(note_id) => {
-            AppError::Validation(format!("note {note_id} belongs to another strategy"))
-        }
         PredictionUseCaseError::Repository(PredictionRepositoryError::Database(error)) => {
             error.into()
         }

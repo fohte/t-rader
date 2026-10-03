@@ -9,8 +9,6 @@ pub enum AnnotationUseCaseError {
     NotFound(Uuid),
     #[error("linked note {0} not found")]
     LinkedNoteNotFound(Uuid),
-    #[error("annotation belongs to a different strategy scope")]
-    ScopeMismatch,
     #[error(transparent)]
     Repository(#[from] super::ports::AnnotationRepositoryError),
     #[error(transparent)]

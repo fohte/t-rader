@@ -55,7 +55,7 @@ pub async fn get_note_links(
 ) -> Result<Json<NoteLinksResponse>, AppError> {
     let links = state
         .note_read_use_cases
-        .list_note_links(note_id, params.version_id, None)
+        .list_note_links(note_id, params.version_id)
         .await
         .map_err(crate::handlers::notes::map_note_read_error)?;
     Ok(Json(NoteLinksResponse {

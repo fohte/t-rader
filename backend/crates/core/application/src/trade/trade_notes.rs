@@ -40,7 +40,7 @@ impl TradeNoteUseCases {
         for link in links {
             snapshots.push(
                 self.note_read_use_cases
-                    .get_note(link.note_id, Some(link.note_version_id), false, None)
+                    .get_note(link.note_id, Some(link.note_version_id), false)
                     .await
                     .map_err(map_note_read_error)?,
             );
@@ -54,20 +54,10 @@ impl TradeNoteUseCases {
         note_id: Uuid,
     ) -> Result<super::types::TradeNoteLink, TradeUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let trade = self.require_trade(&transaction, trade_id).await?;
-        let note_strategy_id = match self.note_read_use_cases.get_note_strategy_id(note_id).await {
-            Ok(strategy_id) => strategy_id,
-            Err(NoteReadUseCaseError::NotFound(_)) => None,
-            Err(error) => return Err(error.into()),
-        };
-        if note_strategy_id != Some(trade.strategy_id) {
-            return Err(TradeUseCaseError::Validation(
-                "note_id must belong to the same strategy as the trade".into(),
-            ));
-        }
+        self.require_trade(&transaction, trade_id).await?;
         let snapshot = self
             .note_read_use_cases
-            .get_note(note_id, None, false, None)
+            .get_note(note_id, None, false)
             .await
             .map_err(map_note_read_error)?;
         let link = self
@@ -127,5 +117,82 @@ fn map_note_read_error(error: NoteReadUseCaseError) -> TradeUseCaseError {
             ))
         }
         error => TradeUseCaseError::NoteRead(error),
+    }
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod tests {
+    use std::sync::Arc;
+
+    use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+    use rust_decimal::Decimal;
+
+    use super::*;
+    use crate::note::{FakeNoteReadQuery, NoteReadUseCases};
+    use crate::trade::{FakeTradeRepository, Trade};
+    use crate::unit_of_work::FakeUnitOfWork;
+
+    const TRADE_ID: Uuid = Uuid::from_u128(1);
+    const NOTE_ID: Uuid = Uuid::from_u128(2);
+    const VERSION_ID: Uuid = Uuid::from_u128(3);
+
+    fn trade() -> Trade {
+        Trade {
+            id: TRADE_ID,
+            strategy_id: Uuid::from_u128(4),
+            symbol: "FICTIONAL-ASSET".into(),
+            side: "buy".into(),
+            qty: Decimal::ONE,
+            price: Decimal::ONE,
+            fee: Decimal::ZERO,
+            date: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap_or(NaiveDate::MIN),
+            source: "manual".into(),
+            note: None,
+            created_at: timestamp(),
+            updated_at: timestamp(),
+        }
+    }
+
+    fn timestamp() -> DateTime<FixedOffset> {
+        DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
+    }
+
+    #[tokio::test]
+    async fn create_links_an_unassigned_note_to_a_strategy_trade() {
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let trade_repository = Arc::new(FakeTradeRepository::new());
+        trade_repository.insert_trade(trade()).await;
+        let note_reads =
+            NoteReadUseCases::new(Arc::new(FakeNoteReadQuery::new(NOTE_ID, None, VERSION_ID)));
+        let use_cases = TradeNoteUseCases::new(unit_of_work, trade_repository.clone(), note_reads);
+
+        let link = use_cases
+            .create(TRADE_ID, NOTE_ID)
+            .await
+            .expect("an unassigned note can be linked to the trade");
+        let mut normalized_link = link;
+        normalized_link.created_at = timestamp();
+        let mut stored_links = trade_repository.note_links.lock().await.clone();
+        for stored_link in &mut stored_links {
+            stored_link.created_at = timestamp();
+        }
+
+        assert_eq!(
+            (normalized_link, stored_links),
+            (
+                crate::trade::TradeNoteLink {
+                    trade_id: TRADE_ID,
+                    note_id: NOTE_ID,
+                    note_version_id: VERSION_ID,
+                    created_at: timestamp(),
+                },
+                vec![crate::trade::TradeNoteLink {
+                    trade_id: TRADE_ID,
+                    note_id: NOTE_ID,
+                    note_version_id: VERSION_ID,
+                    created_at: timestamp(),
+                }],
+            ),
+        );
     }
 }

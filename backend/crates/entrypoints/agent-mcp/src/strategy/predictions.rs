@@ -1,7 +1,7 @@
 //! 予測 (prediction) の記録 / 読み取り tool。
 //!
 //! 記録後の確率・期限・対象の書き換えは採点を無意味にするため、更新・削除の tool は
-//! 意図的に用意しない。読み取りは自戦略の予測に限る。
+//! 意図的に用意しない。
 
 use core_application::persistence::PersistenceError;
 use core_application::prediction::{
@@ -24,9 +24,6 @@ fn prediction_error_to_mcp(error: PredictionUseCaseError) -> McpError {
         PredictionUseCaseError::NoteNotFound(_) => {
             McpError::resource_not_found("note not found", None)
         }
-        PredictionUseCaseError::Forbidden(note_id) => invalid_params(format!(
-            "forbidden: note {note_id} belongs to another strategy"
-        )),
         PredictionUseCaseError::Repository(
             core_application::prediction::PredictionRepositoryError::Database(error),
         ) => prediction_database_error(error),

@@ -10,8 +10,6 @@ pub enum PredictionUseCaseError {
     Validation(String),
     #[error("note {0} not found")]
     NoteNotFound(Uuid),
-    #[error("note {0} belongs to another strategy")]
-    Forbidden(Uuid),
     #[error(transparent)]
     Repository(#[from] PredictionRepositoryError),
     #[error(transparent)]

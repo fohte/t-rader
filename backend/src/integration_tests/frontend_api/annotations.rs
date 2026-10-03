@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_and_update_reject_cross_strategy_linked_notes(
+    async fn create_and_update_accept_cross_strategy_and_unscoped_linked_notes(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
@@ -258,6 +258,8 @@ mod tests {
         let foreign_strategy_id = insert_test_strategy(&db, "foreign").await;
         let foreign_note_id =
             insert_test_note(&db, foreign_strategy_id, "foreign note", "body").await;
+        let unscoped_note_id =
+            crate::testing::insert_test_note_in_scope(&db, None, "unscoped note", "body").await;
         let initial_annotation_res = server
             .post("/api/annotations")
             .json(&json!({
@@ -308,34 +310,79 @@ mod tests {
                 "linked_note_id": foreign_note_id,
             }))
             .await;
-        let create_result = (create_res.status_code(), create_res.json::<Value>());
+        let created_annotation_body = create_res.json::<Value>();
+        let created_annotation_id =
+            Uuid::parse_str(created_annotation_body["id"].as_str().expect("id")).expect("uuid");
+        let create_result = (
+            create_res.status_code(),
+            normalize_annotation_response(created_annotation_body),
+        );
 
         let update_res = server
             .patch(&format!("/api/annotations/{annotation_id}"))
-            .json(&json!({ "linked_note_id": foreign_note_id }))
+            .json(&json!({ "linked_note_id": unscoped_note_id }))
             .await;
-        let update_result = (update_res.status_code(), update_res.json::<Value>());
+        let update_result = (
+            update_res.status_code(),
+            normalize_annotation_response(update_res.json::<Value>()),
+        );
 
-        let saved_annotations = annotation::Entity::find()
+        let mut saved_annotation_links = annotation::Entity::find()
             .all(&db)
             .await
             .unwrap()
             .into_iter()
             .map(|saved| (saved.id, saved.linked_note_id))
             .collect::<Vec<_>>();
+        saved_annotation_links.sort_unstable_by_key(|(id, _)| *id);
+        let mut expected_annotation_links = vec![
+            (annotation_id, Some(unscoped_note_id)),
+            (created_annotation_id, Some(foreign_note_id)),
+        ];
+        expected_annotation_links.sort_unstable_by_key(|(id, _)| *id);
 
         assert_eq!(
-            (create_result, update_result, saved_annotations),
+            (create_result, update_result, saved_annotation_links),
             (
                 (
-                    StatusCode::BAD_REQUEST,
-                    json!({ "error": "linked note belongs to a different strategy" }),
+                    StatusCode::CREATED,
+                    json!({
+                        "id": "<id>",
+                        "strategy_id": strategy_id,
+                        "target_symbol": "TEST-SYMBOL",
+                        "target_kind": "sample_kind",
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "price": null,
+                        "text": "text",
+                        "status": "unread",
+                        "linked_note_id": foreign_note_id,
+                        "created_by_kind": "human",
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "execution_step_id": null,
+                        "execution_task_id": null,
+                    }),
                 ),
                 (
-                    StatusCode::BAD_REQUEST,
-                    json!({ "error": "linked note belongs to a different strategy" }),
+                    StatusCode::OK,
+                    json!({
+                        "id": "<id>",
+                        "strategy_id": strategy_id,
+                        "target_symbol": "TEST-SYMBOL",
+                        "target_kind": "sample_kind",
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "price": null,
+                        "text": "text",
+                        "status": "unread",
+                        "linked_note_id": unscoped_note_id,
+                        "created_by_kind": "human",
+                        "created_at": "<created_at>",
+                        "updated_at": "<updated_at>",
+                        "execution_step_id": null,
+                        "execution_task_id": null,
+                    }),
                 ),
-                vec![(annotation_id, None)],
+                expected_annotation_links,
             ),
         );
     }

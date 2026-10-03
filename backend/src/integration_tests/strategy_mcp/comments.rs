@@ -203,14 +203,18 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_cross_strategy_note(db: gateway_postgres::DatabaseHandle) {
+    async fn read_comments_returns_comments_for_note_from_another_strategy(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
+        let comment_id =
+            seed_comment(&db, "note_version", note_version_id, None, "review this").await;
 
-        let err = server
+        let result = server
             .read_comments(
                 strategy_a,
                 ReadCommentsParams {
@@ -220,24 +224,40 @@ mod tests {
                 },
             )
             .await
-            .expect_err("cross-strategy note expected to be rejected");
+            .expect("read comments on a note from another strategy");
         assert_eq!(
-            err,
-            rmcp::ErrorData::invalid_params(
-                format!("forbidden: note {note_id} belongs to another strategy"),
-                None,
-            ),
+            normalize_read_comments(result),
+            ReadCommentsResult {
+                comments: vec![CommentDto {
+                    comment_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
+                    parent_id: None,
+                    body: "review this".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: false,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                }],
+            },
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_cross_strategy_annotation(db: gateway_postgres::DatabaseHandle) {
+    async fn read_comments_returns_comments_for_annotation_from_another_strategy(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
         let annotation_id = seed_foreign_annotation(&db, strategy_b).await;
+        let comment_id = seed_comment(&db, "annotation", annotation_id, None, "review this").await;
 
-        let err = server
+        let result = server
             .read_comments(
                 strategy_a,
                 ReadCommentsParams {
@@ -247,13 +267,26 @@ mod tests {
                 },
             )
             .await
-            .expect_err("cross-strategy annotation expected to be rejected");
+            .expect("read comments on an annotation from another strategy");
         assert_eq!(
-            err,
-            rmcp::ErrorData::invalid_params(
-                format!("forbidden: annotation {annotation_id} belongs to another strategy"),
-                None,
-            ),
+            normalize_read_comments(result),
+            ReadCommentsResult {
+                comments: vec![CommentDto {
+                    comment_id,
+                    target_kind: "annotation".into(),
+                    target_id: annotation_id,
+                    parent_id: None,
+                    body: "review this".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: false,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                }],
+            },
         );
     }
 
@@ -473,7 +506,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_rejects_cross_strategy(db: gateway_postgres::DatabaseHandle) {
+    async fn resolve_comment_resolves_comment_on_note_from_another_strategy(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -481,7 +516,7 @@ mod tests {
         let note_version_id = current_note_version_id(&db, note_id).await;
         let comment_id = seed_comment(&db, "note_version", note_version_id, None, "fix this").await;
 
-        let err = server
+        let result = server
             .resolve_comment(
                 strategy_a,
                 ResolveCommentParams {
@@ -490,10 +525,26 @@ mod tests {
                 },
             )
             .await
-            .expect_err("cross-strategy comment expected to be rejected");
+            .expect("resolve comment on note from another strategy");
         assert_eq!(
-            err,
-            rmcp::ErrorData::invalid_params("comment target belongs to a different strategy", None,),
+            normalize_resolve_comment(result),
+            ResolveCommentResult {
+                comment: CommentDto {
+                    comment_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
+                    parent_id: None,
+                    body: "fix this".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    resolved: true,
+                    created_at: ts_sentinel(),
+                    anchor_text: None,
+                    anchor_side: None,
+                    start_line: None,
+                    end_line: None,
+                },
+            },
         );
     }
 
@@ -609,7 +660,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_cross_strategy(db: gateway_postgres::DatabaseHandle) {
+    async fn reply_comment_replies_to_note_from_another_strategy(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -618,7 +671,7 @@ mod tests {
         let parent_id =
             seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
 
-        let err = server
+        let result = server
             .reply_comment(
                 strategy_a,
                 ReplyCommentParams {
@@ -627,10 +680,47 @@ mod tests {
                 },
             )
             .await
-            .expect_err("cross-strategy parent expected to be rejected");
+            .expect("reply to comment on a note from another strategy");
+        let comment_id = result.comment.comment_id;
+        let change_history = change_history_for(&db, comment_id).await;
+        let normalized_reply = normalize_reply_comment(result);
         assert_eq!(
-            err,
-            rmcp::ErrorData::invalid_params("comment target belongs to a different strategy", None,),
+            (normalized_reply.as_json().clone(), change_history),
+            (
+                serde_json::to_value(ReplyCommentResult {
+                    comment: CommentDto {
+                        comment_id,
+                        target_kind: "note_version".into(),
+                        target_id: note_version_id,
+                        parent_id: Some(parent_id),
+                        body: "fixed".into(),
+                        author_kind: super::super::STRATEGY_AGENT_ACTOR.into(),
+                        author_label: "analyst".into(),
+                        resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                })
+                .expect("serialize expected reply"),
+                vec![ChangeHistoryShape {
+                    id: uuid::Uuid::nil(),
+                    target_kind: "comment".into(),
+                    target_id: comment_id,
+                    actor_kind: "llm".into(),
+                    actor_label: "analyst".into(),
+                    op: "create".into(),
+                    diff_json: serde_json::json!({
+                        "target_kind": "note_version",
+                        "target_id": note_version_id,
+                        "parent_id": parent_id,
+                    }),
+                    summary: None,
+                    created_at: ts_sentinel(),
+                }],
+            ),
         );
     }
 
