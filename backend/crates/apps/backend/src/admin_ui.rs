@@ -12,12 +12,16 @@ use crate::{
 };
 use entrypoint_scheduler::GRAPHILE_WORKER_SCHEMA;
 
-fn auth_config(header_name: String, header_value: String) -> Result<AdminAuthConfig, StartupError> {
-    AdminAuthConfig::header(header_name, header_value, false).map_err(|error| {
-        StartupError::Config(format!(
-            "invalid Graphile Worker admin UI auth header: {error}"
-        ))
-    })
+fn auth_config(auth: WorkerAdminUiAuth) -> Result<AdminAuthConfig, StartupError> {
+    match auth {
+        WorkerAdminUiAuth::None => Ok(AdminAuthConfig::None),
+        WorkerAdminUiAuth::Header { name, value } => AdminAuthConfig::header(name, value, false)
+            .map_err(|error| {
+                StartupError::Config(format!(
+                    "invalid Graphile Worker admin UI auth header: {error}"
+                ))
+            }),
+    }
 }
 
 pub(super) async fn server(
@@ -26,10 +30,7 @@ pub(super) async fn server(
     shutdown_rx: watch::Receiver<bool>,
 ) -> Result<BoxFuture<'static, Result<(), StartupError>>, StartupError> {
     let pool = db.get_postgres_connection_pool().clone();
-    let auth = match settings.auth {
-        WorkerAdminUiAuth::None => AdminAuthConfig::None,
-        WorkerAdminUiAuth::Header { name, value } => auth_config(name, value)?,
-    };
+    let auth = auth_config(settings.auth)?;
     let admin_config =
         AdminServerConfig::builder(pool.clone(), WorkerUtils::new(pool, GRAPHILE_WORKER_SCHEMA))
             .schema_name(GRAPHILE_WORKER_SCHEMA)
@@ -92,7 +93,7 @@ mod tests {
     const TEST_AUTH_HEADER_VALUE: &str = "authorized-user";
 
     fn create_test_server(
-        auth: AdminAuthConfig,
+        auth: WorkerAdminUiAuth,
         listen_addr: SocketAddr,
     ) -> Result<TestServer, Box<dyn Error>> {
         let pool = PgPool::connect_lazy("postgres://test:test@localhost/test")?;
@@ -102,7 +103,7 @@ mod tests {
         )
         .schema_name(GRAPHILE_WORKER_SCHEMA)
         .listen_addr(listen_addr)
-        .auth(auth)
+        .auth(auth_config(auth)?)
         .read_only(false)
         .build()?;
         let router = build_admin_ui_router(config)?;
@@ -113,10 +114,10 @@ mod tests {
     #[fixture]
     fn header_auth_test_server() -> Result<TestServer, Box<dyn Error>> {
         create_test_server(
-            auth_config(
-                TEST_AUTH_HEADER_NAME.to_string(),
-                TEST_AUTH_HEADER_VALUE.to_string(),
-            )?,
+            WorkerAdminUiAuth::Header {
+                name: TEST_AUTH_HEADER_NAME.to_string(),
+                value: TEST_AUTH_HEADER_VALUE.to_string(),
+            },
             SocketAddr::from(([0, 0, 0, 0], 3001)),
         )
     }
@@ -124,7 +125,7 @@ mod tests {
     #[fixture]
     fn loopback_test_server() -> Result<TestServer, Box<dyn Error>> {
         create_test_server(
-            AdminAuthConfig::None,
+            WorkerAdminUiAuth::None,
             SocketAddr::from(([127, 0, 0, 1], 3001)),
         )
     }
