@@ -14,6 +14,7 @@ mod data;
 mod eval;
 mod eval_indicator;
 mod holdings;
+mod japanese_stock_only;
 mod macro_indicator;
 mod media;
 mod news;

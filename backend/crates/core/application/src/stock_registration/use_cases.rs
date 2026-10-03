@@ -220,6 +220,90 @@ mod tests {
     }
 
     #[rstest]
+    #[case::empty_name("", "Synthetic exchange", "name must not be empty")]
+    #[case::whitespace_name("   ", "Synthetic exchange", "name must not be empty")]
+    #[case::empty_exchange("Sample issuer", "", "exchange must not be empty")]
+    #[case::whitespace_exchange("Sample issuer", "   ", "exchange must not be empty")]
+    #[tokio::test]
+    async fn register_rejects_empty_required_fields_before_starting_a_transaction(
+        harness: Harness,
+        #[case] name: &str,
+        #[case] exchange: &str,
+        #[case] expected_error: &str,
+    ) {
+        let mut command = command("KR", "QZ9012");
+        command.name = name.to_owned();
+        command.exchange = exchange.to_owned();
+        let result = harness
+            .use_cases
+            .register(command)
+            .await
+            .map_err(|error| error.to_string());
+        let transaction_count = harness.unit_of_work.begun.lock().await.len();
+        let no_registered_stocks = harness.repository.is_empty().await;
+        let history_count = harness.change_history.entries.lock().await.len();
+
+        assert_eq!(
+            (
+                result,
+                transaction_count,
+                no_registered_stocks,
+                history_count,
+            ),
+            (Err(expected_error.into()), 0, true, 0),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn register_rejects_duplicate_ids_without_committing_or_recording_history(
+        harness: Harness,
+    ) {
+        let first = harness
+            .use_cases
+            .register(command("KR", "QZ9012"))
+            .await
+            .map_err(|error| error.to_string());
+        let duplicate = harness
+            .use_cases
+            .register(command("KR", "QZ9012"))
+            .await
+            .map_err(|error| error.to_string());
+        let stored_stock = harness.repository.find("KR:QZ9012").await;
+        let history_count = harness.change_history.entries.lock().await.len();
+        let committed_count = harness.unit_of_work.committed.lock().await.len();
+        let begun_count = harness.unit_of_work.begun.lock().await.len();
+
+        assert_eq!(
+            (
+                first,
+                duplicate,
+                stored_stock,
+                history_count,
+                committed_count,
+                begun_count,
+            ),
+            (
+                Ok(RegisteredStock {
+                    id: "KR:QZ9012".into(),
+                    name: "Sample issuer".into(),
+                    exchange: "Synthetic exchange".into(),
+                }),
+                Err("stock KR:QZ9012 already exists".into()),
+                Some(NewStockRegistration {
+                    id: ForeignStockId::new("KR", "QZ9012").expect("valid stock ID"),
+                    name: "Sample issuer".into(),
+                    exchange: "Synthetic exchange".into(),
+                    instrument_market: Market::Other,
+                }),
+                1,
+                1,
+                2,
+            ),
+        );
+    }
+
+    #[rstest]
     #[case::japan("JP", "QZ9012", "Japanese stocks must not use a country prefix")]
     #[case::lowercase_code(
         "US",

@@ -8,24 +8,8 @@ use super::super::stock_groups::{
     CreateStockGroupParams, ListStockGroupMembersParams, StockGroupDto,
     StockGroupMemberChangeResult, StockGroupMemberParams, UpdateStockGroupParams,
 };
-use super::super::stock_registration::{RegisterStockParams, RegisterStockResult};
-
 #[tool_router(router = stock_groups_tool_router, vis = "pub(super)")]
 impl StrategyServer {
-    /// 外国株を銘柄マスタに登録する
-    #[tool(
-        name = "register_stock",
-        description = "Register a foreign stock using an ISO 3166-1 alpha-2 country code and exchange code. Japanese stocks are registered by synchronization and cannot be registered here."
-    )]
-    async fn register_stock(
-        &self,
-        Parameters(params): Parameters<RegisterStockParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<RegisterStockResult>, McpError> {
-        self.strategy_scope_from_ctx(&ctx).await?;
-        self.register_stock_inner(params).await.map(Json)
-    }
-
     /// 分類軸のグループを作成する
     #[tool(
         name = "create_stock_group",

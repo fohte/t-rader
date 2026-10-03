@@ -40,7 +40,7 @@ impl StrategyServer {
         self
     }
 
-    async fn invoke<TInput, TOutput>(
+    pub(super) async fn invoke<TInput, TOutput>(
         &self,
         name: &'static str,
         strategy_id: Uuid,

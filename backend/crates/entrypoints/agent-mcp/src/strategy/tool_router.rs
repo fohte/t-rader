@@ -5,6 +5,7 @@
 
 mod predictions;
 mod stock_groups;
+mod stock_registration;
 
 use std::borrow::Cow;
 
@@ -482,6 +483,7 @@ impl StrategyServer {
     fn tool_router() -> ToolRouter<Self> {
         Self::base_tool_router()
             + Self::stock_groups_tool_router()
+            + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
     }
 

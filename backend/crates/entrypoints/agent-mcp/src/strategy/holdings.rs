@@ -187,10 +187,10 @@ mod tests {
         let error = validate_symbol("KR:QZ9012").expect_err("foreign stock is unsupported");
 
         assert_eq!(
-            (error.code, error.message.to_string()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                "only Japanese stocks are supported by this tool".to_owned(),
+            error,
+            rmcp::ErrorData::invalid_params(
+                "only Japanese stocks are supported by this tool",
+                None,
             ),
         );
     }
