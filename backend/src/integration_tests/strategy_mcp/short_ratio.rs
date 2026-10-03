@@ -2,6 +2,7 @@ use chrono::NaiveDate;
 use core_application::short_ratio::ShortRatioRepository;
 use core_domain::short_ratio::ShortRatio;
 use rust_decimal::Decimal;
+use sea_orm::{DatabaseBackend, MockDatabase};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -9,7 +10,7 @@ use crate::testing::insert_test_group_with_sync_source_code;
 
 use super::StrategyServer;
 use super::dto::ReadSectorShortRatioParams;
-use super::tests_common::{build_server, insert_strategy, mock_db_with_strategy};
+use super::tests_common::{build_server, insert_strategy};
 use gateway_postgres::PostgresShortRatioRepository;
 
 fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -37,7 +38,12 @@ fn ratio(date: NaiveDate, sector33_code: &str, values: Option<(&str, &str, &str)
 #[tokio::test]
 async fn rejects_unknown_group_key_through_tool_dispatch() {
     let strategy_id = Uuid::new_v4();
-    let server = build_server(mock_db_with_strategy(strategy_id));
+    let strategy_row =
+        std::collections::BTreeMap::from([("id".to_string(), sea_orm::Value::from(strategy_id))]);
+    let db = MockDatabase::new(DatabaseBackend::Postgres)
+        .append_query_results([vec![strategy_row], vec![]])
+        .into_connection();
+    let server = build_server(db);
 
     let error = server
         .read_sector_short_ratio(
