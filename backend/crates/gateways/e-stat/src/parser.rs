@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
-use scraper::{ElementRef, Html, Selector};
+use scraper::{Html, Selector};
 
-const SOURCE: &str = "e_stat";
+use crate::{SOURCE_NAME, month::last_day_of_month};
+
 const JAPAN_OFFSET_SECONDS: i32 = 9 * 60 * 60;
 const TARGET_STATISTICS: [(&str, &str); 6] = [
     ("00200573", "消費者物価指数"),
@@ -48,7 +49,6 @@ pub(crate) fn parse_release_calendar(
     let row_selector = selector(".stat-list-body > li.stat-list-row")?;
     let date_selector = selector(".stat-announce-keisaiday")?;
     let announcement_selector = selector(".stat-announce-comment")?;
-    let title_selector = selector("a")?;
     let mut events = BTreeMap::new();
     let mut approximate_periods = Vec::new();
 
@@ -67,13 +67,6 @@ pub(crate) fn parse_release_calendar(
         else {
             continue;
         };
-        let _release_title = announcement
-            .select(&title_selector)
-            .next()
-            .map(text_content)
-            .filter(|title| !title.is_empty())
-            .ok_or_else(|| "e-Stat announcement is missing its title".to_owned())?;
-
         let date_element = row
             .select(&date_selector)
             .next()
@@ -91,7 +84,7 @@ pub(crate) fn parse_release_calendar(
                 validate_publication_identifier(external_date, date, time)?;
                 let external_id = format!("{stat_code}:{external_date}");
                 let event = CalendarEvent {
-                    source: SOURCE.to_owned(),
+                    source: SOURCE_NAME.to_owned(),
                     external_id: external_id.clone(),
                     category: CalendarEventCategory::Indicator,
                     country: "JP".to_owned(),
@@ -119,7 +112,7 @@ fn selector(value: &str) -> Result<Selector, String> {
     Selector::parse(value).map_err(|error| format!("invalid e-Stat HTML selector: {error}"))
 }
 
-fn text_content(element: ElementRef<'_>) -> String {
+fn text_content(element: scraper::ElementRef<'_>) -> String {
     element
         .text()
         .map(str::trim)
@@ -166,21 +159,16 @@ fn parse_approximate_period(value: &str, month: NaiveDate) -> Option<Approximate
         .iter()
         .find_map(|prefix| value.strip_prefix(prefix))?;
     let (first_day, last_day) = match suffix {
-        "" | "頃" => (1, days_in_month(month)?),
+        "" | "頃" => (1, last_day_of_month(month)?.day()),
         "上旬" => (1, 10),
         "中旬" => (11, 20),
-        "下旬" => (21, days_in_month(month)?),
+        "下旬" => (21, last_day_of_month(month)?.day()),
         _ => return None,
     };
     Some(ApproximatePeriod {
         from: NaiveDate::from_ymd_opt(month.year(), month.month(), first_day)?,
         to: NaiveDate::from_ymd_opt(month.year(), month.month(), last_day)?,
     })
-}
-
-fn days_in_month(month: NaiveDate) -> Option<u32> {
-    let next_month = month.checked_add_months(chrono::Months::new(1))?;
-    next_month.pred_opt().map(|last_day| last_day.day())
 }
 
 fn validate_publication_identifier(
