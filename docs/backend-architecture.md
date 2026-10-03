@@ -83,7 +83,7 @@ DB を使う統合テストは composition root の crate (`backend`、将来は
 
 entrypoint 間で必要になる小さな型 (`ErrorResponse`、`JsonBody`、`GraphDef` の DTO、`deserialize_nullable_option` など) は各 crate に複製する。DTO はプロトコルごとの表現 (`utoipa`、`schemars`) を持ち、domain 型への変換も各 crate が定義する。
 
-外部サービスから trigger を発火する `POST /api/hooks/{slug}` の handler は現在 `backend/src/handlers/hooks.rs` にあり、entrypoint 分離後は `external-webhook` crate が担う。
+agent から通知を受ける `POST /api/agent-tasks/notifications` は `entrypoint-agent-webhook`、外部サービスから trigger を発火する `POST /api/hooks/{hook_slug}` は `entrypoint-external-webhook` が担う。
 
 ## 集約のユースケース追加
 

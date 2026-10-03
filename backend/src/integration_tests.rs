@@ -1,11 +1,13 @@
 //! 戦略タスクの投入 (5 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
 //! scheduler job による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
 //!
-//! 各コンポーネント単体の挙動は `core_application::strategy_task` /
-//! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
+//! 各コンポーネント単体の挙動は `core_application::strategy_task` のテストで既にカバーしているため、
+//! ここでは経路横断の契約
 //! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
 
+mod agent_webhook;
+mod external_webhook;
 mod mgmt_mcp;
 mod prediction_grading;
 mod trigger;
