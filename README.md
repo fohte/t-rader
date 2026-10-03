@@ -24,7 +24,7 @@ fohte 個人用の日本株投資プラットフォーム。
 
 ### 起動
 
-Graphile Worker 管理 UI は reverse proxy header 認証を設定できます。header 名と照合値の両方を設定するとその header で認証し、両方を空欄にすると loopback で認証なしになります。片方だけ設定した場合は起動に失敗します。
+Graphile Worker 管理 UI は reverse proxy header 認証を設定できます。header 名と照合値の両方を設定するとその header で認証し、両方を空欄にすると認証なしで backend は `127.0.0.1` に bind します。片方だけ設定した場合は起動に失敗します。この loopback 設定で UI を使う場合は backend をホスト上で直接起動してください。Docker Compose の port publish からは UI に到達できません。Docker Compose で使う場合は認証 header の組を設定し、信頼済み proxy を経由してください。
 
 ```bash
 # ツールのインストール
