@@ -5,5 +5,6 @@ pub struct EquityMasterEntry {
     pub name: String,
     pub market: Option<String>,
     pub sector_name: Option<String>,
+    pub sector_code: Option<String>,
     pub product_category: Option<String>,
 }

@@ -48,7 +48,7 @@
 | [public.major_shareholder_documents](public.major_shareholder_documents.md)                 | 7       | EDINET の主要株主書類と順位付き株主情報を保持する。                                                    | BASE TABLE |
 | [public.cross_shareholding_documents](public.cross_shareholding_documents.md)               | 7       | EDINET の政策保有株式に関する提出書類と明細を保持する。                                                | BASE TABLE |
 | [public.group_axis](public.group_axis.md)                                                   | 5       | 銘柄グループを分類する軸を定義する。                                                                   | BASE TABLE |
-| [public.stock_group](public.stock_group.md)                                                 | 5       | 分類軸の中で銘柄をまとめるグループを定義する。                                                         | BASE TABLE |
+| [public.stock_group](public.stock_group.md)                                                 | 6       | 分類軸の中で銘柄をまとめるグループを定義する。                                                         | BASE TABLE |
 | [public.stock_group_member](public.stock_group_member.md)                                   | 3       | 銘柄と銘柄グループの所属関係を保持する。                                                               | BASE TABLE |
 | [public.ingest_run](public.ingest_run.md)                                                   | 7       | データ取り込みジョブの実行履歴と結果を記録する。                                                       | BASE TABLE |
 
@@ -673,6 +673,7 @@ erDiagram
   text key
   text name
   text description
+  text sync_source_code
 }
 "public.stock_group_member" {
   varchar stock_id FK

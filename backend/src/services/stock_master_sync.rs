@@ -26,11 +26,11 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use gateway_jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
-    use gateway_postgres::entities::stock;
+    use gateway_postgres::entities::{group_axis, stock, stock_group};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::NotSet;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::EntityTrait;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     async fn fetch_stock(db: &impl sea_orm::ConnectionTrait, id: &str) -> Option<stock::Model> {
         stock::Entity::find_by_id(id.to_string())
             .one(db)
@@ -39,11 +39,19 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn creates_new_stocks_with_market_and_product_category(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
+    async fn creates_new_stocks_and_synchronizes_group_code(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
+        let axis = group_axis::Entity::insert(group_axis::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            key: Set("sample-jquants-axis".into()),
+            name: Set("Sample synchronized axis".into()),
+            description: Set("Synthetic test axis".into()),
+            sync_source: Set(Some("jquants".into())),
+        })
+        .exec_with_returning(&db)
+        .await
+        .expect("insert group axis");
 
         mock.equities_master()
             .entries(vec![MockEquitiesMasterEntry {
@@ -51,6 +59,7 @@ mod tests {
                 company_name: "架空銘柄",
                 market_name: Some("架空市場"),
                 sector_name: Some("架空業種"),
+                sector_code: Some("1234"),
                 product_category: Some("000"),
             }])
             .ok()
@@ -58,14 +67,28 @@ mod tests {
 
         let stats = run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
         let stock = fetch_stock(&db, "ZZ99").await.expect("stock exists");
+        let group = stock_group::Entity::find()
+            .filter(stock_group::Column::AxisId.eq(axis.id))
+            .filter(stock_group::Column::Key.eq("架空業種"))
+            .one(&db)
+            .await
+            .expect("query group")
+            .expect("group exists");
 
         assert_eq!(
-            (stats, stock.name, stock.market, stock.product_category,),
+            (
+                stats,
+                stock.name,
+                stock.market,
+                stock.product_category,
+                group.sync_source_code,
+            ),
             (
                 SyncStats { stocks_upserted: 1 },
                 "架空銘柄".to_string(),
                 Some("架空市場".to_string()),
                 Some("000".to_string()),
+                Some("1234".to_string()),
             )
         );
     }
@@ -95,6 +118,7 @@ mod tests {
                 company_name: "架空銘柄",
                 market_name: Some("架空市場"),
                 sector_name: Some("架空業種"),
+                sector_code: Some("1234"),
                 product_category: Some("000"),
             }])
             .ok()

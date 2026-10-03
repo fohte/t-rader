@@ -87,7 +87,11 @@ async fn sync_axis_sector_groups(
     entries: &[EquityMasterEntry],
     sector_names: &HashSet<&str>,
 ) -> Result<(), EquityMasterRepositoryError> {
-    upsert_sector_groups(transaction, axis_id, sector_names).await?;
+    let sector_codes = entries
+        .iter()
+        .filter_map(|entry| Some((entry.sector_name.as_deref()?, entry.sector_code.as_deref()?)))
+        .collect::<HashMap<_, _>>();
+    upsert_sector_groups(transaction, axis_id, sector_names, &sector_codes).await?;
 
     let groups = stock_group::Entity::find()
         .filter(stock_group::Column::AxisId.eq(axis_id))
@@ -120,6 +124,7 @@ async fn upsert_sector_groups(
     transaction: &sea_orm::DatabaseTransaction,
     axis_id: Uuid,
     sector_names: &HashSet<&str>,
+    sector_codes: &HashMap<&str, &str>,
 ) -> Result<(), EquityMasterRepositoryError> {
     if sector_names.is_empty() {
         return Ok(());
@@ -131,11 +136,13 @@ async fn upsert_sector_groups(
         key: Set((*name).to_owned()),
         name: Set((*name).to_owned()),
         description: Set(None),
+        sync_source_code: Set(sector_codes.get(name).map(|code| (*code).to_owned())),
     });
     stock_group::Entity::insert_many(groups)
         .on_conflict(
             OnConflict::columns([stock_group::Column::AxisId, stock_group::Column::Key])
                 .update_column(stock_group::Column::Name)
+                .update_column(stock_group::Column::SyncSourceCode)
                 .to_owned(),
         )
         .exec_without_returning(transaction)
@@ -230,15 +237,16 @@ mod tests {
     use crate::entities::{group_axis, stock_group, stock_group_member};
     use crate::{DatabaseHandle, PostgresUnitOfWork};
 
-    type GroupSnapshot = Vec<(String, String, String)>;
+    type GroupSnapshot = Vec<(String, String, String, Option<String>)>;
     type MemberSnapshot = Vec<(String, String, String)>;
 
-    fn entry(id: &str, sector_name: Option<&str>) -> EquityMasterEntry {
+    fn entry(id: &str, sector_name: Option<&str>, sector_code: Option<&str>) -> EquityMasterEntry {
         EquityMasterEntry {
             id: id.to_owned(),
             name: format!("架空銘柄{id}"),
             market: Some("架空市場".to_owned()),
             sector_name: sector_name.map(str::to_owned),
+            sector_code: sector_code.map(str::to_owned),
             product_category: Some("000".to_owned()),
         }
     }
@@ -269,6 +277,7 @@ mod tests {
             key: Set(key.to_owned()),
             name: Set(name.to_owned()),
             description: Set(None),
+            sync_source_code: Set(None),
         })
         .exec_with_returning(db)
         .await
@@ -339,6 +348,7 @@ mod tests {
                         .clone(),
                     group.key,
                     group.name,
+                    group.sync_source_code,
                 )
             })
             .collect::<GroupSnapshot>();
@@ -362,8 +372,17 @@ mod tests {
         (group_snapshot, member_snapshot)
     }
 
-    fn expected_group(axis: &str, key: &str) -> (String, String, String) {
-        (axis.to_owned(), key.to_owned(), key.to_owned())
+    fn expected_group(
+        axis: &str,
+        key: &str,
+        source_code: Option<&str>,
+    ) -> (String, String, String, Option<String>) {
+        (
+            axis.to_owned(),
+            key.to_owned(),
+            key.to_owned(),
+            source_code.map(str::to_owned),
+        )
     }
 
     fn expected_member(stock: &str, axis: &str, group: &str) -> (String, String, String) {
@@ -384,10 +403,10 @@ mod tests {
         insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
         insert_axis(&db, "synthetic-axis-b", Some("jquants")).await;
         let entries = [
-            entry("ZZ91", Some("架空業種A")),
-            entry("ZZ92", Some("架空業種B")),
-            entry("ZZ93", None),
-            entry("ZZ94", Some("架空業種A")),
+            entry("ZZ91", Some("架空業種A"), Some("1234")),
+            entry("ZZ92", Some("架空業種B"), Some("5678")),
+            entry("ZZ93", None, None),
+            entry("ZZ94", Some("架空業種A"), Some("1234")),
         ];
 
         let count = upsert(&db, &entries).await;
@@ -399,10 +418,10 @@ mod tests {
                 4,
                 expected_snapshot(
                     vec![
-                        expected_group("synthetic-axis-a", "架空業種A"),
-                        expected_group("synthetic-axis-a", "架空業種B"),
-                        expected_group("synthetic-axis-b", "架空業種A"),
-                        expected_group("synthetic-axis-b", "架空業種B"),
+                        expected_group("synthetic-axis-a", "架空業種A", Some("1234")),
+                        expected_group("synthetic-axis-a", "架空業種B", Some("5678")),
+                        expected_group("synthetic-axis-b", "架空業種A", Some("1234")),
+                        expected_group("synthetic-axis-b", "架空業種B", Some("5678")),
                     ],
                     vec![
                         expected_member("ZZ91", "synthetic-axis-a", "架空業種A"),
@@ -420,7 +439,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn repeated_sync_leaves_groups_and_members_unchanged(db: DatabaseHandle) {
         insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
-        let entries = [entry("ZZ91", Some("架空業種A"))];
+        let entries = [entry("ZZ91", Some("架空業種A"), Some("1234"))];
 
         let initial_count = upsert(&db, &entries).await;
         let before_repeat = snapshot(&db).await;
@@ -428,7 +447,11 @@ mod tests {
         let after_repeat = snapshot(&db).await;
 
         let expected = expected_snapshot(
-            vec![expected_group("synthetic-axis-a", "架空業種A")],
+            vec![expected_group(
+                "synthetic-axis-a",
+                "架空業種A",
+                Some("1234"),
+            )],
             vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種A")],
         );
         assert_eq!(
@@ -438,15 +461,48 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn sync_updates_source_code_for_an_existing_group(db: DatabaseHandle) {
+        insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
+        let before_count = upsert(&db, &[entry("ZZ91", Some("架空業種A"), Some("1234"))]).await;
+        let before = snapshot(&db).await;
+        let after_count = upsert(&db, &[entry("ZZ91", Some("架空業種A"), Some("5678"))]).await;
+        let after = snapshot(&db).await;
+
+        assert_eq!(
+            (before_count, after_count, before, after),
+            (
+                1,
+                1,
+                expected_snapshot(
+                    vec![expected_group(
+                        "synthetic-axis-a",
+                        "架空業種A",
+                        Some("1234")
+                    )],
+                    vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種A",)],
+                ),
+                expected_snapshot(
+                    vec![expected_group(
+                        "synthetic-axis-a",
+                        "架空業種A",
+                        Some("5678")
+                    )],
+                    vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種A",)],
+                ),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn sync_moves_member_when_sector_changes_and_removes_when_sector_is_none(
         db: DatabaseHandle,
     ) {
         insert_axis(&db, "synthetic-axis-a", Some("jquants")).await;
-        upsert(&db, &[entry("ZZ91", Some("架空業種A"))]).await;
+        upsert(&db, &[entry("ZZ91", Some("架空業種A"), Some("1234"))]).await;
 
-        let move_count = upsert(&db, &[entry("ZZ91", Some("架空業種B"))]).await;
+        let move_count = upsert(&db, &[entry("ZZ91", Some("架空業種B"), Some("5678"))]).await;
         let after_move = snapshot(&db).await;
-        let removal_count = upsert(&db, &[entry("ZZ91", None)]).await;
+        let removal_count = upsert(&db, &[entry("ZZ91", None, None)]).await;
         let after_removal = snapshot(&db).await;
 
         assert_eq!(
@@ -455,16 +511,16 @@ mod tests {
                 1,
                 expected_snapshot(
                     vec![
-                        expected_group("synthetic-axis-a", "架空業種A"),
-                        expected_group("synthetic-axis-a", "架空業種B"),
+                        expected_group("synthetic-axis-a", "架空業種A", Some("1234")),
+                        expected_group("synthetic-axis-a", "架空業種B", Some("5678")),
                     ],
                     vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種B",)],
                 ),
                 1,
                 expected_snapshot(
                     vec![
-                        expected_group("synthetic-axis-a", "架空業種A"),
-                        expected_group("synthetic-axis-a", "架空業種B"),
+                        expected_group("synthetic-axis-a", "架空業種A", Some("1234")),
+                        expected_group("synthetic-axis-a", "架空業種B", Some("5678")),
                     ],
                     vec![],
                 ),
@@ -478,7 +534,7 @@ mod tests {
         let manual_axis_id = insert_axis(&db, "synthetic-manual-axis", None).await;
         let other_axis_id =
             insert_axis(&db, "synthetic-other-axis", Some("synthetic-source")).await;
-        upsert(&db, &[entry("ZZ92", Some("架空業種A"))]).await;
+        upsert(&db, &[entry("ZZ92", Some("架空業種A"), Some("1234"))]).await;
 
         let manual_group_id =
             insert_group(&db, manual_axis_id, "架空手動分類", "架空手動分類").await;
@@ -486,7 +542,7 @@ mod tests {
         insert_membership(&db, manual_group_id, "ZZ92").await;
         insert_membership(&db, other_group_id, "ZZ92").await;
 
-        let count = upsert(&db, &[entry("ZZ92", Some("架空業種B"))]).await;
+        let count = upsert(&db, &[entry("ZZ92", Some("架空業種B"), Some("5678"))]).await;
         let actual = snapshot(&db).await;
 
         assert_eq!(
@@ -495,10 +551,10 @@ mod tests {
                 1,
                 expected_snapshot(
                     vec![
-                        expected_group("synthetic-axis-a", "架空業種A"),
-                        expected_group("synthetic-axis-a", "架空業種B"),
-                        expected_group("synthetic-manual-axis", "架空手動分類"),
-                        expected_group("synthetic-other-axis", "架空外部分類"),
+                        expected_group("synthetic-axis-a", "架空業種A", Some("1234")),
+                        expected_group("synthetic-axis-a", "架空業種B", Some("5678")),
+                        expected_group("synthetic-manual-axis", "架空手動分類", None),
+                        expected_group("synthetic-other-axis", "架空外部分類", None),
                     ],
                     vec![
                         expected_member("ZZ92", "synthetic-axis-a", "架空業種B"),
@@ -515,7 +571,7 @@ mod tests {
         let manual_axis_id = insert_axis(&db, "synthetic-manual-axis", None).await;
         let other_axis_id =
             insert_axis(&db, "synthetic-other-axis", Some("synthetic-source")).await;
-        let initial_entries = [entry("ZZ94", Some("架空業種A"))];
+        let initial_entries = [entry("ZZ94", Some("架空業種A"), Some("1234"))];
         let initial_count = upsert(&db, &initial_entries).await;
 
         let manual_group_id =
@@ -524,14 +580,14 @@ mod tests {
         insert_membership(&db, manual_group_id, "ZZ94").await;
         insert_membership(&db, other_group_id, "ZZ94").await;
 
-        let updated_entries = [entry("ZZ94", Some("架空業種B"))];
+        let updated_entries = [entry("ZZ94", Some("架空業種B"), Some("5678"))];
         let updated_count = upsert(&db, &updated_entries).await;
 
         let actual = snapshot(&db).await;
         let expected = (
             vec![
-                expected_group("synthetic-manual-axis", "架空手動分類"),
-                expected_group("synthetic-other-axis", "架空外部分類"),
+                expected_group("synthetic-manual-axis", "架空手動分類", None),
+                expected_group("synthetic-other-axis", "架空外部分類", None),
             ],
             vec![
                 expected_member("ZZ94", "synthetic-manual-axis", "架空手動分類"),
