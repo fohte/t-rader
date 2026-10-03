@@ -7,6 +7,16 @@ use super::types::{StrategyTask, StrategyTaskStep, TaskListQuery, TaskStatusView
 use super::{StrategyTaskRepositoryError, StrategyTaskUseCases};
 
 impl StrategyTaskUseCases {
+    pub async fn find_strategy_id_by_execution_step_id(
+        &self,
+        execution_step_id: Uuid,
+    ) -> Result<Option<Uuid>, GetTaskError> {
+        self.repository
+            .find_strategy_id_by_execution_step_id(execution_step_id)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn list(&self, query: TaskListQuery) -> Result<Vec<TaskStatusView>, ListTasksError> {
         self.repository
             .list(query)

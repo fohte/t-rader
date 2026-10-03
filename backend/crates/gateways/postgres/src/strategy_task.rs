@@ -152,6 +152,24 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             .map_err(repository_error)
     }
 
+    async fn find_strategy_id_by_execution_step_id(
+        &self,
+        execution_step_id: Uuid,
+    ) -> Result<Option<Uuid>, StrategyTaskRepositoryError> {
+        let Some(step) = strategy_task_step::Entity::find_by_id(execution_step_id)
+            .one(&self.db)
+            .await
+            .map_err(repository_error)?
+        else {
+            return Ok(None);
+        };
+        strategy_task::Entity::find_by_id(step.task_id)
+            .one(&self.db)
+            .await
+            .map(|task| task.map(|task| task.strategy_id))
+            .map_err(repository_error)
+    }
+
     async fn list(
         &self,
         query: TaskListQuery,

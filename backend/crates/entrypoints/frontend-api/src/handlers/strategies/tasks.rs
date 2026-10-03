@@ -51,7 +51,7 @@ pub(crate) fn map_list_task_error(error: ListTasksError) -> AppError {
     }
 }
 
-fn map_get_task_error(error: GetTaskError) -> AppError {
+pub(crate) fn map_get_task_error(error: GetTaskError) -> AppError {
     match error {
         GetTaskError::NotFound(id) => AppError::NotFound(format!("strategy task {id} not found")),
         GetTaskError::StrategyMismatch { task_id, .. } => {
