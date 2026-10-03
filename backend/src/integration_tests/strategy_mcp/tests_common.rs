@@ -21,11 +21,20 @@ use super::dto::{
 };
 use super::{StrategyServer, ToolOutput};
 
+type MockQueryResult = Vec<std::collections::BTreeMap<String, sea_orm::Value>>;
+
 pub(super) fn mock_db_with_strategy(strategy_id: Uuid) -> DatabaseConnection {
+    mock_db_with_strategy_and_query_results(strategy_id, [])
+}
+
+pub(super) fn mock_db_with_strategy_and_query_results(
+    strategy_id: Uuid,
+    additional_query_results: impl IntoIterator<Item = MockQueryResult>,
+) -> DatabaseConnection {
     let row =
         std::collections::BTreeMap::from([("id".to_string(), sea_orm::Value::from(strategy_id))]);
     MockDatabase::new(DatabaseBackend::Postgres)
-        .append_query_results([vec![row]])
+        .append_query_results(std::iter::once(vec![row]).chain(additional_query_results))
         .into_connection()
 }
 
