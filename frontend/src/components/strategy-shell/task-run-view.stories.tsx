@@ -73,7 +73,7 @@ export const Running: Story = {
 }
 
 export const Completed: Story = {
-  name: 'shows a completed task with its generated notes.',
+  name: 'shows a completed task with created and updated notes.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({

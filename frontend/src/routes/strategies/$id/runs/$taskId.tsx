@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import {
   parseAgentGraphPhases,
@@ -9,6 +9,10 @@ import { TaskRunView } from '#components/strategy-shell/task-run-view'
 import { $api } from '#lib/api/client'
 
 const POLL_INTERVAL_MS = 2000
+
+function isTaskActive(phase: string | undefined): boolean {
+  return phase === 'pending' || phase === 'running'
+}
 
 export const Route = createFileRoute('/strategies/$id/runs/$taskId')({
   component: TaskRunPage,
@@ -24,13 +28,12 @@ function TaskRunPage() {
     {
       refetchInterval: (query) => {
         const phase = query.state.data?.phase
-        return phase === 'pending' || phase === 'running'
-          ? POLL_INTERVAL_MS
-          : false
+        return isTaskActive(phase) ? POLL_INTERVAL_MS : false
       },
     },
   )
   const task = taskQuery.data
+  const taskPhase = task?.phase
   const purpose = task?.purpose ?? null
 
   const purposeAgentGraphQuery = $api.useQuery(
@@ -55,11 +58,14 @@ function TaskRunPage() {
     {
       enabled: task != null,
       refetchInterval: () =>
-        task?.phase === 'pending' || task?.phase === 'running'
-          ? POLL_INTERVAL_MS
-          : false,
+        isTaskActive(taskPhase) ? POLL_INTERVAL_MS : false,
     },
   )
+  useEffect(() => {
+    if (taskPhase == null || isTaskActive(taskPhase)) return
+    void notesQuery.refetch()
+  }, [taskPhase, notesQuery.refetch])
+
   const generatedNotesCount = notesQuery.data?.length ?? 0
 
   return (

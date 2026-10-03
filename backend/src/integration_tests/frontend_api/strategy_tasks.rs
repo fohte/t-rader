@@ -468,6 +468,29 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn list_strategy_task_notes_strategy_mismatch_returns_404(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_a = insert_test_strategy(&db, "strategy-a").await;
+        let strategy_b = insert_test_strategy(&db, "strategy-b").await;
+        let created_at = chrono::Utc::now().fixed_offset();
+        let task_id = insert_test_strategy_task(&db, strategy_a, "inspect", None, created_at).await;
+
+        let response = server
+            .get(&format!(
+                "/api/strategies/{strategy_b}/tasks/{task_id}/notes"
+            ))
+            .await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("strategy task {task_id} not found") })),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn list_strategy_tasks_returns_tasks_newest_first(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "x").await;

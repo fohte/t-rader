@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
 import {
@@ -23,6 +24,7 @@ interface CurrentTask {
 export function FloatingChat(): React.ReactElement {
   const { open, seed: storeSeed } = useFloatingChat()
   const strategyId = useCurrentStrategyId() ?? null
+  const queryClient = useQueryClient()
 
   const [seed, setSeed] = useState<string | null>(null)
   const [input, setInput] = useState('')
@@ -78,6 +80,13 @@ export function FloatingChat(): React.ReactElement {
   const phase = taskQuery.data?.phase ?? null
   const isCompleted = phase === 'completed'
 
+  useEffect(() => {
+    if (!isCompleted) return
+    void queryClient.invalidateQueries({
+      queryKey: $api.queryOptions('get', '/api/notes').queryKey,
+    })
+  }, [isCompleted, queryClient])
+
   const taskNotesQuery = $api.useQuery(
     'get',
     '/api/strategies/{id}/tasks/{task_id}/notes',
@@ -96,9 +105,11 @@ export function FloatingChat(): React.ReactElement {
 
   const generatedNotes = useMemo<FloatingChatNote[]>(() => {
     if (!isCompleted || currentTask == null) return []
-    return [...(taskNotesQuery.data ?? [])]
-      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-      .map((n) => ({ id: n.id, title: n.title, updated_at: n.updated_at }))
+    return (taskNotesQuery.data ?? []).map((n) => ({
+      id: n.id,
+      title: n.title,
+      updated_at: n.updated_at,
+    }))
   }, [isCompleted, currentTask, taskNotesQuery.data])
 
   const status = computeStatus({
