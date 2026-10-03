@@ -1048,6 +1048,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/tasks/{task_id}/notes': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略タスクが書いたノートを現行バージョンで返す。 */
+    get: operations['list_strategy_task_notes']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/triggers': {
     parameters: {
       query?: never
@@ -6558,6 +6575,55 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['StrategyTaskStatusResponse']
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_task_notes: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note'][]
         }
       }
       /** @description パスパラメータが不正 */

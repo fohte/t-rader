@@ -126,6 +126,13 @@ impl NoteReadQuery for FakeNoteReadQuery {
         })
     }
 
+    async fn list_notes_written_by_task(
+        &self,
+        _task_id: Uuid,
+    ) -> Result<Vec<super::types::NoteSnapshot>, NoteReadQueryError> {
+        Ok(Vec::new())
+    }
+
     async fn find_links_from_version(
         &self,
         _version_id: Uuid,

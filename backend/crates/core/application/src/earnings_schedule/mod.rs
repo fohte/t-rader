@@ -7,3 +7,5 @@ pub use repository::{
     EarningsScheduleRepository, EarningsScheduleRepositoryError, SharedEarningsScheduleRepository,
 };
 pub use use_cases::{EarningsScheduleIngestStats, EarningsScheduleUseCases};
+
+pub const JQUANTS_EARNINGS_SOURCE: &str = "jquants";

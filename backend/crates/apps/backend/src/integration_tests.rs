@@ -25,7 +25,8 @@ use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
-    insert_test_hook_trigger, insert_test_strategy,
+    insert_test_hook_trigger, insert_test_strategy, insert_test_strategy_task_step,
+    set_test_note_version_execution_id,
 };
 use core_application::agent_task_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
@@ -173,6 +174,9 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .await
         .unwrap()
         .unwrap();
+    let execution_step_id = Uuid::from_u128(605);
+    insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
+    set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
     let res = server
         .post(&format!(
             "/api/notes/{note_id}/versions/{}/reject",
@@ -184,6 +188,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
 
     // 5 経路すべてが StrategyTaskUseCases を通って strategy_task 行を作ることを source 別に検証する。
     let mut rows: Vec<(String, String, StrategyTaskPhase)> = strategy_task::Entity::find()
+        .filter(strategy_task::Column::Source.ne("sample"))
         .filter(strategy_task::Column::StrategyId.eq(strategy_id))
         .all(&db)
         .await

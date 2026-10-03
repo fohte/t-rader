@@ -38,37 +38,17 @@ use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 use tokio::sync::watch;
 
+mod admin_ui;
+mod logging;
+mod runtime;
+mod signals;
 mod startup;
 
-use startup::{StartupError, jquants_config_from_env, required_redis_url};
-
-const DEFAULT_LOG_FILTER: &str = "info,sqlx=warn";
-
-fn default_log_filter() -> tracing_subscriber::EnvFilter {
-    tracing_subscriber::EnvFilter::new(DEFAULT_LOG_FILTER)
-}
-
-async fn wait_for_shutdown(mut receiver: watch::Receiver<bool>) {
-    let _ = receiver.wait_for(|shutdown| *shutdown).await;
-}
-
-async fn wait_for_os_shutdown_signal() -> Result<(), std::io::Error> {
-    let ctrl_c = tokio::signal::ctrl_c();
-
-    #[cfg(unix)]
-    {
-        use tokio::signal::unix::{SignalKind, signal};
-
-        let mut terminate = signal(SignalKind::terminate())?;
-        tokio::select! {
-            result = ctrl_c => result,
-            _ = terminate.recv() => Ok(()),
-        }
-    }
-
-    #[cfg(not(unix))]
-    ctrl_c.await
-}
+use logging::default_log_filter;
+use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
+use startup::{
+    StartupError, jquants_config_from_env, required_redis_url, worker_admin_ui_settings_from_env,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {
@@ -131,6 +111,12 @@ async fn main() -> Result<(), StartupError> {
         tracing::info!("migration completed, exiting (--migrate-only)");
         return Ok(());
     }
+
+    let admin_ui_settings = if cli.run_mode.starts_worker() {
+        Some(worker_admin_ui_settings_from_env()?)
+    } else {
+        None
+    };
 
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
 
@@ -399,6 +385,12 @@ async fn main() -> Result<(), StartupError> {
         None
     };
 
+    let admin_server_run = if let Some(settings) = admin_ui_settings {
+        Some(admin_ui::server(settings, &db, shutdown_rx.clone()).await?)
+    } else {
+        None
+    };
+
     let server_run: Option<BoxFuture<'static, Result<(), std::io::Error>>> = if let Some(app) = app
     {
         let port: u16 = std::env::var("BACKEND_PORT")
@@ -424,141 +416,24 @@ async fn main() -> Result<(), StartupError> {
         None
     };
 
-    match (worker, server_run) {
-        (Some(worker), Some(mut server_run)) => {
-            let mut worker_run = Box::pin(worker.run());
-
-            // 両方を起動した場合は、片方の終了時にもう片方も停止する。
-            tokio::select! {
-                result = &mut worker_run => {
-                    let _ = shutdown_tx.send(true);
-                    let worker_result = result
-                        .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")));
-                    let server_result = server_run
-                        .await
-                        .map_err(|error| StartupError::Runtime(format!("server error: {error}")));
-                    worker_result?;
-                    server_result
-                }
-                result = &mut server_run => {
-                    let _ = shutdown_tx.send(true);
-                    let server_result = result
-                        .map_err(|error| StartupError::Runtime(format!("server error: {error}")));
-                    let worker_result = worker_run
-                        .await
-                        .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")));
-                    server_result?;
-                    worker_result
-                }
-            }
-        }
-        (Some(worker), None) => worker
-            .run()
-            .await
-            .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}"))),
-        (None, Some(server_run)) => server_run
-            .await
-            .map_err(|error| StartupError::Runtime(format!("server error: {error}"))),
-        // RunMode の追加時に有効化条件が漏れた場合も、無言で終了しないようにする。
-        (None, None) => Err(StartupError::Config(format!(
-            "backend runtime setup is incomplete for run mode {:?}",
-            cli.run_mode
-        ))),
+    let mut run_futures: Vec<BoxFuture<'static, Result<(), StartupError>>> = Vec::new();
+    if let Some(worker) = worker {
+        run_futures.push(Box::pin(async move {
+            worker
+                .run()
+                .await
+                .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")))
+        }));
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::{self, Write};
-    use std::sync::{Arc, Mutex};
-    use std::time::Duration;
-
-    use tokio::time::timeout;
-
-    use super::*;
-
-    #[derive(Clone)]
-    struct LogBuffer(Arc<Mutex<Vec<u8>>>);
-
-    struct LogBufferWriter(Arc<Mutex<Vec<u8>>>);
-
-    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogBuffer {
-        type Writer = LogBufferWriter;
-
-        fn make_writer(&'a self) -> Self::Writer {
-            LogBufferWriter(Arc::clone(&self.0))
-        }
+    if let Some(server_run) = server_run {
+        run_futures.push(Box::pin(async move {
+            server_run
+                .await
+                .map_err(|error| StartupError::Runtime(format!("server error: {error}")))
+        }));
     }
-
-    impl Write for LogBufferWriter {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.0
-                .lock()
-                .map_err(|_| io::Error::other("log buffer lock was poisoned"))?
-                .extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
+    if let Some(admin_server_run) = admin_server_run {
+        run_futures.push(admin_server_run);
     }
-
-    fn emitted_logs(filter: tracing_subscriber::EnvFilter) -> String {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .without_time()
-            .with_ansi(false)
-            .with_writer(LogBuffer(Arc::clone(&buffer)))
-            .finish();
-
-        tracing::subscriber::with_default(subscriber, || {
-            tracing::info!(target: "sqlx::query", "query info");
-            tracing::warn!(target: "sqlx::query", "query warning");
-            tracing::info!(target: "backend::test", "application info");
-        });
-
-        let output = buffer
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        String::from_utf8_lossy(&output).into_owned()
-    }
-
-    #[test]
-    fn test_default_log_filter_suppresses_sqlx_info_and_keeps_warnings() {
-        assert_eq!(
-            emitted_logs(default_log_filter()),
-            indoc::indoc!(
-                "\
-                \x20WARN sqlx::query: query warning
-                \x20INFO backend::test: application info
-                "
-            ),
-        );
-    }
-
-    #[tokio::test]
-    async fn shutdown_signal_reaches_worker_and_server_waiters() {
-        let (sender, receiver) = watch::channel(false);
-        let mut worker_waiter = Box::pin(wait_for_shutdown(receiver.clone()));
-        let mut server_waiter = Box::pin(wait_for_shutdown(receiver));
-        let waiters_are_pending = tokio::select! {
-            biased;
-            _ = &mut worker_waiter => false,
-            _ = &mut server_waiter => false,
-            _ = tokio::task::yield_now() => true,
-        };
-        let signal_sent = sender.send(true).is_ok();
-        let waiters_completed = timeout(Duration::from_secs(1), async {
-            tokio::join!(worker_waiter, server_waiter);
-        })
-        .await
-        .is_ok();
-
-        assert_eq!(
-            (waiters_are_pending, signal_sent, waiters_completed),
-            (true, true, true)
-        );
-    }
+    runtime::supervise(run_futures, shutdown_tx).await
 }

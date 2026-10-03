@@ -7,6 +7,8 @@ services:
     working_dir: /app/backend
     command: cargo watch -x 'run -p backend'
     env_file:
+      - path: .env
+        required: true
       - path: .env.local
         required: false
     environment:
@@ -15,6 +17,7 @@ services:
       CARGO_HOME: /usr/local/cargo
     ports:
       - '127.0.0.1::3000'
+      - '127.0.0.1::3001'
     volumes:
       - .:/app
       - cargo_home:/usr/local/cargo

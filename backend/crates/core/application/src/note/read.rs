@@ -41,6 +41,13 @@ impl NoteReadUseCases {
         Ok(self.query.list_notes(query).await?)
     }
 
+    pub async fn list_notes_written_by_task(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<NoteSnapshot>, NoteReadUseCaseError> {
+        Ok(self.query.list_notes_written_by_task(task_id).await?)
+    }
+
     pub async fn get_note(
         &self,
         note_id: Uuid,
@@ -72,13 +79,6 @@ impl NoteReadUseCases {
             version,
             created_by_kind,
         })
-    }
-
-    pub async fn get_note_strategy_id(
-        &self,
-        note_id: Uuid,
-    ) -> Result<Option<Uuid>, NoteReadUseCaseError> {
-        Ok(self.require_note(note_id).await?.strategy_id)
     }
 
     pub async fn list_note_versions(

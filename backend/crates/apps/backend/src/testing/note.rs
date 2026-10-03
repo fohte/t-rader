@@ -5,6 +5,7 @@ use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::note_version;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
+use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
@@ -113,6 +114,22 @@ pub async fn insert_test_note_with_execution_id(
         },
     )
     .await
+}
+
+pub async fn set_test_note_version_execution_id(
+    db: &DatabaseHandle,
+    version_id: Uuid,
+    execution_step_id: Uuid,
+) {
+    note_version::Entity::update_many()
+        .col_expr(
+            note_version::Column::ExecutionId,
+            Expr::value(Some(execution_step_id.to_string())),
+        )
+        .filter(note_version::Column::Id.eq(version_id))
+        .exec(db)
+        .await
+        .expect("set test note version execution ID");
 }
 
 async fn insert_test_note_with_options(db: &DatabaseHandle, options: TestNoteOptions<'_>) -> Uuid {

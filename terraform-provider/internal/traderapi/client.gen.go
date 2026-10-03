@@ -19,6 +19,30 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for Layout.
+const (
+	Chain   Layout = "chain"
+	Flow    Layout = "flow"
+	Scatter Layout = "scatter"
+	Tree    Layout = "tree"
+)
+
+// Valid indicates whether the value is a known member of the Layout enum.
+func (e Layout) Valid() bool {
+	switch e {
+	case Chain:
+		return true
+	case Flow:
+		return true
+	case Scatter:
+		return true
+	case Tree:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TriggerKind.
 const (
 	Cron TriggerKind = "cron"
@@ -167,6 +191,48 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// GraphDef defines model for GraphDef.
+type GraphDef struct {
+	Edges  []GraphEdge               `json:"edges"`
+	Id     string                    `json:"id"`
+	Layout Layout                    `json:"layout"`
+	Nodes  []GraphNode               `json:"nodes"`
+	Title  nullable.Nullable[string] `json:"title,omitempty"`
+}
+
+// GraphEdge defines model for GraphEdge.
+type GraphEdge struct {
+	// Cite `value` の出所 (自由テキスト)
+	Cite   nullable.Nullable[string] `json:"cite,omitempty"`
+	Label  nullable.Nullable[string] `json:"label,omitempty"`
+	Source string                    `json:"source"`
+	Target string                    `json:"target"`
+
+	// Value 線の太さ。指定するなら `cite` も必須
+	Value nullable.Nullable[float64] `json:"value,omitempty"`
+}
+
+// GraphNode defines model for GraphNode.
+type GraphNode struct {
+	// Cite `value` の出所 (自由テキスト)
+	Cite  nullable.Nullable[string] `json:"cite,omitempty"`
+	Id    string                    `json:"id"`
+	Label string                    `json:"label"`
+
+	// Parent grouping 先ノードの id
+	Parent nullable.Nullable[string] `json:"parent,omitempty"`
+
+	// Ref 一級参照型トークン (例: "stock:demo-code" / "group:demo-axis/demo-group")
+	Ref nullable.Nullable[string] `json:"ref,omitempty"`
+
+	// Value ノードサイズ / 棒の高さ。指定するなら `cite` も必須
+	Value nullable.Nullable[float64] `json:"value,omitempty"`
+
+	// X `layout = scatter` のときだけ使う指標値 (px ではない)
+	X nullable.Nullable[float64] `json:"x,omitempty"`
+	Y nullable.Nullable[float64] `json:"y,omitempty"`
+}
+
 // GroupAxis defines model for GroupAxis.
 type GroupAxis struct {
 	Description string                    `json:"description"`
@@ -201,6 +267,30 @@ type HookResponse struct {
 type InvestableAmountResponse struct {
 	AmountJpy   nullable.Nullable[float64]   `json:"amount_jpy,omitempty"`
 	EffectiveAt nullable.Nullable[time.Time] `json:"effective_at,omitempty"`
+}
+
+// Layout defines model for Layout.
+type Layout string
+
+// Note defines model for Note.
+type Note struct {
+	BodyMd          string                                `json:"body_md"`
+	CreatedAt       time.Time                             `json:"created_at"`
+	CreatedByKind   string                                `json:"created_by_kind"`
+	ExecutionId     nullable.Nullable[string]             `json:"execution_id,omitempty"`
+	FrontmatterJson Value                                 `json:"frontmatter_json"`
+	GraphsJson      []GraphDef                            `json:"graphs_json"`
+	Id              openapi_types.UUID                    `json:"id"`
+	IsCurrent       bool                                  `json:"is_current"`
+	Kind            nullable.Nullable[string]             `json:"kind,omitempty"`
+	Status          string                                `json:"status"`
+	StrategyId      nullable.Nullable[openapi_types.UUID] `json:"strategy_id,omitempty"`
+	Title           string                                `json:"title"`
+	Trigger         nullable.Nullable[string]             `json:"trigger,omitempty"`
+	TriggerLabel    nullable.Nullable[string]             `json:"trigger_label,omitempty"`
+	UpdatedAt       time.Time                             `json:"updated_at"`
+	VersionId       openapi_types.UUID                    `json:"version_id"`
+	VersionNo       int32                                 `json:"version_no"`
 }
 
 // NoteKind defines model for NoteKind.
@@ -1046,6 +1136,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/strategies/{id}/tasks/{task_id} (the `GetStrategyTask` operationId).
 	GetStrategyTask(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStrategyTaskNotes 戦略タスクが書いたノートを現行バージョンで返す。
+	//
+	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/notes (the `ListStrategyTaskNotes` operationId).
+	ListStrategyTaskNotes(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListStrategyTriggers 戦略の trigger 一覧
 	//
@@ -2261,6 +2356,21 @@ func (c *OpenAPIClient) ListStrategyTasks(ctx context.Context, id openapi_types.
 // Corresponds with GET /api/strategies/{id}/tasks/{task_id} (the `GetStrategyTask` operationId).
 func (c *OpenAPIClient) GetStrategyTask(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetStrategyTaskRequest(c.Server, id, taskId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListStrategyTaskNotes 戦略タスクが書いたノートを現行バージョンで返す。
+//
+// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/notes (the `ListStrategyTaskNotes` operationId).
+func (c *OpenAPIClient) ListStrategyTaskNotes(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStrategyTaskNotesRequest(c.Server, id, taskId)
 	if err != nil {
 		return nil, err
 	}
@@ -4313,6 +4423,47 @@ func NewGetStrategyTaskRequest(server string, id openapi_types.UUID, taskId open
 	return req, nil
 }
 
+// NewListStrategyTaskNotesRequest constructs an http.Request for the ListStrategyTaskNotes method
+func NewListStrategyTaskNotesRequest(server string, id openapi_types.UUID, taskId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "task_id", taskId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/strategies/%s/tasks/%s/notes", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListStrategyTriggersRequest constructs an http.Request for the ListStrategyTriggers method
 func NewListStrategyTriggersRequest(server string, id openapi_types.UUID, params *ListStrategyTriggersParams) (*http.Request, error) {
 	var err error
@@ -5095,6 +5246,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/strategies/{id}/tasks/{task_id} (the `GetStrategyTask` operationId).
 	GetStrategyTaskWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetStrategyTaskResult, error)
+
+	// ListStrategyTaskNotesWithResponse 戦略タスクが書いたノートを現行バージョンで返す。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/notes (the `ListStrategyTaskNotes` operationId).
+	ListStrategyTaskNotesWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListStrategyTaskNotesResult, error)
 
 	// ListStrategyTriggersWithResponse 戦略の trigger 一覧
 	//
@@ -8344,6 +8502,68 @@ func (r GetStrategyTaskResult) ContentType() string {
 	return ""
 }
 
+type ListStrategyTaskNotesResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Note
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListStrategyTaskNotesResult) GetJSON200() *[]Note {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListStrategyTaskNotesResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListStrategyTaskNotesResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListStrategyTaskNotesResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListStrategyTaskNotesResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStrategyTaskNotesResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStrategyTaskNotesResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListStrategyTaskNotesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListStrategyTriggersResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -9635,6 +9855,19 @@ func (c *ClientWithResponses) GetStrategyTaskWithResponse(ctx context.Context, i
 		return nil, err
 	}
 	return ParseGetStrategyTaskResult(rsp)
+}
+
+// ListStrategyTaskNotesWithResponse 戦略タスクが書いたノートを現行バージョンで返す。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/strategies/{id}/tasks/{task_id}/notes (the `ListStrategyTaskNotes` operationId).
+func (c *ClientWithResponses) ListStrategyTaskNotesWithResponse(ctx context.Context, id openapi_types.UUID, taskId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListStrategyTaskNotesResult, error) {
+	rsp, err := c.ListStrategyTaskNotes(ctx, id, taskId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStrategyTaskNotesResult(rsp)
 }
 
 // ListStrategyTriggersWithResponse 戦略の trigger 一覧
@@ -12169,6 +12402,53 @@ func ParseGetStrategyTaskResult(rsp *http.Response) (*GetStrategyTaskResult, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest StrategyTaskStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListStrategyTaskNotesResult parses an HTTP response from a ListStrategyTaskNotesWithResponse call
+func ParseListStrategyTaskNotesResult(rsp *http.Response) (*ListStrategyTaskNotesResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStrategyTaskNotesResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Note
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

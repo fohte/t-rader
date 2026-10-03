@@ -33,8 +33,8 @@
 | Name                              | Definition                                                                                                                                    |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | note_pkey                         | CREATE UNIQUE INDEX note_pkey ON public.note USING btree (id)                                                                                 |
-| idx_note_strategy_id              | CREATE INDEX idx_note_strategy_id ON public.note USING btree (strategy_id)                                                                    |
 | idx_note_strategy_id_execution_id | CREATE UNIQUE INDEX idx_note_strategy_id_execution_id ON public.note USING btree (strategy_id, execution_id) WHERE (execution_id IS NOT NULL) |
+| idx_note_strategy_id              | CREATE INDEX idx_note_strategy_id ON public.note USING btree (strategy_id)                                                                    |
 
 ## Relations
 

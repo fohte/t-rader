@@ -7,7 +7,7 @@ mod tests {
     use crate::testing::find_current_note_version;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
-        insert_test_strategy,
+        insert_test_strategy, insert_test_strategy_task_step, set_test_note_version_execution_id,
     };
     use axum::http::StatusCode;
     use axum_test::TestServer;
@@ -20,6 +20,7 @@ mod tests {
     use gateway_postgres::entities::{change_history, comment, note, note_version};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::sea_query::Expr;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
     use serde_json::{Value, json};
     use uuid::Uuid;
@@ -569,49 +570,15 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_note_without_strategy_id_does_not_submit_task(
+    async fn reject_note_without_execution_id_does_not_submit_task(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-
-        let res = server
-            .post("/api/notes")
-            .json(&json!({
-                "title": "市況ノート",
-                "body_md": "body",
-                "created_by_kind": "llm",
-            }))
-            .await;
-        let mut created_body = res.json::<Value>();
-        let note_id = Uuid::parse_str(created_body["id"].as_str().expect("id")).expect("uuid");
-        created_body = normalize_note_response(created_body);
-        assert_eq!(
-            (res.status_code(), created_body),
-            (
-                StatusCode::CREATED,
-                json!({
-                    "id": "<id>",
-                    "version_id": "<version_id>",
-                    "version_no": 1,
-                    "is_current": true,
-                    "strategy_id": null,
-                    "title": "市況ノート",
-                    "body_md": "body",
-                    "frontmatter_json": {},
-                    "kind": null,
-                    "status": "unread",
-                    "trigger": null,
-                    "trigger_label": null,
-                    "created_by_kind": "llm",
-                    "created_at": "<created_at>",
-                    "updated_at": "<updated_at>",
-                    "graphs_json": [],
-                    "execution_id": null,
-                }),
-            ),
-        );
+        let strategy_id = insert_test_strategy(&db, "sample-note-strategy").await;
+        let note_id =
+            create_test_note_with_creator(&server, strategy_id, "sample title", "llm").await;
         let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -625,14 +592,18 @@ mod tests {
             .json(&json!({"label": "確認事項"}))
             .await;
         assert_eq!(
-            (res.status_code(), normalize_note_version(res.json())),
+            (
+                res.status_code(),
+                normalize_note_version(res.json()),
+                strategy_task::Entity::find().all(&db).await.unwrap(),
+            ),
             (
                 StatusCode::OK,
                 json!({
                     "id": "<id>",
                     "note_id": "<note_id>",
                     "version_no": version.version_no,
-                    "title": "市況ノート",
+                    "title": "sample title",
                     "body_md": "body",
                     "frontmatter_json": {},
                     "graphs_json": [],
@@ -644,46 +615,48 @@ mod tests {
                     "created_at": "<created_at>",
                     "reviewed_at": "<reviewed_at>",
                 }),
+                vec![],
             ),
         );
-
-        let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
-        assert_eq!(tasks, vec![]);
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_note_submits_single_review_task_referencing_note(
+    async fn reject_note_with_unrecorded_execution_step_does_not_submit_task(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
-        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
-            .await
-            .expect("insert test agent_config");
-        let note_id = create_test_note_with_creator(&server, strategy_id, "タイトル", "llm").await;
+        let strategy_id = insert_test_strategy(&db, "sample-note-strategy").await;
+        let note_id =
+            create_test_note_with_creator(&server, strategy_id, "sample title", "llm").await;
         let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
             .unwrap();
+        let execution_step_id = Uuid::from_u128(301);
+        set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
 
         let res = server
             .post(&format!(
                 "/api/notes/{note_id}/versions/{}/reject",
                 version.version_no
             ))
-            .json(&json!({"label": "確認事項"}))
+            .json(&json!({"label": "sample reason"}))
             .await;
         assert_eq!(
-            (res.status_code(), normalize_note_version(res.json())),
+            (
+                res.status_code(),
+                normalize_note_version(res.json()),
+                strategy_task::Entity::find().all(&db).await.unwrap(),
+            ),
             (
                 StatusCode::OK,
                 json!({
                     "id": "<id>",
                     "note_id": "<note_id>",
                     "version_no": version.version_no,
-                    "title": "タイトル",
+                    "title": "sample title",
                     "body_md": "body",
                     "frontmatter_json": {},
                     "graphs_json": [],
@@ -691,29 +664,106 @@ mod tests {
                     "is_current": true,
                     "change_reason": null,
                     "created_by_kind": "llm",
-                    "execution_id": null,
+                    "execution_id": execution_step_id.to_string(),
                     "created_at": "<created_at>",
                     "reviewed_at": "<reviewed_at>",
                 }),
+                vec![],
             ),
         );
+    }
 
+    #[backend_test_macros::database_test]
+    async fn reject_note_uses_execution_strategy_for_rejected_version(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
+        let note_strategy_id = insert_test_strategy(&db, "sample-note-strategy").await;
+        let first_task_strategy_id = insert_test_strategy(&db, "sample-first-task-strategy").await;
+        let second_task_strategy_id =
+            insert_test_strategy(&db, "sample-second-task-strategy").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
+        let note_id =
+            create_test_note_with_creator(&server, note_strategy_id, "sample title", "llm").await;
+        let rejected_version = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let rejected_execution_step_id = Uuid::from_u128(401);
+        insert_test_strategy_task_step(&db, first_task_strategy_id, rejected_execution_step_id)
+            .await;
+        set_test_note_version_execution_id(&db, rejected_version.id, rejected_execution_step_id)
+            .await;
+
+        let _update = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({"body_md": "sample next body"}))
+            .await;
+        let latest_version = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let latest_execution_step_id = Uuid::from_u128(402);
+        insert_test_strategy_task_step(&db, second_task_strategy_id, latest_execution_step_id)
+            .await;
+        set_test_note_version_execution_id(&db, latest_version.id, latest_execution_step_id).await;
+        note_version::Entity::update_many()
+            .col_expr(note_version::Column::Status, Expr::value("unread"))
+            .filter(note_version::Column::Id.eq(rejected_version.id))
+            .exec(&db)
+            .await
+            .unwrap();
+
+        let res = server
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                rejected_version.version_no
+            ))
+            .json(&json!({"label": "sample reason"}))
+            .await;
         let tasks = strategy_task::Entity::find()
-            .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+            .filter(strategy_task::Column::Source.eq("review"))
             .all(&db)
             .await
             .unwrap();
         assert_eq!(
-            tasks.iter().map(TaskShape::from).collect::<Vec<_>>(),
-            vec![TaskShape {
-                strategy_id,
-                source: "review".to_string(),
-                prompt: format!(
-                    "ノート「タイトル」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。付いているコメントを確認し、指摘を反映してください。",
-                    version.version_no, version.id,
-                ),
-                phase: StrategyTaskPhase::Running,
-            }],
+            (
+                res.status_code(),
+                normalize_note_version(res.json()),
+                tasks.iter().map(TaskShape::from).collect::<Vec<_>>(),
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "note_id": "<note_id>",
+                    "version_no": rejected_version.version_no,
+                    "title": "sample title",
+                    "body_md": "body",
+                    "frontmatter_json": {},
+                    "graphs_json": [],
+                    "status": "rejected",
+                    "is_current": false,
+                    "change_reason": null,
+                    "created_by_kind": "llm",
+                    "execution_id": rejected_execution_step_id.to_string(),
+                    "created_at": "<created_at>",
+                    "reviewed_at": "<reviewed_at>",
+                }),
+                vec![TaskShape {
+                    strategy_id: first_task_strategy_id,
+                    source: "review".to_string(),
+                    prompt: format!(
+                        "ノート「sample title」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: sample reason。付いているコメントを確認し、指摘を反映してください。",
+                        rejected_version.version_no, rejected_version.id,
+                    ),
+                    phase: StrategyTaskPhase::Running,
+                }],
+            ),
         );
     }
 
@@ -733,6 +783,9 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+        let execution_step_id = Uuid::from_u128(601);
+        insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
+        set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
 
         let first = server
             .post(&format!(
@@ -757,7 +810,7 @@ mod tests {
                     "is_current": true,
                     "change_reason": null,
                     "created_by_kind": "llm",
-                    "execution_id": null,
+                    "execution_id": execution_step_id.to_string(),
                     "created_at": "<created_at>",
                     "reviewed_at": "<reviewed_at>",
                 }),
@@ -782,6 +835,7 @@ mod tests {
         );
 
         let tasks = strategy_task::Entity::find()
+            .filter(strategy_task::Column::Source.eq("review"))
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
             .all(&db)
             .await
@@ -806,6 +860,9 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+        let execution_step_id = Uuid::from_u128(602);
+        insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
+        set_test_note_version_execution_id(&db, version.id, execution_step_id).await;
 
         let res = server
             .post(&format!(
