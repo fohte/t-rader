@@ -25,8 +25,9 @@ pub use investable_amount::{
     put_investable_amount,
 };
 pub use tasks::{
-    __path_get_strategy_task, __path_list_strategy_tasks, __path_submit_strategy_chat,
-    get_strategy_task, list_strategy_tasks, submit_strategy_chat,
+    __path_get_strategy_task, __path_list_strategy_task_notes, __path_list_strategy_tasks,
+    __path_submit_strategy_chat, get_strategy_task, list_strategy_task_notes, list_strategy_tasks,
+    submit_strategy_chat,
 };
 pub(crate) use tasks::{map_list_task_error, map_submit_error};
 

@@ -50,19 +50,17 @@ function TaskRunPage() {
 
   const notesQuery = $api.useQuery(
     'get',
-    '/api/notes',
-    { params: { query: { strategy_id: id } } },
-    { enabled: task != null },
+    '/api/strategies/{id}/tasks/{task_id}/notes',
+    { params: { path: { id, task_id: taskId } } },
+    {
+      enabled: task != null,
+      refetchInterval: () =>
+        task?.phase === 'pending' || task?.phase === 'running'
+          ? POLL_INTERVAL_MS
+          : false,
+    },
   )
-  // floating-chat.tsx の generatedNotes とは別実装。あちらはクライアント時刻起点 +
-  // skew 許容 (継続中タスクの投入直後を拾うため)。ここは backend が確定させた
-  // created_at/updated_at のみで完結する境界指定で足りる。
-  const generatedNotesCount = useMemo(() => {
-    if (task == null) return 0
-    return (notesQuery.data ?? []).filter(
-      (n) => n.created_at >= task.created_at && n.created_at <= task.updated_at,
-    ).length
-  }, [task, notesQuery.data])
+  const generatedNotesCount = notesQuery.data?.length ?? 0
 
   return (
     <TaskRunView

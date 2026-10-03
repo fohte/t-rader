@@ -1,4 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
 import {
@@ -16,20 +15,14 @@ import { useCurrentStrategyId } from '#components/strategy-shell/use-current-str
 import { $api } from '#lib/api/client'
 
 const POLL_INTERVAL_MS = 2000
-// ノート紐付けは現状 created_at の比較で代替している。client 時刻が backend に
-// 対して進んでいるとタスク経由で作成されたノートが取りこぼされるため、
-// NTP 程度の skew を吸収できる猶予を入れる。
-const SUBMITTED_AT_SKEW_MS = 60_000
 
 interface CurrentTask {
   taskId: string
-  submittedAt: string
 }
 
 export function FloatingChat(): React.ReactElement {
   const { open, seed: storeSeed } = useFloatingChat()
   const strategyId = useCurrentStrategyId() ?? null
-  const queryClient = useQueryClient()
 
   const [seed, setSeed] = useState<string | null>(null)
   const [input, setInput] = useState('')
@@ -85,38 +78,28 @@ export function FloatingChat(): React.ReactElement {
   const phase = taskQuery.data?.phase ?? null
   const isCompleted = phase === 'completed'
 
-  // 完了直後にノート一覧が古いまま残ると新規ノートが見えないため、
-  // 完了タイミングでキャッシュを破棄して再取得を促す。
-  useEffect(() => {
-    if (!isCompleted || strategyId == null) return
-    void queryClient.invalidateQueries({
-      queryKey: $api.queryOptions('get', '/api/notes', {
-        params: { query: { strategy_id: strategyId } },
-      }).queryKey,
-    })
-  }, [isCompleted, strategyId, queryClient])
-
-  const notesQuery = $api.useQuery(
+  const taskNotesQuery = $api.useQuery(
     'get',
-    '/api/notes',
+    '/api/strategies/{id}/tasks/{task_id}/notes',
     {
-      params: { query: { strategy_id: strategyId ?? '' } },
+      params: {
+        path: {
+          id: strategyId ?? '',
+          task_id: currentTask?.taskId ?? '',
+        },
+      },
     },
     {
-      enabled: isCompleted && strategyId != null,
+      enabled: isCompleted && strategyId != null && currentTask != null,
     },
   )
 
   const generatedNotes = useMemo<FloatingChatNote[]>(() => {
     if (!isCompleted || currentTask == null) return []
-    const cutoff = new Date(
-      Date.parse(currentTask.submittedAt) - SUBMITTED_AT_SKEW_MS,
-    ).toISOString()
-    return (notesQuery.data ?? [])
-      .filter((n) => n.created_at >= cutoff)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    return [...(taskNotesQuery.data ?? [])]
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
       .map((n) => ({ id: n.id, title: n.title, updated_at: n.updated_at }))
-  }, [isCompleted, currentTask, notesQuery.data])
+  }, [isCompleted, currentTask, taskNotesQuery.data])
 
   const status = computeStatus({
     submitting: submitMutation.isPending,
@@ -145,7 +128,6 @@ export function FloatingChat(): React.ReactElement {
         onSuccess: (data) => {
           setCurrentTask({
             taskId: data.task_id,
-            submittedAt: new Date().toISOString(),
           })
           setInput('')
         },

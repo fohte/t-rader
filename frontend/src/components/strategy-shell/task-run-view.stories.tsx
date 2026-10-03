@@ -131,6 +131,24 @@ export const Failed: Story = {
   ),
 }
 
+export const CompletedWithoutNotes: Story = {
+  name: 'shows a completed task with no generated notes.',
+  render: () => (
+    <RouterProvider
+      router={createTaskRunViewRouter({
+        strategyId: 'semi-swing',
+        task: baseTask({
+          phase: 'completed',
+          updatedAt: '2026-08-16T09:04:33.200Z',
+        }),
+        steps: [PLAN_STEP],
+        configPhases: CONFIG_PHASES,
+        generatedNotesCount: 0,
+      })}
+    />
+  ),
+}
+
 export const NoSteps: Story = {
   name: 'shows a pending task before its execution steps are available.',
   render: () => (

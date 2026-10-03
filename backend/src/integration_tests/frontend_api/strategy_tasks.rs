@@ -3,6 +3,8 @@ mod tests {
     use super::super::{assert_response_eq, normalize_timestamps};
     use std::sync::Arc;
 
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
     use sea_orm::EntityTrait;
     use serde_json::json;
     use uuid::Uuid;
@@ -17,7 +19,7 @@ mod tests {
         AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient,
     };
     use core_application::strategy_task::DEFAULT_PURPOSE;
-    use gateway_postgres::entities::strategy_task;
+    use gateway_postgres::entities::{note_version, strategy_task, strategy_task_step};
 
     #[backend_test_macros::database_test]
     async fn submit_chat_creates_task_row_and_submits_to_agent(
@@ -344,6 +346,128 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn list_strategy_task_notes_returns_updated_notes_once_by_execution_step(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_a = insert_test_strategy(&db, "strategy-a").await;
+        let strategy_b = insert_test_strategy(&db, "strategy-b").await;
+        let base = chrono::Utc::now().fixed_offset();
+        let task_id = insert_test_strategy_task(&db, strategy_a, "inspect", None, base).await;
+        let other_task_id =
+            insert_test_strategy_task(&db, strategy_a, "different task", None, base).await;
+        let first_step_id = Uuid::new_v4();
+        let second_step_id = Uuid::new_v4();
+        let other_step_id = Uuid::new_v4();
+        insert_test_task_step(&db, task_id, first_step_id, base, 0).await;
+        insert_test_task_step(
+            &db,
+            task_id,
+            second_step_id,
+            base + chrono::Duration::seconds(1),
+            1,
+        )
+        .await;
+        insert_test_task_step(&db, other_task_id, other_step_id, base, 0).await;
+
+        let updated_note_id = crate::testing::insert_test_note_with_execution_id(
+            &db,
+            strategy_b,
+            "Updated title",
+            "First body",
+            &first_step_id.to_string(),
+        )
+        .await;
+        let first_version = crate::testing::find_current_note_version(&db, updated_note_id)
+            .await
+            .expect("query current note version")
+            .expect("current note version");
+        note_version::ActiveModel {
+            id: Set(first_version.id),
+            is_current: Set(false),
+            status: Set("superseded".to_string()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("supersede first note version");
+        let current_version_id = Uuid::new_v4();
+        note_version::ActiveModel {
+            id: Set(current_version_id),
+            note_id: Set(updated_note_id),
+            version_no: Set(2),
+            title: Set("Updated title".to_string()),
+            body_md: Set("Updated body".to_string()),
+            frontmatter_json: Set(json!({})),
+            graphs_json: Set(json!([])),
+            status: Set("unread".to_string()),
+            is_current: Set(true),
+            change_reason: Set(Some("updated".to_string())),
+            created_by_kind: Set("llm".to_string()),
+            execution_id: Set(Some(second_step_id.to_string())),
+            created_at: Set(base + chrono::Duration::seconds(2)),
+            reviewed_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert updated note version");
+
+        crate::testing::insert_test_note_with_execution_id(
+            &db,
+            strategy_a,
+            "Other task title",
+            "Other task body",
+            &other_step_id.to_string(),
+        )
+        .await;
+        crate::testing::insert_test_note_in_scope(
+            &db,
+            Some(strategy_a),
+            "Human title",
+            "Human body",
+        )
+        .await;
+
+        let response = server
+            .get(&format!(
+                "/api/strategies/{strategy_a}/tasks/{task_id}/notes"
+            ))
+            .await;
+        let mut body: serde_json::Value = response.json();
+        for note in body.as_array_mut().expect("response is a list") {
+            normalize_timestamps(note);
+            note["id"] = json!("<note-id>");
+            note["version_id"] = json!("<version-id>");
+        }
+
+        assert_eq!(
+            (response.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                json!([{
+                    "id": "<note-id>",
+                    "version_id": "<version-id>",
+                    "version_no": 2,
+                    "is_current": true,
+                    "strategy_id": strategy_b.to_string(),
+                    "title": "Updated title",
+                    "body_md": "Updated body",
+                    "frontmatter_json": {},
+                    "kind": null,
+                    "status": "unread",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "llm",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": first_step_id.to_string(),
+                }]),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn list_strategy_tasks_returns_tasks_newest_first(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -468,5 +592,36 @@ mod tests {
                 })],
             ),
         );
+    }
+
+    async fn insert_test_task_step(
+        db: &gateway_postgres::DatabaseHandle,
+        task_id: Uuid,
+        execution_step_id: Uuid,
+        started_at: chrono::DateTime<chrono::FixedOffset>,
+        seq: i64,
+    ) {
+        strategy_task_step::ActiveModel {
+            execution_step_id: Set(execution_step_id),
+            task_id: Set(task_id),
+            phase_key: Set("inspect".to_string()),
+            label: Set("Inspect data".to_string()),
+            model: Set("fixture-model".to_string()),
+            status: Set(
+                gateway_postgres::entities::sea_orm_active_enums::StrategyTaskStepStatus::Completed,
+            ),
+            item: Set(None),
+            item_label: Set(None),
+            output: Set(None),
+            started_at: Set(started_at),
+            finished_at: Set(Some(started_at)),
+            trace_id: Set("fixture-trace".to_string()),
+            span_id: Set("fixture-span".to_string()),
+            error: Set(None),
+            seq: Set(seq),
+        }
+        .insert(db)
+        .await
+        .expect("insert test strategy task step");
     }
 }

@@ -16,6 +16,7 @@ const PENDING_STATUS: &str = "unread";
 
 mod links;
 mod list;
+mod task_notes;
 
 #[derive(Clone)]
 pub struct PostgresNoteReadQuery {
@@ -156,6 +157,13 @@ impl NoteReadQuery for PostgresNoteReadQuery {
 
     async fn list_notes(&self, query: NoteListQuery) -> Result<NoteListPage, NoteReadQueryError> {
         self.list_query(query).await
+    }
+
+    async fn list_notes_written_by_task(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Vec<core_application::note::NoteSnapshot>, NoteReadQueryError> {
+        task_notes::list_notes_written_by_task(self, task_id).await
     }
 
     async fn find_links_from_version(
