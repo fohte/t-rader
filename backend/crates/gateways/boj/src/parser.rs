@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use chrono::{Datelike, NaiveDate, TimeZone, Utc};
 use chrono_tz::Asia::Tokyo;
 use core_application::{
@@ -128,6 +130,7 @@ fn parse_publication_events(
     let mut last_date = None;
     let mut events = Vec::new();
     let mut parsed_rows = 0;
+    let mut tankan_dates = HashSet::new();
 
     for row in table.select(&rows) {
         let row_cells = row.select(&cells).collect::<Vec<_>>();
@@ -151,7 +154,7 @@ fn parse_publication_events(
         parsed_rows += 1;
 
         let title = text(&row_cells[4]);
-        if event_date >= today && is_tankan_title(&title) {
+        if event_date >= today && is_tankan_title(&title) && tankan_dates.insert(event_date) {
             events.push(CalendarEvent {
                 source: SOURCE.to_owned(),
                 external_id: format!("tankan-{event_date}"),

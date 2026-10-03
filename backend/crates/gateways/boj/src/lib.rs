@@ -34,19 +34,27 @@ impl BojClient {
         Ok(Self { http })
     }
 
-    async fn fetch_page(&self, url: &str) -> Result<String, CalendarEventSourceError> {
+    async fn fetch_page(
+        &self,
+        page_name: &str,
+        url: &str,
+    ) -> Result<String, CalendarEventSourceError> {
         let response = self.http.get(url).send().await.map_err(|error| {
-            CalendarEventSourceError::Failed(format!("failed to fetch BOJ page: {error}"))
+            CalendarEventSourceError::Failed(format!(
+                "failed to fetch BOJ {page_name} page: {error}"
+            ))
         })?;
         let status = response.status();
         if !status.is_success() {
             return Err(CalendarEventSourceError::Failed(format!(
-                "BOJ page returned HTTP {status}"
+                "BOJ {page_name} page returned HTTP {status}"
             )));
         }
 
         response.text().await.map_err(|error| {
-            CalendarEventSourceError::Failed(format!("failed to read BOJ page: {error}"))
+            CalendarEventSourceError::Failed(format!(
+                "failed to read BOJ {page_name} page: {error}"
+            ))
         })
     }
 }
@@ -61,8 +69,10 @@ impl CalendarEventSource for BojClient {
         &self,
         today: NaiveDate,
     ) -> Result<CalendarEventBatch, CalendarEventSourceError> {
-        let meeting_html = self.fetch_page(MEETING_URL).await?;
-        let publication_html = self.fetch_page(PUBLICATION_URL).await?;
+        let meeting_html = self.fetch_page("meeting schedule", MEETING_URL).await?;
+        let publication_html = self
+            .fetch_page("publication schedule", PUBLICATION_URL)
+            .await?;
 
         parser::parse_calendar_event_batch(&meeting_html, &publication_html, today)
     }

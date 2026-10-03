@@ -1,14 +1,33 @@
-use chrono::{DateTime, LocalResult, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{LocalResult, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Asia::Tokyo;
 use chrono_tz::Europe;
-use core_application::calendar::source::CalendarEventSourceError;
+use core_application::{
+    calendar::source::{CalendarEventBatch, CalendarEventSourceError},
+    daily_bar_source::DateRange,
+};
 use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
 use scraper::{Html, Selector};
 
 const SOURCE: &str = "ecb";
 const COUNTRY: &str = "EU";
-// ECB の会合カレンダーには時刻がないため、慣例の現地時刻を使う。
-const MEETING_TIME_LOCAL: (u32, u32) = (14, 15);
+// ECB の会合カレンダーには時刻がないため、政策決定公表の慣例時刻を使う。
+const POLICY_DECISION_ANNOUNCEMENT_TIME_LOCAL: (u32, u32) = (14, 15);
+
+pub(crate) fn parse_calendar_event_batch(
+    html: &str,
+    today: NaiveDate,
+) -> Result<CalendarEventBatch, CalendarEventSourceError> {
+    let (mut events, to) = parse_calendar_events(html)?;
+    events.retain(|event| event.event_date >= today);
+    if to < today {
+        return Err(parse_error("ECB calendar does not cover any future dates"));
+    }
+
+    Ok(CalendarEventBatch {
+        date_range: DateRange { from: today, to },
+        events,
+    })
+}
 
 pub(crate) fn parse_calendar_events(
     html: &str,
@@ -36,7 +55,12 @@ pub(crate) fn parse_calendar_events(
         })?;
         coverage_end = Some(coverage_end.map_or(date, |current: NaiveDate| current.max(date)));
 
-        let title = title_node.text().collect::<String>().trim().to_owned();
+        let title = title_node
+            .text()
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         if is_monetary_policy_meeting(&title) {
             events.push(parse_meeting(date, title)?);
         }
@@ -63,23 +87,37 @@ fn parse_meeting(
     date: NaiveDate,
     title: String,
 ) -> Result<CalendarEvent, CalendarEventSourceError> {
-    let local_time = NaiveTime::from_hms_opt(MEETING_TIME_LOCAL.0, MEETING_TIME_LOCAL.1, 0)
-        .ok_or_else(|| parse_error("invalid ECB meeting time"))?;
-    let local_datetime = date.and_time(local_time);
-    let local_datetime = match Europe::Berlin.from_local_datetime(&local_datetime) {
-        LocalResult::Single(datetime) => datetime,
-        LocalResult::Ambiguous(_, _) => {
-            return Err(parse_error(
-                "ECB meeting time was ambiguous in Europe/Berlin",
-            ));
-        }
-        LocalResult::None => {
-            return Err(parse_error(
-                "ECB meeting time did not exist in Europe/Berlin",
-            ));
-        }
+    let event_at = if title
+        .to_ascii_lowercase()
+        .contains("followed by press conference")
+    {
+        let local_time = NaiveTime::from_hms_opt(
+            POLICY_DECISION_ANNOUNCEMENT_TIME_LOCAL.0,
+            POLICY_DECISION_ANNOUNCEMENT_TIME_LOCAL.1,
+            0,
+        )
+        .ok_or_else(|| parse_error("invalid ECB policy decision announcement time"))?;
+        let local_datetime = date.and_time(local_time);
+        let local_datetime = match Europe::Berlin.from_local_datetime(&local_datetime) {
+            LocalResult::Single(datetime) => datetime,
+            LocalResult::Ambiguous(_, _) => {
+                return Err(parse_error(
+                    "ECB policy decision announcement time was ambiguous in Europe/Berlin",
+                ));
+            }
+            LocalResult::None => {
+                return Err(parse_error(
+                    "ECB policy decision announcement time did not exist in Europe/Berlin",
+                ));
+            }
+        };
+        Some(local_datetime.with_timezone::<Utc>(&Utc))
+    } else {
+        None
     };
-    let event_at: DateTime<Utc> = local_datetime.with_timezone(&Utc);
+    let event_date = event_at
+        .map(|event_at| event_at.with_timezone(&Tokyo).date_naive())
+        .unwrap_or(date);
     Ok(CalendarEvent {
         source: SOURCE.to_owned(),
         external_id: date.format("%Y-%m-%d").to_string(),
@@ -88,8 +126,8 @@ fn parse_meeting(
         title,
         stock_id: None,
         fiscal_period: None,
-        event_date: event_at.with_timezone(&Tokyo).date_naive(),
-        event_at: Some(event_at),
+        event_date,
+        event_at,
         time_of_day: None,
     })
 }
@@ -101,9 +139,10 @@ fn parse_error(message: impl Into<String>) -> CalendarEventSourceError {
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
+    use core_application::{calendar::source::CalendarEventBatch, daily_bar_source::DateRange};
     use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
 
-    use super::parse_calendar_events;
+    use super::{parse_calendar_event_batch, parse_calendar_events};
 
     const CALENDAR_FIXTURE: &str = include_str!("fixtures/calendar.html");
 
@@ -117,38 +156,99 @@ mod tests {
             .with_timezone(&Utc)
     }
 
+    fn event(
+        external_id: &str,
+        title: &str,
+        event_date: NaiveDate,
+        event_at: Option<DateTime<Utc>>,
+    ) -> CalendarEvent {
+        CalendarEvent {
+            source: "ecb".to_owned(),
+            external_id: external_id.to_owned(),
+            category: CalendarEventCategory::CentralBank,
+            country: "EU".to_owned(),
+            title: title.to_owned(),
+            stock_id: None,
+            fiscal_period: None,
+            event_date,
+            event_at,
+            time_of_day: None,
+        }
+    }
+
     #[test]
-    fn parse_calendar_events_converts_winter_and_summer_meetings_and_ignores_other_meetings() {
+    fn parse_calendar_events_sets_times_only_for_decision_days_and_ignores_other_meetings() {
         assert_eq!(
             parse_calendar_events(CALENDAR_FIXTURE).expect("parse calendar"),
             (
                 vec![
-                CalendarEvent {
-                    source: "ecb".to_owned(),
-                    external_id: "2042-01-17".to_owned(),
-                    category: CalendarEventCategory::CentralBank,
-                    country: "EU".to_owned(),
-                    title: "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 1)".to_owned(),
-                    stock_id: None,
-                    fiscal_period: None,
-                    event_date: date(2042, 1, 17),
-                    event_at: Some(utc_timestamp("2042-01-17T13:15:00Z")),
-                    time_of_day: None,
-                },
-                CalendarEvent {
-                    source: "ecb".to_owned(),
-                    external_id: "2042-07-15".to_owned(),
-                    category: CalendarEventCategory::CentralBank,
-                    country: "EU".to_owned(),
-                    title: "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 2), followed by press conference".to_owned(),
-                    stock_id: None,
-                    fiscal_period: None,
-                    event_date: date(2042, 7, 15),
-                    event_at: Some(utc_timestamp("2042-07-15T12:15:00Z")),
-                    time_of_day: None,
-                },
+                    event(
+                        "2042-01-17",
+                        "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 1)",
+                        date(2042, 1, 17),
+                        None,
+                    ),
+                    event(
+                        "2042-01-18",
+                        "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 2), followed by press conference",
+                        date(2042, 1, 18),
+                        Some(utc_timestamp("2042-01-18T13:15:00Z")),
+                    ),
+                    event(
+                        "2042-02-01",
+                        "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 2), followed by press conference",
+                        date(2042, 2, 1),
+                        Some(utc_timestamp("2042-02-01T13:15:00Z")),
+                    ),
+                    event(
+                        "2042-07-15",
+                        "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 2), followed by press conference",
+                        date(2042, 7, 15),
+                        Some(utc_timestamp("2042-07-15T12:15:00Z")),
+                    ),
                 ],
                 date(2042, 11, 20),
+            ),
+        );
+    }
+
+    #[test]
+    fn parse_calendar_event_batch_filters_past_events_and_sets_coverage_range() {
+        assert_eq!(
+            parse_calendar_event_batch(CALENDAR_FIXTURE, date(2042, 2, 1))
+                .expect("parse calendar batch"),
+            CalendarEventBatch {
+                date_range: DateRange {
+                    from: date(2042, 2, 1),
+                    to: date(2042, 11, 20),
+                },
+                events: vec![
+                    event(
+                        "2042-02-01",
+                        "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 2), followed by press conference",
+                        date(2042, 2, 1),
+                        Some(utc_timestamp("2042-02-01T13:15:00Z")),
+                    ),
+                    event(
+                        "2042-07-15",
+                        "Governing Council of the ECB: monetary policy meeting in Exampleburgh (Day 2), followed by press conference",
+                        date(2042, 7, 15),
+                        Some(utc_timestamp("2042-07-15T12:15:00Z")),
+                    ),
+                ],
+            },
+        );
+    }
+
+    #[test]
+    fn parse_calendar_event_batch_rejects_stale_coverage() {
+        assert_eq!(
+            parse_calendar_event_batch(CALENDAR_FIXTURE, date(2042, 12, 1))
+                .map(|_| "ok".to_owned())
+                .map_err(|error| error.to_string()),
+            Err(
+                "calendar event source error: ECB calendar does not cover any future dates"
+                    .to_owned()
             ),
         );
     }

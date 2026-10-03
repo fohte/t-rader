@@ -6,9 +6,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_application::{
-    calendar::source::{CalendarEventBatch, CalendarEventSource, CalendarEventSourceError},
-    daily_bar_source::DateRange,
+use core_application::calendar::source::{
+    CalendarEventBatch, CalendarEventSource, CalendarEventSourceError,
 };
 
 const CALENDAR_URL: &str = "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html";
@@ -57,17 +56,6 @@ impl CalendarEventSource for EcbClient {
         let html = response.text().await.map_err(|error| {
             CalendarEventSourceError::Failed(format!("failed to read ECB calendar: {error}"))
         })?;
-        let (mut events, to) = parser::parse_calendar_events(&html)?;
-        events.retain(|event| event.event_date >= today);
-        if to < today {
-            return Err(CalendarEventSourceError::Failed(
-                "ECB calendar does not cover any future dates".to_owned(),
-            ));
-        }
-
-        Ok(CalendarEventBatch {
-            date_range: DateRange { from: today, to },
-            events,
-        })
+        parser::parse_calendar_event_batch(&html, today)
     }
 }
