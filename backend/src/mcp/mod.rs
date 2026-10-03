@@ -4,7 +4,6 @@
 //! - `/mcp/strategy`: 戦略 Agent が叩く戦略実行 MCP
 
 mod access_log;
-pub mod strategy;
 #[cfg(test)]
 pub mod watcher;
 
@@ -18,11 +17,11 @@ use crate::services::use_cases::UseCases;
 use axum::Router;
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::strategy_task::DEADLINE_DURATION;
+pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
-pub use strategy::{StrategyServer, StrategyServerDependencies};
 
 /// MCP ルータを構築する。
 ///

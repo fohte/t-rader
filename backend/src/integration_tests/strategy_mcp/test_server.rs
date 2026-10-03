@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto as strategy_dto;
-use crate::mcp::StrategyServer as EntrypointStrategyServer;
+use entrypoint_agent_mcp::StrategyServer as EntrypointStrategyServer;
 
 use super::test_api::{ref_terms, refs, stock_groups};
 
