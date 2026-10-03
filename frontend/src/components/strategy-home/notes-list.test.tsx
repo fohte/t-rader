@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { NotesList } from '#components/strategy-home/notes-list'
@@ -24,6 +30,7 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     body_md: overrides.body_md ?? 'body',
     frontmatter_json: overrides.frontmatter_json ?? {},
     graphs_json: overrides.graphs_json ?? [],
+    tags: overrides.tags ?? [],
     kind: overrides.kind ?? null,
     status: overrides.status ?? 'unread',
     trigger: overrides.trigger ?? null,
@@ -73,6 +80,17 @@ describe('NotesList', () => {
     expect(
       screen.getByRole('link', { name: /口座全体ノート/ }),
     ).toHaveAttribute('href', '/notes/note-1')
+  })
+
+  it('ノートに設定されたタグを一覧表示する', async () => {
+    const note = makeNote({ tags: ['架空タグ', '仮の分類'] })
+    await renderInRouter([note])
+
+    expect(
+      within(screen.getByRole('list', { name: 'タグ' }))
+        .getAllByRole('listitem')
+        .map((tag) => tag.textContent),
+    ).toEqual(['架空タグ', '仮の分類'])
   })
 
   it('ノートが無ければ空状態を表示する', async () => {

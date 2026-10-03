@@ -4,6 +4,7 @@ use core_domain::note_graph::GraphDef;
 use core_domain::note_reference::{
     BodyTokenPolicy, collect_note_refs_with_policy, format_note_token_errors,
 };
+use sea_orm::sea_query::Expr;
 use sea_orm::{
     ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
@@ -37,6 +38,10 @@ impl PostgresNoteReadQuery {
         }
         if let Some(kind) = query.kind.as_deref() {
             select = select.filter(note::Column::Kind.eq(kind));
+        }
+        if let Some(tag) = query.tag.as_deref() {
+            select =
+                select.filter(note::Column::Id.in_subquery(current_note_ids_matching_tag(tag)));
         }
         if let Some((kind, id)) = query.reference.as_ref() {
             select =
@@ -143,6 +148,13 @@ impl PostgresNoteReadQuery {
             {
                 continue;
             }
+            if query
+                .tag
+                .as_deref()
+                .is_some_and(|tag| !version_has_tag(&version.frontmatter_json, tag))
+            {
+                continue;
+            }
             if let Some((kind, id)) = query.reference.as_ref()
                 && !version.is_current
             {
@@ -195,6 +207,25 @@ fn current_note_ids_with_status(status: &str) -> sea_orm::sea_query::SelectState
         .filter(note_version::Column::IsCurrent.eq(true))
         .filter(note_version::Column::Status.eq(status))
         .into_query()
+}
+
+fn current_note_ids_matching_tag(tag: &str) -> sea_orm::sea_query::SelectStatement {
+    note_version::Entity::find()
+        .select_only()
+        .column(note_version::Column::NoteId)
+        .filter(note_version::Column::IsCurrent.eq(true))
+        .filter(Expr::cust_with_values(
+            "frontmatter_json @> ($1::jsonb)",
+            [serde_json::json!({ "tags": [tag] })],
+        ))
+        .into_query()
+}
+
+fn version_has_tag(frontmatter_json: &serde_json::Value, tag: &str) -> bool {
+    frontmatter_json
+        .get("tags")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tags| tags.iter().any(|value| value.as_str() == Some(tag)))
 }
 
 fn note_ids_matching_ref(
@@ -300,6 +331,72 @@ mod tests {
         );
     }
 
+    #[backend_test_macros::database_test]
+    async fn list_filters_by_exact_tag_for_current_and_pending_versions(db: DatabaseHandle) {
+        let tagged_current = insert_note_with_version(
+            &db,
+            None,
+            serde_json::json!({ "tags": ["demo-focus", "demo-review"] }),
+            true,
+        )
+        .await;
+        insert_note_with_version(
+            &db,
+            None,
+            serde_json::json!({ "tags": ["demo-focus-extra"] }),
+            true,
+        )
+        .await;
+        insert_note_with_version(&db, None, serde_json::json!({}), true).await;
+        let tagged_pending = insert_note_with_version(
+            &db,
+            None,
+            serde_json::json!({ "tags": ["demo-focus"] }),
+            false,
+        )
+        .await;
+        insert_note_with_version(
+            &db,
+            None,
+            serde_json::json!({ "tags": ["demo-focus-extra"] }),
+            false,
+        )
+        .await;
+        let query = PostgresNoteReadQuery::new(db);
+
+        let current = query
+            .list_notes(NoteListQuery {
+                tag: Some("demo-focus".into()),
+                ..Default::default()
+            })
+            .await
+            .expect("list current notes with a tag filter");
+        let including_pending = query
+            .list_notes(NoteListQuery {
+                tag: Some("demo-focus".into()),
+                include_pending: true,
+                ..Default::default()
+            })
+            .await
+            .expect("list pending notes with a tag filter");
+
+        let sorted_ids = |notes: Vec<core_application::note::NoteSnapshot>| {
+            let mut ids = notes
+                .into_iter()
+                .map(|snapshot| snapshot.note.id)
+                .collect::<Vec<_>>();
+            ids.sort();
+            ids
+        };
+        assert_eq!(
+            (
+                sorted_ids(current.notes),
+                sorted_ids(including_pending.notes)
+            ),
+            (vec![tagged_current], vec![tagged_current, tagged_pending],),
+        );
+    }
+
     async fn insert_strategy(db: &DatabaseHandle, name: &str) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
@@ -317,6 +414,15 @@ mod tests {
     }
 
     async fn insert_note(db: &DatabaseHandle, strategy_id: Option<Uuid>) -> Uuid {
+        insert_note_with_version(db, strategy_id, serde_json::json!({}), true).await
+    }
+
+    async fn insert_note_with_version(
+        db: &DatabaseHandle,
+        strategy_id: Option<Uuid>,
+        frontmatter_json: serde_json::Value,
+        is_current: bool,
+    ) -> Uuid {
         let note_id = Uuid::new_v4();
         note::Entity::insert(note::ActiveModel {
             id: Set(note_id),
@@ -337,10 +443,10 @@ mod tests {
             version_no: Set(1),
             title: Set("sample note".to_string()),
             body_md: Set("sample body".to_string()),
-            frontmatter_json: Set(serde_json::json!({})),
+            frontmatter_json: Set(frontmatter_json),
             graphs_json: Set(serde_json::json!([])),
             status: Set("approved".to_string()),
-            is_current: Set(true),
+            is_current: Set(is_current),
             change_reason: Set(None),
             created_by_kind: Set("human".to_string()),
             execution_id: Set(None),

@@ -24,6 +24,8 @@ pub struct ListNotesQuery {
     pub strategy_id: Option<Uuid>,
     pub status: Option<String>,
     pub kind: Option<String>,
+    /// `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -34,25 +36,7 @@ pub struct GetNoteQuery {
 }
 
 fn note_snapshot_response(snapshot: NoteSnapshot) -> NoteResponse {
-    NoteResponse {
-        id: snapshot.note.id,
-        version_id: snapshot.version.id,
-        version_no: snapshot.version.version_no,
-        is_current: snapshot.version.is_current,
-        strategy_id: snapshot.note.strategy_id,
-        title: snapshot.version.title,
-        body_md: snapshot.version.body_md,
-        frontmatter_json: snapshot.version.frontmatter_json,
-        kind: snapshot.note.kind,
-        status: snapshot.version.status,
-        trigger: snapshot.note.trigger,
-        trigger_label: snapshot.note.trigger_label,
-        created_by_kind: snapshot.created_by_kind,
-        created_at: snapshot.note.created_at,
-        updated_at: snapshot.note.updated_at,
-        graphs_json: snapshot.version.graphs_json,
-        execution_id: snapshot.note.execution_id,
-    }
+    NoteResponse::from_snapshot(snapshot)
 }
 
 /// ノート一覧
@@ -77,6 +61,7 @@ pub async fn list_notes(
             strategy_id: params.strategy_id,
             status: params.status.filter(|status| !status.is_empty()),
             kind: params.kind.filter(|kind| !kind.is_empty()),
+            tag: params.tag,
             limit: None,
             ..NoteListQuery::default()
         })

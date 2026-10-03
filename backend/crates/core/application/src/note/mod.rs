@@ -2,6 +2,7 @@ mod create_update;
 mod error;
 #[cfg(any(test, feature = "test-support"))]
 mod fake;
+mod frontmatter_validation;
 mod query;
 mod read;
 mod repository;

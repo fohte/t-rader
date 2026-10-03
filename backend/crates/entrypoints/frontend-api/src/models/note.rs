@@ -5,6 +5,19 @@ use uuid::Uuid;
 
 use crate::services::graph::GraphDef;
 
+fn note_tags(frontmatter_json: &Json) -> Vec<String> {
+    frontmatter_json
+        .get("tags")
+        .and_then(Json::as_array)
+        .map(|tags| {
+            tags.iter()
+                .filter_map(Json::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -37,6 +50,7 @@ pub struct NoteResponse {
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
+    pub tags: Vec<String>,
     pub kind: Option<String>,
     pub status: String,
     pub trigger: Option<String>,
@@ -53,6 +67,7 @@ pub struct NoteResponse {
 
 impl NoteResponse {
     pub fn from_snapshot(snapshot: core_application::note::NoteSnapshot) -> Self {
+        let tags = note_tags(&snapshot.version.frontmatter_json);
         Self {
             id: snapshot.note.id,
             version_id: snapshot.version.id,
@@ -62,6 +77,7 @@ impl NoteResponse {
             title: snapshot.version.title,
             body_md: snapshot.version.body_md,
             frontmatter_json: snapshot.version.frontmatter_json,
+            tags,
             kind: snapshot.note.kind,
             status: snapshot.version.status,
             trigger: snapshot.note.trigger,
@@ -130,6 +146,17 @@ pub struct ChangeStatusRequest {
 mod tests {
     use super::*;
     use rstest::rstest;
+    use serde_json::json;
+
+    #[rstest]
+    #[case::missing(json!({}), Vec::<String>::new())]
+    #[case::present(json!({ "tags": ["demo-focus"] }), vec!["demo-focus".into()])]
+    fn note_tags_use_an_empty_array_when_missing(
+        #[case] frontmatter_json: Json,
+        #[case] expected: Vec<String>,
+    ) {
+        assert_eq!(note_tags(&frontmatter_json), expected);
+    }
 
     #[rstest]
     #[case::hook("\"hook\"", NoteTrigger::Hook)]

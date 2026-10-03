@@ -68,6 +68,7 @@ mod tests {
             "title": "t",
             "body_md": "b",
             "frontmatter_json": {},
+            "tags": [],
             "kind": null,
             "status": "unread",
             "trigger": null,

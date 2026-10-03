@@ -124,6 +124,7 @@ pub struct NoteListQuery {
     pub strategy_id: Option<Uuid>,
     pub kind: Option<String>,
     pub status: Option<String>,
+    pub tag: Option<String>,
     pub reference: Option<(String, String)>,
     pub updated_after: Option<DateTime<FixedOffset>>,
     pub include_pending: bool,
