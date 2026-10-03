@@ -3,13 +3,9 @@ use std::sync::Arc;
 use core_application::agent_task_client::SharedAgentTaskClient;
 use gateway_postgres::DatabaseHandle;
 use rmcp::ErrorData as McpError;
-use rmcp::ServerHandler;
 use rmcp::handler::server::wrapper::{Json, Parameters};
-use rmcp::model::{CallToolRequestParams, CallToolResponse, NumberOrString};
-use rmcp::service::{RequestContext, RoleServer, serve_directly};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::agent_client::FakeAgentTaskClient;
@@ -18,6 +14,8 @@ use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use gateway_postgres::entities::strategy;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
+
+pub(crate) use crate::integration_tests::mcp_tool::call_tool_output;
 
 use super::dto::{
     GetStrategyConfigResult, GetStrategyTaskStatusResult, ListRecentAnnotationsResult,
@@ -59,58 +57,6 @@ pub(crate) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &s
     .await
     .expect("insert test strategy");
     id
-}
-
-pub(crate) async fn call_tool(
-    server: &MgmtServer,
-    name: &'static str,
-    arguments: Value,
-) -> Result<CallToolResponse, McpError> {
-    let arguments = arguments
-        .as_object()
-        .cloned()
-        .ok_or_else(|| McpError::invalid_params("tool arguments must be a JSON object", None))?;
-    let (server_io, _client_io) = tokio::io::duplex(64);
-    let (reader, writer) = tokio::io::split(server_io);
-    let running = serve_directly::<RoleServer, _, _, std::io::Error, _>(
-        server.clone(),
-        (reader, writer),
-        None,
-    );
-    let context = RequestContext::new(NumberOrString::Number(1), running.peer().clone());
-    let response = server
-        .call_tool(
-            CallToolRequestParams::new(name).with_arguments(arguments),
-            context,
-        )
-        .await;
-    let _ = running.cancel().await;
-    response
-}
-
-pub(crate) async fn call_tool_output<T: DeserializeOwned>(
-    server: &MgmtServer,
-    name: &'static str,
-    arguments: Value,
-) -> Result<T, McpError> {
-    let response = call_tool(server, name, arguments).await?;
-    let CallToolResponse::Complete(response) = response else {
-        return Err(McpError::internal_error(
-            "test tool call did not return a complete result",
-            None,
-        ));
-    };
-    if response.is_error == Some(true) {
-        return Err(McpError::internal_error(
-            "test tool call returned an error result",
-            None,
-        ));
-    }
-    let structured_content = response.structured_content.ok_or_else(|| {
-        McpError::internal_error("tool result has no structured JSON output", None)
-    })?;
-    serde_json::from_value(structured_content)
-        .map_err(|error| McpError::internal_error(error.to_string(), None))
 }
 
 async fn invoke<TInput: Serialize, TOutput: DeserializeOwned>(

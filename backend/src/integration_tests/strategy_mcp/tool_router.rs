@@ -7,7 +7,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::tests_common::mock_db_with_strategy;
-use crate::integration_tests::mcp_tool::call_tool;
+use crate::integration_tests::mcp_tool::call_tool_output_with_headers;
 use crate::mcp::strategy::StrategyServer;
 use crate::services::litellm_client::LiteLlmClient;
 use crate::services::use_cases::build_use_cases;
@@ -54,7 +54,7 @@ async fn query_media_uses_model_from_tool_models_header() {
         mock_db_with_strategy(strategy_id),
         Some(std::sync::Arc::new(client)),
     );
-    let result = call_tool(
+    let result = call_tool_output_with_headers::<_, Value>(
         &server,
         "query_media",
         json!({
@@ -113,7 +113,7 @@ async fn search_web_uses_model_from_tool_models_header() {
         mock_db_with_strategy(strategy_id),
         Some(std::sync::Arc::new(client)),
     );
-    let result = call_tool(
+    let result = call_tool_output_with_headers::<_, Value>(
         &server,
         "search_web",
         json!({"query": "example query"}),
@@ -153,7 +153,7 @@ async fn query_data_rejects_nonexistent_strategy() {
     let server = server(db, None);
 
     assert_eq!(
-        call_tool(
+        call_tool_output_with_headers::<_, Value>(
             &server,
             "query_data",
             json!({

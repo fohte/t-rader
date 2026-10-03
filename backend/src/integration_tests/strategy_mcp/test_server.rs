@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::super::mcp_tool::call_tool;
+use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto as strategy_dto;
 use crate::mcp::strategy::StrategyServer as EntrypointStrategyServer;
 use crate::mcp::strategy::test_api::{ref_terms, refs, stock_groups};
@@ -75,7 +75,8 @@ impl StrategyServer {
                 HeaderValue::from_str(&models.to_string()).expect("tool models header is valid"),
             );
         }
-        let raw = call_tool(&self.server, name, arguments, headers).await?;
+        let raw = call_tool_output_with_headers::<_, Value>(&self.server, name, arguments, headers)
+            .await?;
         let value = serde_json::from_value(raw.clone())
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
         Ok(ToolOutput { raw, value })
