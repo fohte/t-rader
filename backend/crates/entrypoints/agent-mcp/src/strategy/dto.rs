@@ -868,3 +868,26 @@ mod short_selling;
 mod valuation;
 pub use short_selling::*;
 pub use valuation::*;
+
+#[cfg(test)]
+mod tests {
+    use super::WriteNoteParams;
+
+    #[test]
+    fn write_note_kind_deserialization_distinguishes_missing_null_and_value() {
+        fn parse(json: &str) -> Option<Option<String>> {
+            serde_json::from_str::<WriteNoteParams>(json)
+                .expect("valid write_note parameters")
+                .kind
+        }
+
+        assert_eq!(
+            (
+                parse("{}"),
+                parse(r#"{"kind":null}"#),
+                parse(r#"{"kind":"example-kind"}"#),
+            ),
+            (None, Some(None), Some(Some("example-kind".into()))),
+        );
+    }
+}

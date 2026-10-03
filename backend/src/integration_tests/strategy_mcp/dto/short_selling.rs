@@ -1,8 +1,7 @@
 use chrono::NaiveDate;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ReadShortSaleReportsParams {
     pub symbol: String,
     pub from: Option<NaiveDate>,
@@ -10,8 +9,7 @@ pub struct ReadShortSaleReportsParams {
     pub limit: Option<u32>,
 }
 
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct ShortSaleReportDto {
     pub disc_date: NaiveDate,
     pub calc_date: NaiveDate,
@@ -28,14 +26,13 @@ pub struct ShortSaleReportDto {
     pub notes: Option<String>,
 }
 
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct ReadShortSaleReportsResult {
     pub symbol: String,
     pub items: Vec<ShortSaleReportDto>,
 }
 
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ReadSectorShortRatioParams {
     pub sector: String,
     pub from: Option<NaiveDate>,
@@ -43,8 +40,7 @@ pub struct ReadSectorShortRatioParams {
     pub limit: Option<u32>,
 }
 
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct SectorShortRatioDto {
     pub date: NaiveDate,
     pub sell_excluding_short_value: Option<f64>,
@@ -53,8 +49,7 @@ pub struct SectorShortRatioDto {
     pub short_ratio: Option<f64>,
 }
 
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct ReadSectorShortRatioResult {
     pub sector: String,
     pub items: Vec<SectorShortRatioDto>,

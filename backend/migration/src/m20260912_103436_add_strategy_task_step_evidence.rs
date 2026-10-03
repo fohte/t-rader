@@ -36,7 +36,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     // strategy_task_step は非同期に反映されるため FK にしない
-                    // (理由: backend/src/mcp/strategy/evidence.rs)
+                    // (理由: backend/crates/entrypoints/agent-mcp/src/strategy/evidence.rs)
                     .col(
                         ColumnDef::new(StrategyTaskStepEvidence::ExecutionStepId)
                             .uuid()

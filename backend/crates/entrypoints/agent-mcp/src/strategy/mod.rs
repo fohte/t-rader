@@ -327,7 +327,7 @@ fn tool_model_from_ctx(
 }
 
 /// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `step_id` を取り出す。
-/// FK を持たない理由は `backend/src/mcp/strategy/evidence.rs` を参照。
+/// FK を持たない理由は `backend/crates/entrypoints/agent-mcp/src/strategy/evidence.rs` を参照。
 fn execution_step_id_from_execution_id(execution_id: &str) -> Option<Uuid> {
     let (_, step_id) = execution_id.rsplit_once(':')?;
     Uuid::parse_str(step_id).ok()

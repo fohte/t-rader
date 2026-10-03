@@ -6,7 +6,7 @@ use crate::error::AppError;
 use crate::kata_exec::{ExecRequest, KataExecError, SharedKataExecutor};
 
 /// MCP 層と HTTP preview 層の両方で適用する exec 上限。
-/// MCP 側 (`backend/src/mcp/strategy/mod.rs`) と数値を揃えること。
+/// MCP 側 (`backend/crates/entrypoints/agent-mcp/src/strategy/mod.rs`) と数値を揃えること。
 pub const PREVIEW_MAX_TIMEOUT_SECS: u32 = 60;
 pub const PREVIEW_MAX_OUTPUT_BYTES: u32 = 1024 * 1024;
 pub const PREVIEW_MAX_STDIN_BYTES: usize = 256 * 1024;

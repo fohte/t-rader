@@ -500,24 +500,6 @@ mod tests {
         }
     }
 
-    /// `Option<Option<String>>` は省略と新規作成時の null を区別する。
-    #[test]
-    fn write_note_params_kind_deserialization() {
-        fn parse(json: &str) -> Option<Option<String>> {
-            serde_json::from_str::<WriteNoteParams>(json)
-                .expect("parse")
-                .kind
-        }
-        assert_eq!(
-            (
-                parse("{}"),
-                parse(r#"{"kind":null}"#),
-                parse(r#"{"kind":"sample-kind"}"#),
-            ),
-            (None, Some(None), Some(Some("sample-kind".into()))),
-        );
-    }
-
     #[backend_test_macros::database_test]
     async fn write_note_rejects_cross_strategy_update(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
