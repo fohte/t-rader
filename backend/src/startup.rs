@@ -4,8 +4,7 @@ use std::net::SocketAddr;
 
 const DEFAULT_WORKER_ADMIN_UI_PORT: u16 = 3001;
 const WORKER_ADMIN_UI_PORT_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_PORT";
-const WORKER_ADMIN_UI_USERNAME_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_USERNAME";
-const WORKER_ADMIN_UI_PASSWORD_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_PASSWORD";
+const WORKER_ADMIN_UI_ALLOWED_EMAIL_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_ACCESS_EMAIL";
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum StartupError {
@@ -22,8 +21,7 @@ pub(super) enum StartupError {
 
 pub(super) struct WorkerAdminUiSettings {
     pub(super) listen_addr: SocketAddr,
-    pub(super) username: String,
-    pub(super) password: String,
+    pub(super) allowed_email: String,
 }
 
 impl From<DbErr> for StartupError {
@@ -66,7 +64,7 @@ pub(super) fn required_redis_url(value: Option<String>) -> Result<String, Startu
     })
 }
 
-fn required_admin_ui_credential(
+fn required_admin_ui_allowed_email(
     value: Option<String>,
     environment_variable: &str,
 ) -> Result<String, StartupError> {
@@ -79,8 +77,7 @@ fn required_admin_ui_credential(
 
 fn worker_admin_ui_settings(
     port: Option<String>,
-    username: Option<String>,
-    password: Option<String>,
+    allowed_email: Option<String>,
 ) -> Result<WorkerAdminUiSettings, StartupError> {
     let port = match port {
         Some(port) => port.parse::<u16>().map_err(|error| {
@@ -98,16 +95,17 @@ fn worker_admin_ui_settings(
 
     Ok(WorkerAdminUiSettings {
         listen_addr: SocketAddr::from(([0, 0, 0, 0], port)),
-        username: required_admin_ui_credential(username, WORKER_ADMIN_UI_USERNAME_ENV)?,
-        password: required_admin_ui_credential(password, WORKER_ADMIN_UI_PASSWORD_ENV)?,
+        allowed_email: required_admin_ui_allowed_email(
+            allowed_email,
+            WORKER_ADMIN_UI_ALLOWED_EMAIL_ENV,
+        )?,
     })
 }
 
 pub(super) fn worker_admin_ui_settings_from_env() -> Result<WorkerAdminUiSettings, StartupError> {
     worker_admin_ui_settings(
         std::env::var(WORKER_ADMIN_UI_PORT_ENV).ok(),
-        std::env::var(WORKER_ADMIN_UI_USERNAME_ENV).ok(),
-        std::env::var(WORKER_ADMIN_UI_PASSWORD_ENV).ok(),
+        std::env::var(WORKER_ADMIN_UI_ALLOWED_EMAIL_ENV).ok(),
     )
 }
 
@@ -175,42 +173,27 @@ mod tests {
     }
 
     #[rstest]
-    #[case::username_missing(
+    #[case::allowed_email_missing(
         None,
-        Some("test-password".to_string()),
-        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_USERNAME environment variable is not set".to_string()),
+        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_ACCESS_EMAIL environment variable is not set".to_string()),
     )]
-    #[case::username_empty(
+    #[case::allowed_email_empty(
         Some(String::new()),
-        Some("test-password".to_string()),
-        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_USERNAME environment variable is not set".to_string()),
-    )]
-    #[case::password_missing(
-        Some("test-user".to_string()),
-        None,
-        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_PASSWORD environment variable is not set".to_string()),
-    )]
-    #[case::password_empty(
-        Some("test-user".to_string()),
-        Some(String::new()),
-        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_PASSWORD environment variable is not set".to_string()),
+        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_ACCESS_EMAIL environment variable is not set".to_string()),
     )]
     #[case::configured(
-        Some("local-admin".to_string()),
-        Some("local-only-password".to_string()),
+        Some("worker-admin@access.invalid".to_string()),
         Ok((
             SocketAddr::from(([0, 0, 0, 0], 3001)),
-            "local-admin".to_string(),
-            "local-only-password".to_string(),
+            "worker-admin@access.invalid".to_string(),
         )),
     )]
-    fn test_worker_admin_ui_settings_require_credentials(
-        #[case] username: Option<String>,
-        #[case] password: Option<String>,
-        #[case] expected: Result<(SocketAddr, String, String), String>,
+    fn test_worker_admin_ui_settings_require_allowed_email(
+        #[case] allowed_email: Option<String>,
+        #[case] expected: Result<(SocketAddr, String), String>,
     ) {
-        let actual = worker_admin_ui_settings(None, username, password)
-            .map(|settings| (settings.listen_addr, settings.username, settings.password))
+        let actual = worker_admin_ui_settings(None, allowed_email)
+            .map(|settings| (settings.listen_addr, settings.allowed_email))
             .map_err(|error| error.to_string());
 
         assert_eq!(actual, expected);
@@ -231,13 +214,10 @@ mod tests {
         #[case] port: Option<String>,
         #[case] expected: Result<SocketAddr, String>,
     ) {
-        let actual = worker_admin_ui_settings(
-            port,
-            Some("test-user".to_string()),
-            Some("test-password".to_string()),
-        )
-        .map(|settings| settings.listen_addr)
-        .map_err(|error| error.to_string());
+        let actual =
+            worker_admin_ui_settings(port, Some("worker-admin@access.invalid".to_string()))
+                .map(|settings| settings.listen_addr)
+                .map_err(|error| error.to_string());
 
         assert_eq!(actual, expected);
     }

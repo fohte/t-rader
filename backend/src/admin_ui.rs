@@ -12,17 +12,28 @@ use crate::{
 };
 use entrypoint_scheduler::GRAPHILE_WORKER_SCHEMA;
 
+const ACCESS_HEADER_NAME: &str = "Cf-Access-Authenticated-User-Email";
+
+fn auth_config(allowed_email: String) -> Result<AdminAuthConfig, StartupError> {
+    AdminAuthConfig::header(ACCESS_HEADER_NAME, allowed_email, false).map_err(|error| {
+        StartupError::Config(format!(
+            "invalid Graphile Worker admin UI auth header: {error}"
+        ))
+    })
+}
+
 pub(super) async fn server(
     settings: WorkerAdminUiSettings,
     db: &DatabaseConnection,
     shutdown_rx: watch::Receiver<bool>,
 ) -> Result<BoxFuture<'static, Result<(), StartupError>>, StartupError> {
     let pool = db.get_postgres_connection_pool().clone();
+    let auth = auth_config(settings.allowed_email)?;
     let admin_config =
         AdminServerConfig::builder(pool.clone(), WorkerUtils::new(pool, GRAPHILE_WORKER_SCHEMA))
             .schema_name(GRAPHILE_WORKER_SCHEMA)
             .listen_addr(settings.listen_addr)
-            .auth(AdminAuthConfig::basic(settings.username, settings.password))
+            .auth(auth)
             .read_only(false)
             .build()
             .map_err(|error| {
@@ -62,4 +73,37 @@ pub(super) async fn server(
         }
         Ok(())
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use graphile_worker_admin_ui::PublicAuthMode;
+
+    use super::*;
+
+    #[test]
+    fn auth_uses_cloudflare_access_identity_header() {
+        let allowed_email = "worker-admin@access.invalid";
+        let actual = auth_config(allowed_email.to_string())
+            .map(|auth| {
+                let summary = auth.summary();
+                (
+                    matches!(summary.mode, PublicAuthMode::Header),
+                    summary.header_name,
+                    auth.secret_for_display().map(str::to_owned),
+                    summary.generated_secret,
+                )
+            })
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            actual,
+            Ok((
+                true,
+                Some("cf-access-authenticated-user-email".to_string()),
+                Some(allowed_email.to_string()),
+                false,
+            )),
+        );
+    }
 }
