@@ -1,13 +1,15 @@
 //! HTTP と MCP entrypoint の API 契約と戦略タスクの一連の処理を composition root から検証する。
 //!
 //! entrypoint ごとの integration test は公開 router または MCP tool 経由で公開面を検証する。
-//! その他のテストは複数の submission route、agent 実行、scheduler job を跨ぐ戦略タスクの契約を検証する。
+//! その他のテストは複数の submission route、agent 実行、scheduler job を跨ぐ契約を検証する。
 
 mod agent_webhook;
 mod external_webhook;
 mod frontend_api;
+pub(crate) mod mcp_tool;
 mod mgmt_mcp;
 mod prediction_grading;
+mod strategy_mcp;
 mod trigger;
 
 use std::sync::Arc;
@@ -113,7 +115,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         &use_cases,
         agent_client.clone(),
     ));
-    let _: Value = mgmt_mcp::tests_common::call_tool_output(
+    let _: Value = mcp_tool::call_tool_output::<_, Value>(
         &mgmt,
         "submit_strategy_task",
         json!({

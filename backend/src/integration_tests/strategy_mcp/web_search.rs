@@ -1,17 +1,13 @@
 use indoc::indoc;
-use sea_orm::{DatabaseBackend, MockDatabase};
 use serde_json::json;
 use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::super::dto::{SearchWebParams, SearchWebResult};
-use super::*;
+use super::SEARCH_WEB_MAX_CALLS_PER_TASK;
+use super::dto::SearchWebParams;
+use super::tests_common::{build_server, insert_strategy};
 use crate::services::litellm_client::LiteLlmClient;
-
-fn mock_db() -> sea_orm::DatabaseConnection {
-    MockDatabase::new(DatabaseBackend::Postgres).into_connection()
-}
 
 fn params(query: &str) -> SearchWebParams {
     SearchWebParams {
@@ -31,12 +27,13 @@ fn sse_body(content: &str) -> String {
     )
 }
 
-#[tokio::test]
-async fn search_web_inner_requires_litellm_client() {
-    let server = super::super::tests_common::build_server(mock_db());
+#[backend_test_macros::database_test]
+async fn search_web_requires_litellm_client(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "test").await;
+    let server = build_server(db);
     let err = server
-        .search_web_inner(
-            Uuid::new_v4(),
+        .search_web(
+            strategy_id,
             None,
             "example-model-search".to_string(),
             params("半導体 関連ニュース"),
@@ -44,20 +41,18 @@ async fn search_web_inner_requires_litellm_client() {
         .await
         .expect_err("expected internal error");
     assert_eq!(
-        (err.code, err.message.as_ref()),
-        (
-            rmcp::model::ErrorCode::INTERNAL_ERROR,
-            "litellm client is not configured",
-        ),
+        err,
+        rmcp::ErrorData::internal_error("litellm client is not configured", None),
     );
 }
 
-#[tokio::test]
-async fn search_web_inner_rejects_empty_query() {
-    let server = super::super::tests_common::build_server(mock_db());
+#[backend_test_macros::database_test]
+async fn search_web_rejects_empty_query(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "test").await;
+    let server = build_server(db);
     let err = server
-        .search_web_inner(
-            Uuid::new_v4(),
+        .search_web(
+            strategy_id,
             None,
             "example-model-search".to_string(),
             params("   "),
@@ -65,16 +60,13 @@ async fn search_web_inner_rejects_empty_query() {
         .await
         .expect_err("expected invalid params");
     assert_eq!(
-        (err.code, err.message.as_ref()),
-        (
-            rmcp::model::ErrorCode::INVALID_PARAMS,
-            "query must not be empty",
-        ),
+        err,
+        rmcp::ErrorData::invalid_params("query must not be empty", None),
     );
 }
 
-#[tokio::test]
-async fn search_web_inner_returns_text_and_citations() {
+#[backend_test_macros::database_test]
+async fn search_web_returns_text_and_citations(db: gateway_postgres::DatabaseHandle) {
     let litellm = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -83,12 +75,12 @@ async fn search_web_inner_returns_text_and_citations() {
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server = super::super::tests_common::build_server(mock_db())
-        .with_litellm_client(Some(std::sync::Arc::new(client)));
+    let strategy_id = insert_strategy(&db, "test").await;
+    let server = build_server(db).with_litellm_client(Some(std::sync::Arc::new(client)));
 
     let out = server
-        .search_web_inner(
-            Uuid::new_v4(),
+        .search_web(
+            strategy_id,
             None,
             "example-model-search".to_string(),
             params("半導体 関連ニュース"),
@@ -101,12 +93,9 @@ async fn search_web_inner_returns_text_and_citations() {
         .expect("recorded requests");
     let body: serde_json::Value = requests[0].body_json().expect("parse request body");
     assert_eq!(
-        (out, body),
+        (out.as_json().clone(), body),
         (
-            SearchWebResult {
-                text: "半導体銘柄が上昇".into(),
-                citations: vec![],
-            },
+            json!({"text": "半導体銘柄が上昇", "citations": []}),
             json!({
                 "model": "example-model-search",
                 "messages": [{
@@ -122,7 +111,7 @@ async fn search_web_inner_returns_text_and_citations() {
 }
 
 #[backend_test_macros::database_test]
-async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHandle) {
+async fn search_web_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHandle) {
     let litellm = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -131,14 +120,14 @@ async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::Dat
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server = super::super::tests_common::build_server(db)
-        .with_litellm_client(Some(std::sync::Arc::new(client)));
+    let strategy_id = insert_strategy(&db, "test").await;
+    let server = build_server(db).with_litellm_client(Some(std::sync::Arc::new(client)));
     let task_execution_id = format!("task-{}", Uuid::new_v4());
 
     for _ in 0..SEARCH_WEB_MAX_CALLS_PER_TASK {
         server
-            .search_web_inner(
-                Uuid::new_v4(),
+            .search_web(
+                strategy_id,
                 Some(task_execution_id.clone()),
                 "example-model-search".to_string(),
                 params("query"),
@@ -148,8 +137,8 @@ async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::Dat
     }
 
     let err = server
-        .search_web_inner(
-            Uuid::new_v4(),
+        .search_web(
+            strategy_id,
             Some(task_execution_id.clone()),
             "example-model-search".to_string(),
             params("query"),
@@ -157,15 +146,14 @@ async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::Dat
         .await
         .expect_err("call beyond limit should fail");
     assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!(
-                    "search_web call limit ({SEARCH_WEB_MAX_CALLS_PER_TASK}) exceeded for this task execution"
-                )
-                .as_str(),
+        err,
+        rmcp::ErrorData::invalid_params(
+            format!(
+                "search_web call limit ({SEARCH_WEB_MAX_CALLS_PER_TASK}) exceeded for this task execution"
             ),
-        );
+            None,
+        ),
+    );
 
     let requests = litellm
         .received_requests()
@@ -175,7 +163,7 @@ async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::Dat
 }
 
 #[backend_test_macros::database_test]
-async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(
+async fn search_web_releases_call_count_reservation_when_llm_request_fails(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let litellm = MockServer::start().await;
@@ -186,8 +174,8 @@ async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails
         .await;
 
     let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server = super::super::tests_common::build_server(db)
-        .with_litellm_client(Some(std::sync::Arc::new(client)));
+    let strategy_id = insert_strategy(&db, "test").await;
+    let server = build_server(db).with_litellm_client(Some(std::sync::Arc::new(client)));
     let task_execution_id = format!("task-{}", Uuid::new_v4());
 
     // 予約したカウントが都度解放されなければ、SEARCH_WEB_MAX_CALLS_PER_TASK 回目以降は
@@ -195,14 +183,17 @@ async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails
     // upstream の失敗 (INTERNAL_ERROR) のまま伝わることを確認する。
     for _ in 0..(SEARCH_WEB_MAX_CALLS_PER_TASK * 2) {
         let err = server
-            .search_web_inner(
-                Uuid::new_v4(),
+            .search_web(
+                strategy_id,
                 Some(task_execution_id.clone()),
                 "example-model-search".to_string(),
                 params("query"),
             )
             .await
             .expect_err("upstream failure should propagate");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+        assert_eq!(
+            err,
+            rmcp::ErrorData::internal_error("litellm api error (status 500): upstream error", None,),
+        );
     }
 }
