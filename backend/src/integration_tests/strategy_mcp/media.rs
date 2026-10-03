@@ -7,7 +7,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::super::tests_common::mock_db_with_strategy;
-    use crate::services::litellm_client::LiteLlmClient;
+    use gateway_litellm::LiteLlmClient;
 
     use super::super::dto::QueryMediaParams;
 

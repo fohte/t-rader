@@ -1,30 +1,10 @@
-//! J-Quants の全上場銘柄マスタを `stock` に同期する処理。
-//!
-//! 全上場銘柄を `stock` に upsert し、名前・市場区分・商品区分を最新に保つ。
-//! 業種は `sync_source = 'jquants'` の分類軸にグループと所属として同期する。
-//! master に含まれなくなった行 (上場廃止した保有銘柄等) は削除せずそのまま残す。
-
-use core_application::equity_master::EquityMasterUseCaseError;
-use core_application::equity_master_source::EquityMasterSource;
-use gateway_postgres::DatabaseHandle;
-
-pub use core_application::equity_master::EquityMasterSyncStats as SyncStats;
-
-/// 全上場銘柄マスタを取得し、`stock` と J-Quants 分類軸のグループ所属に反映する。
-pub async fn run_sync_cycle(
-    db: impl Into<DatabaseHandle>,
-    source: &dyn EquityMasterSource,
-) -> Result<SyncStats, EquityMasterUseCaseError> {
-    crate::services::use_cases::build_use_cases(db)
-        .equity_master()
-        .sync(source)
-        .await
-}
+//! 銘柄マスタ同期 use case の DB integration test。
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::services::use_cases::build_use_cases;
     use chrono::Utc;
+    use core_application::equity_master::EquityMasterSyncStats as SyncStats;
     use gateway_jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
     use gateway_postgres::entities::{group_axis, stock, stock_group};
     use sea_orm::ActiveModelTrait;
@@ -65,7 +45,11 @@ mod tests {
             .ok()
             .await;
 
-        let stats = run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
+        let stats = build_use_cases(db.clone())
+            .equity_master()
+            .sync(&client)
+            .await
+            .expect("cycle ok");
         let stock = fetch_stock(&db, "ZZ99").await.expect("stock exists");
         let group = stock_group::Entity::find()
             .filter(stock_group::Column::AxisId.eq(axis.id))
@@ -124,7 +108,11 @@ mod tests {
             .ok()
             .await;
 
-        run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
+        build_use_cases(db.clone())
+            .equity_master()
+            .sync(&client)
+            .await
+            .expect("cycle ok");
         let after = fetch_stock(&db, "ZZ99").await.expect("stock exists");
 
         assert_eq!(
@@ -164,7 +152,11 @@ mod tests {
 
         mock.equities_master().entries(vec![]).ok().await;
 
-        let stats = run_sync_cycle(db.clone(), &client).await.expect("cycle ok");
+        let stats = build_use_cases(db.clone())
+            .equity_master()
+            .sync(&client)
+            .await
+            .expect("cycle ok");
         let stock = fetch_stock(&db, "9999").await.expect("stock still exists");
 
         assert_eq!(

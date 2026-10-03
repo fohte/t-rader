@@ -11,8 +11,8 @@ use uuid::Uuid;
 use super::StrategyServer;
 use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
 use super::tests_common::mock_db_with_strategy;
-use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
 use core_application::custom_indicator::{SCOPE_GLOBAL, SCOPE_STRATEGY};
+use core_application::kata_exec::{ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor};
 use gateway_postgres::entities::{custom_indicator, strategy};
 
 async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
@@ -118,7 +118,7 @@ async fn eval_indicator_resolves_and_runs(db: gateway_postgres::DatabaseHandle) 
     let recorded = executor.requests.lock().await;
     assert_eq!(
         recorded.as_slice(),
-        &[crate::kata_exec::ExecRequest {
+        &[ExecRequest {
             code: "print('{\"value\": 42}')".into(),
             stdin: Some(r#"{"args":{"period":14}}"#.into()),
             timeout: None,

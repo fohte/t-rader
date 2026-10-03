@@ -4,9 +4,9 @@ use super::dto::*;
 mod tests {
     use std::sync::Arc;
 
-    use crate::agent_client::FakeAgentTaskClient;
     use crate::testing::insert_test_note;
     use chrono::{DateTime, FixedOffset};
+    use core_application::agent_task_client::FakeAgentTaskClient;
     use gateway_postgres::entities::annotation;
     use rmcp::handler::server::wrapper::{Json, Parameters};
     use sea_orm::ActiveModelTrait;

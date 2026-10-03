@@ -4,18 +4,16 @@
 //! - `/mcp/strategy`: 戦略 Agent が叩く戦略実行 MCP
 
 mod access_log;
-#[cfg(test)]
-pub mod watcher;
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::data_provider::SharedDailyBarSource;
-use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::SharedLlmClient;
 use crate::services::use_cases::UseCases;
 use axum::Router;
 use core_application::agent_task_client::SharedAgentTaskClient;
+use core_application::daily_bar_source::SharedDailyBarSource;
+use core_application::kata_exec::SharedKataExecutor;
+use core_application::llm_client::SharedLlmClient;
 use core_application::strategy_task::DEADLINE_DURATION;
 pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
@@ -221,7 +219,7 @@ mod tests {
     }
 
     fn test_agent_client() -> SharedAgentTaskClient {
-        Arc::new(crate::agent_client::DisabledAgentTaskClient)
+        Arc::new(core_application::agent_task_client::DisabledAgentTaskClient)
     }
 
     /// MCP spec 2026-07-28 (SEP-2567) は `initialize` から session の概念を除き、

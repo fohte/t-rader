@@ -8,7 +8,9 @@ use rstest::rstest;
 use uuid::Uuid;
 
 use super::tests_common::mock_db_with_strategy;
-use crate::kata_exec::{ExecResult, FakeKataExecutor, KataExecError, SharedKataExecutor};
+use core_application::kata_exec::{
+    ExecResult, FakeKataExecutor, KataExecError, SharedKataExecutor,
+};
 
 use super::StrategyServer;
 use super::dto::{EvalPythonParams, EvalPythonResult};

@@ -8,8 +8,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
-use crate::agent_client::FakeAgentTaskClient;
 use crate::services::use_cases::build_use_cases;
+use core_application::agent_task_client::FakeAgentTaskClient;
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use gateway_postgres::entities::strategy;
 use sea_orm::ActiveModelTrait;

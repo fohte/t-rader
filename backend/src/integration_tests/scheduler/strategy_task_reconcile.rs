@@ -1,6 +1,6 @@
-//! 戦略タスク照合の既存 DB テストで使う単発 helper。
+//! 戦略タスク照合を DB と fake agent client で検証する integration test。
 
-use crate::agent_client::SharedAgentTaskClient;
+use core_application::agent_task_client::SharedAgentTaskClient;
 use gateway_postgres::DatabaseHandle;
 
 /// 1 回分の照合を実行する。失敗した個別 task はログに残して次へ進む。
@@ -24,11 +24,11 @@ where
 mod tests {
     use std::sync::Arc;
 
-    use crate::agent_client::{
+    use chrono::{DateTime, Utc};
+    use core_application::agent_task_client::{
         AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
         FakeAgentTaskClient,
     };
-    use chrono::{DateTime, Utc};
     use gateway_postgres::entities::sea_orm_active_enums::{
         StrategyTaskPhase, StrategyTaskStepStatus,
     };

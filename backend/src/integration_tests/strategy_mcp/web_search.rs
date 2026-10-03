@@ -7,7 +7,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use super::SEARCH_WEB_MAX_CALLS_PER_TASK;
 use super::dto::SearchWebParams;
 use super::tests_common::{build_server, insert_strategy};
-use crate::services::litellm_client::LiteLlmClient;
+use gateway_litellm::LiteLlmClient;
 
 fn params(query: &str) -> SearchWebParams {
     SearchWebParams {

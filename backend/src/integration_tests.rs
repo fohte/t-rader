@@ -1,7 +1,7 @@
-//! HTTP と MCP entrypoint の API 契約と戦略タスクの一連の処理を composition root から検証する。
+//! composition root に置く DB integration test。
 //!
-//! entrypoint ごとの integration test は公開 router または MCP tool 経由で公開面を検証する。
-//! その他のテストは複数の submission route、agent 実行、scheduler job を跨ぐ契約を検証する。
+//! entrypoint ごとのテストは対応する module に置き、公開 router、MCP server、scheduler job を検証する。
+//! 直下のテストは entrypoint をまたぐシナリオと共有 helper を扱う。
 
 mod agent_webhook;
 mod external_webhook;
@@ -9,6 +9,7 @@ mod frontend_api;
 pub(crate) mod mcp_tool;
 mod mgmt_mcp;
 mod prediction_grading;
+mod scheduler;
 mod strategy_mcp;
 mod trigger;
 
@@ -20,14 +21,14 @@ use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryF
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::agent_client::{
-    AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
-};
 use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy,
+};
+use core_application::agent_task_client::{
+    AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
 use core_application::strategy_task::DEFAULT_PURPOSE;
 use entrypoint_control_plane_mcp::MgmtServer;

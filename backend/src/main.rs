@@ -1,23 +1,19 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use backend::agent_client::{
-    AgentTaskClient, AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
-    SharedAgentTaskClient,
-};
 use backend::cli::Cli;
-use backend::data_provider::SharedDailyBarSource;
-use backend::data_provider::news::rss::RssNewsAggregator;
-use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
-use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use backend::{
     build_agent_webhook_state, build_external_webhook_state, build_http_state, create_router,
 };
 use clap::Parser;
+use core_application::agent_task_client::{AgentTaskClient, SharedAgentTaskClient};
+use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
 use core_application::equity_master_source::SharedEquityMasterSource;
 use core_application::financial_summary_source::SharedFinancialSummarySource;
 use core_application::indicator_observation_source::SharedIndicatorObservationSource;
+use core_application::kata_exec::{KataExecutor, SharedKataExecutor};
+use core_application::llm_client::SharedLlmClient;
 use core_application::margin_source::SharedMarginSource;
 use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
@@ -30,7 +26,13 @@ use futures_util::future::BoxFuture;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
+use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
+use gateway_litellm::LiteLlmClient as LlmGatewayClient;
 use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
+use gateway_rss::RssNewsAggregator;
+use gateway_t_rader_agent::{
+    AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
+};
 use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
