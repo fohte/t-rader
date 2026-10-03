@@ -1,6 +1,5 @@
 pub mod agent_config;
 pub mod agent_options;
-pub mod agent_tasks;
 pub mod annotations;
 pub mod bars;
 pub mod comments;
@@ -8,7 +7,6 @@ pub mod config;
 pub mod custom_indicators;
 pub mod group_axes;
 pub mod history;
-pub mod hooks;
 pub mod imports;
 pub mod ingest_status;
 pub mod note_kinds;

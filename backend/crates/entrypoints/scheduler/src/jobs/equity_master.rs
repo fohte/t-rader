@@ -107,6 +107,7 @@ mod tests {
             name: "架空銘柄".to_string(),
             market: Some("架空市場".to_string()),
             sector_name: Some("架空業種".to_string()),
+            sector_code: Some("1234".to_string()),
             product_category: Some("000".to_string()),
         }
     }

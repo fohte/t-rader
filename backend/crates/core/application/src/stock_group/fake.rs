@@ -14,6 +14,7 @@ use super::types::{NewStockGroup, StockGroup, StockGroupMembership};
 pub struct FakeStockGroupRepository {
     axes: Mutex<HashMap<String, GroupAxis>>,
     groups: Mutex<HashMap<Uuid, StockGroup>>,
+    sync_source_codes: Mutex<HashMap<Uuid, String>>,
     stocks: Mutex<HashSet<String>>,
     members: Mutex<HashSet<(Uuid, String)>>,
     insert_conflict: Mutex<Option<String>>,
@@ -40,6 +41,32 @@ impl FakeStockGroupRepository {
 
     pub async fn insert_stock(&self, stock_id: &str) {
         self.stocks.lock().await.insert(stock_id.to_owned());
+    }
+
+    pub async fn insert_sync_group(
+        &self,
+        axis_key: &str,
+        group_key: &str,
+        source_code: Option<&str>,
+    ) {
+        let Some(axis) = self.axes.lock().await.get(axis_key).cloned() else {
+            return;
+        };
+        let group = StockGroup {
+            id: Uuid::new_v4(),
+            axis_id: axis.id,
+            axis_key: axis.key,
+            key: group_key.to_owned(),
+            name: group_key.to_owned(),
+            description: None,
+        };
+        if let Some(source_code) = source_code {
+            self.sync_source_codes
+                .lock()
+                .await
+                .insert(group.id, source_code.to_owned());
+        }
+        self.groups.lock().await.insert(group.id, group);
     }
 
     pub async fn conflict_next_insert(&self, message: &str) {
@@ -89,6 +116,28 @@ impl StockGroupRepository for FakeStockGroupRepository {
                 group.axis_key = axis_key.to_owned();
                 group
             }))
+    }
+
+    async fn find_sync_source_codes(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        sync_source: &str,
+        group_key: &str,
+    ) -> Result<Vec<Option<String>>, StockGroupRepositoryError> {
+        self.record_transaction(transaction).await?;
+        let axes = self.axes.lock().await;
+        let axis_ids = axes
+            .values()
+            .filter(|axis| axis.sync_source.as_deref() == Some(sync_source))
+            .map(|axis| axis.id)
+            .collect::<HashSet<_>>();
+        let groups = self.groups.lock().await;
+        let codes = self.sync_source_codes.lock().await;
+        Ok(groups
+            .values()
+            .filter(|group| axis_ids.contains(&group.axis_id) && group.key == group_key)
+            .map(|group| codes.get(&group.id).cloned())
+            .collect())
     }
 
     async fn insert_group(

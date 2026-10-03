@@ -5,6 +5,8 @@ use rust_decimal::Decimal;
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::testing::insert_test_group_with_sync_source_code;
+
 use super::StrategyServer;
 use super::dto::ReadSectorShortRatioParams;
 use super::tests_common::{build_server, insert_strategy, mock_db_with_strategy};
@@ -58,16 +60,153 @@ async fn rejects_unknown_group_key_through_tool_dispatch() {
 
 #[backend_test_macros::database_test]
 async fn reads_sector_rows_and_maps_values_to_tool_json(db: gateway_postgres::DatabaseHandle) {
+    insert_test_group_with_sync_source_code(
+        &db,
+        "sample-jquants-axis",
+        "その他",
+        "その他",
+        Some("jquants"),
+        Some("1234"),
+    )
+    .await;
     PostgresShortRatioRepository::new(db.clone())
         .upsert(vec![
-            ratio(ymd(2025, 1, 5), "9999", Some(("700", "200", "100"))),
-            ratio(ymd(2025, 1, 6), "9999", None),
+            ratio(ymd(2025, 1, 5), "1234", Some(("700", "200", "100"))),
+            ratio(ymd(2025, 1, 6), "1234", None),
             ratio(ymd(2025, 1, 6), "9050", Some(("100", "50", "50"))),
         ])
         .await
         .expect("seed short ratios");
     let strategy_id = insert_strategy(&db, "test-strategy").await;
     let server: StrategyServer = build_server(db);
+
+    let result = server
+        .read_sector_short_ratio(
+            strategy_id,
+            ReadSectorShortRatioParams {
+                sector: "その他".into(),
+                from: Some(ymd(2025, 1, 5)),
+                to: Some(ymd(2025, 1, 6)),
+                limit: Some(5),
+            },
+        )
+        .await
+        .expect("read short ratio");
+
+    assert_eq!(
+        result.as_json().clone(),
+        json!({
+            "sector": "その他",
+            "items": [
+                {
+                    "date": "2025-01-06",
+                    "sell_excluding_short_value": null,
+                    "short_with_restriction_value": null,
+                    "short_without_restriction_value": null,
+                    "short_ratio": null,
+                },
+                {
+                    "date": "2025-01-05",
+                    "sell_excluding_short_value": 700.0,
+                    "short_with_restriction_value": 200.0,
+                    "short_without_restriction_value": 100.0,
+                    "short_ratio": 0.3,
+                },
+            ],
+        }),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn rejects_unknown_group_key_against_database(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "test-strategy").await;
+    let server = build_server(db);
+
+    let error = server
+        .read_sector_short_ratio(
+            strategy_id,
+            ReadSectorShortRatioParams {
+                sector: "合成業種".into(),
+                from: None,
+                to: None,
+                limit: None,
+            },
+        )
+        .await
+        .expect_err("unknown group key should be rejected");
+
+    assert_eq!(
+        error,
+        rmcp::ErrorData::invalid_params("unknown J-Quants industry group key: \"合成業種\"", None,),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn reports_when_group_code_has_not_been_synchronized(db: gateway_postgres::DatabaseHandle) {
+    insert_test_group_with_sync_source_code(
+        &db,
+        "sample-jquants-axis",
+        "その他",
+        "その他",
+        Some("jquants"),
+        None,
+    )
+    .await;
+    let strategy_id = insert_strategy(&db, "test-strategy").await;
+    let server = build_server(db);
+
+    let error = server
+        .read_sector_short_ratio(
+            strategy_id,
+            ReadSectorShortRatioParams {
+                sector: "その他".into(),
+                from: None,
+                to: None,
+                limit: None,
+            },
+        )
+        .await
+        .expect_err("missing synchronized code should be reported");
+
+    assert_eq!(
+        error,
+        rmcp::ErrorData::internal_error(
+            "J-Quants code for industry group \"その他\" is not synchronized yet",
+            None,
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn reads_sector_rows_using_the_jquants_group_code(db: gateway_postgres::DatabaseHandle) {
+    insert_test_group_with_sync_source_code(
+        &db,
+        "sample-jquants-axis",
+        "その他",
+        "その他",
+        Some("jquants"),
+        Some("1234"),
+    )
+    .await;
+    insert_test_group_with_sync_source_code(
+        &db,
+        "sample-other-axis",
+        "その他",
+        "合成分類",
+        Some("synthetic-source"),
+        Some("5678"),
+    )
+    .await;
+    PostgresShortRatioRepository::new(db.clone())
+        .upsert(vec![
+            ratio(ymd(2025, 1, 5), "1234", Some(("700", "200", "100"))),
+            ratio(ymd(2025, 1, 6), "1234", None),
+            ratio(ymd(2025, 1, 6), "5678", Some(("100", "50", "50"))),
+        ])
+        .await
+        .expect("seed short ratios");
+    let strategy_id = insert_strategy(&db, "test-strategy").await;
+    let server = build_server(db);
 
     let result = server
         .read_sector_short_ratio(

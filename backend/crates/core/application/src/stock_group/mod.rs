@@ -12,7 +12,7 @@ pub use repository::{
 };
 pub use types::{
     CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupMembership,
-    UpdateStockGroupCommand,
+    StockGroupSyncSourceCodeLookup, UpdateStockGroupCommand,
 };
 pub use use_cases::StockGroupUseCases;
 

@@ -366,6 +366,7 @@ mod tests {
             key: Set("sample-group".into()),
             name: Set("Sample Group".into()),
             description: Set(None),
+            sync_source_code: Set(None),
         })
         .exec_without_returning(&db)
         .await

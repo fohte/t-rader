@@ -3,5 +3,16 @@ name = "entrypoint-external-webhook"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+axum = { workspace = true }
+core-application = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+utoipa = { workspace = true, features = ["uuid"] }
+utoipa-axum = { workspace = true }
+uuid = { workspace = true, features = ["serde"] }
+
 [lints]
 workspace = true

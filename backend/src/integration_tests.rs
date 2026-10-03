@@ -1,7 +1,9 @@
 //! composition root 経由で公開 entrypoint の統合動作を検証する。
 //!
-//! 戦略タスクの経路横断契約と、mgmt MCP / strategy MCP の tool dispatch を扱う。
+//! 戦略タスクの経路横断契約と、各 entrypoint の統合動作を扱う。
 
+mod agent_webhook;
+mod external_webhook;
 pub(crate) mod mcp_tool;
 mod mgmt_mcp;
 mod prediction_grading;
