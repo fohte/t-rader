@@ -52,11 +52,21 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 - 対象リソース (note / annotation) の `strategy_id` も Repository 層で二重検査し、戦略 A の Agent が戦略 B のリソースに触れないことを保証する。
 - 例外がある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を見る、という設計上、口座全体の集計には `x-strategy-id` をスコープとして使わない (ただし接続元戦略自身のスライス (投資可能額を含む) を追加で返すため、ヘッダの値もその選択に使う)。`search_refs` / `add_ref_terms` / `remove_ref_terms` は stock/indicator/group が戦略に属さないマスタデータであるため、`x-strategy-id` をそもそも検索・更新条件に使わない。`search_news` も news_item 全体を検索対象にするため、`x-strategy-id` を検索条件に使わない。`read_shareholding_structure` も EDINET 保有構造データが戦略に属さない市場データであるため、`x-strategy-id` を検索条件に使わない。`read_fin_summary` も財務情報が会社単位の開示であり戦略に属さないマスタデータであるため、`x-strategy-id` を検索条件に使わない。`read_macro_indicator` もマクロ指標の観測値が戦略に属さない市場データであるため、`x-strategy-id` を検索条件に使わない。`read_trades` も `read_portfolio` の account スコープと同じ規則で全戦略横断の trade を対象にし、`x-strategy-id` を検索条件に使わない (返り値の `strategy_id` でどの戦略の約定かを判別する)。`read_margin` も信用残が銘柄単位の市場データであり戦略に属さないため、`x-strategy-id` を検索条件に使わない。`read_short_sale_reports` / `read_sector_short_ratio` も空売り関連データが銘柄や業種単位の市場データであり戦略に属さないため、`x-strategy-id` を検索条件に使わない。`read_valuation` も日次バリュエーション指標が銘柄単位の市場データであり戦略に属さないため、`x-strategy-id` を検索条件に使わない。
 
+`register_stock` は戦略境界の確認後、口座共通の銘柄マスタへ外国株を登録する。`stock.id` は ISO 3166-1 alpha-2 の割り当て済み国コードと銘柄コードを `国:コード` で連結し、`JP` は受け付けない ([ISO 3166](https://www.iso.org/iso-3166-country-codes.html))。たとえば `US:DEMO-A` や `KR:QZ9012` を Markdown 内で `[[stock:US:DEMO-A]]`、`[[stock:KR:QZ9012]]` のようにリンクする。`US` の `instruments.market` は `US`、それ以外は `OTHER` になる。登録時には `stock`、`instruments`、`change_history` に記録する。
+
+`register_stock` の入力は `country` (ISO 3166-1 alpha-2)、`code` (大文字英字・数字・`-`)、`name`、`exchange`。返却値は登録した `id`、`name`、`exchange`。
+
 `create_stock_group` / `update_stock_group` / `add_stock_to_group` / `remove_stock_from_group` / `list_stock_group_members` も分類軸とグループが口座全体に属するため、接続元戦略は存在確認にだけ使い、グループの検索・更新条件には使わない。`sync_source` が設定された分類軸のグループと銘柄の設定は MCP から変更できない。グループの変更履歴は `change_history.target_kind = "stock_group"`、actor `llm` / label `analyst` で記録される。
 
 任意ヘッダ `x-execution-id` で実行単位を識別できる。値は agent_graph のフェーズまたは for_each 要素ごとの実行ステップ 1 件 (`{a2a_task_id}:{step_id}`) を表す。戦略境界の検査対象ではなく、`write_note` / `create_annotation` の resume 時重複排除に使う。resume のたびに同じステップへ新しい `a2a_task_id` が発行されるため、`write_note` の冪等性キーは `step_id` 部分のみを使い (`a2a_task_id` が変わっても同じノートに収束させる)、`create_annotation` は `step_id` と `a2a_task_id` を分けて保持し resume 時の置換要否の判定に使う。
 
 `search_web` と `query_media` の呼び出しでは、`x-tool-models` ヘッダに `agent_graph.tool_models` の JSON map が必要。各 tool は自分の名前をキーにモデルを取得し、ヘッダまたは対象キーが無い場合はエラーを返す。
+
+### 外国株登録
+
+| tool             | 入力                                  | 出力                     |
+| ---------------- | ------------------------------------- | ------------------------ |
+| `register_stock` | `country`, `code`, `name`, `exchange` | `id`, `name`, `exchange` |
 
 ### tool 一覧
 

@@ -590,6 +590,7 @@ mod tests {
                 ("read_trades", Some(true)),
                 ("read_valuation", Some(true)),
                 ("record_prediction", None),
+                ("register_stock", None),
                 ("remove_ref_terms", None),
                 ("remove_stock_from_group", None),
                 ("reply_comment", None),
