@@ -36,8 +36,6 @@
 | [public.indicator_observation](public.indicator_observation.md)                             | 3       | 日付ごとの指標観測値を保持する。                                                                       | BASE TABLE |
 | [public.jquants_daily_bars_ingested_date](public.jquants_daily_bars_ingested_date.md)       | 1       | 全銘柄の日足データを取り込んだ営業日を記録する。                                                       | BASE TABLE |
 | [public.prediction](public.prediction.md)                                                   | 10      | 戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。                                         | BASE TABLE |
-| [public.calendar_event](public.calendar_event.md)                                           | 13      | 指標、中銀イベント、決算などの予定を取得元ごとに保持する。                                             | BASE TABLE |
-| [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)         | 1       | 決算予定を取得した公表日を記録する。                                                                   | BASE TABLE |
 | [public.prediction_grade](public.prediction_grade.md)                                       | 9       | 予測期間の株価データから算出した予測の採点結果。                                                       | BASE TABLE |
 | [public.valuation](public.valuation.md)                                                     | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                                             | BASE TABLE |
 | [public.valuation_ingested_date](public.valuation_ingested_date.md)                         | 1       | 株価評価指標データの取り込み済み日付を記録する。                                                       | BASE TABLE |
@@ -52,6 +50,8 @@
 | [public.stock_group](public.stock_group.md)                                                 | 6       | 分類軸の中で銘柄をまとめるグループを定義する。                                                         | BASE TABLE |
 | [public.stock_group_member](public.stock_group_member.md)                                   | 3       | 銘柄と銘柄グループの所属関係を保持する。                                                               | BASE TABLE |
 | [public.ingest_run](public.ingest_run.md)                                                   | 7       | データ取り込みジョブの実行履歴と結果を記録する。                                                       | BASE TABLE |
+| [public.calendar_event](public.calendar_event.md)                                           | 13      | 指標、中銀イベント、決算などの予定を取得元ごとに保持する。                                             | BASE TABLE |
+| [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)         | 1       | 決算予定を取得した公表日を記録する。                                                                   | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -531,24 +531,6 @@ erDiagram
   date due_date
   timestamp_with_time_zone created_at
 }
-"public.calendar_event" {
-  uuid id
-  text source
-  text external_id
-  text category
-  text country
-  text title
-  text stock_id
-  text fiscal_period
-  date event_date
-  timestamp_with_time_zone event_at
-  text time_of_day
-  timestamp_with_time_zone created_at
-  timestamp_with_time_zone updated_at
-}
-"public.earnings_schedule_ingested_date" {
-  date date
-}
 "public.prediction_grade" {
   uuid prediction_id FK
   numeric target_base_close
@@ -698,6 +680,24 @@ erDiagram
   text status
   jsonb stats
   text error
+}
+"public.calendar_event" {
+  uuid id
+  text source
+  text external_id
+  text category
+  text country
+  text title
+  text stock_id
+  text fiscal_period
+  date event_date
+  timestamp_with_time_zone event_at
+  text time_of_day
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.earnings_schedule_ingested_date" {
+  date date
 }
 ```
 
