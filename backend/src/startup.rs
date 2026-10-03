@@ -1,5 +1,11 @@
 use gateway_jquants::JQuantsPlan;
 use sea_orm::DbErr;
+use std::net::SocketAddr;
+
+const DEFAULT_WORKER_ADMIN_UI_PORT: u16 = 3001;
+const WORKER_ADMIN_UI_PORT_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_PORT";
+const WORKER_ADMIN_UI_USERNAME_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_USERNAME";
+const WORKER_ADMIN_UI_PASSWORD_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_PASSWORD";
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum StartupError {
@@ -12,6 +18,12 @@ pub(super) enum StartupError {
     // runtime failure も既存の process error prefix を維持する。
     #[error("configuration error: {0}")]
     Runtime(String),
+}
+
+pub(super) struct WorkerAdminUiSettings {
+    pub(super) listen_addr: SocketAddr,
+    pub(super) username: String,
+    pub(super) password: String,
 }
 
 impl From<DbErr> for StartupError {
@@ -52,6 +64,51 @@ pub(super) fn required_redis_url(value: Option<String>) -> Result<String, Startu
     value.filter(|value| !value.is_empty()).ok_or_else(|| {
         StartupError::Config("REDIS_URL environment variable is not set".to_string())
     })
+}
+
+fn required_admin_ui_credential(
+    value: Option<String>,
+    environment_variable: &str,
+) -> Result<String, StartupError> {
+    value.filter(|value| !value.is_empty()).ok_or_else(|| {
+        StartupError::Config(format!(
+            "{environment_variable} environment variable is not set"
+        ))
+    })
+}
+
+fn worker_admin_ui_settings(
+    port: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<WorkerAdminUiSettings, StartupError> {
+    let port = match port {
+        Some(port) => port.parse::<u16>().map_err(|error| {
+            StartupError::Config(format!(
+                "invalid {WORKER_ADMIN_UI_PORT_ENV} value '{port}': {error}"
+            ))
+        })?,
+        None => DEFAULT_WORKER_ADMIN_UI_PORT,
+    };
+    if port == 0 {
+        return Err(StartupError::Config(format!(
+            "{WORKER_ADMIN_UI_PORT_ENV} must be greater than zero"
+        )));
+    }
+
+    Ok(WorkerAdminUiSettings {
+        listen_addr: SocketAddr::from(([0, 0, 0, 0], port)),
+        username: required_admin_ui_credential(username, WORKER_ADMIN_UI_USERNAME_ENV)?,
+        password: required_admin_ui_credential(password, WORKER_ADMIN_UI_PASSWORD_ENV)?,
+    })
+}
+
+pub(super) fn worker_admin_ui_settings_from_env() -> Result<WorkerAdminUiSettings, StartupError> {
+    worker_admin_ui_settings(
+        std::env::var(WORKER_ADMIN_UI_PORT_ENV).ok(),
+        std::env::var(WORKER_ADMIN_UI_USERNAME_ENV).ok(),
+        std::env::var(WORKER_ADMIN_UI_PASSWORD_ENV).ok(),
+    )
 }
 
 #[cfg(test)]
@@ -115,6 +172,65 @@ mod tests {
             required_redis_url(value).map_err(|error| error.to_string()),
             expected.map(str::to_owned).map_err(str::to_owned),
         );
+    }
+
+    #[rstest]
+    #[case::username_missing(
+        None,
+        Some("test-password".to_string()),
+        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_USERNAME environment variable is not set".to_string()),
+    )]
+    #[case::username_empty(
+        Some(String::new()),
+        Some("test-password".to_string()),
+        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_USERNAME environment variable is not set".to_string()),
+    )]
+    #[case::password_missing(
+        Some("test-user".to_string()),
+        None,
+        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_PASSWORD environment variable is not set".to_string()),
+    )]
+    #[case::password_empty(
+        Some("test-user".to_string()),
+        Some(String::new()),
+        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_PASSWORD environment variable is not set".to_string()),
+    )]
+    fn test_worker_admin_ui_settings_require_credentials(
+        #[case] username: Option<String>,
+        #[case] password: Option<String>,
+        #[case] expected: Result<(SocketAddr, String, String), String>,
+    ) {
+        let actual = worker_admin_ui_settings(None, username, password)
+            .map(|settings| (settings.listen_addr, settings.username, settings.password))
+            .map_err(|error| error.to_string());
+
+        assert_eq!(actual, expected);
+    }
+
+    #[rstest]
+    #[case::default_port(None, Ok(SocketAddr::from(([0, 0, 0, 0], 3001))))]
+    #[case::custom_port(Some("4321".to_string()), Ok(SocketAddr::from(([0, 0, 0, 0], 4321))))]
+    #[case::invalid_port(
+        Some("invalid".to_string()),
+        Err("configuration error: invalid GRAPHILE_WORKER_ADMIN_UI_PORT value 'invalid': invalid digit found in string".to_string()),
+    )]
+    #[case::zero_port(
+        Some("0".to_string()),
+        Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_PORT must be greater than zero".to_string()),
+    )]
+    fn test_worker_admin_ui_port(
+        #[case] port: Option<String>,
+        #[case] expected: Result<SocketAddr, String>,
+    ) {
+        let actual = worker_admin_ui_settings(
+            port,
+            Some("test-user".to_string()),
+            Some("test-password".to_string()),
+        )
+        .map(|settings| settings.listen_addr)
+        .map_err(|error| error.to_string());
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
