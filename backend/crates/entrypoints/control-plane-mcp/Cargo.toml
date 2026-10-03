@@ -3,5 +3,18 @@ name = "entrypoint-control-plane-mcp"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+chrono = { workspace = true, features = ["serde"] }
+core-application = { workspace = true }
+rmcp = { workspace = true, features = ["macros", "schemars", "server"] }
+schemars = { version = "=1.2.2", features = ["chrono04", "uuid1"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
 [lints]
 workspace = true
