@@ -38,8 +38,7 @@ pub async fn get_investable_amount(
 ) -> Result<Json<InvestableAmountResponse>, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;
     let current = state
-        .use_cases
-        .strategies()
+        .strategy_use_cases
         .current_investable_amount(scope)
         .await
         .map_err(map_strategy_error)?;
@@ -72,8 +71,7 @@ pub async fn put_investable_amount(
         .effective_at
         .unwrap_or_else(|| Utc::now().fixed_offset());
     let created = state
-        .use_cases
-        .strategies()
+        .strategy_use_cases
         .record_investable_amount(Actor::Human, scope, payload.amount_jpy, effective_at)
         .await
         .map_err(map_strategy_error)?;

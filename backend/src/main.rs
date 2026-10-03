@@ -7,12 +7,12 @@ use backend::agent_client::{
     SharedAgentTaskClient,
 };
 use backend::cli::Cli;
-use backend::create_router;
 use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
+use backend::{build_http_state, create_router};
 use clap::Parser;
 use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
 use core_application::equity_master_source::SharedEquityMasterSource;
@@ -166,10 +166,10 @@ async fn main() -> Result<(), AppError> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "jquants".to_string());
 
-    let (daily_bar_source, jquants_client, jquants_ingest_client) = match provider_kind.as_str() {
+    let (daily_bar_source, jquants_ingest_client) = match provider_kind.as_str() {
         "none" => {
             tracing::info!("DATA_PROVIDER=none: 日足データの取得元を無効化して起動します");
-            (None, None, None)
+            (None, None)
         }
         "ibkr" => {
             let base_url = std::env::var("IBKR_BASE_URL")
@@ -197,7 +197,7 @@ async fn main() -> Result<(), AppError> {
             );
             tracing::info!("IBKR 日足データ取得元を初期化しました");
             let source: SharedDailyBarSource = client;
-            (Some(source), None, None)
+            (Some(source), None)
         }
         "jquants" => match jquants_config {
             Some((api_key, plan)) => {
@@ -225,11 +225,11 @@ async fn main() -> Result<(), AppError> {
                 );
                 tracing::info!("J-Quants 日足データ取得元を初期化しました");
                 let source: SharedDailyBarSource = request_client.clone();
-                (Some(source), Some(request_client), Some(ingest_client))
+                (Some(source), Some(ingest_client))
             }
             _ => {
                 tracing::warn!("JQUANTS_API_KEY が未設定のため、日足データ取得元なしで起動します");
-                (None, None, None)
+                (None, None)
             }
         },
         other => {
@@ -374,16 +374,14 @@ async fn main() -> Result<(), AppError> {
 
         let llm_gateway_client =
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
-        let state = AppState {
-            use_cases,
-            daily_bar_source,
-            jquants_client,
+        let state = build_http_state(
+            &use_cases,
             agent_task_client,
-            agent_webhook_token: Arc::from(agent_webhook_token),
+            Arc::from(agent_webhook_token),
             kata_executor,
             llm_gateway_client,
-        };
-        Some(create_router(state, app_db))
+        );
+        Some(create_router(state, use_cases, daily_bar_source, app_db))
     } else {
         None
     };

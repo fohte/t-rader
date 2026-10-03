@@ -40,7 +40,7 @@ pub async fn sbi_preview(
     body: Bytes,
 ) -> Result<Json<SbiPreviewResponse>, AppError> {
     let parsed = sbi::parse_bytes(&body).map_err(|e| AppError::Validation(e.to_string()))?;
-    let trades = state.use_cases.trades();
+    let trades = state.trade_use_cases;
 
     let mut rows = Vec::with_capacity(parsed.rows.len());
     let mut csv_seen: HashMap<TradeMatchQuery, usize> = HashMap::new();
@@ -107,8 +107,7 @@ pub async fn sbi_commit(
     JsonBody(p): JsonBody<SbiCommitRequest>,
 ) -> Result<Json<SbiCommitResponse>, AppError> {
     let result = state
-        .use_cases
-        .trades()
+        .trade_use_cases
         .commit_sbi_import(
             p.rows
                 .into_iter()

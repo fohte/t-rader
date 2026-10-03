@@ -28,8 +28,7 @@ pub async fn get_account_risk_policy(
     State(state): State<AppState>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
     let risk_policy = state
-        .use_cases
-        .account_risk_policies()
+        .account_risk_policy_use_cases
         .find_current()
         .await
         .map_err(map_account_risk_policy_error)?;
@@ -67,7 +66,7 @@ pub async fn put_account_risk_policy(
         .map(Into::into)
         .collect();
     validate_group_ratios(&group_ratios)?;
-    let axes = state.use_cases.group_axes().list().await?;
+    let axes = state.group_axis_use_cases.list().await?;
     let known_axes = axes
         .into_iter()
         .map(|axis| axis.key)
@@ -87,8 +86,7 @@ pub async fn put_account_risk_policy(
     };
     let value = serialize_risk_policy(&data)?;
     let saved = state
-        .use_cases
-        .account_risk_policies()
+        .account_risk_policy_use_cases
         .save(value)
         .await
         .map_err(map_account_risk_policy_error)?;

@@ -43,8 +43,7 @@ pub async fn list_global_indicators(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     let items = state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .list_global()
         .await
         .map_err(map_custom_indicator_error)?;
@@ -69,8 +68,7 @@ pub async fn list_strategy_indicators(
     JsonPath(strategy_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     let items = state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .list_strategy(strategy_id)
         .await
         .map_err(map_custom_indicator_error)?;
@@ -95,8 +93,7 @@ pub async fn get_indicator(
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .get(indicator_id)
         .await
         .map_err(map_custom_indicator_error)?;
@@ -123,8 +120,7 @@ pub async fn create_global_indicator(
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
     let indicator = state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .create(CreateCustomIndicatorCommand {
             name: payload.name,
             strategy_id: None,
@@ -161,8 +157,7 @@ pub async fn create_strategy_indicator(
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
     let indicator = state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .create(CreateCustomIndicatorCommand {
             name: payload.name,
             strategy_id: Some(strategy_id),
@@ -199,8 +194,7 @@ pub async fn update_indicator(
     JsonBody(payload): JsonBody<UpdateCustomIndicatorRequest>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .update(
             indicator_id,
             UpdateCustomIndicatorCommand {
@@ -234,8 +228,7 @@ pub async fn delete_indicator(
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .delete(indicator_id)
         .await
         .map_err(map_custom_indicator_error)?;
@@ -263,8 +256,7 @@ pub async fn get_strategy_indicator(
     JsonPath((strategy_id, indicator_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let indicator = state
-        .use_cases
-        .custom_indicators()
+        .custom_indicator_use_cases
         .get_strategy_indicator(strategy_id, indicator_id)
         .await
         .map_err(map_custom_indicator_error)?;
@@ -751,8 +743,8 @@ mod tests {
 
     mod preview {
         use super::*;
-        use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
         use crate::testing::create_test_server_with_kata;
+        use core_application::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
         use std::sync::Arc;
 
         fn preview_payload(code: &str) -> serde_json::Value {
@@ -800,7 +792,7 @@ mod tests {
             let recorded = executor.requests.lock().await;
             assert_eq!(
                 recorded.as_slice(),
-                &[crate::kata_exec::ExecRequest {
+                &[core_application::kata_exec::ExecRequest {
                     code: "print('{\"value\": 42}')".into(),
                     stdin: Some(r#"{"args":{"period":14}}"#.into()),
                     timeout: None,

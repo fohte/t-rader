@@ -72,8 +72,7 @@ pub async fn list_notes(
     JsonQuery(params): JsonQuery<ListNotesQuery>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
     let page = state
-        .use_cases
-        .note_reads()
+        .note_read_use_cases
         .list_notes(
             None,
             NoteListQuery {
@@ -112,8 +111,7 @@ pub async fn get_note(
     JsonQuery(params): JsonQuery<GetNoteQuery>,
 ) -> Result<Json<NoteResponse>, AppError> {
     let snapshot = state
-        .use_cases
-        .note_reads()
+        .note_read_use_cases
         .get_note(id, params.version_id, false, None)
         .await
         .map_err(map_note_read_error)?;
@@ -172,8 +170,7 @@ pub async fn create_note(
     let strategy_id = payload.strategy_id;
     let history_title = payload.title.trim().to_string();
     let snapshot = state
-        .use_cases
-        .notes()
+        .note_use_cases
         .write(NoteWriteCommand {
             scope: None,
             strategy_id,
@@ -229,8 +226,7 @@ pub async fn update_note(
     JsonBody(payload): JsonBody<UpdateNoteRequest>,
 ) -> Result<Json<NoteResponse>, AppError> {
     let snapshot = state
-        .use_cases
-        .notes()
+        .note_use_cases
         .update(
             id,
             UpdateNoteCommand {
@@ -265,8 +261,7 @@ pub async fn delete_note(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state
-        .use_cases
-        .notes()
+        .note_use_cases
         .delete(id)
         .await
         .map_err(map_note_error)?;
@@ -300,7 +295,6 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::testing::agent_config;
     use crate::testing::find_current_note_version;
     use crate::testing::{
@@ -308,6 +302,9 @@ mod tests {
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use core_application::agent_task_client::{
+        AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient,
+    };
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;

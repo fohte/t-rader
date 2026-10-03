@@ -20,7 +20,7 @@ pub async fn get_ingest_status(
     State(state): State<AppState>,
 ) -> Result<Json<IngestStatusResponse>, AppError> {
     let today_in_japan = (Utc::now() + Duration::hours(9)).date_naive();
-    let status = state.use_cases.ingest_status().get(today_in_japan).await?;
+    let status = state.ingest_status_use_case.get(today_in_japan).await?;
 
     Ok(Json(status.into()))
 }

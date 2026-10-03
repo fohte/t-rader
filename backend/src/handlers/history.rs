@@ -47,8 +47,7 @@ pub async fn list_history(
     JsonQuery(p): JsonQuery<ListHistoryQuery>,
 ) -> Result<Json<Vec<ChangeHistoryResponse>>, AppError> {
     let entries = state
-        .use_cases
-        .change_history_reads()
+        .change_history_use_cases
         .list(p.target_kind.as_deref(), p.target_id, p.limit)
         .await
         .map_err(map_err)?;
@@ -78,8 +77,7 @@ pub async fn get_history(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<ChangeHistoryResponse>, AppError> {
     let entry = state
-        .use_cases
-        .change_history_reads()
+        .change_history_use_cases
         .get(id)
         .await
         .map_err(map_err)?;

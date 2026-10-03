@@ -46,8 +46,7 @@ pub async fn list_annotations(
     JsonQuery(params): JsonQuery<ListAnnotationsQuery>,
 ) -> Result<Json<Vec<AnnotationResponse>>, AppError> {
     let annotations = state
-        .use_cases
-        .annotation_reads()
+        .annotation_read_use_cases
         .list_annotations(
             AnnotationListQuery {
                 strategy_id: params.strategy_id,
@@ -84,8 +83,7 @@ pub async fn get_annotation(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let annotation = state
-        .use_cases
-        .annotation_reads()
+        .annotation_read_use_cases
         .get_annotation(id, None)
         .await
         .map_err(map_annotation_read_error)?;
@@ -113,8 +111,7 @@ pub async fn create_annotation(
     let status = p.status.as_deref().unwrap_or("unread").to_string();
     let created_by = p.created_by_kind.as_deref().unwrap_or("human").to_string();
     let created = state
-        .use_cases
-        .annotations()
+        .annotation_use_cases
         .create(CreateAnnotationCommand {
             scope: None,
             actor: Actor::Human,
@@ -158,8 +155,7 @@ pub async fn update_annotation(
     JsonBody(p): JsonBody<UpdateAnnotationRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let updated = state
-        .use_cases
-        .annotations()
+        .annotation_use_cases
         .update(UpdateAnnotationCommand {
             scope: None,
             actor: Actor::Human,
@@ -198,8 +194,7 @@ pub async fn approve_annotation(
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let updated = state
-        .use_cases
-        .annotations()
+        .annotation_use_cases
         .change_status(ChangeAnnotationStatusCommand {
             scope: None,
             actor: Actor::Human,
@@ -235,8 +230,7 @@ pub async fn reject_annotation(
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
     let current = state
-        .use_cases
-        .annotation_reads()
+        .annotation_read_use_cases
         .get_annotation(id, None)
         .await
         .map_err(map_annotation_read_error)?;
@@ -252,8 +246,7 @@ pub async fn reject_annotation(
             current.id, current.target_symbol
         );
         state
-            .use_cases
-            .strategy_tasks()
+            .strategy_task_use_cases
             .submit_task(
                 state.agent_task_client.as_ref(),
                 strategy_id,
@@ -266,8 +259,7 @@ pub async fn reject_annotation(
     }
 
     let updated = state
-        .use_cases
-        .annotations()
+        .annotation_use_cases
         .change_status(ChangeAnnotationStatusCommand {
             scope: None,
             actor: Actor::Human,
@@ -298,8 +290,7 @@ pub async fn delete_annotation(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state
-        .use_cases
-        .annotations()
+        .annotation_use_cases
         .delete(DeleteAnnotationCommand {
             scope: None,
             actor: Actor::Human,
@@ -352,13 +343,15 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::testing::agent_config;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client, insert_test_note,
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use core_application::agent_task_client::{
+        AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient,
+    };
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::annotation;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;

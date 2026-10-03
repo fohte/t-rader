@@ -44,8 +44,7 @@ pub async fn list_comments(
     let target_kind = CommentTargetKind::parse(&p.target_kind)
         .ok_or_else(|| AppError::Validation(format!("invalid target_kind: {}", p.target_kind)))?;
     let comments = state
-        .use_cases
-        .comment_reads()
+        .comment_read_use_cases
         .list_comments(
             CommentListQuery {
                 target_kind,
@@ -82,8 +81,7 @@ pub async fn create_comment(
     let author_kind = p.author_kind.as_deref().unwrap_or("human").to_string();
     let author_label = p.author_label.as_deref().unwrap_or("user").to_string();
     let created = state
-        .use_cases
-        .comments()
+        .comment_use_cases
         .create(CreateCommentCommand {
             scope: None,
             actor: Actor::Human,
@@ -126,8 +124,7 @@ pub async fn update_comment(
     JsonBody(payload): JsonBody<UpdateCommentRequest>,
 ) -> Result<Json<CommentResponse>, AppError> {
     let updated = state
-        .use_cases
-        .comments()
+        .comment_use_cases
         .resolve(ResolveCommentCommand {
             scope: None,
             actor: Actor::Human,
@@ -158,8 +155,7 @@ pub async fn delete_comment(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state
-        .use_cases
-        .comments()
+        .comment_use_cases
         .delete(DeleteCommentCommand {
             scope: None,
             actor: Actor::Human,

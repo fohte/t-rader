@@ -29,8 +29,7 @@ pub async fn list_note_versions(
     JsonPath(note_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
     let versions = state
-        .use_cases
-        .note_reads()
+        .note_read_use_cases
         .list_note_versions(note_id)
         .await
         .map_err(crate::handlers::notes::map_note_read_error)?;
@@ -59,8 +58,7 @@ pub async fn get_note_version(
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     Ok(Json(
         state
-            .use_cases
-            .note_reads()
+            .note_read_use_cases
             .get_note_version(note_id, version_no)
             .await
             .map_err(crate::handlers::notes::map_note_read_error)?
@@ -82,8 +80,7 @@ pub async fn list_pending_note_versions(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
     let versions = state
-        .use_cases
-        .note_reads()
+        .note_read_use_cases
         .list_pending_note_versions()
         .await
         .map_err(crate::handlers::notes::map_note_read_error)?;
@@ -126,8 +123,7 @@ pub async fn approve_note_version(
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     let updated = state
-        .use_cases
-        .notes()
+        .note_use_cases
         .approve_version(note_id, version_no, payload.label)
         .await
         .map_err(crate::handlers::notes::map_note_error)?;
@@ -161,16 +157,14 @@ pub async fn reject_note_version(
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     let version = state
-        .use_cases
-        .note_reads()
+        .note_read_use_cases
         .get_note_version(note_id, version_no)
         .await
         .map_err(crate::handlers::notes::map_note_read_error)?;
     ensure_pending_version(&version)?;
 
     let line_comment_count = state
-        .use_cases
-        .comment_reads()
+        .comment_read_use_cases
         .count_line_comments(version.id)
         .await
         .map_err(map_comment_read_error)?;
@@ -187,8 +181,7 @@ pub async fn reject_note_version(
     }
 
     let strategy_id = state
-        .use_cases
-        .note_reads()
+        .note_read_use_cases
         .get_note_strategy_id(note_id)
         .await
         .map_err(crate::handlers::notes::map_note_read_error)?;
@@ -202,8 +195,7 @@ pub async fn reject_note_version(
             version.title, note_id, version_no, version.id, reason
         );
         state
-            .use_cases
-            .strategy_tasks()
+            .strategy_task_use_cases
             .submit_task(
                 state.agent_task_client.as_ref(),
                 strategy_id,
@@ -216,8 +208,7 @@ pub async fn reject_note_version(
     }
 
     let updated = state
-        .use_cases
-        .notes()
+        .note_use_cases
         .reject_version(note_id, version_no, label, line_comment_count > 0)
         .await
         .map_err(crate::handlers::notes::map_note_error)?;
@@ -246,8 +237,7 @@ pub async fn make_note_version_current(
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     let updated = state
-        .use_cases
-        .notes()
+        .note_use_cases
         .make_version_current(note_id, version_no)
         .await
         .map_err(crate::handlers::notes::map_note_error)?;

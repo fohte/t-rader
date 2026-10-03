@@ -35,29 +35,32 @@ mod rss_feeds;
 mod strategies;
 mod strategy_config;
 
-#[cfg(test)]
-mod tests_common;
-
-use crate::agent_client::SharedAgentTaskClient;
-use crate::error::AppError;
-use crate::services::use_cases::UseCases;
-use core_application::strategy::StrategyUseCaseError;
+use core_application::agent_task_client::SharedAgentTaskClient;
+use core_application::annotation::AnnotationReadUseCases;
+use core_application::note::NoteReadUseCases;
+use core_application::note_kind::NoteKindUseCases;
+use core_application::persistence::PersistenceError;
+use core_application::rss_feed::RssFeedUseCases;
+use core_application::strategy::{StrategyRepositoryError, StrategyUseCaseError, StrategyUseCases};
+use core_application::strategy_existence::StrategyExistenceError;
 use core_application::strategy_scope::{
-    StrategyScope, StrategyScopeError, StrategyScopeSourceError,
+    StrategyScope, StrategyScopeError, StrategyScopeSourceError, StrategyScopeUseCases,
 };
+use core_application::strategy_task::StrategyTaskUseCases;
+use core_application::trigger::{TriggerRepositoryError, TriggerUseCaseError, TriggerUseCases};
+use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
+use std::sync::Arc;
 
-// `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
-pub use dto::SubmitStrategyTaskParams;
 use dto::{
     GetStrategyConfigParams, GetStrategyConfigResult, GetStrategyTaskStatusParams,
     GetStrategyTaskStatusResult, ListNoteKindsResult, ListRecentAnnotationsResult,
     ListRecentNotesResult, ListRecentParams, ListRssFeedsParams, ListRssFeedsResult,
     ListStrategiesResult, ResumeStrategyTaskParams, ResumeStrategyTaskResult,
-    SubmitStrategyTaskResult,
+    SubmitStrategyTaskParams, SubmitStrategyTaskResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -65,16 +68,25 @@ const MAX_LIST_LIMIT: u64 = 100;
 
 #[derive(Clone)]
 pub struct MgmtServer {
-    use_cases: UseCases,
-    agent_client: SharedAgentTaskClient,
+    dependencies: MgmtDependencies,
+}
+
+#[derive(Clone)]
+pub struct MgmtDependencies {
+    pub strategies: StrategyUseCases,
+    pub strategy_scope: Arc<StrategyScopeUseCases>,
+    pub strategy_tasks: StrategyTaskUseCases,
+    pub triggers: TriggerUseCases,
+    pub note_kinds: NoteKindUseCases,
+    pub note_reads: NoteReadUseCases,
+    pub annotation_reads: AnnotationReadUseCases,
+    pub rss_feeds: RssFeedUseCases,
+    pub agent_client: SharedAgentTaskClient,
 }
 
 impl MgmtServer {
-    pub fn new(use_cases: UseCases, agent_client: SharedAgentTaskClient) -> Self {
-        Self {
-            use_cases,
-            agent_client,
-        }
+    pub fn new(dependencies: MgmtDependencies) -> Self {
+        Self { dependencies }
     }
 }
 
@@ -93,20 +105,21 @@ pub(super) fn internal_failure(err: &str) -> McpError {
     internal_error(format!("database error: {err}"))
 }
 
-/// `AppError::Validation` は各 tool 側で `ok=false` + `errors` として扱うため、ここでは
-/// `NotFound` / `Internal` / その他だけを tool call の失敗として一律にマッピングする。
-pub(super) fn map_app_error(err: AppError) -> McpError {
-    match err {
-        AppError::NotFound(msg) => invalid_params(msg),
-        AppError::Internal(message) => internal_failure(&message),
-        other => internal_error(other.to_string()),
+pub(super) fn map_persistence_error(error: PersistenceError) -> McpError {
+    match error {
+        PersistenceError::Database(message) => internal_failure(&message),
+        PersistenceError::MissingReference(_) => {
+            internal_error("validation error: referenced resource does not exist")
+        }
+        PersistenceError::Conflict(_) => internal_error("conflict: resource already exists"),
+        PersistenceError::ConstraintViolation(_) => {
+            internal_error("validation error: value violates database constraint")
+        }
+        PersistenceError::RecordNotUpdated(_) => invalid_params("resource not found"),
     }
 }
 
-pub(super) fn map_trigger_error(error: core_application::trigger::TriggerUseCaseError) -> McpError {
-    use core_application::trigger::{TriggerRepositoryError, TriggerUseCaseError};
-    use core_application::unit_of_work::UnitOfWorkError;
-
+pub(super) fn map_trigger_error(error: TriggerUseCaseError) -> McpError {
     match error {
         TriggerUseCaseError::Validation(message) => invalid_params(message),
         TriggerUseCaseError::NotFound(id) => invalid_params(format!("trigger {id} not found")),
@@ -118,15 +131,11 @@ pub(super) fn map_trigger_error(error: core_application::trigger::TriggerUseCase
             invalid_params(format!("trigger {id} is not available"))
         }
         TriggerUseCaseError::Repository(TriggerRepositoryError::Database(error))
-        | TriggerUseCaseError::StrategyRepository(
-            core_application::strategy::StrategyRepositoryError::Database(error),
-        )
-        | TriggerUseCaseError::StrategyExistence(
-            core_application::strategy_existence::StrategyExistenceError::Database(error),
-        )
+        | TriggerUseCaseError::StrategyRepository(StrategyRepositoryError::Database(error))
+        | TriggerUseCaseError::StrategyExistence(StrategyExistenceError::Database(error))
         | TriggerUseCaseError::UnitOfWork(
             UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
-        ) => map_app_error(error.into()),
+        ) => map_persistence_error(error),
         other => internal_error(format!("trigger operation failed: {other}")),
     }
 }
@@ -150,8 +159,8 @@ pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
 #[tool_router]
 impl MgmtServer {
     pub(super) async fn strategy_scope(&self, id: uuid::Uuid) -> Result<StrategyScope, McpError> {
-        self.use_cases
-            .strategy_scope()
+        self.dependencies
+            .strategy_scope
             .verify(id)
             .await
             .map_err(|error| match error {
@@ -304,7 +313,7 @@ mod tests {
     #[test]
     fn tool_schemas_have_no_boolean_property_schemas() {
         for tool in MgmtServer::tool_router().list_all() {
-            crate::mcp::assert_no_boolean_property_schemas(&tool);
+            assert_no_boolean_property_schemas(&tool);
         }
     }
 
@@ -339,5 +348,35 @@ mod tests {
             .map(|(name, hint)| (name.to_string(), hint))
             .collect::<std::collections::BTreeMap<_, _>>(),
         );
+    }
+
+    fn assert_no_boolean_property_schemas(tool: &rmcp::model::Tool) {
+        fn walk(value: &serde_json::Value, path: &str) {
+            let serde_json::Value::Object(object) = value else {
+                return;
+            };
+            if let Some(serde_json::Value::Object(properties)) = object.get("properties") {
+                for (key, schema) in properties {
+                    assert!(
+                        !schema.is_boolean(),
+                        "{path}.properties.{key} is a bare JSON boolean schema"
+                    );
+                }
+            }
+            for (key, child) in object {
+                walk(child, &format!("{path}.{key}"));
+            }
+        }
+
+        walk(
+            &serde_json::Value::Object(tool.input_schema.as_ref().clone()),
+            &format!("{}.inputSchema", tool.name),
+        );
+        if let Some(output_schema) = &tool.output_schema {
+            walk(
+                &serde_json::Value::Object(output_schema.as_ref().clone()),
+                &format!("{}.outputSchema", tool.name),
+            );
+        }
     }
 }

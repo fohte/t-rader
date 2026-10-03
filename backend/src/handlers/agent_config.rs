@@ -36,7 +36,7 @@ fn map_err(error: AgentConfigUseCaseError) -> AppError {
 }
 
 fn use_cases(state: &AppState) -> AgentConfigUseCases {
-    state.use_cases.agent_configs()
+    state.agent_config_use_cases.clone()
 }
 
 /// 目的別 agent 設定一覧

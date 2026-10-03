@@ -11,12 +11,12 @@ use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::agent_client::AgentTaskError;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
     StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,
 };
+use core_application::agent_task_client::AgentTaskError;
 pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
     match err {
         SubmitTaskError::EmptyPrompt => AppError::Validation("prompt must not be empty".into()),
@@ -70,8 +70,7 @@ async fn verify_strategy_scope(
     not_found_message: String,
 ) -> Result<StrategyScope, AppError> {
     state
-        .use_cases
-        .strategy_scope()
+        .strategy_scope_use_cases
         .verify(strategy_id)
         .await
         .map_err(|error| match error {
@@ -106,8 +105,7 @@ pub async fn submit_strategy_chat(
 ) -> Result<(StatusCode, Json<StrategyChatResponse>), AppError> {
     let requested_purpose = payload.purpose;
     let submitted = state
-        .use_cases
-        .strategy_tasks()
+        .strategy_task_use_cases
         .submit_task(
             state.agent_task_client.as_ref(),
             id,
@@ -158,8 +156,7 @@ pub async fn get_strategy_task(
     )
     .await?;
     let view = state
-        .use_cases
-        .strategy_tasks()
+        .strategy_task_use_cases
         .get_for_strategy(scope, task_id)
         .await
         .map_err(map_get_task_error)?;
@@ -204,8 +201,7 @@ pub async fn list_strategy_tasks(
     )
     .await?;
     let views = state
-        .use_cases
-        .strategy_tasks()
+        .strategy_task_use_cases
         .list_for_strategy(scope, None)
         .await
         .map_err(map_list_task_error)?;
@@ -222,12 +218,14 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::testing::agent_config;
     use crate::testing::{
         create_test_server, create_test_server_with_db,
         create_test_server_with_db_and_agent_client, insert_test_strategy,
         insert_test_strategy_task,
+    };
+    use core_application::agent_task_client::{
+        AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient,
     };
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::strategy_task;

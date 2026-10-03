@@ -31,18 +31,18 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
-use crate::data_provider::SharedDailyBarSource;
 use crate::error::{AppError, ErrorResponse};
+pub use crate::handlers::state::{AgentTaskNotificationsState, AppState, ExternalHookState};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
     custom_indicators, group_axes, history, hooks, imports, ingest_status, note_kinds, note_links,
     note_predictions, note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks,
     trade_notes, trades, triggers,
 };
-use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::SharedLlmClient;
-use gateway_jquants::JQuantsClient;
+use core_application::agent_task_client::SharedAgentTaskClient;
+use core_application::daily_bar_source::SharedDailyBarSource;
+use core_application::kata_exec::SharedKataExecutor;
+use core_application::llm_client::SharedLlmClient;
 use gateway_postgres::DatabaseHandle;
 
 impl From<sea_orm::DbErr> for AppError {
@@ -51,46 +51,49 @@ impl From<sea_orm::DbErr> for AppError {
     }
 }
 
-#[derive(Clone)]
-pub struct AppState {
-    pub use_cases: crate::services::use_cases::UseCases,
-    /// 日足データ取得元
-    ///
-    /// `DATA_PROVIDER=none` または client の未設定時は `None` で起動する。
-    /// データ取得系のエンドポイントは利用時にエラーを返す。
-    pub daily_bar_source: Option<SharedDailyBarSource>,
-    /// J-Quants 固有の設定と取り込みに使う client。
-    pub jquants_client: Option<Arc<JQuantsClient>>,
-    /// t-rader-agent 内部 API クライアント。戦略タスクの投入 / 状態照会に使う。
-    /// `TRADER_AGENT_API_URL=disabled` (dev opt-out) の場合は `DisabledAgentTaskClient` が入る。
-    pub agent_task_client: SharedAgentTaskClient,
-    /// t-rader-agent からの webhook (`POST /api/agent-tasks/notifications`) を認証する
-    /// bearer トークン。
-    pub agent_webhook_token: Arc<str>,
-    /// Kata Containers exec Pod executor。`KATA_EXEC_API_URL` 未設定時は `None` で
-    /// 起動し、`eval_python` tool は MCP エラーを返す。
-    pub kata_executor: Option<SharedKataExecutor>,
-    /// LLM ゲートウェイ client。`LLM_BASE_URL` 未設定時は `None` で起動し、
-    /// `GET /api/agent-models` は空配列を返す。
-    pub llm_gateway_client: Option<SharedLlmClient>,
-}
-
-impl AppState {
-    /// テスト・初期化以外で t-rader-agent 内部 API クライアントが未設定のケース向けのデフォルト
-    pub fn disabled_agent_task_client() -> SharedAgentTaskClient {
-        let client: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(DisabledAgentTaskClient);
-        client
-    }
-}
-
-impl AppState {
-    /// 日足データ取得元を取得する
-    ///
-    /// source が未設定の場合は 503 エラーを返す。
-    pub fn daily_bar_source(&self) -> Result<&dyn crate::data_provider::DailyBarSource, AppError> {
-        self.daily_bar_source.as_deref().ok_or_else(|| {
-            AppError::ServiceUnavailable("daily bar source is not configured".into())
-        })
+/// composition root の UseCases から HTTP entrypoint の依存 state を組み立てる。
+pub fn build_http_state(
+    use_cases: &crate::services::use_cases::UseCases,
+    agent_task_client: SharedAgentTaskClient,
+    agent_webhook_token: Arc<str>,
+    kata_executor: Option<SharedKataExecutor>,
+    llm_gateway_client: Option<SharedLlmClient>,
+) -> AppState {
+    let agent_tool_summaries = mcp::StrategyServer::list_tool_summaries();
+    let trigger_use_cases = use_cases.triggers();
+    let agent_task_notifications = AgentTaskNotificationsState {
+        strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
+        webhook_token: agent_webhook_token,
+    };
+    AppState {
+        account_risk_policy_use_cases: use_cases.account_risk_policies(),
+        agent_config_use_cases: use_cases.agent_configs(),
+        annotation_read_use_cases: use_cases.annotation_reads(),
+        annotation_use_cases: use_cases.annotations(),
+        bars_use_cases: use_cases.bars(),
+        change_history_use_cases: use_cases.change_history_reads(),
+        comment_read_use_cases: use_cases.comment_reads(),
+        comment_use_cases: use_cases.comments(),
+        custom_indicator_use_cases: use_cases.custom_indicators(),
+        group_axis_use_cases: use_cases.group_axes(),
+        ingest_status_use_case: Arc::new(use_cases.ingest_status()),
+        note_kind_use_cases: use_cases.note_kinds(),
+        note_read_use_cases: use_cases.note_reads(),
+        note_use_cases: use_cases.notes(),
+        prediction_use_cases: use_cases.predictions(),
+        ref_use_cases: use_cases.refs(),
+        rss_feed_use_cases: use_cases.rss_feeds(),
+        strategy_scope_use_cases: Arc::new(use_cases.strategy_scope()),
+        strategy_task_use_cases: use_cases.strategy_tasks(),
+        strategy_use_cases: use_cases.strategies(),
+        trigger_use_cases,
+        trade_note_use_cases: use_cases.trade_notes(),
+        trade_use_cases: use_cases.trades(),
+        agent_task_client,
+        kata_executor,
+        llm_gateway_client,
+        agent_tool_summaries,
+        agent_task_notifications,
     }
 }
 
@@ -127,57 +130,6 @@ impl AppState {
     ),
 )]
 struct ApiDoc;
-
-#[cfg(test)]
-mod app_state_tests {
-    use rstest::rstest;
-    use sea_orm::{DatabaseBackend, MockDatabase};
-
-    use super::*;
-
-    fn mock_db() -> sea_orm::DatabaseConnection {
-        MockDatabase::new(DatabaseBackend::Postgres).into_connection()
-    }
-
-    #[rstest]
-    fn test_daily_bar_source_returns_source_when_set() {
-        let client = gateway_jquants::JQuantsClient::new(
-            "redis://127.0.0.1:6379/",
-            "test-key".into(),
-            gateway_jquants::JQuantsPlan::Standard,
-            std::time::Duration::ZERO,
-        )
-        .unwrap();
-        let daily_bar_source: SharedDailyBarSource = Arc::new(client);
-        let db = DatabaseHandle::from(mock_db());
-        let state = AppState {
-            use_cases: crate::services::use_cases::build_use_cases(db),
-            daily_bar_source: Some(daily_bar_source),
-            jquants_client: None,
-            agent_task_client: AppState::disabled_agent_task_client(),
-            agent_webhook_token: Arc::from("test-token"),
-            kata_executor: None,
-            llm_gateway_client: None,
-        };
-        assert!(state.daily_bar_source().is_ok());
-    }
-
-    #[rstest]
-    fn test_daily_bar_source_returns_error_when_none() {
-        let db = DatabaseHandle::from(mock_db());
-        let state = AppState {
-            use_cases: crate::services::use_cases::build_use_cases(db),
-            daily_bar_source: None,
-            jquants_client: None,
-            agent_task_client: AppState::disabled_agent_task_client(),
-            agent_webhook_token: Arc::from("test-token"),
-            kata_executor: None,
-            llm_gateway_client: None,
-        };
-        let result = state.daily_bar_source();
-        assert!(result.is_err());
-    }
-}
 
 /// ヘルスチェックレスポンス
 #[derive(Serialize, ToSchema)]
@@ -364,10 +316,13 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
     router.to_openapi()
 }
 
-pub fn create_router(state: AppState, health_db: DatabaseHandle) -> Router {
+pub fn create_router(
+    state: AppState,
+    mcp_use_cases: crate::services::use_cases::UseCases,
+    mcp_daily_bar_source: Option<SharedDailyBarSource>,
+    health_db: DatabaseHandle,
+) -> Router {
     let agent_task_client = state.agent_task_client.clone();
-    let use_cases = state.use_cases.clone();
-    let daily_bar_source = state.daily_bar_source.clone();
     let kata_executor = state.kata_executor.clone();
     let llm_gateway_client = state.llm_gateway_client.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
@@ -380,9 +335,9 @@ pub fn create_router(state: AppState, health_db: DatabaseHandle) -> Router {
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
         .merge(mcp::router(
-            use_cases,
+            mcp_use_cases,
             agent_task_client,
-            daily_bar_source,
+            mcp_daily_bar_source,
             kata_executor,
             llm_gateway_client,
             mcp::allowed_hosts_from_env(),

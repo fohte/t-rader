@@ -1,8 +1,9 @@
 //! composition root 経由で公開 entrypoint の統合動作を検証する。
 //!
-//! 戦略タスクの経路横断契約と、strategy MCP tool の tool dispatch を扱う。
+//! 戦略タスクの経路横断契約と、mgmt MCP / strategy MCP の tool dispatch を扱う。
 
 pub(crate) mod mcp_tool;
+mod mgmt_mcp;
 mod prediction_grading;
 mod strategy_mcp;
 mod trigger;
@@ -11,7 +12,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
-use rmcp::handler::server::wrapper::Parameters;
 use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, Statement};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -19,7 +19,6 @@ use uuid::Uuid;
 use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
-use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
 use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
 use crate::testing::{
@@ -27,6 +26,7 @@ use crate::testing::{
     insert_test_hook_trigger, insert_test_strategy,
 };
 use core_application::strategy_task::DEFAULT_PURPOSE;
+use entrypoint_control_plane_mcp::MgmtServer;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::strategy_task;
 
@@ -106,12 +106,20 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .await
         .expect("insert test agent_config");
 
-    let mgmt = MgmtServer::new(build_use_cases(db.clone()), agent_client.clone());
-    mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
-        strategy_id,
-        prompt: "from mgmt".into(),
-        purpose: None,
-    }))
+    let use_cases = build_use_cases(db.clone());
+    let mgmt = MgmtServer::new(crate::mcp::mgmt_dependencies(
+        &use_cases,
+        agent_client.clone(),
+    ));
+    let _: Value = mgmt_mcp::tests_common::call_tool_output(
+        &mgmt,
+        "submit_strategy_task",
+        json!({
+            "strategy_id": strategy_id,
+            "prompt": "from mgmt",
+            "purpose": null,
+        }),
+    )
     .await
     .expect("mgmt submit ok");
 
