@@ -9,7 +9,6 @@ use backend::agent_client::{
 use backend::cli::Cli;
 use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::news::rss::RssNewsAggregator;
-use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use backend::{
@@ -30,43 +29,21 @@ use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
-use gateway_jquants::{JQuantsClient, JQuantsPlan};
+use gateway_jquants::JQuantsClient;
 use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
 use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 use tokio::sync::watch;
 
+mod startup;
+
+use startup::{StartupError, jquants_config_from_env, required_redis_url};
+
 const DEFAULT_LOG_FILTER: &str = "info,sqlx=warn";
 
 fn default_log_filter() -> tracing_subscriber::EnvFilter {
     tracing_subscriber::EnvFilter::new(DEFAULT_LOG_FILTER)
-}
-
-fn parse_jquants_plan(value: Option<String>) -> Result<JQuantsPlan, AppError> {
-    let value = value.filter(|value| !value.is_empty()).ok_or_else(|| {
-        AppError::Config("JQUANTS_PLAN is required when JQUANTS_API_KEY is configured".to_string())
-    })?;
-    value
-        .parse()
-        .map_err(|error| AppError::Config(format!("invalid JQUANTS_PLAN value '{value}': {error}")))
-}
-
-fn jquants_config(
-    api_key: Option<String>,
-    plan: Option<String>,
-) -> Result<Option<(String, JQuantsPlan)>, AppError> {
-    match api_key.filter(|api_key| !api_key.is_empty()) {
-        Some(api_key) => Ok(Some((api_key, parse_jquants_plan(plan)?))),
-        None => Ok(None),
-    }
-}
-
-fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>, AppError> {
-    jquants_config(
-        std::env::var("JQUANTS_API_KEY").ok(),
-        std::env::var("JQUANTS_PLAN").ok(),
-    )
 }
 
 async fn wait_for_shutdown(mut receiver: watch::Receiver<bool>) {
@@ -91,14 +68,8 @@ async fn wait_for_os_shutdown_signal() -> Result<(), std::io::Error> {
     ctrl_c.await
 }
 
-fn required_redis_url(value: Option<String>) -> Result<String, AppError> {
-    value
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| AppError::Config("REDIS_URL environment variable is not set".to_string()))
-}
-
 #[tokio::main]
-async fn main() -> Result<(), AppError> {
+async fn main() -> Result<(), StartupError> {
     let cli = Cli::parse();
 
     // --dump-openapi: OpenAPI スペックを JSON で標準出力に出力して終了する
@@ -106,7 +77,7 @@ async fn main() -> Result<(), AppError> {
         let spec = backend::create_openapi_spec();
         let json = spec
             .to_pretty_json()
-            .map_err(|e| AppError::Config(format!("failed to serialize OpenAPI spec: {e}")))?;
+            .map_err(|e| StartupError::Config(format!("failed to serialize OpenAPI spec: {e}")))?;
         println!("{json}");
         return Ok(());
     }
@@ -125,7 +96,7 @@ async fn main() -> Result<(), AppError> {
     };
 
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
-        AppError::Config("DATABASE_URL environment variable is not set".to_string())
+        StartupError::Config("DATABASE_URL environment variable is not set".to_string())
     })?;
 
     let mut opt = ConnectOptions::new(&database_url);
@@ -146,7 +117,7 @@ async fn main() -> Result<(), AppError> {
         )
         .await
         .map_err(|error| {
-            AppError::Config(format!("failed to migrate Graphile Worker schema: {error}"))
+            StartupError::Config(format!("failed to migrate Graphile Worker schema: {error}"))
         })?;
         tracing::info!("database migrations completed");
     } else {
@@ -185,7 +156,7 @@ async fn main() -> Result<(), AppError> {
                 .filter(|s| !s.is_empty());
             let rate_limiter =
                 RateLimiter::new(&redis_url, RATE_LIMIT_KEY_PREFIX).map_err(|e| {
-                    AppError::Config(format!("failed to initialize IBKR rate limiter: {e}"))
+                    StartupError::Config(format!("failed to initialize IBKR rate limiter: {e}"))
                 })?;
             let client = Arc::new(
                 IbkrClient::new(
@@ -195,7 +166,9 @@ async fn main() -> Result<(), AppError> {
                     rate_limiter,
                     std::time::Duration::from_secs(30),
                 )
-                .map_err(|e| AppError::Config(format!("failed to initialize IBKR client: {e}")))?,
+                .map_err(|e| {
+                    StartupError::Config(format!("failed to initialize IBKR client: {e}"))
+                })?,
             );
             tracing::info!("IBKR 日足データ取得元を初期化しました");
             let source: SharedDailyBarSource = client;
@@ -211,7 +184,7 @@ async fn main() -> Result<(), AppError> {
                         std::time::Duration::from_secs(30),
                     )
                     .map_err(|error| {
-                        AppError::Config(format!(
+                        StartupError::Config(format!(
                             "failed to initialize J-Quants request client: {error}"
                         ))
                     })?,
@@ -220,7 +193,7 @@ async fn main() -> Result<(), AppError> {
                 let ingest_client = Arc::new(
                     JQuantsClient::new(&redis_url, api_key, plan, std::time::Duration::MAX)
                         .map_err(|error| {
-                            AppError::Config(format!(
+                            StartupError::Config(format!(
                                 "failed to initialize J-Quants ingest client: {error}"
                             ))
                         })?,
@@ -235,7 +208,7 @@ async fn main() -> Result<(), AppError> {
             }
         },
         other => {
-            return Err(AppError::Config(format!(
+            return Err(StartupError::Config(format!(
                 "unknown DATA_PROVIDER value: '{other}' (expected: jquants | ibkr | none)"
             )));
         }
@@ -243,7 +216,7 @@ async fn main() -> Result<(), AppError> {
 
     // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。
     let agent_task_client_config =
-        AgentTaskClientConfig::from_env().map_err(|e| AppError::Config(e.to_string()))?;
+        AgentTaskClientConfig::from_env().map_err(|e| StartupError::Config(e.to_string()))?;
     let strategy_task_reconcile_enabled = matches!(
         &agent_task_client_config,
         AgentTaskClientConfigSource::Configured(_)
@@ -251,7 +224,7 @@ async fn main() -> Result<(), AppError> {
     let agent_task_client: SharedAgentTaskClient = match agent_task_client_config {
         AgentTaskClientConfigSource::Configured(config) => {
             let client = HttpAgentTaskClient::new(config).map_err(|e| {
-                AppError::Config(format!("failed to initialize agent task client: {e}"))
+                StartupError::Config(format!("failed to initialize agent task client: {e}"))
             })?;
             tracing::info!("agent task client initialized");
             let arc: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(client);
@@ -268,7 +241,7 @@ async fn main() -> Result<(), AppError> {
     // フィード一覧を取り込みごとに読み直し、UI / MCP からの変更を反映する。
     let news_aggregator: SharedNewsAggregator =
         Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
-            AppError::Config(format!("failed to initialize RSS news aggregator: {err}"))
+            StartupError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
     let use_cases = backend::services::use_cases::build_use_cases(db.clone());
 
@@ -276,7 +249,7 @@ async fn main() -> Result<(), AppError> {
     {
         Ok(api_key) if !api_key.is_empty() => {
             let fred_client = FredClient::new(api_key).map_err(|err| {
-                AppError::Config(format!("failed to initialize FRED client: {err}"))
+                StartupError::Config(format!("failed to initialize FRED client: {err}"))
             })?;
             Some(Arc::new(fred_client))
         }
@@ -350,7 +323,9 @@ async fn main() -> Result<(), AppError> {
             .ok()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                AppError::Config("AGENT_WEBHOOK_TOKEN environment variable is not set".to_string())
+                StartupError::Config(
+                    "AGENT_WEBHOOK_TOKEN environment variable is not set".to_string(),
+                )
             })?;
 
         let kata_executor: Option<SharedKataExecutor> = match KataExecutorConfig::from_env() {
@@ -361,7 +336,7 @@ async fn main() -> Result<(), AppError> {
                     Some(arc)
                 }
                 Err(e) => {
-                    return Err(AppError::Config(format!(
+                    return Err(StartupError::Config(format!(
                         "failed to initialize kata executor: {e}"
                     )));
                 }
@@ -414,7 +389,7 @@ async fn main() -> Result<(), AppError> {
         )
         .await
         .map_err(|error| {
-            AppError::Config(format!("failed to initialize Graphile Worker: {error}"))
+            StartupError::Config(format!("failed to initialize Graphile Worker: {error}"))
         })?;
         tracing::info!("Graphile Worker initialized");
         Some(worker)
@@ -433,7 +408,7 @@ async fn main() -> Result<(), AppError> {
 
         let listener = tokio::net::TcpListener::bind(addr)
             .await
-            .map_err(|e| AppError::Config(format!("failed to bind to {addr}: {e}")))?;
+            .map_err(|e| StartupError::Config(format!("failed to bind to {addr}: {e}")))?;
         let server_shutdown = wait_for_shutdown(shutdown_rx);
         Some(Box::pin(async move {
             axum::serve(
@@ -456,20 +431,20 @@ async fn main() -> Result<(), AppError> {
                 result = &mut worker_run => {
                     let _ = shutdown_tx.send(true);
                     let worker_result = result
-                        .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")));
                     let server_result = server_run
                         .await
-                        .map_err(|error| AppError::Config(format!("server error: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("server error: {error}")));
                     worker_result?;
                     server_result
                 }
                 result = &mut server_run => {
                     let _ = shutdown_tx.send(true);
                     let server_result = result
-                        .map_err(|error| AppError::Config(format!("server error: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("server error: {error}")));
                     let worker_result = worker_run
                         .await
-                        .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")));
                     server_result?;
                     worker_result
                 }
@@ -478,12 +453,12 @@ async fn main() -> Result<(), AppError> {
         (Some(worker), None) => worker
             .run()
             .await
-            .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}"))),
+            .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}"))),
         (None, Some(server_run)) => server_run
             .await
-            .map_err(|error| AppError::Config(format!("server error: {error}"))),
+            .map_err(|error| StartupError::Runtime(format!("server error: {error}"))),
         // RunMode の追加時に有効化条件が漏れた場合も、無言で終了しないようにする。
-        (None, None) => Err(AppError::Config(format!(
+        (None, None) => Err(StartupError::Config(format!(
             "backend runtime setup is incomplete for run mode {:?}",
             cli.run_mode
         ))),
@@ -496,7 +471,6 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use rstest::rstest;
     use tokio::time::timeout;
 
     use super::*;
@@ -562,28 +536,6 @@ mod tests {
         );
     }
 
-    #[rstest]
-    #[case::api_key_missing(None, Some("invalid".to_string()), Ok(None))]
-    #[case::api_key_empty(Some(String::new()), Some("invalid".to_string()), Ok(None))]
-    #[case::plan_missing(Some("test-api-key".to_string()), None, Err(()))]
-    #[case::plan_empty(Some("test-api-key".to_string()), Some(String::new()), Err(()))]
-    #[case::plan_invalid(
-        Some("test-api-key".to_string()),
-        Some("enterprise".to_string()),
-        Err(()),
-    )]
-    #[case::plan_valid(
-        Some("test-api-key".to_string()),
-        Some("standard".to_string()),
-        Ok(Some(("test-api-key".to_string(), JQuantsPlan::Standard))),
-    )]
-    fn test_jquants_config(
-        #[case] api_key: Option<String>,
-        #[case] plan: Option<String>,
-        #[case] expected: Result<Option<(String, JQuantsPlan)>, ()>,
-    ) {
-        assert_eq!(jquants_config(api_key, plan).map_err(|_| ()), expected);
-    }
     #[tokio::test]
     async fn shutdown_signal_reaches_worker_and_server_waiters() {
         let (sender, receiver) = watch::channel(false);
@@ -605,29 +557,6 @@ mod tests {
         assert_eq!(
             (waiters_are_pending, signal_sent, waiters_completed),
             (true, true, true)
-        );
-    }
-
-    #[rstest]
-    #[case::missing(
-        None,
-        Err("configuration error: REDIS_URL environment variable is not set")
-    )]
-    #[case::empty(
-        Some(String::new()),
-        Err("configuration error: REDIS_URL environment variable is not set")
-    )]
-    #[case::configured(
-        Some("redis://localhost/".to_string()),
-        Ok("redis://localhost/"),
-    )]
-    fn test_required_redis_url(
-        #[case] value: Option<String>,
-        #[case] expected: Result<&str, &str>,
-    ) {
-        assert_eq!(
-            required_redis_url(value).map_err(|error| error.to_string()),
-            expected.map(str::to_owned).map_err(str::to_owned),
         );
     }
 }
