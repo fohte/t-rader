@@ -3,12 +3,10 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::change_history::Actor;
-use crate::strategy_scope::StrategyScope;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Note {
     pub id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub kind: Option<String>,
     pub trigger: Option<String>,
     pub trigger_label: Option<String>,
@@ -45,7 +43,6 @@ pub struct NoteSnapshot {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewNote {
     pub id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub kind: Option<String>,
     pub trigger: Option<String>,
     pub trigger_label: Option<String>,
@@ -88,7 +85,6 @@ pub struct NoteVersionUpdate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NoteLinkTarget {
     pub id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub current_version_id: Option<Uuid>,
 }
 
@@ -121,7 +117,6 @@ pub struct NoteListCursor {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NoteListQuery {
-    pub strategy_id: Option<Uuid>,
     pub kind: Option<String>,
     pub status: Option<String>,
     pub reference: Option<(String, String)>,
@@ -147,8 +142,6 @@ pub struct NewNoteLink {
 
 #[derive(Debug, Clone)]
 pub struct NoteWriteCommand {
-    pub scope: Option<StrategyScope>,
-    pub strategy_id: Option<Uuid>,
     pub execution_id: Option<String>,
     pub note_id: Option<Uuid>,
     pub title: Option<String>,

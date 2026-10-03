@@ -1,8 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
-import { UnreadBadge } from '#components/strategy-shell/unread-badge'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
@@ -12,19 +11,6 @@ type Strategy = components['schemas']['Strategy']
 export function StrategySwitcher() {
   const currentId = useCurrentStrategyId()
   const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
-  const { data: unreadNotes = [] } = $api.useQuery('get', '/api/notes', {
-    params: { query: { status: 'unread' } },
-  })
-
-  const unreadByStrategy = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const n of unreadNotes) {
-      if (n.strategy_id == null) continue
-      m.set(n.strategy_id, (m.get(n.strategy_id) ?? 0) + 1)
-    }
-    return m
-  }, [unreadNotes])
-
   const current = strategies.find((s) => s.id === currentId)
 
   return (
@@ -32,7 +18,6 @@ export function StrategySwitcher() {
       <div className="hidden min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex [&::-webkit-scrollbar]:hidden">
         {strategies.map((s) => {
           const active = currentId === s.id
-          const unread = unreadByStrategy.get(s.id) ?? 0
           return (
             <Link
               key={s.id}
@@ -48,17 +33,12 @@ export function StrategySwitcher() {
                 <span className="absolute -inset-x-px -top-px h-0.5 bg-primary" />
               )}
               {s.name}
-              <UnreadBadge count={unread} />
             </Link>
           )
         })}
       </div>
       <div className="min-w-0 flex-1 md:hidden">
-        <MobileStrategyDropdown
-          strategies={strategies}
-          current={current}
-          unreadByStrategy={unreadByStrategy}
-        />
+        <MobileStrategyDropdown strategies={strategies} current={current} />
       </div>
     </>
   )
@@ -67,11 +47,9 @@ export function StrategySwitcher() {
 function MobileStrategyDropdown({
   strategies,
   current,
-  unreadByStrategy,
 }: {
   strategies: Strategy[]
   current: Strategy | undefined
-  unreadByStrategy: Map<string, number>
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -104,7 +82,6 @@ function MobileStrategyDropdown({
                 className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 font-mono text-sm text-muted-foreground-strong last:border-b-0 hover:bg-surface-strong hover:text-foreground"
               >
                 <span className="truncate">{s.name}</span>
-                <UnreadBadge count={unreadByStrategy.get(s.id) ?? 0} />
               </Link>
             </li>
           ))}

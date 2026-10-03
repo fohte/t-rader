@@ -1041,15 +1041,6 @@
         "operationId": "list_annotations",
         "parameters": [
           {
-            "name": "strategy_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
             "name": "target_symbol",
             "in": "query",
             "required": false,
@@ -3395,15 +3386,6 @@
         "summary": "ノート一覧",
         "operationId": "list_notes",
         "parameters": [
-          {
-            "name": "strategy_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
           {
             "name": "status",
             "in": "query",
@@ -7288,13 +7270,6 @@
           "status": {
             "type": "string"
           },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
           "target_kind": {
             "type": "string"
           },
@@ -7565,14 +7540,6 @@
               "null"
             ]
           },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "任意。省略した場合、どの戦略にも属さないアノテーションになる (市況・セクター横断の分析など)"
-          },
           "target_kind": {
             "type": "string"
           },
@@ -7808,14 +7775,6 @@
               "null"
             ],
             "description": "人間の作成では省略時に \"approved\"。指定する場合も \"approved\" のみ許可する。\nエージェントの作成では省略時に \"unread\"。承認必須種別では \"unread\" のみ許可する。"
-          },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "任意。省略した場合、どの戦略にも属さないノートになる (市況・セクター横断の分析など)"
           },
           "title": {
             "type": "string",
@@ -8541,13 +8500,6 @@
           },
           "status": {
             "type": "string"
-          },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
           },
           "title": {
             "type": "string"

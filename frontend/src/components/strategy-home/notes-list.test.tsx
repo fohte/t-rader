@@ -19,7 +19,6 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     version_id: overrides.version_id ?? crypto.randomUUID(),
     version_no: overrides.version_no ?? 1,
     is_current: overrides.is_current ?? true,
-    strategy_id: overrides.strategy_id ?? null,
     title: overrides.title ?? 'title',
     body_md: overrides.body_md ?? 'body',
     frontmatter_json: overrides.frontmatter_json ?? {},
@@ -58,21 +57,24 @@ async function renderInRouter(notes: Note[]) {
   })
 }
 
+function getNoteLinkSnapshot() {
+  const link = screen.getByRole('link', { name: /口座全体ノート/ })
+  const title = screen.getByText('口座全体ノート')
+  return [title.textContent, link.getAttribute('href')]
+}
+
 describe('NotesList', () => {
-  it('strategy_id が null のノートも一覧表示し、/notes/$noteId へのリンクを生成する', async () => {
+  it('ノートを一覧表示し、詳細へのリンクを生成する', async () => {
     const note = makeNote({
       id: 'note-1',
-      strategy_id: null,
       title: '口座全体ノート',
     })
+    const expected = ['口座全体ノート', '/notes/note-1']
     await renderInRouter([note])
 
     await waitFor(() => {
-      expect(screen.getByText('口座全体ノート')).toBeInTheDocument()
+      expect(getNoteLinkSnapshot()).toEqual(expected)
     })
-    expect(
-      screen.getByRole('link', { name: /口座全体ノート/ }),
-    ).toHaveAttribute('href', '/notes/note-1')
   })
 
   it('ノートが無ければ空状態を表示する', async () => {

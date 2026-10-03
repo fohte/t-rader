@@ -6,7 +6,6 @@ use core_application::change_history::ChangeHistoryError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
-use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
 
 use super::MgmtServer;
@@ -58,10 +57,7 @@ fn map_note_use_case_error(error: NoteUseCaseError) -> McpError {
         | NoteUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | NoteUseCaseError::UnitOfWork(
             UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
-        )
-        | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
-            map_note_kind_persistence_error(error)
-        }
+        ) => map_note_kind_persistence_error(error),
         other => internal_failure(&other.to_string()),
     }
 }

@@ -9,9 +9,9 @@
 | [public.strategy](public.strategy.md)                                                       | 6       | 投資判断と関連データを分けて管理する永続的な戦略ワークスペース。                                       | BASE TABLE |
 | [public.stock](public.stock.md)                                                             | 6       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。 | BASE TABLE |
 | [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                                     | BASE TABLE |
-| [public.note](public.note.md)                                                               | 8       | 戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。                 | BASE TABLE |
+| [public.note](public.note.md)                                                               | 7       | ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。                             | BASE TABLE |
 | [public.note_ref](public.note_ref.md)                                                       | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                                           | BASE TABLE |
-| [public.annotation](public.annotation.md)                                                   | 14      | 戦略に属する銘柄などの対象へ付与したテキスト注釈を保持する。                                           | BASE TABLE |
+| [public.annotation](public.annotation.md)                                                   | 13      | 銘柄などの対象へ付与したテキスト注釈を保持する。                                                       | BASE TABLE |
 | [public.comment](public.comment.md)                                                         | 13      | ノートやアノテーションに付けるコメントと返信を保持する。                                               | BASE TABLE |
 | [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                                     | BASE TABLE |
 | [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                                               | BASE TABLE |
@@ -174,10 +174,8 @@
 erDiagram
 
 "public.bars" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
-"public.note" }o--o| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.note" }o--o| "public.note_kind" : "FOREIGN KEY (kind) REFERENCES note_kind(key) ON DELETE RESTRICT"
 "public.note_ref" }o--|| "public.note" : "FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE"
-"public.annotation" }o--o| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.annotation" }o--o| "public.note" : "FOREIGN KEY (linked_note_id) REFERENCES note(id) ON DELETE SET NULL"
 "public.comment" }o--o| "public.comment" : "FOREIGN KEY (parent_id) REFERENCES comment(id) ON DELETE CASCADE"
 "public.trade" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
@@ -244,7 +242,6 @@ erDiagram
 }
 "public.note" {
   uuid id
-  uuid strategy_id FK
   varchar kind FK
   varchar trigger
   varchar trigger_label
@@ -259,7 +256,6 @@ erDiagram
 }
 "public.annotation" {
   uuid id
-  uuid strategy_id FK
   varchar target_symbol
   varchar target_kind
   timestamp_with_time_zone timestamp

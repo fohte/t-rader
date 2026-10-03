@@ -18,14 +18,10 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::annotation::Entity")]
-    Annotation,
     #[sea_orm(has_many = "super::checkpoint::Entity")]
     Checkpoint,
     #[sea_orm(has_many = "super::custom_indicator::Entity")]
     CustomIndicator,
-    #[sea_orm(has_many = "super::note::Entity")]
-    Note,
     #[sea_orm(has_many = "super::prediction::Entity")]
     Prediction,
     #[sea_orm(has_many = "super::strategy_investable_amount::Entity")]
@@ -38,12 +34,6 @@ pub enum Relation {
     Trigger,
 }
 
-impl Related<super::annotation::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Annotation.def()
-    }
-}
-
 impl Related<super::checkpoint::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Checkpoint.def()
@@ -53,12 +43,6 @@ impl Related<super::checkpoint::Entity> for Entity {
 impl Related<super::custom_indicator::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::CustomIndicator.def()
-    }
-}
-
-impl Related<super::note::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Note.def()
     }
 }
 

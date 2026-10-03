@@ -5,9 +5,7 @@ mod tests {
 
     use super::super::ToolOutput;
     use super::super::dto::{ListPredictionsParams, PredictionDto, RecordPredictionParams};
-    use super::super::tests_common::{
-        build_server, insert_strategy, seed_foreign_note, ts_sentinel,
-    };
+    use super::super::tests_common::{build_server, insert_strategy, seed_note, ts_sentinel};
 
     fn normalize_prediction(mut p: PredictionDto) -> PredictionDto {
         p.prediction_id = uuid::Uuid::nil();
@@ -200,14 +198,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_links_note_from_another_strategy(
+    async fn record_prediction_links_note_without_strategy_ownership(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
-        let foreign_note = seed_foreign_note(&db, strategy_b, "b's note").await;
+        let foreign_note = seed_note(&db, "sample note").await;
         let server = build_server(db);
 
         let mut params = base_params("TGT1", "BM1");

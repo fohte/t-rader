@@ -1281,8 +1281,6 @@ export interface components {
       /** Format: double */
       price?: number | null
       status: string
-      /** Format: uuid */
-      strategy_id?: string | null
       target_kind: string
       target_symbol: string
       text: string
@@ -1370,11 +1368,6 @@ export interface components {
       /** Format: double */
       price?: number | null
       status?: string | null
-      /**
-       * Format: uuid
-       * @description 任意。省略した場合、どの戦略にも属さないアノテーションになる (市況・セクター横断の分析など)
-       */
-      strategy_id?: string | null
       target_kind: string
       target_symbol: string
       text: string
@@ -1448,11 +1441,6 @@ export interface components {
        *     エージェントの作成では省略時に "unread"。承認必須種別では "unread" のみ許可する。
        */
       status?: string | null
-      /**
-       * Format: uuid
-       * @description 任意。省略した場合、どの戦略にも属さないノートになる (市況・セクター横断の分析など)
-       */
-      strategy_id?: string | null
       title: string
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
@@ -1673,8 +1661,6 @@ export interface components {
       is_current: boolean
       kind?: string | null
       status: string
-      /** Format: uuid */
-      strategy_id?: string | null
       title: string
       trigger?: string | null
       trigger_label?: string | null
@@ -2965,7 +2951,6 @@ export interface operations {
   list_annotations: {
     parameters: {
       query?: {
-        strategy_id?: string
         target_symbol?: string
       }
       header?: never
@@ -4771,7 +4756,6 @@ export interface operations {
   list_notes: {
     parameters: {
       query?: {
-        strategy_id?: string
         status?: string
         kind?: string
       }

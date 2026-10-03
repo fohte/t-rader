@@ -1,6 +1,5 @@
 use core_application::change_history::Actor;
 use core_application::note::NoteWriteCommand;
-use core_application::strategy_scope::StrategyScope;
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::note_version;
 use sea_orm::ActiveModelTrait;
@@ -10,7 +9,6 @@ use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 struct TestNoteOptions<'a> {
-    strategy_id: Option<Uuid>,
     title: &'a str,
     body_md: &'a str,
     execution_id: Option<String>,
@@ -19,25 +17,10 @@ struct TestNoteOptions<'a> {
     actor: Actor,
 }
 
-pub async fn insert_test_note(
-    db: &DatabaseHandle,
-    strategy_id: Uuid,
-    title: &str,
-    body_md: &str,
-) -> Uuid {
-    insert_test_note_in_scope(db, Some(strategy_id), title, body_md).await
-}
-
-pub async fn insert_test_note_in_scope(
-    db: &DatabaseHandle,
-    strategy_id: Option<Uuid>,
-    title: &str,
-    body_md: &str,
-) -> Uuid {
+pub async fn insert_test_note(db: &DatabaseHandle, title: &str, body_md: &str) -> Uuid {
     insert_test_note_with_options(
         db,
         TestNoteOptions {
-            strategy_id,
             title,
             body_md,
             execution_id: None,
@@ -51,7 +34,6 @@ pub async fn insert_test_note_in_scope(
 
 pub async fn insert_test_note_as(
     db: &DatabaseHandle,
-    strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
     created_by_kind: &str,
@@ -60,7 +42,6 @@ pub async fn insert_test_note_as(
     insert_test_note_with_options(
         db,
         TestNoteOptions {
-            strategy_id,
             title,
             body_md,
             execution_id: None,
@@ -74,7 +55,6 @@ pub async fn insert_test_note_as(
 
 pub async fn insert_test_note_with_status(
     db: &DatabaseHandle,
-    strategy_id: Uuid,
     title: &str,
     body_md: &str,
     status: &str,
@@ -82,7 +62,6 @@ pub async fn insert_test_note_with_status(
     insert_test_note_with_options(
         db,
         TestNoteOptions {
-            strategy_id: Some(strategy_id),
             title,
             body_md,
             execution_id: None,
@@ -96,7 +75,6 @@ pub async fn insert_test_note_with_status(
 
 pub async fn insert_test_note_with_execution_id(
     db: &DatabaseHandle,
-    strategy_id: Uuid,
     title: &str,
     body_md: &str,
     execution_id: &str,
@@ -104,7 +82,6 @@ pub async fn insert_test_note_with_execution_id(
     insert_test_note_with_options(
         db,
         TestNoteOptions {
-            strategy_id: Some(strategy_id),
             title,
             body_md,
             execution_id: Some(execution_id.to_string()),
@@ -133,18 +110,9 @@ pub async fn set_test_note_version_execution_id(
 }
 
 async fn insert_test_note_with_options(db: &DatabaseHandle, options: TestNoteOptions<'_>) -> Uuid {
-    let scope = options.execution_id.as_ref().map(|_| {
-        StrategyScope::from(
-            options
-                .strategy_id
-                .expect("execution notes have a strategy"),
-        )
-    });
     let result = crate::services::use_cases::build_use_cases(db.clone())
         .notes()
         .write(NoteWriteCommand {
-            scope,
-            strategy_id: options.strategy_id,
             execution_id: options.execution_id,
             note_id: None,
             title: Some(options.title.to_string()),

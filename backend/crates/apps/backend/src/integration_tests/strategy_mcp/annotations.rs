@@ -12,8 +12,8 @@ mod tests {
     use super::super::tests_common::{
         ChangeHistoryShape, build_server, change_history_for, insert_strategy,
         normalize_annotation, normalize_create_annotation, normalize_read_annotations,
-        normalize_read_annotations_unordered, seed_comment, seed_foreign_note,
-        seed_unscoped_annotation, ts_sentinel,
+        normalize_read_annotations_unordered, seed_annotation, seed_comment, seed_note,
+        ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
     use gateway_postgres::entities::annotation;
@@ -44,7 +44,6 @@ mod tests {
         let annotation_id = created.annotation.annotation_id;
         let expected = AnnotationDto {
             annotation_id,
-            strategy_id: Some(strategy_id),
             target_symbol: "7203".into(),
             target_kind: "custom-tag".into(),
             timestamp: ts.with_timezone(&chrono::Utc).fixed_offset(),
@@ -89,7 +88,6 @@ mod tests {
                 actor_label: "analyst".into(),
                 op: "create".into(),
                 diff_json: serde_json::json!({
-                    "strategy_id": strategy_id,
                     "target_symbol": "7203",
                 }),
                 summary: None,
@@ -99,11 +97,11 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_annotations_includes_annotations_without_strategy(
+    async fn read_annotations_returns_globally_stored_annotations(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
-        let annotation_id = seed_unscoped_annotation(&db).await;
+        let annotation_id = seed_annotation(&db).await;
         let server = build_server(db);
         let timestamp: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
 
@@ -122,7 +120,6 @@ mod tests {
             ReadAnnotationsResult {
                 annotations: vec![AnnotationDto {
                     annotation_id,
-                    strategy_id: None,
                     target_symbol: "demo-code".into(),
                     target_kind: "sample-tag".into(),
                     timestamp: timestamp.with_timezone(&chrono::Utc).fixed_offset(),
@@ -165,13 +162,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_links_note_from_another_strategy(
+    async fn create_annotation_links_a_note_without_strategy_ownership(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let foreign_note = seed_foreign_note(&db, strategy_b, "b").await;
+        let foreign_note = seed_note(&db, "sample note").await;
 
         let timestamp = "2026-06-01T00:00:00Z".parse().expect("ts");
         let result = server
@@ -189,14 +185,13 @@ mod tests {
                 },
             )
             .await
-            .expect("link note from another strategy");
+            .expect("link note globally");
         let annotation_id = result.annotation.annotation_id;
         assert_eq!(
             normalize_create_annotation(result),
             CreateAnnotationResult {
                 annotation: AnnotationDto {
                     annotation_id,
-                    strategy_id: Some(strategy_a),
                     target_symbol: "7203".into(),
                     target_kind: "custom-tag".into(),
                     timestamp: timestamp.with_timezone(&chrono::Utc).fixed_offset(),
