@@ -81,7 +81,7 @@ entrypoint をまたぐ結合テストは composition root に置く。現在は
 
 各 entrypoint crate は、自身が使う `XUseCases` と必要な port だけを field に持つ依存 struct を定義する。struct は entrypoint crate に置き、composition root が組み立てて渡す。たとえば `entrypoint-frontend-api` は `FrontendApiState`、`entrypoint-agent-webhook` は `AgentWebhookState`、`entrypoint-external-webhook` は `ExternalWebhookState`、`entrypoint-agent-mcp` は `StrategyServerDependencies`、`entrypoint-control-plane-mcp` は `MgmtDependencies`、`entrypoint-scheduler` は `SchedulerDependencies` を持つ。composition root の具象 `UseCases` container 自体は entrypoint に渡さない。workspace crate への直接依存は `core/application` と `core/domain` に限り、`gateways/postgres` と `sea-orm` には依存させない。
 
-entrypoint ごとの DB 統合テストは composition root の `src/integration_tests/<entrypoint>/` に置き、公開 router、MCP server、scheduler job を通して実行する。現在は `backend/src/integration_tests/` 配下にあり、composition root の移行後は同じ相対位置に移す。entrypoint をまたぐシナリオと共有 helper は `integration_tests/` 直下に置く。DB を使わない unit test は、検証対象のコードと同じ entrypoint crate に置く。
+entrypoint ごとの DB 統合テストは composition root の `src/integration_tests/<entrypoint>/` に置く。HTTP と MCP は公開 router / server から検証し、scheduler は job の処理または scheduler use case の DB 永続化を検証する。現在は `backend/src/integration_tests/` 配下にあり、composition root の移行後は同じ相対位置に移す。entrypoint をまたぐシナリオと共有 helper は `integration_tests/` 直下に置く。DB を使わない unit test は、検証対象のコードと同じ entrypoint crate に置く。
 
 entrypoint 間で必要になる小さな型 (`ErrorResponse`、`JsonBody`、`GraphDef` の DTO、`deserialize_nullable_option` など) は各 crate に複製する。DTO はプロトコルごとの表現 (`utoipa`、`schemars`) を持ち、domain 型への変換も各 crate が定義する。
 
