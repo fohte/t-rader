@@ -12,7 +12,9 @@ use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
-use backend::{build_http_state, create_router};
+use backend::{
+    build_agent_webhook_state, build_external_webhook_state, build_http_state, create_router,
+};
 use clap::Parser;
 use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
 use core_application::equity_master_source::SharedEquityMasterSource;
@@ -374,14 +376,9 @@ async fn main() -> Result<(), AppError> {
 
         let llm_gateway_client =
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
-        let agent_webhook_state = entrypoint_agent_webhook::AgentWebhookState {
-            strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
-            webhook_token: Arc::from(agent_webhook_token),
-        };
-        let external_webhook_state = entrypoint_external_webhook::ExternalWebhookState {
-            trigger_use_cases: use_cases.triggers(),
-            agent_task_client: agent_task_client.clone(),
-        };
+        let agent_webhook_state = build_agent_webhook_state(&use_cases, agent_webhook_token);
+        let external_webhook_state =
+            build_external_webhook_state(&use_cases, agent_task_client.clone());
         let state = build_http_state(
             &use_cases,
             agent_task_client,

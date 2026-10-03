@@ -33,7 +33,7 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    use crate::testing::create_test_server_with_state;
+    use crate::testing::create_test_server_with_graphile_worker;
     use gateway_postgres::entities::{
         ingest_run, jquants_daily_bars_ingested_date, jquants_earnings_date,
     };
@@ -119,7 +119,7 @@ mod tests {
     async fn get_returns_latest_run_data_date_and_graphile_queue_states(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        let (_, server) = create_test_server_with_state(db.clone()).await;
+        let server = create_test_server_with_graphile_worker(db.clone()).await;
         let earlier_id = Uuid::from_u128(1);
         let latest_id = Uuid::from_u128(2);
         let earlier_started_at = timestamp("2030-06-05T12:00:00Z");

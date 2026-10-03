@@ -1,16 +1,9 @@
-use axum_test::TestServer;
 use core_application::strategy_task::STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
-
-use crate::testing::create_test_server_with_state;
 
 pub(crate) use crate::testing::TEST_AGENT_WEBHOOK_TOKEN;
 
 pub(crate) const NOTIFICATION_TOKEN_HEADER: &str = "x-a2a-notification-token";
-
-pub(crate) async fn build_server(db: gateway_postgres::DatabaseHandle) -> TestServer {
-    create_test_server_with_state(db).await.1
-}
 
 pub(crate) async fn reconciliation_jobs(
     db: &gateway_postgres::DatabaseHandle,

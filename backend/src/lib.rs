@@ -91,6 +91,26 @@ pub fn build_http_state(
     }
 }
 
+pub fn build_agent_webhook_state(
+    use_cases: &crate::services::use_cases::UseCases,
+    webhook_token: impl Into<Arc<str>>,
+) -> entrypoint_agent_webhook::AgentWebhookState {
+    entrypoint_agent_webhook::AgentWebhookState {
+        strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
+        webhook_token: webhook_token.into(),
+    }
+}
+
+pub fn build_external_webhook_state(
+    use_cases: &crate::services::use_cases::UseCases,
+    agent_task_client: SharedAgentTaskClient,
+) -> entrypoint_external_webhook::ExternalWebhookState {
+    entrypoint_external_webhook::ExternalWebhookState {
+        trigger_use_cases: use_cases.triggers(),
+        agent_task_client,
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(health_check),

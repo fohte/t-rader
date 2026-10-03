@@ -8,12 +8,13 @@ use sea_orm::ConnectionTrait;
 use uuid::Uuid;
 
 use crate::models::{Bar, Instrument};
-use crate::{AppState, build_http_state, create_router};
+use crate::{
+    AppState, build_agent_webhook_state, build_external_webhook_state, build_http_state,
+    create_router,
+};
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_application::kata_exec::SharedKataExecutor;
-use entrypoint_agent_webhook::AgentWebhookState;
-use entrypoint_external_webhook::ExternalWebhookState;
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::{
@@ -26,31 +27,23 @@ pub use note::{
     insert_test_note_with_execution_id, insert_test_note_with_status,
 };
 
-/// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
-/// 参照できる。
+/// テスト全体で共通の webhook トークン。agent webhook の認証テストで使う。
 pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 
-/// agent_task_client を disabled にしたテスト用 router state を組み立てる。
+/// テスト用 router state を組み立てる。
 struct TestRouterState {
     use_cases: crate::services::use_cases::UseCases,
     app_state: AppState,
-    agent_webhook_state: AgentWebhookState,
-    external_webhook_state: ExternalWebhookState,
+    agent_webhook_state: entrypoint_agent_webhook::AgentWebhookState,
+    external_webhook_state: entrypoint_external_webhook::ExternalWebhookState,
 }
 
-fn base_state(db: DatabaseHandle) -> TestRouterState {
+fn base_state(db: DatabaseHandle, agent_task_client: SharedAgentTaskClient) -> TestRouterState {
     let use_cases = crate::services::use_cases::build_use_cases(db);
-    let agent_task_client = AppState::disabled_agent_task_client();
     let app_state = build_http_state(&use_cases, agent_task_client.clone(), None, None);
     TestRouterState {
-        agent_webhook_state: AgentWebhookState {
-            strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
-            webhook_token: Arc::from(TEST_AGENT_WEBHOOK_TOKEN),
-        },
-        external_webhook_state: ExternalWebhookState {
-            trigger_use_cases: use_cases.triggers(),
-            agent_task_client,
-        },
+        agent_webhook_state: build_agent_webhook_state(&use_cases, TEST_AGENT_WEBHOOK_TOKEN),
+        external_webhook_state: build_external_webhook_state(&use_cases, agent_task_client),
         use_cases,
         app_state,
     }
@@ -69,7 +62,8 @@ fn create_test_router(states: TestRouterState, db: DatabaseHandle) -> axum::Rout
 
 /// `#[backend_test_macros::database_test]` から注入された transaction を使って TestServer を作成する。
 pub async fn create_test_server(db: DatabaseHandle) -> TestServer {
-    let router = create_test_router(base_state(db.clone()), db);
+    let states = base_state(db.clone(), AppState::disabled_agent_task_client());
+    let router = create_test_router(states, db);
     TestServer::new(router).expect("failed to create test server")
 }
 
@@ -293,7 +287,8 @@ async fn insert_test_group_with_sync_source(
 
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。
 pub async fn create_test_server_with_db(db: DatabaseHandle) -> (DatabaseHandle, TestServer) {
-    let router = create_test_router(base_state(db.clone()), db.clone());
+    let states = base_state(db.clone(), AppState::disabled_agent_task_client());
+    let router = create_test_router(states, db.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (db, server)
 }
@@ -303,7 +298,7 @@ pub async fn create_test_server_with_kata(
     db: DatabaseHandle,
     executor: SharedKataExecutor,
 ) -> TestServer {
-    let mut states = base_state(db.clone());
+    let mut states = base_state(db.clone(), AppState::disabled_agent_task_client());
     states.app_state.kata_executor = Some(executor);
     let router = create_test_router(states, db);
     TestServer::new(router).expect("failed to create test server")
@@ -314,7 +309,7 @@ pub async fn create_test_server_with_llm_gateway(
     db: DatabaseHandle,
     llm_gateway_base_url: &str,
 ) -> TestServer {
-    let mut states = base_state(db.clone());
+    let mut states = base_state(db.clone(), AppState::disabled_agent_task_client());
     states.app_state.llm_gateway_client = Some(Arc::new(
         crate::services::litellm_client::LiteLlmClient::new(llm_gateway_base_url, None)
             .expect("build llm gateway client"),
@@ -337,25 +332,21 @@ pub async fn create_test_server_with_db_and_agent_client(
     db: DatabaseHandle,
     agent_client: SharedAgentTaskClient,
 ) -> (DatabaseHandle, TestServer) {
-    let mut states = base_state(db.clone());
-    states.app_state.agent_task_client = agent_client.clone();
-    states.external_webhook_state.agent_task_client = agent_client;
+    let states = base_state(db.clone(), agent_client);
     let router = create_test_router(states, db.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (db, server)
 }
 
-/// `AppState` 全体と `TestServer` のペアを返す。
-pub async fn create_test_server_with_state(db: DatabaseHandle) -> (AppState, TestServer) {
+/// Graphile Worker の schema を準備して TestServer を作成する。
+pub async fn create_test_server_with_graphile_worker(db: DatabaseHandle) -> TestServer {
     let pool = gateway_postgres::test_support::create_test_pool().await;
     crate::migrations::migrate_graphile_worker_schema(pool)
         .await
         .expect("migrate Graphile Worker schema");
-    let states = base_state(db.clone());
-    let state = states.app_state.clone();
+    let states = base_state(db.clone(), AppState::disabled_agent_task_client());
     let router = create_test_router(states, db);
-    let server = TestServer::new(router).expect("failed to create test server");
-    (state, server)
+    TestServer::new(router).expect("failed to create test server")
 }
 
 /// テスト用のモックデータプロバイダー
