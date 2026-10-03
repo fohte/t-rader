@@ -1,5 +1,7 @@
 use crate::entities::{note, note_ref, note_version};
-use core_application::note::{NoteListCursor, NoteListPage, NoteListQuery, NoteReadQueryError};
+use core_application::note::{
+    NoteListCursor, NoteListPage, NoteListQuery, NoteReadQueryError, frontmatter_has_tag,
+};
 use core_domain::note_graph::GraphDef;
 use core_domain::note_reference::{
     BodyTokenPolicy, collect_note_refs_with_policy, format_note_token_errors,
@@ -151,7 +153,7 @@ impl PostgresNoteReadQuery {
             if query
                 .tag
                 .as_deref()
-                .is_some_and(|tag| !version_has_tag(&version.frontmatter_json, tag))
+                .is_some_and(|tag| !frontmatter_has_tag(&version.frontmatter_json, tag))
             {
                 continue;
             }
@@ -219,13 +221,6 @@ fn current_note_ids_matching_tag(tag: &str) -> sea_orm::sea_query::SelectStateme
             [serde_json::json!({ "tags": [tag] })],
         ))
         .into_query()
-}
-
-fn version_has_tag(frontmatter_json: &serde_json::Value, tag: &str) -> bool {
-    frontmatter_json
-        .get("tags")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|tags| tags.iter().any(|value| value.as_str() == Some(tag)))
 }
 
 fn note_ids_matching_ref(

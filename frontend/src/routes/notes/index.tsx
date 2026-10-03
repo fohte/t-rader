@@ -14,7 +14,10 @@ export const Route = createFileRoute('/notes/')({
   ): { strategy_id?: string; tag?: string } => ({
     strategy_id:
       typeof search.strategy_id === 'string' ? search.strategy_id : undefined,
-    tag: typeof search.tag === 'string' ? search.tag : undefined,
+    tag:
+      typeof search.tag === 'string' && search.tag.length > 0
+        ? search.tag
+        : undefined,
   }),
   component: NotesPage,
 })

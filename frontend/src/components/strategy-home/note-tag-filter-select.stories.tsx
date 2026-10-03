@@ -15,11 +15,11 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const AllTags: Story = {
-  name: 'shows the note list without a tag filter.',
+  name: 'The selector has no active tag filter.',
   args: { value: undefined },
 }
 
 export const SelectedTag: Story = {
-  name: 'shows one selected note tag.',
+  name: 'The selector has one tag selected.',
   args: { value: '架空タグ' },
 }

@@ -54,10 +54,10 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const WithTags: Story = {
-  name: 'shows note tags with each note.',
+  name: 'The list shows tags for each note.',
 }
 
 export const Empty: Story = {
-  name: 'shows an empty state when no notes are available.',
+  name: 'The list shows an empty state when no notes are available.',
   args: { notes: [] },
 }

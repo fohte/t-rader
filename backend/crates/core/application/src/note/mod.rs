@@ -17,6 +17,7 @@ pub const INITIAL_NOTE_STATUS: &str = "unread";
 pub use error::NoteUseCaseError;
 #[cfg(any(test, feature = "test-support"))]
 pub use fake::FakeNoteReadQuery;
+pub use frontmatter_validation::{frontmatter_has_tag, frontmatter_tags};
 pub use query::{NoteReadQuery, NoteReadQueryError, SharedNoteReadQuery};
 pub use read::{NoteReadUseCaseError, NoteReadUseCases};
 pub use repository::{NoteRepository, NoteRepositoryError, SharedNoteRepository};

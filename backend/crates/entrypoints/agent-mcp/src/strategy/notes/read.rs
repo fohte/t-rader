@@ -1,6 +1,6 @@
 use super::super::graph_dto::GraphDef;
 use core_application::note::{
-    NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot,
+    NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot, frontmatter_tags,
 };
 use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
 use rmcp::ErrorData as McpError;
@@ -45,16 +45,7 @@ fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, Mc
         .as_object()
         .cloned()
         .ok_or_else(|| internal_error("note_version.frontmatter_json is not a JSON object"))?;
-    let tags = frontmatter_json
-        .get("tags")
-        .and_then(serde_json::Value::as_array)
-        .map(|tags| {
-            tags.iter()
-                .filter_map(serde_json::Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
+    let tags = frontmatter_tags(&snapshot.version.frontmatter_json);
     Ok(NoteDto {
         note_id: snapshot.note.id,
         strategy_id: snapshot.note.strategy_id,

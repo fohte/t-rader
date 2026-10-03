@@ -352,6 +352,55 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn list_notes_treats_empty_tag_as_no_filter(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "demo-strategy").await;
+        create_test_note_with_frontmatter(
+            &server,
+            strategy_id,
+            "tagged note",
+            json!({ "tags": ["sample-label"] }),
+        )
+        .await;
+
+        let response = server
+            .get(&format!("/api/notes?strategy_id={strategy_id}&tag="))
+            .await;
+        let actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_note_response)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (response.status_code(), actual),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "strategy_id": strategy_id,
+                    "title": "tagged note",
+                    "body_md": "body",
+                    "frontmatter_json": { "tags": ["sample-label"] },
+                    "tags": ["sample-label"],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                })],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn create_note_records_history_in_the_same_use_case(
         db: gateway_postgres::DatabaseHandle,
     ) {
@@ -648,6 +697,40 @@ mod tests {
                 StatusCode::BAD_REQUEST,
                 json!({"error": INVALID_NOTE_TOKEN_ERROR}),
                 Some("original".to_string()),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_note_rejects_non_string_tags_and_keeps_original_frontmatter(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "strategy").await;
+        let note_id = create_test_note_with_frontmatter(
+            &server,
+            strategy_id,
+            "title",
+            json!({ "tags": ["sample-label"] }),
+        )
+        .await;
+
+        let res = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({ "frontmatter_json": { "tags": "sample-label" } }))
+            .await;
+        let response = res.json::<Value>();
+        let saved_frontmatter = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .map(|version| version.frontmatter_json);
+
+        assert_eq!(
+            (res.status_code(), response, saved_frontmatter),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "frontmatter_json.tags must be an array of strings" }),
+                Some(json!({ "tags": ["sample-label"] })),
             ),
         );
     }
