@@ -66,6 +66,7 @@ run_db_doc() {
 
   docker compose exec -T db createdb \
     --username "t-rader" \
+    --template template0 \
     "$current_database_name"
 
   local database_url

@@ -14,7 +14,7 @@ ensure_database() {
     --dbname postgres \
     --set ON_ERROR_STOP=1 \
     --set "db_name=$database_name" << 'SQL'
-SELECT format('CREATE DATABASE %I', :'db_name')
+SELECT format('CREATE DATABASE %I TEMPLATE template0', :'db_name')
 WHERE NOT EXISTS (
   SELECT FROM pg_database WHERE datname = :'db_name'
 )

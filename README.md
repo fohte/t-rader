@@ -51,7 +51,7 @@ DB と Redis は `compose.yaml` と `compose.override.yaml` で 1 つだけ起�
 # アプリのみ起動 (DB は既に起動済み)
 docker compose -f docker-compose.app.yml up
 
-# 割り当てられたポートを確認 (起動中の全コンテナを一覧するなら docker compose ps)
+# 割り当てられたポートを確認 (アプリコンテナの一覧: docker compose -f docker-compose.app.yml ps)
 docker compose -f docker-compose.app.yml port backend 3000
 docker compose -f docker-compose.app.yml port frontend 5173
 docker compose -f docker-compose.app.yml port agent 8080
@@ -66,6 +66,20 @@ docker compose -f docker-compose.app.yml port agent 8080
 ```bash
 mise run db:doc
 ```
+
+### 既存の共有 DB を使っている場合
+
+既存の DB volume はそのまま再利用します。旧構成で作成した DB と role の名前を、新構成の名前へ一度だけ変更してください。アプリを停止し、旧 checkout で次を実行してから新構成へ切り替えます。
+
+```bash
+docker compose -f docker-compose.infra.yml exec -T db psql -U t_rader -d postgres <<'SQL'
+ALTER ROLE t_rader RENAME TO "t-rader";
+ALTER DATABASE t_rader_development RENAME TO "t-rader_backend_dev";
+ALTER DATABASE t_rader_agent_development RENAME TO "t-rader_agent_dev";
+SQL
+```
+
+切り替え後に `mise run db:up` を実行すると、test DB が作成されます。volume の削除は不要です。
 
 ### マイグレーションの追加
 
