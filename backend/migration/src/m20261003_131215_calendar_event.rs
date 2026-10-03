@@ -49,6 +49,27 @@ enum JQuantsEarningsDate {
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
+            .get_connection()
+            .execute_unprepared(indoc::indoc! {"
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM jquants_earnings_date
+                        WHERE sch_date IS NOT NULL
+                          AND (
+                              fq_name NOT IN ('1Q', '2Q', '3Q', '4Q')
+                              OR fye !~ '^(0[1-9]|1[0-2])[0-9]{2}$'
+                          )
+                    ) THEN
+                        RAISE EXCEPTION 'cannot migrate dated earnings schedules with invalid fq_name or fye';
+                    END IF;
+                END;
+                $$;
+            "})
+            .await?;
+
+        manager
             .create_table(
                 Table::create()
                     .table(CalendarEvent::Table)
@@ -156,21 +177,70 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // 未定への訂正より先に有日程の最新行を選び、古い予定日が復活しないようにする。
         manager
             .get_connection()
-            .execute_unprepared(
-                "WITH latest_schedule AS (\
-                    SELECT DISTINCT ON (code, fq_name) code, fq_name, pub_date, sch_date, co_name \
-                    FROM jquants_earnings_date \
-                    ORDER BY code, fq_name, pub_date DESC\
-                ) \
-                INSERT INTO calendar_event (\
-                    source, external_id, category, country, title, stock_id, fiscal_period, event_date\
-                ) \
-                SELECT 'jquants', code || ':' || fq_name, 'earnings', 'JP', co_name, code, fq_name, sch_date \
-                FROM latest_schedule \
-                WHERE sch_date IS NOT NULL",
-            )
+            .execute_unprepared(indoc::indoc! {"
+                WITH dated_schedules AS (
+                    SELECT
+                        schedule.code,
+                        schedule.fq_name,
+                        schedule.pub_date,
+                        schedule.sch_date,
+                        schedule.co_name,
+                        CASE
+                            WHEN quarter_end_in_schedule_year.quarter_end < schedule.sch_date
+                                THEN quarter_end_in_schedule_year.quarter_end
+                            ELSE (quarter_end_in_schedule_year.quarter_end - INTERVAL '1 year')::date
+                        END AS quarter_end
+                    FROM jquants_earnings_date AS schedule
+                    CROSS JOIN LATERAL (
+                        SELECT (
+                            make_date(
+                                EXTRACT(YEAR FROM schedule.sch_date)::integer,
+                                (
+                                    (
+                                        substring(schedule.fye FROM 1 FOR 2)::integer
+                                        - (4 - substring(schedule.fq_name FROM 1 FOR 1)::integer) * 3
+                                        - 1 + 12
+                                    ) % 12
+                                ) + 1,
+                                1
+                            ) + INTERVAL '1 month' - INTERVAL '1 day'
+                        )::date AS quarter_end
+                    ) AS quarter_end_in_schedule_year
+                    WHERE schedule.sch_date IS NOT NULL
+                      AND schedule.fq_name IN ('1Q', '2Q', '3Q', '4Q')
+                      AND schedule.fye ~ '^(0[1-9]|1[0-2])[0-9]{2}$'
+                ), latest_dated_candidates AS (
+                    SELECT DISTINCT ON (code, quarter_end)
+                        code, fq_name, pub_date, sch_date, co_name, quarter_end
+                    FROM dated_schedules
+                    ORDER BY code, quarter_end, pub_date DESC, fq_name
+                )
+                INSERT INTO calendar_event (
+                    source, external_id, category, country, title, stock_id, fiscal_period, event_date
+                )
+                SELECT
+                    'jquants',
+                    code || ':' || fq_name || ':' || to_char(quarter_end, 'YYYY-MM-DD'),
+                    'earnings',
+                    'JP',
+                    co_name,
+                    code,
+                    to_char(quarter_end, 'YYYY-MM-DD'),
+                    sch_date
+                FROM latest_dated_candidates AS candidate
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM jquants_earnings_date AS unknown_schedule
+                    WHERE unknown_schedule.code = candidate.code
+                      AND unknown_schedule.fq_name = candidate.fq_name
+                      AND unknown_schedule.pub_date > candidate.pub_date
+                      AND unknown_schedule.sch_date IS NULL
+                      AND candidate.sch_date >= unknown_schedule.pub_date
+                )
+            "})
             .await?;
         manager
             .get_connection()

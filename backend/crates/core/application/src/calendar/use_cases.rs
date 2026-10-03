@@ -1,4 +1,4 @@
-use chrono::{Duration, NaiveDate, Utc};
+use chrono::NaiveDate;
 use serde::Serialize;
 
 use crate::calendar::{
@@ -25,8 +25,8 @@ impl CalendarEventUseCases {
     pub async fn run_ingest_cycle(
         &self,
         source: &dyn CalendarEventSource,
+        today: NaiveDate,
     ) -> Result<CalendarEventIngestStats, CalendarEventUseCaseError> {
-        let today = today_in_jst();
         let source_name = source.source();
         let batch = source.fetch_calendar_events(today).await?;
         if batch.date_range.from > batch.date_range.to {
@@ -52,10 +52,6 @@ impl CalendarEventUseCases {
 
         Ok(CalendarEventIngestStats { upserted, deleted })
     }
-}
-
-fn today_in_jst() -> NaiveDate {
-    (Utc::now() + Duration::hours(9)).date_naive()
 }
 
 #[cfg(test)]
@@ -187,9 +183,10 @@ mod tests {
             to: date(2099, 8, 31),
         };
         let repository = Arc::new(FakeCalendarEventRepository::with_events(vec![
-            event("jquants", "existing", "old title", date(2099, 8, 5)),
+            event("jquants", "existing", "old title", date(2099, 8, 11)),
             event("jquants", "missing", "stale event", date(2099, 8, 10)),
             event("jquants", "outside", "outside range", date(2099, 9, 1)),
+            event("jquants", "past", "past event", date(2099, 8, 5)),
             event("other", "other-source", "other source", date(2099, 8, 10)),
         ]));
         let source = FakeCalendarEventSource::new(
@@ -206,7 +203,7 @@ mod tests {
 
         let actual = (
             use_cases
-                .run_ingest_cycle(&source)
+                .run_ingest_cycle(&source, date(2099, 8, 10))
                 .await
                 .map_err(|error| error.to_string()),
             repository.snapshot(),
@@ -223,8 +220,121 @@ mod tests {
                     event("jquants", "existing", "updated title", date(2099, 8, 6)),
                     event("jquants", "new", "new event", date(2099, 8, 12)),
                     event("jquants", "outside", "outside range", date(2099, 9, 1)),
+                    event("jquants", "past", "past event", date(2099, 8, 5)),
                     event("other", "other-source", "other source", date(2099, 8, 10)),
                 ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_date_range_does_not_change_stored_events() {
+        let existing = event("jquants", "existing", "existing", date(2099, 8, 5));
+        let repository = Arc::new(FakeCalendarEventRepository::with_events(vec![
+            existing.clone(),
+        ]));
+        let source = FakeCalendarEventSource::new(
+            "jquants",
+            CalendarEventBatch {
+                date_range: DateRange {
+                    from: date(2099, 8, 2),
+                    to: date(2099, 8, 1),
+                },
+                events: vec![event("jquants", "new", "new event", date(2099, 8, 1))],
+            },
+        );
+        let use_cases = make_use_cases(repository.clone());
+
+        let actual = (
+            use_cases
+                .run_ingest_cycle(&source, date(2099, 8, 1))
+                .await
+                .map_err(|error| error.to_string()),
+            repository.snapshot(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                Err(CalendarEventUseCaseError::InvalidDateRange.to_string()),
+                vec![existing],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn source_mismatch_does_not_change_stored_events() {
+        let existing = event("jquants", "existing", "existing", date(2099, 8, 5));
+        let repository = Arc::new(FakeCalendarEventRepository::with_events(vec![
+            existing.clone(),
+        ]));
+        let source = FakeCalendarEventSource::new(
+            "jquants",
+            CalendarEventBatch {
+                date_range: DateRange {
+                    from: date(2099, 8, 1),
+                    to: date(2099, 8, 31),
+                },
+                events: vec![event("other", "new", "new event", date(2099, 8, 12))],
+            },
+        );
+        let use_cases = make_use_cases(repository.clone());
+
+        let actual = (
+            use_cases
+                .run_ingest_cycle(&source, date(2099, 8, 10))
+                .await
+                .map_err(|error| error.to_string()),
+            repository.snapshot(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                Err(CalendarEventUseCaseError::SourceMismatch {
+                    expected: "jquants".into(),
+                    actual: "other".into(),
+                }
+                .to_string()),
+                vec![existing],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn date_range_ending_before_today_keeps_events() {
+        let existing = event("jquants", "existing", "existing", date(2099, 8, 5));
+        let repository = Arc::new(FakeCalendarEventRepository::with_events(vec![
+            existing.clone(),
+        ]));
+        let source = FakeCalendarEventSource::new(
+            "jquants",
+            CalendarEventBatch {
+                date_range: DateRange {
+                    from: date(2099, 8, 1),
+                    to: date(2099, 8, 5),
+                },
+                events: Vec::new(),
+            },
+        );
+        let use_cases = make_use_cases(repository.clone());
+
+        let actual = (
+            use_cases
+                .run_ingest_cycle(&source, date(2099, 8, 10))
+                .await
+                .map_err(|error| error.to_string()),
+            repository.snapshot(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                Ok(crate::calendar::use_cases::CalendarEventIngestStats {
+                    upserted: 0,
+                    deleted: 0,
+                }),
+                vec![existing],
             ),
         );
     }
@@ -238,7 +348,7 @@ mod tests {
         let source = FakeCalendarEventSource::failed("jquants", "source unavailable");
         let use_cases = make_use_cases(repository.clone());
 
-        let result = use_cases.run_ingest_cycle(&source).await;
+        let result = use_cases.run_ingest_cycle(&source, date(2099, 8, 10)).await;
         let actual = (
             result.err().map(|error| error.to_string()),
             repository.snapshot(),

@@ -15,7 +15,7 @@
 | country       | text                     |                   | false    |          |         | 指標・中銀イベントの対象地域、または決算の上場市場。           |
 | title         | text                     |                   | false    |          |         | イベント名、または決算会社名。                                 |
 | stock_id      | text                     |                   | true     |          |         | 決算対象の銘柄 ID。決算以外では null。                         |
-| fiscal_period | text                     |                   | true     |          |         | 決算期。決算以外では null。                                    |
+| fiscal_period | text                     |                   | true     |          |         | 決算の四半期末日 (YYYY-MM-DD)。決算以外では null。             |
 | event_date    | date                     |                   | false    |          |         | イベントが予定されている JST の日付。                          |
 | event_at      | timestamp with time zone |                   | true     |          |         | 時刻が分かる場合のイベント日時。                               |
 | time_of_day   | text                     |                   | true     |          |         | 時刻の代わりに寄り前または引け後が分かる場合の区分。           |

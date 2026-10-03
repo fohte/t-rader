@@ -227,4 +227,69 @@ mod tests {
             ),
         );
     }
+
+    #[backend_test_macros::database_test]
+    async fn empty_external_ids_delete_all_missing_future_events_in_source_range(
+        db: DatabaseHandle,
+    ) {
+        let repository = PostgresCalendarEventRepository::new(db.clone());
+        repository
+            .upsert(vec![
+                event("jquants", "future", "future event", date(2099, 8, 11)),
+                event("jquants", "past", "past event", date(2099, 8, 9)),
+                event("jquants", "outside", "outside range", date(2099, 9, 1)),
+                event("other", "other-source", "other source", date(2099, 8, 11)),
+            ])
+            .await
+            .expect("insert initial events");
+
+        let deleted = repository
+            .delete_missing_future_events(
+                "jquants",
+                &DateRange {
+                    from: date(2099, 8, 1),
+                    to: date(2099, 8, 31),
+                },
+                date(2099, 8, 10),
+                Vec::new(),
+            )
+            .await
+            .expect("delete missing future events");
+        let rows = calendar_event::Entity::find()
+            .order_by_asc(calendar_event::Column::Source)
+            .order_by_asc(calendar_event::Column::ExternalId)
+            .all(&db)
+            .await
+            .expect("list events")
+            .into_iter()
+            .map(fields)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (deleted, rows),
+            (
+                1,
+                vec![
+                    (
+                        "jquants".into(),
+                        "outside".into(),
+                        "outside range".into(),
+                        date(2099, 9, 1),
+                    ),
+                    (
+                        "jquants".into(),
+                        "past".into(),
+                        "past event".into(),
+                        date(2099, 8, 9),
+                    ),
+                    (
+                        "other".into(),
+                        "other-source".into(),
+                        "other source".into(),
+                        date(2099, 8, 11),
+                    ),
+                ],
+            ),
+        );
+    }
 }
