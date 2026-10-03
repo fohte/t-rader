@@ -52,12 +52,13 @@ mod tests {
     use tokio::{sync::watch, time::timeout};
 
     use super::*;
+    use crate::signals::wait_for_shutdown;
 
     #[tokio::test]
     async fn admin_server_error_shuts_down_the_worker_and_exits() {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let worker: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async move {
-            super::super::wait_for_shutdown(shutdown_rx).await;
+            wait_for_shutdown(shutdown_rx).await;
             Ok(())
         });
         let admin_server: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async {
@@ -78,6 +79,43 @@ mod tests {
             actual,
             Err(
                 "configuration error: Graphile Worker admin UI server error: listener closed"
+                    .to_string()
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_component_completion_shuts_down_the_worker() {
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let worker: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async move {
+            wait_for_shutdown(shutdown_rx).await;
+            Ok(())
+        });
+        let admin_server: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async { Ok(()) });
+
+        let actual = timeout(
+            Duration::from_secs(1),
+            supervise(vec![worker, admin_server], shutdown_tx),
+        )
+        .await
+        .map_err(|_| "supervision timed out".to_string())
+        .and_then(|result| result.map_err(|error| error.to_string()));
+
+        assert_eq!(actual, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn empty_runtime_reports_a_setup_error() {
+        let (shutdown_tx, _) = watch::channel(false);
+
+        let actual = supervise(Vec::new(), shutdown_tx)
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            actual,
+            Err(
+                "configuration error: backend runtime setup did not start any components"
                     .to_string()
             ),
         );

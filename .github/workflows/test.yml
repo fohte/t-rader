@@ -482,6 +482,8 @@ jobs:
         env:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_api_fuzzing
           BACKEND_PORT: '3000'
+          GRAPHILE_WORKER_ADMIN_UI_USERNAME: ci-admin
+          GRAPHILE_WORKER_ADMIN_UI_PASSWORD: ci-only-password
           RUST_LOG: info
         run: |
           cargo run > /tmp/backend.log 2>&1 &

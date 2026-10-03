@@ -195,6 +195,15 @@ mod tests {
         Some(String::new()),
         Err("configuration error: GRAPHILE_WORKER_ADMIN_UI_PASSWORD environment variable is not set".to_string()),
     )]
+    #[case::configured(
+        Some("local-admin".to_string()),
+        Some("local-only-password".to_string()),
+        Ok((
+            SocketAddr::from(([0, 0, 0, 0], 3001)),
+            "local-admin".to_string(),
+            "local-only-password".to_string(),
+        )),
+    )]
     fn test_worker_admin_ui_settings_require_credentials(
         #[case] username: Option<String>,
         #[case] password: Option<String>,

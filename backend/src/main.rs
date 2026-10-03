@@ -21,7 +21,7 @@ use core_application::shareholding_structure_source::SharedShareholdingStructure
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
-use entrypoint_scheduler::{GRAPHILE_WORKER_SCHEMA, Scheduler, SchedulerDependencies};
+use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
@@ -33,15 +33,12 @@ use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
 };
-use graphile_worker::WorkerUtils;
-use graphile_worker_admin_ui::{
-    AdminAuthConfig, AdminServerConfig, build_router as build_admin_ui_router,
-};
 use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 use tokio::sync::watch;
 
+mod admin_ui;
 mod logging;
 mod runtime;
 mod signals;
@@ -388,61 +385,11 @@ async fn main() -> Result<(), StartupError> {
         None
     };
 
-    let admin_server_run: Option<BoxFuture<'static, Result<(), StartupError>>> =
-        if let Some(settings) = admin_ui_settings {
-            let pool = db.get_postgres_connection_pool().clone();
-            let admin_config = AdminServerConfig::builder(
-                pool.clone(),
-                WorkerUtils::new(pool, GRAPHILE_WORKER_SCHEMA),
-            )
-            .schema_name(GRAPHILE_WORKER_SCHEMA)
-            .listen_addr(settings.listen_addr)
-            .auth(AdminAuthConfig::basic(settings.username, settings.password))
-            .read_only(false)
-            .build()
-            .map_err(|error| {
-                StartupError::Config(format!(
-                    "failed to configure Graphile Worker admin UI: {error}"
-                ))
-            })?;
-            let admin_router = build_admin_ui_router(admin_config).map_err(|error| {
-                StartupError::Config(format!("failed to build Graphile Worker admin UI: {error}"))
-            })?;
-            let listener = tokio::net::TcpListener::bind(settings.listen_addr)
-                .await
-                .map_err(|error| {
-                    StartupError::Config(format!(
-                        "failed to bind Graphile Worker admin UI to {}: {error}",
-                        settings.listen_addr
-                    ))
-                })?;
-            tracing::info!(
-                "Graphile Worker admin UI listening on {}",
-                settings.listen_addr
-            );
-
-            let admin_shutdown = wait_for_shutdown(shutdown_rx.clone());
-            let admin_shutdown_receiver = shutdown_rx.clone();
-            Some(Box::pin(async move {
-                axum::serve(listener, admin_router)
-                    .with_graceful_shutdown(admin_shutdown)
-                    .await
-                    .map_err(|error| {
-                        StartupError::Runtime(format!(
-                            "Graphile Worker admin UI server error: {error}"
-                        ))
-                    })?;
-                if !*admin_shutdown_receiver.borrow() {
-                    return Err(StartupError::Runtime(
-                        "Graphile Worker admin UI server stopped unexpectedly".to_string(),
-                    ));
-                }
-                Ok(())
-            })
-                as BoxFuture<'static, Result<(), StartupError>>)
-        } else {
-            None
-        };
+    let admin_server_run = if let Some(settings) = admin_ui_settings {
+        Some(admin_ui::server(settings, &db, shutdown_rx.clone()).await?)
+    } else {
+        None
+    };
 
     let server_run: Option<BoxFuture<'static, Result<(), std::io::Error>>> = if let Some(app) = app
     {
@@ -488,12 +435,5 @@ async fn main() -> Result<(), StartupError> {
     if let Some(admin_server_run) = admin_server_run {
         run_futures.push(admin_server_run);
     }
-    if run_futures.is_empty() {
-        return Err(StartupError::Config(format!(
-            "backend runtime setup is incomplete for run mode {:?}",
-            cli.run_mode
-        )));
-    }
-
     runtime::supervise(run_futures, shutdown_tx).await
 }
