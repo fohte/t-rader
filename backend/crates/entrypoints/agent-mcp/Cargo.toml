@@ -3,5 +3,22 @@ name = "entrypoint-agent-mcp"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+axum = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+core-application = { workspace = true }
+core-domain = { workspace = true }
+jsonschema = { workspace = true }
+rmcp = { workspace = true, features = ["macros", "schemars", "server"] }
+rust_decimal = { workspace = true, features = ["serde-float", "serde-arbitrary-precision"] }
+schemars = { version = "=1.2.2", features = ["chrono04", "uuid1"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+rstest = { workspace = true }
+
 [lints]
 workspace = true

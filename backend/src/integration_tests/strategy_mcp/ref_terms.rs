@@ -7,7 +7,7 @@ mod tests {
     use sea_orm::EntityTrait;
 
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::mcp::strategy::test_api::ref_terms::{
+    use crate::integration_tests::strategy_mcp::test_api::ref_terms::{
         AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams,
     };
     use gateway_postgres::entities::ref_term;

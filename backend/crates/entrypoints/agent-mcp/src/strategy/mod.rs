@@ -35,38 +35,6 @@ pub(super) mod trades;
 pub(super) mod valuation;
 pub(super) mod web_search;
 
-#[cfg(test)]
-pub(crate) mod test_api {
-    pub(crate) const DEFAULT_ANNOTATION_STATUS: &str = super::DEFAULT_ANNOTATION_STATUS;
-    pub(crate) const STRATEGY_AGENT_ACTOR: &str = super::STRATEGY_AGENT_ACTOR;
-    pub const MAX_QUERY_DATA_INSTRUMENTS: usize = super::data::MAX_QUERY_DATA_INSTRUMENTS;
-    pub const MAX_LIST_LIMIT: u64 = super::MAX_LIST_LIMIT;
-    pub const SEARCH_WEB_MAX_CALLS_PER_TASK: u32 = super::web_search::SEARCH_WEB_MAX_CALLS_PER_TASK;
-    pub const EXEC_MAX_OUTPUT_BYTES: u32 = super::EXEC_MAX_OUTPUT_BYTES;
-    pub const EXEC_MAX_TIMEOUT_SECS: u32 = super::EXEC_MAX_TIMEOUT_SECS;
-    pub const MAX_CODE_BYTES: usize = super::eval::MAX_CODE_BYTES;
-
-    pub(crate) mod dto {
-        pub use super::super::dto::*;
-    }
-
-    pub(crate) mod graph_dto {
-        pub use super::super::graph_dto::*;
-    }
-
-    pub(crate) mod refs {
-        pub use super::super::refs::*;
-    }
-
-    pub(crate) mod ref_terms {
-        pub use super::super::ref_terms::*;
-    }
-
-    pub(crate) mod stock_groups {
-        pub use super::super::stock_groups::*;
-    }
-}
-
 use std::collections::BTreeMap;
 
 use core_application::kata_exec::{KataExecError, SharedKataExecutor};
@@ -359,7 +327,7 @@ fn tool_model_from_ctx(
 }
 
 /// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `step_id` を取り出す。
-/// FK を持たない理由は `backend/src/mcp/strategy/evidence.rs` を参照。
+/// FK を持たない理由は `backend/crates/entrypoints/agent-mcp/src/strategy/evidence.rs` を参照。
 fn execution_step_id_from_execution_id(execution_id: &str) -> Option<Uuid> {
     let (_, step_id) = execution_id.rsplit_once(':')?;
     Uuid::parse_str(step_id).ok()

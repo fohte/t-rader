@@ -597,7 +597,7 @@ impl StrategyServer {
 impl StrategyServer {
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
     /// tool を追加してもここを手で更新する必要はない。
-    pub(crate) fn list_tool_summaries() -> Vec<(String, Option<String>)> {
+    pub fn list_tool_summaries() -> Vec<(String, Option<String>)> {
         Self::tool_router()
             .list_all()
             .into_iter()
@@ -623,6 +623,37 @@ impl ServerHandler for StrategyServer {
 #[cfg(test)]
 mod tests {
     use super::StrategyServer;
+
+    fn assert_no_boolean_property_schemas(tool: &rmcp::model::Tool) {
+        fn walk(value: &serde_json::Value, path: &str) {
+            let serde_json::Value::Object(obj) = value else {
+                return;
+            };
+            if let Some(serde_json::Value::Object(properties)) = obj.get("properties") {
+                for (key, prop_schema) in properties {
+                    assert!(
+                        !prop_schema.is_boolean(),
+                        "{path}.properties.{key} is a bare JSON boolean schema; MCP clients reject \
+                         this, use a concrete object type or #[schemars(schema_with = ...)] instead"
+                    );
+                }
+            }
+            for (key, child) in obj {
+                walk(child, &format!("{path}.{key}"));
+            }
+        }
+
+        walk(
+            &serde_json::Value::Object(tool.input_schema.as_ref().clone()),
+            &format!("{}.inputSchema", tool.name),
+        );
+        if let Some(output_schema) = &tool.output_schema {
+            walk(
+                &serde_json::Value::Object(output_schema.as_ref().clone()),
+                &format!("{}.outputSchema", tool.name),
+            );
+        }
+    }
 
     #[test]
     fn read_only_hint_matches_read_write_split() {
@@ -688,7 +719,7 @@ mod tests {
     #[test]
     fn tool_schemas_have_no_boolean_property_schemas() {
         for tool in StrategyServer::tool_router().list_all() {
-            crate::mcp::assert_no_boolean_property_schemas(&tool);
+            assert_no_boolean_property_schemas(&tool);
         }
     }
 }

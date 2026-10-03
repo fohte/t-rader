@@ -4,7 +4,6 @@
 //! - `/mcp/strategy`: 戦略 Agent が叩く戦略実行 MCP
 
 mod access_log;
-pub mod strategy;
 #[cfg(test)]
 pub mod watcher;
 
@@ -18,11 +17,11 @@ use crate::services::use_cases::UseCases;
 use axum::Router;
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::strategy_task::DEADLINE_DURATION;
+pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
-pub use strategy::{StrategyServer, StrategyServerDependencies};
 
 /// MCP ルータを構築する。
 ///
@@ -168,44 +167,6 @@ fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
         }
     }
     config
-}
-
-/// tool の input/output スキーマの `properties` 直下 (ネストした `$defs` を含む) に、
-/// 裸の JSON boolean スキーマ (`true`/`false`) が存在しないことを検証する。
-///
-/// schemars は制約なしの型 (`serde_json::Value` 等) をこの形で出力するが、MCP クライアント
-/// (`@modelcontextprotocol/sdk` の zod スキーマ) はプロパティ値が object であることを要求し
-/// boolean を reject する。`mcp::strategy` の tool_router テストから呼ぶ。
-#[cfg(test)]
-pub(crate) fn assert_no_boolean_property_schemas(tool: &rmcp::model::Tool) {
-    fn walk(value: &serde_json::Value, path: &str) {
-        let serde_json::Value::Object(obj) = value else {
-            return;
-        };
-        if let Some(serde_json::Value::Object(properties)) = obj.get("properties") {
-            for (key, prop_schema) in properties {
-                assert!(
-                    !prop_schema.is_boolean(),
-                    "{path}.properties.{key} is a bare JSON boolean schema; MCP clients reject \
-                     this, use a concrete object type or #[schemars(schema_with = ...)] instead"
-                );
-            }
-        }
-        for (key, child) in obj {
-            walk(child, &format!("{path}.{key}"));
-        }
-    }
-
-    walk(
-        &serde_json::Value::Object(tool.input_schema.as_ref().clone()),
-        &format!("{}.inputSchema", tool.name),
-    );
-    if let Some(output_schema) = &tool.output_schema {
-        walk(
-            &serde_json::Value::Object(output_schema.as_ref().clone()),
-            &format!("{}.outputSchema", tool.name),
-        );
-    }
 }
 
 #[cfg(test)]
