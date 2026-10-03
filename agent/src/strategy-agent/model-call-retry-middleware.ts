@@ -1,12 +1,20 @@
 import { type AnyAgentMiddleware, modelRetryMiddleware } from 'langchain'
 
 import { logger } from '#logger'
+import { AbortedModelCallError } from '#strategy-agent/aborting-model-call-middleware'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
-const DEADLINE_ERROR_PREFIX =
-  'deadlineMiddleware: aborted model call after strategy task deadline exceeded'
-const CALL_DURATION_ERROR_PREFIX =
-  'callDurationMiddleware: aborted model call after exceeding '
+const CONNECTION_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EPIPE',
+  'ETIMEDOUT',
+  'ENETUNREACH',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
@@ -30,6 +38,17 @@ const getStatus = (error: Error): number | undefined => {
   return typeof status === 'number' ? status : undefined
 }
 
+const getErrorCode = (error: unknown): string | undefined => {
+  const code = isRecord(error) ? error['code'] : undefined
+  return typeof code === 'string' ? code : undefined
+}
+
+const isTransportTypeError = (error: Error): boolean =>
+  error instanceof TypeError &&
+  (error.message === 'terminated' ||
+    CONNECTION_ERROR_CODES.has(getErrorCode(error) ?? '') ||
+    CONNECTION_ERROR_CODES.has(getErrorCode(error.cause) ?? ''))
+
 const isStatuslessSseApiError = (error: Error): boolean =>
   isRecord(error) &&
   error['status'] === undefined &&
@@ -46,8 +65,9 @@ const isRetryableModelCallError = (error: Error): boolean => {
   const errorChain = getErrorChain(error)
 
   if (
-    errorChain.some((cause) =>
-      cause.message.startsWith(DEADLINE_ERROR_PREFIX),
+    errorChain.some(
+      (cause) =>
+        cause instanceof AbortedModelCallError && cause.reason === 'deadline',
     ) ||
     errorChain.some(isUsageLimitError)
   ) {
@@ -64,8 +84,10 @@ const isRetryableModelCallError = (error: Error): boolean => {
   if (status !== undefined) return status >= 500
 
   if (
-    errorChain.some((cause) =>
-      cause.message.startsWith(CALL_DURATION_ERROR_PREFIX),
+    errorChain.some(
+      (cause) =>
+        cause instanceof AbortedModelCallError &&
+        cause.reason === 'call-duration',
     )
   ) {
     return true
@@ -76,7 +98,7 @@ const isRetryableModelCallError = (error: Error): boolean => {
       cause.name === 'TimeoutError' ||
       cause.constructor.name === 'APIConnectionError' ||
       cause.constructor.name === 'APIConnectionTimeoutError' ||
-      cause instanceof TypeError ||
+      isTransportTypeError(cause) ||
       isStatuslessSseApiError(cause),
   )
 }

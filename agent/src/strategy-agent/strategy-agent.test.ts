@@ -201,7 +201,10 @@ const normalizeSuccessfulRetry = (
 const normalizeSuccessfulRetryWithWarnings = (
   result: PhaseAgentResult,
   requestBodies: readonly string[],
-  retryWarnings: readonly { readonly name: string }[],
+  retryWarnings: readonly {
+    readonly name: string
+    readonly message: string
+  }[],
 ) => ({
   ...normalizeSuccessfulRetry(result, requestBodies),
   retryWarnings,
@@ -850,6 +853,52 @@ describe('createStrategyAgentDeps', () => {
     })
   }
 
+  const buildPartialModelStreamResponse = (
+    ending:
+      | { readonly kind: 'sse-error' }
+      | { readonly kind: 'read-error'; readonly message: string },
+  ): Response => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              id: 'call-1',
+              model: 'example-model-test-stream',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: null,
+                  delta: { role: 'assistant', content: 'partial' },
+                },
+              ],
+            })}\n\n`,
+          ),
+        )
+        if (ending.kind === 'sse-error') {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error: {
+                  message: 'stream interrupted',
+                  type: 'server_error',
+                },
+              })}\n\n`,
+            ),
+          )
+          controller.close()
+          return
+        }
+        controller.error(new TypeError(ending.message))
+      },
+    })
+    return new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })
+  }
+
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     const requestedToolCounts: number[] = []
     let callCount = 0
@@ -1065,94 +1114,80 @@ describe('createStrategyAgentDeps', () => {
     },
   )
 
-  it('retries a model request after a 5xx response with the same input', async () => {
-    const requestBodies: string[] = []
-    let callCount = 0
-    const model = buildStubModel((_url, init) => {
-      callCount += 1
-      const body = getRequestBody(init)
-      requestBodies.push(body)
-      if (callCount === 1) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              error: { message: 'temporary failure', type: 'server_error' },
-            }),
-            {
-              status: 503,
-              headers: { 'content-type': 'application/json' },
-            },
-          ),
-        )
-      }
-      return Promise.resolve(
-        buildStructuredOutputResponse(`call-${String(callCount)}`, body),
-      )
-    })
-    const deps = createStrategyAgentDeps(baseConfig)
-    const agent = buildPhaseAgentUnderTest(deps, {
-      model,
-      tools: [],
-      systemPrompt: 'you are a helpful bot',
-    })
-
-    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
-    const firstRequestBody = requestBodies[0]
-
-    expect(normalizeSuccessfulRetry(result, requestBodies)).toEqual({
-      structuredResponse: { status: 'completed', message: 'done' },
-      requestBodies: [firstRequestBody, firstRequestBody],
-    })
-  })
-
-  it('retries after a statusless SSE error event during streaming', async () => {
-    const requestBodies: string[] = []
-    let callCount = 0
-    const encoder = new TextEncoder()
-    const model = buildStubModel((_url, init) => {
-      callCount += 1
-      const body = getRequestBody(init)
-      requestBodies.push(body)
-      if (callCount === 1) {
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  id: 'call-1',
-                  model: 'example-model-test-stream',
-                  choices: [
-                    {
-                      index: 0,
-                      finish_reason: null,
-                      delta: { role: 'assistant', content: 'partial' },
-                    },
-                  ],
-                })}\n\n`,
-              ),
-            )
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  error: {
-                    message: 'stream interrupted',
-                    type: 'server_error',
-                  },
-                })}\n\n`,
-              ),
-            )
-            controller.close()
-          },
-        })
-        return Promise.resolve(
-          new Response(stream, {
-            status: 200,
-            headers: { 'content-type': 'text/event-stream' },
+  it.each([
+    {
+      name: 'a 5xx response',
+      streaming: false,
+      failureResponse: () =>
+        new Response(
+          JSON.stringify({
+            error: { message: 'temporary failure', type: 'server_error' },
           }),
-        )
-      }
+          {
+            status: 503,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    },
+    {
+      name: 'a statusless SSE error event',
+      streaming: true,
+      failureResponse: () =>
+        buildPartialModelStreamResponse({ kind: 'sse-error' }),
+    },
+    {
+      name: 'a stream connection closing',
+      streaming: true,
+      failureResponse: () =>
+        buildPartialModelStreamResponse({
+          kind: 'read-error',
+          message: 'terminated',
+        }),
+    },
+  ])(
+    'retries after $name with the same input',
+    async ({ failureResponse, streaming }) => {
+      const requestBodies: string[] = []
+      let callCount = 0
+      const model = buildStubModel((_url, init) => {
+        callCount += 1
+        const body = getRequestBody(init)
+        requestBodies.push(body)
+        if (callCount === 1) return Promise.resolve(failureResponse())
+        const response = streaming
+          ? buildStructuredOutputStreamResponse(
+              `call-${String(callCount)}`,
+              body,
+            )
+          : buildStructuredOutputResponse(`call-${String(callCount)}`, body)
+        return Promise.resolve(response)
+      }, streaming)
+      const deps = createStrategyAgentDeps(baseConfig)
+      const agent = buildPhaseAgentUnderTest(deps, {
+        model,
+        tools: [],
+        systemPrompt: 'you are a helpful bot',
+      })
+
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+      const firstRequestBody = requestBodies[0]
+
+      expect(normalizeSuccessfulRetry(result, requestBodies)).toEqual({
+        structuredResponse: { status: 'completed', message: 'done' },
+        requestBodies: [firstRequestBody, firstRequestBody],
+      })
+    },
+  )
+
+  it('does not retry after a non-transport TypeError while reading a stream', async () => {
+    let callCount = 0
+    const model = buildStubModel(() => {
+      callCount += 1
       return Promise.resolve(
-        buildStructuredOutputStreamResponse(`call-${String(callCount)}`, body),
+        buildPartialModelStreamResponse({
+          kind: 'read-error',
+          message: 'invalid model stream data',
+        }),
       )
     }, true)
     const deps = createStrategyAgentDeps(baseConfig)
@@ -1161,69 +1196,16 @@ describe('createStrategyAgentDeps', () => {
       tools: [],
       systemPrompt: 'you are a helpful bot',
     })
-
-    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
-    const firstRequestBody = requestBodies[0]
-
-    expect(normalizeSuccessfulRetry(result, requestBodies)).toEqual({
-      structuredResponse: { status: 'completed', message: 'done' },
-      requestBodies: [firstRequestBody, firstRequestBody],
-    })
-  })
-
-  it('retries after a connection closes during streaming', async () => {
-    const requestBodies: string[] = []
-    let callCount = 0
-    const encoder = new TextEncoder()
-    const model = buildStubModel((_url, init) => {
-      callCount += 1
-      const body = getRequestBody(init)
-      requestBodies.push(body)
-      if (callCount === 1) {
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  id: 'call-1',
-                  model: 'example-model-test-stream',
-                  choices: [
-                    {
-                      index: 0,
-                      finish_reason: null,
-                      delta: { role: 'assistant', content: 'partial' },
-                    },
-                  ],
-                })}\n\n`,
-              ),
-            )
-            controller.error(new TypeError('stream connection closed'))
-          },
-        })
-        return Promise.resolve(
-          new Response(stream, {
-            status: 200,
-            headers: { 'content-type': 'text/event-stream' },
-          }),
-        )
-      }
-      return Promise.resolve(
-        buildStructuredOutputStreamResponse(`call-${String(callCount)}`, body),
+    const outcome = await agent
+      .invoke({ messages: [new HumanMessage('hi')] })
+      .then(
+        () => 'resolved',
+        () => 'rejected',
       )
-    }, true)
-    const deps = createStrategyAgentDeps(baseConfig)
-    const agent = buildPhaseAgentUnderTest(deps, {
-      model,
-      tools: [],
-      systemPrompt: 'you are a helpful bot',
-    })
 
-    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
-    const firstRequestBody = requestBodies[0]
-
-    expect(normalizeSuccessfulRetry(result, requestBodies)).toEqual({
-      structuredResponse: { status: 'completed', message: 'done' },
-      requestBodies: [firstRequestBody, firstRequestBody],
+    expect(normalizeAttemptOutcome(callCount, outcome)).toEqual({
+      callCount: 1,
+      outcome: 'rejected',
     })
   })
 
@@ -1231,62 +1213,77 @@ describe('createStrategyAgentDeps', () => {
     {
       name: 'a fetch connection error',
       makeError: () => new TypeError('connection closed'),
+      expectedLoggedError: {
+        name: 'TypeError',
+        message: 'connection closed',
+      },
     },
     {
       name: 'a request timeout',
       makeError: () => new DOMException('request timed out', 'TimeoutError'),
+      expectedLoggedError: {
+        name: 'TimeoutError',
+        message: 'Request timed out.',
+      },
     },
-  ])('retries after $name and logs its cause', async ({ makeError }) => {
-    const requestBodies: string[] = []
-    let callCount = 0
-    const cause = makeError()
-    const model = buildStubModel((_url, init) => {
-      callCount += 1
-      const body = getRequestBody(init)
-      requestBodies.push(body)
-      if (callCount === 1) return Promise.reject(cause)
-      return Promise.resolve(
-        buildStructuredOutputResponse(`call-${String(callCount)}`, body),
-      )
-    })
-    const deps = createStrategyAgentDeps(baseConfig)
-    const agent = buildPhaseAgentUnderTest(deps, {
-      model,
-      tools: [],
-      systemPrompt: 'you are a helpful bot',
-    })
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
-
-    try {
-      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
-      const firstRequestBody = requestBodies[0]
-      const retryWarnings = warnSpy.mock.calls
-        .filter(
-          ([, message]) =>
-            message === 'model call failed with a retryable error',
+  ])(
+    'retries after $name and logs its cause',
+    async ({ makeError, expectedLoggedError }) => {
+      const requestBodies: string[] = []
+      let callCount = 0
+      const cause = makeError()
+      const model = buildStubModel((_url, init) => {
+        callCount += 1
+        const body = getRequestBody(init)
+        requestBodies.push(body)
+        if (callCount === 1) return Promise.reject(cause)
+        return Promise.resolve(
+          buildStructuredOutputResponse(`call-${String(callCount)}`, body),
         )
-        .map(([fields]) => {
-          const error = fields['err']
-          return error instanceof Error
-            ? { name: error.name }
-            : { name: 'missing error' }
-        })
-
-      expect(
-        normalizeSuccessfulRetryWithWarnings(
-          result,
-          requestBodies,
-          retryWarnings,
-        ),
-      ).toEqual({
-        structuredResponse: { status: 'completed', message: 'done' },
-        requestBodies: [firstRequestBody, firstRequestBody],
-        retryWarnings: [{ name: cause.name }],
       })
-    } finally {
-      warnSpy.mockRestore()
-    }
-  })
+      const deps = createStrategyAgentDeps(baseConfig)
+      const agent = buildPhaseAgentUnderTest(deps, {
+        model,
+        tools: [],
+        systemPrompt: 'you are a helpful bot',
+      })
+      const warnSpy = vi
+        .spyOn(logger, 'warn')
+        .mockImplementation(() => undefined)
+
+      try {
+        const result = await agent.invoke({
+          messages: [new HumanMessage('hi')],
+        })
+        const firstRequestBody = requestBodies[0]
+        const retryWarnings = warnSpy.mock.calls
+          .filter(
+            ([, message]) =>
+              message === 'model call failed with a retryable error',
+          )
+          .map(([fields]) => {
+            const error = fields['err']
+            return error instanceof Error
+              ? { name: error.name, message: error.message }
+              : { name: 'missing error', message: 'missing error' }
+          })
+
+        expect(
+          normalizeSuccessfulRetryWithWarnings(
+            result,
+            requestBodies,
+            retryWarnings,
+          ),
+        ).toEqual({
+          structuredResponse: { status: 'completed', message: 'done' },
+          requestBodies: [firstRequestBody, firstRequestBody],
+          retryWarnings: [expectedLoggedError],
+        })
+      } finally {
+        warnSpy.mockRestore()
+      }
+    },
+  )
 
   it('stops after two retries when each model call returns a 5xx response', async () => {
     let callCount = 0

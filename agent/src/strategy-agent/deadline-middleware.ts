@@ -5,6 +5,7 @@ const DEADLINE_EXCEEDED_FINGERPRINT = 'deadline-middleware.exceeded'
 export const createDeadlineMiddleware = (signal: AbortSignal) =>
   createAbortingModelCallMiddleware(
     'deadlineMiddleware',
+    'deadline',
     () => signal,
     DEADLINE_EXCEEDED_FINGERPRINT,
     () =>
