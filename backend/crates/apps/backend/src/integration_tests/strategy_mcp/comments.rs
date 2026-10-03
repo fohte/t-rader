@@ -454,33 +454,35 @@ mod tests {
                 },
             },
         );
-        assert_eq!(
-            change_history_for(&db, comment_id).await,
-            vec![
-                ChangeHistoryShape {
-                    id: uuid::Uuid::nil(),
-                    target_kind: "comment".into(),
-                    target_id: comment_id,
-                    actor_kind: "llm".into(),
-                    actor_label: "analyst".into(),
-                    op: "status_change".into(),
-                    diff_json: serde_json::json!({ "from": false, "to": true }),
-                    summary: None,
-                    created_at: ts_sentinel(),
-                },
-                ChangeHistoryShape {
-                    id: uuid::Uuid::nil(),
-                    target_kind: "comment".into(),
-                    target_id: comment_id,
-                    actor_kind: "llm".into(),
-                    actor_label: "analyst".into(),
-                    op: "status_change".into(),
-                    diff_json: serde_json::json!({ "from": true, "to": false }),
-                    summary: None,
-                    created_at: ts_sentinel(),
-                },
-            ],
-        );
+        let mut history = change_history_for(&db, comment_id).await;
+        let mut expected_history = vec![
+            ChangeHistoryShape {
+                id: uuid::Uuid::nil(),
+                target_kind: "comment".into(),
+                target_id: comment_id,
+                actor_kind: "llm".into(),
+                actor_label: "analyst".into(),
+                op: "status_change".into(),
+                diff_json: serde_json::json!({ "from": false, "to": true }),
+                summary: None,
+                created_at: ts_sentinel(),
+            },
+            ChangeHistoryShape {
+                id: uuid::Uuid::nil(),
+                target_kind: "comment".into(),
+                target_id: comment_id,
+                actor_kind: "llm".into(),
+                actor_label: "analyst".into(),
+                op: "status_change".into(),
+                diff_json: serde_json::json!({ "from": true, "to": false }),
+                summary: None,
+                created_at: ts_sentinel(),
+            },
+        ];
+        // CURRENT_TIMESTAMP は transaction 内で同じ値になるため、同時刻の行順は DB で確定しない。
+        history.sort_by_key(|entry| entry.diff_json.to_string());
+        expected_history.sort_by_key(|entry| entry.diff_json.to_string());
+        assert_eq!(history, expected_history);
     }
 
     #[backend_test_macros::database_test]
