@@ -8,6 +8,10 @@ pub(super) enum StartupError {
 
     #[error("configuration error: {0}")]
     Config(String),
+
+    // runtime failure も既存の process error prefix を維持する。
+    #[error("configuration error: {0}")]
+    Runtime(String),
 }
 
 impl From<DbErr> for StartupError {
@@ -59,12 +63,20 @@ mod tests {
     #[rstest]
     #[case::api_key_missing(None, Some("invalid".to_string()), Ok(None))]
     #[case::api_key_empty(Some(String::new()), Some("invalid".to_string()), Ok(None))]
-    #[case::plan_missing(Some("test-api-key".to_string()), None, Err(()))]
-    #[case::plan_empty(Some("test-api-key".to_string()), Some(String::new()), Err(()))]
+    #[case::plan_missing(
+        Some("test-api-key".to_string()),
+        None,
+        Err("configuration error: JQUANTS_PLAN is required when JQUANTS_API_KEY is configured".to_string()),
+    )]
+    #[case::plan_empty(
+        Some("test-api-key".to_string()),
+        Some(String::new()),
+        Err("configuration error: JQUANTS_PLAN is required when JQUANTS_API_KEY is configured".to_string()),
+    )]
     #[case::plan_invalid(
         Some("test-api-key".to_string()),
         Some("enterprise".to_string()),
-        Err(()),
+        Err("configuration error: invalid JQUANTS_PLAN value 'enterprise': unknown variant `enterprise`, expected one of `free`, `light`, `standard`, `premium`".to_string()),
     )]
     #[case::plan_valid(
         Some("test-api-key".to_string()),
@@ -74,9 +86,12 @@ mod tests {
     fn test_jquants_config(
         #[case] api_key: Option<String>,
         #[case] plan: Option<String>,
-        #[case] expected: Result<Option<(String, JQuantsPlan)>, ()>,
+        #[case] expected: Result<Option<(String, JQuantsPlan)>, String>,
     ) {
-        assert_eq!(jquants_config(api_key, plan).map_err(|_| ()), expected);
+        assert_eq!(
+            jquants_config(api_key, plan).map_err(|error| error.to_string()),
+            expected,
+        );
     }
 
     #[rstest]
@@ -107,6 +122,14 @@ mod tests {
         assert_eq!(
             StartupError::from(DbErr::Custom("database unavailable".into())).to_string(),
             "internal error: Custom Error: database unavailable",
+        );
+    }
+
+    #[test]
+    fn runtime_error_keeps_existing_configuration_error_display() {
+        assert_eq!(
+            StartupError::Runtime("server error: service exited".into()).to_string(),
+            "configuration error: server error: service exited",
         );
     }
 }

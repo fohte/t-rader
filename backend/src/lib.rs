@@ -360,6 +360,35 @@ pub fn create_router(
         ))
 }
 
+#[cfg(test)]
+mod health_check_tests {
+    use axum::routing::get;
+    use axum_test::TestServer;
+    use sea_orm::{DatabaseBackend, MockDatabase};
+    use serde_json::json;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn database_query_failure_returns_internal_http_response() {
+        let router = Router::new()
+            .route("/api/health", get(health_check))
+            .with_state(DatabaseHandle::from(
+                MockDatabase::new(DatabaseBackend::Postgres).into_connection(),
+            ));
+        let server = TestServer::new(router).expect("create health check test server");
+        let response = server.get("/api/health").await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<serde_json::Value>()),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "error": "internal server error" }),
+            ),
+        );
+    }
+}
+
 /// ヘルスチェック
 #[utoipa::path(
     get,

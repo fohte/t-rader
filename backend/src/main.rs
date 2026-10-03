@@ -431,20 +431,20 @@ async fn main() -> Result<(), StartupError> {
                 result = &mut worker_run => {
                     let _ = shutdown_tx.send(true);
                     let worker_result = result
-                        .map_err(|error| StartupError::Config(format!("Graphile Worker failed: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")));
                     let server_result = server_run
                         .await
-                        .map_err(|error| StartupError::Config(format!("server error: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("server error: {error}")));
                     worker_result?;
                     server_result
                 }
                 result = &mut server_run => {
                     let _ = shutdown_tx.send(true);
                     let server_result = result
-                        .map_err(|error| StartupError::Config(format!("server error: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("server error: {error}")));
                     let worker_result = worker_run
                         .await
-                        .map_err(|error| StartupError::Config(format!("Graphile Worker failed: {error}")));
+                        .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")));
                     server_result?;
                     worker_result
                 }
@@ -453,10 +453,10 @@ async fn main() -> Result<(), StartupError> {
         (Some(worker), None) => worker
             .run()
             .await
-            .map_err(|error| StartupError::Config(format!("Graphile Worker failed: {error}"))),
+            .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}"))),
         (None, Some(server_run)) => server_run
             .await
-            .map_err(|error| StartupError::Config(format!("server error: {error}"))),
+            .map_err(|error| StartupError::Runtime(format!("server error: {error}"))),
         // RunMode の追加時に有効化条件が漏れた場合も、無言で終了しないようにする。
         (None, None) => Err(StartupError::Config(format!(
             "backend runtime setup is incomplete for run mode {:?}",
