@@ -5,7 +5,7 @@ use core_domain::financial_summary::FinancialSummary;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
-use super::{StrategyServer, clamp_limit, financial_summary_error};
+use super::{StrategyServer, clamp_limit, financial_summary_error, reject_foreign_stock_id};
 
 impl StrategyServer {
     pub(crate) async fn read_fin_summary_inner(
@@ -14,6 +14,7 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadFinSummaryParams,
     ) -> Result<ReadFinSummaryResult, McpError> {
+        reject_foreign_stock_id(&params.symbol)?;
         let summaries = self
             .dependencies
             .financial_summaries

@@ -1,6 +1,7 @@
-//! FRED (Federal Reserve Economic Data) API からマクロ指標の観測値を取得するクライアント。
+//! FRED (Federal Reserve Economic Data) API からマクロ指標の観測値と release dates を取得するクライアント。
 //!
 //! <https://fred.stlouisfed.org/docs/api/fred/series_observations.html>
+//! <https://fred.stlouisfed.org/docs/api/fred/release_dates.html>
 
 use std::str::FromStr;
 
@@ -15,6 +16,7 @@ use rust_decimal::Decimal;
 use serde::Deserialize;
 
 const DEFAULT_BASE_URL: &str = "https://api.stlouisfed.org/fred/series/observations";
+const RELEASE_DATES_BASE_URL: &str = "https://api.stlouisfed.org/fred/release/dates";
 const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 欠損値を表す FRED の慣習的な表記
@@ -32,9 +34,10 @@ struct RawObservation {
 }
 
 pub struct FredClient {
-    http: reqwest::Client,
+    pub(super) http: reqwest::Client,
     base_url: String,
-    api_key: String,
+    pub(super) release_dates_base_url: String,
+    pub(super) api_key: String,
 }
 
 impl FredClient {
@@ -46,6 +49,14 @@ impl FredClient {
         api_key: String,
         base_url: &str,
     ) -> Result<Self, IndicatorObservationSourceError> {
+        Self::with_base_urls(api_key, base_url, RELEASE_DATES_BASE_URL)
+    }
+
+    pub fn with_base_urls(
+        api_key: String,
+        base_url: &str,
+        release_dates_base_url: &str,
+    ) -> Result<Self, IndicatorObservationSourceError> {
         let http = reqwest::Client::builder()
             .timeout(HTTP_TIMEOUT)
             .build()
@@ -53,6 +64,7 @@ impl FredClient {
         Ok(Self {
             http,
             base_url: base_url.to_string(),
+            release_dates_base_url: release_dates_base_url.to_string(),
             api_key,
         })
     }

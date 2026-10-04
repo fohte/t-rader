@@ -8,7 +8,7 @@ use axum::http::StatusCode;
 use uuid::Uuid;
 
 use core_application::rss_feed::{
-    CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch,
+    CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedCommand,
 };
 
 use crate::FrontendApiState;
@@ -107,6 +107,7 @@ pub async fn create_rss_feed(
             display_name: payload.display_name,
             url: payload.url,
             enabled: payload.enabled,
+            content_source: payload.content_source,
         })
         .await
         .map_err(map_err)?;
@@ -138,10 +139,11 @@ pub async fn update_rss_feed(
         .rss_feed_use_cases
         .update(
             id,
-            UpdateRssFeedPatch {
+            UpdateRssFeedCommand {
                 display_name: payload.display_name,
                 url: payload.url,
                 enabled: payload.enabled,
+                content_source: payload.content_source,
             },
         )
         .await

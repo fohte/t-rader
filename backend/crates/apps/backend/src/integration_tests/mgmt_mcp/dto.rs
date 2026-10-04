@@ -118,6 +118,13 @@ pub struct ListRssFeedsParams {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct UpdateRssFeedParams {
+    pub id: Uuid,
+    #[serde(default)]
+    pub content_source: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RssFeedSummary {
     pub id: Uuid,
@@ -125,6 +132,7 @@ pub struct RssFeedSummary {
     pub display_name: String,
     pub url: String,
     pub enabled: bool,
+    pub content_source: String,
 }
 
 impl From<RssFeed> for RssFeedSummary {
@@ -135,6 +143,7 @@ impl From<RssFeed> for RssFeedSummary {
             display_name: m.display_name,
             url: m.url,
             enabled: m.enabled,
+            content_source: m.content_source.as_str().to_owned(),
         }
     }
 }

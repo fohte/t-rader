@@ -1,26 +1,7 @@
-[env]
-# db と redis のホストポートはランダム割り当て (全 worktree 共有) のため、mise 実行のたびに
-# scripts/db-url / scripts/redis-url でそれぞれポートを解決する (キャッシュしない)。
-# _.file より前に書くことで .env.local による上書きを維持している
-DATABASE_URL = "{{ exec(command=config_root ~ '/scripts/db-url') }}"
-REDIS_URL = "{{ exec(command=config_root ~ '/scripts/redis-url') }}"
-_.file = ['.env', '.env.local']
-# Share target dir across worktrees to avoid full recompilation
-CARGO_TARGET_DIR = "{{config_root}}/target"
-
-[tasks.db-up]
-description = "開発用 DB と Redis を起動する"
-file = "scripts/db-up"
-
-[tasks.db-doc]
-description = "使い捨て DB から DB ドキュメントを生成する"
-file = "scripts/db-doc"
-
 [tools]
 lefthook = "2.1.14"
 "github:ast-grep/ast-grep" = "0.45.3"
 "cargo:sea-orm-cli" = "2.0.3"
-"github:k1LoW/tbls" = "1.95.0"
 
 # lefthook hooks
 actionlint = "1.7.12"
@@ -28,5 +9,20 @@ actionlint = "1.7.12"
 node = "24.21.0"
 pinact = "4.1.1"
 "github:fohte/basefmt" = "0.1.0"
+"github:k1LoW/tbls" = "1.95.0"
 shellcheck = "0.11.0"
 shfmt = "3.14.1"
+
+[env]
+REDIS_URL = "{{ exec(command=config_root ~ '/scripts/redis-url') }}"
+_.file = ['.env', '.env.local']
+# Share target dir across worktrees to avoid full recompilation
+CARGO_TARGET_DIR = "{{config_root}}/target"
+
+[tasks."db:up"]
+description = "開発用 DB と Redis を起動する"
+file = "scripts/db-up"
+
+[tasks."db:doc"]
+description = "使い捨て DB から DB ドキュメントを生成する"
+file = "scripts/db-doc"

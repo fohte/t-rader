@@ -17,6 +17,8 @@ pub struct Model {
     pub enabled: bool,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "Text")]
+    pub content_source: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

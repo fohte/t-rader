@@ -21,6 +21,7 @@ use core_application::shareholding_structure::ShareholdingStructureUseCases;
 use core_application::short_ratio::ShortRatioUseCases;
 use core_application::short_sale_report::ShortSaleReportUseCases;
 use core_application::stock_group::StockGroupUseCases;
+use core_application::stock_registration::StockRegistrationUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
@@ -52,6 +53,7 @@ pub struct StrategyServerDependencies {
     pub shareholding_structures: ShareholdingStructureUseCases,
     pub short_ratios: ShortRatioUseCases,
     pub short_sale_reports: ShortSaleReportUseCases,
+    pub stock_registration: StockRegistrationUseCases,
     pub stock_groups: StockGroupUseCases,
     pub strategies: StrategyUseCases,
     pub strategy_scope: Arc<StrategyScopeUseCases>,

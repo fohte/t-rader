@@ -1,4 +1,5 @@
 use chrono::Utc;
+use core_domain::stock_id::has_country_prefix;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -44,6 +45,11 @@ impl PredictionUseCases {
         if benchmark_stock_id.is_empty() {
             return Err(PredictionUseCaseError::Validation(
                 "benchmark_stock_id must not be empty".into(),
+            ));
+        }
+        if has_country_prefix(&target_stock_id) || has_country_prefix(&benchmark_stock_id) {
+            return Err(PredictionUseCaseError::Validation(
+                "predictions only support Japanese stocks".into(),
             ));
         }
         if target_stock_id == benchmark_stock_id {
@@ -308,6 +314,44 @@ mod tests {
                     due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
                 }],
             ),
+        );
+    }
+
+    #[rstest]
+    #[case::foreign_target("US:QZ-7", "FICTIONAL-ASSET-B")]
+    #[case::foreign_benchmark("FICTIONAL-ASSET-A", "KR:QZ9012")]
+    #[tokio::test]
+    async fn record_rejects_foreign_stock_ids(
+        #[case] target_stock_id: &str,
+        #[case] benchmark_stock_id: &str,
+    ) {
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let repository = Arc::new(FakePredictionRepository {
+            owner_strategy_id: None,
+            inserted: Mutex::new(Vec::new()),
+        });
+        let use_cases = PredictionUseCases::new(unit_of_work.clone(), repository.clone());
+        let result = use_cases
+            .record(
+                RUNNING_STRATEGY_ID.into(),
+                RecordPredictionCommand {
+                    note_id: None,
+                    target_stock_id: target_stock_id.into(),
+                    benchmark_stock_id: benchmark_stock_id.into(),
+                    direction: "outperform".into(),
+                    probability: Decimal::new(70, 2),
+                    base_date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+                    due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
+                },
+            )
+            .await
+            .map_err(|error| error.to_string());
+        let inserted_count = repository.inserted.lock().await.len();
+        let begun_count = unit_of_work.begun.lock().await.len();
+
+        assert_eq!(
+            (result, inserted_count, begun_count),
+            (Err("predictions only support Japanese stocks".into()), 0, 0,),
         );
     }
 }

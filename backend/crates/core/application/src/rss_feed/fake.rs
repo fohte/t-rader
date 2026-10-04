@@ -87,6 +87,7 @@ impl RssFeedRepository for FakeRssFeedRepository {
             display_name: feed.display_name,
             url: feed.url,
             enabled: feed.enabled,
+            content_source: feed.content_source,
             created_at: now,
             updated_at: now,
         };
@@ -116,6 +117,9 @@ impl RssFeedRepository for FakeRssFeedRepository {
         }
         if let Some(enabled) = patch.enabled {
             existing.enabled = enabled;
+        }
+        if let Some(content_source) = patch.content_source {
+            existing.content_source = content_source;
         }
         existing.updated_at = updated_at;
         Ok(existing.clone())

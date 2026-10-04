@@ -4,12 +4,22 @@ import { createMiddleware } from 'langchain'
 import { logger } from '#logger'
 import { bindModelCallSignal } from '#strategy-agent/bind-model-call-signal'
 
+export class AbortedModelCallError extends Error {
+  constructor(
+    message: string,
+    readonly reason: 'deadline' | 'call-duration',
+  ) {
+    super(message)
+  }
+}
+
 // signal で中断されるモデル呼び出し middleware の共通実装。abort 時に警告ログを出し、
 // Sentry にエラーとして記録した上で、その旨を表すメッセージへ差し替えて再送出する。
 // getSignal は呼び出しごとに呼ばれるため、呼び出しのたびに新しい signal を生成する
 // factory (例: () => AbortSignal.timeout(ms)) を渡せる。
 export const createAbortingModelCallMiddleware = (
   name: string,
+  reason: AbortedModelCallError['reason'],
   getSignal: () => AbortSignal,
   fingerprint: string,
   buildErrorMessage: () => string,
@@ -25,9 +35,12 @@ export const createAbortingModelCallMiddleware = (
           if (!signal.aborted) throw error
           const message = buildErrorMessage()
           logger.warn({}, message)
-          captureWithFingerprint(new Error(message), fingerprint)
+          captureWithFingerprint(
+            new AbortedModelCallError(message, reason),
+            fingerprint,
+          )
           // eslint-disable-next-line no-restricted-syntax -- abort 起因のエラーを人間可読なメッセージに変換して再送出する。呼び出し元 (invokePhaseWithRetry 等) は reject をそのまま Result に変換する契約のため、ここで catch した後は再送出するしかない
-          throw new Error(message)
+          throw new AbortedModelCallError(message, reason)
         },
       )
     },
