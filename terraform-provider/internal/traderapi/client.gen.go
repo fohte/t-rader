@@ -285,6 +285,7 @@ type Note struct {
 	Kind            nullable.Nullable[string]             `json:"kind,omitempty"`
 	Status          string                                `json:"status"`
 	StrategyId      nullable.Nullable[openapi_types.UUID] `json:"strategy_id,omitempty"`
+	Tags            []string                              `json:"tags"`
 	Title           string                                `json:"title"`
 	Trigger         nullable.Nullable[string]             `json:"trigger,omitempty"`
 	TriggerLabel    nullable.Nullable[string]             `json:"trigger_label,omitempty"`

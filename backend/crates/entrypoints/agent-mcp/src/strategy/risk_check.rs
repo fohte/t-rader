@@ -18,7 +18,7 @@ use rust_decimal::prelude::ToPrimitive;
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
 use super::{
     StrategyServer, decimal_to_f64, internal_failure, persistence_error_to_mcp,
-    strategy_use_case_error_to_mcp, trade_error,
+    reject_foreign_stock_id, strategy_use_case_error_to_mcp, trade_error,
 };
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
@@ -40,6 +40,7 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: CheckBuyableQtyParams,
     ) -> Result<CheckBuyableQtyResult, McpError> {
+        reject_foreign_stock_id(&params.symbol)?;
         let scope = scope.into();
         let strategy_id = scope.id();
         let symbol = params.symbol;

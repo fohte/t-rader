@@ -1,6 +1,7 @@
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::{
-    bars::BarsUseCases, earnings_schedule::EarningsScheduleUseCases,
+    bars::BarsUseCases, calendar::source::SharedCalendarEventSource,
+    calendar::use_cases::CalendarEventUseCases, earnings_schedule::EarningsScheduleUseCases,
     earnings_schedule_source::SharedEarningsScheduleSource, equity_master::EquityMasterUseCases,
     equity_master_source::SharedEquityMasterSource, financial_summary::FinancialSummaryUseCases,
     financial_summary_source::SharedFinancialSummarySource,
@@ -34,8 +35,10 @@ pub struct SchedulerDependencies {
     pub valuations: ValuationUseCases,
     pub valuation_source: Option<SharedValuationSource>,
     pub indicator_observations: IndicatorObservationUseCases,
+    pub calendar_events: CalendarEventUseCases,
     pub ingest_run_log: SharedIngestRunLog,
     pub fred_source: Option<SharedIndicatorObservationSource>,
+    pub fred_calendar_event_source: Option<SharedCalendarEventSource>,
     pub predictions: PredictionUseCases,
     pub short_ratios: ShortRatioUseCases,
     pub short_sale_reports: ShortSaleReportUseCases,

@@ -5,7 +5,7 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use gateway_postgres::entities::{change_history, group_axis, stock};
+    use gateway_postgres::entities::{change_history, group_axis, instruments, stock};
 
     use rmcp::ErrorData as McpError;
 
@@ -14,6 +14,7 @@ mod tests {
         StockGroupDto, StockGroupMemberChangeResult, StockGroupMemberParams,
         UpdateStockGroupParams,
     };
+    use super::super::stock_registration::RegisterStockParams;
     use super::super::tests_common::{
         ChangeHistoryShape, build_server as build_composed_server, change_history_for,
         insert_strategy, ts_sentinel,
@@ -26,6 +27,14 @@ mod tests {
     }
 
     impl ScopedStrategyServer {
+        async fn register_stock(
+            &self,
+            params: RegisterStockParams,
+        ) -> Result<ToolOutput<super::super::stock_registration::RegisterStockResult>, McpError>
+        {
+            self.server.register_stock(self.strategy_id, params).await
+        }
+
         async fn create_stock_group(
             &self,
             params: CreateStockGroupParams,
@@ -178,6 +187,174 @@ mod tests {
                     }),
                 )],
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn register_foreign_stock_persists_instruments_audit_and_group_membership(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        insert_axis(&db, None).await;
+        let server = build_server(db.clone()).await;
+        let registered = server
+            .register_stock(RegisterStockParams {
+                country: "KR".into(),
+                code: "QZ9012".into(),
+                name: "Sample issuer".into(),
+                exchange: "Synthetic exchange".into(),
+            })
+            .await
+            .expect("register foreign stock");
+        server
+            .register_stock(RegisterStockParams {
+                country: "US".into(),
+                code: "QZ-7".into(),
+                name: "Sample US issuer".into(),
+                exchange: "Synthetic US exchange".into(),
+            })
+            .await
+            .expect("register US stock");
+        let stock_row = stock::Entity::find_by_id("KR:QZ9012")
+            .one(&db)
+            .await
+            .expect("query stock")
+            .expect("registered stock exists");
+        let instrument_row = instruments::Entity::find_by_id("KR:QZ9012")
+            .one(&db)
+            .await
+            .expect("query instrument")
+            .expect("registered instrument exists");
+        let us_instrument_row = instruments::Entity::find_by_id("US:QZ-7")
+            .one(&db)
+            .await
+            .expect("query US instrument")
+            .expect("registered US instrument exists");
+        let target_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"stock:KR:QZ9012");
+        let history = change_history_for(&db, target_id).await;
+        create_group(&server).await.expect("create stock group");
+        let membership = server
+            .add_stock_to_group(StockGroupMemberParams {
+                axis_key: "sample-axis".into(),
+                group_key: "sample-group".into(),
+                stock_id: "KR:QZ9012".into(),
+            })
+            .await
+            .expect("add foreign stock to group");
+        let members = server
+            .list_stock_group_members(ListStockGroupMembersParams {
+                axis_key: "sample-axis".into(),
+                group_key: "sample-group".into(),
+            })
+            .await
+            .expect("list group members");
+
+        assert_eq!(
+            (
+                registered.into_value(),
+                (
+                    stock_row.id,
+                    stock_row.name,
+                    stock_row.market,
+                    stock_row.product_category
+                ),
+                (
+                    instrument_row.id,
+                    instrument_row.name,
+                    instrument_row.market,
+                    instrument_row.sector
+                ),
+                (
+                    us_instrument_row.id,
+                    us_instrument_row.name,
+                    us_instrument_row.market,
+                    us_instrument_row.sector
+                ),
+                history,
+                membership.into_value(),
+                members.into_value(),
+            ),
+            (
+                super::super::stock_registration::RegisterStockResult {
+                    id: "KR:QZ9012".into(),
+                    name: "Sample issuer".into(),
+                    exchange: "Synthetic exchange".into(),
+                },
+                (
+                    "KR:QZ9012".into(),
+                    "Sample issuer".into(),
+                    Some("Synthetic exchange".into()),
+                    None,
+                ),
+                (
+                    "KR:QZ9012".into(),
+                    "Sample issuer".into(),
+                    "OTHER".into(),
+                    None,
+                ),
+                (
+                    "US:QZ-7".into(),
+                    "Sample US issuer".into(),
+                    "US".into(),
+                    None,
+                ),
+                vec![ChangeHistoryShape {
+                    id: Uuid::nil(),
+                    target_kind: "stock".into(),
+                    target_id,
+                    actor_kind: "llm".into(),
+                    actor_label: "analyst".into(),
+                    op: "create".into(),
+                    diff_json: json!({
+                        "stock_id": "KR:QZ9012",
+                        "name": "Sample issuer",
+                        "exchange": "Synthetic exchange",
+                    }),
+                    summary: None,
+                    created_at: ts_sentinel(),
+                }],
+                StockGroupMemberChangeResult { changed: true },
+                ListStockGroupMembersResult {
+                    axis_key: "sample-axis".into(),
+                    group_key: "sample-group".into(),
+                    stock_ids: vec!["KR:QZ9012".into()],
+                },
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn register_stock_rejects_japan_and_malformed_codes(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = build_server(db).await;
+        let invalid_params = [
+            RegisterStockParams {
+                country: "JP".into(),
+                code: "QZ9012".into(),
+                name: "Sample issuer".into(),
+                exchange: "Synthetic exchange".into(),
+            },
+            RegisterStockParams {
+                country: "US".into(),
+                code: "qz9012".into(),
+                name: "Sample issuer".into(),
+                exchange: "Synthetic exchange".into(),
+            },
+        ];
+        let mut errors = Vec::new();
+        for params in invalid_params {
+            errors.push(server.register_stock(params).await.expect_err("invalid ID"));
+        }
+
+        assert_eq!(
+            errors,
+            vec![
+                McpError::invalid_params("Japanese stocks must not use a country prefix", None,),
+                McpError::invalid_params(
+                    "code must contain only uppercase ASCII letters, digits, or hyphens",
+                    None,
+                ),
+            ],
         );
     }
 
