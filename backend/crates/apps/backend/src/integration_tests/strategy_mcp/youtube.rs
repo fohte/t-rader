@@ -39,6 +39,11 @@ mod tests {
 
     #[rstest]
     #[case::empty_youtube_url("", &["question"], "youtube_url must not be empty")]
+    #[case::malformed_youtube_url(
+        "https://[::1",
+        &["question"],
+        "youtube_url must be a valid YouTube URL"
+    )]
     #[case::non_youtube_host(
         "https://example.invalid/watch?v=sample-video-id",
         &["question"],
