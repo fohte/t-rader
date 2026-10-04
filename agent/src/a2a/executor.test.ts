@@ -5,18 +5,16 @@ import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
+import { TraderAgentExecutor } from '#a2a/executor'
 import {
   extractAsOf,
   extractDeadlineAt,
   extractPurpose,
   extractResumeSteps,
   extractStrategyId,
-  HEARTBEAT_INTERVAL_MS,
-  TraderAgentExecutor,
-} from '#a2a/executor'
+} from '#a2a/message-metadata'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
-import { StrategyCandidatesFetchError } from '#strategy-resolution/mgmt-mcp-client'
 import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
 
 class FakeEventBus implements ExecutionEventBus {
@@ -169,6 +167,8 @@ const CANDIDATES: readonly StrategyCandidate[] = [
   { strategyId: '11111111-1111-1111-1111-111111111111', name: '長期投資' },
   { strategyId: '22222222-2222-2222-2222-222222222222', name: '中期投資' },
 ]
+
+const HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000
 
 type StatusEvent = {
   status: { state: string; timestamp: string; message?: Message }
@@ -893,7 +893,7 @@ describe('TraderAgentExecutor', () => {
     it('fails immediately when fetchStrategyCandidates returns an error', async () => {
       const executor = buildExecutor({
         fetchStrategyCandidates: () =>
-          errAsync(new StrategyCandidatesFetchError('mgmt MCP unreachable')),
+          errAsync(new Error('mgmt MCP unreachable')),
       })
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(

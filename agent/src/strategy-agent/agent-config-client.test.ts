@@ -1,10 +1,10 @@
-import { err, ok } from 'neverthrow'
+import { err, ok, type Result } from 'neverthrow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  AgentConfigFetchError,
-  createAgentConfigFetcher,
-} from '#strategy-agent/agent-config-client'
+import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
+
+const errorNameAndMessage = <T>(result: Result<T, Error>) =>
+  result.mapErr(({ name, message }) => ({ name, message }))
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -77,12 +77,11 @@ describe('createAgentConfigFetcher', () => {
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
     const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
-    expect(result).toEqual(
-      err(
-        new AgentConfigFetchError(
-          'failed to fetch agent config for purpose purpose-a',
-        ),
-      ),
+    expect(errorNameAndMessage(result)).toEqual(
+      err({
+        name: 'AgentConfigFetchError',
+        message: 'failed to fetch agent config for purpose purpose-a',
+      }),
     )
   })
 
@@ -95,12 +94,12 @@ describe('createAgentConfigFetcher', () => {
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
     const result = await fetchAgentConfig({ purpose: 'missing-purpose' })
 
-    expect(result).toEqual(
-      err(
-        new AgentConfigFetchError(
+    expect(errorNameAndMessage(result)).toEqual(
+      err({
+        name: 'AgentConfigFetchError',
+        message:
           'failed to fetch agent config for purpose missing-purpose: 404',
-        ),
-      ),
+      }),
     )
   })
 
@@ -113,12 +112,12 @@ describe('createAgentConfigFetcher', () => {
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
     const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
-    expect(result).toEqual(
-      err(
-        new AgentConfigFetchError(
+    expect(errorNameAndMessage(result)).toEqual(
+      err({
+        name: 'AgentConfigFetchError',
+        message:
           'failed to parse agent-config response body for purpose purpose-a',
-        ),
-      ),
+      }),
     )
   })
 
@@ -153,12 +152,12 @@ describe('createAgentConfigFetcher', () => {
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
     const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
-    expect(result).toEqual(
-      err(
-        new AgentConfigFetchError(
+    expect(errorNameAndMessage(result)).toEqual(
+      err({
+        name: 'AgentConfigFetchError',
+        message:
           'malformed agent-config response for purpose purpose-a: expected agents_md/agent_graph strings and a skills map of strings',
-        ),
-      ),
+      }),
     )
   })
 })

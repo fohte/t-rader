@@ -7,6 +7,7 @@ import {
   createPreviousStepMatcher,
   findPreviousStepForPhase,
 } from '#strategy-agent/agent-graph/resume'
+import { buildPhaseMessageText } from '#strategy-agent/agent-graph/run-agent-graph/phase-message'
 import {
   createStepRecorder,
   errorMessage,
@@ -58,26 +59,6 @@ const extractItemLabel = (
 // あえてセマンティックな語彙は含めない: モデルに渡すのは元のリクエスト、
 // このフェーズの指示、現在の for_each 対象、手前のフェーズの出力という
 // 汎用的なパイプライン構造のみ。
-export const buildPhaseMessageText = (input: {
-  readonly originalPromptText: string
-  readonly phasePrompt: string
-  readonly item: unknown
-  readonly priorResults: Readonly<Record<string, unknown>>
-}): string => {
-  const sections = [input.originalPromptText, input.phasePrompt]
-  if (input.item !== undefined) {
-    sections.push(
-      `割り当てられた対象:\n\`\`\`json\n${JSON.stringify(input.item, null, 2)}\n\`\`\``,
-    )
-  }
-  if (Object.keys(input.priorResults).length > 0) {
-    sections.push(
-      `これまでのフェーズの結果:\n\`\`\`json\n${JSON.stringify(input.priorResults, null, 2)}\n\`\`\``,
-    )
-  }
-  return sections.join('\n\n---\n\n')
-}
-
 // for_each の形式 ("<key>.<field>") は backend が PUT 時にバリデーション
 // 済みのため、ここでは検証を伴わない単純な最初の "." での分割で済ませる。
 const splitForEach = (forEach: string): readonly [string, string] => {

@@ -1,12 +1,12 @@
 import type { Task } from '@a2a-js/sdk'
 import { describe, expect, it, vi } from 'vitest'
 
+import { startTaskLifecycleJobs } from '#a2a/lifecycle'
 import {
   runRetentionSweep,
   runWatchdogSweep,
-  startTaskLifecycleJobs,
   type TaskLifecycleStore,
-} from '#a2a/lifecycle'
+} from '#a2a/lifecycle-sweeps'
 
 const buildTask = (id: string): Task => ({
   id,
