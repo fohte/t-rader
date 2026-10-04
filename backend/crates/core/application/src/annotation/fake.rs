@@ -14,7 +14,7 @@ use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 pub struct FakeAnnotationRepository {
     pub(super) annotations: Mutex<HashMap<Uuid, Annotation>>,
     commented: Mutex<HashSet<Uuid>>,
-    note_strategy_ids: Mutex<HashMap<Uuid, Option<Uuid>>>,
+    existing_note_ids: Mutex<HashSet<Uuid>>,
     pub(super) transaction_ids: Mutex<Vec<Uuid>>,
     pub(super) update_calls: Mutex<usize>,
 }
@@ -31,11 +31,8 @@ impl FakeAnnotationRepository {
         self.commented.lock().await.insert(annotation_id);
     }
 
-    pub async fn set_note_strategy(&self, note_id: Uuid, strategy_id: Option<Uuid>) {
-        self.note_strategy_ids
-            .lock()
-            .await
-            .insert(note_id, strategy_id);
+    pub async fn set_note_exists(&self, note_id: Uuid) {
+        self.existing_note_ids.lock().await.insert(note_id);
     }
 
     async fn record_transaction(
@@ -71,7 +68,6 @@ impl AnnotationRepository for FakeAnnotationRepository {
         let now = Utc::now().fixed_offset();
         let created = Annotation {
             id: annotation.id,
-            strategy_id: annotation.strategy_id,
             target_symbol: annotation.target_symbol,
             target_kind: annotation.target_kind,
             timestamp: annotation.timestamp,
@@ -118,7 +114,6 @@ impl AnnotationRepository for FakeAnnotationRepository {
     async fn find_stale_unread_in_transaction(
         &self,
         transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
         execution_step_id: Uuid,
         current_execution_task_id: &str,
     ) -> Result<Vec<Uuid>, AnnotationRepositoryError> {
@@ -129,8 +124,7 @@ impl AnnotationRepository for FakeAnnotationRepository {
             .await
             .values()
             .filter(|annotation| {
-                annotation.strategy_id == Some(strategy_id)
-                    && annotation.execution_step_id == Some(execution_step_id)
+                annotation.execution_step_id == Some(execution_step_id)
                     && annotation.status == "unread"
                     && annotation.execution_task_id.as_deref() != Some(current_execution_task_id)
             })
@@ -154,12 +148,12 @@ impl AnnotationRepository for FakeAnnotationRepository {
             .collect())
     }
 
-    async fn note_strategy_id_in_transaction(
+    async fn note_exists_in_transaction(
         &self,
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
-    ) -> Result<Option<Option<Uuid>>, AnnotationRepositoryError> {
+    ) -> Result<bool, AnnotationRepositoryError> {
         self.record_transaction(transaction).await?;
-        Ok(self.note_strategy_ids.lock().await.get(&note_id).copied())
+        Ok(self.existing_note_ids.lock().await.contains(&note_id))
     }
 }

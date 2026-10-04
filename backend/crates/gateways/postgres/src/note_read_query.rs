@@ -265,7 +265,6 @@ async fn find_initial_created_by_kind(
 fn to_note(model: note::Model) -> Note {
     Note {
         id: model.id,
-        strategy_id: model.strategy_id,
         kind: model.kind,
         trigger: model.trigger,
         trigger_label: model.trigger_label,

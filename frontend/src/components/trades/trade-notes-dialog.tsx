@@ -22,7 +22,6 @@ export function TradeNotesDialog({
   const [search, setSearch] = useState('')
   const [operationError, setOperationError] = useState<string | null>(null)
   const tradeId = trade?.id ?? ''
-  const strategyId = trade?.strategy_id ?? ''
 
   useEffect(() => {
     if (open) {
@@ -37,12 +36,9 @@ export function TradeNotesDialog({
     { params: { path: { id: tradeId } } },
     { enabled: open && trade != null },
   )
-  const candidateNotesQuery = $api.useQuery(
-    'get',
-    '/api/notes',
-    { params: { query: { strategy_id: strategyId } } },
-    { enabled: open && trade != null },
-  )
+  const candidateNotesQuery = $api.useQuery('get', '/api/notes', undefined, {
+    enabled: open && trade != null,
+  })
 
   const linkMutation = $api.useMutation('post', '/api/trades/{id}/notes')
   const unlinkMutation = $api.useMutation(

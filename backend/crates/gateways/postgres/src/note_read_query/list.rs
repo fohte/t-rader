@@ -28,9 +28,6 @@ impl PostgresNoteReadQuery {
         let mut select = note::Entity::find()
             .filter(note::Column::Id.in_subquery(current_note_ids()))
             .order_by_desc(note::Column::UpdatedAt);
-        if let Some(strategy_id) = query.strategy_id {
-            select = select.filter(note::Column::StrategyId.eq(strategy_id));
-        }
         if let Some(status) = query.status.as_deref() {
             select =
                 select.filter(note::Column::Id.in_subquery(current_note_ids_with_status(status)));
@@ -64,9 +61,6 @@ impl PostgresNoteReadQuery {
         query: NoteListQuery,
     ) -> Result<NoteListPage, NoteReadQueryError> {
         let mut select = note::Entity::find();
-        if let Some(strategy_id) = query.strategy_id {
-            select = select.filter(note::Column::StrategyId.eq(strategy_id));
-        }
         if let Some(kind) = query.kind.as_deref() {
             select = select.filter(note::Column::Kind.eq(kind));
         }
@@ -242,55 +236,43 @@ fn version_matches_reference(
 mod tests {
     use core_application::note::{NoteListQuery, NoteReadQuery};
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ActiveModelTrait, EntityTrait};
+    use sea_orm::EntityTrait;
     use uuid::Uuid;
 
     use super::super::PostgresNoteReadQuery;
     use crate::DatabaseHandle;
-    use crate::entities::{note, note_version, strategy};
+    use crate::entities::{note, note_version};
 
     #[backend_test_macros::database_test]
-    async fn list_without_strategy_filter_includes_other_strategies_and_unscoped_notes(
-        db: DatabaseHandle,
-    ) {
-        let strategy_a = insert_strategy(&db, "strategy-a").await;
-        let strategy_b = insert_strategy(&db, "strategy-b").await;
-        let strategy_note_id = insert_note(&db, Some(strategy_a)).await;
-        let other_strategy_note_id = insert_note(&db, Some(strategy_b)).await;
-        let unscoped_note_id = insert_note(&db, None).await;
+    async fn list_includes_all_notes(db: DatabaseHandle) {
+        let first_note_id = insert_note(&db).await;
+        let second_note_id = insert_note(&db).await;
+        let third_note_id = insert_note(&db).await;
         let query = PostgresNoteReadQuery::new(db);
 
         let current = query
-            .list_notes(NoteListQuery {
-                strategy_id: None,
-                ..Default::default()
-            })
+            .list_notes(NoteListQuery::default())
             .await
-            .expect("list current notes without a strategy filter");
+            .expect("list current notes");
         let including_pending = query
             .list_notes(NoteListQuery {
-                strategy_id: None,
                 include_pending: true,
                 ..Default::default()
             })
             .await
-            .expect("list notes including pending without a strategy filter");
+            .expect("list notes including pending");
 
         let normalize = |notes: Vec<core_application::note::NoteSnapshot>| {
             let mut notes = notes
                 .into_iter()
-                .map(|snapshot| (snapshot.note.id, snapshot.note.strategy_id))
+                .map(|snapshot| snapshot.note.id)
                 .collect::<Vec<_>>();
-            notes.sort_by_key(|(id, _)| *id);
+            notes.sort();
             notes
         };
         let expected = {
-            let mut notes = vec![
-                (strategy_note_id, Some(strategy_a)),
-                (other_strategy_note_id, Some(strategy_b)),
-                (unscoped_note_id, None),
-            ];
-            notes.sort_by_key(|(id, _)| *id);
+            let mut notes = vec![first_note_id, second_note_id, third_note_id];
+            notes.sort();
             notes
         };
 
@@ -300,27 +282,10 @@ mod tests {
         );
     }
 
-    async fn insert_strategy(db: &DatabaseHandle, name: &str) -> Uuid {
-        let id = Uuid::new_v4();
-        strategy::ActiveModel {
-            id: Set(id),
-            name: Set(name.to_string()),
-            description: Set(None),
-            sort_order: Set(0),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("insert test strategy");
-        id
-    }
-
-    async fn insert_note(db: &DatabaseHandle, strategy_id: Option<Uuid>) -> Uuid {
+    async fn insert_note(db: &DatabaseHandle) -> Uuid {
         let note_id = Uuid::new_v4();
         note::Entity::insert(note::ActiveModel {
             id: Set(note_id),
-            strategy_id: Set(strategy_id),
             kind: Set(None),
             trigger: Set(None),
             trigger_label: Set(None),

@@ -47,11 +47,11 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
-        let sid = insert_test_strategy(&db, "s").await;
-        let nid = insert_test_note(&db, sid, "t", "b").await;
+        let sid = insert_test_strategy(&db, "sample").await;
+        let nid = insert_test_note(&db, "t", "b").await;
         insert_test_stock(&db, "TEST_TARGET", "Test Target").await;
         insert_test_stock(&db, "TEST_BENCHMARK", "Test Benchmark").await;
-        let other_note = insert_test_note(&db, sid, "other", "b").await;
+        let other_note = insert_test_note(&db, "other", "b").await;
 
         let first = seed_prediction(
             &db,
@@ -120,8 +120,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn list_returns_empty_for_note_without_predictions(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        let sid = insert_test_strategy(&db, "s").await;
-        let nid = insert_test_note(&db, sid, "t", "b").await;
+        let nid = insert_test_note(&db, "t", "b").await;
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
         assert_response_eq(

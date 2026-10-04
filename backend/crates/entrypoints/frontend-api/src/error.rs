@@ -10,7 +10,6 @@ use core_application::market_daily_bar_source::MarketDailyBarSourceError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
-use core_application::strategy_existence::StrategyExistenceError;
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -129,10 +128,7 @@ fn map_note_use_case_error(error: NoteUseCaseError) -> AppError {
         NoteUseCaseError::Repository(NoteRepositoryError::Database(error))
         | NoteUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
-        | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
-            error.into()
-        }
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
         other => AppError::Internal(other.to_string()),
     }
 }

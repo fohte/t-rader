@@ -161,7 +161,6 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
     let note_res = server
         .post("/api/notes")
         .json(&json!({
-            "strategy_id": strategy_id,
             "title": "note",
             "body_md": "body",
             "created_by_kind": "llm",

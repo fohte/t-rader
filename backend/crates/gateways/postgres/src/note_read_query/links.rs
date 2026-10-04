@@ -312,7 +312,6 @@ mod tests {
     async fn insert_note(db: &DatabaseHandle, note_id: Uuid) {
         note::Entity::insert(note::ActiveModel {
             id: Set(note_id),
-            strategy_id: Set(None),
             kind: Set(None),
             trigger: Set(None),
             trigger_label: Set(None),

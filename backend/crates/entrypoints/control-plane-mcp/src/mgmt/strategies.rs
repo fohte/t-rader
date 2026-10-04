@@ -28,7 +28,6 @@ impl MgmtServer {
                 strategy_id: summary.id,
                 name: summary.name,
                 updated_at: summary.updated_at,
-                unread_card_count: summary.unread_card_count,
             })
             .collect();
         Ok(ListStrategiesResult { strategies })

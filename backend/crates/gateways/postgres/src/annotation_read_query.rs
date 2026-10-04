@@ -37,9 +37,6 @@ impl AnnotationReadQuery for PostgresAnnotationReadQuery {
         query: AnnotationListQuery,
     ) -> Result<Vec<Annotation>, AnnotationReadQueryError> {
         let mut select = annotation::Entity::find();
-        if let Some(strategy_id) = query.strategy_id {
-            select = select.filter(annotation::Column::StrategyId.eq(strategy_id));
-        }
         if let Some(target_symbol) = query.target_symbol {
             select = select.filter(annotation::Column::TargetSymbol.eq(target_symbol));
         }
@@ -56,11 +53,9 @@ impl AnnotationReadQuery for PostgresAnnotationReadQuery {
 
     async fn list_recent(
         &self,
-        strategy_id: Uuid,
         limit: u64,
     ) -> Result<Vec<RecentAnnotation>, AnnotationReadQueryError> {
         annotation::Entity::find()
-            .filter(annotation::Column::StrategyId.eq(strategy_id))
             .order_by_desc(annotation::Column::UpdatedAt)
             .limit(limit)
             .all(&self.db)
@@ -89,70 +84,45 @@ fn query_error(error: sea_orm::DbErr) -> AnnotationReadQueryError {
 mod tests {
     use chrono::Utc;
     use core_application::annotation::{AnnotationListQuery, AnnotationReadQuery};
-    use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
     use uuid::Uuid;
 
     use super::PostgresAnnotationReadQuery;
     use crate::DatabaseHandle;
-    use crate::entities::{annotation, strategy};
+    use crate::entities::annotation;
 
     #[backend_test_macros::database_test]
-    async fn list_without_strategy_filter_includes_other_strategies_and_unscoped_annotations(
-        db: DatabaseHandle,
-    ) {
-        let strategy_a = insert_strategy(&db, "strategy-a").await;
-        let strategy_b = insert_strategy(&db, "strategy-b").await;
-        let strategy_annotation_id = insert_annotation(&db, Some(strategy_a)).await;
-        let other_strategy_annotation_id = insert_annotation(&db, Some(strategy_b)).await;
-        let unscoped_annotation_id = insert_annotation(&db, None).await;
+    async fn list_includes_all_annotations(db: DatabaseHandle) {
+        let first_annotation_id = insert_annotation(&db).await;
+        let second_annotation_id = insert_annotation(&db).await;
+        let third_annotation_id = insert_annotation(&db).await;
         let query = PostgresAnnotationReadQuery::new(db);
 
         let annotations = query
-            .list(AnnotationListQuery {
-                strategy_id: None,
-                ..Default::default()
-            })
+            .list(AnnotationListQuery::default())
             .await
-            .expect("list annotations without a strategy filter");
+            .expect("list annotations globally");
         let mut actual = annotations
             .into_iter()
-            .map(|annotation| (annotation.id, annotation.strategy_id))
+            .map(|annotation| annotation.id)
             .collect::<Vec<_>>();
-        actual.sort_by_key(|(id, _)| *id);
+        actual.sort();
 
         let mut expected = vec![
-            (strategy_annotation_id, Some(strategy_a)),
-            (other_strategy_annotation_id, Some(strategy_b)),
-            (unscoped_annotation_id, None),
+            first_annotation_id,
+            second_annotation_id,
+            third_annotation_id,
         ];
-        expected.sort_by_key(|(id, _)| *id);
+        expected.sort();
 
         assert_eq!(actual, expected);
     }
 
-    async fn insert_strategy(db: &DatabaseHandle, name: &str) -> Uuid {
-        let id = Uuid::new_v4();
-        strategy::ActiveModel {
-            id: Set(id),
-            name: Set(name.to_string()),
-            description: Set(None),
-            sort_order: Set(0),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("insert test strategy");
-        id
-    }
-
-    async fn insert_annotation(db: &DatabaseHandle, strategy_id: Option<Uuid>) -> Uuid {
+    async fn insert_annotation(db: &DatabaseHandle) -> Uuid {
         let id = Uuid::new_v4();
         annotation::Entity::insert(annotation::ActiveModel {
             id: Set(id),
-            strategy_id: Set(strategy_id),
             target_symbol: Set("sample-symbol".to_string()),
             target_kind: Set("sample-kind".to_string()),
             timestamp: Set(Utc::now().fixed_offset()),

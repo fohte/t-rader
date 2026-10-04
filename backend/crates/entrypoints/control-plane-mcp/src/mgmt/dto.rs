@@ -12,8 +12,6 @@ pub struct StrategySummary {
     pub strategy_id: Uuid,
     pub name: String,
     pub updated_at: DateTime<FixedOffset>,
-    /// status='unread' のノート + アノテーション件数の合計
-    pub unread_card_count: u64,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -67,7 +65,6 @@ pub struct GetStrategyTaskStatusResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListRecentParams {
-    pub strategy_id: Uuid,
     /// 取得件数 (デフォルト 20、最大 100)
     #[serde(default)]
     pub limit: Option<u32>,

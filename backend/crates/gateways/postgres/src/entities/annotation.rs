@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTimeWithTimeZone,
@@ -35,25 +34,11 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     Note,
-    #[sea_orm(
-        belongs_to = "super::strategy::Entity",
-        from = "Column::StrategyId",
-        to = "super::strategy::Column::Id",
-        on_update = "NoAction",
-        on_delete = "Cascade"
-    )]
-    Strategy,
 }
 
 impl Related<super::note::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Note.def()
-    }
-}
-
-impl Related<super::strategy::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Strategy.def()
     }
 }
 
