@@ -160,6 +160,110 @@ impl ItemFields {
     }
 }
 
+#[derive(Default)]
+struct ContentEncoded {
+    enabled: bool,
+    active: bool,
+    has_child_elements: bool,
+    parts: Vec<ContentEncodedPart>,
+}
+
+enum ContentEncodedPart {
+    Html(String),
+    Reference(String),
+}
+
+impl ContentEncoded {
+    fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            ..Self::default()
+        }
+    }
+
+    fn clear(&mut self) {
+        self.active = false;
+        self.has_child_elements = false;
+        self.parts.clear();
+    }
+
+    fn start(&mut self) {
+        self.active = true;
+        self.has_child_elements = false;
+        self.parts.clear();
+    }
+
+    fn end(&mut self) {
+        self.active = false;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn push_start_tag(&mut self, tag: &[u8]) {
+        self.push_child_markup(format!("<{}>", String::from_utf8_lossy(tag)));
+    }
+
+    fn push_end_tag(&mut self, tag: &[u8]) {
+        if self.active && self.enabled {
+            self.push_html(&format!("</{}>", String::from_utf8_lossy(tag)));
+        }
+    }
+
+    fn push_empty_tag(&mut self, tag: &[u8]) {
+        self.push_child_markup(format!("<{}/>", String::from_utf8_lossy(tag)));
+    }
+
+    fn push_text(&mut self, text: &str) {
+        if self.active && self.enabled {
+            self.push_html(text);
+        }
+    }
+
+    fn push_reference(&mut self, reference: &str) {
+        if self.active && self.enabled {
+            self.parts
+                .push(ContentEncodedPart::Reference(reference.to_string()));
+        }
+    }
+
+    fn html(&self) -> String {
+        let mut html = String::new();
+        for part in &self.parts {
+            match part {
+                ContentEncodedPart::Html(part) => html.push_str(part),
+                ContentEncodedPart::Reference(reference) => {
+                    // 参照の解釈は content:encoded 全体の形式が分かってから決める。
+                    if self.has_child_elements {
+                        html.push_str(reference);
+                    } else {
+                        html.push_str(&decode_html_entities(reference));
+                    }
+                }
+            }
+        }
+        html
+    }
+
+    fn push_child_markup(&mut self, markup: String) {
+        if self.active {
+            self.has_child_elements = true;
+            if self.enabled {
+                self.push_html(&markup);
+            }
+        }
+    }
+
+    fn push_html(&mut self, html: &str) {
+        if let Some(ContentEncodedPart::Html(previous)) = self.parts.last_mut() {
+            previous.push_str(html);
+        } else {
+            self.parts.push(ContentEncodedPart::Html(html.to_string()));
+        }
+    }
+}
+
 /// RSS の `<item>` から `title` / `link` / `description` / 日付を最小限パースする。
 /// RSS 2.0 の `pubDate` と RSS 1.0 の `dc:date` を拾い、feed 設定では `content:encoded` も読む。
 ///
@@ -178,10 +282,7 @@ fn parse_rss(
     let mut items: Vec<NewsItem> = Vec::new();
     let mut in_item = false;
     let mut fields = ItemFields::default();
-    let mut in_content_encoded = false;
-    let mut buf_content_encoded = String::new();
-    let mut content_has_child_elements = false;
-    let collect_content = content_source == ContentSource::Feed;
+    let mut content_encoded = ContentEncoded::new(content_source == ContentSource::Feed);
 
     loop {
         match reader
@@ -193,20 +294,12 @@ fn parse_rss(
                 if name == b"item" {
                     in_item = true;
                     fields.clear();
-                    in_content_encoded = false;
-                    buf_content_encoded.clear();
-                    content_has_child_elements = false;
+                    content_encoded.clear();
                 } else if in_item {
                     if name == b"content:encoded" {
-                        in_content_encoded = true;
-                        content_has_child_elements = false;
-                    } else if in_content_encoded {
-                        if collect_content {
-                            content_has_child_elements = true;
-                            buf_content_encoded.push('<');
-                            buf_content_encoded.push_str(&String::from_utf8_lossy(e.as_ref()));
-                            buf_content_encoded.push('>');
-                        }
+                        content_encoded.start();
+                    } else if content_encoded.is_active() {
+                        content_encoded.push_start_tag(e.as_ref());
                     } else {
                         fields.start(&name);
                     }
@@ -216,30 +309,23 @@ fn parse_rss(
                 let name = e.name().as_ref().to_vec();
                 if name == b"item" {
                     in_item = false;
-                    in_content_encoded = false;
+                    content_encoded.end();
                     if let Some(item) =
-                        build_item(source, content_source, &fields, buf_content_encoded.trim())?
+                        build_item(source, content_source, &fields, &content_encoded)?
                     {
                         items.push(item);
                     }
                 } else if in_item && name == b"content:encoded" {
-                    in_content_encoded = false;
-                } else if in_item && in_content_encoded {
-                    if collect_content {
-                        buf_content_encoded.push_str("</");
-                        buf_content_encoded.push_str(&String::from_utf8_lossy(e.name().as_ref()));
-                        buf_content_encoded.push('>');
-                    }
+                    content_encoded.end();
+                } else if in_item && content_encoded.is_active() {
+                    content_encoded.push_end_tag(e.name().as_ref());
                 } else if in_item {
                     fields.end(&name);
                 }
             }
             Event::Empty(e) => {
-                if in_item && in_content_encoded && collect_content {
-                    content_has_child_elements = true;
-                    buf_content_encoded.push('<');
-                    buf_content_encoded.push_str(&String::from_utf8_lossy(e.as_ref()));
-                    buf_content_encoded.push_str("/>");
+                if in_item && content_encoded.is_active() {
+                    content_encoded.push_empty_tag(e.as_ref());
                 }
             }
             Event::Text(t) => {
@@ -247,10 +333,8 @@ fn parse_rss(
                     let text = t
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("text: {e}")))?;
-                    if in_content_encoded {
-                        if collect_content {
-                            buf_content_encoded.push_str(text.as_ref());
-                        }
+                    if content_encoded.is_active() {
+                        content_encoded.push_text(text.as_ref());
                     } else {
                         fields.push_text(text.as_ref());
                     }
@@ -260,10 +344,8 @@ fn parse_rss(
                 if in_item {
                     let text = String::from_utf8(c.into_inner().into_owned())
                         .map_err(|e| NewsAggregatorError::Parse(format!("cdata: {e}")))?;
-                    if in_content_encoded {
-                        if collect_content {
-                            buf_content_encoded.push_str(&text);
-                        }
+                    if content_encoded.is_active() {
+                        content_encoded.push_text(&text);
                     } else {
                         fields.push_text(&text);
                     }
@@ -275,15 +357,8 @@ fn parse_rss(
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("reference: {e}")))?;
                     let entity = format!("&{name};");
-                    if in_content_encoded {
-                        if collect_content {
-                            if content_has_child_elements {
-                                // 子要素形式ではエスケープされたタグが本文テキストなので、HTML パーサーまで参照を保つ。
-                                buf_content_encoded.push_str(&entity);
-                            } else {
-                                buf_content_encoded.push_str(&decode_html_entities(&entity));
-                            }
-                        }
+                    if content_encoded.is_active() {
+                        content_encoded.push_reference(&entity);
                     } else {
                         fields.push_text(&entity);
                     }
@@ -301,7 +376,7 @@ fn build_item(
     source: &str,
     content_source: ContentSource,
     fields: &ItemFields,
-    content_encoded: &str,
+    content_encoded: &ContentEncoded,
 ) -> Result<Option<NewsItem>, NewsAggregatorError> {
     let title = fields.title.trim();
     let link = fields.link.trim();
@@ -324,7 +399,7 @@ fn build_item(
     let cleaned = strip_html_tags(&decode_html_entities(&fields.description));
     let trimmed = cleaned.trim();
     let snippet = (!trimmed.is_empty()).then(|| truncate_chars(trimmed, SNIPPET_MAX_CHARS));
-    let content = parse_content(content_source, content_encoded)?;
+    let content = parse_content(content_encoded.html().trim())?;
     Ok(Some(NewsItem {
         source: source.to_string(),
         url: link.trim().to_string(),
@@ -336,11 +411,8 @@ fn build_item(
     }))
 }
 
-fn parse_content(
-    content_source: ContentSource,
-    content_encoded: &str,
-) -> Result<Option<String>, NewsAggregatorError> {
-    if content_source != ContentSource::Feed || content_encoded.is_empty() {
+fn parse_content(content_encoded: &str) -> Result<Option<String>, NewsAggregatorError> {
+    if content_encoded.is_empty() {
         return Ok(None);
     }
     let markdown = htmd::convert(content_encoded)
@@ -784,6 +856,13 @@ mod tests {
     #[case::escaped_tag_text(
         "<p>左 &lt;script&gt;本文&lt;/script&gt; 右</p>",
         "左 \\<script>本文\\</script> 右"
+    )]
+    #[case::escaped_tag_before_child(
+        "&lt;strong&gt;注意&lt;/strong&gt;<p>本文</p>",
+        indoc! {r#"
+            \<strong>注意\</strong>
+
+            本文"#}
     )]
     #[case::named_html_entity("<p>左&nbsp;右</p>", "左 右")]
     fn parse_rss_converts_content_encoded_to_markdown(
