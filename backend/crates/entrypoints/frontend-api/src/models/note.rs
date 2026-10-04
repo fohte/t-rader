@@ -3,6 +3,8 @@ use serde_json::Value as Json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use core_application::note::frontmatter_tags;
+
 use crate::services::graph::GraphDef;
 
 /// ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
@@ -36,6 +38,7 @@ pub struct NoteResponse {
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
+    pub tags: Vec<String>,
     pub kind: Option<String>,
     pub status: String,
     pub trigger: Option<String>,
@@ -52,6 +55,7 @@ pub struct NoteResponse {
 
 impl NoteResponse {
     pub fn from_snapshot(snapshot: core_application::note::NoteSnapshot) -> Self {
+        let tags = frontmatter_tags(&snapshot.version.frontmatter_json);
         Self {
             id: snapshot.note.id,
             version_id: snapshot.version.id,
@@ -60,6 +64,7 @@ impl NoteResponse {
             title: snapshot.version.title,
             body_md: snapshot.version.body_md,
             frontmatter_json: snapshot.version.frontmatter_json,
+            tags,
             kind: snapshot.note.kind,
             status: snapshot.version.status,
             trigger: snapshot.note.trigger,

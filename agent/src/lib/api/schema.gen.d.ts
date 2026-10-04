@@ -1663,6 +1663,7 @@ export interface components {
       is_current: boolean
       kind?: string | null
       status: string
+      tags: string[]
       title: string
       trigger?: string | null
       trigger_label?: string | null
@@ -4764,6 +4765,8 @@ export interface operations {
       query?: {
         status?: string
         kind?: string
+        /** @description `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。 */
+        tag?: string
       }
       header?: never
       path?: never

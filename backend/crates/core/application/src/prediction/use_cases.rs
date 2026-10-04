@@ -153,6 +153,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, Utc};
     use core_domain::bar::Bar;
+    use rstest::rstest;
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
@@ -316,7 +317,7 @@ mod tests {
     ) {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakePredictionRepository {
-            owner_strategy_id: None,
+            note_exists: false,
             inserted: Mutex::new(Vec::new()),
         });
         let use_cases = PredictionUseCases::new(unit_of_work.clone(), repository.clone());

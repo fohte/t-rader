@@ -18,6 +18,7 @@ mod japanese_stock_only;
 mod macro_indicator;
 mod media;
 mod news;
+mod note_frontmatter;
 mod notes_tests;
 mod portfolio;
 mod prediction_stats;
