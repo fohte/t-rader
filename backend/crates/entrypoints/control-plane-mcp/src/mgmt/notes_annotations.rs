@@ -48,7 +48,6 @@ impl MgmtServer {
             .dependencies
             .note_reads
             .list_notes(NoteListQuery {
-                strategy_id: Some(params.strategy_id),
                 limit: Some(limit),
                 ..NoteListQuery::default()
             })
@@ -78,7 +77,7 @@ impl MgmtServer {
         let rows = self
             .dependencies
             .annotation_reads
-            .list_recent_annotations(params.strategy_id, limit)
+            .list_recent_annotations(limit)
             .await
             .map_err(|error| match error {
                 AnnotationReadUseCaseError::Query(AnnotationReadQueryError::Database(error)) => {

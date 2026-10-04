@@ -164,8 +164,6 @@ impl NoteReadUseCases {
 mod tests {
     use std::sync::Arc;
 
-    use rstest::rstest;
-
     use super::*;
     use crate::note::FakeNoteReadQuery;
 
@@ -173,16 +171,13 @@ mod tests {
     const VERSION_ID: Uuid = Uuid::from_u128(2);
 
     fn build_use_cases() -> (NoteReadUseCases, Arc<FakeNoteReadQuery>) {
-        let query = Arc::new(FakeNoteReadQuery::new(NOTE_ID, None, VERSION_ID));
+        let query = Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID));
         (NoteReadUseCases::new(query.clone()), query)
     }
 
-    #[rstest]
-    #[case::unassigned(None)]
-    #[case::another_strategy(Some(Uuid::from_u128(4)))]
     #[tokio::test]
-    async fn get_note_accepts_notes_with_any_strategy_owner(#[case] strategy_id: Option<Uuid>) {
-        let query = Arc::new(FakeNoteReadQuery::new(NOTE_ID, strategy_id, VERSION_ID));
+    async fn get_note_returns_a_note_without_strategy_ownership() {
+        let query = Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID));
         let use_cases = NoteReadUseCases::new(query.clone());
         let target_note = query.note();
 
@@ -202,10 +197,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_notes_preserves_strategy_and_tag_filters() {
+    async fn list_notes_preserves_the_query() {
+        let (use_cases, query) = build_use_cases();
+        let requested_query = NoteListQuery::default();
+
+        use_cases
+            .list_notes(requested_query.clone())
+            .await
+            .expect("listing succeeds");
+
+        assert_eq!(query.listed_queries().await, vec![requested_query],);
+    }
+
+    #[tokio::test]
+    async fn list_notes_preserves_tag_filter() {
         let (use_cases, query) = build_use_cases();
         let requested_query = NoteListQuery {
-            strategy_id: Some(Uuid::from_u128(4)),
             tag: Some("demo-focus".into()),
             ..NoteListQuery::default()
         };

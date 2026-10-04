@@ -19,20 +19,6 @@ impl NoteUseCases {
         &self,
         command: NoteWriteCommand,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
-        if let Some(scope) = command.scope
-            && command.strategy_id != Some(scope.id())
-        {
-            return Err(NoteUseCaseError::Validation(
-                "strategy_id must match the strategy scope".into(),
-            ));
-        }
-        if command.execution_id.is_some()
-            && (command.scope.is_none() || command.strategy_id.is_none())
-        {
-            return Err(NoteUseCaseError::Validation(
-                "execution_id requires a strategy scope".into(),
-            ));
-        }
         if let Some(frontmatter_json) = command.frontmatter_json.as_ref() {
             ensure_frontmatter_object(frontmatter_json)?;
             ensure_frontmatter_tags_are_strings(frontmatter_json)?;
@@ -57,22 +43,10 @@ impl NoteUseCases {
         }
 
         let transaction = self.unit_of_work.begin().await?;
-        if let Some(strategy_id) = command.strategy_id {
-            self.ensure_strategy_exists(&transaction, strategy_id)
-                .await?;
-        }
         if let Some(execution_id) = command.execution_id.as_deref()
             && let Some(note) = self
                 .repository
-                .find_note_by_execution_id(
-                    &transaction,
-                    command.strategy_id.ok_or_else(|| {
-                        NoteUseCaseError::Validation(
-                            "execution_id requires a strategy scope".into(),
-                        )
-                    })?,
-                    execution_id,
-                )
+                .find_note_by_execution_id(&transaction, execution_id)
                 .await?
         {
             let result = self
@@ -108,7 +82,6 @@ impl NoteUseCases {
                 &transaction,
                 NewNote {
                     id: note_id,
-                    strategy_id: command.strategy_id,
                     kind,
                     trigger: command.trigger.clone(),
                     trigger_label: command.trigger_label.clone(),
@@ -122,15 +95,7 @@ impl NoteUseCases {
             })?;
             let note = self
                 .repository
-                .find_note_by_execution_id(
-                    &transaction,
-                    command.strategy_id.ok_or_else(|| {
-                        NoteUseCaseError::Validation(
-                            "execution_id requires a strategy scope".into(),
-                        )
-                    })?,
-                    execution_id,
-                )
+                .find_note_by_execution_id(&transaction, execution_id)
                 .await?
                 .ok_or_else(|| {
                     NoteUseCaseError::Conflict(
@@ -355,15 +320,12 @@ mod tests {
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
         NoteVersionUpdate,
     };
-    use crate::strategy_existence::FakeStrategyExistence;
     use crate::unit_of_work::FakeUnitOfWork;
 
     const SOURCE_NOTE_ID: Uuid = Uuid::from_u128(1);
     const TARGET_NOTE_ID: Uuid = Uuid::from_u128(2);
     const SOURCE_VERSION_ID: Uuid = Uuid::from_u128(3);
     const TARGET_VERSION_ID: Uuid = Uuid::from_u128(4);
-    const RUNNING_STRATEGY_ID: Uuid = Uuid::from_u128(5);
-    const OTHER_STRATEGY_ID: Uuid = Uuid::from_u128(6);
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
 
     struct LinkNoteRepository {
@@ -386,7 +348,6 @@ mod tests {
         async fn find_note_by_execution_id(
             &self,
             _transaction: &UnitOfWorkTransaction,
-            _strategy_id: Uuid,
             _execution_id: &str,
         ) -> Result<Option<Note>, NoteRepositoryError> {
             Ok(None)
@@ -570,7 +531,6 @@ mod tests {
     fn source_note() -> Note {
         Note {
             id: SOURCE_NOTE_ID,
-            strategy_id: Some(OTHER_STRATEGY_ID),
             kind: None,
             trigger: None,
             trigger_label: None,
@@ -604,33 +564,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_updates_a_note_owned_by_another_strategy_and_links_across_strategies() {
+    async fn write_updates_a_note_and_links_another_note() {
         let repository = Arc::new(LinkNoteRepository {
             source_note: source_note(),
             source_version: source_version(),
             target: NoteLinkTarget {
                 id: TARGET_NOTE_ID,
-                strategy_id: Some(RUNNING_STRATEGY_ID),
                 current_version_id: Some(TARGET_VERSION_ID),
             },
             inserted_links: Mutex::new(Vec::new()),
         });
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
-        let strategy_existence = Arc::new(FakeStrategyExistence::new());
-        strategy_existence
-            .insert_strategy(RUNNING_STRATEGY_ID)
-            .await;
         let use_cases = NoteUseCases::new(
             unit_of_work,
             repository.clone(),
-            strategy_existence,
             Arc::new(FakeChangeHistory::new()),
         );
 
         let mut result = use_cases
             .write(NoteWriteCommand {
-                scope: Some(RUNNING_STRATEGY_ID.into()),
-                strategy_id: Some(RUNNING_STRATEGY_ID),
                 execution_id: None,
                 note_id: Some(SOURCE_NOTE_ID),
                 title: Some("Updated title".into()),
@@ -647,7 +599,7 @@ mod tests {
                 change_diff: None,
             })
             .await
-            .expect("a note owned by another strategy can be updated");
+            .expect("the note can be updated");
 
         result.snapshot.version.id = NORMALIZED_VERSION_ID;
         let links = repository

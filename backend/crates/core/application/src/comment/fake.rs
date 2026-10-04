@@ -1,6 +1,6 @@
 #![cfg(feature = "test-support")]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -16,7 +16,7 @@ use super::types::{Comment, CommentTargetKind, NewComment, NoteVersionAnchorBodi
 #[derive(Default)]
 pub struct FakeCommentRepository {
     comments: Mutex<HashMap<Uuid, Comment>>,
-    target_strategy_ids: Mutex<HashMap<(CommentTargetKind, Uuid), Option<Uuid>>>,
+    existing_targets: Mutex<HashSet<(CommentTargetKind, Uuid)>>,
     note_version_bodies: Mutex<HashMap<Uuid, NoteVersionAnchorBodies>>,
     transaction_ids: Mutex<Vec<Uuid>>,
     update_count: Mutex<usize>,
@@ -29,24 +29,13 @@ impl FakeCommentRepository {
 
     pub fn insert_existing(&self, comment: Comment) {
         if let Some(target_kind) = CommentTargetKind::parse(&comment.target_kind) {
-            lock(&self.target_strategy_ids)
-                .entry((target_kind, comment.target_id))
-                .or_insert(None);
+            lock(&self.existing_targets).insert((target_kind, comment.target_id));
         }
         lock(&self.comments).insert(comment.id, comment);
     }
 
-    pub fn set_target_strategy_id(
-        &self,
-        target_kind: CommentTargetKind,
-        target_id: Uuid,
-        strategy_id: Uuid,
-    ) {
-        lock(&self.target_strategy_ids).insert((target_kind, target_id), Some(strategy_id));
-    }
-
-    pub fn set_target_without_strategy(&self, target_kind: CommentTargetKind, target_id: Uuid) {
-        lock(&self.target_strategy_ids).insert((target_kind, target_id), None);
+    pub fn set_target_exists(&self, target_kind: CommentTargetKind, target_id: Uuid) {
+        lock(&self.existing_targets).insert((target_kind, target_id));
     }
 
     pub fn set_note_version_anchor_bodies(
@@ -54,9 +43,7 @@ impl FakeCommentRepository {
         note_version_id: Uuid,
         bodies: NoteVersionAnchorBodies,
     ) {
-        lock(&self.target_strategy_ids)
-            .entry((CommentTargetKind::NoteVersion, note_version_id))
-            .or_insert(None);
+        lock(&self.existing_targets).insert((CommentTargetKind::NoteVersion, note_version_id));
         lock(&self.note_version_bodies).insert(note_version_id, bodies);
     }
 
@@ -84,16 +71,14 @@ impl CommentRepository for FakeCommentRepository {
         Ok(lock(&self.comments).get(&id).cloned())
     }
 
-    async fn target_strategy_id(
+    async fn target_exists(
         &self,
         transaction: &UnitOfWorkTransaction,
         target_kind: CommentTargetKind,
         target_id: Uuid,
-    ) -> Result<Option<Option<Uuid>>, CommentRepositoryError> {
+    ) -> Result<bool, CommentRepositoryError> {
         self.record_transaction(transaction)?;
-        Ok(lock(&self.target_strategy_ids)
-            .get(&(target_kind, target_id))
-            .copied())
+        Ok(lock(&self.existing_targets).contains(&(target_kind, target_id)))
     }
 
     async fn note_version_anchor_bodies(

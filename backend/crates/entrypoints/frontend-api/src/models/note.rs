@@ -35,7 +35,6 @@ pub struct NoteResponse {
     pub version_id: Uuid,
     pub version_no: i32,
     pub is_current: bool,
-    pub strategy_id: Option<Uuid>,
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
@@ -62,7 +61,6 @@ impl NoteResponse {
             version_id: snapshot.version.id,
             version_no: snapshot.version.version_no,
             is_current: snapshot.version.is_current,
-            strategy_id: snapshot.note.strategy_id,
             title: snapshot.version.title,
             body_md: snapshot.version.body_md,
             frontmatter_json: snapshot.version.frontmatter_json,
@@ -83,8 +81,6 @@ impl NoteResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateNoteRequest {
-    /// 任意。省略した場合、どの戦略にも属さないノートになる (市況・セクター横断の分析など)
-    pub strategy_id: Option<Uuid>,
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: String,
     /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。

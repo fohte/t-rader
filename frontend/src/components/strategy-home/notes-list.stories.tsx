@@ -14,7 +14,6 @@ const notes: Note[] = [
     version_id: 'fake-version-a',
     version_no: 1,
     is_current: true,
-    strategy_id: null,
     title: '架空ノートの確認',
     body_md: '表示確認用の本文です。',
     frontmatter_json: {},

@@ -84,14 +84,12 @@ impl StrategyServer {
         Parameters(params): Parameters<WriteNoteParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<WriteNoteResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.strategy_scope_from_ctx(&ctx).await?;
         // a2a_task_id を含めず execution_step_id 部分のみをキーにする。resume で
         // a2a_task_id (= x-execution-id の task_id 部分) が変わっても、同じステップが
         // 書くノートが 1 件に収束するようにするため。
         let execution_id = execution_step_id_from_ctx(&ctx).map(|id| id.to_string());
-        self.write_note_inner(scope, execution_id, params)
-            .await
-            .map(Json)
+        self.write_note_inner(execution_id, params).await.map(Json)
     }
 
     /// ノートを読み出す
@@ -134,10 +132,10 @@ impl StrategyServer {
         Parameters(params): Parameters<CreateAnnotationParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<CreateAnnotationResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.strategy_scope_from_ctx(&ctx).await?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
         let execution_task_id = execution_task_id_from_ctx(&ctx);
-        self.create_annotation_inner(scope, execution_step_id, execution_task_id, params)
+        self.create_annotation_inner(execution_step_id, execution_task_id, params)
             .await
             .map(Json)
     }

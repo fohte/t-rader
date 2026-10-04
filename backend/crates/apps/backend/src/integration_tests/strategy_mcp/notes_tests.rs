@@ -12,7 +12,7 @@ mod tests {
     use super::super::graph_dto::{GraphDef, GraphEdge, GraphNode, Layout};
     use super::super::tests_common::{
         build_server, current_note_version_id, insert_note_kind, insert_strategy,
-        normalize_comment_model, normalize_list_notes, normalize_note, seed_foreign_note,
+        normalize_comment_model, normalize_list_notes, normalize_note, seed_note,
         seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
     use super::super::{MAX_LIST_LIMIT, STRATEGY_AGENT_ACTOR};
@@ -158,16 +158,15 @@ mod tests {
         }
     }
 
-    fn expected_current_note(note_id: Uuid, strategy_id: Uuid) -> NoteDto {
+    fn expected_current_note(note_id: Uuid) -> NoteDto {
         NoteDto {
             note_id,
-            strategy_id: Some(strategy_id),
             version_id: Uuid::nil(),
             version_no: 1,
             title: "current".into(),
             body_md: Some("current body".into()),
             frontmatter_json: serde_json::Map::new(),
-            tags: Vec::new(),
+            tags: vec![],
             kind: None,
             status: "unread".into(),
             created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -181,13 +180,12 @@ mod tests {
     fn expected_latest_pending_note(fixture: &PendingNoteFixture, status: &str) -> NoteDto {
         NoteDto {
             note_id: fixture.pending_note_id,
-            strategy_id: Some(fixture.strategy_id),
             version_id: Uuid::nil(),
             version_no: 2,
             title: "pending latest".into(),
             body_md: Some("[[stock:demo-code]]".into()),
             frontmatter_json: serde_json::Map::new(),
-            tags: Vec::new(),
+            tags: vec![],
             kind: Some("sample-kind".into()),
             status: status.into(),
             created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -259,13 +257,12 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: written.note_id,
-                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "first note".into(),
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
-                tags: Vec::new(),
+                tags: vec![],
                 kind: Some("sample-kind".into()),
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -484,13 +481,12 @@ mod tests {
                 normalize_note(read),
                 NoteDto {
                     note_id: created.note_id,
-                    strategy_id: Some(strategy_id),
                     version_id: Uuid::nil(),
                     version_no: 2,
                     title: "original".into(),
                     body_md: Some("v2".into()),
                     frontmatter_json: serde_json::Map::new(),
-                    tags: Vec::new(),
+                    tags: vec![],
                     kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -505,11 +501,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_updates_note_from_another_strategy(db: gateway_postgres::DatabaseHandle) {
+    async fn write_note_updates_existing_note(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
+        let note_id = seed_note(&db, "sample note").await;
 
         let result = server
             .write_note(
@@ -549,13 +544,12 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id,
-                strategy_id: Some(strategy_b),
                 version_id: Uuid::nil(),
                 version_no: 2,
                 title: "revised note".into(),
                 body_md: Some("revised body".into()),
                 frontmatter_json: serde_json::Map::new(),
-                tags: Vec::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -568,11 +562,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_note_returns_note_from_another_strategy(db: gateway_postgres::DatabaseHandle) {
+    async fn read_note_returns_existing_note(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
+        let note_id = seed_note(&db, "sample note").await;
 
         let result = server
             .read_note(
@@ -588,55 +581,15 @@ mod tests {
             normalize_note(result),
             NoteDto {
                 note_id,
-                strategy_id: Some(strategy_b),
                 version_id: Uuid::nil(),
                 version_no: 1,
-                title: "b's note".into(),
+                title: "sample note".into(),
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
-                tags: Vec::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
-                created_at: ts_sentinel(),
-                updated_at: ts_sentinel(),
-                graphs: vec![],
-                links: Some(vec![]),
-            },
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn read_note_returns_note_without_strategy(db: gateway_postgres::DatabaseHandle) {
-        let strategy_id = insert_strategy(&db, "a").await;
-        let server = build_server(db.clone());
-        let note_id =
-            crate::testing::insert_test_note_in_scope(&db, None, "unscoped note", "body").await;
-
-        let result = server
-            .read_note(
-                strategy_id,
-                ReadNoteParams {
-                    note_id,
-                    version_id: None,
-                },
-            )
-            .await
-            .expect("read note without a strategy");
-        assert_eq!(
-            normalize_note(result),
-            NoteDto {
-                note_id,
-                strategy_id: None,
-                version_id: Uuid::nil(),
-                version_no: 1,
-                title: "unscoped note".into(),
-                body_md: Some("body".into()),
-                frontmatter_json: serde_json::Map::new(),
-                tags: Vec::new(),
-                kind: None,
-                status: "unread".into(),
-                created_by_kind: "human".into(),
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
                 graphs: vec![],
@@ -671,8 +624,7 @@ mod tests {
                 .expect("write");
             note_ids.push(written.note_id);
         }
-        note_ids
-            .push(crate::testing::insert_test_note_in_scope(&db, None, "unscoped", "body").await);
+        note_ids.push(crate::testing::insert_test_note(&db, "unscoped", "body").await);
         for (index, note_id) in note_ids.iter().enumerate() {
             set_note_updated_at(
                 &db,
@@ -686,16 +638,9 @@ mod tests {
             .list_notes(strategy_a, ListNotesParams::default())
             .await
             .expect("list");
-        // 戦略の有無を問わず、全件が更新日時の降順で並ぶ
+        // 接続先の戦略に関係なく、全件が更新日時の降順で並ぶ
         let titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
-        let strategies: Vec<Option<Uuid>> = result.notes.iter().map(|n| n.strategy_id).collect();
-        assert_eq!(
-            (titles, strategies),
-            (
-                vec!["unscoped", "b1", "a2", "a1"],
-                vec![None, Some(strategy_b), Some(strategy_a), Some(strategy_a)],
-            ),
-        );
+        assert_eq!(titles, vec!["unscoped", "b1", "a2", "a1"]);
     }
 
     #[backend_test_macros::database_test]
@@ -761,13 +706,12 @@ mod tests {
             super::super::dto::ListNotesResult {
                 notes: vec![NoteDto {
                     note_id: matching.note_id,
-                    strategy_id: Some(strategy_id),
                     version_id: Uuid::nil(),
                     version_no: 1,
                     title: "matching".into(),
                     body_md: Some("[[stock:demo-code]]".into()),
                     frontmatter_json: serde_json::Map::new(),
-                    tags: Vec::new(),
+                    tags: vec![],
                     kind: Some("sample-kind".into()),
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -845,7 +789,6 @@ mod tests {
             super::super::dto::ListNotesResult {
                 notes: vec![NoteDto {
                     note_id: matching.note_id,
-                    strategy_id: Some(strategy_id),
                     version_id: Uuid::nil(),
                     version_no: 1,
                     title: "tagged note".into(),
@@ -927,10 +870,7 @@ mod tests {
         assert_eq!(
             normalize_list_notes(result),
             super::super::dto::ListNotesResult {
-                notes: vec![expected_current_note(
-                    fixture.current_note_id,
-                    fixture.strategy_id,
-                )],
+                notes: vec![expected_current_note(fixture.current_note_id)],
             },
         );
     }
@@ -981,7 +921,7 @@ mod tests {
             super::super::dto::ListNotesResult {
                 notes: vec![
                     expected_latest_pending_note(&fixture, "unread"),
-                    expected_current_note(fixture.current_note_id, fixture.strategy_id),
+                    expected_current_note(fixture.current_note_id),
                 ],
             },
         );
@@ -1358,13 +1298,12 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: written.note_id,
-                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "note with graph".into(),
                 body_md: Some("[[graph:g1]]".into()),
                 frontmatter_json: serde_json::Map::new(),
-                tags: Vec::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -1580,13 +1519,12 @@ mod tests {
                 normalize_note(read),
                 NoteDto {
                     note_id: created.note_id,
-                    strategy_id: Some(strategy_id),
                     version_id: Uuid::nil(),
                     version_no: 2,
                     title: "t".into(),
                     body_md: Some(expected_body),
                     frontmatter_json: serde_json::Map::new(),
-                    tags: Vec::new(),
+                    tags: vec![],
                     kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -1795,13 +1733,12 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: created.note_id,
-                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "t".into(),
                 body_md: Some("orig".into()),
                 frontmatter_json: serde_json::Map::new(),
-                tags: Vec::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -2033,13 +1970,12 @@ mod tests {
             normalize_note(read),
             NoteDto {
                 note_id: first.note_id,
-                strategy_id: Some(strategy_id),
                 version_id: Uuid::nil(),
                 version_no: 2,
                 title: "second".into(),
                 body_md: Some("v2".into()),
                 frontmatter_json: serde_json::Map::new(),
-                tags: Vec::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -2279,7 +2215,6 @@ mod tests {
 
         let note_id = crate::testing::insert_test_note_with_execution_id(
             &db,
-            strategy_id,
             "winner",
             "winner body",
             &Uuid::from_u128(1).to_string(),

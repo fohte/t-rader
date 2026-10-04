@@ -8,11 +8,9 @@ import { createStoryRouter } from '#storybook/story-router'
 type Note = components['schemas']['Note']
 type Trade = components['schemas']['TradeListItem']
 
-const strategyId = '00000000-0000-0000-0000-000000000001'
-
 const trade: Trade = {
   id: '00000000-0000-0000-0000-000000000101',
-  strategy_id: strategyId,
+  strategy_id: '00000000-0000-0000-0000-000000000001',
   symbol: 'FICT1',
   side: 'buy',
   qty: 20,
@@ -32,7 +30,6 @@ function noteStub(id: string, title: string): Note {
     version_id: '00000000-0000-0000-0000-000000000301',
     version_no: 1,
     is_current: true,
-    strategy_id: strategyId,
     title,
     body_md: '検証用のメモです。',
     frontmatter_json: {},

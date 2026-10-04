@@ -19,24 +19,18 @@ function strategyStub(id: string, name: string, sortOrder: number): Strategy {
 }
 
 const STRATEGIES: Strategy[] = [
-  strategyStub('semi-swing', '半導体短期スイング', 0),
-  strategyStub('value-long', '高配当バリュー長期', 1),
+  strategyStub('sample-alpha', '架空戦略 A', 0),
+  strategyStub('sample-beta', '架空戦略 B', 1),
 ]
 
 // Storybook にはグローバルな QueryClientProvider が無いため、StrategySwitcher が
-// 使う $api.useQuery('/api/strategies', '/api/notes') 用にモックを用意する
+// 使う $api.useQuery('/api/strategies') 用にモックを用意する
 function installMiddleware() {
   const middleware: Middleware = {
     onRequest({ request }) {
       const { url } = request
       if (/\/api\/strategies(\?|$)/.test(url)) {
         return new Response(JSON.stringify(STRATEGIES), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-      if (/\/api\/notes(\?|$)/.test(url)) {
-        return new Response(JSON.stringify([]), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         })

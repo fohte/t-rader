@@ -48,7 +48,6 @@ fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, Mc
     let tags = frontmatter_tags(&snapshot.version.frontmatter_json);
     Ok(NoteDto {
         note_id: snapshot.note.id,
-        strategy_id: snapshot.note.strategy_id,
         version_id: snapshot.version.id,
         version_no: snapshot.version.version_no,
         title: snapshot.version.title,
@@ -147,7 +146,6 @@ impl StrategyServer {
                     include_pending: true,
                     cursor,
                     limit: Some(page_size),
-                    ..NoteListQuery::default()
                 })
                 .await
                 .map_err(note_read_error_to_mcp)?;
@@ -219,7 +217,7 @@ mod tests {
     use super::{NoteDto, NoteSnapshot, note_to_dto};
 
     #[test]
-    fn note_dto_preserves_missing_strategy_id() {
+    fn note_dto_maps_note_fields() {
         let id = Uuid::nil();
         let timestamp =
             DateTime::parse_from_rfc3339("2000-01-01T00:00:00+00:00").expect("valid timestamp");
@@ -227,7 +225,6 @@ mod tests {
             NoteSnapshot {
                 note: Note {
                     id,
-                    strategy_id: None,
                     kind: None,
                     trigger: None,
                     trigger_label: None,
@@ -255,13 +252,12 @@ mod tests {
             },
             true,
         )
-        .expect("note without a strategy converts to a DTO");
+        .expect("note converts to a DTO");
 
         assert_eq!(
             actual,
             NoteDto {
                 note_id: id,
-                strategy_id: None,
                 version_id: id,
                 version_no: 1,
                 title: "Example note".into(),

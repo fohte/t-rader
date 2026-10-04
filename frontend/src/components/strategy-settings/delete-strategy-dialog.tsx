@@ -69,7 +69,7 @@ export function DeleteStrategyDialog({
         <DialogHeader>
           <DialogTitle>戦略を削除しますか?</DialogTitle>
           <DialogDescription>
-            この操作は取り消せません。ノート・アノテーション・トレード・トリガー・カスタムインジケーター・戦略タスクなど、この戦略に紐づくすべてのデータが削除されます。
+            この操作は取り消せません。トレード・トリガー・カスタムインジケーター・戦略タスクなど、この戦略に紐づくデータが削除されます。ノートとアノテーションは残ります。
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">

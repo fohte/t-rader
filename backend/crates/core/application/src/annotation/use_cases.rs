@@ -8,8 +8,6 @@ use super::ports::{
     NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
 };
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
-use crate::strategy_existence::SharedStrategyExistence;
-use crate::strategy_scope::StrategyScope;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -19,7 +17,6 @@ const ALLOWED_CREATED_BY_KIND: [&str; 2] = ["human", "llm"];
 pub struct AnnotationUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedAnnotationRepository,
-    strategy_existence: SharedStrategyExistence,
     change_history: SharedChangeHistoryPort,
 }
 
@@ -27,13 +24,11 @@ impl AnnotationUseCases {
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         repository: SharedAnnotationRepository,
-        strategy_existence: SharedStrategyExistence,
         change_history: SharedChangeHistoryPort,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
-            strategy_existence,
             change_history,
         }
     }
@@ -47,31 +42,18 @@ impl AnnotationUseCases {
         validate_non_empty(&command.text, "text")?;
         validate_status(&command.status)?;
         validate_created_by_kind(&command.created_by_kind)?;
-        validate_scope_strategy(command.scope, command.strategy_id)?;
-
         let transaction = self.unit_of_work.begin().await?;
-        if let Some(strategy_id) = command.strategy_id {
-            self.ensure_strategy_exists(&transaction, strategy_id)
-                .await?;
-        }
         if let Some(note_id) = command.linked_note_id {
             self.ensure_linked_note_exists(&transaction, note_id)
                 .await?;
         }
 
-        if let (Some(strategy_id), Some(step_id), Some(task_id)) = (
-            command.strategy_id,
+        if let (Some(step_id), Some(task_id)) = (
             command.execution_step_id,
             command.execution_task_id.as_deref(),
         ) {
-            self.replace_stale_annotations(
-                &transaction,
-                strategy_id,
-                step_id,
-                task_id,
-                command.actor,
-            )
-            .await?;
+            self.replace_stale_annotations(&transaction, step_id, task_id, command.actor)
+                .await?;
         }
 
         let id = Uuid::new_v4();
@@ -81,7 +63,6 @@ impl AnnotationUseCases {
                 &transaction,
                 NewAnnotation {
                     id,
-                    strategy_id: command.strategy_id,
                     target_symbol: target_symbol.clone(),
                     target_kind,
                     timestamp: command.timestamp,
@@ -101,7 +82,6 @@ impl AnnotationUseCases {
             id,
             Op::Create,
             json!({
-                "strategy_id": command.strategy_id,
                 "target_symbol": target_symbol,
             }),
             None,
@@ -249,40 +229,25 @@ impl AnnotationUseCases {
         Ok(())
     }
 
-    async fn ensure_strategy_exists(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
-    ) -> Result<(), AnnotationUseCaseError> {
-        if !self
-            .strategy_existence
-            .exists(transaction, strategy_id)
-            .await?
-        {
-            return Err(AnnotationUseCaseError::Validation(format!(
-                "strategy {strategy_id} does not exist"
-            )));
-        }
-        Ok(())
-    }
-
     async fn ensure_linked_note_exists(
         &self,
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
     ) -> Result<(), AnnotationUseCaseError> {
-        let _strategy_id = self
+        let exists = self
             .repository
-            .note_strategy_id_in_transaction(transaction, note_id)
-            .await?
-            .ok_or(AnnotationUseCaseError::LinkedNoteNotFound(note_id))?;
-        Ok(())
+            .note_exists_in_transaction(transaction, note_id)
+            .await?;
+        if exists {
+            Ok(())
+        } else {
+            Err(AnnotationUseCaseError::LinkedNoteNotFound(note_id))
+        }
     }
 
     async fn replace_stale_annotations(
         &self,
         transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
         execution_step_id: Uuid,
         current_execution_task_id: &str,
         actor: Actor,
@@ -293,7 +258,6 @@ impl AnnotationUseCases {
             .repository
             .find_stale_unread_in_transaction(
                 transaction,
-                strategy_id,
                 execution_step_id,
                 current_execution_task_id,
             )
@@ -350,18 +314,6 @@ impl AnnotationUseCases {
             .await?;
         Ok(())
     }
-}
-
-fn validate_scope_strategy(
-    scope: Option<StrategyScope>,
-    strategy_id: Option<Uuid>,
-) -> Result<(), AnnotationUseCaseError> {
-    if scope.is_some_and(|scope| strategy_id != Some(scope.id())) {
-        return Err(AnnotationUseCaseError::Validation(
-            "strategy_id must match the strategy scope".into(),
-        ));
-    }
-    Ok(())
 }
 
 fn non_empty_trimmed(value: String, name: &str) -> Result<String, AnnotationUseCaseError> {

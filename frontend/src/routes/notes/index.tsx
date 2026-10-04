@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 import { PendingNoteVersionsLink } from '#components/note-detail/pending-note-versions-link'
-import { StrategyFilterSelect } from '#components/strategy-filter-select'
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
 import { NoteTagFilterSelect } from '#components/strategy-home/note-tag-filter-select'
 import { NotesList } from '#components/strategy-home/notes-list'
@@ -9,11 +8,7 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/notes/')({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { strategy_id?: string; tag?: string } => ({
-    strategy_id:
-      typeof search.strategy_id === 'string' ? search.strategy_id : undefined,
+  validateSearch: (search: Record<string, unknown>): { tag?: string } => ({
     tag:
       typeof search.tag === 'string' && search.tag.length > 0
         ? search.tag
@@ -23,16 +18,16 @@ export const Route = createFileRoute('/notes/')({
 })
 
 function NotesPage() {
-  const { strategy_id, tag } = Route.useSearch()
+  const { tag } = Route.useSearch()
   const navigate = Route.useNavigate()
   const { data: availableNotes } = $api.useQuery(
     'get',
     '/api/notes',
-    { params: { query: { strategy_id } } },
+    { params: { query: {} } },
     { enabled: tag != null },
   )
   const { data: notes, isPending } = $api.useQuery('get', '/api/notes', {
-    params: { query: { strategy_id, tag } },
+    params: { query: { tag } },
   })
   const filterNotes = tag == null ? (notes ?? []) : (availableNotes ?? [])
   const tagSet = new Set(filterNotes.flatMap((note) => note.tags))
@@ -48,16 +43,8 @@ function NotesPage() {
           ノート
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          <CreateNoteDialog strategyId={strategy_id} />
+          <CreateNoteDialog />
           <PendingNoteVersionsLink />
-          <StrategyFilterSelect
-            value={strategy_id}
-            onChange={(v) => {
-              void navigate({
-                search: (prev) => ({ ...prev, strategy_id: v, tag: undefined }),
-              })
-            }}
-          />
           <NoteTagFilterSelect
             tags={tags}
             value={tag}

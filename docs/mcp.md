@@ -18,13 +18,13 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 | tool                       | 入力                                | 出力 (要約)                                                                                               |
 | -------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `list_strategies`          | (なし)                              | 戦略一覧 (`strategy_id`, `name`, `updated_at`, `unread_card_count`)                                       |
+| `list_strategies`          | (なし)                              | 戦略一覧 (`strategy_id`, `name`, `updated_at`)                                                            |
 | `submit_strategy_task`     | `strategy_id`, `prompt`, `purpose?` | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                 |
 | `resume_strategy_task`     | `task_id`                           | 再開したタスクの `task_id`, `a2a_task_id`                                                                 |
 | `get_strategy_task_status` | `a2a_task_id`                       | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等 |
 | `get_strategy_config`      | `strategy_id`                       | 戦略設定 (`name`, `description`) と紐づく `triggers` 一覧                                                 |
-| `list_recent_notes`        | `strategy_id`, `limit?`             | 現行バージョンがあるノートのメタデータ一覧                                                                |
-| `list_recent_annotations`  | `strategy_id`, `limit?`             | 最新アノテーションのメタデータ一覧                                                                        |
+| `list_recent_notes`        | `limit?`                            | 現行バージョンがあるノートのメタデータ一覧                                                                |
+| `list_recent_annotations`  | `limit?`                            | 最新アノテーションのメタデータ一覧                                                                        |
 | `list_rss_feeds`           | `enabled_only?`                     | RSS フィード定義一覧                                                                                      |
 | `list_note_kinds`          | (なし)                              | ノート種別一覧 (`key`, `display_name`, `requires_approval`, `description`, `sort_order`)                  |
 
@@ -49,7 +49,6 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 - ヘッダが欠落 / 非 UUID なら MCP 層で reject する。
 - 戦略 scope の tool は、呼び出し前に `x-strategy-id` が DB に存在するかを確認する。存在しない ID は `invalid_params` (`strategy {id} not found`) を返す。
 - tool 引数の `strategy_id` がヘッダの値と一致しない呼び出しも reject する。
-- 対象リソース (note / annotation) の `strategy_id` も Repository 層で二重検査し、戦略 A の Agent が戦略 B のリソースに触れないことを保証する。
 - 例外がある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を見る、という設計上、口座全体の集計には `x-strategy-id` をスコープとして使わない (ただし接続元戦略自身のスライス (投資可能額を含む) を追加で返すため、ヘッダの値もその選択に使う)。`search_refs` / `add_ref_terms` / `remove_ref_terms` は stock/indicator/group が戦略に属さないマスタデータであるため、`x-strategy-id` をそもそも検索・更新条件に使わない。`search_news` も news_item 全体を検索対象にするため、`x-strategy-id` を検索条件に使わない。`read_shareholding_structure` も EDINET 保有構造データが戦略に属さない市場データであるため、`x-strategy-id` を検索条件に使わない。`read_fin_summary` も財務情報が会社単位の開示であり戦略に属さないマスタデータであるため、`x-strategy-id` を検索条件に使わない。`read_macro_indicator` もマクロ指標の観測値が戦略に属さない市場データであるため、`x-strategy-id` を検索条件に使わない。`read_trades` も `read_portfolio` の account スコープと同じ規則で全戦略横断の trade を対象にし、`x-strategy-id` を検索条件に使わない (返り値の `strategy_id` でどの戦略の約定かを判別する)。`read_margin` も信用残が銘柄単位の市場データであり戦略に属さないため、`x-strategy-id` を検索条件に使わない。`read_short_sale_reports` / `read_sector_short_ratio` も空売り関連データが銘柄や業種単位の市場データであり戦略に属さないため、`x-strategy-id` を検索条件に使わない。`read_valuation` も日次バリュエーション指標が銘柄単位の市場データであり戦略に属さないため、`x-strategy-id` を検索条件に使わない。
 
 `register_stock` は戦略境界の確認後、口座共通の銘柄マスタへ外国株を登録する。`stock.id` は ISO 3166-1 alpha-2 の割り当て済み国コードと銘柄コードを `国:コード` で連結し、`JP` は受け付けない ([ISO 3166](https://www.iso.org/iso-3166-country-codes.html))。たとえば `US:DEMO-A` や `KR:QZ9012` を Markdown 内で `[[stock:US:DEMO-A]]`、`[[stock:KR:QZ9012]]` のようにリンクする。`US` の `instruments.market` は `US`、それ以外は `OTHER` になる。登録時には `stock`、`instruments`、`change_history` に記録する。外国株 ID はノートのリンクや銘柄グループで利用できる。`read_fin_summary`、`read_margin`、`read_valuation`、`read_shareholding_structure`、`read_short_sale_reports`、`check_buyable_qty`、`record_prediction` は日本株のみ対応し、外国株 ID に `invalid_params` を返す。
