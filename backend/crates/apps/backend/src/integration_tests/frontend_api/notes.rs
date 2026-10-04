@@ -119,14 +119,12 @@ mod tests {
 
     async fn create_test_note_with_frontmatter(
         server: &TestServer,
-        strategy_id: Uuid,
         title: &str,
         frontmatter_json: Value,
     ) -> Uuid {
         let response = server
             .post("/api/notes")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "title": title,
                 "body_md": "body",
                 "frontmatter_json": frontmatter_json,
@@ -300,28 +298,21 @@ mod tests {
     async fn list_notes_filters_by_exact_tag_and_returns_tags(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "demo-strategy").await;
+        let (_, server) = create_test_server_with_db(db).await;
         create_test_note_with_frontmatter(
             &server,
-            strategy_id,
             "tagged note",
             json!({ "tags": ["demo-focus", "demo-review"] }),
         )
         .await;
         create_test_note_with_frontmatter(
             &server,
-            strategy_id,
             "similarly named tag note",
             json!({ "tags": ["demo-focus-extra"] }),
         )
         .await;
 
-        let response = server
-            .get(&format!(
-                "/api/notes?strategy_id={strategy_id}&tag=demo-focus"
-            ))
-            .await;
+        let response = server.get("/api/notes?tag=demo-focus").await;
         let actual = response
             .json::<Vec<Value>>()
             .into_iter()
@@ -337,7 +328,6 @@ mod tests {
                     "version_id": "<version_id>",
                     "version_no": 1,
                     "is_current": true,
-                    "strategy_id": strategy_id,
                     "title": "tagged note",
                     "body_md": "body",
                     "frontmatter_json": { "tags": ["demo-focus", "demo-review"] },
@@ -358,19 +348,15 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn list_notes_treats_empty_tag_as_no_filter(db: gateway_postgres::DatabaseHandle) {
-        let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "demo-strategy").await;
+        let (_, server) = create_test_server_with_db(db).await;
         create_test_note_with_frontmatter(
             &server,
-            strategy_id,
             "tagged note",
             json!({ "tags": ["sample-label"] }),
         )
         .await;
 
-        let response = server
-            .get(&format!("/api/notes?strategy_id={strategy_id}&tag="))
-            .await;
+        let response = server.get("/api/notes?tag=").await;
         let actual = response
             .json::<Vec<Value>>()
             .into_iter()
@@ -386,7 +372,6 @@ mod tests {
                     "version_id": "<version_id>",
                     "version_no": 1,
                     "is_current": true,
-                    "strategy_id": strategy_id,
                     "title": "tagged note",
                     "body_md": "body",
                     "frontmatter_json": { "tags": ["sample-label"] },
@@ -705,10 +690,8 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "strategy").await;
         let note_id = create_test_note_with_frontmatter(
             &server,
-            strategy_id,
             "title",
             json!({ "tags": ["sample-label"] }),
         )
