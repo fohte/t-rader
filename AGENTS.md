@@ -114,7 +114,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 ## DB 接続
 
 - DB と Redis は `mise run db:up` で起動する。設定は `compose.yaml` と `compose.override.yaml` にあり、全 worktree で共有する
-- backend と agent の dev / test DB は `mise run db:up` が作成する。DB 名は `t-rader_backend_dev` / `t-rader_backend_test` と `t-rader_agent_dev` / `t-rader_agent_test`
+- backend と agent の dev / test DB は `mise run db:up` が作成する。DB 名は `t_rader_backend_dev` / `t_rader_backend_test` と `t_rader_agent_dev` / `t_rader_agent_test`
 - 各 package の `.mise.toml` が `DATABASE_URL` と `TEST_DATABASE_URL` を設定する。ホストポートは mise が `scripts/db-url` と `scripts/redis-url` で実行ごとに解決する
 - `cargo run` や `pnpm dev` を package のディレクトリで実行すると、その package 用の `DATABASE_URL` が使われる
 

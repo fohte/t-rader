@@ -73,13 +73,14 @@ mise run db:doc
 
 ### 既存の共有 DB を使っている場合
 
-既存の DB volume はそのまま再利用します。旧構成の role と database 名を、新構成の名前に一度だけ変更してください。アプリを停止し、旧 checkout で次を実行してから新構成へ切り替えます。
+既存の DB volume はそのまま再利用します。現行構成の role と開発 database 名を、新構成の名前に一度だけ変更してください。アプリを停止し、DB コンテナを起動した状態で次を実行します。
 
 ```bash
-docker compose -f docker-compose.infra.yml exec -T db psql -U t_rader -d postgres <<'SQL'
-ALTER ROLE t_rader RENAME TO "t-rader";
-ALTER DATABASE t_rader_development RENAME TO "t-rader_backend_dev";
-ALTER DATABASE t_rader_agent_development RENAME TO "t-rader_agent_dev";
+docker compose exec -T db psql -U "t-rader" -d postgres <<'SQL'
+ALTER ROLE "t-rader" RENAME TO t_rader;
+ALTER ROLE t_rader PASSWORD 't_rader';
+ALTER DATABASE "t-rader_backend_dev" RENAME TO t_rader_backend_dev;
+ALTER DATABASE "t-rader_agent_dev" RENAME TO t_rader_agent_dev;
 SQL
 ```
 
@@ -104,10 +105,10 @@ cd agent && pnpm run db:migrate
 
 ```bash
 # テーブル一覧の確認
-docker compose exec db psql -U t-rader -d t-rader_backend_dev -c '\dt'
+docker compose exec db psql -U t_rader -d t_rader_backend_dev -c '\dt'
 
 # hypertable の確認
-docker compose exec db psql -U t-rader -d t-rader_backend_dev \
+docker compose exec db psql -U t_rader -d t_rader_backend_dev \
   -c "SELECT hypertable_name FROM timescaledb_information.hypertables;"
 ```
 
@@ -119,7 +120,7 @@ docker compose exec db psql -U t-rader -d t-rader_backend_dev \
 
 `agent/` は A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤、internal API、observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/agent-configs/{purpose}/agent-config`) から LangGraph agent 構成、MCP tool 呼び出しまでの戦略実行ロジックを備える。
 
-- DB は backend とは別の論理 DB (`t-rader_agent_dev` / `t-rader_agent_test`) を同じ Postgres インスタンス上に持つ。`mise run db:up` が作成する
+- DB は backend とは別の論理 DB (`t_rader_agent_dev` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ。`mise run db:up` が作成する
 - マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
 - internal API: `POST /internal/tasks` (`{strategy_id, prompt}` -> `{task_id}`) / `GET /internal/tasks/{task_id}` (-> `{task_id, state, result_text?, error_message?, error_kind?}`)
 
