@@ -322,6 +322,7 @@ mod tests {
                     "title": "note",
                     "body_md": body_md,
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "approved",
                     "trigger": null,

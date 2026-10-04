@@ -208,4 +208,20 @@ mod tests {
 
         assert_eq!(query.listed_queries().await, vec![requested_query],);
     }
+
+    #[tokio::test]
+    async fn list_notes_preserves_tag_filter() {
+        let (use_cases, query) = build_use_cases();
+        let requested_query = NoteListQuery {
+            tag: Some("demo-focus".into()),
+            ..NoteListQuery::default()
+        };
+
+        use_cases
+            .list_notes(requested_query.clone())
+            .await
+            .expect("listing succeeds");
+
+        assert_eq!(query.listed_queries().await, vec![requested_query],);
+    }
 }

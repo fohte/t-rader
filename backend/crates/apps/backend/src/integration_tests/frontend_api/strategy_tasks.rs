@@ -443,6 +443,7 @@ mod tests {
                     "title": "Updated title",
                     "body_md": "Updated body",
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "unread",
                     "trigger": null,

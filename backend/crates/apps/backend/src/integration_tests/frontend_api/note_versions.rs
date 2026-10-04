@@ -50,6 +50,7 @@ mod tests {
                     "body_md": body_md,
                     "frontmatter_json": {},
                     "graphs_json": [],
+                    "tags": [],
                     "kind": null,
                     "status": "unread",
                     "trigger": null,

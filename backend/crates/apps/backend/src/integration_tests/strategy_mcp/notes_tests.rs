@@ -166,6 +166,7 @@ mod tests {
             title: "current".into(),
             body_md: Some("current body".into()),
             frontmatter_json: serde_json::Map::new(),
+            tags: vec![],
             kind: None,
             status: "unread".into(),
             created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -184,6 +185,7 @@ mod tests {
             title: "pending latest".into(),
             body_md: Some("[[stock:demo-code]]".into()),
             frontmatter_json: serde_json::Map::new(),
+            tags: vec![],
             kind: Some("sample-kind".into()),
             status: status.into(),
             created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -260,6 +262,7 @@ mod tests {
                 title: "first note".into(),
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
                 kind: Some("sample-kind".into()),
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -483,6 +486,7 @@ mod tests {
                     title: "original".into(),
                     body_md: Some("v2".into()),
                     frontmatter_json: serde_json::Map::new(),
+                    tags: vec![],
                     kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -545,6 +549,7 @@ mod tests {
                 title: "revised note".into(),
                 body_md: Some("revised body".into()),
                 frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -581,6 +586,7 @@ mod tests {
                 title: "sample note".into(),
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -705,7 +711,96 @@ mod tests {
                     title: "matching".into(),
                     body_md: Some("[[stock:demo-code]]".into()),
                     frontmatter_json: serde_json::Map::new(),
+                    tags: vec![],
                     kind: Some("sample-kind".into()),
+                    status: "unread".into(),
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                    graphs: vec![],
+                    links: None,
+                }],
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_exact_tag_and_returns_tags(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "a").await;
+        let server = build_server(db);
+        let matching = server
+            .write_note(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("tagged note".into()),
+                    body_md: Some("body".into()),
+                    kind: None,
+                    frontmatter_json: Some(
+                        serde_json::json!({ "tags": ["demo-focus", "demo-review"] })
+                            .as_object()
+                            .cloned()
+                            .expect("frontmatter is an object"),
+                    ),
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write tagged note");
+        server
+            .write_note(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("similarly named tag note".into()),
+                    body_md: Some("body".into()),
+                    kind: None,
+                    frontmatter_json: Some(
+                        serde_json::json!({ "tags": ["demo-focus-extra"] })
+                            .as_object()
+                            .cloned()
+                            .expect("frontmatter is an object"),
+                    ),
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write similarly named tag note");
+
+        let result = server
+            .list_notes(
+                strategy_id,
+                ListNotesParams {
+                    tag: Some("demo-focus".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("list notes by tag");
+
+        assert_eq!(
+            normalize_list_notes(result),
+            super::super::dto::ListNotesResult {
+                notes: vec![NoteDto {
+                    note_id: matching.note_id,
+                    version_id: Uuid::nil(),
+                    version_no: 1,
+                    title: "tagged note".into(),
+                    body_md: Some("body".into()),
+                    frontmatter_json: serde_json::json!({
+                        "tags": ["demo-focus", "demo-review"]
+                    })
+                    .as_object()
+                    .cloned()
+                    .expect("frontmatter is an object"),
+                    tags: vec!["demo-focus".into(), "demo-review".into()],
+                    kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
@@ -1208,6 +1303,7 @@ mod tests {
                 title: "note with graph".into(),
                 body_md: Some("[[graph:g1]]".into()),
                 frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -1428,6 +1524,7 @@ mod tests {
                     title: "t".into(),
                     body_md: Some(expected_body),
                     frontmatter_json: serde_json::Map::new(),
+                    tags: vec![],
                     kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -1641,6 +1738,7 @@ mod tests {
                 title: "t".into(),
                 body_md: Some("orig".into()),
                 frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -1877,6 +1975,7 @@ mod tests {
                 title: "second".into(),
                 body_md: Some("v2".into()),
                 frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
                 kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),

@@ -3401,6 +3401,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "`frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8457,6 +8466,7 @@
           "title",
           "body_md",
           "frontmatter_json",
+          "tags",
           "status",
           "created_by_kind",
           "created_at",
@@ -8504,6 +8514,12 @@
           },
           "status": {
             "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "title": {
             "type": "string"
