@@ -8,7 +8,7 @@ mod tests {
 
     use crate::testing::create_test_server_with_graphile_worker;
     use gateway_postgres::entities::{
-        ingest_run, jquants_daily_bars_ingested_date, jquants_earnings_date,
+        earnings_schedule_ingested_date, ingest_run, jquants_daily_bars_ingested_date,
     };
 
     fn timestamp(value: &str) -> DateTime<FixedOffset> {
@@ -134,15 +134,11 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert daily bar ingested dates");
-        jquants_earnings_date::Entity::insert(jquants_earnings_date::ActiveModel {
-            code: Set("demo-code".into()),
-            fq_name: Set("sample-period".into()),
-            pub_date: Set(date(2030, 6, 4)),
-            sch_date: Set(None),
-            fye: Set("2030-12".into()),
-            co_name: Set("sample-company".into()),
-            co_name_en: Set("Sample Company".into()),
-        })
+        earnings_schedule_ingested_date::Entity::insert(
+            earnings_schedule_ingested_date::ActiveModel {
+                date: Set(date(2030, 6, 4)),
+            },
+        )
         .exec(&db)
         .await
         .expect("insert earnings schedule date");

@@ -1,5 +1,6 @@
 pub mod bar;
 pub mod business_day;
+pub mod calendar_event;
 pub mod earnings_schedule;
 pub mod equity_master;
 pub mod financial_summary;

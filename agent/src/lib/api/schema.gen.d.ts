@@ -1048,6 +1048,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/tasks/{task_id}/notes': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略タスクが書いたノートを現行バージョンで返す。 */
+    get: operations['list_strategy_task_notes']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/triggers': {
     parameters: {
       query?: never
@@ -1441,6 +1458,8 @@ export interface components {
       trigger_label?: string | null
     }
     CreateRssFeedRequest: {
+      /** @description 本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。 */
+      content_source?: string
       /** @description UI 表示用名前 */
       display_name: string
       /** @description 省略時は true */
@@ -1827,6 +1846,8 @@ export interface components {
       name?: string | null
     }
     RssFeed: {
+      /** @description 本文の取得方式。none / feed / crawl のいずれか。 */
+      content_source: string
       /** Format: date-time */
       created_at: string
       display_name: string
@@ -2107,6 +2128,8 @@ export interface components {
       trigger_label?: string | null
     }
     UpdateRssFeedRequest: {
+      /** @description 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。 */
+      content_source?: string | null
       display_name?: string | null
       enabled?: boolean | null
       url?: string | null
@@ -6552,6 +6575,55 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['StrategyTaskStatusResponse']
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_task_notes: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note'][]
         }
       }
       /** @description パスパラメータが不正 */
