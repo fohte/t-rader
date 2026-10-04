@@ -21,6 +21,9 @@ use core_application::{
 #[derive(Clone)]
 pub struct SchedulerDependencies {
     pub bars: BarsUseCases,
+    pub calendar_events: CalendarEventUseCases,
+    pub boj_calendar_source: Option<SharedCalendarEventSource>,
+    pub ecb_calendar_source: Option<SharedCalendarEventSource>,
     pub market_daily_bar_source: Option<SharedMarketDailyBarSource>,
     pub news: NewsUseCases,
     pub news_aggregator: SharedNewsAggregator,
@@ -35,7 +38,6 @@ pub struct SchedulerDependencies {
     pub valuations: ValuationUseCases,
     pub valuation_source: Option<SharedValuationSource>,
     pub indicator_observations: IndicatorObservationUseCases,
-    pub calendar_events: CalendarEventUseCases,
     pub ingest_run_log: SharedIngestRunLog,
     pub fred_source: Option<SharedIndicatorObservationSource>,
     pub alpha_vantage_calendar_source: Option<SharedCalendarEventSource>,

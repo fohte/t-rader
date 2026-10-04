@@ -14,6 +14,13 @@ import type {
 } from '@a2a-js/sdk/server'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 
+import {
+  extractAsOf,
+  extractDeadlineAt,
+  extractPurpose,
+  extractResumeSteps,
+  extractStrategyId,
+} from '#a2a/message-metadata'
 import { extractMessageText } from '#a2a/message-text'
 import { withLogBindings } from '#logger'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
@@ -42,35 +49,7 @@ const TURN_FAILED_FINGERPRINT = 'a2a.executor.turn-failed'
 // watchdog のデフォルトタイムアウト (env.ts の A2A_WATCHDOG_TIMEOUT_MS、10分)
 // より十分短く保つ。単一フェーズが for_each を含まず、開始から終了まで
 // step の変化が一切ないまま長時間かかっても heartbeat を止めないための間隔。
-export const HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000
-
-export const extractStrategyId = (message: Message): string | undefined => {
-  const raw = message.metadata?.['strategy_id']
-  return typeof raw === 'string' ? raw : undefined
-}
-
-export const extractPurpose = (message: Message): string | undefined => {
-  const raw = message.metadata?.['purpose']
-  return typeof raw === 'string' ? raw : undefined
-}
-
-export const extractResumeSteps = (message: Message): unknown[] | undefined => {
-  const raw = message.metadata?.['resume_steps']
-  return Array.isArray(raw) ? raw : undefined
-}
-
-const extractDate = (message: Message, key: string): Date | undefined => {
-  const raw = message.metadata?.[key]
-  if (typeof raw !== 'string') return undefined
-  const parsed = new Date(raw)
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed
-}
-
-export const extractDeadlineAt = (message: Message): Date | undefined =>
-  extractDate(message, 'deadline_at')
-
-export const extractAsOf = (message: Message): Date | undefined =>
-  extractDate(message, 'as_of')
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000
 
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
@@ -176,6 +155,7 @@ export interface TraderAgentExecutorDeps {
   runStrategyAgent: (
     input: RunStrategyAgentInput,
   ) => Promise<StrategyAgentResult>
+  heartbeatIntervalMs?: number
   // Looks up the current strategy list (via the backend's management MCP)
   // to resolve a strategy_id from free text when the caller doesn't supply
   // one via message metadata.
@@ -393,7 +373,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     // ない間も HEARTBEAT_INTERVAL_MS ごとに再送する。
     const heartbeatTimer = setInterval(() => {
       publishHeartbeat(latestSteps)
-    }, HEARTBEAT_INTERVAL_MS)
+    }, this.deps.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS)
 
     const deadlineController =
       deadlineAt !== undefined ? new AbortController() : undefined
