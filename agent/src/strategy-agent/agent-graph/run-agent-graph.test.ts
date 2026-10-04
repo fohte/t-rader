@@ -10,10 +10,8 @@ import type {
   CompiledPhaseAgent,
   RunAgentGraphDeps,
 } from '#strategy-agent/agent-graph/run-agent-graph'
-import {
-  buildPhaseMessageText,
-  runAgentGraph,
-} from '#strategy-agent/agent-graph/run-agent-graph'
+import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
+import { buildPhaseMessageText } from '#strategy-agent/agent-graph/run-agent-graph/phase-message'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { AgentGraphConfig } from '#strategy-agent/agent-graph/types'
 import type { McpToolsClient } from '#strategy-agent/strategy-agent'
