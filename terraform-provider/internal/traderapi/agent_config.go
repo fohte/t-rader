@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"net/http"
 )
 
 var ErrAgentConfigNotFound = errors.New("agent config not found")
 
 func (c *Client) CreateAgentConfig(ctx context.Context, purpose string) error {
-	response, err := c.api.CreateAgentConfigWithResponse(ctx, CreateAgentConfigJSONRequestBody{Purpose: purpose})
+	response, err := c.api.CreateAgentConfigWithResponse(ctx, gen.CreateAgentConfigJSONRequestBody{Purpose: purpose})
 	if err != nil {
 		return fmt.Errorf("send create agent config request: %w", err)
 	}
@@ -23,22 +24,22 @@ func (c *Client) CreateAgentConfig(ctx context.Context, purpose string) error {
 	return nil
 }
 
-func (c *Client) GetAgentConfig(ctx context.Context, purpose string) (AgentConfigResponse, error) {
+func (c *Client) GetAgentConfig(ctx context.Context, purpose string) (gen.AgentConfigResponse, error) {
 	response, err := c.api.AgentConfigGetAgentConfigBundleWithResponse(ctx, purpose)
 	if err != nil {
-		return AgentConfigResponse{}, fmt.Errorf("send get agent config request: %w", err)
+		return gen.AgentConfigResponse{}, fmt.Errorf("send get agent config request: %w", err)
 	}
 	if err := agentConfigResponseError(response.HTTPResponse, response.Body); err != nil {
-		return AgentConfigResponse{}, err
+		return gen.AgentConfigResponse{}, err
 	}
 	if response.JSON200 == nil {
-		return AgentConfigResponse{}, errors.New("backend returned HTTP 200 without a JSON response")
+		return gen.AgentConfigResponse{}, errors.New("backend returned HTTP 200 without a JSON response")
 	}
 	return *response.JSON200, nil
 }
 
 func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string, skills map[string]string, agentGraph string) error {
-	skillsResponse, err := c.api.AgentConfigPutSkillsWithResponse(ctx, purpose, AgentConfigPutSkillsJSONRequestBody{
+	skillsResponse, err := c.api.AgentConfigPutSkillsWithResponse(ctx, purpose, gen.AgentConfigPutSkillsJSONRequestBody{
 		Skills: skills,
 	})
 	if err != nil {
@@ -48,7 +49,7 @@ func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string
 		return err
 	}
 
-	agentsMDResponse, err := c.api.AgentConfigPutAgentsMdWithResponse(ctx, purpose, AgentConfigPutAgentsMdJSONRequestBody{
+	agentsMDResponse, err := c.api.AgentConfigPutAgentsMdWithResponse(ctx, purpose, gen.AgentConfigPutAgentsMdJSONRequestBody{
 		Content: agentsMd,
 	})
 	if err != nil {
@@ -58,7 +59,7 @@ func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string
 		return err
 	}
 
-	graphResponse, err := c.api.AgentConfigPutAgentGraphWithResponse(ctx, purpose, AgentConfigPutAgentGraphJSONRequestBody{
+	graphResponse, err := c.api.AgentConfigPutAgentGraphWithResponse(ctx, purpose, gen.AgentConfigPutAgentGraphJSONRequestBody{
 		Content: agentGraph,
 	})
 	if err != nil {

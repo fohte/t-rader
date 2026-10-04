@@ -2,6 +2,7 @@ package traderapi
 
 import (
 	"context"
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"net/http"
 	"reflect"
 	"testing"
@@ -14,18 +15,18 @@ func TestClientListNoteKinds(t *testing.T) {
 
 	wantKind := testNoteKind()
 	client, requests := newTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		writeJSON(t, w, http.StatusOK, []NoteKind{wantKind})
+		writeJSON(t, w, http.StatusOK, []gen.NoteKind{wantKind})
 	})
 
 	result, err := client.ListNoteKinds(context.Background())
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  []NoteKind
+		Result  []gen.NoteKind
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  []NoteKind
+		Result  []gen.NoteKind
 		Error   string
 	}{
 		Request: observedRequest{
@@ -35,7 +36,7 @@ func TestClientListNoteKinds(t *testing.T) {
 			ClientSecret: testSecret,
 			Accept:       "application/json",
 		},
-		Result: []NoteKind{wantKind},
+		Result: []gen.NoteKind{wantKind},
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("list note kinds output mismatch: got=%#v want=%#v", got, want)
 	}
@@ -49,7 +50,7 @@ func TestClientCreateNoteKind(t *testing.T) {
 		writeJSON(t, w, http.StatusCreated, created)
 	})
 
-	result, err := client.CreateNoteKind(context.Background(), CreateNoteKindRequest{
+	result, err := client.CreateNoteKind(context.Background(), gen.CreateNoteKindRequest{
 		Description:      nullable.NewNullableWithValue("synthetic description"),
 		DisplayName:      "Synthetic Kind",
 		Key:              "synthetic_kind",
@@ -59,11 +60,11 @@ func TestClientCreateNoteKind(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  NoteKind
+		Result  gen.NoteKind
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  NoteKind
+		Result  gen.NoteKind
 		Error   string
 	}{
 		Request: observedRequest{
@@ -93,7 +94,7 @@ func TestClientUpdateNoteKind(t *testing.T) {
 		writeJSON(t, w, http.StatusOK, updated)
 	})
 
-	result, err := client.UpdateNoteKind(context.Background(), "synthetic_kind", UpdateNoteKindRequest{
+	result, err := client.UpdateNoteKind(context.Background(), "synthetic_kind", gen.UpdateNoteKindRequest{
 		Description:      nullable.NewNullNullable[string](),
 		DisplayName:      nullable.NewNullableWithValue("Updated Synthetic Kind"),
 		RequiresApproval: nullable.NewNullableWithValue(false),
@@ -102,11 +103,11 @@ func TestClientUpdateNoteKind(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  NoteKind
+		Result  gen.NoteKind
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  NoteKind
+		Result  gen.NoteKind
 		Error   string
 	}{
 		Request: observedRequest{
@@ -152,8 +153,8 @@ func TestClientDeleteNoteKind(t *testing.T) {
 	}
 }
 
-func testNoteKind() NoteKind {
-	return NoteKind{
+func testNoteKind() gen.NoteKind {
+	return gen.NoteKind{
 		Description:      nullable.NewNullableWithValue("synthetic description"),
 		DisplayName:      "Synthetic Kind",
 		Key:              "synthetic_kind",
