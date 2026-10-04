@@ -146,7 +146,7 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     latest_run: None,
                     last_succeeded_at: None,
                     latest_data_date: None,
-                    expected_data_date: Some(date(2030, 6, 7)),
+                    expected_data_date: None,
                     worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {

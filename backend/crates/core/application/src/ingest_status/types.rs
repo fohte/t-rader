@@ -46,7 +46,8 @@ pub const INGEST_JOBS: [IngestJobDefinition; 13] = [
     },
     IngestJobDefinition {
         identifier: ALPHA_VANTAGE_CALENDAR_INGEST_JOB,
-        has_data_date: true,
+        // 未来の予定カレンダーなので、最新営業日との日付比較には使わない。
+        has_data_date: false,
     },
     IngestJobDefinition {
         identifier: SHORT_RATIO_INGEST_JOB,
