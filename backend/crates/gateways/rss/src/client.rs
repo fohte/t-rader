@@ -11,6 +11,9 @@ use crate::http::RssHttpClient;
 
 /// snippet を本文先頭から切り出す最大長 (バイトではなく文字数)
 const SNIPPET_MAX_CHARS: usize = 280;
+/// RSS から保存する本文の最大長 (文字数)
+const CONTENT_MAX_CHARS: usize = 100_000;
+const CONTENT_TRUNCATION_NOTICE: &str = "[本文は 100,000 字を超えたため、後続を省略しました]";
 
 /// 公開 RSS 集約 NewsAggregator
 pub struct RssNewsAggregator {
@@ -76,8 +79,8 @@ impl NewsAggregator for RssNewsAggregator {
     }
 }
 
-/// RSS 2.0 を最小限パースする。`<item>` の `title` / `link` / `description` / `pubDate`
-/// のみ拾い、その他のタグは無視する。
+/// RSS 2.0 を最小限パースする。`<item>` の `title` / `link` / `description` / `pubDate` と、
+/// `content_source` が `feed` の場合は `content:encoded` を拾う。
 ///
 /// Atom 1.0 (`<entry>` / `<published>` / `<summary>`) には対応していない。フィード側で
 /// 形式が切り替わった場合はエラーにならず 0 件を返す。
@@ -88,7 +91,8 @@ fn parse_rss(
     body: &str,
 ) -> Result<Vec<NewsItem>, NewsAggregatorError> {
     let mut reader = Reader::from_str(body);
-    reader.config_mut().trim_text(true);
+    // HTML 内のインラインタグ前後の空白を保ち、RSS フィールドは build_item で trim する。
+    reader.config_mut().trim_text(false);
 
     let mut items: Vec<NewsItem> = Vec::new();
     let mut in_item = false;
@@ -99,10 +103,12 @@ fn parse_rss(
     let mut in_link = false;
     let mut in_description = false;
     let mut in_pub_date = false;
+    let mut in_content_encoded = false;
     let mut buf_title = String::new();
     let mut buf_link = String::new();
     let mut buf_description = String::new();
     let mut buf_pub_date = String::new();
+    let mut buf_content_encoded = String::new();
 
     loop {
         match reader
@@ -117,17 +123,29 @@ fn parse_rss(
                     in_link = false;
                     in_description = false;
                     in_pub_date = false;
+                    in_content_encoded = false;
                     buf_title.clear();
                     buf_link.clear();
                     buf_description.clear();
                     buf_pub_date.clear();
+                    buf_content_encoded.clear();
                 } else if in_item {
-                    match name.as_slice() {
-                        b"title" => in_title = true,
-                        b"link" => in_link = true,
-                        b"description" => in_description = true,
-                        b"pubDate" => in_pub_date = true,
-                        _ => {}
+                    if name == b"content:encoded" {
+                        in_content_encoded = true;
+                    } else if in_content_encoded {
+                        if content_source == ContentSource::Feed {
+                            buf_content_encoded.push('<');
+                            buf_content_encoded.push_str(&String::from_utf8_lossy(e.as_ref()));
+                            buf_content_encoded.push('>');
+                        }
+                    } else {
+                        match name.as_slice() {
+                            b"title" => in_title = true,
+                            b"link" => in_link = true,
+                            b"description" => in_description = true,
+                            b"pubDate" => in_pub_date = true,
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -139,6 +157,7 @@ fn parse_rss(
                     in_link = false;
                     in_description = false;
                     in_pub_date = false;
+                    in_content_encoded = false;
                     if let Some(item) = build_item(
                         source,
                         content_source,
@@ -146,8 +165,17 @@ fn parse_rss(
                         buf_link.trim(),
                         buf_description.trim(),
                         buf_pub_date.trim(),
-                    ) {
+                        buf_content_encoded.trim(),
+                    )? {
                         items.push(item);
+                    }
+                } else if in_item && name == b"content:encoded" {
+                    in_content_encoded = false;
+                } else if in_item && in_content_encoded {
+                    if content_source == ContentSource::Feed {
+                        buf_content_encoded.push_str("</");
+                        buf_content_encoded.push_str(&String::from_utf8_lossy(e.name().as_ref()));
+                        buf_content_encoded.push('>');
                     }
                 } else if in_item {
                     match name.as_slice() {
@@ -159,39 +187,67 @@ fn parse_rss(
                     }
                 }
             }
+            Event::Empty(e) => {
+                if in_item && in_content_encoded && content_source == ContentSource::Feed {
+                    buf_content_encoded.push('<');
+                    buf_content_encoded.push_str(&String::from_utf8_lossy(e.as_ref()));
+                    buf_content_encoded.push_str("/>");
+                }
+            }
             Event::Text(t) => {
                 if in_item {
                     let text = t
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("text: {e}")))?;
-                    append_text(
-                        text.as_ref(),
-                        in_title,
-                        in_link,
-                        in_description,
-                        in_pub_date,
-                        &mut buf_title,
-                        &mut buf_link,
-                        &mut buf_description,
-                        &mut buf_pub_date,
-                    );
+                    if in_content_encoded {
+                        if content_source == ContentSource::Feed {
+                            buf_content_encoded.push_str(text.as_ref());
+                        }
+                    } else {
+                        append_text(
+                            text.as_ref(),
+                            in_title,
+                            in_link,
+                            in_description,
+                            in_pub_date,
+                            &mut buf_title,
+                            &mut buf_link,
+                            &mut buf_description,
+                            &mut buf_pub_date,
+                        );
+                    }
                 }
             }
             Event::CData(c) => {
                 if in_item {
                     let text = String::from_utf8(c.into_inner().into_owned())
                         .map_err(|e| NewsAggregatorError::Parse(format!("cdata: {e}")))?;
-                    append_text(
-                        &text,
-                        in_title,
-                        in_link,
-                        in_description,
-                        in_pub_date,
-                        &mut buf_title,
-                        &mut buf_link,
-                        &mut buf_description,
-                        &mut buf_pub_date,
-                    );
+                    if in_content_encoded {
+                        if content_source == ContentSource::Feed {
+                            buf_content_encoded.push_str(&text);
+                        }
+                    } else {
+                        append_text(
+                            &text,
+                            in_title,
+                            in_link,
+                            in_description,
+                            in_pub_date,
+                            &mut buf_title,
+                            &mut buf_link,
+                            &mut buf_description,
+                            &mut buf_pub_date,
+                        );
+                    }
+                }
+            }
+            Event::GeneralRef(reference) => {
+                if in_item && in_content_encoded && content_source == ContentSource::Feed {
+                    let name = reference
+                        .decode()
+                        .map_err(|e| NewsAggregatorError::Parse(format!("reference: {e}")))?;
+                    let entity = format!("&{name};");
+                    buf_content_encoded.push_str(&decode_html_entities(&entity));
                 }
             }
             Event::Eof => break,
@@ -235,11 +291,14 @@ fn build_item(
     link: &str,
     description: &str,
     pub_date: &str,
-) -> Option<NewsItem> {
+    content_encoded: &str,
+) -> Result<Option<NewsItem>, NewsAggregatorError> {
     if title.is_empty() || link.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let published_at = parse_pub_date(pub_date)?;
+    let Some(published_at) = parse_pub_date(pub_date) else {
+        return Ok(None);
+    };
     // CDATA セクション内の HTML エンティティは quick_xml の Text decode を経由しないため
     // ここで手動でデコードする。title 側も CDATA で来うる (Reuters JP 等) ので両方適用する。
     let title = decode_html_entities(title);
@@ -249,15 +308,43 @@ fn build_item(
     let cleaned = decode_html_entities(&strip_html_tags(description));
     let trimmed = cleaned.trim();
     let snippet = (!trimmed.is_empty()).then(|| truncate_chars(trimmed, SNIPPET_MAX_CHARS));
-    Some(NewsItem {
+    let content = parse_content(content_source, content_encoded)?;
+    Ok(Some(NewsItem {
         source: source.to_string(),
         url: link.to_string(),
         title: title.trim().to_string(),
         body_snippet: snippet,
         content_source,
-        content: None,
+        content,
         published_at,
-    })
+    }))
+}
+
+fn parse_content(
+    content_source: ContentSource,
+    content_encoded: &str,
+) -> Result<Option<String>, NewsAggregatorError> {
+    if content_source != ContentSource::Feed || content_encoded.is_empty() {
+        return Ok(None);
+    }
+    let markdown = htmd::convert(content_encoded)
+        .map_err(|e| NewsAggregatorError::Parse(format!("content:encoded html: {e}")))?;
+    let markdown = markdown.trim();
+    if markdown.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(truncate_content(markdown)))
+}
+
+fn truncate_content(content: &str) -> String {
+    if content.chars().count() <= CONTENT_MAX_CHARS {
+        return content.to_string();
+    }
+    let mut truncated = content.chars().take(CONTENT_MAX_CHARS).collect::<String>();
+    truncated.push('\n');
+    truncated.push('\n');
+    truncated.push_str(CONTENT_TRUNCATION_NOTICE);
+    truncated
 }
 
 /// 最低限の HTML エンティティをデコードする (`&amp;` `&lt;` `&gt;` `&quot;` `&apos;` `&#NNN;` `&#xHHH;`)。
@@ -398,6 +485,10 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    const EXPECTED_CDATA_MARKDOWN: &str = indoc! {r#"## 概要
+
+本文の**重要事項**。"#};
+
     async fn mount_response(server: &MockServer, path_value: &str, response: ResponseTemplate) {
         Mock::given(method("GET"))
             .and(path(path_value))
@@ -414,6 +505,24 @@ mod tests {
     fn single_item_feed(title: &str, url: &str) -> String {
         format!(
             r#"<rss version="2.0"><channel><item><title>{title}</title><link>{url}</link><pubDate>Mon, 01 Jan 2024 09:00:00 +0900</pubDate></item></channel></rss>"#
+        )
+    }
+
+    fn single_item_feed_with_content(content_encoded: &str) -> String {
+        format!(
+            indoc! {r#"
+                <rss version="2.0" xmlns:content="urn:example:content">
+                  <channel>
+                    <item>
+                      <title>記事の見出し</title>
+                      <link>https://example.invalid/news/1</link>
+                      <content:encoded>{content_encoded}</content:encoded>
+                      <pubDate>Mon, 01 Jan 2024 09:00:00 +0900</pubDate>
+                    </item>
+                  </channel>
+                </rss>
+            "#},
+            content_encoded = content_encoded,
         )
     }
 
@@ -617,6 +726,94 @@ mod tests {
                     published_at: ymd_hms(2026, 6, 25, 1, 30, 0),
                 },
             ],
+        );
+    }
+
+    #[rstest]
+    #[case::cdata(
+        "<![CDATA[<h2>概要</h2><p>本文の<strong>重要事項</strong>。</p>]]>",
+        EXPECTED_CDATA_MARKDOWN
+    )]
+    #[case::xml_escaped("&lt;p&gt;本文 &amp; 補足&lt;/p&gt;", "本文 & 補足")]
+    #[case::nested_html_tags("<p>本文の<strong>重要事項</strong>。</p>", "本文の**重要事項**。")]
+    fn parse_rss_converts_content_encoded_to_markdown(
+        #[case] content_encoded: &str,
+        #[case] expected_content: &str,
+    ) {
+        let xml = single_item_feed_with_content(content_encoded);
+
+        assert_eq!(
+            parse_rss("Test", ContentSource::Feed, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source: ContentSource::Feed,
+                content: Some(expected_content.into()),
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
+    #[case::none(ContentSource::None)]
+    #[case::crawl(ContentSource::Crawl)]
+    fn parse_rss_ignores_content_encoded_for_other_sources(#[case] content_source: ContentSource) {
+        let xml = single_item_feed_with_content("<![CDATA[<p>本文 <strong>重要</strong>。</p>]]>");
+
+        assert_eq!(
+            parse_rss("Test", content_source, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source,
+                content: None,
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
+    fn parse_rss_leaves_content_empty_when_content_encoded_is_missing() {
+        let xml = single_item_feed("記事の見出し", "https://example.invalid/news/1");
+
+        assert_eq!(
+            parse_rss("Test", ContentSource::Feed, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source: ContentSource::Feed,
+                content: None,
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
+    fn parse_rss_truncates_long_content_with_a_notice() {
+        let content_encoded = format!("<![CDATA[<p>{}</p>]]>", "あ".repeat(100_001));
+        let xml = single_item_feed_with_content(&content_encoded);
+        let mut expected_content = "あ".repeat(100_000);
+        expected_content.push('\n');
+        expected_content.push('\n');
+        expected_content.push_str("[本文は 100,000 字を超えたため、後続を省略しました]");
+
+        assert_eq!(
+            parse_rss("Test", ContentSource::Feed, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source: ContentSource::Feed,
+                content: Some(expected_content),
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
         );
     }
 
