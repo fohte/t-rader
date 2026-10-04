@@ -294,6 +294,14 @@ mod tests {
                             "worker_jobs": []
                         },
                         {
+                            "job": "news_content_fetch",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": null,
+                            "worker_jobs": []
+                        },
+                        {
                             "job": "prediction_grading",
                             "last_run": null,
                             "last_succeeded_at": null,
