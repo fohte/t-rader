@@ -7,14 +7,17 @@ services:
     working_dir: /app/backend
     command: cargo watch -x 'run -p backend'
     env_file:
+      - path: .env
+        required: true
       - path: .env.local
         required: false
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-t_rader}:${POSTGRES_PASSWORD:-t_rader}@db:5432/${POSTGRES_DB:-t_rader_development}
+      DATABASE_URL: postgres://t-rader:t-rader@db:5432/t-rader_backend_dev
       REDIS_URL: redis://rate-limit-test:test-password@redis:6379/
       CARGO_HOME: /usr/local/cargo
     ports:
       - '127.0.0.1::3000'
+      - '127.0.0.1::3001'
     volumes:
       - .:/app
       - cargo_home:/usr/local/cargo
@@ -31,7 +34,7 @@ services:
       - path: .env.local
         required: false
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-t_rader}:${POSTGRES_PASSWORD:-t_rader}@db:5432/t_rader_agent_development
+      DATABASE_URL: postgres://t-rader:t-rader@db:5432/t-rader_agent_dev
       TRADER_AGENT_PORT: '8080'
       TRADER_AGENT_URL: http://agent:8080/
       INTERNAL_API_TOKEN: dev-internal-token

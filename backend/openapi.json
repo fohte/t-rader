@@ -5890,6 +5890,82 @@
         }
       }
     },
+    "/api/strategies/{id}/tasks/{task_id}/notes": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略タスクが書いたノートを現行バージョンで返す。",
+        "operationId": "list_strategy_task_notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Note"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/triggers": {
       "get": {
         "tags": [
@@ -7782,6 +7858,10 @@
           "url"
         ],
         "properties": {
+          "content_source": {
+            "type": "string",
+            "description": "本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。"
+          },
           "display_name": {
             "type": "string",
             "description": "UI 表示用名前"
@@ -8954,10 +9034,15 @@
           "display_name",
           "url",
           "enabled",
+          "content_source",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "content_source": {
+            "type": "string",
+            "description": "本文の取得方式。none / feed / crawl のいずれか。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -9848,6 +9933,13 @@
       "UpdateRssFeedRequest": {
         "type": "object",
         "properties": {
+          "content_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。"
+          },
           "display_name": {
             "type": [
               "string",

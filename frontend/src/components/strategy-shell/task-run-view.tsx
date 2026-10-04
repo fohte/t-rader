@@ -140,7 +140,7 @@ export function TaskRunView({
                   value: `${String(steps.filter((s) => s.status === 'completed').length)}/${String(steps.length)}`,
                 },
                 {
-                  label: '生成ノート',
+                  label: '作成・更新ノート',
                   value: generatedNotesCount.toLocaleString(),
                 },
               ] satisfies StatItem[]

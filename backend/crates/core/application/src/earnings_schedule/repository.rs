@@ -8,6 +8,8 @@ use crate::persistence::PersistenceError;
 pub enum EarningsScheduleRepositoryError {
     #[error(transparent)]
     Database(#[from] PersistenceError),
+    #[error("invalid earnings schedule: {0}")]
+    InvalidSchedule(String),
 }
 
 #[async_trait]

@@ -17,6 +17,9 @@ pub struct CreateRssFeedRequest {
     /// 省略時は true
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// 本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。
+    #[serde(default = "default_content_source")]
+    pub content_source: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -28,6 +31,13 @@ pub struct UpdateRssFeedRequest {
     pub url: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。
+    #[serde(default)]
+    pub content_source: Option<String>,
+}
+
+fn default_content_source() -> String {
+    "none".to_owned()
 }
 
 #[derive(Debug, Deserialize, Default, ToSchema)]
@@ -45,6 +55,8 @@ pub struct RssFeedResponse {
     pub display_name: String,
     pub url: String,
     pub enabled: bool,
+    /// 本文の取得方式。none / feed / crawl のいずれか。
+    pub content_source: String,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTime<FixedOffset>,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
@@ -59,6 +71,7 @@ impl From<RssFeed> for RssFeedResponse {
             display_name: model.display_name,
             url: model.url,
             enabled: model.enabled,
+            content_source: model.content_source.as_str().to_owned(),
             created_at: model.created_at,
             updated_at: model.updated_at,
         }

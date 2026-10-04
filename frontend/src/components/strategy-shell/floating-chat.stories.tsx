@@ -117,7 +117,7 @@ export const PollingWithRunLink: Story = {
 }
 
 export const Completed: Story = {
-  name: 'shows a completed task with a generated note available.',
+  name: 'shows notes created or updated by a completed task.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(
@@ -127,13 +127,27 @@ export const Completed: Story = {
             notes: [
               {
                 id: 'N1',
-                title: 'SUMCO レンジ回帰の確度評価',
+                title: '輸出企業の受注メモ',
                 updated_at: '2026-06-26T07:00:00Z',
+              },
+              {
+                id: 'N2',
+                title: '需給の変化をまとめたメモ',
+                updated_at: '2026-06-25T04:00:00Z',
               },
             ],
           },
         ),
       )}
+    />
+  ),
+}
+
+export const CompletedWithoutNotes: Story = {
+  name: 'shows a completed task with no linked notes.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(makeProps({ kind: 'completed' }))}
     />
   ),
 }

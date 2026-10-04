@@ -14,6 +14,8 @@ pub enum RssFeedRepositoryError {
     Persistence(#[from] PersistenceError),
     #[error("rss feed with source '{0}' already exists")]
     DuplicateSource(String),
+    #[error("rss feed has unsupported content source '{0}'")]
+    InvalidContentSource(String),
     #[error("transaction has an unexpected type")]
     InvalidTransaction,
 }

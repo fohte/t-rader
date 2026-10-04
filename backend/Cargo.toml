@@ -31,6 +31,7 @@ gateway-rss = { path = "crates/gateways/rss" }
 gateway-t-rader-agent = { path = "crates/gateways/t-rader-agent" }
 rate-limit = { path = "crates/libs/rate-limit" }
 graphile_worker = "=0.13.5"
+graphile_worker_admin_ui = "=0.2.3"
 cron = "=0.17.0"
 axum-test = "=18.7.0"
 base64 = "=0.22.1"

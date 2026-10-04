@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Redis (docker-compose.infra.yml) の実ポートを反映した REDIS_URL を stdout に出す。
+# Redis (compose.override.yaml) の実ポートを反映した REDIS_URL を stdout に出す。
 # .mise.toml の [env] から exec() で毎回呼ばれる想定。Redis が停止していても
 # [env] 全体のパースを壊さないよう、ポート解決に失敗しても常に成功終了する。
 #
@@ -12,6 +12,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-port="$(docker compose -f docker-compose.infra.yml port redis 6379 2> /dev/null | tr -d '\r' | sed 's/.*://')" || port=''
+port="$(docker compose port redis 6379 2> /dev/null | tr -d '\r' | sed 's/.*://')" || port=''
 
 echo "redis://rate-limit-test:test-password@127.0.0.1:${port:-0}/"

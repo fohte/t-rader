@@ -55,7 +55,7 @@ fohte 個人用の日本株投資プラットフォーム。
 
 ```bash
 # DB 起動 (全 worktree 共有、1 回だけ起動すればよい)
-mise run db-up
+mise run db:up
 
 # バックエンド (ローカル)
 cd backend && cargo run -p backend
@@ -96,7 +96,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 
 ## DB schema docs
 
-- backend と agent の DB schema docs は `mise run db-doc` で再生成する
+- backend と agent の DB schema docs は `mise run db:doc` で再生成する
 - テーブルやカラムを追加するときは、対応するパッケージの `.tbls.yml` に説明を追加する (`id`、`created_at`、`updated_at` は除外対象)
 - CI はスキーマ関連の変更がある PR で `backend/docs/db/` と `agent/docs/db/` を再生成し、自動コミットする
 - 生成には開発 DB ではなく、migration を適用した使い捨て DB を使う
@@ -105,15 +105,14 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 
 - `.env` (git 管理) にローカル開発用のデフォルト値を定義している
 - `.env.local` (git 管理外) で個人の環境に合わせた上書きが可能
-- `.mise.toml` の `[env]` セクションで `DATABASE_URL` を `scripts/db-url` の実行結果から解決し、`.env` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)。`.env.local` が常に最後に勝つ
+- 各 DB package の `.mise.toml` が `DATABASE_URL` と `TEST_DATABASE_URL` を `scripts/db-url <package> <dev|test>` から解決し、`.env` → `.env.local` の順に読み込む。`.env.local` で値を上書きできる
 
 ## DB 接続
 
-- DB と Redis は `mise run db-up` で起動する (`docker compose -f docker-compose.infra.yml up -d --wait` のラッパー、全 worktree 共有)
-- 各サービスのホストポートはランダム割り当て (全 worktree 共有) のため、`DATABASE_URL` と `REDIS_URL` は mise 実行のたびにそれぞれ `scripts/db-url` と `scripts/redis-url` で解決する (キャッシュしない)。手動でのポート確認は不要になる
-- `cargo run` 等でローカル直接起動する場合も、mise 経由で常に実ポートを反映した値が使われる
-- `scripts/db-url` は `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` の上書きを読まず、`docker-compose.infra.yml` のデフォルト値を固定で使う。これらを変更する場合は `DATABASE_URL` も `.env.local` で合わせて上書きすること
-- agent をローカル直接起動する場合は、agent 専用の論理 DB (`t_rader_agent_development`) を指す `DATABASE_URL` を `.env.local` で上書きすること (mise が解決する値は backend 用)
+- DB と Redis は `mise run db:up` で起動する。設定は `compose.yaml` と `compose.override.yaml` にあり、全 worktree で共有する
+- backend と agent の dev / test DB は `mise run db:up` が作成する。DB 名は `t-rader_backend_dev` / `t-rader_backend_test` と `t-rader_agent_dev` / `t-rader_agent_test`
+- 各 package の `.mise.toml` が `DATABASE_URL` と `TEST_DATABASE_URL` を設定する。ホストポートは mise が `scripts/db-url` と `scripts/redis-url` で実行ごとに解決する
+- `cargo run` や `pnpm dev` を package のディレクトリで実行すると、その package 用の `DATABASE_URL` が使われる
 
 ## Warnings
 

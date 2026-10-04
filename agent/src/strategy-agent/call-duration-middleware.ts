@@ -8,6 +8,7 @@ const CALL_DURATION_TIMEOUT_FINGERPRINT = 'call-duration-middleware.timeout'
 export const createCallDurationMiddleware = (timeoutMs: number) =>
   createAbortingModelCallMiddleware(
     'callDurationMiddleware',
+    'call-duration',
     () => AbortSignal.timeout(timeoutMs),
     CALL_DURATION_TIMEOUT_FINGERPRINT,
     () =>

@@ -19,7 +19,7 @@
 | [public.trigger](public.trigger.md)                                                         | 12      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                                             | BASE TABLE |
 | [public.custom_indicator](public.custom_indicator.md)                                       | 10      | 共有または戦略ごとに定義する実行可能なカスタム指標。                                                   | BASE TABLE |
 | [public.news_item](public.news_item.md)                                                     | 7       | RSS フィードなどから取得したニュース記事情報を保持する。                                               | BASE TABLE |
-| [public.rss_feed](public.rss_feed.md)                                                       | 7       | ニュース取り込み元となる RSS フィードを管理する。                                                      | BASE TABLE |
+| [public.rss_feed](public.rss_feed.md)                                                       | 8       | ニュース取り込み元となる RSS フィードを管理する。                                                      | BASE TABLE |
 | [public.strategy_investable_amount](public.strategy_investable_amount.md)                   | 5       | 戦略ごとに設定した投資可能額の履歴。                                                                   | BASE TABLE |
 | [public.account_risk_policy](public.account_risk_policy.md)                                 | 3       | 口座全体に適用するリスク制限設定を保持する。                                                           | BASE TABLE |
 | [public.agent_config](public.agent_config.md)                                               | 7       | purpose ごとのエージェント実行設定を保持する。                                                         | BASE TABLE |
@@ -36,7 +36,6 @@
 | [public.indicator_observation](public.indicator_observation.md)                             | 3       | 日付ごとの指標観測値を保持する。                                                                       | BASE TABLE |
 | [public.jquants_daily_bars_ingested_date](public.jquants_daily_bars_ingested_date.md)       | 1       | 全銘柄の日足データを取り込んだ営業日を記録する。                                                       | BASE TABLE |
 | [public.prediction](public.prediction.md)                                                   | 10      | 戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。                                         | BASE TABLE |
-| [public.jquants_earnings_date](public.jquants_earnings_date.md)                             | 7       | 銘柄ごとの決算発表日と決算期情報を保持する。                                                           | BASE TABLE |
 | [public.prediction_grade](public.prediction_grade.md)                                       | 9       | 予測期間の株価データから算出した予測の採点結果。                                                       | BASE TABLE |
 | [public.valuation](public.valuation.md)                                                     | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                                             | BASE TABLE |
 | [public.valuation_ingested_date](public.valuation_ingested_date.md)                         | 1       | 株価評価指標データの取り込み済み日付を記録する。                                                       | BASE TABLE |
@@ -51,6 +50,9 @@
 | [public.stock_group](public.stock_group.md)                                                 | 6       | 分類軸の中で銘柄をまとめるグループを定義する。                                                         | BASE TABLE |
 | [public.stock_group_member](public.stock_group_member.md)                                   | 3       | 銘柄と銘柄グループの所属関係を保持する。                                                               | BASE TABLE |
 | [public.ingest_run](public.ingest_run.md)                                                   | 7       | データ取り込みジョブの実行履歴と結果を記録する。                                                       | BASE TABLE |
+| [public.calendar_event](public.calendar_event.md)                                           | 13      | 指標、中銀イベント、決算などの予定を取得元ごとに保持する。                                             | BASE TABLE |
+| [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)         | 1       | 決算予定を取得した公表日を記録する。                                                                   | BASE TABLE |
+| [public.news_item_content](public.news_item_content.md)                                     | 6       | ニュース記事の本文と取得状態を保持する。                                                               | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -204,6 +206,7 @@ erDiagram
 "public.stock_group" }o--|| "public.group_axis" : "FOREIGN KEY (axis_id) REFERENCES group_axis(id) ON DELETE RESTRICT"
 "public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 "public.stock_group_member" }o--|| "public.stock_group" : "FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE"
+"public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -372,6 +375,7 @@ erDiagram
   boolean enabled
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text content_source
 }
 "public.strategy_investable_amount" {
   uuid id
@@ -530,15 +534,6 @@ erDiagram
   date due_date
   timestamp_with_time_zone created_at
 }
-"public.jquants_earnings_date" {
-  varchar code
-  varchar fq_name
-  date pub_date
-  date sch_date
-  varchar fye
-  varchar co_name
-  varchar co_name_en
-}
 "public.prediction_grade" {
   uuid prediction_id FK
   numeric target_base_close
@@ -688,6 +683,32 @@ erDiagram
   text status
   jsonb stats
   text error
+}
+"public.calendar_event" {
+  uuid id
+  text source
+  text external_id
+  text category
+  text country
+  text title
+  text stock_id
+  text fiscal_period
+  date event_date
+  timestamp_with_time_zone event_at
+  text time_of_day
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.earnings_schedule_ingested_date" {
+  date date
+}
+"public.news_item_content" {
+  uuid news_item_id FK
+  text status
+  text body
+  text error
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 
