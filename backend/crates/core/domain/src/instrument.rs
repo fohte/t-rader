@@ -6,12 +6,20 @@ pub enum Market {
     /// 東京証券取引所
     #[serde(rename = "TSE")]
     Tse,
+    /// 米国市場
+    #[serde(rename = "US")]
+    Us,
+    /// 米国以外の外国市場
+    #[serde(rename = "OTHER")]
+    Other,
 }
 
 impl std::fmt::Display for Market {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Market::Tse => write!(f, "TSE"),
+            Market::Us => write!(f, "US"),
+            Market::Other => write!(f, "OTHER"),
         }
     }
 }

@@ -8,7 +8,10 @@ use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params};
+use super::{
+    StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params,
+    reject_foreign_stock_id,
+};
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadMarginParams {
@@ -158,6 +161,7 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadMarginParams,
     ) -> Result<ReadMarginResult, McpError> {
+        reject_foreign_stock_id(&params.symbol)?;
         let result = self
             .dependencies
             .margins

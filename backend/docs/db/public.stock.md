@@ -6,14 +6,14 @@
 
 ## Columns
 
-| Name             | Type                     | Default           | Nullable | Children                                                                                            | Parents | Comment                |
-| ---------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------- | ------- | ---------------------- |
-| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) [public.stock_group_member](public.stock_group_member.md) |         |                        |
-| name             | varchar                  |                   | false    |                                                                                                     |         | 銘柄名。               |
-| market           | varchar                  |                   | true     |                                                                                                     |         | 市場区分名。           |
-| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |         |                        |
-| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |         |                        |
-| product_category | varchar                  |                   | true     |                                                                                                     |         | 銘柄の商品区分コード。 |
+| Name             | Type                     | Default           | Nullable | Children                                                                                            | Parents | Comment                                    |
+| ---------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------ |
+| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) [public.stock_group_member](public.stock_group_member.md) |         |                                            |
+| name             | varchar                  |                   | false    |                                                                                                     |         | 銘柄名。                                   |
+| market           | varchar                  |                   | true     |                                                                                                     |         | 日本株の市場区分名または外国株の取引所名。 |
+| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |         |                                            |
+| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |         |                                            |
+| product_category | varchar                  |                   | true     |                                                                                                     |         | 銘柄の商品区分コード。                     |
 
 ## Constraints
 
