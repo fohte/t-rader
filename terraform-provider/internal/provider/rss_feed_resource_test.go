@@ -47,6 +47,7 @@ func TestRssFeedResourceCreate(t *testing.T) {
 
 	ctx := context.Background()
 	feed := syntheticRssFeed(testRssFeedID, "synthetic_feed", "Synthetic Feed", "https://feeds.example.invalid/synthetic.xml", true)
+	feed.ContentSource = "feed"
 	requests := make(chan rssFeedRequestObservation, 1)
 	client := newRssFeedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if !recordRssFeedRequest(t, requests, r) {
@@ -61,13 +62,14 @@ func TestRssFeedResourceCreate(t *testing.T) {
 	resourceSchema := rssFeedResourceSchema(t)
 	plan := tfsdk.Plan{Schema: resourceSchema.Schema}
 	planDiagnostics := plan.Set(ctx, rssFeedModel{
-		ID:          types.StringUnknown(),
-		Source:      types.StringValue("synthetic_feed"),
-		DisplayName: types.StringValue("Synthetic Feed"),
-		URL:         types.StringValue("https://feeds.example.invalid/synthetic.xml"),
-		Enabled:     types.BoolUnknown(),
-		CreatedAt:   types.StringUnknown(),
-		UpdatedAt:   types.StringUnknown(),
+		ID:            types.StringUnknown(),
+		Source:        types.StringValue("synthetic_feed"),
+		DisplayName:   types.StringValue("Synthetic Feed"),
+		URL:           types.StringValue("https://feeds.example.invalid/synthetic.xml"),
+		ContentSource: types.StringValue("feed"),
+		Enabled:       types.BoolUnknown(),
+		CreatedAt:     types.StringUnknown(),
+		UpdatedAt:     types.StringUnknown(),
 	})
 	if planDiagnostics.HasError() {
 		t.Fatalf("build create plan: %v", planDiagnostics)
@@ -93,7 +95,7 @@ func TestRssFeedResourceCreate(t *testing.T) {
 		Request: &rssFeedRequestObservation{
 			Method: http.MethodPost,
 			Path:   "/api/rss-feeds",
-			Body:   `{"display_name":"Synthetic Feed","source":"synthetic_feed","url":"https://feeds.example.invalid/synthetic.xml"}`,
+			Body:   `{"content_source":"feed","display_name":"Synthetic Feed","source":"synthetic_feed","url":"https://feeds.example.invalid/synthetic.xml"}`,
 		},
 		State:       modelFromRssFeed(feed),
 		Diagnostics: nil,
@@ -108,6 +110,7 @@ func TestRssFeedResourceRead(t *testing.T) {
 
 	ctx := context.Background()
 	feed := syntheticRssFeed(testRssFeedID, "synthetic_feed", "Refreshed Feed", "https://feeds.example.invalid/refreshed.xml", true)
+	feed.ContentSource = "crawl"
 	requests := make(chan rssFeedRequestObservation, 1)
 	client := newRssFeedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if !recordRssFeedRequest(t, requests, r) {
@@ -122,13 +125,14 @@ func TestRssFeedResourceRead(t *testing.T) {
 	resourceSchema := rssFeedResourceSchema(t)
 	state := tfsdk.State{Schema: resourceSchema.Schema}
 	stateDiagnostics := state.Set(ctx, rssFeedModel{
-		ID:          types.StringValue(testRssFeedID),
-		Source:      types.StringValue("synthetic_feed"),
-		DisplayName: types.StringValue("Stale Feed"),
-		URL:         types.StringValue("https://feeds.example.invalid/stale.xml"),
-		Enabled:     types.BoolValue(false),
-		CreatedAt:   types.StringValue("2026-01-01T00:00:00Z"),
-		UpdatedAt:   types.StringValue("2026-01-01T00:00:00Z"),
+		ID:            types.StringValue(testRssFeedID),
+		Source:        types.StringValue("synthetic_feed"),
+		DisplayName:   types.StringValue("Stale Feed"),
+		URL:           types.StringValue("https://feeds.example.invalid/stale.xml"),
+		ContentSource: types.StringValue("none"),
+		Enabled:       types.BoolValue(false),
+		CreatedAt:     types.StringValue("2026-01-01T00:00:00Z"),
+		UpdatedAt:     types.StringValue("2026-01-01T00:00:00Z"),
 	})
 	if stateDiagnostics.HasError() {
 		t.Fatalf("build prior state: %v", stateDiagnostics)
@@ -215,6 +219,7 @@ func TestRssFeedResourceUpdateUsesPriorStateID(t *testing.T) {
 
 	ctx := context.Background()
 	feed := syntheticRssFeed(testRssFeedID, "synthetic_feed", "Updated Feed", "https://feeds.example.invalid/updated.xml", false)
+	feed.ContentSource = "feed"
 	requests := make(chan rssFeedRequestObservation, 1)
 	client := newRssFeedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if !recordRssFeedRequest(t, requests, r) {
@@ -234,13 +239,14 @@ func TestRssFeedResourceUpdateUsesPriorStateID(t *testing.T) {
 	}
 	plan := tfsdk.Plan{Schema: resourceSchema.Schema}
 	planDiagnostics := plan.Set(ctx, rssFeedModel{
-		ID:          types.StringValue(testOtherRssFeedID),
-		Source:      types.StringValue("synthetic_feed"),
-		DisplayName: types.StringValue("Updated Feed"),
-		URL:         types.StringValue("https://feeds.example.invalid/updated.xml"),
-		Enabled:     types.BoolValue(false),
-		CreatedAt:   types.StringUnknown(),
-		UpdatedAt:   types.StringUnknown(),
+		ID:            types.StringValue(testOtherRssFeedID),
+		Source:        types.StringValue("synthetic_feed"),
+		DisplayName:   types.StringValue("Updated Feed"),
+		URL:           types.StringValue("https://feeds.example.invalid/updated.xml"),
+		ContentSource: types.StringValue("feed"),
+		Enabled:       types.BoolValue(false),
+		CreatedAt:     types.StringUnknown(),
+		UpdatedAt:     types.StringUnknown(),
 	})
 	if planDiagnostics.HasError() {
 		t.Fatalf("build update plan: %v", planDiagnostics)
@@ -266,7 +272,7 @@ func TestRssFeedResourceUpdateUsesPriorStateID(t *testing.T) {
 		Request: &rssFeedRequestObservation{
 			Method: http.MethodPatch,
 			Path:   "/api/rss-feeds/" + testRssFeedID,
-			Body:   `{"display_name":"Updated Feed","enabled":false,"url":"https://feeds.example.invalid/updated.xml"}`,
+			Body:   `{"content_source":"feed","display_name":"Updated Feed","enabled":false,"url":"https://feeds.example.invalid/updated.xml"}`,
 		},
 		State:       modelFromRssFeed(feed),
 		Diagnostics: nil,
@@ -320,45 +326,79 @@ func TestRssFeedResourceImportState(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+	feed := syntheticRssFeed(testRssFeedID, "synthetic_feed", "Imported Feed", "https://feeds.example.invalid/imported.xml", true)
+	feed.ContentSource = "crawl"
+	requests := make(chan rssFeedRequestObservation, 1)
+	client := newRssFeedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if !recordRssFeedRequest(t, requests, r) {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(feed); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	})
 	resourceSchema := rssFeedResourceSchema(t)
 	response := resource.ImportStateResponse{State: tfsdk.State{Schema: resourceSchema.Schema}}
 	stateDiagnostics := response.State.Set(ctx, rssFeedModel{
-		ID:          types.StringNull(),
-		Source:      types.StringNull(),
-		DisplayName: types.StringNull(),
-		URL:         types.StringNull(),
-		Enabled:     types.BoolNull(),
-		CreatedAt:   types.StringNull(),
-		UpdatedAt:   types.StringNull(),
+		ID:            types.StringNull(),
+		Source:        types.StringNull(),
+		DisplayName:   types.StringNull(),
+		URL:           types.StringNull(),
+		ContentSource: types.StringNull(),
+		Enabled:       types.BoolNull(),
+		CreatedAt:     types.StringNull(),
+		UpdatedAt:     types.StringNull(),
 	})
 	if stateDiagnostics.HasError() {
 		t.Fatalf("build import state: %v", stateDiagnostics)
 	}
 	(&rssFeedResource{}).ImportState(ctx, resource.ImportStateRequest{ID: testRssFeedID}, &response)
+	readResponse := resource.ReadResponse{State: tfsdk.State{Raw: response.State.Raw, Schema: resourceSchema.Schema}}
+	(&rssFeedResource{client: client}).Read(ctx, resource.ReadRequest{State: response.State}, &readResponse)
+	observedRequest := receiveRssFeedRequest(requests)
 	var imported rssFeedModel
-	response.Diagnostics.Append(response.State.Get(ctx, &imported)...)
+	readResponse.Diagnostics.Append(readResponse.State.Get(ctx, &imported)...)
 
 	got := struct {
-		State       rssFeedModel
-		Diagnostics []rssFeedDiagnosticObservation
-	}{State: imported, Diagnostics: rssFeedDiagnosticsOutput(response.Diagnostics)}
-	want := struct {
-		State       rssFeedModel
-		Diagnostics []rssFeedDiagnosticObservation
+		Request           *rssFeedRequestObservation
+		State             rssFeedModel
+		ImportDiagnostics []rssFeedDiagnosticObservation
+		ReadDiagnostics   []rssFeedDiagnosticObservation
 	}{
-		State: rssFeedModel{
-			ID:          types.StringValue(testRssFeedID),
-			Source:      types.StringNull(),
-			DisplayName: types.StringNull(),
-			URL:         types.StringNull(),
-			Enabled:     types.BoolNull(),
-			CreatedAt:   types.StringNull(),
-			UpdatedAt:   types.StringNull(),
+		Request:           observedRequest,
+		State:             imported,
+		ImportDiagnostics: rssFeedDiagnosticsOutput(response.Diagnostics),
+		ReadDiagnostics:   rssFeedDiagnosticsOutput(readResponse.Diagnostics),
+	}
+	want := struct {
+		Request           *rssFeedRequestObservation
+		State             rssFeedModel
+		ImportDiagnostics []rssFeedDiagnosticObservation
+		ReadDiagnostics   []rssFeedDiagnosticObservation
+	}{
+		Request: &rssFeedRequestObservation{
+			Method: http.MethodGet,
+			Path:   "/api/rss-feeds/" + testRssFeedID,
 		},
-		Diagnostics: nil,
+		State:             modelFromRssFeed(feed),
+		ImportDiagnostics: nil,
+		ReadDiagnostics:   nil,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("import output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestRssFeedResourceSchemaIsValid(t *testing.T) {
+	t.Parallel()
+
+	resourceSchema := rssFeedResourceSchema(t)
+	got := rssFeedDiagnosticsOutput(resourceSchema.Schema.ValidateImplementation(context.Background()))
+	var want []rssFeedDiagnosticObservation
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("schema validation diagnostics mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -374,6 +414,17 @@ func TestRssFeedResourceValidators(t *testing.T) {
 		{name: "source null is deferred", attribute: "source", value: types.StringNull()},
 		{name: "source unknown is deferred", attribute: "source", value: types.StringUnknown()},
 		{name: "source accepts lowercase key", attribute: "source", value: types.StringValue("synthetic_feed-2")},
+		{name: "content source null is deferred", attribute: "content_source", value: types.StringNull()},
+		{name: "content source unknown is deferred", attribute: "content_source", value: types.StringUnknown()},
+		{name: "content source accepts none", attribute: "content_source", value: types.StringValue("none")},
+		{name: "content source accepts feed", attribute: "content_source", value: types.StringValue("feed")},
+		{name: "content source accepts crawl", attribute: "content_source", value: types.StringValue("crawl")},
+		{
+			name:      "content source rejects unknown value",
+			attribute: "content_source",
+			value:     types.StringValue("invalid"),
+			want:      rssFeedExpectedDiagnostic(path.Root("content_source"), "Invalid RSS feed content source", "Content source must be one of none, feed, or crawl."),
+		},
 		{
 			name:      "source rejects empty key",
 			attribute: "source",
@@ -614,6 +665,8 @@ func rssFeedModelWithStringAttribute(model rssFeedModel, attribute string, value
 		model.DisplayName = value
 	case "url":
 		model.URL = value
+	case "content_source":
+		model.ContentSource = value
 	case "created_at":
 		model.CreatedAt = value
 	case "updated_at":
@@ -658,13 +711,14 @@ func rssFeedResourceSchema(t *testing.T) resource.SchemaResponse {
 
 func syntheticRssFeed(id, source, displayName, url string, enabled bool) traderapi.RssFeed {
 	return traderapi.RssFeed{
-		Id:          uuid.MustParse(id),
-		Source:      source,
-		DisplayName: displayName,
-		Url:         url,
-		Enabled:     enabled,
-		CreatedAt:   time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
-		UpdatedAt:   time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
+		Id:            uuid.MustParse(id),
+		Source:        source,
+		DisplayName:   displayName,
+		Url:           url,
+		ContentSource: "none",
+		Enabled:       enabled,
+		CreatedAt:     time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
 	}
 }
 
