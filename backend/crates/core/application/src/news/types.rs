@@ -14,7 +14,22 @@ pub struct NewsArticle {
     pub url: String,
     pub title: String,
     pub body_snippet: Option<String>,
+    /// 状態値を MCP にそのまま返すため文字列で保持する。
+    pub content_status: Option<String>,
     pub published_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewsArticleContent {
+    pub id: Uuid,
+    pub source: String,
+    pub url: String,
+    pub title: String,
+    pub published_at: DateTime<FixedOffset>,
+    /// 状態値を MCP にそのまま返すため文字列で保持する。
+    pub content_status: Option<String>,
+    pub content: Option<String>,
+    pub content_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
