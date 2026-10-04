@@ -121,6 +121,7 @@ function ChartPage() {
         <CandlestickChart
           bars={data ?? []}
           currency={currency}
+          intraday={timeframe !== '1d' && timeframe !== '1w'}
           className="h-150 w-full"
         />
         <ChartMarketDepthPanel

@@ -1,7 +1,7 @@
 import type { Timeframe } from '#components/timeframe-selector'
 
 const LOOKBACK_DAYS: Record<Timeframe, number> = {
-  '1m': 1,
+  '1m': 4,
   '5m': 7,
   '15m': 7,
   '1h': 30,

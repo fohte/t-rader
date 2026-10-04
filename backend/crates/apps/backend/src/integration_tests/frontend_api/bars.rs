@@ -325,6 +325,32 @@ mod tests {
         assert_response_eq(&response, StatusCode::OK, Some(expected_body));
     }
 
+    #[rstest]
+    #[case::minute("1m", serde_json::json!([
+        {"instrument_id":"DEMO-US-ALPHA","timeframe":"1m","timestamp":"2034-01-02T14:30:00Z","open":100,"high":105,"low":99,"close":101,"volume":10},
+        {"instrument_id":"DEMO-US-ALPHA","timeframe":"1m","timestamp":"2034-01-02T14:31:00Z","open":101,"high":104,"low":100,"close":102,"volume":20},
+        {"instrument_id":"DEMO-US-ALPHA","timeframe":"1m","timestamp":"2034-01-02T14:35:00Z","open":103,"high":109,"low":102,"close":108,"volume":30},
+        {"instrument_id":"DEMO-US-ALPHA","timeframe":"1m","timestamp":"2034-01-02T14:39:00Z","open":108,"high":110,"low":107,"close":109,"volume":40}
+    ]))]
+    #[case::five_minutes("5m", serde_json::json!([
+        {"instrument_id":"DEMO-US-ALPHA","timeframe":"5m","timestamp":"2034-01-02T14:30:00Z","open":100,"high":105,"low":99,"close":102,"volume":30},
+        {"instrument_id":"DEMO-US-ALPHA","timeframe":"5m","timestamp":"2034-01-02T14:35:00Z","open":103,"high":110,"low":102,"close":109,"volume":70}
+    ]))]
+    #[tokio::test]
+    async fn list_intraday_bars_returns_all_data_without_range(
+        #[future] intraday_bars_context: (gateway_postgres::DatabaseHandle, axum_test::TestServer),
+        #[case] timeframe: &str,
+        #[case] expected_body: serde_json::Value,
+    ) {
+        let (_, server) = intraday_bars_context.await;
+        let response = server
+            .get(&format!(
+                "/api/bars?instrument_id=DEMO-US-ALPHA&timeframe={timeframe}"
+            ))
+            .await;
+        assert_response_eq(&response, StatusCode::OK, Some(expected_body));
+    }
+
     #[backend_test_macros::database_test]
     async fn list_intraday_bars_returns_empty_for_non_us_instrument(
         db: gateway_postgres::DatabaseHandle,

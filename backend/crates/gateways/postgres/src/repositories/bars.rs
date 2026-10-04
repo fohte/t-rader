@@ -156,16 +156,11 @@ pub async fn find_intraday_bars(
     db: &impl ConnectionTrait,
     query: BarsQuery,
 ) -> Result<Vec<Bar>, DbErr> {
-    let timeframe = match query.timeframe.as_str() {
-        "1m" => Timeframe::Minute,
-        "5m" => Timeframe::FiveMinutes,
-        "15m" => Timeframe::FifteenMinutes,
-        "1h" => Timeframe::Hourly,
-        "4h" => Timeframe::FourHours,
-        _ => return Ok(Vec::new()),
+    let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
+        return Ok(Vec::new());
     };
 
-    let rows = if query.timeframe == "1m" {
+    let rows = if timeframe == Timeframe::Minute {
         db.query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             FIND_ONE_MINUTE_BARS_SQL,
@@ -176,14 +171,7 @@ pub async fn find_intraday_bars(
             ],
         ))
         .await?
-    } else {
-        let interval = match query.timeframe.as_str() {
-            "5m" => "5 minutes",
-            "15m" => "15 minutes",
-            "1h" => "1 hour",
-            "4h" => "4 hours",
-            _ => return Ok(Vec::new()),
-        };
+    } else if let Some(interval) = timeframe.bucket_interval() {
         db.query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             FIND_AGGREGATED_MINUTE_BARS_SQL,
@@ -195,6 +183,8 @@ pub async fn find_intraday_bars(
             ],
         ))
         .await?
+    } else {
+        return Ok(Vec::new());
     };
 
     rows.iter()
@@ -202,7 +192,7 @@ pub async fn find_intraday_bars(
             let row = MinuteBarRow::from_query_result(row, "")?;
             Ok(Bar {
                 instrument_id: row.instrument_id,
-                timeframe: timeframe.clone(),
+                timeframe,
                 timestamp: row.timestamp.to_utc(),
                 open: row.open,
                 high: row.high,

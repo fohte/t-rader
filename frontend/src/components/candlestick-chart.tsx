@@ -40,6 +40,7 @@ interface CandlestickChartProps {
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
   currency?: ChartCurrency
+  intraday?: boolean
   className?: string
 }
 
@@ -58,6 +59,7 @@ export function CandlestickChart({
   onSelectAnnotation,
   selectedAnnotationId,
   currency,
+  intraday = false,
   className,
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -203,6 +205,12 @@ export function CandlestickChart({
   }, [])
 
   useEffect(() => {
+    chartRef.current?.applyOptions({
+      timeScale: { timeVisible: intraday, secondsVisible: false },
+    })
+  }, [intraday])
+
+  useEffect(() => {
     const series = candlestickSeriesRef.current
     if (series == null) return
 
@@ -216,11 +224,12 @@ export function CandlestickChart({
     const formatter = new Intl.NumberFormat('ja-JP', {
       style: 'currency',
       currency,
+      maximumFractionDigits: 2,
     })
     series.applyOptions({
       priceFormat: {
         type: 'custom',
-        minMove: currency === 'JPY' ? 1 : 0.01,
+        minMove: 0.01,
         formatter: (price: number) => formatter.format(price),
       },
     })

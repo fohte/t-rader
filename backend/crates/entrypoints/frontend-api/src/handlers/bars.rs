@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::State;
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_application::bars::BarsQuery;
+use core_domain::bar::Timeframe;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
@@ -19,9 +20,9 @@ pub struct BarsQueryParams {
     /// 時間足 (デフォルト: "1d")
     #[serde(default = "default_timeframe")]
     pub timeframe: String,
-    /// 取得開始日時。日足は YYYY-MM-DD、分足は RFC 3339 datetime (inclusive)
+    /// 取得開始日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive)
     pub from: Option<String>,
-    /// 取得終了日時。日足は YYYY-MM-DD、分足は RFC 3339 datetime (inclusive)
+    /// 取得終了日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive)
     pub to: Option<String>,
 }
 
@@ -51,24 +52,19 @@ pub async fn list_bars(
         ));
     }
 
-    // Bar.timeframe の OpenAPI スキーマは DTO の String 型から導出されるため許容値を含まない。
-    let valid_timeframes = ["1d", "1m", "5m", "15m", "1h", "4h"];
-    if !valid_timeframes.contains(&params.timeframe.as_str()) {
-        return Err(AppError::Validation(format!(
+    let timeframe = params.timeframe.parse::<Timeframe>().map_err(|_| {
+        let valid_timeframes = Timeframe::ALL.map(|timeframe| timeframe.to_string());
+        AppError::Validation(format!(
             "invalid timeframe: {}. valid values: {:?}",
             params.timeframe, valid_timeframes
-        )));
-    }
+        ))
+    })?;
 
-    let (from, to) = parse_range(
-        params.timeframe.as_str(),
-        params.from.as_deref(),
-        params.to.as_deref(),
-    )?;
+    let (from, to) = parse_range(timeframe, params.from.as_deref(), params.to.as_deref())?;
 
     let query = BarsQuery {
         instrument_id: params.instrument_id,
-        timeframe: params.timeframe,
+        timeframe: timeframe.to_string(),
         from,
         to,
     };
@@ -81,12 +77,12 @@ pub async fn list_bars(
 type DateTimeRange = (Option<DateTime<FixedOffset>>, Option<DateTime<FixedOffset>>);
 
 fn parse_range(
-    timeframe: &str,
+    timeframe: Timeframe,
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<DateTimeRange, AppError> {
     let parse_boundary = |value: &str, parameter: &str, is_end_of_day: bool| {
-        if timeframe == "1d" {
+        if timeframe == Timeframe::Daily {
             let date = value.parse::<NaiveDate>().map_err(|_| {
                 AppError::Validation(format!("{parameter} must be YYYY-MM-DD for 1d"))
             })?;
