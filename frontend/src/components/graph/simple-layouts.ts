@@ -37,7 +37,7 @@ export function buildChainLayout(
   return ok({ nodes, edges: buildFlowEdges(def.edges, citeNumbers) })
 }
 
-export const SCATTER_BACKGROUND_ID = '__scatter_background__'
+const SCATTER_BACKGROUND_ID = '__scatter_background__'
 
 const SCATTER_SIZE = 560
 const SCATTER_PADDING_RATIO = 0.2

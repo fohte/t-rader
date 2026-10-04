@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { PredictionsPanelView } from '#components/note-detail/predictions-panel'
+import { PredictionsPanelView } from '#components/note-detail/predictions-panel-view'
 import type { components } from '#lib/api/schema.gen'
 
 type Prediction = components['schemas']['Prediction']

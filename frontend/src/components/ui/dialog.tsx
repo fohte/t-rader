@@ -82,6 +82,5 @@ export {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@fohte/ui/dialog'
 export { DialogContent }

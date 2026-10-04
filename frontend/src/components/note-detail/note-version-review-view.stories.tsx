@@ -1,9 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { ComponentProps } from 'react'
 
-import {
-  NoteVersionReviewView,
-  type NoteVersionReviewViewProps,
-} from '#components/note-detail/note-version-review-panel'
+import { NoteVersionReviewView } from '#components/note-detail/note-version-review-view'
 import type { NoteVersion } from '#lib/api/note-version-types'
 
 const pendingVersion: NoteVersion = {
@@ -23,7 +21,7 @@ const pendingVersion: NoteVersion = {
   reviewed_at: null,
 }
 
-const args: NoteVersionReviewViewProps = {
+const args: ComponentProps<typeof NoteVersionReviewView> = {
   version: pendingVersion,
   lineCommentCount: 0,
   isCommentsPending: false,

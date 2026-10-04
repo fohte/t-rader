@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   buildChainLayout,
   buildScatterLayout,
-  SCATTER_BACKGROUND_ID,
 } from '#components/graph/simple-layouts'
 import type { GraphDef } from '#components/graph/types'
 
@@ -110,7 +109,7 @@ describe('buildScatterLayout', () => {
     // x=0,y=0 / x=100,y=100 → domain [-20,120] の 1/7 点。y は invert するため上下が反転する
     expect(result.value.nodes.map(roundPosition)).toEqual([
       {
-        id: SCATTER_BACKGROUND_ID,
+        id: '__scatter_background__',
         type: 'graphScatterBackground',
         position: { x: 0, y: 0 },
         style: { width: 560, height: 560 },

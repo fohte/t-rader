@@ -11,7 +11,6 @@ import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { SKILL_NAME_ERROR_INVALID } from '#components/strategy-settings/skill-name'
 import { SkillsTab } from '#components/strategy-settings/skills-tab'
 import { fetchClient } from '#lib/api/client'
 
@@ -155,7 +154,7 @@ describe('SkillsTab', () => {
     await user.click(screen.getByRole('button', { name: '追加' }))
 
     expect(screen.getByTestId('new-skill-error').textContent).toBe(
-      SKILL_NAME_ERROR_INVALID,
+      'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
     )
     // store に書き込まれていないことで「API が呼ばれていない」ことを示す
     expect(activeMiddleware?.store).toEqual({})

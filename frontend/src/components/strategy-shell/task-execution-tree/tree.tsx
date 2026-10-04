@@ -13,7 +13,7 @@ import {
 import { StepDetail } from '#components/strategy-shell/task-execution-tree/step-detail'
 import { cn } from '#lib/utils'
 
-export interface TaskExecutionTreeProps {
+interface TaskExecutionTreeProps {
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
   /** トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
