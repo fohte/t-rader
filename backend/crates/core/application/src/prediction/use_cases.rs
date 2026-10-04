@@ -77,7 +77,11 @@ impl PredictionUseCases {
 
         let transaction = self.unit_of_work.begin().await?;
         if let Some(note_id) = command.note_id {
-            let note_exists = self.repository.note_exists(&transaction, note_id).await?;
+            let note_exists = self
+                .repository
+                .find_note_owner(&transaction, note_id)
+                .await?
+                .is_some();
             if !note_exists {
                 return Err(PredictionUseCaseError::NoteNotFound(note_id));
             }
@@ -153,31 +157,37 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, Utc};
     use core_domain::bar::Bar;
+    use rstest::rstest;
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
     use super::*;
     use crate::prediction::repository::{PredictionRepository, PredictionRepositoryError};
-    use crate::prediction::types::{GradedPrediction, NewPredictionGrade, Prediction};
+    use crate::prediction::types::{GradedPrediction, NewPredictionGrade, NoteOwner, Prediction};
     use crate::unit_of_work::FakeUnitOfWork;
 
     const NOTE_ID: Uuid = Uuid::from_u128(1);
+    const MISSING_NOTE_ID: Uuid = Uuid::from_u128(5);
     const RUNNING_STRATEGY_ID: Uuid = Uuid::from_u128(2);
+    const OWNER_STRATEGY_ID: Uuid = Uuid::from_u128(3);
     const NORMALIZED_PREDICTION_ID: Uuid = Uuid::from_u128(4);
 
+    #[derive(Default)]
     struct FakePredictionRepository {
-        existing_note_id: Option<Uuid>,
+        owner_strategy_id: Option<Uuid>,
         inserted: Mutex<Vec<NewPrediction>>,
     }
 
     #[async_trait]
     impl PredictionRepository for FakePredictionRepository {
-        async fn note_exists(
+        async fn find_note_owner(
             &self,
             _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
             note_id: Uuid,
-        ) -> Result<bool, PredictionRepositoryError> {
-            Ok(self.existing_note_id == Some(note_id))
+        ) -> Result<Option<NoteOwner>, PredictionRepositoryError> {
+            Ok((note_id == NOTE_ID).then_some(NoteOwner {
+                strategy_id: self.owner_strategy_id,
+            }))
         }
 
         async fn stock_exists(
@@ -253,10 +263,13 @@ mod tests {
         }
     }
 
+    #[rstest]
+    #[case::another_strategy(Some(OWNER_STRATEGY_ID))]
+    #[case::unassigned(None)]
     #[tokio::test]
-    async fn record_accepts_an_existing_note() {
+    async fn record_accepts_a_note_owned_by_any_strategy(#[case] owner_strategy_id: Option<Uuid>) {
         let repository = Arc::new(FakePredictionRepository {
-            existing_note_id: Some(NOTE_ID),
+            owner_strategy_id,
             inserted: Mutex::new(Vec::new()),
         });
         let use_cases =
@@ -306,38 +319,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn record_rejects_a_missing_note() {
-        let repository = Arc::new(FakePredictionRepository {
-            existing_note_id: None,
-            inserted: Mutex::new(Vec::new()),
-        });
-        let use_cases =
-            PredictionUseCases::new(Arc::new(FakeUnitOfWork::new()), repository.clone());
-        let result = use_cases
-            .record(
-                RUNNING_STRATEGY_ID.into(),
-                RecordPredictionCommand {
-                    note_id: Some(NOTE_ID),
-                    target_stock_id: "FICTIONAL-ASSET-A".into(),
-                    benchmark_stock_id: "FICTIONAL-ASSET-B".into(),
-                    direction: "outperform".into(),
-                    probability: Decimal::new(70, 2),
-                    base_date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
-                    due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
-                },
-            )
-            .await
-            .map(|_| ())
-            .map_err(|error| error.to_string());
-        let inserted = repository.inserted.lock().await.clone();
-
-        assert_eq!(
-            (result, inserted),
-            (Err(format!("note {NOTE_ID} not found")), Vec::new()),
-        );
-    }
-
     #[rstest::rstest]
     #[case::foreign_target("US:QZ-7", "FICTIONAL-ASSET-B")]
     #[case::foreign_benchmark("FICTIONAL-ASSET-A", "KR:QZ9012")]
@@ -348,8 +329,8 @@ mod tests {
     ) {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakePredictionRepository {
-            existing_note_id: None,
             inserted: Mutex::new(Vec::new()),
+            ..Default::default()
         });
         let use_cases = PredictionUseCases::new(unit_of_work.clone(), repository.clone());
         let result = use_cases
@@ -373,6 +354,35 @@ mod tests {
         assert_eq!(
             (result, inserted_count, begun_count),
             (Err("predictions only support Japanese stocks".into()), 0, 0,),
+        );
+    }
+
+    #[tokio::test]
+    async fn record_rejects_a_missing_note() {
+        let repository = Arc::new(FakePredictionRepository::default());
+        let use_cases =
+            PredictionUseCases::new(Arc::new(FakeUnitOfWork::new()), repository.clone());
+        let result = use_cases
+            .record(
+                RUNNING_STRATEGY_ID.into(),
+                RecordPredictionCommand {
+                    note_id: Some(MISSING_NOTE_ID),
+                    target_stock_id: "FICTIONAL-ASSET-A".into(),
+                    benchmark_stock_id: "FICTIONAL-ASSET-B".into(),
+                    direction: "outperform".into(),
+                    probability: Decimal::new(70, 2),
+                    base_date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+                    due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        let inserted = repository.inserted.lock().await.clone();
+
+        assert_eq!(
+            (result, inserted),
+            (Err(format!("note {MISSING_NOTE_ID} not found")), Vec::new(),),
         );
     }
 }

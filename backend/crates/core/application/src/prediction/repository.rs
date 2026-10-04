@@ -23,11 +23,11 @@ pub enum PredictionRepositoryError {
 
 #[async_trait]
 pub trait PredictionRepository: Send + Sync {
-    async fn note_exists(
+    async fn find_note_owner(
         &self,
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
-    ) -> Result<bool, PredictionRepositoryError>;
+    ) -> Result<Option<super::types::NoteOwner>, PredictionRepositoryError>;
     async fn stock_exists(
         &self,
         transaction: &UnitOfWorkTransaction,
