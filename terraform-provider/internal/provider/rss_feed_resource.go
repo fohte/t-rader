@@ -77,6 +77,7 @@ func (r *rssFeedResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"content_source": schema.StringAttribute{
 				Optional:            true,
+				Computed:            true,
 				Default:             stringdefault.StaticString("none"),
 				Validators:          []validator.String{rssFeedContentSourceValidator{}},
 				MarkdownDescription: "本文の取得方式。none は本文を取得せず、feed は RSS 内の本文を使い、crawl はリンク先から本文を取得します。省略時は none。",
@@ -254,6 +255,24 @@ func (rssFeedSourceValidator) ValidateString(ctx context.Context, req validator.
 
 type rssFeedDisplayNameValidator struct{}
 
+func (rssFeedDisplayNameValidator) Description(_ context.Context) string {
+	return "表示名は空にできず、前後に空白を含められません。"
+}
+
+func (rssFeedDisplayNameValidator) MarkdownDescription(ctx context.Context) string {
+	return rssFeedDisplayNameValidator{}.Description(ctx)
+}
+
+func (rssFeedDisplayNameValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	value := req.ConfigValue.ValueString()
+	if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid RSS feed display name", "Display name must not be empty or have surrounding whitespace.")
+	}
+}
+
 type rssFeedContentSourceValidator struct{}
 
 func (rssFeedContentSourceValidator) Description(_ context.Context) string {
@@ -273,24 +292,6 @@ func (rssFeedContentSourceValidator) ValidateString(ctx context.Context, req val
 		return
 	default:
 		resp.Diagnostics.AddAttributeError(req.Path, "Invalid RSS feed content source", "Content source must be one of none, feed, or crawl.")
-	}
-}
-
-func (rssFeedDisplayNameValidator) Description(_ context.Context) string {
-	return "表示名は空にできず、前後に空白を含められません。"
-}
-
-func (rssFeedDisplayNameValidator) MarkdownDescription(ctx context.Context) string {
-	return rssFeedDisplayNameValidator{}.Description(ctx)
-}
-
-func (rssFeedDisplayNameValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
-		return
-	}
-	value := req.ConfigValue.ValueString()
-	if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
-		resp.Diagnostics.AddAttributeError(req.Path, "Invalid RSS feed display name", "Display name must not be empty or have surrounding whitespace.")
 	}
 }
 

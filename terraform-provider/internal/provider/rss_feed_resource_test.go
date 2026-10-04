@@ -391,6 +391,17 @@ func TestRssFeedResourceImportState(t *testing.T) {
 	}
 }
 
+func TestRssFeedResourceSchemaIsValid(t *testing.T) {
+	t.Parallel()
+
+	resourceSchema := rssFeedResourceSchema(t)
+	got := rssFeedDiagnosticsOutput(resourceSchema.Schema.ValidateImplementation(context.Background()))
+	var want []rssFeedDiagnosticObservation
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("schema validation diagnostics mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
 func TestRssFeedResourceValidators(t *testing.T) {
 	t.Parallel()
 
