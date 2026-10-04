@@ -40,7 +40,7 @@
 | [public.valuation](public.valuation.md)                                                     | 11      | 銘柄ごとの株価評価指標を日付別に保持する。                                                             | BASE TABLE |
 | [public.valuation_ingested_date](public.valuation_ingested_date.md)                         | 1       | 株価評価指標データの取り込み済み日付を記録する。                                                       | BASE TABLE |
 | [public.note_kind](public.note_kind.md)                                                     | 5       | ノートの分類と、その分類に適用するレビュー設定を定義する。                                             | BASE TABLE |
-| [public.note_version](public.note_version.md)                                               | 14      | ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。                                     | BASE TABLE |
+| [public.note_version](public.note_version.md)                                               | 15      | ノートの本文・メタデータとレビュー状態をバージョンごとに保持する。                                     | BASE TABLE |
 | [public.note_link](public.note_link.md)                                                     | 3       | ノートバージョン本文から別のノートへのリンクを保持する。                                               | BASE TABLE |
 | [public.financial_summary](public.financial_summary.md)                                     | 37      | 銘柄ごとの決算開示内容と業績予想を保持する。                                                           | BASE TABLE |
 | [public.large_volume_shareholding_documents](public.large_volume_shareholding_documents.md) | 7       | EDINET の大量保有報告書と保有状況の明細を保持する。                                                    | BASE TABLE |
@@ -581,6 +581,7 @@ erDiagram
   text execution_id
   timestamp_with_time_zone created_at
   timestamp_with_time_zone reviewed_at
+  jsonb resolved_price_references_json
 }
 "public.note_link" {
   uuid from_version_id FK
