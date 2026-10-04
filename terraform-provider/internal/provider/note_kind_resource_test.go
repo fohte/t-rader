@@ -19,6 +19,7 @@ import (
 	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 type noteKindRequestObservation struct {
@@ -104,12 +105,12 @@ func TestNoteKindResourceRead(t *testing.T) {
 	}{
 		{
 			name:         "finds the key in the list",
-			responseBody: []traderapi.NoteKind{syntheticNoteKind()},
+			responseBody: []traderapigen.NoteKind{syntheticNoteKind()},
 			wantState:    modelFromNoteKind(syntheticNoteKind()),
 		},
 		{
 			name:         "removes a key absent from the list",
-			responseBody: []traderapi.NoteKind{},
+			responseBody: []traderapigen.NoteKind{},
 			wantRemoved:  true,
 		},
 	}
@@ -399,8 +400,8 @@ func noteKindResourceSchema(t *testing.T) resource.SchemaResponse {
 	return response
 }
 
-func syntheticNoteKind() traderapi.NoteKind {
-	return traderapi.NoteKind{
+func syntheticNoteKind() traderapigen.NoteKind {
+	return traderapigen.NoteKind{
 		Description:      nullable.NewNullableWithValue("synthetic description"),
 		DisplayName:      "Synthetic Kind",
 		Key:              "synthetic_kind",

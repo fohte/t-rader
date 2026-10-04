@@ -22,6 +22,7 @@ import (
 	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 const testStrategyID = "00000000-0000-4000-8000-000000000001"
@@ -30,7 +31,7 @@ func TestStrategyResourceUpdateUsesPriorStateID(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	updated := traderapi.Strategy{
+	updated := traderapigen.Strategy{
 		Id:          uuid.MustParse(testStrategyID),
 		Name:        "updated synthetic strategy",
 		Description: nullable.NewNullNullable[string](),
@@ -206,7 +207,7 @@ func TestStringAttributeUpdateNullable(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			request := traderapi.UpdateStrategyRequest{Description: stringAttributeUpdateNullable(testCase.value)}
+			request := traderapigen.UpdateStrategyRequest{Description: stringAttributeUpdateNullable(testCase.value)}
 			encoded, err := json.Marshal(request)
 			if err != nil {
 				t.Fatalf("encode update request: %v", err)

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"github.com/google/uuid"
 )
 
@@ -34,10 +35,10 @@ func New(baseURL, clientID, clientSecret string) (*Client, error) {
 		return nil, errors.New("base_url must be an absolute HTTP or HTTPS URL without credentials, query, or fragment")
 	}
 
-	apiClient, err := NewClientWithResponses(
+	apiClient, err := gen.NewClientWithResponses(
 		parsedURL.String(),
-		WithHTTPClient(errorBodyLimitDoer{client: &http.Client{Timeout: 30 * time.Second}}),
-		WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
+		gen.WithHTTPClient(errorBodyLimitDoer{client: &http.Client{Timeout: 30 * time.Second}}),
+		gen.WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
 			request.Header.Set("Accept", "application/json")
 			if clientID != "" {
 				request.Header.Set("CF-Access-Client-Id", clientID)

@@ -276,7 +276,7 @@ jobs:
           cache-dependency-path: terraform-provider/go.sum
 
       - name: Check generated Go API client
-        run: ../scripts/generate-terraform-api-client && git diff --exit-code -- internal/traderapi/client.gen.go
+        run: ../scripts/generate-terraform-api-client && git diff --exit-code -- internal/traderapi/gen/client.gen.go
         working-directory: terraform-provider
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
