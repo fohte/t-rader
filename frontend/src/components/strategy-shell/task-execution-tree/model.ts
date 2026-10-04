@@ -39,7 +39,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 // steps (jsonb) は backend が中身を解釈せず素通しするため unknown で届く。必須フィールドの
 // 型だけを見て frontend 表示用の TaskStep として narrow する。
-export function isTaskStep(v: unknown): v is TaskStep {
+function isTaskStep(v: unknown): v is TaskStep {
   return (
     isRecord(v) &&
     typeof v['phase_key'] === 'string' &&

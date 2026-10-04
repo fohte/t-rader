@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 import {
   buildFlowEdges,
   computeCiteNumbers,
-  edgeStrokeWidth,
   handlePositions,
   nodeWidth,
   validateGraphRefs,
@@ -23,17 +22,6 @@ describe('nodeWidth', () => {
     ],
   ])('%s', (_label, node, expected) => {
     expect(nodeWidth(node)).toBe(expected)
-  })
-})
-
-describe('edgeStrokeWidth', () => {
-  it.each([
-    ['value なし', undefined, 100, 1.5],
-    ['maxValue が 0 以下', 50, 0, 1.5],
-    ['value が maxValue と同じ (最大)', 100, 100, 5],
-    ['value が maxValue の半分', 50, 100, 3.25],
-  ])('%s', (_label, value, maxValue, expected) => {
-    expect(edgeStrokeWidth(value, maxValue)).toBe(expected)
   })
 })
 
