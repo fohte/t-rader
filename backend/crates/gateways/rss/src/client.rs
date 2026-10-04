@@ -11,8 +11,7 @@ use crate::http::RssHttpClient;
 
 /// snippet を本文先頭から切り出す最大長 (バイトではなく文字数)
 const SNIPPET_MAX_CHARS: usize = 280;
-/// RSS から保存する本文の最大長 (文字数)
-const CONTENT_MAX_CHARS: usize = 100_000;
+const CONTENT_TRUNCATION_THRESHOLD_CHARS: usize = 100_000;
 const CONTENT_TRUNCATION_NOTICE: &str = "[本文は 100,000 字を超えたため、後続を省略しました]";
 
 /// 公開 RSS 集約 NewsAggregator
@@ -109,6 +108,8 @@ fn parse_rss(
     let mut buf_description = String::new();
     let mut buf_pub_date = String::new();
     let mut buf_content_encoded = String::new();
+    let mut content_has_child_elements = false;
+    let collect_content = content_source == ContentSource::Feed;
 
     loop {
         match reader
@@ -124,16 +125,19 @@ fn parse_rss(
                     in_description = false;
                     in_pub_date = false;
                     in_content_encoded = false;
+                    buf_content_encoded.clear();
+                    content_has_child_elements = false;
                     buf_title.clear();
                     buf_link.clear();
                     buf_description.clear();
                     buf_pub_date.clear();
-                    buf_content_encoded.clear();
                 } else if in_item {
                     if name == b"content:encoded" {
                         in_content_encoded = true;
+                        content_has_child_elements = false;
                     } else if in_content_encoded {
-                        if content_source == ContentSource::Feed {
+                        if collect_content {
+                            content_has_child_elements = true;
                             buf_content_encoded.push('<');
                             buf_content_encoded.push_str(&String::from_utf8_lossy(e.as_ref()));
                             buf_content_encoded.push('>');
@@ -172,7 +176,7 @@ fn parse_rss(
                 } else if in_item && name == b"content:encoded" {
                     in_content_encoded = false;
                 } else if in_item && in_content_encoded {
-                    if content_source == ContentSource::Feed {
+                    if collect_content {
                         buf_content_encoded.push_str("</");
                         buf_content_encoded.push_str(&String::from_utf8_lossy(e.name().as_ref()));
                         buf_content_encoded.push('>');
@@ -188,7 +192,8 @@ fn parse_rss(
                 }
             }
             Event::Empty(e) => {
-                if in_item && in_content_encoded && content_source == ContentSource::Feed {
+                if in_item && in_content_encoded && collect_content {
+                    content_has_child_elements = true;
                     buf_content_encoded.push('<');
                     buf_content_encoded.push_str(&String::from_utf8_lossy(e.as_ref()));
                     buf_content_encoded.push_str("/>");
@@ -200,7 +205,7 @@ fn parse_rss(
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("text: {e}")))?;
                     if in_content_encoded {
-                        if content_source == ContentSource::Feed {
+                        if collect_content {
                             buf_content_encoded.push_str(text.as_ref());
                         }
                     } else {
@@ -223,7 +228,7 @@ fn parse_rss(
                     let text = String::from_utf8(c.into_inner().into_owned())
                         .map_err(|e| NewsAggregatorError::Parse(format!("cdata: {e}")))?;
                     if in_content_encoded {
-                        if content_source == ContentSource::Feed {
+                        if collect_content {
                             buf_content_encoded.push_str(&text);
                         }
                     } else {
@@ -242,12 +247,17 @@ fn parse_rss(
                 }
             }
             Event::GeneralRef(reference) => {
-                if in_item && in_content_encoded && content_source == ContentSource::Feed {
+                if in_item && in_content_encoded && collect_content {
                     let name = reference
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("reference: {e}")))?;
                     let entity = format!("&{name};");
-                    buf_content_encoded.push_str(&decode_html_entities(&entity));
+                    if content_has_child_elements {
+                        // 子要素形式ではエスケープされたタグが本文テキストなので、HTML パーサーまで参照を保つ。
+                        buf_content_encoded.push_str(&entity);
+                    } else {
+                        buf_content_encoded.push_str(&decode_html_entities(&entity));
+                    }
                 }
             }
             Event::Eof => break,
@@ -337,10 +347,10 @@ fn parse_content(
 }
 
 fn truncate_content(content: &str) -> String {
-    if content.chars().count() <= CONTENT_MAX_CHARS {
+    if content.chars().count() <= CONTENT_TRUNCATION_THRESHOLD_CHARS {
         return content.to_string();
     }
-    let mut truncated = content.chars().take(CONTENT_MAX_CHARS).collect::<String>();
+    let mut truncated = truncate_chars(content, CONTENT_TRUNCATION_THRESHOLD_CHARS);
     truncated.push('\n');
     truncated.push('\n');
     truncated.push_str(CONTENT_TRUNCATION_NOTICE);
@@ -736,6 +746,12 @@ mod tests {
     )]
     #[case::xml_escaped("&lt;p&gt;本文 &amp; 補足&lt;/p&gt;", "本文 & 補足")]
     #[case::nested_html_tags("<p>本文の<strong>重要事項</strong>。</p>", "本文の**重要事項**。")]
+    #[case::inline_tag_spaces("<p>左 <strong>強調</strong> 右</p>", "左 **強調** 右")]
+    #[case::escaped_tag_text(
+        "<p>左 &lt;script&gt;本文&lt;/script&gt; 右</p>",
+        "左 \\<script>本文\\</script> 右"
+    )]
+    #[case::named_html_entity("<p>左&nbsp;右</p>", "左 右")]
     fn parse_rss_converts_content_encoded_to_markdown(
         #[case] content_encoded: &str,
         #[case] expected_content: &str,
