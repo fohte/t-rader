@@ -77,11 +77,7 @@ impl PredictionUseCases {
 
         let transaction = self.unit_of_work.begin().await?;
         if let Some(note_id) = command.note_id {
-            let note_exists = self
-                .repository
-                .find_note_owner(&transaction, note_id)
-                .await?
-                .is_some();
+            let note_exists = self.repository.note_exists(&transaction, note_id).await?;
             if !note_exists {
                 return Err(PredictionUseCaseError::NoteNotFound(note_id));
             }
@@ -157,35 +153,31 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, Utc};
     use core_domain::bar::Bar;
-    use rstest::rstest;
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
     use super::*;
     use crate::prediction::repository::{PredictionRepository, PredictionRepositoryError};
-    use crate::prediction::types::{GradedPrediction, NewPredictionGrade, NoteOwner, Prediction};
+    use crate::prediction::types::{GradedPrediction, NewPredictionGrade, Prediction};
     use crate::unit_of_work::FakeUnitOfWork;
 
     const NOTE_ID: Uuid = Uuid::from_u128(1);
     const RUNNING_STRATEGY_ID: Uuid = Uuid::from_u128(2);
-    const OWNER_STRATEGY_ID: Uuid = Uuid::from_u128(3);
     const NORMALIZED_PREDICTION_ID: Uuid = Uuid::from_u128(4);
 
     struct FakePredictionRepository {
-        owner_strategy_id: Option<Uuid>,
+        note_exists: bool,
         inserted: Mutex<Vec<NewPrediction>>,
     }
 
     #[async_trait]
     impl PredictionRepository for FakePredictionRepository {
-        async fn find_note_owner(
+        async fn note_exists(
             &self,
             _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            note_id: Uuid,
-        ) -> Result<Option<NoteOwner>, PredictionRepositoryError> {
-            Ok((note_id == NOTE_ID).then_some(NoteOwner {
-                strategy_id: self.owner_strategy_id,
-            }))
+            _note_id: Uuid,
+        ) -> Result<bool, PredictionRepositoryError> {
+            Ok(self.note_exists)
         }
 
         async fn stock_exists(
@@ -261,13 +253,10 @@ mod tests {
         }
     }
 
-    #[rstest]
-    #[case::another_strategy(Some(OWNER_STRATEGY_ID))]
-    #[case::unassigned(None)]
     #[tokio::test]
-    async fn record_accepts_a_note_owned_by_any_strategy(#[case] owner_strategy_id: Option<Uuid>) {
+    async fn record_accepts_an_existing_note() {
         let repository = Arc::new(FakePredictionRepository {
-            owner_strategy_id,
+            note_exists: true,
             inserted: Mutex::new(Vec::new()),
         });
         let use_cases =
@@ -317,7 +306,7 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[rstest::rstest]
     #[case::foreign_target("US:QZ-7", "FICTIONAL-ASSET-B")]
     #[case::foreign_benchmark("FICTIONAL-ASSET-A", "KR:QZ9012")]
     #[tokio::test]
@@ -327,7 +316,7 @@ mod tests {
     ) {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakePredictionRepository {
-            owner_strategy_id: None,
+            note_exists: true,
             inserted: Mutex::new(Vec::new()),
         });
         let use_cases = PredictionUseCases::new(unit_of_work.clone(), repository.clone());
