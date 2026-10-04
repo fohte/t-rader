@@ -360,6 +360,7 @@ mod tests {
                 "list_strategies",
                 "resume_strategy_task",
                 "submit_strategy_task",
+                "update_rss_feed",
             ]
         );
     }
