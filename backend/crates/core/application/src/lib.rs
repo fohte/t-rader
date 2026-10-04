@@ -41,6 +41,7 @@ pub mod short_selling_source;
 pub mod stock_group;
 pub mod stock_registration;
 pub mod strategy;
+pub mod strategy_earnings_target;
 pub mod strategy_existence;
 pub mod strategy_scope;
 pub mod strategy_task;

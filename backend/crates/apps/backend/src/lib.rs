@@ -55,6 +55,7 @@ pub fn build_http_state(
         rss_feed_use_cases: use_cases.rss_feeds(),
         strategy_scope_use_cases: Arc::new(use_cases.strategy_scope()),
         strategy_task_use_cases: use_cases.strategy_tasks(),
+        strategy_earnings_target_use_cases: use_cases.strategy_earnings_targets(),
         strategy_use_cases: use_cases.strategies(),
         trigger_use_cases,
         trade_note_use_cases: use_cases.trade_notes(),

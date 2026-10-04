@@ -116,6 +116,33 @@ pub(crate) mod stock_groups {
     }
 }
 
+pub(crate) mod earnings_targets {
+    use super::*;
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct EarningsTargetParams {
+        pub ref_kind: String,
+        pub ref_id: String,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct EarningsTargetDto {
+        pub ref_kind: String,
+        pub ref_id: String,
+        pub created_at: chrono::DateTime<chrono::FixedOffset>,
+    }
+
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct EarningsTargetChangeResult {
+        pub changed: bool,
+    }
+
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct ListEarningsTargetsResult {
+        pub targets: Vec<EarningsTargetDto>,
+    }
+}
+
 pub(crate) mod stock_registration {
     use super::*;
 

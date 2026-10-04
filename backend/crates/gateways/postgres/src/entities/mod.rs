@@ -44,6 +44,7 @@ pub mod stock;
 pub mod stock_group;
 pub mod stock_group_member;
 pub mod strategy;
+pub mod strategy_earnings_target;
 pub mod strategy_investable_amount;
 pub mod strategy_task;
 pub mod strategy_task_step;

@@ -12,7 +12,7 @@ use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto as strategy_dto;
 use entrypoint_agent_mcp::StrategyServer as EntrypointStrategyServer;
 
-use super::test_api::{ref_terms, refs, stock_groups, stock_registration};
+use super::test_api::{earnings_targets, ref_terms, refs, stock_groups, stock_registration};
 
 #[derive(Clone)]
 pub(super) struct StrategyServer {
@@ -465,6 +465,44 @@ impl StrategyServer {
             "list_stock_group_members",
             scope.into().id(),
             params,
+            None,
+            None,
+        )
+        .await
+    }
+
+    pub(super) async fn add_earnings_target(
+        &self,
+        scope: impl Into<StrategyScope>,
+        params: earnings_targets::EarningsTargetParams,
+    ) -> Result<ToolOutput<earnings_targets::EarningsTargetChangeResult>, McpError> {
+        self.invoke("add_earnings_target", scope.into().id(), params, None, None)
+            .await
+    }
+
+    pub(super) async fn remove_earnings_target(
+        &self,
+        scope: impl Into<StrategyScope>,
+        params: earnings_targets::EarningsTargetParams,
+    ) -> Result<ToolOutput<earnings_targets::EarningsTargetChangeResult>, McpError> {
+        self.invoke(
+            "remove_earnings_target",
+            scope.into().id(),
+            params,
+            None,
+            None,
+        )
+        .await
+    }
+
+    pub(super) async fn list_earnings_targets(
+        &self,
+        scope: impl Into<StrategyScope>,
+    ) -> Result<ToolOutput<earnings_targets::ListEarningsTargetsResult>, McpError> {
+        self.invoke(
+            "list_earnings_targets",
+            scope.into().id(),
+            serde_json::json!({}),
             None,
             None,
         )
