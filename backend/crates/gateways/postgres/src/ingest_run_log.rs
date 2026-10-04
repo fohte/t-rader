@@ -20,6 +20,27 @@ impl PostgresIngestRunLog {
     pub fn new(db: impl Into<DatabaseHandle>) -> Self {
         Self { db: db.into() }
     }
+
+    async fn update(
+        &self,
+        run_id: Uuid,
+        status: &str,
+        stats: Option<Value>,
+        error: Option<String>,
+    ) -> Result<(), PersistenceError> {
+        ingest_run::Entity::update(ingest_run::ActiveModel {
+            id: Unchanged(run_id),
+            finished_at: Set(Some(Utc::now().fixed_offset())),
+            status: Set(status.to_owned()),
+            stats: Set(stats),
+            error: Set(error),
+            ..Default::default()
+        })
+        .exec(&self.db)
+        .await
+        .map(|_| ())
+        .map_err(persistence_error)
+    }
 }
 
 #[async_trait]
@@ -40,22 +61,20 @@ impl IngestRunLog for PostgresIngestRunLog {
         run_id: Uuid,
         result: Result<Value, String>,
     ) -> Result<(), PersistenceError> {
-        let (status, stats, error) = match result {
-            Ok(stats) => ("succeeded", Some(stats), None),
-            Err(error) => ("failed", None, Some(error)),
-        };
-        ingest_run::Entity::update(ingest_run::ActiveModel {
-            id: Unchanged(run_id),
-            finished_at: Set(Some(Utc::now().fixed_offset())),
-            status: Set(status.to_string()),
-            stats: Set(stats),
-            error: Set(error),
-            ..Default::default()
-        })
-        .exec(&self.db)
-        .await
-        .map(|_| ())
-        .map_err(persistence_error)
+        match result {
+            Ok(stats) => self.update(run_id, "succeeded", Some(stats), None).await,
+            Err(error) => self.update(run_id, "failed", None, Some(error)).await,
+        }
+    }
+
+    async fn finish_with_stats_and_error(
+        &self,
+        run_id: Uuid,
+        stats: Value,
+        error: String,
+    ) -> Result<(), PersistenceError> {
+        self.update(run_id, "failed", Some(stats), Some(error))
+            .await
     }
 
     async fn fail_interrupted_before(
@@ -209,6 +228,38 @@ mod tests {
                 status: "failed".to_string(),
                 stats: None,
                 error: Some("operation failed".to_string()),
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn finish_with_stats_stores_partial_stats_for_a_failed_run(db: DatabaseHandle) {
+        let log = PostgresIngestRunLog::new(db.clone());
+        let run_id = log.start("news_content_fetch").await.expect("start run");
+        let started_at = row(&db, run_id).await.started_at;
+        let stats = json!({
+            "expired": 1,
+            "fetched": 0,
+            "failed": 0,
+            "retried": 1,
+            "interrupted_reason": "firecrawl_402",
+        });
+        log.finish_with_stats_and_error(run_id, stats.clone(), "firecrawl_402".to_owned())
+            .await
+            .expect("finish failed run with stats");
+
+        let run = row(&db, run_id).await;
+
+        assert_eq!(
+            normalize_finished_at(run),
+            ingest_run::Model {
+                id: run_id,
+                job: "news_content_fetch".to_owned(),
+                started_at,
+                finished_at: Some(epoch()),
+                status: "failed".to_owned(),
+                stats: Some(stats),
+                error: Some("firecrawl_402".to_owned()),
             },
         );
     }

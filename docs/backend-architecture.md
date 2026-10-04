@@ -27,6 +27,7 @@ backend/crates/
 ├── gateways/             # アプリから外部システムへの接続
 │   ├── postgres/
 │   ├── jquants/
+│   ├── firecrawl/
 │   ├── ibkr/
 │   ├── fred/
 │   ├── rss/
@@ -108,6 +109,8 @@ HTTP path など外部との契約は crate 名と独立して管理する。た
 `postgres` gateway は PostgreSQL と TimescaleDB の双方を扱う。TimescaleDB 固有 SQL を含むため、両者を一つの gateway として扱う。
 
 `jquants` gateway は J-Quants API client を持ち、日足、銘柄マスタ、決算予定、信用残、空売り、財務情報、保有構造、バリュエーションの port を実装する。
+
+`firecrawl` gateway は Firecrawl API client を持ち、ニュース本文取得の port を実装する。
 
 ## port と外部形式の変換
 

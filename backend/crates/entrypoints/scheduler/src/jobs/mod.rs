@@ -17,6 +17,7 @@ pub mod fred;
 pub mod ingest_run_recovery;
 pub mod jquants;
 pub mod news;
+pub mod news_content;
 pub mod prediction;
 pub mod strategy_task_reconcile;
 pub mod trigger_evaluation;
@@ -75,6 +76,30 @@ where
         state.dependencies.ingest_run_log.as_ref(),
         task_name,
         timeout,
+        task(state.clone()),
+    )
+    .await
+}
+
+pub(super) async fn run_with_ingest_run_log_state_and_failure_stats<F, Fut, Stats>(
+    context: WorkerContext,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: FnOnce(SchedulerState) -> Fut,
+    Fut: Future<Output = Result<Stats, (Stats, String)>>,
+    Stats: Serialize,
+{
+    let Some(state) = context.get_ext::<SchedulerState>() else {
+        return Err("scheduler state is not configured".to_string());
+    };
+
+    run_with_ingest_run_log_with_failure_stats(
+        state.dependencies.ingest_run_log.as_ref(),
+        task_name,
+        duration,
         task(state.clone()),
     )
     .await
@@ -164,6 +189,89 @@ where
     }
 }
 
+async fn run_with_ingest_run_log_with_failure_stats<F, Stats>(
+    ingest_run_log: &dyn IngestRunLog,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: Future<Output = Result<Stats, (Stats, String)>>,
+    Stats: Serialize,
+{
+    let run_id = match ingest_run_log.start(task_name).await {
+        Ok(run_id) => run_id,
+        Err(error) => {
+            let error = format!("failed to start ingest run log: {error}");
+            tracing::error!(task = task_name, %error, "failed to start scheduled job");
+            return Err(error);
+        }
+    };
+
+    let (recorded_result, failure_stats, timed_out) = match timeout(duration, task).await {
+        Ok(Ok(stats)) => (
+            serde_json::to_value(stats)
+                .map_err(|error| format!("failed to serialize job stats: {error}")),
+            None,
+            false,
+        ),
+        Ok(Err((stats, error))) => match serde_json::to_value(stats) {
+            Ok(stats) => (Err(error), Some(stats), false),
+            Err(serialization_error) => (
+                Err(format!(
+                    "{error}; failed to serialize job stats: {serialization_error}"
+                )),
+                None,
+                false,
+            ),
+        },
+        Err(_) => {
+            let error = format!("{task_name} timed out after {duration:?}");
+            tracing::error!(task = task_name, ?duration, "scheduled job timed out");
+            (Err(error), None, true)
+        }
+    };
+
+    let finish_result = match (&recorded_result, failure_stats) {
+        (Err(error), Some(stats)) => {
+            ingest_run_log
+                .finish_with_stats_and_error(run_id, stats, error.clone())
+                .await
+        }
+        _ => ingest_run_log.finish(run_id, recorded_result.clone()).await,
+    };
+    if let Err(log_error) = finish_result {
+        match &recorded_result {
+            Ok(_) => {
+                tracing::error!(
+                    task = task_name,
+                    %log_error,
+                    "scheduled job completed but its ingest run result could not be persisted"
+                );
+                return Ok(());
+            }
+            Err(task_error) => {
+                let error = format!("{task_error}; failed to finish ingest run log: {log_error}");
+                tracing::error!(task = task_name, %error, "failed to persist scheduled job result");
+                return Err(error);
+            }
+        }
+    }
+
+    match recorded_result {
+        Ok(_) => {
+            tracing::info!(task = task_name, "scheduled job completed");
+            Ok(())
+        }
+        Err(error) => {
+            if !timed_out {
+                tracing::warn!(task = task_name, %error, "scheduled job failed");
+            }
+            Err(error)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -184,7 +292,10 @@ mod tests {
 
     use rstest::rstest;
 
-    use super::{TimedTaskResult, run_with_ingest_run_log, run_with_timeout};
+    use super::{
+        TimedTaskResult, run_with_ingest_run_log, run_with_ingest_run_log_with_failure_stats,
+        run_with_timeout,
+    };
 
     const RUN_ID: Uuid = Uuid::from_u128(1);
 
@@ -196,6 +307,11 @@ mod tests {
         Finish {
             run_id: Uuid,
             result: Result<Value, String>,
+        },
+        FinishWithStats {
+            run_id: Uuid,
+            stats: Value,
+            error: String,
         },
     }
 
@@ -230,6 +346,26 @@ mod tests {
                 .lock()
                 .await
                 .push(Call::Finish { run_id, result });
+            if self.fail_finish {
+                Err(PersistenceError::Database(
+                    "database unavailable".to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn finish_with_stats_and_error(
+            &self,
+            run_id: Uuid,
+            stats: Value,
+            error: String,
+        ) -> Result<(), PersistenceError> {
+            self.calls.lock().await.push(Call::FinishWithStats {
+                run_id,
+                stats,
+                error,
+            });
             if self.fail_finish {
                 Err(PersistenceError::Database(
                     "database unavailable".to_string(),
@@ -306,6 +442,36 @@ mod tests {
                     Call::Finish {
                         run_id: RUN_ID,
                         result: Ok(json!({ "rows": 3 })),
+                    },
+                ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn records_partial_stats_when_the_job_fails_with_stats() {
+        let log = Arc::new(FakeIngestRunLog::default());
+
+        let result = run_with_ingest_run_log_with_failure_stats(
+            log.as_ref(),
+            "news_content_fetch",
+            Duration::from_secs(1),
+            async { Err((IngestStats { rows: 3 }, "firecrawl_402".to_owned())) },
+        )
+        .await;
+
+        assert_eq!(
+            (result, log.calls.lock().await.clone()),
+            (
+                Err("firecrawl_402".to_owned()),
+                vec![
+                    Call::Start {
+                        job: "news_content_fetch".to_owned(),
+                    },
+                    Call::FinishWithStats {
+                        run_id: RUN_ID,
+                        stats: json!({ "rows": 3 }),
+                        error: "firecrawl_402".to_owned(),
                     },
                 ],
             ),

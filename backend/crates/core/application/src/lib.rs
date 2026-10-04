@@ -27,6 +27,7 @@ pub mod market_daily_bar_source;
 pub mod mcp_tool_call_count;
 pub mod news;
 pub mod news_aggregator;
+pub mod news_content;
 pub mod note;
 pub mod note_kind;
 pub mod persistence;

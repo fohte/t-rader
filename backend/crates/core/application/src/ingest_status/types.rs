@@ -5,8 +5,8 @@ use uuid::Uuid;
 use super::{
     DAILY_BARS_INGEST_JOB, EARNINGS_SCHEDULE_INGEST_JOB, EQUITY_MASTER_INGEST_JOB,
     FINANCIAL_SUMMARY_INGEST_JOB, FRED_INGEST_JOB, MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB,
-    PREDICTION_GRADING_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB,
-    SHORT_SALE_REPORT_INGEST_JOB, VALUATION_INGEST_JOB,
+    NEWS_CONTENT_FETCH_JOB, PREDICTION_GRADING_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB,
+    SHORT_RATIO_INGEST_JOB, SHORT_SALE_REPORT_INGEST_JOB, VALUATION_INGEST_JOB,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,7 +15,7 @@ pub struct IngestJobDefinition {
     pub has_data_date: bool,
 }
 
-pub const INGEST_JOBS: [IngestJobDefinition; 12] = [
+pub const INGEST_JOBS: [IngestJobDefinition; 13] = [
     IngestJobDefinition {
         identifier: DAILY_BARS_INGEST_JOB,
         has_data_date: true,
@@ -59,6 +59,10 @@ pub const INGEST_JOBS: [IngestJobDefinition; 12] = [
     IngestJobDefinition {
         identifier: NEWS_AGGREGATION_JOB,
         has_data_date: true,
+    },
+    IngestJobDefinition {
+        identifier: NEWS_CONTENT_FETCH_JOB,
+        has_data_date: false,
     },
     IngestJobDefinition {
         identifier: PREDICTION_GRADING_JOB,
