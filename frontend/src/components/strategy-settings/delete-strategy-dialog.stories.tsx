@@ -48,7 +48,7 @@ function QueryDecorator({
     <QueryClientProvider client={client}>
       <DeleteStrategyDialog
         strategyId="strat-1"
-        strategyName="半導体短期スイング"
+        strategyName="架空戦略"
         open
         onOpenChange={() => {}}
         defaultConfirmText={defaultConfirmText}

@@ -3,6 +3,7 @@
 //! 各メソッドは ctx から検証済み `StrategyScope` (と必要なら execution_id) を作り、対応する
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
 
+mod news;
 mod predictions;
 mod stock_groups;
 mod stock_registration;
@@ -27,8 +28,7 @@ use super::dto::{
     ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
     ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, ReadValuationParams,
     ReadValuationResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
-    ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
-    WriteNoteParams, WriteNoteResult,
+    ResolveCommentResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::media::TOOL_NAME as QUERY_MEDIA_TOOL_NAME;
@@ -77,21 +77,19 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
         Parameters(params): Parameters<WriteNoteParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<WriteNoteResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.strategy_scope_from_ctx(&ctx).await?;
         // a2a_task_id を含めず execution_step_id 部分のみをキーにする。resume で
         // a2a_task_id (= x-execution-id の task_id 部分) が変わっても、同じステップが
         // 書くノートが 1 件に収束するようにするため。
         let execution_id = execution_step_id_from_ctx(&ctx).map(|id| id.to_string());
-        self.write_note_inner(scope, execution_id, params)
-            .await
-            .map(Json)
+        self.write_note_inner(execution_id, params).await.map(Json)
     }
 
     /// ノートを読み出す
@@ -112,7 +110,7 @@ impl StrategyServer {
     /// 全ノート一覧を返す (新しい順)
     #[tool(
         name = "list_notes",
-        description = "List all notes, newest first. Filter by kind, ref (kind:id), status, and/or updated_after. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
+        description = "List all notes, newest first. Filter by kind, tag (exact match against frontmatter_json.tags), ref (kind:id), status, and/or updated_after. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
         annotations(read_only_hint = true)
     )]
     async fn list_notes(
@@ -134,10 +132,10 @@ impl StrategyServer {
         Parameters(params): Parameters<CreateAnnotationParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<CreateAnnotationResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.strategy_scope_from_ctx(&ctx).await?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
         let execution_task_id = execution_task_id_from_ctx(&ctx);
-        self.create_annotation_inner(scope, execution_step_id, execution_task_id, params)
+        self.create_annotation_inner(execution_step_id, execution_task_id, params)
             .await
             .map(Json)
     }
@@ -247,7 +245,7 @@ impl StrategyServer {
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to retrieve search_news items whose content_status is not fetched by searching the item's title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -375,21 +373,6 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
-    #[tool(
-        name = "search_news",
-        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
-        annotations(read_only_hint = true)
-    )]
-    async fn search_news(
-        &self,
-        Parameters(params): Parameters<SearchNewsParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<SearchNewsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.search_news_inner(scope, params).await.map(Json)
-    }
-
     /// 参照型 (stock/indicator/group) を id/name/別名の部分一致で横断検索する
     #[tool(
         name = "search_refs",
@@ -485,6 +468,7 @@ impl StrategyServer {
             + Self::stock_groups_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
+            + Self::news_tool_router()
     }
 
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
@@ -572,6 +556,7 @@ mod tests {
                 ("create_stock_group", None),
                 ("eval_indicator", None),
                 ("eval_python", None),
+                ("get_news_content", Some(true)),
                 ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),

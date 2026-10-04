@@ -22,19 +22,14 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    async fn create_test_annotation(server: &TestServer, strategy_id: Uuid) -> Uuid {
-        create_test_annotation_with_symbol(server, strategy_id, "demo-code").await
+    async fn create_test_annotation(server: &TestServer) -> Uuid {
+        create_test_annotation_with_symbol(server, "sample-code").await
     }
 
-    async fn create_test_annotation_with_symbol(
-        server: &TestServer,
-        strategy_id: Uuid,
-        target_symbol: &str,
-    ) -> Uuid {
+    async fn create_test_annotation_with_symbol(server: &TestServer, target_symbol: &str) -> Uuid {
         let res = server
             .post("/api/annotations")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "target_symbol": target_symbol,
                 "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
@@ -49,7 +44,6 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "id": "<id>",
-                    "strategy_id": strategy_id,
                     "target_symbol": target_symbol,
                     "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
@@ -70,14 +64,12 @@ mod tests {
 
     async fn create_annotation_at(
         server: &TestServer,
-        strategy_id: Uuid,
         target_symbol: &str,
         timestamp: &str,
     ) -> Value {
         let response = server
             .post("/api/annotations")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "target_symbol": target_symbol,
                 "target_kind": "sample-kind",
                 "timestamp": timestamp,
@@ -94,7 +86,6 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "id": "<id>",
-                    "strategy_id": strategy_id,
                     "target_symbol": target_symbol,
                     "target_kind": "sample-kind",
                     "timestamp": timestamp,
@@ -113,18 +104,9 @@ mod tests {
         body
     }
 
-    async fn create_annotation_read_context(
-        db: gateway_postgres::DatabaseHandle,
-    ) -> (gateway_postgres::DatabaseHandle, TestServer, Uuid) {
-        let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
-        (db, server, strategy_id)
-    }
-
-    fn expected_annotation_response(strategy_id: Uuid, timestamp: &str) -> Value {
+    fn expected_annotation_response(timestamp: &str) -> Value {
         json!({
             "id": "<id>",
-            "strategy_id": strategy_id,
             "target_symbol": "SAMPLE-A",
             "target_kind": "sample-kind",
             "timestamp": timestamp,
@@ -141,27 +123,14 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_annotations_filters_by_strategy_and_symbol_newest_first(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let (db, server, strategy_id) = create_annotation_read_context(db).await;
-        let foreign_strategy_id = insert_test_strategy(&db, "foreign-strategy").await;
-        create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
-        create_annotation_at(&server, strategy_id, "SAMPLE-B", "2026-06-03T00:00:00Z").await;
-        create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-02T00:00:00Z").await;
-        create_annotation_at(
-            &server,
-            foreign_strategy_id,
-            "SAMPLE-A",
-            "2026-06-04T00:00:00Z",
-        )
-        .await;
+    async fn list_annotations_filters_by_symbol_newest_first(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
+        create_annotation_at(&server, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
+        create_annotation_at(&server, "SAMPLE-B", "2026-06-03T00:00:00Z").await;
+        create_annotation_at(&server, "SAMPLE-A", "2026-06-02T00:00:00Z").await;
+        create_annotation_at(&server, "SAMPLE-A", "2026-06-04T00:00:00Z").await;
 
-        let list = server
-            .get(&format!(
-                "/api/annotations?strategy_id={strategy_id}&target_symbol=SAMPLE-A"
-            ))
-            .await;
+        let list = server.get("/api/annotations?target_symbol=SAMPLE-A").await;
         assert_eq!(
             (
                 list.status_code(),
@@ -170,8 +139,9 @@ mod tests {
             (
                 StatusCode::OK,
                 json!([
-                    expected_annotation_response(strategy_id, "2026-06-02T00:00:00Z"),
-                    expected_annotation_response(strategy_id, "2026-06-01T00:00:00Z"),
+                    expected_annotation_response("2026-06-04T00:00:00Z"),
+                    expected_annotation_response("2026-06-02T00:00:00Z"),
+                    expected_annotation_response("2026-06-01T00:00:00Z"),
                 ]),
             ),
         );
@@ -179,9 +149,8 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn get_annotation_returns_annotation(db: gateway_postgres::DatabaseHandle) {
-        let (_db, server, strategy_id) = create_annotation_read_context(db).await;
-        let created =
-            create_annotation_at(&server, strategy_id, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
+        let (_db, server) = create_test_server_with_db(db).await;
+        let created = create_annotation_at(&server, "SAMPLE-A", "2026-06-01T00:00:00Z").await;
         let response = server
             .get(&format!(
                 "/api/annotations/{}",
@@ -196,14 +165,14 @@ mod tests {
             ),
             (
                 StatusCode::OK,
-                expected_annotation_response(strategy_id, "2026-06-01T00:00:00Z"),
+                expected_annotation_response("2026-06-01T00:00:00Z"),
             ),
         );
     }
 
     #[backend_test_macros::database_test]
     async fn get_annotation_returns_not_found_for_missing_id(db: gateway_postgres::DatabaseHandle) {
-        let (_db, server, _strategy_id) = create_annotation_read_context(db).await;
+        let (_db, server) = create_test_server_with_db(db).await;
         let missing_id = Uuid::nil();
         let response = server.get(&format!("/api/annotations/{missing_id}")).await;
 
@@ -217,7 +186,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_without_strategy_id_succeeds(db: gateway_postgres::DatabaseHandle) {
+    async fn create_annotation_succeeds_without_strategy_id(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
@@ -240,7 +209,6 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "id": "<id>",
-                    "strategy_id": null,
                     "target_symbol": "N225",
                     "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
@@ -259,20 +227,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_and_update_accept_cross_strategy_and_unscoped_linked_notes(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
+    async fn create_and_update_accept_linked_notes(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "owner").await;
-        let foreign_strategy_id = insert_test_strategy(&db, "foreign").await;
-        let foreign_note_id =
-            insert_test_note(&db, foreign_strategy_id, "foreign note", "body").await;
-        let unscoped_note_id =
-            crate::testing::insert_test_note_in_scope(&db, None, "unscoped note", "body").await;
+        let created_note_id = insert_test_note(&db, "created note", "body").await;
+        let updated_note_id = insert_test_note(&db, "updated note", "body").await;
         let initial_annotation_res = server
             .post("/api/annotations")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "target_symbol": "TEST-SYMBOL",
                 "target_kind": "sample_kind",
                 "timestamp": "2026-01-01T00:00:00Z",
@@ -291,7 +252,6 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "id": "<id>",
-                    "strategy_id": strategy_id,
                     "target_symbol": "TEST-SYMBOL",
                     "target_kind": "sample_kind",
                     "timestamp": "2026-01-01T00:00:00Z",
@@ -311,12 +271,11 @@ mod tests {
         let create_res = server
             .post("/api/annotations")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "target_symbol": "TEST-SYMBOL",
                 "target_kind": "sample_kind",
                 "timestamp": "2026-01-01T00:00:00Z",
                 "text": "text",
-                "linked_note_id": foreign_note_id,
+                "linked_note_id": created_note_id,
             }))
             .await;
         let created_annotation_body = create_res.json::<Value>();
@@ -329,7 +288,7 @@ mod tests {
 
         let update_res = server
             .patch(&format!("/api/annotations/{annotation_id}"))
-            .json(&json!({ "linked_note_id": unscoped_note_id }))
+            .json(&json!({ "linked_note_id": updated_note_id }))
             .await;
         let update_result = (
             update_res.status_code(),
@@ -345,8 +304,8 @@ mod tests {
             .collect::<Vec<_>>();
         saved_annotation_links.sort_unstable_by_key(|(id, _)| *id);
         let mut expected_annotation_links = vec![
-            (annotation_id, Some(unscoped_note_id)),
-            (created_annotation_id, Some(foreign_note_id)),
+            (annotation_id, Some(updated_note_id)),
+            (created_annotation_id, Some(created_note_id)),
         ];
         expected_annotation_links.sort_unstable_by_key(|(id, _)| *id);
 
@@ -357,14 +316,13 @@ mod tests {
                     StatusCode::CREATED,
                     json!({
                         "id": "<id>",
-                        "strategy_id": strategy_id,
                         "target_symbol": "TEST-SYMBOL",
                         "target_kind": "sample_kind",
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
                         "text": "text",
                         "status": "unread",
-                        "linked_note_id": foreign_note_id,
+                        "linked_note_id": created_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
@@ -376,14 +334,13 @@ mod tests {
                     StatusCode::OK,
                     json!({
                         "id": "<id>",
-                        "strategy_id": strategy_id,
                         "target_symbol": "TEST-SYMBOL",
                         "target_kind": "sample_kind",
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
                         "text": "text",
                         "status": "unread",
-                        "linked_note_id": unscoped_note_id,
+                        "linked_note_id": updated_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
@@ -403,9 +360,7 @@ mod tests {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "sample-annotation-strategy").await;
-        let anno_id =
-            create_test_annotation_with_symbol(&server, strategy_id, "sample-symbol").await;
+        let anno_id = create_test_annotation_with_symbol(&server, "sample-symbol").await;
 
         let res = server
             .post(&format!("/api/annotations/{anno_id}/reject"))
@@ -421,7 +376,6 @@ mod tests {
                 StatusCode::OK,
                 json!({
                     "id": "<id>",
-                    "strategy_id": strategy_id,
                     "target_symbol": "sample-symbol",
                     "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
@@ -447,9 +401,7 @@ mod tests {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "sample-annotation-strategy").await;
-        let anno_id =
-            create_test_annotation_with_symbol(&server, strategy_id, "sample-symbol").await;
+        let anno_id = create_test_annotation_with_symbol(&server, "sample-symbol").await;
         let execution_step_id = Uuid::from_u128(501);
         set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;
 
@@ -467,7 +419,6 @@ mod tests {
                 StatusCode::OK,
                 json!({
                     "id": "<id>",
-                    "strategy_id": strategy_id,
                     "target_symbol": "sample-symbol",
                     "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
@@ -493,14 +444,11 @@ mod tests {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let annotation_strategy_id = insert_test_strategy(&db, "sample-annotation-strategy").await;
         let task_strategy_id = insert_test_strategy(&db, "sample-task-strategy").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let anno_id =
-            create_test_annotation_with_symbol(&server, annotation_strategy_id, "sample-symbol")
-                .await;
+        let anno_id = create_test_annotation_with_symbol(&server, "sample-symbol").await;
         let execution_step_id = Uuid::from_u128(502);
         insert_test_strategy_task_step(&db, task_strategy_id, execution_step_id).await;
         set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;
@@ -524,7 +472,6 @@ mod tests {
                 StatusCode::OK,
                 json!({
                 "id": "<id>",
-                "strategy_id": annotation_strategy_id,
                 "target_symbol": "sample-symbol",
                 "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
@@ -561,7 +508,7 @@ mod tests {
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let anno_id = create_test_annotation(&server, strategy_id).await;
+        let anno_id = create_test_annotation(&server).await;
         let execution_step_id = Uuid::from_u128(603);
         insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
         set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;
@@ -577,8 +524,7 @@ mod tests {
                     StatusCode::OK,
                     json!({
                         "id": "<id>",
-                        "strategy_id": strategy_id,
-                        "target_symbol": "demo-code",
+                        "target_symbol": "sample-code",
                         "target_kind": "sample-kind",
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
@@ -616,7 +562,7 @@ mod tests {
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let anno_id = create_test_annotation(&server, strategy_id).await;
+        let anno_id = create_test_annotation(&server).await;
         let execution_step_id = Uuid::from_u128(604);
         insert_test_strategy_task_step(&db, strategy_id, execution_step_id).await;
         set_test_annotation_execution_step_id(&db, anno_id, execution_step_id).await;

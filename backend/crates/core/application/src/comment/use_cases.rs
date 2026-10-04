@@ -239,10 +239,10 @@ impl CommentUseCases {
         target_id: Uuid,
     ) -> Result<(), CommentUseCaseError> {
         self.repository
-            .target_strategy_id(transaction, target_kind, target_id)
+            .target_exists(transaction, target_kind, target_id)
             .await?
-            .ok_or_else(|| CommentUseCaseError::NotFound("comment target not found".into()))?;
-        Ok(())
+            .then_some(())
+            .ok_or_else(|| CommentUseCaseError::NotFound("comment target not found".into()))
     }
 
     async fn validate_anchor(

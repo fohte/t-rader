@@ -21,7 +21,7 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::sea_query::Expr;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+    use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder, RuntimeErr};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
@@ -61,28 +61,20 @@ mod tests {
         })
     }
 
-    async fn create_test_note_with_body(
-        server: &TestServer,
-        strategy_id: Uuid,
-        title: &str,
-        body_md: &str,
-    ) -> Uuid {
-        create_test_note_with_body_and_creator(server, strategy_id, title, body_md, "human").await
+    async fn create_test_note_with_body(server: &TestServer, title: &str, body_md: &str) -> Uuid {
+        create_test_note_with_body_and_creator(server, title, body_md, "human").await
     }
 
     async fn create_test_note_with_creator(
         server: &TestServer,
-        strategy_id: Uuid,
         title: &str,
         created_by_kind: &str,
     ) -> Uuid {
-        create_test_note_with_body_and_creator(server, strategy_id, title, "body", created_by_kind)
-            .await
+        create_test_note_with_body_and_creator(server, title, "body", created_by_kind).await
     }
 
     async fn create_test_note_with_body_and_creator(
         server: &TestServer,
-        strategy_id: Uuid,
         title: &str,
         body_md: &str,
         created_by_kind: &str,
@@ -90,7 +82,6 @@ mod tests {
         let res = server
             .post("/api/notes")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "title": title,
                 "body_md": body_md,
                 "created_by_kind": created_by_kind,
@@ -107,10 +98,10 @@ mod tests {
                     "version_id": "<version_id>",
                     "version_no": 1,
                     "is_current": true,
-                    "strategy_id": strategy_id,
                     "title": title,
                     "body_md": body_md,
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": if created_by_kind == "human" { "approved" } else { "unread" },
                     "trigger": null,
@@ -124,6 +115,24 @@ mod tests {
             ),
         );
         note_id
+    }
+
+    async fn create_test_note_with_frontmatter(
+        server: &TestServer,
+        title: &str,
+        frontmatter_json: Value,
+    ) -> Uuid {
+        let response = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": title,
+                "body_md": "body",
+                "frontmatter_json": frontmatter_json,
+            }))
+            .await;
+        let body = response.json::<Value>();
+        assert_eq!(response.status_code(), StatusCode::CREATED);
+        Uuid::parse_str(body["id"].as_str().expect("note id")).expect("uuid")
     }
 
     async fn insert_test_version(
@@ -159,10 +168,9 @@ mod tests {
     async fn create_note_with_approved_initial_version(
         server: &TestServer,
         db: &gateway_postgres::DatabaseHandle,
-        strategy_id: Uuid,
         title: &str,
     ) -> (Uuid, Uuid) {
-        let note_id = create_test_note_with_creator(server, strategy_id, title, "llm").await;
+        let note_id = create_test_note_with_creator(server, title, "llm").await;
         let initial = find_current_note_version(db, note_id)
             .await
             .unwrap()
@@ -204,30 +212,47 @@ mod tests {
             .diff_json
     }
 
-    /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
-    /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
     #[backend_test_macros::database_test]
-    async fn note_without_strategy_id_rejects_execution_id(db: gateway_postgres::DatabaseHandle) {
+    async fn note_execution_id_is_globally_unique(db: gateway_postgres::DatabaseHandle) {
         let (db, _server) = create_test_server_with_db(db).await;
-
-        let result = note::ActiveModel {
+        let make_note = || note::ActiveModel {
             id: Set(Uuid::new_v4()),
-            strategy_id: Set(None),
             kind: Set(None),
             trigger: Set(None),
             trigger_label: Set(None),
             created_at: NotSet,
             updated_at: NotSet,
-            execution_id: Set(Some("exec-1".into())),
-        }
-        .insert(&db)
-        .await;
+            execution_id: Set(Some("sample-execution".into())),
+        };
 
-        assert!(result.is_err());
+        make_note()
+            .insert(&db)
+            .await
+            .expect("first execution id inserts");
+        let duplicate = make_note().insert(&db).await;
+        let normalized_error = duplicate.err().and_then(|error| match error {
+            DbErr::Exec(RuntimeErr::SqlxError(error))
+            | DbErr::Query(RuntimeErr::SqlxError(error)) => match error.as_ref() {
+                sea_orm::SqlxError::Database(error) => Some((
+                    error.code().map(|code| code.into_owned()),
+                    error.constraint().map(str::to_owned),
+                )),
+                _ => None,
+            },
+            _ => None,
+        });
+
+        assert_eq!(
+            normalized_error,
+            Some((
+                Some("23505".to_owned()),
+                Some("idx_note_execution_id".to_owned()),
+            )),
+        );
     }
 
     #[backend_test_macros::database_test]
-    async fn create_note_without_strategy_id_succeeds(db: gateway_postgres::DatabaseHandle) {
+    async fn create_note_succeeds_without_strategy_ownership(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
@@ -248,13 +273,13 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "id": "<id>",
-                    "strategy_id": null,
                     "version_id": "<version_id>",
                     "version_no": 1,
                     "is_current": true,
                     "title": "市況ノート",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "tags": [],
                     "graphs_json": [],
                     "kind": null,
                     "status": "approved",
@@ -265,6 +290,102 @@ mod tests {
                     "updated_at": "<updated_at>",
                     "execution_id": null,
                 }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_exact_tag_and_returns_tags(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_, server) = create_test_server_with_db(db).await;
+        create_test_note_with_frontmatter(
+            &server,
+            "tagged note",
+            json!({ "tags": ["demo-focus", "demo-review"] }),
+        )
+        .await;
+        create_test_note_with_frontmatter(
+            &server,
+            "similarly named tag note",
+            json!({ "tags": ["demo-focus-extra"] }),
+        )
+        .await;
+
+        let response = server.get("/api/notes?tag=demo-focus").await;
+        let actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_note_response)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (response.status_code(), actual),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": "tagged note",
+                    "body_md": "body",
+                    "frontmatter_json": { "tags": ["demo-focus", "demo-review"] },
+                    "tags": ["demo-focus", "demo-review"],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                })],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_treats_empty_tag_as_no_filter(db: gateway_postgres::DatabaseHandle) {
+        let (_, server) = create_test_server_with_db(db).await;
+        create_test_note_with_frontmatter(
+            &server,
+            "tagged note",
+            json!({ "tags": ["sample-label"] }),
+        )
+        .await;
+
+        let response = server.get("/api/notes?tag=").await;
+        let actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_note_response)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (response.status_code(), actual),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": "tagged note",
+                    "body_md": "body",
+                    "frontmatter_json": { "tags": ["sample-label"] },
+                    "tags": ["sample-label"],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                })],
             ),
         );
     }
@@ -315,10 +436,10 @@ mod tests {
                     "version_id": "<version_id>",
                     "version_no": 1,
                     "is_current": true,
-                    "strategy_id": null,
                     "title": "sample note",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "approved",
                     "trigger": null,
@@ -337,8 +458,7 @@ mod tests {
                     "create".to_string(),
                     json!({
                         "title": "sample note",
-                        "strategy_id": null,
-                        "from_version_id": null,
+                    "from_version_id": null,
                         "to_version_id": version_id,
                         "version_no": 1,
                     }),
@@ -353,9 +473,8 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
         let (note_id, initial_id) =
-            create_note_with_approved_initial_version(&server, &db, strategy_id, "review").await;
+            create_note_with_approved_initial_version(&server, &db, "review").await;
         let older_pending_id = insert_test_version(&db, note_id, 2, "unread", false).await;
         insert_test_version(&db, note_id, 3, "rejected", false).await;
         let approved_id = insert_test_version(&db, note_id, 4, "unread", false).await;
@@ -398,8 +517,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
-        let note_id = create_test_note_with_creator(&server, strategy_id, "review", "llm").await;
+        let note_id = create_test_note_with_creator(&server, "review", "llm").await;
         let initial = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -457,13 +575,12 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
         let (reviewed_note, _) =
-            create_note_with_approved_initial_version(&server, &db, strategy_id, "reviewed").await;
+            create_note_with_approved_initial_version(&server, &db, "reviewed").await;
         insert_test_version(&db, reviewed_note, 2, "unread", false).await;
         insert_test_version(&db, reviewed_note, 3, "unread", false).await;
         let (untouched_note, _) =
-            create_note_with_approved_initial_version(&server, &db, strategy_id, "untouched").await;
+            create_note_with_approved_initial_version(&server, &db, "untouched").await;
         insert_test_version(&db, untouched_note, 2, "unread", false).await;
         insert_test_version(&db, untouched_note, 3, "unread", false).await;
 
@@ -546,8 +663,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "strategy").await;
-        let note_id = create_test_note_with_body(&server, strategy_id, "title", "original").await;
+        let note_id = create_test_note_with_body(&server, "title", "original").await;
 
         let res = server
             .patch(&format!("/api/notes/{note_id}"))
@@ -570,15 +686,45 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn update_note_rejects_non_string_tags_and_keeps_original_frontmatter(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let note_id = create_test_note_with_frontmatter(
+            &server,
+            "title",
+            json!({ "tags": ["sample-label"] }),
+        )
+        .await;
+
+        let res = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({ "frontmatter_json": { "tags": "sample-label" } }))
+            .await;
+        let response = res.json::<Value>();
+        let saved_frontmatter = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .map(|version| version.frontmatter_json);
+
+        assert_eq!(
+            (res.status_code(), response, saved_frontmatter),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "frontmatter_json.tags must be an array of strings" }),
+                Some(json!({ "tags": ["sample-label"] })),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn reject_note_without_execution_id_does_not_submit_task(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "sample-note-strategy").await;
-        let note_id =
-            create_test_note_with_creator(&server, strategy_id, "sample title", "llm").await;
+        let note_id = create_test_note_with_creator(&server, "sample title", "llm").await;
         let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -627,9 +773,7 @@ mod tests {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "sample-note-strategy").await;
-        let note_id =
-            create_test_note_with_creator(&server, strategy_id, "sample title", "llm").await;
+        let note_id = create_test_note_with_creator(&server, "sample title", "llm").await;
         let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -680,15 +824,13 @@ mod tests {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let note_strategy_id = insert_test_strategy(&db, "sample-note-strategy").await;
         let first_task_strategy_id = insert_test_strategy(&db, "sample-first-task-strategy").await;
         let second_task_strategy_id =
             insert_test_strategy(&db, "sample-second-task-strategy").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let note_id =
-            create_test_note_with_creator(&server, note_strategy_id, "sample title", "llm").await;
+        let note_id = create_test_note_with_creator(&server, "sample title", "llm").await;
         let rejected_version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -778,7 +920,7 @@ mod tests {
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let note_id = create_test_note_with_creator(&server, strategy_id, "t", "llm").await;
+        let note_id = create_test_note_with_creator(&server, "t", "llm").await;
         let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -855,7 +997,7 @@ mod tests {
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let note_id = create_test_note_with_creator(&server, strategy_id, "t", "llm").await;
+        let note_id = create_test_note_with_creator(&server, "t", "llm").await;
         let version = find_current_note_version(&db, note_id)
             .await
             .unwrap()
@@ -889,10 +1031,8 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
         let note_id = create_test_note_with_body(
             &server,
-            strategy_id,
             "note",
             indoc::indoc! {"
                 line one
@@ -964,7 +1104,6 @@ mod tests {
                     "version_id": "<version_id>",
                     "version_no": 2,
                     "is_current": true,
-                    "strategy_id": strategy_id,
                     "title": "note",
                     "body_md": indoc::indoc! {"
                         prefix
@@ -972,6 +1111,7 @@ mod tests {
                         line two
                         line three"},
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "approved",
                     "trigger": null,

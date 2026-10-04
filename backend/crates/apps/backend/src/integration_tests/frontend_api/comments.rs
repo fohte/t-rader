@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::{
-        assert_response_eq, create_strategy, normalize_annotation_response, normalize_note_response,
+        assert_response_eq, normalize_annotation_response, normalize_note_response,
     };
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
@@ -82,8 +82,7 @@ mod tests {
     }
 
     async fn create_note_comment(server: &axum_test::TestServer) -> Value {
-        let strategy_id = create_strategy(server, "s").await;
-        let note_id = create_note(server, &strategy_id, "body").await;
+        let note_id = create_note(server, "body").await;
         let version_id = first_note_version_id(server, &note_id, "note", "body").await;
         let response = server
             .post("/api/comments")
@@ -302,15 +301,10 @@ mod tests {
         );
     }
 
-    async fn create_note(
-        server: &axum_test::TestServer,
-        strategy_id: &str,
-        body_md: &str,
-    ) -> String {
+    async fn create_note(server: &axum_test::TestServer, body_md: &str) -> String {
         let created = server
             .post("/api/notes")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "title": "note",
                 "body_md": body_md,
             }))
@@ -325,10 +319,10 @@ mod tests {
                     "version_id": "<version_id>",
                     "version_no": 1,
                     "is_current": true,
-                    "strategy_id": strategy_id,
                     "title": "note",
                     "body_md": body_md,
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "approved",
                     "trigger": null,
@@ -380,11 +374,10 @@ mod tests {
         body[0]["id"].as_str().expect("version id").to_string()
     }
 
-    async fn create_annotation(server: &axum_test::TestServer, strategy_id: &str) -> String {
+    async fn create_annotation(server: &axum_test::TestServer) -> String {
         let created = server
             .post("/api/annotations")
             .json(&json!({
-                "strategy_id": strategy_id,
                 "target_symbol": "demo-code",
                 "target_kind": "sample-kind",
                 "timestamp": "2026-01-01T00:00:00Z",
@@ -401,7 +394,6 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "id": "<id>",
-                    "strategy_id": strategy_id,
                     "target_symbol": "demo-code",
                     "target_kind": "sample-kind",
                     "timestamp": "2026-01-01T00:00:00Z",
@@ -425,10 +417,8 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        let strategy_id = create_strategy(&server, "s").await;
         let note_id = create_note(
             &server,
-            &strategy_id,
             indoc::indoc! {"
                 line one
                 line two
@@ -480,10 +470,8 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        let strategy_id = create_strategy(&server, "s").await;
         let note_id = create_note(
             &server,
-            &strategy_id,
             indoc::indoc! {"
                 line one
                 line two
@@ -535,8 +523,7 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
-        let strategy_id = create_strategy(&server, "s").await;
-        let annotation_id = create_annotation(&server, &strategy_id).await;
+        let annotation_id = create_annotation(&server).await;
 
         let res = server
             .post("/api/comments")
