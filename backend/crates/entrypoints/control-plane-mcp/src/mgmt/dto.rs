@@ -7,6 +7,22 @@ use uuid::Uuid;
 
 use core_application::rss_feed::RssFeed;
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetNoteStatusChangeCountsParams {
+    /// 集計期間の開始時刻 (含む)。RFC 3339 形式で指定する。
+    pub from: DateTime<FixedOffset>,
+    /// 集計期間の終了時刻 (含まない)。RFC 3339 形式で指定する。
+    pub to: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct GetNoteStatusChangeCountsResult {
+    pub from: DateTime<FixedOffset>,
+    pub to: DateTime<FixedOffset>,
+    pub approved_count: i64,
+    pub rejected_count: i64,
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StrategySummary {
     pub strategy_id: Uuid,
