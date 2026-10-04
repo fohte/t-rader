@@ -40,6 +40,7 @@ export const Edit: Story = {
       display_name: 'Bloomberg JP',
       url: 'https://feeds.bloomberg.co.jp/markets.xml',
       enabled: true,
+      content_source: 'none',
       created_at: '2026-06-28T00:00:00Z',
       updated_at: '2026-06-28T00:00:00Z',
     },

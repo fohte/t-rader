@@ -19,7 +19,7 @@
 | [public.trigger](public.trigger.md)                                                         | 12      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                                             | BASE TABLE |
 | [public.custom_indicator](public.custom_indicator.md)                                       | 10      | 共有または戦略ごとに定義する実行可能なカスタム指標。                                                   | BASE TABLE |
 | [public.news_item](public.news_item.md)                                                     | 7       | RSS フィードなどから取得したニュース記事情報を保持する。                                               | BASE TABLE |
-| [public.rss_feed](public.rss_feed.md)                                                       | 7       | ニュース取り込み元となる RSS フィードを管理する。                                                      | BASE TABLE |
+| [public.rss_feed](public.rss_feed.md)                                                       | 8       | ニュース取り込み元となる RSS フィードを管理する。                                                      | BASE TABLE |
 | [public.strategy_investable_amount](public.strategy_investable_amount.md)                   | 5       | 戦略ごとに設定した投資可能額の履歴。                                                                   | BASE TABLE |
 | [public.account_risk_policy](public.account_risk_policy.md)                                 | 3       | 口座全体に適用するリスク制限設定を保持する。                                                           | BASE TABLE |
 | [public.agent_config](public.agent_config.md)                                               | 7       | purpose ごとのエージェント実行設定を保持する。                                                         | BASE TABLE |
@@ -52,6 +52,7 @@
 | [public.ingest_run](public.ingest_run.md)                                                   | 7       | データ取り込みジョブの実行履歴と結果を記録する。                                                       | BASE TABLE |
 | [public.calendar_event](public.calendar_event.md)                                           | 13      | 指標、中銀イベント、決算などの予定を取得元ごとに保持する。                                             | BASE TABLE |
 | [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)         | 1       | 決算予定を取得した公表日を記録する。                                                                   | BASE TABLE |
+| [public.news_item_content](public.news_item_content.md)                                     | 6       | ニュース記事の本文と取得状態を保持する。                                                               | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -205,6 +206,7 @@ erDiagram
 "public.stock_group" }o--|| "public.group_axis" : "FOREIGN KEY (axis_id) REFERENCES group_axis(id) ON DELETE RESTRICT"
 "public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 "public.stock_group_member" }o--|| "public.stock_group" : "FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE"
+"public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -373,6 +375,7 @@ erDiagram
   boolean enabled
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text content_source
 }
 "public.strategy_investable_amount" {
   uuid id
@@ -698,6 +701,14 @@ erDiagram
 }
 "public.earnings_schedule_ingested_date" {
   date date
+}
+"public.news_item_content" {
+  uuid news_item_id FK
+  text status
+  text body
+  text error
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 

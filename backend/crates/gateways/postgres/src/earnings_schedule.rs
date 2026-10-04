@@ -152,12 +152,14 @@ fn fiscal_period_end(
             schedule.code, schedule.fiscal_quarter_name
         ))
     };
-    let quarter = schedule
-        .fiscal_quarter_name
-        .strip_suffix('Q')
-        .and_then(|value| value.parse::<i32>().ok())
-        .filter(|quarter| (1..=4).contains(quarter))
-        .ok_or_else(|| invalid_schedule("invalid fiscal quarter"))?;
+    let quarter = match schedule.fiscal_quarter_name.as_str() {
+        "FY" => 4,
+        quarter_name => quarter_name
+            .strip_suffix('Q')
+            .and_then(|value| value.parse::<i32>().ok())
+            .filter(|quarter| (1..=4).contains(quarter))
+            .ok_or_else(|| invalid_schedule("invalid fiscal quarter"))?,
+    };
     let fye = schedule.fiscal_year_end.as_bytes();
     if fye.len() != 4 || !fye.iter().all(u8::is_ascii_digit) {
         return Err(invalid_schedule("invalid fiscal year end"));
@@ -261,16 +263,19 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_inserts_schedule(db: DatabaseHandle) {
+    async fn upsert_inserts_fourth_quarter_and_fiscal_year_schedules(db: DatabaseHandle) {
         let repository = PostgresEarningsScheduleRepository::new(db.clone());
         let published_date = date(2042, 7, 6);
-        let mut value = schedule(published_date, Some(date(2043, 1, 5)), "架空社");
-        value.fiscal_quarter_name = "4Q".into();
-        value.fiscal_year_end = "1230".into();
+        let mut fourth_quarter = schedule(published_date, Some(date(2043, 1, 5)), "架空社 4Q");
+        fourth_quarter.fiscal_quarter_name = "4Q".into();
+        fourth_quarter.fiscal_year_end = "1230".into();
+        let mut fiscal_year = schedule(published_date, Some(date(2043, 1, 5)), "架空社 FY");
+        fiscal_year.fiscal_quarter_name = "FY".into();
+        fiscal_year.fiscal_year_end = "1230".into();
         let count = repository
-            .upsert(vec![value.clone()])
+            .upsert(vec![fourth_quarter.clone(), fiscal_year.clone()])
             .await
-            .expect("insert row");
+            .expect("insert schedules");
         let rows = calendar_event::Entity::find()
             .order_by_asc(calendar_event::Column::ExternalId)
             .all(&db)
@@ -290,17 +295,29 @@ mod tests {
         assert_eq!(
             (count, rows, dates),
             (
-                1,
-                vec![(
-                    "jquants".into(),
-                    "ZZ999:4Q:2042-12-31".into(),
-                    "earnings".into(),
-                    "JP".into(),
-                    value.company_name,
-                    Some("ZZ999".into()),
-                    Some("2042-12-31".into()),
-                    date(2043, 1, 5),
-                )],
+                2,
+                vec![
+                    (
+                        "jquants".into(),
+                        "ZZ999:4Q:2042-12-31".into(),
+                        "earnings".into(),
+                        "JP".into(),
+                        fourth_quarter.company_name,
+                        Some("ZZ999".into()),
+                        Some("2042-12-31".into()),
+                        date(2043, 1, 5),
+                    ),
+                    (
+                        "jquants".into(),
+                        "ZZ999:FY:2042-12-31".into(),
+                        "earnings".into(),
+                        "JP".into(),
+                        fiscal_year.company_name,
+                        Some("ZZ999".into()),
+                        Some("2042-12-31".into()),
+                        date(2043, 1, 5),
+                    ),
+                ],
                 vec![published_date],
             ),
         );
@@ -447,7 +464,7 @@ mod tests {
     async fn upsert_rejects_invalid_quarter_or_fiscal_year_end(db: DatabaseHandle) {
         let repository = PostgresEarningsScheduleRepository::new(db.clone());
         let mut invalid_quarter = schedule(date(2042, 7, 6), Some(date(2042, 10, 10)), "架空社 A");
-        invalid_quarter.fiscal_quarter_name = "FY".into();
+        invalid_quarter.fiscal_quarter_name = "5Q".into();
         let mut invalid_fye = schedule(date(2042, 7, 7), Some(date(2042, 10, 11)), "架空社 B");
         invalid_fye.fiscal_year_end = "1331".into();
 
@@ -481,7 +498,7 @@ mod tests {
             (results, events, dates),
             (
                 vec![
-                    Err("ZZ999 (FY): invalid fiscal quarter".into()),
+                    Err("ZZ999 (5Q): invalid fiscal quarter".into()),
                     Err("ZZ999 (1Q): invalid fiscal year end month".into()),
                 ],
                 Vec::new(),
@@ -501,14 +518,31 @@ mod tests {
         other_quarter.fiscal_quarter_name = "2Q".into();
         let mut other_stock = schedule(date(2042, 8, 3), Some(date(2042, 10, 4)), "架空社 B");
         other_stock.code = "AA123".into();
+        let mut earlier_fiscal_year =
+            schedule(date(2041, 7, 4), Some(date(2041, 10, 14)), "架空社 A");
+        earlier_fiscal_year.fiscal_quarter_name = "FY".into();
+        let mut later_fiscal_year = schedule(date(2042, 7, 5), Some(date(2042, 10, 5)), "架空社 A");
+        later_fiscal_year.fiscal_quarter_name = "FY".into();
         repository
-            .upsert(vec![earlier_event, later_event, other_quarter, other_stock])
+            .upsert(vec![
+                earlier_event,
+                later_event,
+                other_quarter,
+                other_stock,
+                earlier_fiscal_year,
+                later_fiscal_year,
+            ])
             .await
             .expect("insert initial events");
 
         let published_date = date(2042, 8, 15);
+        let mut fiscal_year_correction = schedule(published_date, None, "架空社 A");
+        fiscal_year_correction.fiscal_quarter_name = "FY".into();
         let count = repository
-            .upsert(vec![schedule(published_date, None, "架空社 A")])
+            .upsert(vec![
+                schedule(published_date, None, "架空社 A"),
+                fiscal_year_correction,
+            ])
             .await
             .expect("record undecided correction");
         let events = calendar_event::Entity::find()
@@ -531,7 +565,7 @@ mod tests {
         assert_eq!(
             (count, events, dates),
             (
-                1,
+                2,
                 vec![
                     (
                         "jquants".into(),
@@ -563,9 +597,21 @@ mod tests {
                         Some("2042-06-30".into()),
                         date(2042, 10, 3),
                     ),
+                    (
+                        "jquants".into(),
+                        "ZZ999:FY:2040-12-31".into(),
+                        "earnings".into(),
+                        "JP".into(),
+                        "架空社 A".into(),
+                        Some("ZZ999".into()),
+                        Some("2040-12-31".into()),
+                        date(2041, 10, 14),
+                    ),
                 ],
                 vec![
+                    date(2041, 7, 4),
                     date(2041, 7, 6),
+                    date(2042, 7, 5),
                     date(2042, 8, 1),
                     date(2042, 8, 2),
                     date(2042, 8, 3),

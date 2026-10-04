@@ -1,21 +1,39 @@
 #!/usr/bin/env bash
-#
-# DB (docker-compose.infra.yml) の実ポートを反映した DATABASE_URL を stdout に出す。
-# .mise.toml の [env] から exec() で毎回呼ばれる想定。DB が停止していても
-# [env] 全体のパースを壊さないよう、ポート解決に失敗しても常に成功終了する。
-#
-# Usage:
-#   scripts/db-url
-
 set -euo pipefail
+
+if [ "$#" -ne 2 ]; then
+  printf 'Usage: %s <pkg> <dev|test>\n' "$0" >&2
+  exit 2
+fi
+
+package="$1"
+environment="$2"
+
+case "$environment" in
+  dev | test) ;;
+  *)
+    printf 'Unknown database environment: %s\n' "$environment" >&2
+    exit 2
+    ;;
+esac
+
+if [ "$package" = "." ]; then
+  database_name="t-rader_$environment"
+else
+  database_name="t-rader_${package}_$environment"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-port="$(docker compose -f docker-compose.infra.yml port db 5432 2> /dev/null | tr -d '\r' | sed 's/.*://')" || port=''
+if port_output="$(docker compose port db 5432 2> /dev/null)"; then
+  port="${port_output##*:}"
+else
+  port=0
+fi
 
-# POSTGRES_USER/PASSWORD/DB の上書きは反映しない。実際に起動中のコンテナから読むと
-# docker compose exec が増えて cd のたびに実行するには重すぎるため、意図的に
-# docker-compose.infra.yml のデフォルト値を固定で使う。上書きしたい場合は
-# DATABASE_URL 自体を .env.local で上書きすること
-echo "postgres://t_rader:t_rader@127.0.0.1:${port:-0}/t_rader_development"
+case "$port" in
+  '' | *[!0-9]*) port=0 ;;
+esac
+
+printf 'postgresql://t-rader:t-rader@127.0.0.1:%s/%s\n' "$port" "$database_name"

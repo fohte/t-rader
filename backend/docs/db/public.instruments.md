@@ -6,19 +6,19 @@
 
 ## Columns
 
-| Name   | Type    | Default | Nullable | Children                      | Parents | Comment                      |
-| ------ | ------- | ------- | -------- | ----------------------------- | ------- | ---------------------------- |
-| id     | varchar |         | false    | [public.bars](public.bars.md) |         |                              |
-| name   | varchar |         | false    |                               |         | 金融商品の名称。             |
-| market | varchar |         | false    |                               |         | 金融商品が上場する市場。     |
-| sector | varchar |         | true     |                               |         | 金融商品に設定された業種名。 |
+| Name   | Type    | Default | Nullable | Children                      | Parents | Comment                                             |
+| ------ | ------- | ------- | -------- | ----------------------------- | ------- | --------------------------------------------------- |
+| id     | varchar |         | false    | [public.bars](public.bars.md) |         |                                                     |
+| name   | varchar |         | false    |                               |         | 金融商品の名称。                                    |
+| market | varchar |         | false    |                               |         | 金融商品が上場する市場。TSE、US、OTHER のいずれか。 |
+| sector | varchar |         | true     |                               |         | 金融商品に設定された業種名。                        |
 
 ## Constraints
 
-| Name                     | Type        | Definition                             |
-| ------------------------ | ----------- | -------------------------------------- |
-| instruments_market_check | CHECK       | CHECK (((market)::text = 'TSE'::text)) |
-| instruments_pkey         | PRIMARY KEY | PRIMARY KEY (id)                       |
+| Name                     | Type        | Definition                                                                                                                      |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| instruments_market_check | CHECK       | CHECK (((market)::text = ANY ((ARRAY['TSE'::character varying, 'US'::character varying, 'OTHER'::character varying])::text[]))) |
+| instruments_pkey         | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                |
 
 ## Indexes
 

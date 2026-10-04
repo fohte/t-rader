@@ -42,7 +42,7 @@ comments:
   - table: change_history
     tableComment: '主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。'
     columnComments:
-      target_kind: '変更対象のレコード種別。stock_group は銘柄グループを表す。'
+      target_kind: '変更対象のレコード種別。stock は銘柄、stock_group は銘柄グループを表す。'
       target_id: '変更対象レコードの ID。'
       actor_kind: '変更を行った主体の種別。'
       actor_label: '変更を行った主体の表示名。'
@@ -344,7 +344,7 @@ comments:
     tableComment: '価格データの取得対象となる金融商品を管理する。'
     columnComments:
       name: '金融商品の名称。'
-      market: '金融商品が上場する市場。'
+      market: '金融商品が上場する市場。TSE、US、OTHER のいずれか。'
       sector: '金融商品に設定された業種名。'
   - table: jquants_daily_bars_ingested_date
     tableComment: '全銘柄の日足データを取り込んだ営業日を記録する。'
@@ -429,6 +429,14 @@ comments:
       body_snippet: 'フィードの説明文から切り出した記事本文の抜粋。'
       published_at: '記事の公開日時。'
       fetched_at: '記事を取得した日時。'
+  - table: news_item_content
+    tableComment: 'ニュース記事の本文と取得状態を保持する。'
+    columnComments:
+      news_item_id: '本文を保持するニュース記事の ID。'
+      status: '本文の取得状態。pending / fetched / failed のいずれか。'
+      body: 'Markdown 形式の記事本文。'
+      error: '本文取得に失敗した理由。'
+
   - table: ref_term
     tableComment: '銘柄・指標・グループに対する別名を保持する。'
     columnComments:
@@ -443,6 +451,7 @@ comments:
       display_name: 'フィードの表示名。'
       url: 'RSS フィードの URL。'
       enabled: 'フィードを取り込み対象とするかどうか。'
+      content_source: '本文の取得元。none / feed / crawl のいずれか。'
   - table: short_ratio
     tableComment: '33 業種ごとの売買代金を日付別に保持する。'
     columnComments:
@@ -472,7 +481,7 @@ comments:
     tableComment: 'ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。'
     columnComments:
       name: '銘柄名。'
-      market: '市場区分名。'
+      market: '日本株の市場区分名または外国株の取引所名。'
       product_category: '銘柄の商品区分コード。'
   - table: valuation
     tableComment: '銘柄ごとの株価評価指標を日付別に保持する。'

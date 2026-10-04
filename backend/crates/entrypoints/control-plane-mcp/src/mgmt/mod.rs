@@ -1,6 +1,6 @@
 //! 管理 MCP server の tool 実装
 //!
-//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 9 種:
+//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 10 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
@@ -10,6 +10,7 @@
 //! - `list_recent_notes`
 //! - `list_recent_annotations`
 //! - `list_rss_feeds`
+//! - `update_rss_feed`
 //! - `list_note_kinds`
 //!
 //! 実装はドメインごとに分割している:
@@ -20,7 +21,7 @@
 //!   `get_strategy_task_status_inner`)
 //! - `strategy_config`: 戦略設定 (name/description) と trigger 一覧の取得
 //!   (`get_strategy_config_inner`)
-//! - `rss_feeds`: RSS フィード一覧 (`list_rss_feeds_inner`)
+//! - `rss_feeds`: RSS フィード一覧・設定更新
 //! - `note_kinds`: ノート種別一覧 (`list_note_kinds_inner`)
 //! - `notes_annotations`: 直近ノート・アノテーション一覧
 //!   (`list_recent_notes_inner` / `list_recent_annotations_inner`)
@@ -60,7 +61,7 @@ use dto::{
     GetStrategyTaskStatusResult, ListNoteKindsResult, ListRecentAnnotationsResult,
     ListRecentNotesResult, ListRecentParams, ListRssFeedsParams, ListRssFeedsResult,
     ListStrategiesResult, ResumeStrategyTaskParams, ResumeStrategyTaskResult,
-    SubmitStrategyTaskParams, SubmitStrategyTaskResult,
+    SubmitStrategyTaskParams, SubmitStrategyTaskResult, UpdateRssFeedParams,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -260,6 +261,18 @@ impl MgmtServer {
         self.list_rss_feeds_inner(params).await.map(Json)
     }
 
+    /// RSS フィードの本文取得元を更新する
+    #[tool(
+        name = "update_rss_feed",
+        description = "Update an RSS feed's content source. Supported values are none, feed, and crawl."
+    )]
+    async fn update_rss_feed(
+        &self,
+        Parameters(params): Parameters<UpdateRssFeedParams>,
+    ) -> Result<Json<dto::RssFeedSummary>, McpError> {
+        self.update_rss_feed_inner(params).await.map(Json)
+    }
+
     /// ノート種別一覧
     #[tool(
         name = "list_note_kinds",
@@ -339,6 +352,7 @@ mod tests {
                 ("list_recent_annotations", Some(true)),
                 ("list_recent_notes", Some(true)),
                 ("list_rss_feeds", Some(true)),
+                ("update_rss_feed", None),
                 ("list_note_kinds", Some(true)),
                 ("list_strategies", Some(true)),
                 ("resume_strategy_task", None),

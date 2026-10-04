@@ -5,7 +5,7 @@ use core_domain::valuation::Valuation;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{ReadValuationParams, ReadValuationResult, ValuationDto};
-use super::{StrategyServer, decimal_to_f64, valuation_error};
+use super::{StrategyServer, decimal_to_f64, reject_foreign_stock_id, valuation_error};
 
 impl StrategyServer {
     pub(crate) async fn read_valuation_inner(
@@ -14,6 +14,7 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadValuationParams,
     ) -> Result<ReadValuationResult, McpError> {
+        reject_foreign_stock_id(&params.symbol)?;
         let valuations = self
             .dependencies
             .valuations
