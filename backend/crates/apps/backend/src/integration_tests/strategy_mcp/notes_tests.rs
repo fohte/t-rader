@@ -24,14 +24,14 @@ mod tests {
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
     const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
         "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / group の参照だけを使用できます\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
 
     fn test_node(id: &str) -> GraphNode {
@@ -304,6 +304,41 @@ mod tests {
             (
                 rmcp::model::ErrorCode::INVALID_PARAMS,
                 "unknown note kind: sample-kind",
+                0,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_unresolved_price_links_as_invalid_params(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+        let execution_step_id = Uuid::from_u128(9001);
+        let error = server
+            .write_note(
+                strategy_id,
+                Some(execution_step_id),
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("price reference".into()),
+                    body_md: Some("[[price:fictional-code@2030-01-02:close]]".into()),
+                    kind: None,
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect_err("a price link without query_data must be rejected");
+        let saved_notes = note::Entity::find().all(&db).await.unwrap();
+
+        assert_eq!(
+            (error.code, error.message.as_ref(), saved_notes.len()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "価格参照 [[price:fictional-code@2030-01-02:close]] を実行ステップの query_data から解決できません",
                 0,
             ),
         );

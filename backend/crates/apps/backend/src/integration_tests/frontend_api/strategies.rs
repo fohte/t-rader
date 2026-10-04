@@ -215,6 +215,7 @@ mod tests {
                     "title": "sample note",
                     "body_md": "sample body",
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "tags": [],
                     "kind": null,
                     "status": "approved",

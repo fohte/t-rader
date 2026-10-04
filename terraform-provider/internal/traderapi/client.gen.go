@@ -283,14 +283,17 @@ type Note struct {
 	Id              openapi_types.UUID        `json:"id"`
 	IsCurrent       bool                      `json:"is_current"`
 	Kind            nullable.Nullable[string] `json:"kind,omitempty"`
-	Status          string                    `json:"status"`
-	Tags            []string                  `json:"tags"`
-	Title           string                    `json:"title"`
-	Trigger         nullable.Nullable[string] `json:"trigger,omitempty"`
-	TriggerLabel    nullable.Nullable[string] `json:"trigger_label,omitempty"`
-	UpdatedAt       time.Time                 `json:"updated_at"`
-	VersionId       openapi_types.UUID        `json:"version_id"`
-	VersionNo       int32                     `json:"version_no"`
+
+	// ResolvedPriceReferencesJson 本文中の価格リンクを key、実行データから解決した値を value とする。
+	ResolvedPriceReferencesJson Value                     `json:"resolved_price_references_json"`
+	Status                      string                    `json:"status"`
+	Tags                        []string                  `json:"tags"`
+	Title                       string                    `json:"title"`
+	Trigger                     nullable.Nullable[string] `json:"trigger,omitempty"`
+	TriggerLabel                nullable.Nullable[string] `json:"trigger_label,omitempty"`
+	UpdatedAt                   time.Time                 `json:"updated_at"`
+	VersionId                   openapi_types.UUID        `json:"version_id"`
+	VersionNo                   int32                     `json:"version_no"`
 }
 
 // NoteKind defines model for NoteKind.

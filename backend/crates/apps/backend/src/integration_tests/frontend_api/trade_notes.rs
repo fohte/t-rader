@@ -65,6 +65,7 @@ mod tests {
             "title": "t",
             "body_md": "b",
             "frontmatter_json": {},
+            "resolved_price_references_json": {},
             "tags": [],
             "kind": null,
             "status": "approved",

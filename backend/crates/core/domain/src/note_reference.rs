@@ -39,6 +39,7 @@ pub enum BodyTokenPolicy {
 
 enum TokenClassification<'a> {
     Ref(&'a str, String),
+    PriceReference,
     RemovedRef,
     Annotation,
     Graph(String),
@@ -92,6 +93,10 @@ fn classify_token(inner: &str) -> TokenClassification<'_> {
             note_id,
             follows_current,
         });
+    }
+
+    if matches!(kind, "price" | "change") {
+        return TokenClassification::PriceReference;
     }
 
     if kind == "anno" {
@@ -174,7 +179,9 @@ pub fn collect_note_refs_with_policy(
         match classify_token(token.inner) {
             TokenClassification::Ref(kind, id) => refs.push((kind.to_string(), id)),
             TokenClassification::RemovedRef => {}
-            TokenClassification::Annotation | TokenClassification::Note(_) => {}
+            TokenClassification::Annotation
+            | TokenClassification::Note(_)
+            | TokenClassification::PriceReference => {}
             TokenClassification::Graph(id) => {
                 let mut reasons = Vec::new();
                 if !is_standalone_graph_token(body, token, &graph_blocks) {
@@ -215,6 +222,7 @@ pub fn collect_note_refs_with_policy(
                 TokenClassification::Annotation
                 | TokenClassification::Graph(_)
                 | TokenClassification::Note(_)
+                | TokenClassification::PriceReference
                 | TokenClassification::RemovedRef => {
                     "図ノードでは stock / indicator / group の参照だけを使用できます".to_string()
                 }
@@ -304,7 +312,7 @@ pub fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
     message.push('\n');
     message.push_str(&details);
     message.push('\n');
-    message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。");
+    message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。");
     message
 }
 

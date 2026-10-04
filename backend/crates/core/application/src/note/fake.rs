@@ -34,6 +34,7 @@ impl FakeNoteReadQuery {
                 body_md: "body".into(),
                 frontmatter_json: json!({}),
                 graphs_json: json!([]),
+                resolved_price_references_json: json!({}),
                 status: "approved".into(),
                 is_current: true,
                 change_reason: None,

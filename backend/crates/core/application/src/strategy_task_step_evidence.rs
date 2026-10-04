@@ -8,6 +8,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
+use crate::unit_of_work::UnitOfWorkTransaction;
 
 /// evidence snapshot の肥大化を防ぐため、日足で約 20 年分に制限する。
 const MAX_SNAPSHOT_BARS: usize = 5_000;
@@ -39,6 +40,8 @@ pub struct StrategyTaskStepEvidence {
 pub enum StrategyTaskStepEvidenceRepositoryError {
     #[error(transparent)]
     Database(#[from] PersistenceError),
+    #[error("transaction has an unexpected type")]
+    InvalidTransaction,
 }
 
 #[async_trait]
@@ -47,6 +50,12 @@ pub trait StrategyTaskStepEvidenceRepository: Send + Sync {
         &self,
         evidence: StrategyTaskStepEvidence,
     ) -> Result<(), StrategyTaskStepEvidenceRepositoryError>;
+    async fn find_query_data(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        execution_step_id: Uuid,
+        instrument_id: &str,
+    ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>;
 }
 
 pub type SharedStrategyTaskStepEvidenceRepository =
@@ -139,6 +148,27 @@ mod tests {
         ) -> Result<(), StrategyTaskStepEvidenceRepositoryError> {
             self.records.lock().expect("record lock").push(evidence);
             Ok(())
+        }
+
+        async fn find_query_data(
+            &self,
+            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+            execution_step_id: Uuid,
+            instrument_id: &str,
+        ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>
+        {
+            Ok(self
+                .records
+                .lock()
+                .expect("record lock")
+                .iter()
+                .filter(|evidence| {
+                    evidence.execution_step_id == execution_step_id
+                        && evidence.source == "query_data"
+                        && evidence.source_ref == instrument_id
+                })
+                .cloned()
+                .collect())
         }
     }
 

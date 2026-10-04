@@ -15,6 +15,8 @@ pub struct NoteVersionResponse {
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
+    /// 本文中の価格リンクを key、実行データから解決した値を value とする。
+    pub resolved_price_references_json: Json,
     #[schema(value_type = Vec<GraphDef>)]
     pub graphs_json: serde_json::Value,
     pub status: String,
@@ -37,6 +39,7 @@ impl From<core_application::note::NoteVersion> for NoteVersionResponse {
             title: version.title,
             body_md: version.body_md,
             frontmatter_json: version.frontmatter_json,
+            resolved_price_references_json: version.resolved_price_references_json,
             graphs_json: version.graphs_json,
             status: version.status,
             is_current: version.is_current,

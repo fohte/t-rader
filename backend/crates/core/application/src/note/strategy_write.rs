@@ -306,10 +306,11 @@ impl NoteUseCases {
 
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex as StdMutex};
 
     use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, Utc};
+    use rstest::rstest;
     use serde_json::json;
     use tokio::sync::Mutex;
 
@@ -320,12 +321,17 @@ mod tests {
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
         NoteVersionUpdate,
     };
+    use crate::strategy_task_step_evidence::{
+        StrategyTaskStepEvidence, StrategyTaskStepEvidenceRepository,
+        StrategyTaskStepEvidenceRepositoryError,
+    };
     use crate::unit_of_work::FakeUnitOfWork;
 
     const SOURCE_NOTE_ID: Uuid = Uuid::from_u128(1);
     const TARGET_NOTE_ID: Uuid = Uuid::from_u128(2);
     const SOURCE_VERSION_ID: Uuid = Uuid::from_u128(3);
     const TARGET_VERSION_ID: Uuid = Uuid::from_u128(4);
+    const EXECUTION_STEP_ID: Uuid = Uuid::from_u128(5);
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
 
     struct LinkNoteRepository {
@@ -333,6 +339,47 @@ mod tests {
         source_version: NoteVersion,
         target: NoteLinkTarget,
         inserted_links: Mutex<Vec<NewNoteLink>>,
+        inserted_versions: Mutex<Vec<NewNoteVersion>>,
+    }
+
+    #[derive(Default)]
+    struct EvidenceRepository {
+        records: Arc<StdMutex<Vec<StrategyTaskStepEvidence>>>,
+    }
+
+    #[async_trait]
+    impl StrategyTaskStepEvidenceRepository for EvidenceRepository {
+        async fn insert(
+            &self,
+            evidence: StrategyTaskStepEvidence,
+        ) -> Result<(), StrategyTaskStepEvidenceRepositoryError> {
+            self.records
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(evidence);
+            Ok(())
+        }
+
+        async fn find_query_data(
+            &self,
+            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+            execution_step_id: Uuid,
+            instrument_id: &str,
+        ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>
+        {
+            Ok(self
+                .records
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .iter()
+                .filter(|record| {
+                    record.execution_step_id == execution_step_id
+                        && record.source == "query_data"
+                        && record.source_ref == instrument_id
+                })
+                .cloned()
+                .collect())
+        }
     }
 
     #[async_trait]
@@ -440,6 +487,7 @@ mod tests {
             _transaction: &UnitOfWorkTransaction,
             version: NewNoteVersion,
         ) -> Result<NoteVersion, NoteRepositoryError> {
+            self.inserted_versions.lock().await.push(version.clone());
             Ok(NoteVersion {
                 id: version.id,
                 note_id: version.note_id,
@@ -448,6 +496,7 @@ mod tests {
                 body_md: version.body_md,
                 frontmatter_json: version.frontmatter_json,
                 graphs_json: version.graphs_json,
+                resolved_price_references_json: version.resolved_price_references_json,
                 status: version.status,
                 is_current: version.is_current,
                 change_reason: version.change_reason,
@@ -549,6 +598,7 @@ mod tests {
             body_md: "Previous body".into(),
             frontmatter_json: json!({}),
             graphs_json: json!([]),
+            resolved_price_references_json: json!({}),
             status: "approved".into(),
             is_current: true,
             change_reason: None,
@@ -563,23 +613,68 @@ mod tests {
         DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
     }
 
-    #[tokio::test]
-    async fn write_updates_a_note_and_links_another_note() {
+    fn make_note_use_cases(
+        source_version: NoteVersion,
+        evidence: Vec<StrategyTaskStepEvidence>,
+    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
         let repository = Arc::new(LinkNoteRepository {
             source_note: source_note(),
-            source_version: source_version(),
+            source_version,
             target: NoteLinkTarget {
                 id: TARGET_NOTE_ID,
                 current_version_id: Some(TARGET_VERSION_ID),
             },
             inserted_links: Mutex::new(Vec::new()),
+            inserted_versions: Mutex::new(Vec::new()),
         });
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let evidence_repository = EvidenceRepository {
+            records: Arc::new(StdMutex::new(evidence)),
+        };
         let use_cases = NoteUseCases::new(
-            unit_of_work,
+            Arc::new(FakeUnitOfWork::new()),
             repository.clone(),
             Arc::new(FakeChangeHistory::new()),
+            Arc::new(evidence_repository),
         );
+        (use_cases, repository)
+    }
+
+    fn query_data_evidence() -> StrategyTaskStepEvidence {
+        StrategyTaskStepEvidence {
+            id: Uuid::from_u128(8),
+            execution_step_id: EXECUTION_STEP_ID,
+            source: "query_data".into(),
+            source_ref: "fictional-code".into(),
+            observed_at: timestamp(),
+            published_at: None,
+            effective_at: None,
+            snapshot: json!({
+                "instrument_id": "fictional-code",
+                "bars": [
+                    {
+                        "timestamp": "2030-01-02T00:00:00Z",
+                        "open": 9.0,
+                        "high": 11.0,
+                        "low": 8.0,
+                        "close": 10.0,
+                        "volume": 100,
+                    },
+                    {
+                        "timestamp": "2030-01-03T00:00:00Z",
+                        "open": 10.0,
+                        "high": 13.0,
+                        "low": 9.0,
+                        "close": 12.0,
+                        "volume": 150,
+                    },
+                ],
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn write_updates_a_note_and_links_another_note() {
+        let (use_cases, repository) = make_note_use_cases(source_version(), vec![]);
 
         let mut result = use_cases
             .write(NoteWriteCommand {
@@ -629,6 +724,7 @@ mod tests {
                             body_md: format!("[[note:{TARGET_NOTE_ID}@current]]"),
                             frontmatter_json: json!({}),
                             graphs_json: json!([]),
+                            resolved_price_references_json: json!({}),
                             status: INITIAL_NOTE_STATUS.into(),
                             is_current: true,
                             change_reason: None,
@@ -646,6 +742,124 @@ mod tests {
                     to_version_id: None,
                 }],
             ),
+        );
+    }
+
+    #[tokio::test]
+    async fn write_resolves_price_links_and_keeps_them_in_the_body() {
+        let mut source_version = source_version();
+        source_version.execution_id = Some(EXECUTION_STEP_ID.to_string());
+        let (use_cases, _) = make_note_use_cases(source_version, vec![query_data_evidence()]);
+        let body = concat!(
+            "[[price:fictional-code@2030-01-02:close]] ",
+            "[[change:fictional-code@2030-01-02..2030-01-03:close]]",
+        );
+
+        let mut result = use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: Some(body.into()),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: None,
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await
+            .expect("price links resolve from the execution evidence");
+        result.snapshot.version.id = NORMALIZED_VERSION_ID;
+
+        assert_eq!(
+            result,
+            NoteWriteResult {
+                note_id: SOURCE_NOTE_ID,
+                created: false,
+                snapshot: NoteSnapshot {
+                    note: source_note(),
+                    version: NoteVersion {
+                        id: NORMALIZED_VERSION_ID,
+                        note_id: SOURCE_NOTE_ID,
+                        version_no: 2,
+                        title: "Updated title".into(),
+                        body_md: body.into(),
+                        frontmatter_json: json!({}),
+                        graphs_json: json!([]),
+                        resolved_price_references_json: json!({
+                            "[[price:fictional-code@2030-01-02:close]]": {
+                                "value": 10.0,
+                                "evidence_id": Uuid::from_u128(8).to_string(),
+                            },
+                            "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
+                                "value": 20.0,
+                                "evidence_id": Uuid::from_u128(8).to_string(),
+                            },
+                        }),
+                        status: INITIAL_NOTE_STATUS.into(),
+                        is_current: true,
+                        change_reason: None,
+                        created_by_kind: "llm".into(),
+                        execution_id: Some(EXECUTION_STEP_ID.to_string()),
+                        created_at: timestamp(),
+                        reviewed_at: None,
+                    },
+                    created_by_kind: "human".into(),
+                },
+            },
+        );
+    }
+
+    #[rstest]
+    #[case::missing_execution(
+        None,
+        "[[price:fictional-code@2030-01-02:close]]",
+        "価格参照の解決には実行ステップの query_data が必要です"
+    )]
+    #[case::missing_instrument(Some(EXECUTION_STEP_ID.to_string()), "[[price:fictional-other@2030-01-02:close]]", "価格参照 [[price:fictional-other@2030-01-02:close]] を実行ステップの query_data から解決できません")]
+    #[case::missing_date(Some(EXECUTION_STEP_ID.to_string()), "[[price:fictional-code@2030-01-04:close]]", "価格参照 [[price:fictional-code@2030-01-04:close]] を実行ステップの query_data から解決できません")]
+    #[case::missing_change_endpoint(Some(EXECUTION_STEP_ID.to_string()), "[[change:fictional-code@2030-01-02..2030-01-04:close]]", "価格参照 [[change:fictional-code@2030-01-02..2030-01-04:close]] を実行ステップの query_data から解決できません")]
+    #[tokio::test]
+    async fn write_rejects_unresolved_price_links_before_inserting_a_version(
+        #[case] source_execution_id: Option<String>,
+        #[case] body: &str,
+        #[case] expected_error: &str,
+    ) {
+        let mut source_version = source_version();
+        source_version.execution_id = source_execution_id;
+        let (use_cases, repository) =
+            make_note_use_cases(source_version, vec![query_data_evidence()]);
+        let result = use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: Some(body.into()),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: None,
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await;
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                inserted_version_count,
+            ),
+            (Some(expected_error.into()), 0),
         );
     }
 }

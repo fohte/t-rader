@@ -38,6 +38,8 @@ pub struct NoteResponse {
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
+    /// 本文中の価格リンクを key、実行データから解決した値を value とする。
+    pub resolved_price_references_json: Json,
     pub tags: Vec<String>,
     pub kind: Option<String>,
     pub status: String,
@@ -64,6 +66,7 @@ impl NoteResponse {
             title: snapshot.version.title,
             body_md: snapshot.version.body_md,
             frontmatter_json: snapshot.version.frontmatter_json,
+            resolved_price_references_json: snapshot.version.resolved_price_references_json,
             tags,
             kind: snapshot.note.kind,
             status: snapshot.version.status,
@@ -84,7 +87,7 @@ pub struct CreateNoteRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: String,
     /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-    /// `@current` を付けると以降の現行バージョンに追従する。
+    /// `@current` を付けると以降の現行バージョンに追従する。価格リンクは実行ステップの query_data から解決する。
     pub body_md: String,
     #[serde(default)]
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
@@ -106,7 +109,7 @@ pub struct UpdateNoteRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: Option<String>,
     /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-    /// `@current` を付けると以降の現行バージョンに追従する。
+    /// `@current` を付けると以降の現行バージョンに追従する。価格リンクは元の実行ステップの query_data から解決する。
     pub body_md: Option<String>,
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,

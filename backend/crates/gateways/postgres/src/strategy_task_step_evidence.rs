@@ -3,12 +3,15 @@ use core_application::strategy_task_step_evidence::{
     StrategyTaskStepEvidence, StrategyTaskStepEvidenceRepository,
     StrategyTaskStepEvidenceRepositoryError,
 };
-use sea_orm::ActiveModelTrait;
+use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use uuid::Uuid;
 
 use crate::DatabaseHandle;
 use crate::entities::strategy_task_step_evidence;
 use crate::persistence::persistence_error;
+use crate::transaction::transaction_ref;
 
 #[derive(Clone)]
 pub struct PostgresStrategyTaskStepEvidenceRepository {
@@ -43,6 +46,40 @@ impl StrategyTaskStepEvidenceRepository for PostgresStrategyTaskStepEvidenceRepo
         .map_err(|error| {
             StrategyTaskStepEvidenceRepositoryError::Database(persistence_error(error))
         })
+    }
+
+    async fn find_query_data(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        execution_step_id: Uuid,
+        instrument_id: &str,
+    ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError> {
+        let transaction = transaction_ref(transaction)
+            .ok_or(StrategyTaskStepEvidenceRepositoryError::InvalidTransaction)?;
+        strategy_task_step_evidence::Entity::find()
+            .filter(strategy_task_step_evidence::Column::ExecutionStepId.eq(execution_step_id))
+            .filter(strategy_task_step_evidence::Column::Source.eq("query_data"))
+            .filter(strategy_task_step_evidence::Column::SourceRef.eq(instrument_id))
+            .order_by_asc(strategy_task_step_evidence::Column::ObservedAt)
+            .all(transaction)
+            .await
+            .map(|rows| rows.into_iter().map(to_evidence).collect())
+            .map_err(|error| {
+                StrategyTaskStepEvidenceRepositoryError::Database(persistence_error(error))
+            })
+    }
+}
+
+fn to_evidence(model: strategy_task_step_evidence::Model) -> StrategyTaskStepEvidence {
+    StrategyTaskStepEvidence {
+        id: model.id,
+        execution_step_id: model.execution_step_id,
+        source: model.source,
+        source_ref: model.source_ref,
+        observed_at: model.observed_at,
+        published_at: model.published_at,
+        effective_at: model.effective_at,
+        snapshot: model.snapshot,
     }
 }
 

@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, HashSet};
 
-use chrono::Utc;
-use serde_json::{Value, json};
+use chrono::{DateTime, NaiveDate, Utc};
+use serde_json::{Map, Number, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
 use crate::note::types::{NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate};
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
+use crate::strategy_task_step_evidence::{
+    StrategyTaskStepEvidence, StrategyTaskStepEvidenceUseCaseError,
+};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 const APPROVED_NOTE_STATUS: &str = "approved";
@@ -62,6 +65,15 @@ impl NoteUseCases {
             ));
         }
 
+        let execution_id = content.execution_id.clone().or_else(|| {
+            latest
+                .as_ref()
+                .and_then(|version| version.execution_id.clone())
+        });
+        let resolved_price_references_json = self
+            .resolve_price_references(transaction, &content.body_md, execution_id.as_deref())
+            .await?;
+
         let becomes_current = !requires_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             APPROVED_NOTE_STATUS
@@ -99,11 +111,12 @@ impl NoteUseCases {
                     body_md: content.body_md,
                     frontmatter_json: content.frontmatter_json,
                     graphs_json: content.graphs_json,
+                    resolved_price_references_json,
                     status: status.to_string(),
                     is_current: becomes_current,
                     change_reason: content.change_reason,
                     created_by_kind: content.created_by_kind,
-                    execution_id: content.execution_id,
+                    execution_id,
                 },
             )
             .await?;
@@ -176,6 +189,61 @@ impl NoteUseCases {
         .await?;
 
         Ok(version)
+    }
+
+    async fn resolve_price_references(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        body_md: &str,
+        execution_id: Option<&str>,
+    ) -> Result<Value, NoteUseCaseError> {
+        let references = core_domain::note_price_reference::extract_note_price_references(body_md)
+            .map_err(|errors| {
+                NoteUseCaseError::Validation(core_domain::note_reference::format_note_token_errors(
+                    &errors,
+                ))
+            })?;
+        if references.is_empty() {
+            return Ok(Value::Object(Map::new()));
+        }
+
+        let execution_step_id = execution_id
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or_else(|| {
+                NoteUseCaseError::Validation(
+                    "価格参照の解決には実行ステップの query_data が必要です".into(),
+                )
+            })?;
+        let mut evidence_by_instrument = BTreeMap::new();
+        let mut values = Map::new();
+        for token in references {
+            let instrument_id = reference_instrument_id(&token.reference);
+            if !evidence_by_instrument.contains_key(instrument_id) {
+                let evidence = self
+                    .strategy_task_step_evidence
+                    .find_query_data(transaction, execution_step_id, instrument_id)
+                    .await
+                    .map_err(StrategyTaskStepEvidenceUseCaseError::from)?;
+                evidence_by_instrument.insert(instrument_id.to_string(), evidence);
+            }
+            let evidence = &evidence_by_instrument[instrument_id];
+            let (value, evidence_id) = resolve_reference_value(&token.reference, evidence)
+                .ok_or_else(|| {
+                    NoteUseCaseError::Validation(format!(
+                        "価格参照 {0} を実行ステップの query_data から解決できません",
+                        token.token
+                    ))
+                })?;
+            values.insert(
+                token.token,
+                json!({
+                    "value": value,
+                    "evidence_id": evidence_id,
+                }),
+            );
+        }
+
+        Ok(Value::Object(values))
     }
 
     pub(super) async fn sync_note_references(
@@ -275,4 +343,68 @@ impl NoteUseCases {
             .await?;
         Ok(())
     }
+}
+
+fn reference_instrument_id(
+    reference: &core_domain::note_price_reference::NotePriceReference,
+) -> &str {
+    match reference {
+        core_domain::note_price_reference::NotePriceReference::Price { instrument_id, .. }
+        | core_domain::note_price_reference::NotePriceReference::Change { instrument_id, .. } => {
+            instrument_id
+        }
+    }
+}
+
+fn resolve_reference_value(
+    reference: &core_domain::note_price_reference::NotePriceReference,
+    evidence: &[StrategyTaskStepEvidence],
+) -> Option<(Value, Uuid)> {
+    use core_domain::note_price_reference::NotePriceReference;
+
+    match reference {
+        NotePriceReference::Price { date, field, .. } => {
+            evidence.iter().rev().find_map(|snapshot| {
+                evidence_bar_value(snapshot, *date, *field)
+                    .cloned()
+                    .map(|value| (value, snapshot.id))
+            })
+        }
+        NotePriceReference::Change {
+            start, end, field, ..
+        } => evidence.iter().rev().find_map(|snapshot| {
+            let start = evidence_bar_value(snapshot, *start, *field)?.as_f64()?;
+            let end = evidence_bar_value(snapshot, *end, *field)?.as_f64()?;
+            if start == 0.0 {
+                return None;
+            }
+            Number::from_f64((end - start) / start * 100.0)
+                .map(|value| (Value::Number(value), snapshot.id))
+        }),
+    }
+}
+
+fn evidence_bar_value(
+    evidence: &StrategyTaskStepEvidence,
+    date: NaiveDate,
+    field: core_domain::note_price_reference::PriceReferenceField,
+) -> Option<&Value> {
+    let field_name = match field {
+        core_domain::note_price_reference::PriceReferenceField::Open => "open",
+        core_domain::note_price_reference::PriceReferenceField::High => "high",
+        core_domain::note_price_reference::PriceReferenceField::Low => "low",
+        core_domain::note_price_reference::PriceReferenceField::Close => "close",
+        core_domain::note_price_reference::PriceReferenceField::Volume => "volume",
+    };
+
+    evidence
+        .snapshot
+        .get("bars")?
+        .as_array()?
+        .iter()
+        .find_map(|bar| {
+            let timestamp = bar.get("timestamp")?.as_str()?;
+            let bar_date = DateTime::parse_from_rfc3339(timestamp).ok()?.date_naive();
+            (bar_date == date).then(|| bar.get(field_name)).flatten()
+        })
 }

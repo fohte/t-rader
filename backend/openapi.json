@@ -7753,7 +7753,7 @@
         "properties": {
           "body_md": {
             "type": "string",
-            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。価格リンクは実行ステップの query_data から解決する。"
           },
           "created_by_kind": {
             "type": [
@@ -8466,6 +8466,7 @@
           "title",
           "body_md",
           "frontmatter_json",
+          "resolved_price_references_json",
           "tags",
           "status",
           "created_by_kind",
@@ -8511,6 +8512,10 @@
               "string",
               "null"
             ]
+          },
+          "resolved_price_references_json": {
+            "$ref": "#/components/schemas/Value",
+            "description": "本文中の価格リンクを key、実行データから解決した値を value とする。"
           },
           "status": {
             "type": "string"
@@ -8654,6 +8659,7 @@
           "title",
           "body_md",
           "frontmatter_json",
+          "resolved_price_references_json",
           "graphs_json",
           "status",
           "is_current",
@@ -8702,6 +8708,10 @@
           "note_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "resolved_price_references_json": {
+            "$ref": "#/components/schemas/Value",
+            "description": "本文中の価格リンクを key、実行データから解決した値を value とする。"
           },
           "reviewed_at": {
             "type": [
@@ -9837,7 +9847,7 @@
               "string",
               "null"
             ],
-            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。価格リンクは元の実行ステップの query_data から解決する。"
           },
           "frontmatter_json": {
             "type": [

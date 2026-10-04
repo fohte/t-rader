@@ -31,6 +31,8 @@ pub struct Model {
     pub execution_id: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub reviewed_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub resolved_price_references_json: Json,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
