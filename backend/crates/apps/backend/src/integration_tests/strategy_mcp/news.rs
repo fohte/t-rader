@@ -418,6 +418,21 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn get_news_content_returns_not_found_for_unknown_id(db: DatabaseHandle) {
+        let server = build_server(db.clone());
+        let strategy_id = insert_strategy(&db, "sample").await;
+        let error = server
+            .get_news_content(strategy_id, GetNewsContentParams { id: Uuid::new_v4() })
+            .await
+            .expect_err("unknown news item expected to be rejected");
+
+        assert_eq!(
+            error,
+            rmcp::ErrorData::resource_not_found("news item not found", None),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn search_news_matches_keyword_case_insensitively_in_title_or_body(
         db: gateway_postgres::DatabaseHandle,
     ) {
