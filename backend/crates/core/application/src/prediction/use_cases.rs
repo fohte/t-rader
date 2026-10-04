@@ -166,7 +166,7 @@ mod tests {
     const NORMALIZED_PREDICTION_ID: Uuid = Uuid::from_u128(4);
 
     struct FakePredictionRepository {
-        note_exists: bool,
+        existing_note_id: Option<Uuid>,
         inserted: Mutex<Vec<NewPrediction>>,
     }
 
@@ -175,9 +175,9 @@ mod tests {
         async fn note_exists(
             &self,
             _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            _note_id: Uuid,
+            note_id: Uuid,
         ) -> Result<bool, PredictionRepositoryError> {
-            Ok(self.note_exists)
+            Ok(self.existing_note_id == Some(note_id))
         }
 
         async fn stock_exists(
@@ -256,7 +256,7 @@ mod tests {
     #[tokio::test]
     async fn record_accepts_an_existing_note() {
         let repository = Arc::new(FakePredictionRepository {
-            note_exists: true,
+            existing_note_id: Some(NOTE_ID),
             inserted: Mutex::new(Vec::new()),
         });
         let use_cases =
@@ -306,6 +306,38 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn record_rejects_a_missing_note() {
+        let repository = Arc::new(FakePredictionRepository {
+            existing_note_id: None,
+            inserted: Mutex::new(Vec::new()),
+        });
+        let use_cases =
+            PredictionUseCases::new(Arc::new(FakeUnitOfWork::new()), repository.clone());
+        let result = use_cases
+            .record(
+                RUNNING_STRATEGY_ID.into(),
+                RecordPredictionCommand {
+                    note_id: Some(NOTE_ID),
+                    target_stock_id: "FICTIONAL-ASSET-A".into(),
+                    benchmark_stock_id: "FICTIONAL-ASSET-B".into(),
+                    direction: "outperform".into(),
+                    probability: Decimal::new(70, 2),
+                    base_date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+                    due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        let inserted = repository.inserted.lock().await.clone();
+
+        assert_eq!(
+            (result, inserted),
+            (Err(format!("note {NOTE_ID} not found")), Vec::new()),
+        );
+    }
+
     #[rstest::rstest]
     #[case::foreign_target("US:QZ-7", "FICTIONAL-ASSET-B")]
     #[case::foreign_benchmark("FICTIONAL-ASSET-A", "KR:QZ9012")]
@@ -316,7 +348,7 @@ mod tests {
     ) {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakePredictionRepository {
-            note_exists: true,
+            existing_note_id: None,
             inserted: Mutex::new(Vec::new()),
         });
         let use_cases = PredictionUseCases::new(unit_of_work.clone(), repository.clone());
