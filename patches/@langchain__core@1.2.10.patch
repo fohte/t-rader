@@ -1,0 +1,148 @@
+diff --git a/dist/messages/ai.cjs b/dist/messages/ai.cjs
+index 4c296d9..a65fb4b 100644
+--- a/dist/messages/ai.cjs
++++ b/dist/messages/ai.cjs
+@@ -162,21 +162,51 @@ var AIMessageChunk = class extends require_base.BaseMessageChunk {
+ 			usage_metadata: fields.usage_metadata !== void 0 ? fields.usage_metadata : void 0
+ 		};
+ 		else {
+-			const collapsed = require_utils.collapseToolCallChunks(fields.tool_call_chunks ?? []);
+ 			initParams = {
+ 				...fields,
+-				tool_call_chunks: collapsed.tool_call_chunks,
+-				tool_calls: collapsed.tool_calls,
+-				invalid_tool_calls: collapsed.invalid_tool_calls,
+ 				usage_metadata: fields.usage_metadata !== void 0 ? fields.usage_metadata : void 0
+ 			};
+ 		}
+ 		super(initParams);
+ 		this.tool_call_chunks = initParams.tool_call_chunks ?? this.tool_call_chunks;
+-		this.tool_calls = initParams.tool_calls ?? this.tool_calls;
+-		this.invalid_tool_calls = initParams.invalid_tool_calls ?? this.invalid_tool_calls;
++		if (
++			typeof fields !== "string" &&
++			!Array.isArray(fields) &&
++			fields.tool_call_chunks !== void 0 &&
++			fields.tool_call_chunks.length > 0
++		) this._defineLazyToolCallGetters(fields.tool_call_chunks);
++		else {
++			this.tool_calls = initParams.tool_calls ?? this.tool_calls;
++			this.invalid_tool_calls = initParams.invalid_tool_calls ?? this.invalid_tool_calls;
++		}
+ 		this.usage_metadata = initParams.usage_metadata;
+ 	}
++	_defineLazyToolCallGetters(toolCallChunks) {
++		let collapsed;
++		const getCollapsed = () => {
++			collapsed ??= require_utils.collapseToolCallChunks(toolCallChunks);
++			return collapsed;
++		};
++		const defineLazy = (target, prop) => {
++			Object.defineProperty(target, prop, {
++				get: () => getCollapsed()[prop],
++				set: (value) => {
++					Object.defineProperty(target, prop, {
++						value,
++						writable: true,
++						enumerable: true,
++						configurable: true
++					});
++				},
++				enumerable: true,
++				configurable: true
++			});
++		};
++		defineLazy(this, "tool_calls");
++		defineLazy(this, "invalid_tool_calls");
++		defineLazy(this.lc_kwargs, "tool_calls");
++		defineLazy(this.lc_kwargs, "invalid_tool_calls");
++	}
+ 	get lc_aliases() {
+ 		return {
+ 			...super.lc_aliases,
+@@ -232,7 +262,10 @@ var AIMessageChunk = class extends require_base.BaseMessageChunk {
+ 			const rawToolCalls = require_base._mergeLists(this.tool_call_chunks, chunk.tool_call_chunks);
+ 			if (rawToolCalls !== void 0 && rawToolCalls.length > 0) combinedFields.tool_call_chunks = rawToolCalls;
+ 		}
+-		if (this.tool_calls !== void 0 || chunk.tool_calls !== void 0) {
++		if (
++			(combinedFields.tool_call_chunks === void 0 || combinedFields.tool_call_chunks.length === 0) &&
++			(this.tool_calls !== void 0 || chunk.tool_calls !== void 0)
++		) {
+ 			const rawToolCalls = require_base._mergeLists(this.tool_calls, chunk.tool_calls);
+ 			if (rawToolCalls !== void 0 && rawToolCalls.length > 0) combinedFields.tool_calls = rawToolCalls;
+ 		}
+diff --git a/dist/messages/ai.js b/dist/messages/ai.js
+index 080a59a..8e6a8b1 100644
+--- a/dist/messages/ai.js
++++ b/dist/messages/ai.js
+@@ -162,21 +162,51 @@ var AIMessageChunk = class extends BaseMessageChunk {
+ 			usage_metadata: fields.usage_metadata !== void 0 ? fields.usage_metadata : void 0
+ 		};
+ 		else {
+-			const collapsed = collapseToolCallChunks(fields.tool_call_chunks ?? []);
+ 			initParams = {
+ 				...fields,
+-				tool_call_chunks: collapsed.tool_call_chunks,
+-				tool_calls: collapsed.tool_calls,
+-				invalid_tool_calls: collapsed.invalid_tool_calls,
+ 				usage_metadata: fields.usage_metadata !== void 0 ? fields.usage_metadata : void 0
+ 			};
+ 		}
+ 		super(initParams);
+ 		this.tool_call_chunks = initParams.tool_call_chunks ?? this.tool_call_chunks;
+-		this.tool_calls = initParams.tool_calls ?? this.tool_calls;
+-		this.invalid_tool_calls = initParams.invalid_tool_calls ?? this.invalid_tool_calls;
++		if (
++			typeof fields !== "string" &&
++			!Array.isArray(fields) &&
++			fields.tool_call_chunks !== void 0 &&
++			fields.tool_call_chunks.length > 0
++		) this._defineLazyToolCallGetters(fields.tool_call_chunks);
++		else {
++			this.tool_calls = initParams.tool_calls ?? this.tool_calls;
++			this.invalid_tool_calls = initParams.invalid_tool_calls ?? this.invalid_tool_calls;
++		}
+ 		this.usage_metadata = initParams.usage_metadata;
+ 	}
++	_defineLazyToolCallGetters(toolCallChunks) {
++		let collapsed;
++		const getCollapsed = () => {
++			collapsed ??= collapseToolCallChunks(toolCallChunks);
++			return collapsed;
++		};
++		const defineLazy = (target, prop) => {
++			Object.defineProperty(target, prop, {
++				get: () => getCollapsed()[prop],
++				set: (value) => {
++					Object.defineProperty(target, prop, {
++						value,
++						writable: true,
++						enumerable: true,
++						configurable: true
++					});
++				},
++				enumerable: true,
++				configurable: true
++			});
++		};
++		defineLazy(this, "tool_calls");
++		defineLazy(this, "invalid_tool_calls");
++		defineLazy(this.lc_kwargs, "tool_calls");
++		defineLazy(this.lc_kwargs, "invalid_tool_calls");
++	}
+ 	get lc_aliases() {
+ 		return {
+ 			...super.lc_aliases,
+@@ -232,7 +262,10 @@ var AIMessageChunk = class extends BaseMessageChunk {
+ 			const rawToolCalls = _mergeLists(this.tool_call_chunks, chunk.tool_call_chunks);
+ 			if (rawToolCalls !== void 0 && rawToolCalls.length > 0) combinedFields.tool_call_chunks = rawToolCalls;
+ 		}
+-		if (this.tool_calls !== void 0 || chunk.tool_calls !== void 0) {
++		if (
++			(combinedFields.tool_call_chunks === void 0 || combinedFields.tool_call_chunks.length === 0) &&
++			(this.tool_calls !== void 0 || chunk.tool_calls !== void 0)
++		) {
+ 			const rawToolCalls = _mergeLists(this.tool_calls, chunk.tool_calls);
+ 			if (rawToolCalls !== void 0 && rawToolCalls.length > 0) combinedFields.tool_calls = rawToolCalls;
+ 		}

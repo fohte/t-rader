@@ -113,6 +113,10 @@ mod tests {
                         now - Duration::hours(2),
                     ),
                     (
+                        "e_stat_calendar_ingest".to_string(),
+                        now - Duration::hours(2),
+                    ),
+                    (
                         "boj_calendar_event_ingest".to_string(),
                         now - Duration::hours(2),
                     ),

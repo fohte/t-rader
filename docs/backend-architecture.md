@@ -33,6 +33,7 @@ backend/crates/
 │   ├── ibkr/
 │   ├── fred/
 │   ├── sec/
+│   ├── e-stat/
 │   ├── rss/
 │   ├── litellm/
 │   ├── kata-exec/

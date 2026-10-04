@@ -45,6 +45,8 @@ pub enum ContentPart {
 #[derive(Debug, Clone)]
 pub struct FilePart {
     pub file_id: String,
+    /// URL から形式を判別できない場合に provider が入力形式を特定するためのヒント。
+    pub mime_type: Option<String>,
 }
 
 /// Web 検索の回答と重複を除いた出典 URL。

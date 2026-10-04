@@ -153,7 +153,6 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, Utc};
     use core_domain::bar::Bar;
-    use rstest::rstest;
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
@@ -163,9 +162,11 @@ mod tests {
     use crate::unit_of_work::FakeUnitOfWork;
 
     const NOTE_ID: Uuid = Uuid::from_u128(1);
+    const MISSING_NOTE_ID: Uuid = Uuid::from_u128(5);
     const RUNNING_STRATEGY_ID: Uuid = Uuid::from_u128(2);
     const NORMALIZED_PREDICTION_ID: Uuid = Uuid::from_u128(4);
 
+    #[derive(Default)]
     struct FakePredictionRepository {
         note_exists: bool,
         inserted: Mutex<Vec<NewPrediction>>,
@@ -307,7 +308,7 @@ mod tests {
         );
     }
 
-    #[rstest]
+    #[rstest::rstest]
     #[case::foreign_target("US:QZ-7", "FICTIONAL-ASSET-B")]
     #[case::foreign_benchmark("FICTIONAL-ASSET-A", "KR:QZ9012")]
     #[tokio::test]
@@ -342,6 +343,35 @@ mod tests {
         assert_eq!(
             (result, inserted_count, begun_count),
             (Err("predictions only support Japanese stocks".into()), 0, 0,),
+        );
+    }
+
+    #[tokio::test]
+    async fn record_rejects_a_missing_note() {
+        let repository = Arc::new(FakePredictionRepository::default());
+        let use_cases =
+            PredictionUseCases::new(Arc::new(FakeUnitOfWork::new()), repository.clone());
+        let result = use_cases
+            .record(
+                RUNNING_STRATEGY_ID.into(),
+                RecordPredictionCommand {
+                    note_id: Some(MISSING_NOTE_ID),
+                    target_stock_id: "FICTIONAL-ASSET-A".into(),
+                    benchmark_stock_id: "FICTIONAL-ASSET-B".into(),
+                    direction: "outperform".into(),
+                    probability: Decimal::new(70, 2),
+                    base_date: NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid date"),
+                    due_date: NaiveDate::from_ymd_opt(2025, 2, 1).expect("valid date"),
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        let inserted = repository.inserted.lock().await.clone();
+
+        assert_eq!(
+            (result, inserted),
+            (Err(format!("note {MISSING_NOTE_ID} not found")), Vec::new(),),
         );
     }
 }

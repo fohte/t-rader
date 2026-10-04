@@ -2,6 +2,12 @@ use gateway_jquants::JQuantsPlan;
 use sea_orm::DbErr;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+mod news_and_central_bank_sources;
+
+pub(super) use news_and_central_bank_sources::{
+    NewsAndCentralBankSources, initialize_news_and_central_bank_sources,
+};
+
 const DEFAULT_WORKER_ADMIN_UI_PORT: u16 = 3001;
 const WORKER_ADMIN_UI_PORT_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_PORT";
 const WORKER_ADMIN_UI_AUTH_HEADER_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_AUTH_HEADER_NAME";

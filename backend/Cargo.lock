@@ -613,6 +613,7 @@ dependencies = [
  "futures-util",
  "gateway-alpha-vantage",
  "gateway-boj",
+ "gateway-e-stat",
  "gateway-ecb",
  "gateway-firecrawl",
  "gateway-fred",
@@ -2081,6 +2082,22 @@ dependencies = [
  "core-domain",
  "reqwest",
  "scraper",
+]
+
+[[package]]
+name = "gateway-e-stat"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "core-domain",
+ "indoc",
+ "reqwest",
+ "rstest",
+ "scraper",
+ "tokio",
+ "wiremock",
 ]
 
 [[package]]
