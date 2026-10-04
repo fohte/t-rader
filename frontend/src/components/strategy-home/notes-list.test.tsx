@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { NotesList } from '#components/strategy-home/notes-list'
@@ -19,11 +25,11 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     version_id: overrides.version_id ?? crypto.randomUUID(),
     version_no: overrides.version_no ?? 1,
     is_current: overrides.is_current ?? true,
-    strategy_id: overrides.strategy_id ?? null,
     title: overrides.title ?? 'title',
     body_md: overrides.body_md ?? 'body',
     frontmatter_json: overrides.frontmatter_json ?? {},
     graphs_json: overrides.graphs_json ?? [],
+    tags: overrides.tags ?? [],
     kind: overrides.kind ?? null,
     status: overrides.status ?? 'unread',
     trigger: overrides.trigger ?? null,
@@ -58,21 +64,35 @@ async function renderInRouter(notes: Note[]) {
   })
 }
 
+function getNoteLinkSnapshot() {
+  const link = screen.getByRole('link', { name: /口座全体ノート/ })
+  const title = screen.getByText('口座全体ノート')
+  return [title.textContent, link.getAttribute('href')]
+}
+
 describe('NotesList', () => {
-  it('strategy_id が null のノートも一覧表示し、/notes/$noteId へのリンクを生成する', async () => {
+  it('ノートを一覧表示し、詳細へのリンクを生成する', async () => {
     const note = makeNote({
       id: 'note-1',
-      strategy_id: null,
       title: '口座全体ノート',
     })
+    const expected = ['口座全体ノート', '/notes/note-1']
     await renderInRouter([note])
 
     await waitFor(() => {
-      expect(screen.getByText('口座全体ノート')).toBeInTheDocument()
+      expect(getNoteLinkSnapshot()).toEqual(expected)
     })
+  })
+
+  it('ノートに設定されたタグを一覧表示する', async () => {
+    const note = makeNote({ tags: ['架空タグ', '仮の分類'] })
+    await renderInRouter([note])
+
     expect(
-      screen.getByRole('link', { name: /口座全体ノート/ }),
-    ).toHaveAttribute('href', '/notes/note-1')
+      within(screen.getByRole('list', { name: 'タグ' }))
+        .getAllByRole('listitem')
+        .map((tag) => tag.textContent),
+    ).toEqual(['架空タグ', '仮の分類'])
   })
 
   it('ノートが無ければ空状態を表示する', async () => {

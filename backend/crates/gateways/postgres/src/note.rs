@@ -38,13 +38,11 @@ impl NoteRepository for PostgresNoteRepository {
     async fn find_note_by_execution_id(
         &self,
         transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
         execution_id: &str,
     ) -> Result<Option<Note>, NoteRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
         note::Entity::find()
-            .filter(note::Column::StrategyId.eq(strategy_id))
             .filter(note::Column::ExecutionId.eq(execution_id))
             .one(transaction)
             .await
@@ -162,7 +160,6 @@ impl NoteRepository for PostgresNoteRepository {
         let has_execution_id = note.execution_id.is_some();
         let model = note::ActiveModel {
             id: Set(note.id),
-            strategy_id: Set(note.strategy_id),
             kind: Set(note.kind),
             trigger: Set(note.trigger),
             trigger_label: Set(note.trigger_label),
@@ -174,7 +171,7 @@ impl NoteRepository for PostgresNoteRepository {
             // 部分 unique index の predicate と一致しないと、Postgres が conflict target に選べない。
             note::Entity::insert(model)
                 .on_conflict(
-                    OnConflict::columns([note::Column::StrategyId, note::Column::ExecutionId])
+                    OnConflict::columns([note::Column::ExecutionId])
                         .target_and_where(Expr::col(note::Column::ExecutionId).is_not_null())
                         .do_nothing()
                         .to_owned(),
@@ -372,7 +369,6 @@ impl NoteRepository for PostgresNoteRepository {
             .into_iter()
             .map(|note| NoteLinkTarget {
                 id: note.id,
-                strategy_id: note.strategy_id,
                 current_version_id: current_versions.get(&note.id).copied(),
             })
             .collect())
@@ -432,7 +428,7 @@ mod tests {
     use core_application::note::{NewNote, NewNoteVersion, NoteRepository, NoteVersion};
     use core_application::unit_of_work::{UnitOfWork, UnitOfWorkTransaction};
     use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::ActiveValue::Set;
     use uuid::Uuid;
 
     use super::PostgresNoteRepository;
@@ -441,18 +437,6 @@ mod tests {
     async fn find_latest_pending_versions_by_kind_returns_latest_unread_per_note(
         db: crate::DatabaseHandle,
     ) {
-        let strategy_id = Uuid::new_v4();
-        crate::entities::strategy::ActiveModel {
-            id: Set(strategy_id),
-            name: Set("sample strategy".to_string()),
-            description: Set(None),
-            sort_order: Set(0),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(&db)
-        .await
-        .expect("insert test strategy");
         for key in ["sample-kind", "other-kind"] {
             crate::entities::note_kind::ActiveModel {
                 key: Set(key.to_string()),
@@ -477,7 +461,7 @@ mod tests {
             (second_note_id, "sample-kind"),
             (other_note_id, "other-kind"),
         ] {
-            insert_note(&repository, &transaction, id, strategy_id, kind).await;
+            insert_note(&repository, &transaction, id, kind).await;
         }
 
         insert_version(&repository, &transaction, first_note_id, 1, "unread", false).await;
@@ -528,19 +512,6 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn insert_note_returns_none_when_execution_id_conflicts(db: crate::DatabaseHandle) {
-        let strategy_id = Uuid::new_v4();
-        crate::entities::strategy::ActiveModel {
-            id: Set(strategy_id),
-            name: Set("sample strategy".to_string()),
-            description: Set(None),
-            sort_order: Set(0),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(&db)
-        .await
-        .expect("insert test strategy");
-
         let repository = PostgresNoteRepository::new();
         let unit_of_work = crate::unit_of_work::PostgresUnitOfWork::new(db);
         let transaction = unit_of_work.begin().await.expect("begin transaction");
@@ -551,7 +522,6 @@ mod tests {
                 &transaction,
                 NewNote {
                     id: existing_note_id,
-                    strategy_id: Some(strategy_id),
                     kind: None,
                     trigger: None,
                     trigger_label: None,
@@ -566,7 +536,6 @@ mod tests {
                 &transaction,
                 NewNote {
                     id: Uuid::new_v4(),
-                    strategy_id: Some(strategy_id),
                     kind: None,
                     trigger: None,
                     trigger_label: None,
@@ -577,7 +546,7 @@ mod tests {
             .expect("execution id conflict is not a repository error")
             .map(|note| note.id);
         let existing = repository
-            .find_note_by_execution_id(&transaction, strategy_id, execution_id)
+            .find_note_by_execution_id(&transaction, execution_id)
             .await
             .expect("find first note")
             .map(|note| note.id);
@@ -597,7 +566,6 @@ mod tests {
         repository: &PostgresNoteRepository,
         transaction: &UnitOfWorkTransaction,
         id: Uuid,
-        strategy_id: Uuid,
         kind: &str,
     ) {
         repository
@@ -605,7 +573,6 @@ mod tests {
                 transaction,
                 NewNote {
                     id,
-                    strategy_id: Some(strategy_id),
                     kind: Some(kind.to_string()),
                     trigger: None,
                     trigger_label: None,

@@ -182,6 +182,19 @@ mod tests {
         assert_eq!(validate_symbol(symbol).is_ok(), expected_ok);
     }
 
+    #[test]
+    fn validate_symbol_explains_that_foreign_stocks_are_unsupported() {
+        let error = validate_symbol("KR:QZ9012").expect_err("foreign stock is unsupported");
+
+        assert_eq!(
+            error,
+            rmcp::ErrorData::invalid_params(
+                "only Japanese stocks are supported by this tool",
+                None,
+            ),
+        );
+    }
+
     #[rstest]
     #[case::report(
         DomainLargeVolumeReportType::Report,

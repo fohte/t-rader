@@ -501,6 +501,14 @@ mod tests {
 
     use super::collect_note_refs;
 
+    #[test]
+    fn foreign_stock_link_keeps_country_code_in_reference_id() {
+        assert_eq!(
+            collect_note_refs("[[stock:KR:QZ9012]]", &[]),
+            Ok(vec![("stock".into(), "KR:QZ9012".into())]),
+        );
+    }
+
     #[rstest]
     #[case::inline_code("inline `[[sample:token]]` code")]
     #[case::multiline_inline_code(indoc! {"

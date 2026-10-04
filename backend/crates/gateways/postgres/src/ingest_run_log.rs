@@ -101,7 +101,7 @@ mod tests {
     use chrono::{Duration, Timelike, Utc};
     use core_application::ingest_run_log::IngestRunLog;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::EntityTrait;
+    use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, Statement};
     use serde_json::json;
 
     use super::PostgresIngestRunLog;
@@ -157,15 +157,26 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn start_creates_a_running_row(db: DatabaseHandle) {
         let log = PostgresIngestRunLog::new(db.clone());
-        let before = (Utc::now() - Duration::seconds(2)).fixed_offset();
+        let transaction_time = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT CURRENT_TIMESTAMP AS transaction_time",
+            ))
+            .await
+            .expect("read transaction timestamp")
+            .expect("transaction timestamp exists")
+            .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "transaction_time")
+            .expect("decode transaction timestamp");
         let run_id = log.start("sample_ingest").await.expect("start run");
-        let after = (Utc::now() + Duration::seconds(2)).fixed_offset();
 
         let run = row(&db, run_id).await;
-        let started_at_is_current = run.started_at >= before && run.started_at <= after;
+        let started_at_matches_transaction_time = run.started_at == transaction_time;
 
         assert_eq!(
-            (normalize_timestamps(run), started_at_is_current,),
+            (
+                normalize_timestamps(run),
+                started_at_matches_transaction_time,
+            ),
             (
                 ingest_run::Model {
                     id: run_id,

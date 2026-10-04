@@ -12,7 +12,7 @@ use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto as strategy_dto;
 use entrypoint_agent_mcp::StrategyServer as EntrypointStrategyServer;
 
-use super::test_api::{ref_terms, refs, stock_groups};
+use super::test_api::{ref_terms, refs, stock_groups, stock_registration};
 
 #[derive(Clone)]
 pub(super) struct StrategyServer {
@@ -40,7 +40,7 @@ impl StrategyServer {
         self
     }
 
-    async fn invoke<TInput, TOutput>(
+    pub(super) async fn invoke<TInput, TOutput>(
         &self,
         name: &'static str,
         strategy_id: Uuid,
@@ -337,6 +337,15 @@ impl StrategyServer {
             .await
     }
 
+    pub(super) async fn get_news_content(
+        &self,
+        scope: impl Into<StrategyScope>,
+        params: strategy_dto::GetNewsContentParams,
+    ) -> Result<ToolOutput<strategy_dto::GetNewsContentResult>, McpError> {
+        self.invoke("get_news_content", scope.into().id(), params, None, None)
+            .await
+    }
+
     pub(super) async fn search_refs(
         &self,
         scope: impl Into<StrategyScope>,
@@ -402,6 +411,15 @@ impl StrategyServer {
         params: stock_groups::CreateStockGroupParams,
     ) -> Result<ToolOutput<stock_groups::StockGroupDto>, McpError> {
         self.invoke("create_stock_group", scope.into().id(), params, None, None)
+            .await
+    }
+
+    pub(super) async fn register_stock(
+        &self,
+        scope: impl Into<StrategyScope>,
+        params: stock_registration::RegisterStockParams,
+    ) -> Result<ToolOutput<stock_registration::RegisterStockResult>, McpError> {
+        self.invoke("register_stock", scope.into().id(), params, None, None)
             .await
     }
 

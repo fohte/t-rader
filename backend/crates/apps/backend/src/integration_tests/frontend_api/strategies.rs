@@ -2,7 +2,8 @@
 mod tests {
     use super::super::{
         assert_response_eq, create_strategy,
-        create_strategy_with_description as create_strategy_request, normalize_strategy,
+        create_strategy_with_description as create_strategy_request, normalize_annotation_response,
+        normalize_note_response, normalize_strategy,
     };
     use crate::testing::create_test_server;
     use serde_json::{Value, json};
@@ -158,6 +159,90 @@ mod tests {
             &get,
             axum::http::StatusCode::NOT_FOUND,
             Some(json!({ "error": format!("strategy {id} not found") })),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn delete_strategy_preserves_notes_and_annotations(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let strategy_id = create_strategy(&server, "temporary-strategy").await;
+        let note_response = server
+            .post("/api/notes")
+            .json(&json!({ "title": "sample note", "body_md": "sample body" }))
+            .await;
+        let note_id = note_response.json::<Value>()["id"]
+            .as_str()
+            .expect("note id")
+            .to_string();
+        let annotation_response = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "sample-code",
+                "target_kind": "sample-kind",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "sample annotation",
+            }))
+            .await;
+        let annotation_id = annotation_response.json::<Value>()["id"]
+            .as_str()
+            .expect("annotation id")
+            .to_string();
+
+        let deleted = server
+            .delete(&format!("/api/strategies/{strategy_id}"))
+            .await;
+        let saved_note = server.get(&format!("/api/notes/{note_id}")).await;
+        let saved_annotation = server
+            .get(&format!("/api/annotations/{annotation_id}"))
+            .await;
+
+        assert_eq!(
+            (
+                deleted.status_code(),
+                saved_note.status_code(),
+                normalize_note_response(saved_note.json()),
+                saved_annotation.status_code(),
+                normalize_annotation_response(saved_annotation.json()),
+            ),
+            (
+                axum::http::StatusCode::NO_CONTENT,
+                axum::http::StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": "sample note",
+                    "body_md": "sample body",
+                    "frontmatter_json": {},
+                    "tags": [],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                }),
+                axum::http::StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "target_symbol": "sample-code",
+                    "target_kind": "sample-kind",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "price": null,
+                    "text": "sample annotation",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
         );
     }
 }

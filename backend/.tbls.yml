@@ -26,9 +26,8 @@ comments:
       skills: 'エージェントが利用する skill 名と内容の対応を表す JSON。'
       agent_graph: 'エージェントの実行グラフを記述した YAML。'
   - table: annotation
-    tableComment: '戦略に属する銘柄などの対象へ付与したテキスト注釈を保持する。'
+    tableComment: '銘柄などの対象へ付与したテキスト注釈を保持する。'
     columnComments:
-      strategy_id: '注釈を所有する戦略。戦略に属さない注釈では null。'
       target_symbol: '注釈対象を識別する銘柄・参照の ID。'
       target_kind: '注釈対象の種類。'
       timestamp: '注釈を紐づける時刻。'
@@ -42,7 +41,7 @@ comments:
   - table: change_history
     tableComment: '主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。'
     columnComments:
-      target_kind: '変更対象のレコード種別。stock_group は銘柄グループを表す。'
+      target_kind: '変更対象のレコード種別。stock は銘柄、stock_group は銘柄グループを表す。'
       target_id: '変更対象レコードの ID。'
       actor_kind: '変更を行った主体の種別。'
       actor_label: '変更を行った主体の表示名。'
@@ -85,9 +84,8 @@ comments:
       tool_name: '呼び出し数を集計する MCP ツール名。'
       call_count: 'タスク実行中に記録したツール呼び出し数。'
   - table: note
-    tableComment: '戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。'
+    tableComment: 'ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。'
     columnComments:
-      strategy_id: 'ノートを所有する戦略。戦略に属さないノートでは null。'
       kind: 'note_kind で定義されたノート分類キー。'
       trigger: 'ノートが作成された契機の種別。'
       trigger_label: 'ノート作成の契機に付けた表示ラベル。'
@@ -344,7 +342,7 @@ comments:
     tableComment: '価格データの取得対象となる金融商品を管理する。'
     columnComments:
       name: '金融商品の名称。'
-      market: '金融商品が上場する市場。'
+      market: '金融商品が上場する市場。TSE、US、OTHER のいずれか。'
       sector: '金融商品に設定された業種名。'
   - table: jquants_daily_bars_ingested_date
     tableComment: '全銘柄の日足データを取り込んだ営業日を記録する。'
@@ -481,7 +479,7 @@ comments:
     tableComment: 'ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。'
     columnComments:
       name: '銘柄名。'
-      market: '市場区分名。'
+      market: '日本株の市場区分名または外国株の取引所名。'
       product_category: '銘柄の商品区分コード。'
   - table: valuation
     tableComment: '銘柄ごとの株価評価指標を日付別に保持する。'

@@ -6,7 +6,7 @@ use crate::news_aggregator::NewsItem;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::NewsArticle;
+use super::types::{NewsArticle, NewsArticleContent};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewsSearchCriteria {
@@ -83,6 +83,10 @@ pub trait NewsItemRepository: Send + Sync {
         &self,
         criteria: NewsSearchCriteria,
     ) -> Result<Vec<NewsArticle>, NewsItemRepositoryError>;
+    async fn get_content(
+        &self,
+        news_item_id: uuid::Uuid,
+    ) -> Result<Option<NewsArticleContent>, NewsItemRepositoryError>;
 }
 
 pub type SharedNewsItemRepository = std::sync::Arc<dyn NewsItemRepository + Send + Sync>;

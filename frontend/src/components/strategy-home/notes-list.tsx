@@ -43,6 +43,23 @@ export function NotesList({ notes }: NotesListProps) {
                     {n.kind}
                   </span>
                 )}
+                {n.tags.length > 0 && (
+                  <span
+                    role="list"
+                    aria-label="タグ"
+                    className="inline-flex flex-wrap items-center gap-1"
+                  >
+                    {n.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        role="listitem"
+                        className="border border-border px-1 text-muted-foreground-strong"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 <StatusPill status={n.status} />
                 <span className="ml-auto text-muted-foreground">
                   {formatRelative(n.updated_at)}

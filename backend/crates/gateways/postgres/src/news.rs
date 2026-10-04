@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use core_application::news::{
-    FetchedNewsItemContent, NewsArticle, NewsItemContentStatus, NewsItemRepository,
-    NewsItemRepositoryError, NewsSearchCriteria, UpsertedNewsItem, sanitize_search_keyword,
+    FetchedNewsItemContent, NewsArticle, NewsArticleContent, NewsItemContentStatus,
+    NewsItemRepository, NewsItemRepositoryError, NewsSearchCriteria, UpsertedNewsItem,
+    sanitize_search_keyword,
 };
 use core_application::news_aggregator::NewsItem;
 use core_application::unit_of_work::UnitOfWorkTransaction;
@@ -185,13 +186,14 @@ impl NewsItemRepository for PostgresNewsItemRepository {
         &self,
         criteria: NewsSearchCriteria,
     ) -> Result<Vec<NewsArticle>, NewsItemRepositoryError> {
-        let mut query = news_item::Entity::find();
+        let mut query = news_item::Entity::find().find_also_related(news_item_content::Entity);
         if let Some(keyword) = criteria.keyword.as_deref() {
             let pattern = format!("%{}%", sanitize_search_keyword(keyword));
             query = query.filter(
                 Condition::any()
                     .add(news_item::Column::Title.ilike(pattern.clone()))
-                    .add(news_item::Column::BodySnippet.ilike(pattern)),
+                    .add(news_item::Column::BodySnippet.ilike(pattern.clone()))
+                    .add(news_item_content::Column::Body.ilike(pattern)),
             );
         }
         if let Some(from) = criteria.from {
@@ -205,7 +207,23 @@ impl NewsItemRepository for PostgresNewsItemRepository {
             .limit(criteria.limit)
             .all(&self.db)
             .await
-            .map(|rows| rows.into_iter().map(to_application).collect())
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|(article, content)| to_application(article, content))
+                    .collect()
+            })
+            .map_err(|error| NewsItemRepositoryError::Persistence(persistence_error(error)))
+    }
+
+    async fn get_content(
+        &self,
+        news_item_id: Uuid,
+    ) -> Result<Option<NewsArticleContent>, NewsItemRepositoryError> {
+        news_item::Entity::find_by_id(news_item_id)
+            .find_also_related(news_item_content::Entity)
+            .one(&self.db)
+            .await
+            .map(|row| row.map(|(article, content)| to_content_application(article, content)))
             .map_err(|error| NewsItemRepositoryError::Persistence(persistence_error(error)))
     }
 }
@@ -240,14 +258,34 @@ fn end_of_day(date: chrono::NaiveDate) -> DateTime<FixedOffset> {
         .fixed_offset()
 }
 
-fn to_application(model: news_item::Model) -> NewsArticle {
+fn to_application(
+    model: news_item::Model,
+    content: Option<news_item_content::Model>,
+) -> NewsArticle {
     NewsArticle {
         id: model.id,
         source: model.source,
         url: model.url,
         title: model.title,
         body_snippet: model.body_snippet,
+        content_status: content.map(|content| content.status),
         published_at: model.published_at,
+    }
+}
+
+fn to_content_application(
+    model: news_item::Model,
+    content: Option<news_item_content::Model>,
+) -> NewsArticleContent {
+    NewsArticleContent {
+        id: model.id,
+        source: model.source,
+        url: model.url,
+        title: model.title,
+        published_at: model.published_at,
+        content_status: content.as_ref().map(|content| content.status.clone()),
+        content: content.as_ref().and_then(|content| content.body.clone()),
+        content_error: content.and_then(|content| content.error),
     }
 }
 
@@ -354,6 +392,7 @@ mod tests {
                     url: "https://example.invalid/article".into(),
                     title: "Updated title".into(),
                     body_snippet: Some("Updated summary".into()),
+                    content_status: None,
                     published_at: published_at.fixed_offset(),
                 }],
             ),

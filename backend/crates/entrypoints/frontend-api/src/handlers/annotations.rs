@@ -7,7 +7,6 @@ use core_application::annotation::{
     CreateAnnotationCommand, DeleteAnnotationCommand, UpdateAnnotationCommand,
 };
 use core_application::change_history::{Actor, ChangeHistoryError};
-use core_application::strategy_existence::StrategyExistenceError;
 use core_application::strategy_task::TaskSource;
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
@@ -25,7 +24,6 @@ use crate::models::{
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ListAnnotationsQuery {
-    pub strategy_id: Option<Uuid>,
     pub target_symbol: Option<String>,
 }
 
@@ -48,7 +46,6 @@ pub async fn list_annotations(
     let annotations = state
         .annotation_read_use_cases
         .list_annotations(AnnotationListQuery {
-            strategy_id: params.strategy_id,
             target_symbol: params.target_symbol.filter(|symbol| !symbol.is_empty()),
             limit: None,
         })
@@ -110,9 +107,7 @@ pub async fn create_annotation(
     let created = state
         .annotation_use_cases
         .create(CreateAnnotationCommand {
-            scope: None,
             actor: Actor::Human,
-            strategy_id: p.strategy_id,
             target_symbol: p.target_symbol,
             target_kind: p.target_kind,
             timestamp: p.timestamp,
@@ -324,10 +319,7 @@ fn map_annotation_error(error: AnnotationUseCaseError) -> AppError {
         AnnotationUseCaseError::Repository(AnnotationRepositoryError::Database(error))
         | AnnotationUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | AnnotationUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | AnnotationUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
-        | AnnotationUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
-            error.into()
-        }
+        | AnnotationUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
         other => AppError::Internal(other.to_string()),
     }
 }

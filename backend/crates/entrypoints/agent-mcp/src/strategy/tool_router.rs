@@ -1,12 +1,17 @@
 //! `#[tool_router]` による tool 登録。
 //!
 //! 各メソッドは ctx から検証済み `StrategyScope` (と必要なら execution_id) を作り、対応する
-//! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。tool を追加する際は
-//! このファイルにラッパーを追加すること。
+//! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
+
+mod news;
+mod predictions;
+mod stock_groups;
+mod stock_registration;
 
 use std::borrow::Cow;
 
 use rmcp::ErrorData as McpError;
+use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::service::{RequestContext, RoleServer};
@@ -15,17 +20,15 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use super::dto::{
     CheckBuyableQtyParams, CheckBuyableQtyResult, CreateAnnotationParams, CreateAnnotationResult,
     EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult,
-    ListNoteKindsResult, ListNotesParams, ListNotesResult, ListPredictionsParams,
-    ListPredictionsResult, NoteDto, QueryDataParams, QueryDataResult, QueryMediaParams,
-    QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
-    ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadMacroIndicatorParams,
-    ReadMacroIndicatorResult, ReadNoteParams, ReadPortfolioResult, ReadPredictionStatsResult,
-    ReadSectorShortRatioParams, ReadSectorShortRatioResult, ReadShareholdingStructureParams,
-    ReadShareholdingStructureResult, ReadShortSaleReportsParams, ReadShortSaleReportsResult,
-    ReadTradesParams, ReadTradesResult, ReadValuationParams, ReadValuationResult,
-    RecordPredictionParams, RecordPredictionResult, ReplyCommentParams, ReplyCommentResult,
-    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
-    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, QueryDataParams,
+    QueryDataResult, QueryMediaParams, QueryMediaResult, ReadAnnotationsParams,
+    ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams,
+    ReadFinSummaryResult, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams,
+    ReadPortfolioResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
+    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
+    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, ReadValuationParams,
+    ReadValuationResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
+    ResolveCommentResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::media::TOOL_NAME as QUERY_MEDIA_TOOL_NAME;
@@ -33,16 +36,12 @@ use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
-use super::stock_groups::{
-    CreateStockGroupParams, ListStockGroupMembersParams, StockGroupDto,
-    StockGroupMemberChangeResult, StockGroupMemberParams, UpdateStockGroupParams,
-};
 use super::web_search::TOOL_NAME as SEARCH_WEB_TOOL_NAME;
 use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
 };
 
-#[tool_router]
+#[tool_router(router = base_tool_router, vis = "pub(super)")]
 impl StrategyServer {
     /// 利用できるノート種別を返す
     #[tool(
@@ -78,21 +77,19 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
         Parameters(params): Parameters<WriteNoteParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<WriteNoteResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.strategy_scope_from_ctx(&ctx).await?;
         // a2a_task_id を含めず execution_step_id 部分のみをキーにする。resume で
         // a2a_task_id (= x-execution-id の task_id 部分) が変わっても、同じステップが
         // 書くノートが 1 件に収束するようにするため。
         let execution_id = execution_step_id_from_ctx(&ctx).map(|id| id.to_string());
-        self.write_note_inner(scope, execution_id, params)
-            .await
-            .map(Json)
+        self.write_note_inner(execution_id, params).await.map(Json)
     }
 
     /// ノートを読み出す
@@ -113,7 +110,7 @@ impl StrategyServer {
     /// 全ノート一覧を返す (新しい順)
     #[tool(
         name = "list_notes",
-        description = "List all notes, newest first. Filter by kind, ref (kind:id), status, and/or updated_after. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
+        description = "List all notes, newest first. Filter by kind, tag (exact match against frontmatter_json.tags), ref (kind:id), status, and/or updated_after. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
         annotations(read_only_hint = true)
     )]
     async fn list_notes(
@@ -135,10 +132,10 @@ impl StrategyServer {
         Parameters(params): Parameters<CreateAnnotationParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<CreateAnnotationResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.strategy_scope_from_ctx(&ctx).await?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
         let execution_task_id = execution_task_id_from_ctx(&ctx);
-        self.create_annotation_inner(scope, execution_step_id, execution_task_id, params)
+        self.create_annotation_inner(execution_step_id, execution_task_id, params)
             .await
             .map(Json)
     }
@@ -248,7 +245,7 @@ impl StrategyServer {
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to retrieve search_news items whose content_status is not fetched by searching the item's title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -376,21 +373,6 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
-    #[tool(
-        name = "search_news",
-        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
-        annotations(read_only_hint = true)
-    )]
-    async fn search_news(
-        &self,
-        Parameters(params): Parameters<SearchNewsParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<SearchNewsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.search_news_inner(scope, params).await.map(Json)
-    }
-
     /// 参照型 (stock/indicator/group) を id/name/別名の部分一致で横断検索する
     #[tool(
         name = "search_refs",
@@ -432,77 +414,6 @@ impl StrategyServer {
     ) -> Result<Json<RemoveRefTermsResult>, McpError> {
         self.strategy_scope_from_ctx(&ctx).await?;
         self.remove_ref_terms_inner(params).await.map(Json)
-    }
-
-    /// 分類軸のグループを作成する
-    #[tool(
-        name = "create_stock_group",
-        description = "Create a stock group under an existing group axis. The axis must be managed by an agent rather than a synchronization source. Group keys are immutable."
-    )]
-    async fn create_stock_group(
-        &self,
-        Parameters(params): Parameters<CreateStockGroupParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<StockGroupDto>, McpError> {
-        self.strategy_scope_from_ctx(&ctx).await?;
-        self.create_stock_group_inner(params).await.map(Json)
-    }
-
-    /// グループの表示名と説明を更新する
-    #[tool(
-        name = "update_stock_group",
-        description = "Update a stock group's name and/or description. Its axis key and group key are immutable; pass description as null to clear it. Groups on synchronized axes cannot be changed by MCP."
-    )]
-    async fn update_stock_group(
-        &self,
-        Parameters(params): Parameters<UpdateStockGroupParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<StockGroupDto>, McpError> {
-        self.strategy_scope_from_ctx(&ctx).await?;
-        self.update_stock_group_inner(params).await.map(Json)
-    }
-
-    /// グループに銘柄を追加する
-    #[tool(
-        name = "add_stock_to_group",
-        description = "Add one stock to a group. Repeating an existing membership is a no-op. The stock ID must exist, and groups on synchronized axes cannot be changed by MCP."
-    )]
-    async fn add_stock_to_group(
-        &self,
-        Parameters(params): Parameters<StockGroupMemberParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<StockGroupMemberChangeResult>, McpError> {
-        self.strategy_scope_from_ctx(&ctx).await?;
-        self.add_stock_to_group_inner(params).await.map(Json)
-    }
-
-    /// グループから銘柄を削除する
-    #[tool(
-        name = "remove_stock_from_group",
-        description = "Remove one stock from a group. Repeating a removal for a non-member is a no-op. Groups on synchronized axes cannot be changed by MCP."
-    )]
-    async fn remove_stock_from_group(
-        &self,
-        Parameters(params): Parameters<StockGroupMemberParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<StockGroupMemberChangeResult>, McpError> {
-        self.strategy_scope_from_ctx(&ctx).await?;
-        self.remove_stock_from_group_inner(params).await.map(Json)
-    }
-
-    /// グループに属する銘柄一覧を返す
-    #[tool(
-        name = "list_stock_group_members",
-        description = "List the stock IDs in a group in ascending order. Stock groups are account-wide and do not belong to the calling strategy.",
-        annotations(read_only_hint = true)
-    )]
-    async fn list_stock_group_members(
-        &self,
-        Parameters(params): Parameters<ListStockGroupMembersParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<super::stock_groups::ListStockGroupMembersResult>, McpError> {
-        self.strategy_scope_from_ctx(&ctx).await?;
-        self.list_stock_group_members_inner(params).await.map(Json)
     }
 
     /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す
@@ -549,52 +460,17 @@ impl StrategyServer {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         self.read_margin_inner(scope, params).await.map(Json)
     }
-
-    /// 予測を記録する (書き込み専用。更新・削除 tool は存在しない)
-    #[tool(
-        name = "record_prediction",
-        description = "Record a prediction that target_stock_id will outperform or underperform benchmark_stock_id (measured from base_date's close to due_date) with a fixed-step probability (0.55/0.6/0.65/0.7/0.75/0.8/0.85/0.9). Write-once: there is no update or delete tool, since changing a recorded prediction would invalidate later grading."
-    )]
-    async fn record_prediction(
-        &self,
-        Parameters(params): Parameters<RecordPredictionParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<RecordPredictionResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.record_prediction_inner(scope, params).await.map(Json)
-    }
-
-    /// 接続元戦略が記録した予測を一覧する
-    #[tool(
-        name = "list_predictions",
-        description = "List predictions recorded by the current strategy, newest first. Filter by due_after/due_before (e.g. due_after=today to see only predictions not yet graded).",
-        annotations(read_only_hint = true)
-    )]
-    async fn list_predictions(
-        &self,
-        Parameters(params): Parameters<ListPredictionsParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ListPredictionsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.list_predictions_inner(scope, params).await.map(Json)
-    }
-
-    /// 接続元戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する
-    #[tool(
-        name = "read_prediction_stats",
-        description = "Return calibration stats for the current strategy's graded predictions: the Brier score (mean squared error between each prediction's recorded probability and its 0/1 outcome; lower is better-calibrated) and per-probability-step count/hit_rate (hit_rate is null for steps with zero graded predictions). Predictions are graded automatically once their due_date's daily bar has been ingested; ungraded predictions are excluded entirely, so graded_count can be smaller than the total number of predictions recorded so far.",
-        annotations(read_only_hint = true)
-    )]
-    async fn read_prediction_stats(
-        &self,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ReadPredictionStatsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_prediction_stats_inner(scope).await.map(Json)
-    }
 }
 
 impl StrategyServer {
+    fn tool_router() -> ToolRouter<Self> {
+        Self::base_tool_router()
+            + Self::stock_groups_tool_router()
+            + Self::stock_registration_tool_router()
+            + Self::predictions_tool_router()
+            + Self::news_tool_router()
+    }
+
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
     /// tool を追加してもここを手で更新する必要はない。
     pub fn list_tool_summaries() -> Vec<(String, Option<String>)> {
@@ -680,6 +556,7 @@ mod tests {
                 ("create_stock_group", None),
                 ("eval_indicator", None),
                 ("eval_python", None),
+                ("get_news_content", Some(true)),
                 ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
@@ -700,6 +577,7 @@ mod tests {
                 ("read_trades", Some(true)),
                 ("read_valuation", Some(true)),
                 ("record_prediction", None),
+                ("register_stock", None),
                 ("remove_ref_terms", None),
                 ("remove_stock_from_group", None),
                 ("reply_comment", None),

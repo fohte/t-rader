@@ -10,9 +10,7 @@ mod tests {
 
     use gateway_postgres::entities::{change_history, note, note_kind, note_version};
 
-    use crate::testing::{
-        create_test_server, insert_test_note_with_execution_id, insert_test_strategy,
-    };
+    use crate::testing::{create_test_server, insert_test_note_with_execution_id};
 
     async fn insert_test_version(
         db: &gateway_postgres::DatabaseHandle,
@@ -59,10 +57,8 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert note kind");
-        let strategy_id = insert_test_strategy(&db, "Sample strategy").await;
         let note_id = insert_test_note_with_execution_id(
             &db,
-            strategy_id,
             "Sample title",
             "Sample body",
             "sample-execution-id",

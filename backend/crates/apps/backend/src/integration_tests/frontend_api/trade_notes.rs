@@ -9,9 +9,7 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use crate::testing::{
-        create_test_server_with_db, insert_test_note_in_scope, insert_test_strategy,
-    };
+    use crate::testing::{create_test_server_with_db, insert_test_note, insert_test_strategy};
     use gateway_postgres::entities::{trade, trade_note};
 
     async fn seed_trade(db: &impl sea_orm::ConnectionTrait, strategy_id: Uuid) -> Uuid {
@@ -36,8 +34,8 @@ mod tests {
         id
     }
 
-    async fn seed_note(db: &gateway_postgres::DatabaseHandle, strategy_id: Option<Uuid>) -> Uuid {
-        insert_test_note_in_scope(db, strategy_id, "t", "b").await
+    async fn seed_note(db: &gateway_postgres::DatabaseHandle) -> Uuid {
+        insert_test_note(db, "t", "b").await
     }
 
     fn normalize_trade_note(mut v: serde_json::Value) -> serde_json::Value {
@@ -58,18 +56,18 @@ mod tests {
         v
     }
 
-    fn expected_note(id: Uuid, strategy_id: Uuid) -> serde_json::Value {
+    fn expected_note(id: Uuid) -> serde_json::Value {
         json!({
             "id": id,
             "version_id": "<dyn>",
             "version_no": 1,
             "is_current": true,
-            "strategy_id": strategy_id,
             "title": "t",
             "body_md": "b",
             "frontmatter_json": {},
+            "tags": [],
             "kind": null,
-            "status": "unread",
+            "status": "approved",
             "trigger": null,
             "trigger_label": null,
             "created_by_kind": "human",
@@ -111,7 +109,7 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
-        let nid = seed_note(&db, Some(sid)).await;
+        let nid = seed_note(&db).await;
 
         let created = server
             .post(&format!("/api/trades/{tid}/notes"))
@@ -138,7 +136,7 @@ mod tests {
             .collect();
         assert_eq!(
             (list.status_code(), normalized),
-            (StatusCode::OK, vec![expected_note(nid, sid)]),
+            (StatusCode::OK, vec![expected_note(nid)]),
         );
     }
 
@@ -147,8 +145,8 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
-        let n1 = seed_note(&db, Some(sid)).await;
-        let n2 = seed_note(&db, Some(sid)).await;
+        let n1 = seed_note(&db).await;
+        let n2 = seed_note(&db).await;
 
         assert_trade_note_created(&server, tid, n2).await;
         assert_trade_note_created(&server, tid, n1).await;
@@ -182,31 +180,26 @@ mod tests {
             .collect();
         assert_eq!(
             (list.status_code(), normalized),
-            (
-                StatusCode::OK,
-                vec![expected_note(n2, sid), expected_note(n1, sid)],
-            ),
+            (StatusCode::OK, vec![expected_note(n2), expected_note(n1)],),
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn create_links_notes_from_any_strategy_scope(db: gateway_postgres::DatabaseHandle) {
+    async fn create_links_multiple_notes_to_trade(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let a = insert_test_strategy(&db, "a").await;
-        let b = insert_test_strategy(&db, "b").await;
         let tid = seed_trade(&db, a).await;
-        let cross_strategy_note_id = seed_note(&db, Some(b)).await;
-        let unscoped_note_id = seed_note(&db, None).await;
+        let first_note_id = seed_note(&db).await;
+        let second_note_id = seed_note(&db).await;
 
-        assert_trade_note_created(&server, tid, cross_strategy_note_id).await;
-        assert_trade_note_created(&server, tid, unscoped_note_id).await;
+        assert_trade_note_created(&server, tid, first_note_id).await;
+        assert_trade_note_created(&server, tid, second_note_id).await;
     }
 
     #[backend_test_macros::database_test]
     async fn create_for_unknown_trade_returns_404(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        let sid = insert_test_strategy(&db, "s").await;
-        let nid = seed_note(&db, Some(sid)).await;
+        let nid = seed_note(&db).await;
 
         let missing_trade_id = Uuid::new_v4();
         let res = server
@@ -243,7 +236,7 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
-        let nid = seed_note(&db, Some(sid)).await;
+        let nid = seed_note(&db).await;
 
         assert_trade_note_created(&server, tid, nid).await;
 
@@ -263,7 +256,7 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
-        let nid = seed_note(&db, Some(sid)).await;
+        let nid = seed_note(&db).await;
 
         assert_trade_note_created(&server, tid, nid).await;
 

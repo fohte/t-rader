@@ -14,12 +14,11 @@ pub struct FakeNoteReadQuery {
 }
 
 impl FakeNoteReadQuery {
-    pub fn new(note_id: Uuid, strategy_id: Option<Uuid>, version_id: Uuid) -> Self {
+    pub fn new(note_id: Uuid, version_id: Uuid) -> Self {
         let timestamp = timestamp();
         Self {
             note: Note {
                 id: note_id,
-                strategy_id,
                 kind: None,
                 trigger: None,
                 trigger_label: None,

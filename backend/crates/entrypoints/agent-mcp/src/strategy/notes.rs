@@ -4,8 +4,6 @@
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::note::{NoteRepositoryError, NoteUseCaseError, NoteWriteCommand};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
-use core_application::strategy_existence::StrategyExistenceError;
-use core_application::strategy_scope::StrategyScope;
 use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 
@@ -62,8 +60,7 @@ fn note_kind_note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
         NoteUseCaseError::Repository(NoteRepositoryError::Database(error))
         | NoteUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
-        | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
             super::persistence_error_to_mcp(error)
         }
         other => internal_failure(&other.to_string()),
@@ -92,11 +89,9 @@ impl StrategyServer {
 
     pub(crate) async fn write_note_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
-        let scope = scope.into();
         let graphs_json = params
             .graphs
             .map(|graphs| {
@@ -110,8 +105,6 @@ impl StrategyServer {
             .dependencies
             .notes
             .write(NoteWriteCommand {
-                scope: Some(scope),
-                strategy_id: Some(scope.id()),
                 execution_id,
                 note_id: params.note_id,
                 title: params.title,
