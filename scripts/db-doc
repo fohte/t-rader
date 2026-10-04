@@ -65,14 +65,8 @@ run_db_doc() {
   fi
 
   docker compose exec -T db createdb \
-<<<<<<< before updating
-    --username "t-rader" \
-    --template template0 \
-||||||| last update
-    --username "t-rader" \
-=======
     --username "t_rader" \
->>>>>>> after updating
+    --template template0 \
     "$current_database_name"
 
   local database_url
