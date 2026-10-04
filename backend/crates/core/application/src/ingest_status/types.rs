@@ -3,9 +3,10 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::{
-    ALPHA_VANTAGE_CALENDAR_INGEST_JOB, DAILY_BARS_INGEST_JOB, EARNINGS_SCHEDULE_INGEST_JOB,
-    EQUITY_MASTER_INGEST_JOB, FINANCIAL_SUMMARY_INGEST_JOB, FRED_INGEST_JOB,
-    FRED_RELEASE_DATES_INGEST_JOB, MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB, PREDICTION_GRADING_JOB,
+    ALPHA_VANTAGE_CALENDAR_INGEST_JOB, BOJ_CALENDAR_EVENT_INGEST_JOB, DAILY_BARS_INGEST_JOB,
+    EARNINGS_SCHEDULE_INGEST_JOB, ECB_CALENDAR_EVENT_INGEST_JOB, EQUITY_MASTER_INGEST_JOB,
+    FINANCIAL_SUMMARY_INGEST_JOB, FRED_INGEST_JOB, FRED_RELEASE_DATES_INGEST_JOB,
+    MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB, PREDICTION_GRADING_JOB,
     SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB, SHORT_SALE_REPORT_INGEST_JOB,
     VALUATION_INGEST_JOB,
 };
@@ -16,7 +17,7 @@ pub struct IngestJobDefinition {
     pub has_data_date: bool,
 }
 
-pub const INGEST_JOBS: [IngestJobDefinition; 14] = [
+pub const INGEST_JOBS: [IngestJobDefinition; 16] = [
     IngestJobDefinition {
         identifier: DAILY_BARS_INGEST_JOB,
         has_data_date: true,
@@ -52,6 +53,14 @@ pub const INGEST_JOBS: [IngestJobDefinition; 14] = [
     IngestJobDefinition {
         identifier: ALPHA_VANTAGE_CALENDAR_INGEST_JOB,
         // 未来の予定カレンダーなので、最新営業日との日付比較には使わない。
+        has_data_date: false,
+    },
+    IngestJobDefinition {
+        identifier: BOJ_CALENDAR_EVENT_INGEST_JOB,
+        has_data_date: false,
+    },
+    IngestJobDefinition {
+        identifier: ECB_CALENDAR_EVENT_INGEST_JOB,
         has_data_date: false,
     },
     IngestJobDefinition {
