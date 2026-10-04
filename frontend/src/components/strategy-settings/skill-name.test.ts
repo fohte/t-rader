@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import { validateSkillName } from '#components/strategy-settings/skill-name'
 
+const INVALID_SKILL_NAME_MESSAGE =
+  'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます'
+
 describe('validateSkillName', () => {
   it.each([
     { name: 'empty', input: '', expected: 'skill 名を入力してください' },
@@ -13,44 +16,37 @@ describe('validateSkillName', () => {
     {
       name: 'leading-hyphen',
       input: '-foo',
-      expected:
-        'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      expected: INVALID_SKILL_NAME_MESSAGE,
     },
     {
       name: 'leading-underscore',
       input: '_foo',
-      expected:
-        'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      expected: INVALID_SKILL_NAME_MESSAGE,
     },
     {
       name: 'leading-uppercase',
       input: 'Foo',
-      expected:
-        'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      expected: INVALID_SKILL_NAME_MESSAGE,
     },
     {
       name: 'mixed-case',
       input: 'snapShot',
-      expected:
-        'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      expected: INVALID_SKILL_NAME_MESSAGE,
     },
     {
       name: 'contains-space',
       input: 'snap shot',
-      expected:
-        'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      expected: INVALID_SKILL_NAME_MESSAGE,
     },
     {
       name: 'contains-dot',
       input: 'snap.shot',
-      expected:
-        'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      expected: INVALID_SKILL_NAME_MESSAGE,
     },
     {
       name: 'contains-slash',
       input: 'snap/shot',
-      expected:
-        'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      expected: INVALID_SKILL_NAME_MESSAGE,
     },
   ])('$name', ({ input, expected }) => {
     expect(validateSkillName(input)).toBe(expected)

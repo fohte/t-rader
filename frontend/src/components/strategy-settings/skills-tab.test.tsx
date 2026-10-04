@@ -14,6 +14,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SkillsTab } from '#components/strategy-settings/skills-tab'
 import { fetchClient } from '#lib/api/client'
 
+const INVALID_SKILL_NAME_MESSAGE =
+  'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます'
+
 interface SkillStore {
   [name: string]: string
 }
@@ -154,7 +157,7 @@ describe('SkillsTab', () => {
     await user.click(screen.getByRole('button', { name: '追加' }))
 
     expect(screen.getByTestId('new-skill-error').textContent).toBe(
-      'skill 名は [a-z0-9] で始まり、英小文字 / 数字 / _ / - のみ使用できます',
+      INVALID_SKILL_NAME_MESSAGE,
     )
     // store に書き込まれていないことで「API が呼ばれていない」ことを示す
     expect(activeMiddleware?.store).toEqual({})
