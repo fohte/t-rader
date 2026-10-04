@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -31,13 +32,14 @@ type rssFeedResource struct {
 }
 
 type rssFeedModel struct {
-	ID          types.String `tfsdk:"id"`
-	Source      types.String `tfsdk:"source"`
-	DisplayName types.String `tfsdk:"display_name"`
-	URL         types.String `tfsdk:"url"`
-	Enabled     types.Bool   `tfsdk:"enabled"`
-	CreatedAt   types.String `tfsdk:"created_at"`
-	UpdatedAt   types.String `tfsdk:"updated_at"`
+	ID            types.String `tfsdk:"id"`
+	Source        types.String `tfsdk:"source"`
+	DisplayName   types.String `tfsdk:"display_name"`
+	URL           types.String `tfsdk:"url"`
+	ContentSource types.String `tfsdk:"content_source"`
+	Enabled       types.Bool   `tfsdk:"enabled"`
+	CreatedAt     types.String `tfsdk:"created_at"`
+	UpdatedAt     types.String `tfsdk:"updated_at"`
 }
 
 func NewRssFeedResource() resource.Resource {
@@ -72,6 +74,12 @@ func (r *rssFeedResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Required:            true,
 				Validators:          []validator.String{rssFeedURLValidator{}},
 				MarkdownDescription: "RSS フィードの HTTP または HTTPS URL。",
+			},
+			"content_source": schema.StringAttribute{
+				Optional:            true,
+				Default:             stringdefault.StaticString("none"),
+				Validators:          []validator.String{rssFeedContentSourceValidator{}},
+				MarkdownDescription: "本文の取得方式。none は本文を取得せず、feed は RSS 内の本文を使い、crawl はリンク先から本文を取得します。省略時は none。",
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:            true,
@@ -114,11 +122,13 @@ func (r *rssFeedResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	contentSource := plan.ContentSource.ValueString()
 	created, err := client.CreateRssFeed(ctx, traderapi.CreateRssFeedRequest{
-		Source:      plan.Source.ValueString(),
-		DisplayName: plan.DisplayName.ValueString(),
-		Url:         plan.URL.ValueString(),
-		Enabled:     boolAttributeNullable(plan.Enabled),
+		Source:        plan.Source.ValueString(),
+		DisplayName:   plan.DisplayName.ValueString(),
+		Url:           plan.URL.ValueString(),
+		ContentSource: &contentSource,
+		Enabled:       boolAttributeNullable(plan.Enabled),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating RSS feed", err.Error())
@@ -167,9 +177,10 @@ func (r *rssFeedResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	updated, err := client.UpdateRssFeed(ctx, state.ID.ValueString(), traderapi.UpdateRssFeedRequest{
-		DisplayName: stringAttributeUpdateNullable(plan.DisplayName),
-		Url:         stringAttributeUpdateNullable(plan.URL),
-		Enabled:     boolAttributeNullable(plan.Enabled),
+		DisplayName:   stringAttributeUpdateNullable(plan.DisplayName),
+		Url:           stringAttributeUpdateNullable(plan.URL),
+		ContentSource: stringAttributeUpdateNullable(plan.ContentSource),
+		Enabled:       boolAttributeNullable(plan.Enabled),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating RSS feed", err.Error())
@@ -208,13 +219,14 @@ func (r *rssFeedResource) configuredClient(diagnostics *diag.Diagnostics) (*trad
 
 func modelFromRssFeed(feed traderapi.RssFeed) rssFeedModel {
 	return rssFeedModel{
-		ID:          types.StringValue(feed.Id.String()),
-		Source:      types.StringValue(feed.Source),
-		DisplayName: types.StringValue(feed.DisplayName),
-		URL:         types.StringValue(feed.Url),
-		Enabled:     types.BoolValue(feed.Enabled),
-		CreatedAt:   types.StringValue(feed.CreatedAt.Format(time.RFC3339Nano)),
-		UpdatedAt:   types.StringValue(feed.UpdatedAt.Format(time.RFC3339Nano)),
+		ID:            types.StringValue(feed.Id.String()),
+		Source:        types.StringValue(feed.Source),
+		DisplayName:   types.StringValue(feed.DisplayName),
+		URL:           types.StringValue(feed.Url),
+		ContentSource: types.StringValue(feed.ContentSource),
+		Enabled:       types.BoolValue(feed.Enabled),
+		CreatedAt:     types.StringValue(feed.CreatedAt.Format(time.RFC3339Nano)),
+		UpdatedAt:     types.StringValue(feed.UpdatedAt.Format(time.RFC3339Nano)),
 	}
 }
 
@@ -241,6 +253,28 @@ func (rssFeedSourceValidator) ValidateString(ctx context.Context, req validator.
 }
 
 type rssFeedDisplayNameValidator struct{}
+
+type rssFeedContentSourceValidator struct{}
+
+func (rssFeedContentSourceValidator) Description(_ context.Context) string {
+	return "本文取得方式は none、feed、crawl のいずれかを指定してください。"
+}
+
+func (rssFeedContentSourceValidator) MarkdownDescription(ctx context.Context) string {
+	return rssFeedContentSourceValidator{}.Description(ctx)
+}
+
+func (rssFeedContentSourceValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	switch req.ConfigValue.ValueString() {
+	case "none", "feed", "crawl":
+		return
+	default:
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid RSS feed content source", "Content source must be one of none, feed, or crawl.")
+	}
+}
 
 func (rssFeedDisplayNameValidator) Description(_ context.Context) string {
 	return "表示名は空にできず、前後に空白を含められません。"
