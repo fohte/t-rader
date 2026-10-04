@@ -7,6 +7,7 @@ use backend::{
 };
 use clap::Parser;
 use core_application::agent_task_client::{AgentTaskClient, SharedAgentTaskClient};
+use core_application::calendar::source::SharedCalendarEventSource;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
 use core_application::equity_master_source::SharedEquityMasterSource;
@@ -23,6 +24,7 @@ use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
+use gateway_e_stat::EStatCalendarEventSource;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -249,6 +251,14 @@ async fn main() -> Result<(), StartupError> {
         }
     };
 
+    let e_stat_calendar_source: SharedCalendarEventSource =
+        Arc::new(EStatCalendarEventSource::new().map_err(|error| {
+            StartupError::Config(format!(
+                "failed to initialize e-Stat calendar source: {error}"
+            ))
+        })?);
+    tracing::info!("e-Stat calendar source initialized");
+
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -292,6 +302,8 @@ async fn main() -> Result<(), StartupError> {
         indicator_observations: use_cases.indicator_observations(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
+        calendar_events: use_cases.calendar_events(),
+        e_stat_calendar_source: Some(e_stat_calendar_source),
         predictions: use_cases.predictions(),
         short_ratios: use_cases.short_ratios(),
         short_sale_reports: use_cases.short_sale_reports(),
