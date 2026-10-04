@@ -14,123 +14,119 @@ const CjsAIMessageChunk = z
     ),
   })
   .parse(cjsExports).AIMessageChunk
-const constructors = [AIMessageChunk, CjsAIMessageChunk]
 
-describe('@langchain/core AIMessageChunk patch', () => {
-  it('defers tool call parsing and returns the same values in ESM and CJS', () => {
-    const actual = constructors.map((MessageChunk) => {
-      let elementReads = 0
-      const toolCallChunks = new Proxy(
+const messageChunkFormats = [
+  { format: 'ESM', MessageChunk: AIMessageChunk },
+  { format: 'CJS', MessageChunk: CjsAIMessageChunk },
+] as const
+
+function countReductions<T>(values: T[], onReduce: () => void): T[] {
+  const originalReduce = values.reduce.bind(values)
+  Object.defineProperty(values, 'reduce', {
+    value: (...args: Parameters<typeof originalReduce>) => {
+      onReduce()
+      return originalReduce(...args)
+    },
+  })
+  return values
+}
+
+describe.each(messageChunkFormats)(
+  '@langchain/core AIMessageChunk patch ($format)',
+  ({ MessageChunk }) => {
+    it('defers tool call parsing through concatenation and caches the result', () => {
+      let collapseCount = 0
+
+      class CountingMessageChunk extends MessageChunk {
+        constructor(fields: ConstructorParameters<typeof MessageChunk>[0]) {
+          const trackedFields =
+            typeof fields === 'string' ||
+            Array.isArray(fields) ||
+            fields.tool_call_chunks === undefined
+              ? fields
+              : {
+                  ...fields,
+                  tool_call_chunks: countReductions(
+                    fields.tool_call_chunks,
+                    () => {
+                      collapseCount += 1
+                    },
+                  ),
+                }
+          super(trackedFields)
+        }
+      }
+
+      let aggregated: InstanceType<typeof MessageChunk> =
+        new CountingMessageChunk({
+          content: '',
+          tool_call_chunks: [
+            {
+              type: 'tool_call_chunk',
+              id: 'call_valid',
+              name: 'demo_tool',
+              args: '{"label":"',
+              index: 0,
+            },
+          ],
+        })
+
+      for (const chunk of [
+        new CountingMessageChunk({
+          content: '',
+          tool_call_chunks: [
+            { type: 'tool_call_chunk', args: 'demo', index: 0 },
+          ],
+        }),
+        new CountingMessageChunk({
+          content: '',
+          tool_call_chunks: [{ type: 'tool_call_chunk', args: '"}', index: 0 }],
+        }),
+        new CountingMessageChunk({
+          content: '',
+          tool_call_chunks: [
+            {
+              type: 'tool_call_chunk',
+              id: 'call_invalid',
+              name: 'demo_tool',
+              args: 'not-json',
+              index: 1,
+            },
+          ],
+        }),
+      ]) {
+        aggregated = aggregated.concat(chunk)
+      }
+
+      const collapseCountBeforeAccess = collapseCount
+      const toolCalls = aggregated.tool_calls
+      const invalidToolCalls = aggregated.invalid_tool_calls
+      const repeatedToolCalls = aggregated.tool_calls
+      const repeatedInvalidToolCalls = aggregated.invalid_tool_calls
+
+      expect(
+        Object.freeze([
+          collapseCountBeforeAccess,
+          collapseCount,
+          toolCalls === repeatedToolCalls,
+          invalidToolCalls === repeatedInvalidToolCalls,
+          toolCalls,
+          invalidToolCalls,
+        ]),
+      ).toEqual([
+        0,
+        1,
+        true,
+        true,
         [
           {
-            type: 'tool_call_chunk' as const,
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: '{"label":"demo"}',
-            index: 0,
-          },
-        ],
-        {
-          get(target, property, receiver) {
-            if (typeof property === 'string' && /^\d+$/.test(property)) {
-              elementReads += 1
-            }
-            const value: unknown = Reflect.get(target, property, receiver)
-            return value
-          },
-        },
-      )
-      const chunk = new MessageChunk({
-        content: '',
-        tool_call_chunks: toolCallChunks,
-      })
-      const elementReadsBeforeAccess = elementReads
-
-      return {
-        elementReadsBeforeAccess,
-        toolCalls: chunk.tool_calls,
-        invalidToolCalls: chunk.invalid_tool_calls,
-      }
-    })
-
-    expect(actual).toEqual([
-      {
-        elementReadsBeforeAccess: 0,
-        toolCalls: [
-          {
-            type: 'tool_call',
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: { label: 'demo' },
-          },
-        ],
-        invalidToolCalls: [],
-      },
-      {
-        elementReadsBeforeAccess: 0,
-        toolCalls: [
-          {
-            type: 'tool_call',
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: { label: 'demo' },
-          },
-        ],
-        invalidToolCalls: [],
-      },
-    ])
-  })
-
-  it('aggregates valid and invalid streamed tool calls in ESM and CJS', () => {
-    const actual = constructors.map((MessageChunk) => {
-      const first = new MessageChunk({
-        content: '',
-        tool_call_chunks: [
-          {
-            type: 'tool_call_chunk',
-            id: 'call_valid',
-            name: 'demo_tool',
-            args: '{"label":',
-            index: 0,
-          },
-        ],
-      })
-      const second = new MessageChunk({
-        content: '',
-        tool_call_chunks: [
-          {
-            type: 'tool_call_chunk',
-            args: '"demo"}',
-            index: 0,
-          },
-          {
-            type: 'tool_call_chunk',
-            id: 'call_invalid',
-            name: 'demo_tool',
-            args: 'not-json',
-            index: 1,
-          },
-        ],
-      })
-      const aggregated = first.concat(second)
-
-      return {
-        toolCalls: aggregated.tool_calls,
-        invalidToolCalls: aggregated.invalid_tool_calls,
-      }
-    })
-
-    expect(actual).toEqual([
-      {
-        toolCalls: [
-          {
             type: 'tool_call',
             id: 'call_valid',
             name: 'demo_tool',
             args: { label: 'demo' },
           },
         ],
-        invalidToolCalls: [
+        [
           {
             type: 'invalid_tool_call',
             id: 'call_invalid',
@@ -139,31 +135,10 @@ describe('@langchain/core AIMessageChunk patch', () => {
             error: 'Malformed args.',
           },
         ],
-      },
-      {
-        toolCalls: [
-          {
-            type: 'tool_call',
-            id: 'call_valid',
-            name: 'demo_tool',
-            args: { label: 'demo' },
-          },
-        ],
-        invalidToolCalls: [
-          {
-            type: 'invalid_tool_call',
-            id: 'call_invalid',
-            name: 'demo_tool',
-            args: 'not-json',
-            error: 'Malformed args.',
-          },
-        ],
-      },
-    ])
-  })
+      ])
+    })
 
-  it('serializes collapsed tool call values in ESM and CJS', () => {
-    const actual = constructors.map((MessageChunk) => {
+    it('serializes collapsed tool call values', () => {
       const chunk = new MessageChunk({
         content: '',
         tool_call_chunks: [
@@ -181,40 +156,25 @@ describe('@langchain/core AIMessageChunk patch', () => {
         .object({ kwargs: z.record(z.string(), z.unknown()) })
         .parse(serializedJson)
 
-      return {
-        toolCalls: serialized.kwargs['tool_calls'],
-        invalidToolCalls: serialized.kwargs['invalid_tool_calls'],
-      }
+      expect(
+        Object.freeze([
+          serialized.kwargs['tool_calls'],
+          serialized.kwargs['invalid_tool_calls'],
+        ]),
+      ).toEqual([
+        [
+          {
+            type: 'tool_call',
+            id: 'call_demo',
+            name: 'demo_tool',
+            args: { label: 'demo' },
+          },
+        ],
+        [],
+      ])
     })
 
-    expect(actual).toEqual([
-      {
-        toolCalls: [
-          {
-            type: 'tool_call',
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: { label: 'demo' },
-          },
-        ],
-        invalidToolCalls: [],
-      },
-      {
-        toolCalls: [
-          {
-            type: 'tool_call',
-            id: 'call_demo',
-            name: 'demo_tool',
-            args: { label: 'demo' },
-          },
-        ],
-        invalidToolCalls: [],
-      },
-    ])
-  })
-
-  it('allows assigning tool_calls after construction in ESM and CJS', () => {
-    const actual = constructors.map((MessageChunk) => {
+    it('allows assigning tool_calls after construction', () => {
       const chunk = new MessageChunk({
         content: '',
         tool_call_chunks: [
@@ -231,35 +191,19 @@ describe('@langchain/core AIMessageChunk patch', () => {
         { type: 'tool_call', id: 'call_assigned', name: 'demo_tool', args: {} },
       ]
 
-      return {
-        toolCalls: chunk.tool_calls,
-        invalidToolCalls: chunk.invalid_tool_calls,
-      }
+      expect(
+        Object.freeze([chunk.tool_calls, chunk.invalid_tool_calls]),
+      ).toEqual([
+        [
+          {
+            type: 'tool_call',
+            id: 'call_assigned',
+            name: 'demo_tool',
+            args: {},
+          },
+        ],
+        [],
+      ])
     })
-
-    expect(actual).toEqual([
-      {
-        toolCalls: [
-          {
-            type: 'tool_call',
-            id: 'call_assigned',
-            name: 'demo_tool',
-            args: {},
-          },
-        ],
-        invalidToolCalls: [],
-      },
-      {
-        toolCalls: [
-          {
-            type: 'tool_call',
-            id: 'call_assigned',
-            name: 'demo_tool',
-            args: {},
-          },
-        ],
-        invalidToolCalls: [],
-      },
-    ])
-  })
-})
+  },
+)
