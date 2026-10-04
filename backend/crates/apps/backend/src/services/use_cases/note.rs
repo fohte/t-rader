@@ -14,7 +14,6 @@ impl UseCases {
         NoteUseCases::new(
             self.unit_of_work.clone(),
             Arc::new(PostgresNoteRepository::new()),
-            self.strategy_existence.clone(),
             self.change_history.clone(),
         )
     }

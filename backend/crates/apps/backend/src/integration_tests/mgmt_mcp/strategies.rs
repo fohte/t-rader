@@ -12,11 +12,10 @@ mod tests {
     use core_application::agent_task_client::FakeAgentTaskClient;
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use gateway_postgres::entities::{annotation, strategy_task};
+    use gateway_postgres::entities::strategy_task;
     use rmcp::handler::server::wrapper::{Json, Parameters};
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
     use sea_orm::EntityTrait;
+    use serde_json::json;
 
     use super::*;
 
@@ -359,63 +358,24 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategies_counts_unread_cards(db: gateway_postgres::DatabaseHandle) {
-        let strategy_id = insert_strategy(&db, "long").await;
-
-        // unread ノート 2 件、approved ノート 1 件 → unread だけカウント
-        for (title, status) in [("a", "unread"), ("b", "unread"), ("c", "approved")] {
-            crate::testing::insert_test_note_with_status(&db, strategy_id, title, "body", status)
-                .await;
-        }
-        // unread アノテーション 1 件
-        annotation::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            strategy_id: Set(Some(strategy_id)),
-            target_symbol: Set("demo-code".into()),
-            target_kind: Set("demo-kind".into()),
-            timestamp: Set(chrono::Utc::now().fixed_offset()),
-            price: Set(None),
-            text: Set("note".into()),
-            status: Set("unread".into()),
-            linked_note_id: Set(None),
-            created_by_kind: Set("llm".into()),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
-            execution_step_id: Set(None),
-            execution_task_id: Set(None),
-        }
-        .insert(&db)
-        .await
-        .unwrap();
-
-        // 戦略に属さない unread note / annotation は、どの戦略の未読件数にも
-        // 計上されず、集計クエリ自体も失敗しない (strategy_id が NULL の行が
-        // group by 対象から除外されることの回帰)。
-        crate::testing::insert_test_note_in_scope(&db, None, "市況ノート", "body").await;
-        annotation::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            strategy_id: Set(None),
-            target_symbol: Set("N225".into()),
-            target_kind: Set("signal".into()),
-            timestamp: Set(chrono::Utc::now().fixed_offset()),
-            price: Set(None),
-            text: Set("市況アノテーション".into()),
-            status: Set("unread".into()),
-            linked_note_id: Set(None),
-            created_by_kind: Set("llm".into()),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
-            execution_step_id: Set(None),
-            execution_task_id: Set(None),
-        }
-        .insert(&db)
-        .await
-        .unwrap();
-
+    async fn list_strategies_does_not_include_artifact_unread_counts(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "sample strategy").await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
-        let Json(result) = server.list_strategies().await.expect("ok");
-        assert_eq!(result.strategies.len(), 1);
-        assert_eq!(result.strategies[0].strategy_id, strategy_id);
-        assert_eq!(result.strategies[0].unread_card_count, 3);
+        let Json(result) = server.list_strategies().await.expect("list strategies");
+        let mut actual = serde_json::to_value(result).expect("serialize result");
+        actual["strategies"][0]["updated_at"] = json!("<updated_at>");
+
+        assert_eq!(
+            actual,
+            json!({
+                "strategies": [{
+                    "strategy_id": strategy_id,
+                    "name": "sample strategy",
+                    "updated_at": "<updated_at>",
+                }],
+            }),
+        );
     }
 }

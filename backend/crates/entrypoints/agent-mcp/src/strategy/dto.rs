@@ -11,6 +11,9 @@ use uuid::Uuid;
 use super::graph_dto::GraphDef;
 use super::serde_helpers::deserialize_nullable_option;
 
+mod news;
+pub use news::*;
+
 fn any_json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
     serde_json::Map::new().into()
 }
@@ -249,7 +252,6 @@ pub struct NoteLinkDto {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
-    pub strategy_id: Option<Uuid>,
     /// 本文が属するバージョン ID。`read_comments` の `target_id` に使う。
     pub version_id: Uuid,
     /// ノート内のバージョン番号。
@@ -259,6 +261,7 @@ pub struct NoteDto {
     /// `read_note` の結果では常に値を含む
     pub body_md: Option<String>,
     pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
+    pub tags: Vec<String>,
     pub kind: Option<String>,
     pub status: String,
     pub created_by_kind: String,
@@ -302,6 +305,8 @@ pub struct ListNotesParams {
     pub include_body: Option<bool>,
     /// true を指定すると現行バージョンがないノートも返す。最新バージョンを使用する
     pub include_pending: Option<bool>,
+    /// `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。
+    pub tag: Option<String>,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]
@@ -324,7 +329,6 @@ pub struct CreateAnnotationParams {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct AnnotationDto {
     pub annotation_id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
@@ -498,35 +502,6 @@ pub struct EvalIndicatorResult {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct SearchNewsParams {
-    /// title / body_snippet の部分一致 (大文字小文字を区別しない)。省略時はキーワード条件なし
-    pub keyword: Option<String>,
-    /// 取得開始日 (YYYY-MM-DD, inclusive)
-    pub from: Option<NaiveDate>,
-    /// 取得終了日 (YYYY-MM-DD, inclusive)
-    pub to: Option<NaiveDate>,
-    pub limit: Option<u32>,
-}
-
-/// `search_news` で返す記事 1 件
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct NewsItemDto {
-    pub id: Uuid,
-    pub source: String,
-    pub url: String,
-    pub title: String,
-    pub body_snippet: Option<String>,
-    pub published_at: DateTime<FixedOffset>,
-}
-
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct SearchNewsResult {
-    pub items: Vec<NewsItemDto>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

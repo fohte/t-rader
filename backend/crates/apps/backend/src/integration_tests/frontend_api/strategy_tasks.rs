@@ -351,7 +351,6 @@ mod tests {
     ) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "strategy-a").await;
-        let strategy_b = insert_test_strategy(&db, "strategy-b").await;
         let base = chrono::Utc::now().fixed_offset();
         let task_id = insert_test_strategy_task(&db, strategy_a, "inspect", None, base).await;
         let other_task_id =
@@ -372,7 +371,6 @@ mod tests {
 
         let updated_note_id = crate::testing::insert_test_note_with_execution_id(
             &db,
-            strategy_b,
             "Updated title",
             "First body",
             &first_step_id.to_string(),
@@ -414,19 +412,12 @@ mod tests {
 
         crate::testing::insert_test_note_with_execution_id(
             &db,
-            strategy_a,
             "Other task title",
             "Other task body",
             &other_step_id.to_string(),
         )
         .await;
-        crate::testing::insert_test_note_in_scope(
-            &db,
-            Some(strategy_a),
-            "Human title",
-            "Human body",
-        )
-        .await;
+        crate::testing::insert_test_note(&db, "Human title", "Human body").await;
 
         let response = server
             .get(&format!(
@@ -449,10 +440,10 @@ mod tests {
                     "version_id": "<version-id>",
                     "version_no": 2,
                     "is_current": true,
-                    "strategy_id": strategy_b.to_string(),
                     "title": "Updated title",
                     "body_md": "Updated body",
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "unread",
                     "trigger": null,

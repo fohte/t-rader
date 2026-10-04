@@ -56,5 +56,4 @@ pub struct StrategySummary {
     pub id: Uuid,
     pub name: String,
     pub updated_at: DateTime<FixedOffset>,
-    pub unread_card_count: u64,
 }

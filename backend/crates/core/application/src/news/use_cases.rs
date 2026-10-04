@@ -5,7 +5,7 @@ use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::NewsUseCaseError;
 use super::repository::{FetchedNewsItemContent, NewsSearchCriteria, SharedNewsItemRepository};
-use super::types::{AggregationStats, NewsArticle, SearchNewsQuery};
+use super::types::{AggregationStats, NewsArticle, NewsArticleContent, SearchNewsQuery};
 
 const DEFAULT_SEARCH_LIMIT: u64 = 50;
 const MAX_SEARCH_LIMIT: u64 = 200;
@@ -52,6 +52,17 @@ impl NewsUseCases {
                 to: query.to,
                 limit,
             })
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn get_news_content(
+        &self,
+        _scope: StrategyScope,
+        news_item_id: uuid::Uuid,
+    ) -> Result<Option<NewsArticleContent>, NewsUseCaseError> {
+        self.news_repository
+            .get_content(news_item_id)
             .await
             .map_err(Into::into)
     }
@@ -536,6 +547,7 @@ mod tests {
                 url: "https://example.invalid/article".into(),
                 title: "Quarterly headline".into(),
                 body_snippet: Some("Quarterly summary".into()),
+                content_status: None,
                 published_at: DateTime::<Utc>::UNIX_EPOCH.fixed_offset(),
             }]),
         );

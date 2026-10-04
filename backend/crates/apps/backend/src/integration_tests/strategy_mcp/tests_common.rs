@@ -290,15 +290,9 @@ pub(super) async fn current_note_version_id(
         .id
 }
 
-/// 指定した戦略に属する note を seed する。
-pub(super) async fn seed_foreign_note(
-    db: &gateway_postgres::DatabaseHandle,
-    owner: Uuid,
-    title: &str,
-) -> Uuid {
+pub(super) async fn seed_note(db: &gateway_postgres::DatabaseHandle, title: &str) -> Uuid {
     crate::testing::insert_test_note_as(
         db,
-        Some(owner),
         title,
         "body",
         super::STRATEGY_AGENT_ACTOR,
@@ -309,23 +303,10 @@ pub(super) async fn seed_foreign_note(
     .await
 }
 
-/// 指定した戦略に属する annotation を seed する。
-pub(super) async fn seed_foreign_annotation(
-    db: &impl sea_orm::ConnectionTrait,
-    owner: Uuid,
-) -> Uuid {
-    seed_annotation(db, Some(owner)).await
-}
-
-pub(super) async fn seed_unscoped_annotation(db: &impl sea_orm::ConnectionTrait) -> Uuid {
-    seed_annotation(db, None).await
-}
-
-async fn seed_annotation(db: &impl sea_orm::ConnectionTrait, strategy_id: Option<Uuid>) -> Uuid {
+pub(super) async fn seed_annotation(db: &impl sea_orm::ConnectionTrait) -> Uuid {
     let id = Uuid::new_v4();
     annotation::ActiveModel {
         id: Set(id),
-        strategy_id: Set(strategy_id),
         target_symbol: Set("demo-code".into()),
         target_kind: Set("sample-tag".into()),
         timestamp: Set("2026-06-01T00:00:00Z".parse().expect("ts")),

@@ -87,7 +87,7 @@ jobs:
       # sccache がインストールされない場合、RUSTC_WRAPPER=sccache が残っていると
       # mise の cargo ツールインストール時にビルドが失敗するため無効化する
       - name: Disable sccache wrapper (frontend-only)
-        if: steps.check-backend.outputs.has_backend == 'false' && steps.db-doc-changes.outputs.any_changed != 'true'
+        if: steps.check-backend.outputs.has_backend == 'false' && steps.db-doc-changes.outputs.any_modified != 'true'
         run: |
           echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
           echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
@@ -100,7 +100,7 @@ jobs:
       # Run sccache-action before mise-action so that sccache binary is
       # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
       - name: Run sccache-cache
-        if: steps.check-backend.outputs.has_backend == 'true' || steps.db-doc-changes.outputs.any_changed == 'true'
+        if: steps.check-backend.outputs.has_backend == 'true' || steps.db-doc-changes.outputs.any_modified == 'true'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
@@ -142,7 +142,7 @@ jobs:
         run: pnpm run generate:routes
 
       - name: Verify database bootstrap
-        if: steps.db-doc-changes.outputs.any_changed == 'true'
+        if: steps.db-doc-changes.outputs.any_modified == 'true'
         run: |
           mise run db:up
           mise run db:up
@@ -187,11 +187,11 @@ jobs:
           done
 
       - name: Generate database documentation
-        if: steps.db-doc-changes.outputs.any_changed == 'true'
+        if: steps.db-doc-changes.outputs.any_modified == 'true'
         run: mise run db:doc
 
       - name: Stage generated database documentation
-        if: steps.db-doc-changes.outputs.any_changed == 'true'
+        if: steps.db-doc-changes.outputs.any_modified == 'true'
         run: git add -- backend/docs/db agent/docs/db
 
       - name: Run lefthook
@@ -298,8 +298,8 @@ jobs:
       backend: ${{ steps.changes-backend.outputs.any_changed }}
       agent: ${{ steps.changes-agent.outputs.any_changed }}
       workflow: ${{ steps.changes-workflow.outputs.any_changed }}
-      mise: ${{ steps.changes-mise.outputs.any_changed }}
-      terraform_provider: ${{ steps.changes-terraform-provider.outputs.any_changed }}
+      mise: ${{ steps.changes-mise.outputs.any_modified }}
+      terraform_provider: ${{ steps.changes-terraform-provider.outputs.any_modified }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

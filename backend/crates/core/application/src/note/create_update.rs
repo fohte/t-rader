@@ -3,6 +3,7 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
+use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{NoteMetadataUpdate, NoteSnapshot, UpdateNoteCommand};
 use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
@@ -54,6 +55,7 @@ impl NoteUseCases {
         }
         if let Some(value) = command.frontmatter_json {
             ensure_frontmatter_object(&value)?;
+            ensure_frontmatter_tags_are_strings(&value)?;
             diff.insert(
                 "frontmatter_json".into(),
                 json!({ "from": current_version.frontmatter_json, "to": value }),

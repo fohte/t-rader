@@ -337,6 +337,15 @@ impl StrategyServer {
             .await
     }
 
+    pub(super) async fn get_news_content(
+        &self,
+        scope: impl Into<StrategyScope>,
+        params: strategy_dto::GetNewsContentParams,
+    ) -> Result<ToolOutput<strategy_dto::GetNewsContentResult>, McpError> {
+        self.invoke("get_news_content", scope.into().id(), params, None, None)
+            .await
+    }
+
     pub(super) async fn search_refs(
         &self,
         scope: impl Into<StrategyScope>,

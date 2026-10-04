@@ -30,7 +30,6 @@ pub trait NoteRepository: Send + Sync {
     async fn find_note_by_execution_id(
         &self,
         transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
         execution_id: &str,
     ) -> Result<Option<Note>, NoteRepositoryError>;
     async fn find_note_kind_requires_approval(
