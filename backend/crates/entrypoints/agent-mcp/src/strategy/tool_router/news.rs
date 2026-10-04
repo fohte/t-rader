@@ -4,14 +4,30 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{tool, tool_router};
 
 use super::super::StrategyServer;
-use super::super::dto::{SearchNewsParams, SearchNewsResult};
+use super::super::dto::{
+    GetNewsContentParams, GetNewsContentResult, SearchNewsParams, SearchNewsResult,
+};
 
 #[tool_router(router = news_tool_router, vis = "pub(super)")]
 impl StrategyServer {
-    /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
+    #[tool(
+        name = "get_news_content",
+        description = "Read a news item's stored article body and content retrieval state by id. Use this after search_news when content_status is fetched. If content_status is anything other than fetched, use search_web with the item's title and/or URL to retrieve its content.",
+        annotations(read_only_hint = true)
+    )]
+    async fn get_news_content(
+        &self,
+        Parameters(params): Parameters<GetNewsContentParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<GetNewsContentResult>, McpError> {
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.get_news_content_inner(scope, params).await.map(Json)
+    }
+
+    /// news_item を title/body_snippet/保存済み本文のキーワードと published_at の期間で直接検索する
     #[tool(
         name = "search_news",
-        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
+        description = "Search news_item by case-insensitive substring match against title, body_snippet, or stored article body, and/or by published_at date range, newest first. Returns content_status (null when no content record exists). Use get_news_content for items with content_status=fetched; otherwise use search_web with the item's title and/or URL.",
         annotations(read_only_hint = true)
     )]
     async fn search_news(

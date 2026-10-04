@@ -12,5 +12,5 @@ pub use repository::{
     FetchedNewsItemContent, NewsItemContentStatus, NewsItemRepository, NewsItemRepositoryError,
     NewsSearchCriteria, SharedNewsItemRepository, UpsertedNewsItem, sanitize_search_keyword,
 };
-pub use types::{AggregationStats, NewsArticle, SearchNewsQuery};
+pub use types::{AggregationStats, NewsArticle, NewsArticleContent, SearchNewsQuery};
 pub use use_cases::NewsUseCases;

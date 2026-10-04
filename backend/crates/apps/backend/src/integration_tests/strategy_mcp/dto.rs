@@ -354,12 +354,30 @@ pub struct NewsItemDto {
     pub url: String,
     pub title: String,
     pub body_snippet: Option<String>,
+    pub content_status: Option<String>,
     pub published_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct SearchNewsResult {
     pub items: Vec<NewsItemDto>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GetNewsContentParams {
+    pub id: Uuid,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+pub struct GetNewsContentResult {
+    pub id: Uuid,
+    pub source: String,
+    pub url: String,
+    pub title: String,
+    pub published_at: DateTime<FixedOffset>,
+    pub content_status: Option<String>,
+    pub content: Option<String>,
+    pub content_error: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

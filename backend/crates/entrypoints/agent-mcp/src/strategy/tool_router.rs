@@ -245,7 +245,7 @@ impl StrategyServer {
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to retrieve search_news items whose content_status is not fetched by searching the item's title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -556,6 +556,7 @@ mod tests {
                 ("create_stock_group", None),
                 ("eval_indicator", None),
                 ("eval_python", None),
+                ("get_news_content", Some(true)),
                 ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
