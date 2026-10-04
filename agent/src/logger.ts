@@ -4,4 +4,4 @@ import { createAppLogger, withLogBindings } from '#logger-factory'
 export type { Logger }
 export { withLogBindings }
 
-export const logger = createAppLogger()
+export const logger: Logger = createAppLogger()
