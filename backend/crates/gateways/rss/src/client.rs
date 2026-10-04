@@ -495,9 +495,10 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    const EXPECTED_CDATA_MARKDOWN: &str = indoc! {r#"## 概要
+    const EXPECTED_CDATA_MARKDOWN: &str = indoc! {r#"
+        ## 概要
 
-本文の**重要事項**。"#};
+        本文の**重要事項**。"#};
 
     async fn mount_response(server: &MockServer, path_value: &str, response: ResponseTemplate) {
         Mock::given(method("GET"))
