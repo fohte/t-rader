@@ -8,6 +8,7 @@ use tokio::time::timeout;
 
 use crate::state::SchedulerState;
 
+pub mod alpha_vantage;
 pub mod boj_calendar;
 mod calendar_event;
 pub mod daily_bars;
