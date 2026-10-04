@@ -36,6 +36,7 @@ import {
   finalTurnMiddleware,
   MAX_MODEL_CALLS_PER_INVOKE,
 } from '#strategy-agent/final-turn-middleware'
+import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
 import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
 import {
@@ -133,6 +134,8 @@ const buildCompiledAgent = (
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
       stripMessageNameMiddleware,
+      // 再試行ごとに呼び出し時間上限と tool 呼び出し上限の状態を作り直す。
+      createModelCallRetryMiddleware(),
       // 実際の HTTP リクエストに一番近い位置で signal / callback を差し込む。
       createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
       createCallDurationMiddleware(llmCallTimeoutMs),
@@ -208,8 +211,7 @@ export const createStrategyAgentDeps = (
       // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
       streaming: true,
       timeout: config.llmCallTimeoutMs,
-      // タイムアウト累積を防ぎ、再試行は上位のフェーズ再実行
-      // (resume steps) 側に委ねるため、呼び出し単体でのリトライは行わない。
+      // SDK 内の再試行によるタイムアウトの累積を防ぎ、再試行を middleware に集約する。
       maxRetries: 0,
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
