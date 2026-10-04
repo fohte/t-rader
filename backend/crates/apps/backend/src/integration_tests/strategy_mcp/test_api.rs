@@ -115,3 +115,22 @@ pub(crate) mod stock_groups {
         pub stock_ids: Vec<String>,
     }
 }
+
+pub(crate) mod stock_registration {
+    use super::*;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct RegisterStockParams {
+        pub country: String,
+        pub code: String,
+        pub name: String,
+        pub exchange: String,
+    }
+
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct RegisterStockResult {
+        pub id: String,
+        pub name: String,
+        pub exchange: String,
+    }
+}

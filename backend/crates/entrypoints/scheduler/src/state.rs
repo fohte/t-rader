@@ -40,6 +40,7 @@ pub struct SchedulerDependencies {
     pub indicator_observations: IndicatorObservationUseCases,
     pub ingest_run_log: SharedIngestRunLog,
     pub fred_source: Option<SharedIndicatorObservationSource>,
+    pub fred_calendar_event_source: Option<SharedCalendarEventSource>,
     pub predictions: PredictionUseCases,
     pub short_ratios: ShortRatioUseCases,
     pub short_sale_reports: ShortSaleReportUseCases,

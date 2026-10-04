@@ -2,7 +2,9 @@ use std::{future::Future, time::Duration};
 
 use chrono::Weekday;
 use core_application::{
-    ingest_status::{BOJ_CALENDAR_EVENT_INGEST_JOB, ECB_CALENDAR_EVENT_INGEST_JOB},
+    ingest_status::{
+        BOJ_CALENDAR_EVENT_INGEST_JOB, ECB_CALENDAR_EVENT_INGEST_JOB, FRED_RELEASE_DATES_INGEST_JOB,
+    },
     strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME,
 };
 use graphile_worker::{
@@ -21,6 +23,7 @@ use crate::{
         equity_master::EquityMasterIngest,
         financial_summary::FinancialSummaryIngest,
         fred::FredIngest,
+        fred_release_dates::FredReleaseDatesIngest,
         ingest_run_recovery::IngestRunRecovery,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
@@ -34,10 +37,12 @@ use crate::{
 
 pub const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
 const JQUANTS_QUEUE: &str = "jquants";
+const FRED_QUEUE: &str = "fred";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 14] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 15] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (FredReleaseDatesIngest::IDENTIFIER, DAILY_TIMEOUT),
     (BOJ_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
     (ECB_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
     (ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -57,6 +62,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 14] = [
 struct ConfiguredJobs {
     daily_bars: bool,
     fred: bool,
+    fred_release_dates: bool,
     boj_calendar: bool,
     ecb_calendar: bool,
     jquants: bool,
@@ -81,6 +87,7 @@ impl Scheduler {
         let crontabs = build_crontabs(ConfiguredJobs {
             daily_bars: dependencies.market_daily_bar_source.is_some(),
             fred: dependencies.fred_source.is_some(),
+            fred_release_dates: dependencies.fred_calendar_event_source.is_some(),
             boj_calendar: dependencies.boj_calendar_source.is_some(),
             ecb_calendar: dependencies.ecb_calendar_source.is_some(),
             jquants: dependencies.short_selling_source.is_some()
@@ -115,6 +122,7 @@ impl Scheduler {
             .define_job::<EquityMasterIngest>()
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
+            .define_job::<FredReleaseDatesIngest>()
             .define_job::<BojCalendarEventIngest>()
             .define_job::<EcbCalendarEventIngest>()
             .define_job::<IngestRunRecovery>()
@@ -146,7 +154,20 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
         None,
     )?];
     if configured.fred {
-        crontabs.push(daily_cron::<FredIngest>("fred_ingest", 11, 30, None)?);
+        crontabs.push(daily_cron::<FredIngest>(
+            "fred_ingest",
+            11,
+            30,
+            Some(FRED_QUEUE),
+        )?);
+    }
+    if configured.fred_release_dates {
+        crontabs.push(daily_cron::<FredReleaseDatesIngest>(
+            FRED_RELEASE_DATES_INGEST_JOB,
+            11,
+            45,
+            Some(FRED_QUEUE),
+        )?);
     }
     if configured.boj_calendar {
         crontabs.push(daily_cron::<BojCalendarEventIngest>(
@@ -318,6 +339,7 @@ mod tests {
         equity_master::EquityMasterIngest,
         financial_summary::FinancialSummaryIngest,
         fred::FredIngest,
+        fred_release_dates::FredReleaseDatesIngest,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         prediction::PredictionGrading,
@@ -327,8 +349,8 @@ mod tests {
     };
 
     use super::{
-        ConfiguredJobs, JQUANTS_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, build_crontabs,
-        configure_cron, every_minute_cron, hourly_cron,
+        ConfiguredJobs, FRED_QUEUE, JQUANTS_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
+        build_crontabs, configure_cron, every_minute_cron, hourly_cron,
     };
 
     #[fixture]
@@ -336,6 +358,7 @@ mod tests {
         ConfiguredJobs {
             daily_bars: true,
             fred: true,
+            fred_release_dates: true,
             boj_calendar: true,
             ecb_calendar: true,
             jquants: true,
@@ -370,7 +393,13 @@ mod tests {
                 CrontabTimer::daily_at(11, 30).ok(),
                 "fred_ingest",
                 CrontabFill::days(3),
-                None,
+                Some(FRED_QUEUE),
+            ),
+            expected_cron::<FredReleaseDatesIngest>(
+                CrontabTimer::daily_at(11, 45).ok(),
+                "fred_release_dates_ingest",
+                CrontabFill::days(3),
+                Some(FRED_QUEUE),
             ),
             expected_cron::<BojCalendarEventIngest>(
                 CrontabTimer::daily_at(11, 45).ok(),
@@ -460,7 +489,7 @@ mod tests {
     }
 
     #[rstest]
-    fn configures_missed_tick_fill_retry_limit_and_jquants_queue(
+    fn configures_missed_tick_fill_retry_limit_and_source_queues(
         all_configured_jobs: ConfiguredJobs,
     ) {
         let actual = build_crontabs(all_configured_jobs).ok().map(|crontabs| {
@@ -490,7 +519,13 @@ mod tests {
                     Some("fred_ingest".to_string()),
                     Some(CrontabFill::days(3)),
                     Some(3),
-                    None,
+                    Some(FRED_QUEUE.to_string()),
+                ),
+                (
+                    Some("fred_release_dates_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    Some(FRED_QUEUE.to_string()),
                 ),
                 (
                     Some("boj_calendar_event_ingest".to_string()),
@@ -581,6 +616,7 @@ mod tests {
     #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::ecb_calendar_only(ConfiguredJobs { ecb_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "ecb_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::fred_release_dates_only(ConfiguredJobs { fred_release_dates: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_release_dates_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading", "trigger_evaluation"])]

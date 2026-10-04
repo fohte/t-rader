@@ -2082,6 +2082,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "chrono-tz",
  "core-application",
  "core-domain",
  "indoc",
@@ -2090,6 +2091,8 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "tokio",
+ "wiremock",
 ]
 
 [[package]]
@@ -3624,6 +3627,7 @@ version = "0.1.0"
 dependencies = [
  "indoc",
  "rstest",
+ "sea-orm",
  "sea-orm-cli",
  "sea-orm-migration",
  "tokio",

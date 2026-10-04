@@ -21,7 +21,7 @@ use super::dto::{
     GetStrategyConfigResult, GetStrategyTaskStatusResult, ListRecentAnnotationsResult,
     ListRecentNotesResult, ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult,
     ResumeStrategyTaskParams, ResumeStrategyTaskResult, SubmitStrategyTaskParams,
-    SubmitStrategyTaskResult,
+    SubmitStrategyTaskResult, UpdateRssFeedParams,
 };
 
 #[derive(Clone)]
@@ -121,5 +121,12 @@ impl MgmtTestServer {
         Parameters(params): Parameters<ListRssFeedsParams>,
     ) -> Result<Json<ListRssFeedsResult>, McpError> {
         invoke(&self.server, "list_rss_feeds", params).await
+    }
+
+    pub(crate) async fn update_rss_feed(
+        &self,
+        Parameters(params): Parameters<UpdateRssFeedParams>,
+    ) -> Result<Json<super::dto::RssFeedSummary>, McpError> {
+        invoke(&self.server, "update_rss_feed", params).await
     }
 }

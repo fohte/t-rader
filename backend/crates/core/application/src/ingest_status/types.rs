@@ -5,9 +5,9 @@ use uuid::Uuid;
 use super::{
     BOJ_CALENDAR_EVENT_INGEST_JOB, DAILY_BARS_INGEST_JOB, EARNINGS_SCHEDULE_INGEST_JOB,
     ECB_CALENDAR_EVENT_INGEST_JOB, EQUITY_MASTER_INGEST_JOB, FINANCIAL_SUMMARY_INGEST_JOB,
-    FRED_INGEST_JOB, MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB, PREDICTION_GRADING_JOB,
-    SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB, SHORT_SALE_REPORT_INGEST_JOB,
-    VALUATION_INGEST_JOB,
+    FRED_INGEST_JOB, FRED_RELEASE_DATES_INGEST_JOB, MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB,
+    PREDICTION_GRADING_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB,
+    SHORT_SALE_REPORT_INGEST_JOB, VALUATION_INGEST_JOB,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,7 +16,7 @@ pub struct IngestJobDefinition {
     pub has_data_date: bool,
 }
 
-pub const INGEST_JOBS: [IngestJobDefinition; 14] = [
+pub const INGEST_JOBS: [IngestJobDefinition; 15] = [
     IngestJobDefinition {
         identifier: DAILY_BARS_INGEST_JOB,
         has_data_date: true,
@@ -44,6 +44,10 @@ pub const INGEST_JOBS: [IngestJobDefinition; 14] = [
     IngestJobDefinition {
         identifier: FRED_INGEST_JOB,
         has_data_date: true,
+    },
+    IngestJobDefinition {
+        identifier: FRED_RELEASE_DATES_INGEST_JOB,
+        has_data_date: false,
     },
     IngestJobDefinition {
         identifier: BOJ_CALENDAR_EVENT_INGEST_JOB,

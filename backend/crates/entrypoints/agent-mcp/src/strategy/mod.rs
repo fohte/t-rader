@@ -30,6 +30,7 @@ mod serde_helpers;
 pub(super) mod short_ratio;
 pub(super) mod short_sale_report;
 pub(super) mod stock_groups;
+pub(super) mod stock_registration;
 mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;
@@ -239,12 +240,23 @@ pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
 /// 4 桁の銘柄コードであることを検証する。J-Quants の 5 桁コードとの対応関係が
 /// 明記されていない tool 群 (`read_shareholding_structure` / `read_short_sale_reports`) が共有する。
 pub(super) fn validate_symbol(symbol: &str) -> Result<(), McpError> {
+    reject_foreign_stock_id(symbol)?;
     if symbol.len() == 4 && symbol.bytes().all(|b| b.is_ascii_digit()) {
         Ok(())
     } else {
         Err(invalid_params(format!(
             "symbol must be a 4-digit stock code, got {symbol:?}"
         )))
+    }
+}
+
+pub(super) fn reject_foreign_stock_id(stock_id: &str) -> Result<(), McpError> {
+    if core_domain::stock_id::has_country_prefix(stock_id) {
+        Err(invalid_params(
+            "only Japanese stocks are supported by this tool",
+        ))
+    } else {
+        Ok(())
     }
 }
 
