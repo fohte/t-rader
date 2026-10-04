@@ -6,27 +6,31 @@ use core_application::calendar::repository::{
 use core_application::earnings_schedule::{
     EarningsScheduleRepository, EarningsScheduleRepositoryError, JQUANTS_EARNINGS_SOURCE,
 };
+use core_application::unit_of_work::{UnitOfWork, UnitOfWorkTransaction};
 use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
 use core_domain::earnings_schedule::EarningsSchedule;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder};
 
 use crate::entities::calendar_event;
 use crate::entities::earnings_schedule_ingested_date;
 use crate::persistence::persistence_error;
-use crate::{DatabaseHandle, PostgresCalendarEventRepository};
+use crate::transaction::transaction_ref as postgres_transaction_ref;
+use crate::{DatabaseHandle, PostgresCalendarEventRepository, PostgresUnitOfWork};
 
 #[derive(Clone)]
 pub struct PostgresEarningsScheduleRepository {
     db: DatabaseHandle,
     calendar_events: PostgresCalendarEventRepository,
+    unit_of_work: PostgresUnitOfWork,
 }
 
 impl PostgresEarningsScheduleRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self {
-            calendar_events: PostgresCalendarEventRepository::new(db.clone()),
+            calendar_events: PostgresCalendarEventRepository::new(),
+            unit_of_work: PostgresUnitOfWork::new(db.clone()),
             db,
         }
     }
@@ -65,9 +69,12 @@ impl EarningsScheduleRepository for PostgresEarningsScheduleRepository {
             .into_iter()
             .flatten()
             .collect();
-        self.delete_undecided_corrections(&schedules).await?;
+        let transaction = self.unit_of_work.begin().await?;
+        let postgres_transaction = transaction_ref(&transaction)?;
+        self.delete_undecided_corrections(postgres_transaction, &schedules)
+            .await?;
         self.calendar_events
-            .upsert(events)
+            .upsert(&transaction, events)
             .await
             .map_err(calendar_repository_error)?;
         earnings_schedule_ingested_date::Entity::insert_many(
@@ -80,9 +87,10 @@ impl EarningsScheduleRepository for PostgresEarningsScheduleRepository {
                 .do_nothing()
                 .to_owned(),
         )
-        .exec_without_returning(&self.db)
+        .exec_without_returning(postgres_transaction)
         .await
         .map_err(repository_error)?;
+        self.unit_of_work.commit(transaction).await?;
 
         Ok(count)
     }
@@ -91,6 +99,7 @@ impl EarningsScheduleRepository for PostgresEarningsScheduleRepository {
 impl PostgresEarningsScheduleRepository {
     async fn delete_undecided_corrections(
         &self,
+        transaction: &DatabaseTransaction,
         schedules: &[EarningsSchedule],
     ) -> Result<(), EarningsScheduleRepositoryError> {
         for schedule in schedules
@@ -103,13 +112,19 @@ impl PostgresEarningsScheduleRepository {
                 .filter(calendar_event::Column::StockId.eq(Some(schedule.code.clone())))
                 .filter(calendar_event::Column::ExternalId.like(format!("{identity_prefix}%")))
                 .filter(calendar_event::Column::EventDate.gte(schedule.published_date))
-                .exec(&self.db)
+                .exec(transaction)
                 .await
                 .map_err(repository_error)?;
         }
 
         Ok(())
     }
+}
+
+fn transaction_ref(
+    transaction: &UnitOfWorkTransaction,
+) -> Result<&DatabaseTransaction, EarningsScheduleRepositoryError> {
+    postgres_transaction_ref(transaction).ok_or(EarningsScheduleRepositoryError::InvalidTransaction)
 }
 
 fn repository_error(error: sea_orm::DbErr) -> EarningsScheduleRepositoryError {
@@ -201,6 +216,9 @@ fn calendar_repository_error(
     match error {
         CalendarEventRepositoryError::Database(error) => {
             EarningsScheduleRepositoryError::Database(error)
+        }
+        CalendarEventRepositoryError::InvalidTransaction => {
+            EarningsScheduleRepositoryError::InvalidTransaction
         }
     }
 }
@@ -474,6 +492,8 @@ mod tests {
             .map_err(|error| match error {
                 EarningsScheduleRepositoryError::InvalidSchedule(message) => message,
                 EarningsScheduleRepositoryError::Database(_) => "database error".into(),
+                EarningsScheduleRepositoryError::UnitOfWork(_)
+                | EarningsScheduleRepositoryError::InvalidTransaction => "transaction error".into(),
             })
             .map(|_| ());
         let invalid_fye_result = repository
@@ -482,6 +502,8 @@ mod tests {
             .map_err(|error| match error {
                 EarningsScheduleRepositoryError::InvalidSchedule(message) => message,
                 EarningsScheduleRepositoryError::Database(_) => "database error".into(),
+                EarningsScheduleRepositoryError::UnitOfWork(_)
+                | EarningsScheduleRepositoryError::InvalidTransaction => "transaction error".into(),
             })
             .map(|_| ());
         let results = vec![invalid_quarter_result, invalid_fye_result];

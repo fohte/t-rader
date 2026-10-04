@@ -41,6 +41,7 @@ pub struct SchedulerDependencies {
     pub calendar_events: CalendarEventUseCases,
     pub ingest_run_log: SharedIngestRunLog,
     pub fred_source: Option<SharedIndicatorObservationSource>,
+    pub alpha_vantage_calendar_source: Option<SharedCalendarEventSource>,
     pub fred_calendar_event_source: Option<SharedCalendarEventSource>,
     pub predictions: PredictionUseCases,
     pub short_ratios: ShortRatioUseCases,

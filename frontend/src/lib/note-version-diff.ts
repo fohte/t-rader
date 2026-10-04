@@ -1,6 +1,6 @@
 import { diffLines } from 'diff'
 
-export type NoteVersionDiffKind = 'unchanged' | 'changed' | 'added' | 'removed'
+type NoteVersionDiffKind = 'unchanged' | 'changed' | 'added' | 'removed'
 
 export interface NoteVersionDiffRow {
   key: string
