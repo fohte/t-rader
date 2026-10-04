@@ -457,17 +457,16 @@ pub struct EvalIndicatorParams {
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct QueryMediaParams {
-    /// 動画/音声の URL。YouTube の公開動画 URL を推奨。他の公開 https:// URL も試行できるが、
-    /// モデル側で取得できない場合はエラーになる。
-    pub media_url: String,
-    /// 動画/音声から何を読み取りたいかを指示するプロンプト
-    pub prompt: String,
+pub struct QueryYoutubeParams {
+    /// YouTube 動画の URL
+    pub youtube_url: String,
+    /// 動画について回答する質問。1 件以上指定する。
+    pub questions: Vec<String>,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct QueryMediaResult {
+pub struct QueryYoutubeResult {
     pub text: String,
 }
 

@@ -64,6 +64,8 @@ enum WireContentPart {
 #[derive(Debug, Serialize)]
 struct WireFilePart {
     file_id: String,
+    #[serde(rename = "format", skip_serializing_if = "Option::is_none")]
+    mime_type: Option<String>,
 }
 
 impl From<ChatMessage> for WireChatMessage {
@@ -90,6 +92,7 @@ impl From<FilePart> for WireFilePart {
     fn from(file: FilePart) -> Self {
         Self {
             file_id: file.file_id,
+            mime_type: file.mime_type,
         }
     }
 }
@@ -548,6 +551,7 @@ mod tests {
                         ContentPart::File {
                             file: FilePart {
                                 file_id: "https://media.example.invalid/video".into(),
+                                mime_type: Some("video/mp4".into()),
                             },
                         },
                     ],
@@ -574,7 +578,10 @@ mod tests {
                         {"type": "text", "text": "summarize this sample"},
                         {
                             "type": "file",
-                            "file": {"file_id": "https://media.example.invalid/video"},
+                            "file": {
+                                "file_id": "https://media.example.invalid/video",
+                                "format": "video/mp4",
+                            },
                         },
                     ],
                 }],

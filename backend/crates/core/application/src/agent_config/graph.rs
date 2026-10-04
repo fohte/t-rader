@@ -152,7 +152,7 @@ mod tests {
         let yaml = indoc! {"
             tool_models:
               search_web: example-model-search
-              query_media: example-model-media
+              query_youtube: example-model-youtube
             phases:
               - key: plan
                 label: 調査計画
@@ -180,7 +180,10 @@ mod tests {
             Ok(Some(AgentGraphConfig {
                 tool_models: BTreeMap::from([
                     ("search_web".to_string(), "example-model-search".to_string()),
-                    ("query_media".to_string(), "example-model-media".to_string()),
+                    (
+                        "query_youtube".to_string(),
+                        "example-model-youtube".to_string()
+                    ),
                 ]),
                 phases: vec![
                     AgentGraphPhase {

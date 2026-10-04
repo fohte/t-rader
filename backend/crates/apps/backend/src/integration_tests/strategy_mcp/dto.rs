@@ -309,13 +309,13 @@ pub struct EvalIndicatorParams {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct QueryMediaParams {
-    pub media_url: String,
-    pub prompt: String,
+pub struct QueryYoutubeParams {
+    pub youtube_url: String,
+    pub questions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct QueryMediaResult {
+pub struct QueryYoutubeResult {
     pub text: String,
 }
 

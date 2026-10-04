@@ -282,10 +282,10 @@ describe('runStrategyAgent', () => {
   it.each([
     {
       name: 'configured tool_models',
-      agentGraph: `tool_models:\n  search_web: example-model-search\n  query_media: example-model-media\n${AGENT_GRAPH}`,
+      agentGraph: `tool_models:\n  search_web: example-model-search\n  query_youtube: example-model-youtube\n${AGENT_GRAPH}`,
       expectedToolModels: {
         search_web: 'example-model-search',
-        query_media: 'example-model-media',
+        query_youtube: 'example-model-youtube',
       },
     },
     {

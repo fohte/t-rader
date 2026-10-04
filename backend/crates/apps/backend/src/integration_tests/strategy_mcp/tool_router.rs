@@ -1,6 +1,7 @@
 use axum::http::{HeaderMap, HeaderValue};
 use indoc::indoc;
 use rmcp::ErrorData as McpError;
+use rstest::rstest;
 use serde_json::{Value, json};
 use uuid::Uuid;
 use wiremock::matchers::{method, path};
@@ -31,14 +32,19 @@ fn headers(strategy_id: Uuid) -> HeaderMap {
     headers.insert(
         "x-tool-models",
         HeaderValue::from_static(
-            r#"{"search_web":"example-model-search","query_media":"example-model-media"}"#,
+            r#"{"search_web":"example-model-search","query_youtube":"example-model-youtube"}"#,
         ),
     );
     headers
 }
 
+#[rstest]
+#[case::youtube_com("https://youtube.com/watch?v=sample-video-id")]
+#[case::www_youtube_com("https://www.youtube.com/watch?v=sample-video-id")]
+#[case::m_youtube_com("https://m.youtube.com/watch?v=sample-video-id")]
+#[case::youtu_be("https://youtu.be/sample-video-id")]
 #[tokio::test]
-async fn query_media_uses_model_from_tool_models_header() {
+async fn query_youtube_uses_model_from_tool_models_header(#[case] youtube_url: &str) {
     let strategy_id = Uuid::new_v4();
     let litellm = MockServer::start().await;
     Mock::given(method("POST"))
@@ -56,10 +62,10 @@ async fn query_media_uses_model_from_tool_models_header() {
     );
     let result = call_tool_output_with_headers::<_, Value>(
         &server,
-        "query_media",
+        "query_youtube",
         json!({
-            "media_url": "https://example.com/video.mp4",
-            "prompt": "summarize the clip",
+            "youtube_url": youtube_url,
+            "questions": ["summarize the clip", "what numerical values are mentioned?"],
         }),
         headers(strategy_id),
     )
@@ -68,22 +74,25 @@ async fn query_media_uses_model_from_tool_models_header() {
         .received_requests()
         .await
         .expect("recorded requests");
-    let body: Value = requests[0].body_json().expect("parse request body");
+    let bodies = requests
+        .into_iter()
+        .map(|request| request.body_json().expect("parse request body"))
+        .collect::<Vec<Value>>();
 
     assert_eq!(
-        (result, body),
+        (result, bodies),
         (
             Ok(json!({"text": "mock media summary"})),
-            json!({
-                "model": "example-model-media",
+            vec![json!({
+                "model": "example-model-youtube",
                 "messages": [{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "summarize the clip"},
-                        {"type": "file", "file": {"file_id": "https://example.com/video.mp4"}},
+                        {"type": "text", "text": "Answer each question about this video. Include an MM:SS timestamp whenever you mention a numerical value or attribute a statement to the video. Questions: 1. summarize the clip; 2. what numerical values are mentioned?"},
+                        {"type": "file", "file": {"file_id": youtube_url, "format": "video/mp4"}},
                     ],
                 }],
-            }),
+            })],
         ),
     );
 }
