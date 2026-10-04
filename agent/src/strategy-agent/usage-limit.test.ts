@@ -32,4 +32,22 @@ describe('isUsageLimitError', () => {
     const actual = ['boom', null, undefined].map(isUsageLimitError)
     expect(actual).toEqual([false, false, false])
   })
+
+  it('returns true when rate limit metadata appears several causes deep', () => {
+    const rateLimitedError = Object.assign(new Error('rate limited'), {
+      rateLimitType: 'stop',
+    })
+    const error = new Error('outer failure', {
+      cause: new Error('middleware failure', { cause: rateLimitedError }),
+    })
+
+    expect(isUsageLimitError(error)).toEqual(true)
+  })
+
+  it('returns false for a cyclic cause chain without rate limit metadata', () => {
+    const error: { cause?: unknown } = {}
+    error.cause = error
+
+    expect(isUsageLimitError(error)).toEqual(false)
+  })
 })

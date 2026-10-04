@@ -21,6 +21,9 @@
 // (from `@fohte/service-kit/observability`, see src/bootstrap.ts — only
 // generated when `error_tracking` or `is_web_app` is enabled) right before
 // re-throwing.
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
 export abstract class BoundaryError extends Error {
   constructor(message: string, cause: unknown) {
     super(message, { cause })
