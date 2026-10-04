@@ -1,5 +1,4 @@
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
+import { isRecord } from '#errors'
 
 // The chat model is built with maxRetries: 0 (see strategy-agent.ts), so
 // LangChain core's AsyncCaller never retries a 429 itself — every 429 reaches

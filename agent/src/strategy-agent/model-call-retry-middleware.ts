@@ -1,5 +1,6 @@
 import { type AnyAgentMiddleware, modelRetryMiddleware } from 'langchain'
 
+import { isRecord } from '#errors'
 import { logger } from '#logger'
 import { AbortedModelCallError } from '#strategy-agent/aborting-model-call-middleware'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
@@ -15,9 +16,6 @@ const CONNECTION_ERROR_CODES = new Set([
   'UND_ERR_HEADERS_TIMEOUT',
   'UND_ERR_BODY_TIMEOUT',
 ])
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
 
 const getErrorChain = (error: Error): Error[] => {
   const chain: Error[] = []
@@ -69,7 +67,7 @@ const isRetryableModelCallError = (error: Error): boolean => {
       (cause) =>
         cause instanceof AbortedModelCallError && cause.reason === 'deadline',
     ) ||
-    errorChain.some(isUsageLimitError)
+    isUsageLimitError(error)
   ) {
     return false
   }
