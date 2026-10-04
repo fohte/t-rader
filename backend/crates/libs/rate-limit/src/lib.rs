@@ -105,6 +105,8 @@ const MAX_EXACT_DURATION_MILLIS: u64 = 8_000_000_000_000;
 pub enum RateLimitError {
     #[error("rate limit acquisition exceeded the maximum wait of {max_wait:?}")]
     MaxWaitExceeded { max_wait: Duration },
+    #[error("Redis remained unavailable while acquiring a rate limit")]
+    RedisUnavailable,
     #[error("quota key must not be empty")]
     EmptyKey,
     #[error("Redis key prefix must not be empty")]
@@ -299,13 +301,13 @@ impl RateLimiter {
             "Redis に接続できないため rate limit の取得を再試行します"
         );
         if remaining.is_zero() {
-            return Err(RateLimitError::MaxWaitExceeded { max_wait });
+            return Err(RateLimitError::RedisUnavailable);
         }
 
         let delay = (*backoff).min(remaining);
         tokio::time::sleep(delay).await;
         if delay == remaining {
-            return Err(RateLimitError::MaxWaitExceeded { max_wait });
+            return Err(RateLimitError::RedisUnavailable);
         }
         *backoff = backoff.saturating_mul(2).min(MAX_RETRY_BACKOFF);
         Ok(())

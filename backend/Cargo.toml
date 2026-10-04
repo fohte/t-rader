@@ -25,6 +25,7 @@ gateway-fred = { path = "crates/gateways/fred" }
 gateway-alpha-vantage = { path = "crates/gateways/alpha-vantage" }
 gateway-boj = { path = "crates/gateways/boj" }
 gateway-ecb = { path = "crates/gateways/ecb" }
+gateway-firecrawl = { path = "crates/gateways/firecrawl" }
 gateway-ibkr = { path = "crates/gateways/ibkr" }
 gateway-jquants = { path = "crates/gateways/jquants" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }

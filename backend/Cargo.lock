@@ -614,6 +614,7 @@ dependencies = [
  "gateway-alpha-vantage",
  "gateway-boj",
  "gateway-ecb",
+ "gateway-firecrawl",
  "gateway-fred",
  "gateway-ibkr",
  "gateway-jquants",
@@ -2092,6 +2093,22 @@ dependencies = [
  "core-domain",
  "reqwest",
  "scraper",
+]
+
+[[package]]
+name = "gateway-firecrawl"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "core-application",
+ "rate-limit",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "wiremock",
 ]
 
 [[package]]

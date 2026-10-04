@@ -29,6 +29,7 @@ backend/crates/
 │   ├── ecb/
 │   ├── postgres/
 │   ├── jquants/
+│   ├── firecrawl/
 │   ├── ibkr/
 │   ├── fred/
 │   ├── rss/
@@ -112,6 +113,8 @@ HTTP path など外部との契約は crate 名と独立して管理する。た
 `jquants` gateway は J-Quants API client を持ち、日足、銘柄マスタ、決算予定、信用残、空売り、財務情報、保有構造、バリュエーションの port を実装する。
 
 `boj` と `ecb` gateway は、それぞれ中央銀行の公表ページから calendar event を取得する。
+
+`firecrawl` gateway は Firecrawl API client を持ち、ニュース本文取得の port を実装する。
 
 ## port と外部形式の変換
 

@@ -27,4 +27,5 @@ pub const SHORT_RATIO_INGEST_JOB: &str = "short_ratio_ingest";
 pub const SHORT_SALE_REPORT_INGEST_JOB: &str = "short_sale_report_ingest";
 pub const MARGIN_INGEST_JOB: &str = "margin_ingest";
 pub const NEWS_AGGREGATION_JOB: &str = "news_aggregation";
+pub const NEWS_CONTENT_FETCH_JOB: &str = "news_content_fetch";
 pub const PREDICTION_GRADING_JOB: &str = "prediction_grading";
