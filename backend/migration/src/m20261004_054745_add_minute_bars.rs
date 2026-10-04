@@ -1,5 +1,6 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
@@ -18,12 +19,6 @@ enum MinuteBars {
 enum Instruments {
     Table,
     Id,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261004_054745_add_minute_bars"
-    }
 }
 
 #[async_trait::async_trait]
@@ -103,6 +98,8 @@ mod tests {
         chunk_interval: Option<String>,
         segmentby_columns: Option<String>,
         compress_after: Option<String>,
+        primary_key_columns: Option<String>,
+        foreign_key_definition: Option<String>,
     }
 
     #[tokio::test]
@@ -162,7 +159,52 @@ mod tests {
                             WHERE hypertable_schema = $1
                               AND hypertable_name = 'minute_bars'
                               AND proc_name = 'policy_compression'
-                        ) AS compress_after
+                        ) AS compress_after,
+                        (
+                            SELECT string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position)
+                            FROM information_schema.table_constraints AS tc
+                            JOIN information_schema.key_column_usage AS kcu
+                              ON kcu.constraint_catalog = tc.constraint_catalog
+                             AND kcu.constraint_schema = tc.constraint_schema
+                             AND kcu.constraint_name = tc.constraint_name
+                             AND kcu.table_schema = tc.table_schema
+                             AND kcu.table_name = tc.table_name
+                            WHERE tc.table_schema = $1
+                              AND tc.table_name = 'minute_bars'
+                              AND tc.constraint_type = 'PRIMARY KEY'
+                        ) AS primary_key_columns,
+                        (
+                            SELECT string_agg(
+                                concat(
+                                    kcu.column_name,
+                                    '->',
+                                    ccu.table_name,
+                                    '.',
+                                    ccu.column_name,
+                                    ':',
+                                    rc.delete_rule
+                                ),
+                                ',' ORDER BY kcu.ordinal_position
+                            )
+                            FROM information_schema.table_constraints AS tc
+                            JOIN information_schema.key_column_usage AS kcu
+                              ON kcu.constraint_catalog = tc.constraint_catalog
+                             AND kcu.constraint_schema = tc.constraint_schema
+                             AND kcu.constraint_name = tc.constraint_name
+                             AND kcu.table_schema = tc.table_schema
+                             AND kcu.table_name = tc.table_name
+                            JOIN information_schema.constraint_column_usage AS ccu
+                              ON ccu.constraint_catalog = tc.constraint_catalog
+                             AND ccu.constraint_schema = tc.constraint_schema
+                             AND ccu.constraint_name = tc.constraint_name
+                            JOIN information_schema.referential_constraints AS rc
+                              ON rc.constraint_catalog = tc.constraint_catalog
+                             AND rc.constraint_schema = tc.constraint_schema
+                             AND rc.constraint_name = tc.constraint_name
+                            WHERE tc.table_schema = $1
+                              AND tc.table_name = 'minute_bars'
+                              AND tc.constraint_type = 'FOREIGN KEY'
+                        ) AS foreign_key_definition
                     FROM timescaledb_information.hypertables
                     WHERE hypertable_schema = $1
                       AND hypertable_name = 'minute_bars'"
@@ -185,6 +227,12 @@ mod tests {
             compress_after: settings
                 .try_get("", "compress_after")
                 .expect("read compression policy"),
+            primary_key_columns: settings
+                .try_get("", "primary_key_columns")
+                .expect("read primary key columns"),
+            foreign_key_definition: settings
+                .try_get("", "foreign_key_definition")
+                .expect("read foreign key definition"),
         };
 
         assert_eq!(
@@ -194,6 +242,8 @@ mod tests {
                 chunk_interval: Some("1 day".into()),
                 segmentby_columns: Some("instrument_id".into()),
                 compress_after: Some("7 days".into()),
+                primary_key_columns: Some("instrument_id,timestamp".into()),
+                foreign_key_definition: Some("instrument_id->instruments.id:CASCADE".into()),
             },
         );
 
