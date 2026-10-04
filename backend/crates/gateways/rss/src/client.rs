@@ -76,6 +76,88 @@ impl NewsAggregator for RssNewsAggregator {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ItemField {
+    Title,
+    Link,
+    Description,
+    PubDate,
+    DcDate,
+}
+
+impl ItemField {
+    fn from_name(name: &[u8]) -> Option<Self> {
+        match name {
+            b"title" => Some(Self::Title),
+            b"link" => Some(Self::Link),
+            b"description" => Some(Self::Description),
+            b"pubDate" => Some(Self::PubDate),
+            b"dc:date" => Some(Self::DcDate),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Default)]
+struct ItemFields {
+    active: Vec<ItemField>,
+    title: String,
+    link: String,
+    description: String,
+    pub_date: String,
+    dc_date: String,
+}
+
+impl ItemFields {
+    fn clear(&mut self) {
+        self.active.clear();
+        self.title.clear();
+        self.link.clear();
+        self.description.clear();
+        self.pub_date.clear();
+        self.dc_date.clear();
+    }
+
+    fn start(&mut self, name: &[u8]) {
+        if let Some(field) = ItemField::from_name(name) {
+            self.active.push(field);
+        }
+    }
+
+    fn end(&mut self, name: &[u8]) {
+        if let Some(field) = ItemField::from_name(name)
+            && let Some(index) = self.active.iter().rposition(|active| *active == field)
+        {
+            self.active.remove(index);
+        }
+    }
+
+    fn push_text(&mut self, text: &str) {
+        // 既知フィールドが入れ子になった場合も従来の優先順を保つ。
+        let field = [
+            ItemField::Title,
+            ItemField::Link,
+            ItemField::Description,
+            ItemField::PubDate,
+            ItemField::DcDate,
+        ]
+        .into_iter()
+        .find(|field| self.active.contains(field));
+
+        let Some(field) = field else {
+            return;
+        };
+        let buffer = match field {
+            ItemField::Title => &mut self.title,
+            ItemField::Link => &mut self.link,
+            ItemField::Description => &mut self.description,
+            ItemField::PubDate => &mut self.pub_date,
+            ItemField::DcDate => &mut self.dc_date,
+        };
+        buffer.push_str(text);
+    }
+}
+
 /// RSS の `<item>` から `title` / `link` / `description` / 日付を最小限パースする。
 /// RSS 2.0 の `pubDate` と RSS 1.0 の `dc:date` を拾い、その他のタグは無視する。
 ///
@@ -92,19 +174,7 @@ fn parse_rss(
 
     let mut items: Vec<NewsItem> = Vec::new();
     let mut in_item = false;
-    // 興味のあるフィールドごとに on/off フラグを持つ。`<description><a>...</a></description>`
-    // のようにフィールド内側に未知タグがあっても、内側の End で誤って off にならない
-    // (内側タグは title/link/description/pubDate のどれにもマッチしないため)
-    let mut in_title = false;
-    let mut in_link = false;
-    let mut in_description = false;
-    let mut in_pub_date = false;
-    let mut in_dc_date = false;
-    let mut buf_title = String::new();
-    let mut buf_link = String::new();
-    let mut buf_description = String::new();
-    let mut buf_pub_date = String::new();
-    let mut buf_dc_date = String::new();
+    let mut fields = ItemFields::default();
 
     loop {
         match reader
@@ -115,56 +185,28 @@ fn parse_rss(
                 let name = e.name().as_ref().to_vec();
                 if name == b"item" {
                     in_item = true;
-                    in_title = false;
-                    in_link = false;
-                    in_description = false;
-                    in_pub_date = false;
-                    in_dc_date = false;
-                    buf_title.clear();
-                    buf_link.clear();
-                    buf_description.clear();
-                    buf_pub_date.clear();
-                    buf_dc_date.clear();
+                    fields.clear();
                 } else if in_item {
-                    match name.as_slice() {
-                        b"title" => in_title = true,
-                        b"link" => in_link = true,
-                        b"description" => in_description = true,
-                        b"pubDate" => in_pub_date = true,
-                        b"dc:date" => in_dc_date = true,
-                        _ => {}
-                    }
+                    fields.start(&name);
                 }
             }
             Event::End(e) => {
                 let name = e.name().as_ref().to_vec();
                 if name == b"item" {
                     in_item = false;
-                    in_title = false;
-                    in_link = false;
-                    in_description = false;
-                    in_pub_date = false;
-                    in_dc_date = false;
                     if let Some(item) = build_item(
                         source,
                         content_source,
-                        buf_title.trim(),
-                        buf_link.trim(),
-                        buf_description.trim(),
-                        buf_pub_date.trim(),
-                        buf_dc_date.trim(),
+                        fields.title.trim(),
+                        fields.link.trim(),
+                        fields.description.trim(),
+                        fields.pub_date.trim(),
+                        fields.dc_date.trim(),
                     ) {
                         items.push(item);
                     }
                 } else if in_item {
-                    match name.as_slice() {
-                        b"title" => in_title = false,
-                        b"link" => in_link = false,
-                        b"description" => in_description = false,
-                        b"pubDate" => in_pub_date = false,
-                        b"dc:date" => in_dc_date = false,
-                        _ => {}
-                    }
+                    fields.end(&name);
                 }
             }
             Event::Text(t) => {
@@ -172,38 +214,14 @@ fn parse_rss(
                     let text = t
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("text: {e}")))?;
-                    append_text(
-                        text.as_ref(),
-                        in_title,
-                        in_link,
-                        in_description,
-                        in_pub_date,
-                        in_dc_date,
-                        &mut buf_title,
-                        &mut buf_link,
-                        &mut buf_description,
-                        &mut buf_pub_date,
-                        &mut buf_dc_date,
-                    );
+                    fields.push_text(text.as_ref());
                 }
             }
             Event::CData(c) => {
                 if in_item {
                     let text = String::from_utf8(c.into_inner().into_owned())
                         .map_err(|e| NewsAggregatorError::Parse(format!("cdata: {e}")))?;
-                    append_text(
-                        &text,
-                        in_title,
-                        in_link,
-                        in_description,
-                        in_pub_date,
-                        in_dc_date,
-                        &mut buf_title,
-                        &mut buf_link,
-                        &mut buf_description,
-                        &mut buf_pub_date,
-                        &mut buf_dc_date,
-                    );
+                    fields.push_text(&text);
                 }
             }
             Event::GeneralRef(reference) => {
@@ -212,19 +230,7 @@ fn parse_rss(
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("reference: {e}")))?;
                     let text = format!("&{name};");
-                    append_text(
-                        &text,
-                        in_title,
-                        in_link,
-                        in_description,
-                        in_pub_date,
-                        in_dc_date,
-                        &mut buf_title,
-                        &mut buf_link,
-                        &mut buf_description,
-                        &mut buf_pub_date,
-                        &mut buf_dc_date,
-                    );
+                    fields.push_text(&text);
                 }
             }
             Event::Eof => break,
@@ -233,36 +239,6 @@ fn parse_rss(
     }
 
     Ok(items)
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "RSS field buffers と flag を並べる関数"
-)]
-fn append_text(
-    text: &str,
-    in_title: bool,
-    in_link: bool,
-    in_description: bool,
-    in_pub_date: bool,
-    in_dc_date: bool,
-    title: &mut String,
-    link: &mut String,
-    description: &mut String,
-    pub_date: &mut String,
-    dc_date: &mut String,
-) {
-    if in_title {
-        title.push_str(text);
-    } else if in_link {
-        link.push_str(text);
-    } else if in_description {
-        description.push_str(text);
-    } else if in_pub_date {
-        pub_date.push_str(text);
-    } else if in_dc_date {
-        dc_date.push_str(text);
-    }
 }
 
 fn build_item(
@@ -383,7 +359,8 @@ fn strip_html_tags(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut in_tag = false;
     let mut last_was_space = false;
-    for c in s.chars() {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
         if in_tag {
             if c == '>' {
                 in_tag = false;
@@ -394,7 +371,11 @@ fn strip_html_tags(s: &str) -> String {
             }
             continue;
         }
-        if c == '<' {
+        if c == '<'
+            && chars
+                .peek()
+                .is_some_and(|next| next.is_ascii_alphabetic() || matches!(*next, '/' | '!' | '?'))
+        {
             in_tag = true;
             continue;
         }
@@ -449,6 +430,25 @@ mod tests {
             .respond_with(response)
             .mount(server)
             .await;
+    }
+
+    async fn fetch_news_from_xml(aggregator: &RssNewsAggregator, xml: String) -> Vec<NewsItem> {
+        let server = MockServer::start().await;
+        mount_response(
+            &server,
+            "/feed",
+            ResponseTemplate::new(200).set_body_string(xml),
+        )
+        .await;
+
+        aggregator
+            .fetch_news(&[NewsFeed {
+                source: "Test".into(),
+                url: format!("{}/feed", server.uri()),
+                content_source: ContentSource::None,
+            }])
+            .await
+            .expect("feed fetch succeeds")
     }
 
     #[fixture]
@@ -671,7 +671,9 @@ mod tests {
         Some("Fri, 06 Mar 2026 12:30:00 +0900"),
         ymd_hms(2026, 3, 6, 3, 30, 0)
     )]
-    fn parse_rss_reads_rss_1_0_dates(
+    #[tokio::test]
+    async fn parse_rss_reads_rss_1_0_dates(
+        aggregator: RssNewsAggregator,
         #[case] pub_date: Option<&str>,
         #[case] expected_published_at: DateTime<Utc>,
     ) {
@@ -693,7 +695,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_rss("Test", ContentSource::None, &xml).expect("parse ok"),
+            fetch_news_from_xml(&aggregator, xml).await,
             vec![NewsItem {
                 source: "Test".into(),
                 url: "https://example.invalid/news/1".into(),
@@ -709,7 +711,9 @@ mod tests {
     #[rstest]
     #[case::compact_offset("Fri, 06 Mar 2026 09:15:30 +0900", ymd_hms(2026, 3, 6, 0, 15, 30))]
     #[case::colon_offset("Fri, 06 Mar 2026 09:15:30 +09:00", ymd_hms(2026, 3, 6, 0, 15, 30))]
-    fn parse_rss_parses_rfc_2822_offsets(
+    #[tokio::test]
+    async fn parse_rss_parses_rfc_2822_offsets(
+        aggregator: RssNewsAggregator,
         #[case] pub_date: &str,
         #[case] expected_published_at: DateTime<Utc>,
     ) {
@@ -729,7 +733,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_rss("Test", ContentSource::None, &xml).expect("parse ok"),
+            fetch_news_from_xml(&aggregator, xml).await,
             vec![NewsItem {
                 source: "Test".into(),
                 url: "https://example.invalid/news/1".into(),
@@ -759,7 +763,25 @@ mod tests {
         "https://example.invalid/news?id=1&mode=2",
         Some("Volume 1 2")
     )]
-    fn parse_rss_decodes_references_and_cleans_escaped_html(
+    #[case::plain_text_comparison_is_preserved(
+        "Generated headline",
+        "https://example.invalid/news/1",
+        "Revenue &lt; 100 units",
+        "Generated headline",
+        "https://example.invalid/news/1",
+        Some("Revenue < 100 units")
+    )]
+    #[case::cdata_html_keeps_comparison_text(
+        "Generated headline",
+        "https://example.invalid/news/1",
+        "<![CDATA[<p>PER &lt; 10 units</p>]]>",
+        "Generated headline",
+        "https://example.invalid/news/1",
+        Some("PER < 10 units")
+    )]
+    #[tokio::test]
+    async fn parse_rss_decodes_references_and_cleans_escaped_html(
+        aggregator: RssNewsAggregator,
         #[case] title: &str,
         #[case] link: &str,
         #[case] description: &str,
@@ -786,7 +808,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_rss("Test", ContentSource::None, &xml).expect("parse ok"),
+            fetch_news_from_xml(&aggregator, xml).await,
             vec![NewsItem {
                 source: "Test".into(),
                 url: expected_link.into(),
