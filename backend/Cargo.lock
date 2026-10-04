@@ -611,6 +611,7 @@ dependencies = [
  "entrypoint-frontend-api",
  "entrypoint-scheduler",
  "futures-util",
+ "gateway-alpha-vantage",
  "gateway-e-stat",
  "gateway-fred",
  "gateway-ibkr",
@@ -2046,6 +2047,23 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gateway-alpha-vantage"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "core-domain",
+ "csv",
+ "indoc",
+ "reqwest",
+ "rstest",
+ "serde",
+ "tokio",
+ "wiremock",
 ]
 
 [[package]]

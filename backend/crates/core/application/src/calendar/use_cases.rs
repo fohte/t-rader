@@ -5,6 +5,7 @@ use crate::calendar::{
     error::CalendarEventUseCaseError, repository::SharedCalendarEventRepository,
     source::CalendarEventSource,
 };
+use crate::unit_of_work::SharedUnitOfWork;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct CalendarEventIngestStats {
@@ -15,11 +16,15 @@ pub struct CalendarEventIngestStats {
 #[derive(Clone)]
 pub struct CalendarEventUseCases {
     repository: SharedCalendarEventRepository,
+    unit_of_work: SharedUnitOfWork,
 }
 
 impl CalendarEventUseCases {
-    pub fn new(repository: SharedCalendarEventRepository) -> Self {
-        Self { repository }
+    pub fn new(repository: SharedCalendarEventRepository, unit_of_work: SharedUnitOfWork) -> Self {
+        Self {
+            repository,
+            unit_of_work,
+        }
     }
 
     pub async fn run_ingest_cycle(
@@ -44,11 +49,19 @@ impl CalendarEventUseCases {
             external_ids.push(event.external_id.clone());
         }
 
-        let upserted = self.repository.upsert(batch.events).await?;
+        let transaction = self.unit_of_work.begin().await?;
+        let upserted = self.repository.upsert(&transaction, batch.events).await?;
         let deleted = self
             .repository
-            .delete_missing_future_events(source_name, &batch.date_range, today, external_ids)
+            .delete_missing_future_events(
+                &transaction,
+                source_name,
+                &batch.date_range,
+                today,
+                external_ids,
+            )
             .await?;
+        self.unit_of_work.commit(transaction).await?;
 
         Ok(CalendarEventIngestStats { upserted, deleted })
     }
@@ -58,7 +71,10 @@ impl CalendarEventUseCases {
 mod tests {
     use std::{
         collections::HashMap,
-        sync::{Arc, Mutex},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     use crate::{
@@ -73,12 +89,44 @@ mod tests {
             use_cases::CalendarEventUseCases,
         },
         daily_bar_source::DateRange,
+        unit_of_work::{SharedUnitOfWork, UnitOfWork, UnitOfWorkError, UnitOfWorkTransaction},
     };
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_domain::calendar_event::{
         CalendarEvent, CalendarEventCategory, CalendarEventTimeOfDay,
     };
+
+    #[derive(Default)]
+    struct FakeUnitOfWork {
+        begun: AtomicUsize,
+        committed: AtomicUsize,
+    }
+
+    impl FakeUnitOfWork {
+        fn counts(&self) -> (usize, usize) {
+            (
+                self.begun.load(Ordering::SeqCst),
+                self.committed.load(Ordering::SeqCst),
+            )
+        }
+    }
+
+    #[async_trait]
+    impl UnitOfWork for FakeUnitOfWork {
+        async fn begin(&self) -> Result<UnitOfWorkTransaction, UnitOfWorkError> {
+            self.begun.fetch_add(1, Ordering::SeqCst);
+            Ok(UnitOfWorkTransaction::new(()))
+        }
+
+        async fn commit(&self, transaction: UnitOfWorkTransaction) -> Result<(), UnitOfWorkError> {
+            transaction
+                .downcast::<()>()
+                .map_err(|_| UnitOfWorkError::InvalidTransaction)?;
+            self.committed.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
 
     #[derive(Default)]
     struct FakeCalendarEventRepository {
@@ -116,6 +164,7 @@ mod tests {
     impl CalendarEventRepository for FakeCalendarEventRepository {
         async fn upsert(
             &self,
+            _transaction: &UnitOfWorkTransaction,
             events: Vec<CalendarEvent>,
         ) -> Result<usize, CalendarEventRepositoryError> {
             let count = events.len();
@@ -128,6 +177,7 @@ mod tests {
 
         async fn delete_missing_future_events(
             &self,
+            _transaction: &UnitOfWorkTransaction,
             source: &str,
             date_range: &DateRange,
             today: NaiveDate,
@@ -172,8 +222,17 @@ mod tests {
         }
     }
 
-    fn make_use_cases(repository: Arc<FakeCalendarEventRepository>) -> CalendarEventUseCases {
-        CalendarEventUseCases::new(repository as SharedCalendarEventRepository)
+    fn make_use_cases(
+        repository: Arc<FakeCalendarEventRepository>,
+    ) -> (CalendarEventUseCases, Arc<FakeUnitOfWork>) {
+        let unit_of_work = Arc::new(FakeUnitOfWork::default());
+        (
+            CalendarEventUseCases::new(
+                repository as SharedCalendarEventRepository,
+                unit_of_work.clone() as SharedUnitOfWork,
+            ),
+            unit_of_work,
+        )
     }
 
     #[tokio::test]
@@ -199,7 +258,7 @@ mod tests {
                 ],
             },
         );
-        let use_cases = make_use_cases(repository.clone());
+        let (use_cases, unit_of_work) = make_use_cases(repository.clone());
 
         let actual = (
             use_cases
@@ -207,6 +266,7 @@ mod tests {
                 .await
                 .map_err(|error| error.to_string()),
             repository.snapshot(),
+            unit_of_work.counts(),
         );
 
         assert_eq!(
@@ -223,6 +283,7 @@ mod tests {
                     event("jquants", "past", "past event", date(2099, 8, 5)),
                     event("other", "other-source", "other source", date(2099, 8, 10)),
                 ],
+                (1, 1),
             ),
         );
     }
@@ -243,7 +304,7 @@ mod tests {
                 events: vec![event("jquants", "new", "new event", date(2099, 8, 1))],
             },
         );
-        let use_cases = make_use_cases(repository.clone());
+        let (use_cases, _) = make_use_cases(repository.clone());
 
         let actual = (
             use_cases
@@ -278,7 +339,7 @@ mod tests {
                 events: vec![event("other", "new", "new event", date(2099, 8, 12))],
             },
         );
-        let use_cases = make_use_cases(repository.clone());
+        let (use_cases, _) = make_use_cases(repository.clone());
 
         let actual = (
             use_cases
@@ -317,7 +378,7 @@ mod tests {
                 events: Vec::new(),
             },
         );
-        let use_cases = make_use_cases(repository.clone());
+        let (use_cases, _) = make_use_cases(repository.clone());
 
         let actual = (
             use_cases
@@ -346,7 +407,7 @@ mod tests {
             existing.clone(),
         ]));
         let source = FakeCalendarEventSource::failed("jquants", "source unavailable");
-        let use_cases = make_use_cases(repository.clone());
+        let (use_cases, _) = make_use_cases(repository.clone());
 
         let result = use_cases.run_ingest_cycle(&source, date(2099, 8, 10)).await;
         let actual = (

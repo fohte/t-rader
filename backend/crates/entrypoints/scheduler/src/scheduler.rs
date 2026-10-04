@@ -12,6 +12,7 @@ use sqlx::PgPool;
 use crate::{
     jobs::{
         DAILY_TIMEOUT, WEEKLY_TIMEOUT,
+        alpha_vantage::AlphaVantageCalendarIngest,
         daily_bars::DailyBarsIngest,
         e_stat_calendar::EStatCalendarIngest,
         earnings_schedule::EarningsScheduleIngest,
@@ -36,8 +37,9 @@ const JQUANTS_QUEUE: &str = "jquants";
 const FRED_QUEUE: &str = "fred";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 14] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 15] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (AlphaVantageCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
     (FredReleaseDatesIngest::IDENTIFIER, DAILY_TIMEOUT),
     (EStatCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -58,6 +60,7 @@ struct ConfiguredJobs {
     daily_bars: bool,
     fred: bool,
     e_stat_calendar: bool,
+    alpha_vantage_calendar: bool,
     fred_release_dates: bool,
     jquants: bool,
     earnings_schedule: bool,
@@ -82,6 +85,7 @@ impl Scheduler {
             daily_bars: dependencies.market_daily_bar_source.is_some(),
             fred: dependencies.fred_source.is_some(),
             e_stat_calendar: dependencies.e_stat_calendar_source.is_some(),
+            alpha_vantage_calendar: dependencies.alpha_vantage_calendar_source.is_some(),
             fred_release_dates: dependencies.fred_calendar_event_source.is_some(),
             jquants: dependencies.short_selling_source.is_some()
                 && dependencies.margin_source.is_some(),
@@ -116,6 +120,7 @@ impl Scheduler {
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
             .define_job::<EStatCalendarIngest>()
+            .define_job::<AlphaVantageCalendarIngest>()
             .define_job::<FredReleaseDatesIngest>()
             .define_job::<IngestRunRecovery>()
             .define_job::<ShortRatioIngest>()
@@ -164,6 +169,14 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
     if configured.e_stat_calendar {
         crontabs.push(daily_cron::<EStatCalendarIngest>(
             "e_stat_calendar_ingest",
+            11,
+            45,
+            None,
+        )?);
+    }
+    if configured.alpha_vantage_calendar {
+        crontabs.push(daily_cron::<AlphaVantageCalendarIngest>(
+            "alpha_vantage_calendar_ingest",
             11,
             45,
             None,
@@ -315,6 +328,7 @@ mod tests {
     use rstest::{fixture, rstest};
 
     use crate::jobs::{
+        alpha_vantage::AlphaVantageCalendarIngest,
         daily_bars::DailyBarsIngest,
         e_stat_calendar::EStatCalendarIngest,
         earnings_schedule::EarningsScheduleIngest,
@@ -342,6 +356,7 @@ mod tests {
             daily_bars: true,
             fred: true,
             e_stat_calendar: true,
+            alpha_vantage_calendar: true,
             fred_release_dates: true,
             jquants: true,
             earnings_schedule: true,
@@ -386,6 +401,12 @@ mod tests {
             expected_cron::<EStatCalendarIngest>(
                 CrontabTimer::daily_at(11, 45).ok(),
                 "e_stat_calendar_ingest",
+                CrontabFill::days(3),
+                None,
+            ),
+            expected_cron::<AlphaVantageCalendarIngest>(
+                CrontabTimer::daily_at(11, 45).ok(),
+                "alpha_vantage_calendar_ingest",
                 CrontabFill::days(3),
                 None,
             ),
@@ -510,6 +531,12 @@ mod tests {
                     None,
                 ),
                 (
+                    Some("alpha_vantage_calendar_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    None,
+                ),
+                (
                     Some("short_ratio_ingest".to_string()),
                     Some(CrontabFill::days(3)),
                     Some(3),
@@ -585,6 +612,7 @@ mod tests {
     #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::alpha_vantage_calendar_only(ConfiguredJobs { alpha_vantage_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "alpha_vantage_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::fred_release_dates_only(ConfiguredJobs { fred_release_dates: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_release_dates_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading", "trigger_evaluation"])]

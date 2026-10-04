@@ -5,7 +5,7 @@ export interface GroupRatioDraft {
   ratioPercent: string
 }
 
-export interface GroupRatioLimit {
+interface GroupRatioLimit {
   axis: string
   ratio: number
 }

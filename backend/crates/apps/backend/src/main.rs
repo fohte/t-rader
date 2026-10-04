@@ -24,6 +24,7 @@ use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
+use gateway_alpha_vantage::AlphaVantageClient;
 use gateway_e_stat::EStatCalendarEventSource;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
@@ -261,6 +262,25 @@ async fn main() -> Result<(), StartupError> {
         })?);
     tracing::info!("e-Stat calendar source initialized");
 
+    let alpha_vantage_calendar_source: Option<SharedCalendarEventSource> =
+        match std::env::var("ALPHA_VANTAGE_API_KEY") {
+            Ok(api_key) if !api_key.trim().is_empty() => {
+                let client =
+                    AlphaVantageClient::new(api_key.trim().to_string()).map_err(|error| {
+                        StartupError::Config(format!(
+                            "failed to initialize Alpha Vantage client: {error}"
+                        ))
+                    })?;
+                Some(Arc::new(client))
+            }
+            _ => {
+                tracing::warn!(
+                    "ALPHA_VANTAGE_API_KEY が未設定のため、米国決算予定の取り込みを起動しません"
+                );
+                None
+            }
+        };
+
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -306,6 +326,7 @@ async fn main() -> Result<(), StartupError> {
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
         e_stat_calendar_source: Some(e_stat_calendar_source),
+        alpha_vantage_calendar_source,
         fred_calendar_event_source,
         predictions: use_cases.predictions(),
         short_ratios: use_cases.short_ratios(),
