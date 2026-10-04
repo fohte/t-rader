@@ -34,6 +34,7 @@ function noteStub(id: string, title: string): Note {
     body_md: '検証用のメモです。',
     frontmatter_json: {},
     graphs_json: [],
+    tags: [],
     status: 'unread',
     created_by_kind: 'human',
     created_at: '2026-04-17T00:00:00Z',

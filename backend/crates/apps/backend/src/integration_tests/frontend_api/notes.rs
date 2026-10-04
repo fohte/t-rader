@@ -101,6 +101,7 @@ mod tests {
                     "title": title,
                     "body_md": body_md,
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": if created_by_kind == "human" { "approved" } else { "unread" },
                     "trigger": null,
@@ -114,6 +115,24 @@ mod tests {
             ),
         );
         note_id
+    }
+
+    async fn create_test_note_with_frontmatter(
+        server: &TestServer,
+        title: &str,
+        frontmatter_json: Value,
+    ) -> Uuid {
+        let response = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": title,
+                "body_md": "body",
+                "frontmatter_json": frontmatter_json,
+            }))
+            .await;
+        let body = response.json::<Value>();
+        assert_eq!(response.status_code(), StatusCode::CREATED);
+        Uuid::parse_str(body["id"].as_str().expect("note id")).expect("uuid")
     }
 
     async fn insert_test_version(
@@ -260,6 +279,7 @@ mod tests {
                     "title": "市況ノート",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "tags": [],
                     "graphs_json": [],
                     "kind": null,
                     "status": "approved",
@@ -270,6 +290,102 @@ mod tests {
                     "updated_at": "<updated_at>",
                     "execution_id": null,
                 }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_exact_tag_and_returns_tags(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_, server) = create_test_server_with_db(db).await;
+        create_test_note_with_frontmatter(
+            &server,
+            "tagged note",
+            json!({ "tags": ["demo-focus", "demo-review"] }),
+        )
+        .await;
+        create_test_note_with_frontmatter(
+            &server,
+            "similarly named tag note",
+            json!({ "tags": ["demo-focus-extra"] }),
+        )
+        .await;
+
+        let response = server.get("/api/notes?tag=demo-focus").await;
+        let actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_note_response)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (response.status_code(), actual),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": "tagged note",
+                    "body_md": "body",
+                    "frontmatter_json": { "tags": ["demo-focus", "demo-review"] },
+                    "tags": ["demo-focus", "demo-review"],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                })],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_treats_empty_tag_as_no_filter(db: gateway_postgres::DatabaseHandle) {
+        let (_, server) = create_test_server_with_db(db).await;
+        create_test_note_with_frontmatter(
+            &server,
+            "tagged note",
+            json!({ "tags": ["sample-label"] }),
+        )
+        .await;
+
+        let response = server.get("/api/notes?tag=").await;
+        let actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_note_response)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (response.status_code(), actual),
+            (
+                StatusCode::OK,
+                vec![json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 1,
+                    "is_current": true,
+                    "title": "tagged note",
+                    "body_md": "body",
+                    "frontmatter_json": { "tags": ["sample-label"] },
+                    "tags": ["sample-label"],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                })],
             ),
         );
     }
@@ -323,6 +439,7 @@ mod tests {
                     "title": "sample note",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "approved",
                     "trigger": null,
@@ -564,6 +681,38 @@ mod tests {
                 StatusCode::BAD_REQUEST,
                 json!({"error": INVALID_NOTE_TOKEN_ERROR}),
                 Some("original".to_string()),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_note_rejects_non_string_tags_and_keeps_original_frontmatter(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let note_id = create_test_note_with_frontmatter(
+            &server,
+            "title",
+            json!({ "tags": ["sample-label"] }),
+        )
+        .await;
+
+        let res = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({ "frontmatter_json": { "tags": "sample-label" } }))
+            .await;
+        let response = res.json::<Value>();
+        let saved_frontmatter = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .map(|version| version.frontmatter_json);
+
+        assert_eq!(
+            (res.status_code(), response, saved_frontmatter),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "frontmatter_json.tags must be an array of strings" }),
+                Some(json!({ "tags": ["sample-label"] })),
             ),
         );
     }
@@ -962,6 +1111,7 @@ mod tests {
                         line two
                         line three"},
                     "frontmatter_json": {},
+                    "tags": [],
                     "kind": null,
                     "status": "approved",
                     "trigger": null,

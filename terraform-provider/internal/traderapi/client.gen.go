@@ -284,6 +284,7 @@ type Note struct {
 	IsCurrent       bool                      `json:"is_current"`
 	Kind            nullable.Nullable[string] `json:"kind,omitempty"`
 	Status          string                    `json:"status"`
+	Tags            []string                  `json:"tags"`
 	Title           string                    `json:"title"`
 	Trigger         nullable.Nullable[string] `json:"trigger,omitempty"`
 	TriggerLabel    nullable.Nullable[string] `json:"trigger_label,omitempty"`
