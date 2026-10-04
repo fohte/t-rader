@@ -139,54 +139,10 @@ where
     F: Future<Output = Result<Stats, String>>,
     Stats: Serialize,
 {
-    let run_id = match ingest_run_log.start(task_name).await {
-        Ok(run_id) => run_id,
-        Err(error) => {
-            let error = format!("failed to start ingest run log: {error}");
-            tracing::error!(task = task_name, %error, "failed to start scheduled job");
-            return Err(error);
-        }
-    };
-
-    let (task_result, timed_out) = match run_with_timeout(task_name, duration, task).await {
-        TimedTaskResult::Completed(result) => (result, false),
-        TimedTaskResult::TimedOut(error) => (Err(error), true),
-    };
-    let recorded_result = task_result.and_then(|stats| {
-        serde_json::to_value(stats)
-            .map_err(|error| format!("failed to serialize job stats: {error}"))
-    });
-
-    if let Err(log_error) = ingest_run_log.finish(run_id, recorded_result.clone()).await {
-        match &recorded_result {
-            Ok(_) => {
-                tracing::error!(
-                    task = task_name,
-                    %log_error,
-                    "scheduled job completed but its ingest run result could not be persisted"
-                );
-                return Ok(());
-            }
-            Err(task_error) => {
-                let error = format!("{task_error}; failed to finish ingest run log: {log_error}");
-                tracing::error!(task = task_name, %error, "failed to persist scheduled job result");
-                return Err(error);
-            }
-        }
-    }
-
-    match recorded_result {
-        Ok(_) => {
-            tracing::info!(task = task_name, "scheduled job completed");
-            Ok(())
-        }
-        Err(error) => {
-            if !timed_out {
-                tracing::warn!(task = task_name, %error, "scheduled job failed");
-            }
-            Err(error)
-        }
-    }
+    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, async move {
+        task.await.map_err(IngestTaskFailure::Error)
+    })
+    .await
 }
 
 async fn run_with_ingest_run_log_with_failure_stats<F, Stats>(
@@ -197,6 +153,28 @@ async fn run_with_ingest_run_log_with_failure_stats<F, Stats>(
 ) -> Result<(), String>
 where
     F: Future<Output = Result<Stats, (Stats, String)>>,
+    Stats: Serialize,
+{
+    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, async move {
+        task.await
+            .map_err(|(stats, error)| IngestTaskFailure::ErrorWithStats { stats, error })
+    })
+    .await
+}
+
+enum IngestTaskFailure<Stats> {
+    Error(String),
+    ErrorWithStats { stats: Stats, error: String },
+}
+
+async fn run_with_ingest_run_log_inner<F, Stats>(
+    ingest_run_log: &dyn IngestRunLog,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: Future<Output = Result<Stats, IngestTaskFailure<Stats>>>,
     Stats: Serialize,
 {
     let run_id = match ingest_run_log.start(task_name).await {
@@ -215,16 +193,19 @@ where
             None,
             false,
         ),
-        Ok(Err((stats, error))) => match serde_json::to_value(stats) {
-            Ok(stats) => (Err(error), Some(stats), false),
-            Err(serialization_error) => (
-                Err(format!(
-                    "{error}; failed to serialize job stats: {serialization_error}"
-                )),
-                None,
-                false,
-            ),
-        },
+        Ok(Err(IngestTaskFailure::Error(error))) => (Err(error), None, false),
+        Ok(Err(IngestTaskFailure::ErrorWithStats { stats, error })) => {
+            match serde_json::to_value(stats) {
+                Ok(stats) => (Err(error), Some(stats), false),
+                Err(serialization_error) => (
+                    Err(format!(
+                        "{error}; failed to serialize job stats: {serialization_error}"
+                    )),
+                    None,
+                    false,
+                ),
+            }
+        }
         Err(_) => {
             let error = format!("{task_name} timed out after {duration:?}");
             tracing::error!(task = task_name, ?duration, "scheduled job timed out");

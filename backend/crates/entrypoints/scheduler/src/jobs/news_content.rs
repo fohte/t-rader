@@ -4,7 +4,7 @@ use core_application::{
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::run_with_ingest_run_log_state_and_failure_stats;
+use super::{require_source, run_with_ingest_run_log_state_and_failure_stats};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NewsContentFetch;
@@ -18,12 +18,9 @@ impl TaskHandler for NewsContentFetch {
             Self::IDENTIFIER,
             crate::scheduler::NEWS_CONTENT_JOB_TIMEOUT,
             |state| async move {
-                let Some(fetcher) = state.dependencies.news_content_fetcher else {
-                    return Err((
-                        NewsContentFetchStats::default(),
-                        "Firecrawl source is not configured".to_owned(),
-                    ));
-                };
+                let fetcher =
+                    require_source(state.dependencies.news_content_fetcher, "Firecrawl source")
+                        .map_err(|error| (NewsContentFetchStats::default(), error))?;
                 state
                     .dependencies
                     .news_content
