@@ -42,9 +42,8 @@ impl AnnotationReadUseCases {
 
     pub async fn list_recent_annotations(
         &self,
-        strategy_id: Uuid,
         limit: u64,
     ) -> Result<Vec<RecentAnnotation>, AnnotationReadUseCaseError> {
-        Ok(self.query.list_recent(strategy_id, limit).await?)
+        Ok(self.query.list_recent(limit).await?)
     }
 }

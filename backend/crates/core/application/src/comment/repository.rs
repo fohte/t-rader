@@ -15,12 +15,12 @@ pub trait CommentRepository: Send + Sync {
         id: Uuid,
     ) -> Result<Option<Comment>, CommentRepositoryError>;
 
-    async fn target_strategy_id(
+    async fn target_exists(
         &self,
         transaction: &UnitOfWorkTransaction,
         target_kind: CommentTargetKind,
         target_id: Uuid,
-    ) -> Result<Option<Option<Uuid>>, CommentRepositoryError>;
+    ) -> Result<bool, CommentRepositoryError>;
 
     async fn note_version_anchor_bodies(
         &self,

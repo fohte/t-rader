@@ -159,12 +159,12 @@ pub struct NoteLinkDto {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub version_id: Uuid,
     pub version_no: i32,
     pub title: String,
     pub body_md: Option<String>,
     pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
+    pub tags: Vec<String>,
     pub kind: Option<String>,
     pub status: String,
     pub created_by_kind: String,
@@ -185,6 +185,7 @@ pub struct ListNotesParams {
     pub updated_after: Option<DateTime<FixedOffset>>,
     pub include_body: Option<bool>,
     pub include_pending: Option<bool>,
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -205,7 +206,6 @@ pub struct CreateAnnotationParams {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct AnnotationDto {
     pub annotation_id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
@@ -356,12 +356,30 @@ pub struct NewsItemDto {
     pub url: String,
     pub title: String,
     pub body_snippet: Option<String>,
+    pub content_status: Option<String>,
     pub published_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct SearchNewsResult {
     pub items: Vec<NewsItemDto>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GetNewsContentParams {
+    pub id: Uuid,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+pub struct GetNewsContentResult {
+    pub id: Uuid,
+    pub source: String,
+    pub url: String,
+    pub title: String,
+    pub published_at: DateTime<FixedOffset>,
+    pub content_status: Option<String>,
+    pub content: Option<String>,
+    pub content_error: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -1041,15 +1041,6 @@
         "operationId": "list_annotations",
         "parameters": [
           {
-            "name": "strategy_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
             "name": "target_symbol",
             "in": "query",
             "required": false,
@@ -3396,15 +3387,6 @@
         "operationId": "list_notes",
         "parameters": [
           {
-            "name": "strategy_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
             "name": "status",
             "in": "query",
             "required": false,
@@ -3415,6 +3397,15 @@
           {
             "name": "kind",
             "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "`frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。",
             "required": false,
             "schema": {
               "type": "string"
@@ -7288,13 +7279,6 @@
           "status": {
             "type": "string"
           },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
           "target_kind": {
             "type": "string"
           },
@@ -7565,14 +7549,6 @@
               "null"
             ]
           },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "任意。省略した場合、どの戦略にも属さないアノテーションになる (市況・セクター横断の分析など)"
-          },
           "target_kind": {
             "type": "string"
           },
@@ -7808,14 +7784,6 @@
               "null"
             ],
             "description": "人間の作成では省略時に \"approved\"。指定する場合も \"approved\" のみ許可する。\nエージェントの作成では省略時に \"unread\"。承認必須種別では \"unread\" のみ許可する。"
-          },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "任意。省略した場合、どの戦略にも属さないノートになる (市況・セクター横断の分析など)"
           },
           "title": {
             "type": "string",
@@ -8498,6 +8466,7 @@
           "title",
           "body_md",
           "frontmatter_json",
+          "tags",
           "status",
           "created_by_kind",
           "created_at",
@@ -8546,12 +8515,11 @@
           "status": {
             "type": "string"
           },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "title": {
             "type": "string"

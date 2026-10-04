@@ -5,7 +5,6 @@ use crate::change_history::{ChangeHistoryRecord, Op, SharedChangeHistoryPort, Ta
 use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
 use crate::note::types::{Note, NoteSnapshot};
-use crate::strategy_existence::SharedStrategyExistence;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 pub(super) fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCaseError> {
@@ -22,7 +21,6 @@ pub(super) fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCase
 pub struct NoteUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) repository: SharedNoteRepository,
-    pub(super) strategy_existence: SharedStrategyExistence,
     pub(super) change_history: SharedChangeHistoryPort,
 }
 
@@ -30,13 +28,11 @@ impl NoteUseCases {
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         repository: SharedNoteRepository,
-        strategy_existence: SharedStrategyExistence,
         change_history: SharedChangeHistoryPort,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
-            strategy_existence,
             change_history,
         }
     }
@@ -50,23 +46,6 @@ impl NoteUseCases {
             .find_note(transaction, note_id)
             .await?
             .ok_or_else(|| NoteUseCaseError::NotFound(format!("note {note_id} not found")))
-    }
-
-    pub(super) async fn ensure_strategy_exists(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
-    ) -> Result<(), NoteUseCaseError> {
-        if !self
-            .strategy_existence
-            .exists(transaction, strategy_id)
-            .await?
-        {
-            return Err(NoteUseCaseError::Validation(format!(
-                "strategy {strategy_id} does not exist"
-            )));
-        }
-        Ok(())
     }
 
     pub(super) async fn snapshot(

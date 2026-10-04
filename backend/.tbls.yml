@@ -26,9 +26,8 @@ comments:
       skills: 'エージェントが利用する skill 名と内容の対応を表す JSON。'
       agent_graph: 'エージェントの実行グラフを記述した YAML。'
   - table: annotation
-    tableComment: '戦略に属する銘柄などの対象へ付与したテキスト注釈を保持する。'
+    tableComment: '銘柄などの対象へ付与したテキスト注釈を保持する。'
     columnComments:
-      strategy_id: '注釈を所有する戦略。戦略に属さない注釈では null。'
       target_symbol: '注釈対象を識別する銘柄・参照の ID。'
       target_kind: '注釈対象の種類。'
       timestamp: '注釈を紐づける時刻。'
@@ -85,9 +84,8 @@ comments:
       tool_name: '呼び出し数を集計する MCP ツール名。'
       call_count: 'タスク実行中に記録したツール呼び出し数。'
   - table: note
-    tableComment: '戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。'
+    tableComment: 'ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。'
     columnComments:
-      strategy_id: 'ノートを所有する戦略。戦略に属さないノートでは null。'
       kind: 'note_kind で定義されたノート分類キー。'
       trigger: 'ノートが作成された契機の種別。'
       trigger_label: 'ノート作成の契機に付けた表示ラベル。'

@@ -134,18 +134,6 @@ function AnnotationDetailPage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      {annotation.strategy_id != null && (
-        <div>
-          <Link
-            to="/strategies/$id/performance"
-            params={{ id: annotation.strategy_id }}
-            className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground-strong hover:text-primary"
-          >
-            ← 戦略成績に戻る
-          </Link>
-        </div>
-      )}
-
       <header className="border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="inline-grid h-6 min-w-8 place-items-center border border-primary px-1 font-mono text-2xs text-primary">

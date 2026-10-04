@@ -1,6 +1,6 @@
 use super::super::graph_dto::GraphDef;
 use core_application::note::{
-    NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot,
+    NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot, frontmatter_tags,
 };
 use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
 use rmcp::ErrorData as McpError;
@@ -45,14 +45,15 @@ fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, Mc
         .as_object()
         .cloned()
         .ok_or_else(|| internal_error("note_version.frontmatter_json is not a JSON object"))?;
+    let tags = frontmatter_tags(&snapshot.version.frontmatter_json);
     Ok(NoteDto {
         note_id: snapshot.note.id,
-        strategy_id: snapshot.note.strategy_id,
         version_id: snapshot.version.id,
         version_no: snapshot.version.version_no,
         title: snapshot.version.title,
         body_md: include_body.then_some(snapshot.version.body_md),
         frontmatter_json,
+        tags,
         kind: snapshot.note.kind,
         status: snapshot.version.status,
         created_by_kind: snapshot.created_by_kind,
@@ -139,12 +140,12 @@ impl StrategyServer {
                 .list_notes(NoteListQuery {
                     kind: params.kind.clone(),
                     status: params.status.clone(),
+                    tag: params.tag.clone(),
                     reference: reference.clone(),
                     updated_after: params.updated_after,
                     include_pending: true,
                     cursor,
                     limit: Some(page_size),
-                    ..NoteListQuery::default()
                 })
                 .await
                 .map_err(note_read_error_to_mcp)?;
@@ -189,6 +190,7 @@ impl StrategyServer {
                 kind: params.kind,
                 reference,
                 status: params.status,
+                tag: params.tag,
                 updated_after: params.updated_after,
                 limit: Some(clamp_limit(params.limit)),
                 ..NoteListQuery::default()
@@ -215,7 +217,7 @@ mod tests {
     use super::{NoteDto, NoteSnapshot, note_to_dto};
 
     #[test]
-    fn note_dto_preserves_missing_strategy_id() {
+    fn note_dto_maps_note_fields() {
         let id = Uuid::nil();
         let timestamp =
             DateTime::parse_from_rfc3339("2000-01-01T00:00:00+00:00").expect("valid timestamp");
@@ -223,7 +225,6 @@ mod tests {
             NoteSnapshot {
                 note: Note {
                     id,
-                    strategy_id: None,
                     kind: None,
                     trigger: None,
                     trigger_label: None,
@@ -237,7 +238,7 @@ mod tests {
                     version_no: 1,
                     title: "Example note".into(),
                     body_md: "Example body".into(),
-                    frontmatter_json: json!({}),
+                    frontmatter_json: json!({ "tags": ["demo-focus"] }),
                     graphs_json: json!([]),
                     status: "approved".into(),
                     is_current: true,
@@ -251,18 +252,21 @@ mod tests {
             },
             true,
         )
-        .expect("note without a strategy converts to a DTO");
+        .expect("note converts to a DTO");
 
         assert_eq!(
             actual,
             NoteDto {
                 note_id: id,
-                strategy_id: None,
                 version_id: id,
                 version_no: 1,
                 title: "Example note".into(),
                 body_md: Some("Example body".into()),
-                frontmatter_json: serde_json::Map::new(),
+                frontmatter_json: json!({ "tags": ["demo-focus"] })
+                    .as_object()
+                    .cloned()
+                    .expect("object frontmatter"),
+                tags: vec!["demo-focus".into()],
                 kind: None,
                 status: "approved".into(),
                 created_by_kind: "human".into(),

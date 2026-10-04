@@ -79,7 +79,6 @@ erDiagram
 }
 "public.note" {
   uuid id
-  uuid strategy_id FK
   varchar kind FK
   varchar trigger
   varchar trigger_label

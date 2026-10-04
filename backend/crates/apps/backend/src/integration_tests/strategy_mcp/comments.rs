@@ -7,8 +7,7 @@ mod tests {
     use super::super::tests_common::{
         ChangeHistoryShape, build_server, change_history_for, current_note_version_id,
         insert_strategy, normalize_read_comments, normalize_reply_comment,
-        normalize_resolve_comment, seed_comment, seed_foreign_annotation, seed_foreign_note,
-        ts_sentinel,
+        normalize_resolve_comment, seed_annotation, seed_comment, seed_note, ts_sentinel,
     };
     use gateway_postgres::entities::comment;
     use sea_orm::ActiveModelTrait;
@@ -20,8 +19,8 @@ mod tests {
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_id, "note").await;
-        let other_note_id = seed_foreign_note(&db, strategy_id, "other note").await;
+        let note_id = seed_note(&db, "sample note").await;
+        let other_note_id = seed_note(&db, "another sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let other_version_id = current_note_version_id(&db, other_note_id).await;
 
@@ -115,7 +114,7 @@ mod tests {
     async fn read_comments_supports_annotation_target(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
-        let annotation_id = seed_foreign_annotation(&db, strategy_id).await;
+        let annotation_id = seed_annotation(&db).await;
         let comment_id = seed_comment(&db, "annotation", annotation_id, None, "looks wrong").await;
 
         let result = server
@@ -203,13 +202,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_returns_comments_for_note_from_another_strategy(
+    async fn read_comments_returns_comments_for_a_global_note(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let comment_id =
             seed_comment(&db, "note_version", note_version_id, None, "review this").await;
@@ -248,13 +246,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_returns_comments_for_annotation_from_another_strategy(
+    async fn read_comments_returns_comments_for_a_global_annotation(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let annotation_id = seed_foreign_annotation(&db, strategy_b).await;
+        let annotation_id = seed_annotation(&db).await;
         let comment_id = seed_comment(&db, "annotation", annotation_id, None, "review this").await;
 
         let result = server
@@ -294,7 +291,7 @@ mod tests {
     async fn read_comments_filters_by_resolved(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_id, "note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let open = seed_comment(&db, "note_version", note_version_id, None, "still open").await;
         let done = seed_comment(&db, "note_version", note_version_id, None, "already fixed").await;
@@ -378,7 +375,7 @@ mod tests {
     async fn resolve_comment_toggles_resolved(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_id, "note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let comment_id = seed_comment(&db, "note_version", note_version_id, None, "fix this").await;
 
@@ -508,13 +505,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_resolves_comment_on_note_from_another_strategy(
+    async fn resolve_comment_resolves_comment_on_a_global_note(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let comment_id = seed_comment(&db, "note_version", note_version_id, None, "fix this").await;
 
@@ -554,7 +550,7 @@ mod tests {
     async fn reply_comment_inherits_parent_target(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_id, "note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let parent_id =
             seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
@@ -615,7 +611,7 @@ mod tests {
     async fn reply_comment_rejects_empty_body(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_id, "note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let parent_id =
             seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
@@ -662,13 +658,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_replies_to_note_from_another_strategy(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
+    async fn reply_comment_replies_to_a_global_note(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let parent_id =
             seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
@@ -730,7 +723,7 @@ mod tests {
     async fn reply_comment_rejects_reply_to_reply(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
-        let note_id = seed_foreign_note(&db, strategy_id, "note").await;
+        let note_id = seed_note(&db, "sample note").await;
         let note_version_id = current_note_version_id(&db, note_id).await;
         let root_id = seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
         let reply_id =
