@@ -615,17 +615,13 @@ mod tests {
         )]);
         let result = use_cases.fetch_pending(&fetcher).await;
         let rows = repository.rows.lock().await.clone();
+        let expected_body = format!(
+            "{}\n[記事本文は 100,000 字で切り詰めました]",
+            "あ".repeat(99_974),
+        );
 
         assert_eq!(
-            (
-                result,
-                rows[0].status,
-                rows[0].body.as_ref().map(|body| body.chars().count()),
-                rows[0]
-                    .body
-                    .as_ref()
-                    .and_then(|body| body.lines().last().map(str::to_owned))
-            ),
+            (result, rows[0].status, rows[0].body.as_deref(),),
             (
                 Ok(crate::news_content::NewsContentFetchStats {
                     expired: 0,
@@ -635,8 +631,7 @@ mod tests {
                     interrupted_reason: None,
                 }),
                 NewsItemContentStatus::Fetched,
-                Some(100_000),
-                Some("[記事本文は 100,000 字で切り詰めました]".to_owned()),
+                Some(expected_body.as_str()),
             ),
         );
     }
