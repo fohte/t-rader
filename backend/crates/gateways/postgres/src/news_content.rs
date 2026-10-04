@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
+use core_application::news::NewsItemContentStatus as ContentStatus;
 use core_application::news_content::{NewsContentRepository, PendingNewsContent};
 use core_application::persistence::PersistenceError;
 use sea_orm::ActiveValue::Set;
@@ -29,12 +30,12 @@ impl NewsContentRepository for PostgresNewsContentRepository {
     ) -> Result<u64, PersistenceError> {
         news_item_content::Entity::update_many()
             .set(news_item_content::ActiveModel {
-                status: Set("failed".to_owned()),
+                status: Set(ContentStatus::Failed.as_str().to_owned()),
                 error: Set(Some("expired".to_owned())),
                 updated_at: Set(Utc::now().fixed_offset()),
                 ..Default::default()
             })
-            .filter(news_item_content::Column::Status.eq("pending"))
+            .filter(news_item_content::Column::Status.eq(ContentStatus::Pending.as_str()))
             .filter(news_item_content::Column::CreatedAt.lt(cutoff))
             .exec(&self.db)
             .await
@@ -45,7 +46,7 @@ impl NewsContentRepository for PostgresNewsContentRepository {
     async fn list_pending(&self, limit: u64) -> Result<Vec<PendingNewsContent>, PersistenceError> {
         news_item::Entity::find()
             .find_also_related(news_item_content::Entity)
-            .filter(news_item_content::Column::Status.eq("pending"))
+            .filter(news_item_content::Column::Status.eq(ContentStatus::Pending.as_str()))
             .order_by_asc(news_item_content::Column::CreatedAt)
             .order_by_asc(news_item_content::Column::NewsItemId)
             .limit(limit)
@@ -65,14 +66,14 @@ impl NewsContentRepository for PostgresNewsContentRepository {
     async fn mark_fetched(&self, news_item_id: Uuid, body: String) -> Result<(), PersistenceError> {
         let result = news_item_content::Entity::update_many()
             .set(news_item_content::ActiveModel {
-                status: Set("fetched".to_owned()),
+                status: Set(ContentStatus::Fetched.as_str().to_owned()),
                 body: Set(Some(body)),
                 error: Set(None),
                 updated_at: Set(Utc::now().fixed_offset()),
                 ..Default::default()
             })
             .filter(news_item_content::Column::NewsItemId.eq(news_item_id))
-            .filter(news_item_content::Column::Status.eq("pending"))
+            .filter(news_item_content::Column::Status.eq(ContentStatus::Pending.as_str()))
             .exec(&self.db)
             .await
             .map_err(persistence_error)?;
@@ -82,14 +83,14 @@ impl NewsContentRepository for PostgresNewsContentRepository {
     async fn mark_failed(&self, news_item_id: Uuid, error: String) -> Result<(), PersistenceError> {
         let result = news_item_content::Entity::update_many()
             .set(news_item_content::ActiveModel {
-                status: Set("failed".to_owned()),
+                status: Set(ContentStatus::Failed.as_str().to_owned()),
                 body: Set(None),
                 error: Set(Some(error)),
                 updated_at: Set(Utc::now().fixed_offset()),
                 ..Default::default()
             })
             .filter(news_item_content::Column::NewsItemId.eq(news_item_id))
-            .filter(news_item_content::Column::Status.eq("pending"))
+            .filter(news_item_content::Column::Status.eq(ContentStatus::Pending.as_str()))
             .exec(&self.db)
             .await
             .map_err(persistence_error)?;
@@ -109,6 +110,7 @@ fn ensure_updated(news_item_id: Uuid, rows_affected: u64) -> Result<(), Persiste
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Duration, FixedOffset, Utc};
+    use core_application::news::NewsItemContentStatus as ContentStatus;
     use core_application::news_content::{NewsContentRepository, PendingNewsContent};
     use sea_orm::ActiveValue::Set;
     use sea_orm::EntityTrait;
@@ -257,6 +259,59 @@ mod tests {
                 ("failed".to_owned(), None, Some("expired".to_owned())),
                 ("pending".to_owned(), None, None),
                 ("failed".to_owned(), None, Some("prior_error".to_owned())),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn mark_fetched_and_failed_persist_pending_content_updates(db: DatabaseHandle) {
+        let fetched_id = Uuid::from_u128(7);
+        let failed_id = Uuid::from_u128(8);
+        let created_at = timestamp(1);
+        insert_content(
+            &db,
+            fetched_id,
+            "https://example.invalid/fetched",
+            "pending",
+            created_at,
+        )
+        .await;
+        insert_content(
+            &db,
+            failed_id,
+            "https://example.invalid/failed",
+            "pending",
+            created_at,
+        )
+        .await;
+        let repository = PostgresNewsContentRepository::new(db.clone());
+        repository
+            .mark_fetched(fetched_id, "article body".to_owned())
+            .await
+            .expect("mark content fetched");
+        repository
+            .mark_failed(failed_id, "empty".to_owned())
+            .await
+            .expect("mark content failed");
+        let fetched = content_row(&db, fetched_id).await;
+        let failed = content_row(&db, failed_id).await;
+
+        assert_eq!(
+            (
+                (fetched.status, fetched.body, fetched.error),
+                (failed.status, failed.body, failed.error),
+            ),
+            (
+                (
+                    ContentStatus::Fetched.as_str().to_owned(),
+                    Some("article body".to_owned()),
+                    None,
+                ),
+                (
+                    ContentStatus::Failed.as_str().to_owned(),
+                    None,
+                    Some("empty".to_owned()),
+                ),
             ),
         );
     }
