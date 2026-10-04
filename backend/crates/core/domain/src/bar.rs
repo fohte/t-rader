@@ -8,12 +8,32 @@ pub enum Timeframe {
     /// 日足
     #[serde(rename = "1d")]
     Daily,
+    /// 1 分足
+    #[serde(rename = "1m")]
+    Minute,
+    /// 5 分足
+    #[serde(rename = "5m")]
+    FiveMinutes,
+    /// 15 分足
+    #[serde(rename = "15m")]
+    FifteenMinutes,
+    /// 1 時間足
+    #[serde(rename = "1h")]
+    Hourly,
+    /// 4 時間足
+    #[serde(rename = "4h")]
+    FourHours,
 }
 
 impl std::fmt::Display for Timeframe {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Timeframe::Daily => write!(f, "1d"),
+            Timeframe::Minute => write!(f, "1m"),
+            Timeframe::FiveMinutes => write!(f, "5m"),
+            Timeframe::FifteenMinutes => write!(f, "15m"),
+            Timeframe::Hourly => write!(f, "1h"),
+            Timeframe::FourHours => write!(f, "4h"),
         }
     }
 }
@@ -24,6 +44,11 @@ impl std::str::FromStr for Timeframe {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "1d" => Ok(Timeframe::Daily),
+            "1m" => Ok(Timeframe::Minute),
+            "5m" => Ok(Timeframe::FiveMinutes),
+            "15m" => Ok(Timeframe::FifteenMinutes),
+            "1h" => Ok(Timeframe::Hourly),
+            "4h" => Ok(Timeframe::FourHours),
             other => Err(format!("unknown timeframe: {other}")),
         }
     }

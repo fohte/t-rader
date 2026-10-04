@@ -1,9 +1,57 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
+use core_domain::bar::{Bar, Timeframe};
+use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult,
+    QueryFilter, QueryOrder, Set, Statement,
+};
 
 use crate::entities::bars;
-use core_domain::bar::{Bar, Timeframe};
+
+const FIND_ONE_MINUTE_BARS_SQL: &str = r#"
+    SELECT instrument_id, timestamp, open, high, low, close, volume
+    FROM minute_bars
+    WHERE instrument_id = $1
+      AND ($2::timestamptz IS NULL OR timestamp >= $2)
+      AND ($3::timestamptz IS NULL OR timestamp <= $3)
+    ORDER BY timestamp ASC
+"#;
+
+const FIND_AGGREGATED_MINUTE_BARS_SQL: &str = r#"
+    WITH aggregated AS (
+        SELECT
+            instrument_id,
+            time_bucket($1::interval, timestamp) AS timestamp,
+            first(open, timestamp) AS open,
+            MAX(high) AS high,
+            MIN(low) AS low,
+            last(close, timestamp) AS close,
+            SUM(volume)::bigint AS volume
+        FROM minute_bars
+        WHERE instrument_id = $2
+          AND ($3::timestamptz IS NULL OR timestamp >= $3)
+          -- 範囲内に開始する最後の bucket も全 OHLCV を集計する。
+          AND ($4::timestamptz IS NULL OR timestamp < $4 + $1::interval)
+        GROUP BY instrument_id, time_bucket($1::interval, timestamp)
+    )
+    SELECT instrument_id, timestamp, open, high, low, close, volume
+    FROM aggregated
+    WHERE ($3::timestamptz IS NULL OR timestamp >= $3)
+      AND ($4::timestamptz IS NULL OR timestamp <= $4)
+    ORDER BY timestamp ASC
+"#;
+
+#[derive(Debug, FromQueryResult)]
+struct MinuteBarRow {
+    instrument_id: String,
+    timestamp: DateTime<FixedOffset>,
+    open: Decimal,
+    high: Decimal,
+    low: Decimal,
+    close: Decimal,
+    volume: i64,
+}
 
 impl From<Bar> for bars::ActiveModel {
     fn from(bar: Bar) -> Self {
@@ -101,6 +149,69 @@ pub async fn find_bars(
     let results = select.order_by_asc(bars::Column::Timestamp).all(db).await?;
 
     Ok(results)
+}
+
+/// 1 分足、または 1 分足から集計した intraday bars を取得する。
+pub async fn find_intraday_bars(
+    db: &impl ConnectionTrait,
+    query: BarsQuery,
+) -> Result<Vec<Bar>, DbErr> {
+    let timeframe = match query.timeframe.as_str() {
+        "1m" => Timeframe::Minute,
+        "5m" => Timeframe::FiveMinutes,
+        "15m" => Timeframe::FifteenMinutes,
+        "1h" => Timeframe::Hourly,
+        "4h" => Timeframe::FourHours,
+        _ => return Ok(Vec::new()),
+    };
+
+    let rows = if query.timeframe == "1m" {
+        db.query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            FIND_ONE_MINUTE_BARS_SQL,
+            [
+                query.instrument_id.into(),
+                query.from.into(),
+                query.to.into(),
+            ],
+        ))
+        .await?
+    } else {
+        let interval = match query.timeframe.as_str() {
+            "5m" => "5 minutes",
+            "15m" => "15 minutes",
+            "1h" => "1 hour",
+            "4h" => "4 hours",
+            _ => return Ok(Vec::new()),
+        };
+        db.query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            FIND_AGGREGATED_MINUTE_BARS_SQL,
+            [
+                interval.into(),
+                query.instrument_id.into(),
+                query.from.into(),
+                query.to.into(),
+            ],
+        ))
+        .await?
+    };
+
+    rows.iter()
+        .map(|row| {
+            let row = MinuteBarRow::from_query_result(row, "")?;
+            Ok(Bar {
+                instrument_id: row.instrument_id,
+                timeframe: timeframe.clone(),
+                timestamp: row.timestamp.to_utc(),
+                open: row.open,
+                high: row.high,
+                low: row.low,
+                close: row.close,
+                volume: row.volume,
+            })
+        })
+        .collect()
 }
 
 /// 複数銘柄に一致するバーデータをまとめて取得する。日付範囲は全銘柄共通の条件として扱う。

@@ -50,6 +50,9 @@ function generateSampleBars(count: number): Bar[] {
 const meta = {
   title: 'Components/CandlestickChart',
   component: CandlestickChart,
+  args: {
+    currency: 'JPY',
+  },
   decorators: [
     (Story) => (
       <div style={{ width: '100%', height: '600px' }}>
@@ -82,6 +85,18 @@ export const Empty: Story = {
   name: 'shows the empty chart when there are no price bars.',
   args: {
     bars: [],
+    className: 'h-full w-full',
+  },
+}
+
+export const USCurrency: Story = {
+  name: 'shows prices in US dollars for a US instrument.',
+  args: {
+    bars: generateSampleBars(120).map((bar) => ({
+      ...bar,
+      instrument_id: 'US:DEMO-A',
+    })),
+    currency: 'USD',
     className: 'h-full w-full',
   },
 }

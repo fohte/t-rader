@@ -1588,21 +1588,19 @@
           {
             "name": "from",
             "in": "query",
-            "description": "取得開始日 (YYYY-MM-DD, inclusive)",
+            "description": "取得開始日時。日足は YYYY-MM-DD、分足は RFC 3339 datetime (inclusive)",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date"
+              "type": "string"
             }
           },
           {
             "name": "to",
             "in": "query",
-            "description": "取得終了日 (YYYY-MM-DD, inclusive)",
+            "description": "取得終了日時。日足は YYYY-MM-DD、分足は RFC 3339 datetime (inclusive)",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date"
+              "type": "string"
             }
           }
         ],
