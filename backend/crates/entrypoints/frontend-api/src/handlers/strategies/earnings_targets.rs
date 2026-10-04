@@ -1,12 +1,12 @@
 use axum::Json;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCaseError;
 use uuid::Uuid;
 
 use super::strategy_scope_or_404;
 use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
-use crate::extractors::{JsonBody, JsonPath};
+use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
     AddStrategyEarningsTargetRequest, RemoveStrategyEarningsTargetQuery,
     StrategyEarningsTargetChangeResponse, StrategyEarningsTargetResponse,
@@ -106,7 +106,7 @@ pub async fn add_strategy_earnings_target(
 pub async fn remove_strategy_earnings_target(
     State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
-    Query(query): Query<RemoveStrategyEarningsTargetQuery>,
+    JsonQuery(query): JsonQuery<RemoveStrategyEarningsTargetQuery>,
 ) -> Result<Json<StrategyEarningsTargetChangeResponse>, AppError> {
     let scope = strategy_scope_or_404(&state, id).await?;
     let changed = state

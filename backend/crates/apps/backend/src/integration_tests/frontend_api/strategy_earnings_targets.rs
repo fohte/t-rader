@@ -195,6 +195,28 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn missing_delete_query_parameter_returns_json_error(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_, server, strategy_id) = setup(db).await;
+        let response = server
+            .delete(&format!(
+                "/api/strategies/{strategy_id}/earnings-targets?ref_kind=stock"
+            ))
+            .await;
+
+        assert_eq!(
+            response_output(&response),
+            (
+                StatusCode::BAD_REQUEST,
+                Some(json!({
+                    "error": "Failed to deserialize query string: missing field `ref_id`"
+                })),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn deleting_strategy_cascades_to_its_targets(db: gateway_postgres::DatabaseHandle) {
         let (db, server, strategy_id) = setup(db).await;
         server
