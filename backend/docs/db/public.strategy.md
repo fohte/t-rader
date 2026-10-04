@@ -48,30 +48,6 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }
-"public.note" {
-  uuid id
-  varchar kind FK
-  varchar trigger
-  varchar trigger_label
-  timestamp_with_time_zone created_at
-  timestamp_with_time_zone updated_at
-  text execution_id
-}
-"public.annotation" {
-  uuid id
-  varchar target_symbol
-  varchar target_kind
-  timestamp_with_time_zone timestamp
-  numeric price
-  text text
-  varchar status
-  uuid linked_note_id FK
-  varchar created_by_kind
-  timestamp_with_time_zone created_at
-  timestamp_with_time_zone updated_at
-  uuid execution_step_id
-  text execution_task_id
-}
 "public.trade" {
   uuid id
   uuid strategy_id FK
