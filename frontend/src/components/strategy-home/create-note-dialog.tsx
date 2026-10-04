@@ -4,11 +4,7 @@ import { useState } from 'react'
 import { CreateNoteDialogView } from '#components/strategy-home/create-note-dialog-view'
 import { $api } from '#lib/api/client'
 
-interface CreateNoteDialogProps {
-  strategyId?: string
-}
-
-export function CreateNoteDialog({ strategyId }: CreateNoteDialogProps) {
+export function CreateNoteDialog() {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -47,7 +43,6 @@ export function CreateNoteDialog({ strategyId }: CreateNoteDialogProps) {
       title: trimmedTitle,
       body_md: trimmedBody,
       kind: kind === '' ? null : kind,
-      ...(strategyId == null ? {} : { strategy_id: strategyId }),
     }
     createMutation.mutate(
       { body: requestBody },

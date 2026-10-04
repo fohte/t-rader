@@ -12,6 +12,7 @@ pub mod note_graph;
 pub mod note_reference;
 pub mod short_ratio;
 pub mod short_sale_report;
+pub mod stock_id;
 pub mod valuation;
 
 pub use indicator_observation::IndicatorObservation;

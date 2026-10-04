@@ -67,7 +67,7 @@ function setup({
       <QueryClientProvider client={client}>
         <DeleteStrategyDialog
           strategyId="strat-1"
-          strategyName="半導体短期スイング"
+          strategyName="架空戦略"
           open
           onOpenChange={onOpenChange}
         />
@@ -109,9 +109,9 @@ describe('DeleteStrategyDialog', () => {
     const { router, onOpenChange } = setup()
 
     const input = await screen.findByLabelText(/確認のため戦略名/)
-    await user.type(input, '半導体短期スイング')
+    await user.type(input, '架空戦略')
     await waitFor(() => {
-      expect(input).toHaveValue('半導体短期スイング')
+      expect(input).toHaveValue('架空戦略')
     })
     await user.click(screen.getByRole('button', { name: '削除する' }))
 
@@ -129,9 +129,9 @@ describe('DeleteStrategyDialog', () => {
     })
 
     const input = await screen.findByLabelText(/確認のため戦略名/)
-    await user.type(input, '半導体短期スイング')
+    await user.type(input, '架空戦略')
     await waitFor(() => {
-      expect(input).toHaveValue('半導体短期スイング')
+      expect(input).toHaveValue('架空戦略')
     })
     await user.click(screen.getByRole('button', { name: '削除する' }))
 
@@ -153,5 +153,14 @@ describe('DeleteStrategyDialog', () => {
       expect(input).toHaveValue('')
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('削除してもノートとアノテーションが残ることを説明する', async () => {
+    setup()
+
+    const description = await screen.findByText(/この操作は取り消せません/)
+    expect(description.textContent).toBe(
+      'この操作は取り消せません。トレード・トリガー・カスタムインジケーター・戦略タスクなど、この戦略に紐づくデータが削除されます。ノートとアノテーションは残ります。',
+    )
   })
 })

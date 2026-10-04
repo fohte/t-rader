@@ -15,6 +15,4 @@ pub enum AnnotationUseCaseError {
     UnitOfWork(#[from] crate::unit_of_work::UnitOfWorkError),
     #[error(transparent)]
     ChangeHistory(#[from] crate::change_history::ChangeHistoryError),
-    #[error(transparent)]
-    StrategyExistence(#[from] crate::strategy_existence::StrategyExistenceError),
 }

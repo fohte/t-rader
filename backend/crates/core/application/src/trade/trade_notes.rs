@@ -158,18 +158,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_links_an_unassigned_note_to_a_strategy_trade() {
+    async fn create_links_a_note_to_a_strategy_trade() {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let trade_repository = Arc::new(FakeTradeRepository::new());
         trade_repository.insert_trade(trade()).await;
         let note_reads =
-            NoteReadUseCases::new(Arc::new(FakeNoteReadQuery::new(NOTE_ID, None, VERSION_ID)));
+            NoteReadUseCases::new(Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID)));
         let use_cases = TradeNoteUseCases::new(unit_of_work, trade_repository.clone(), note_reads);
 
         let link = use_cases
             .create(TRADE_ID, NOTE_ID)
             .await
-            .expect("an unassigned note can be linked to the trade");
+            .expect("the note can be linked to the trade");
         let mut normalized_link = link;
         normalized_link.created_at = timestamp();
         let mut stored_links = trade_repository.note_links.lock().await.clone();

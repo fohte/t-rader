@@ -39,7 +39,6 @@ impl AnnotationRepository for PostgresAnnotationRepository {
         let transaction = transaction_ref(transaction)?;
         let model = annotation::ActiveModel {
             id: Set(annotation.id),
-            strategy_id: Set(annotation.strategy_id),
             target_symbol: Set(annotation.target_symbol),
             target_kind: Set(annotation.target_kind),
             timestamp: Set(annotation.timestamp),
@@ -68,7 +67,6 @@ impl AnnotationRepository for PostgresAnnotationRepository {
         let transaction = transaction_ref(transaction)?;
         let model = annotation::ActiveModel {
             id: sea_orm::ActiveValue::Unchanged(annotation.id),
-            strategy_id: Set(annotation.strategy_id),
             target_symbol: Set(annotation.target_symbol),
             target_kind: Set(annotation.target_kind),
             timestamp: Set(annotation.timestamp),
@@ -105,7 +103,6 @@ impl AnnotationRepository for PostgresAnnotationRepository {
     async fn find_stale_unread_in_transaction(
         &self,
         transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
         execution_step_id: Uuid,
         current_execution_task_id: &str,
     ) -> Result<Vec<Uuid>, AnnotationRepositoryError> {
@@ -113,7 +110,6 @@ impl AnnotationRepository for PostgresAnnotationRepository {
         annotation::Entity::find()
             .select_only()
             .column(annotation::Column::Id)
-            .filter(annotation::Column::StrategyId.eq(strategy_id))
             .filter(annotation::Column::ExecutionStepId.eq(execution_step_id))
             .filter(annotation::Column::Status.eq("unread"))
             .filter(annotation::Column::ExecutionTaskId.ne(current_execution_task_id))
@@ -144,16 +140,16 @@ impl AnnotationRepository for PostgresAnnotationRepository {
             .map_err(repository_error)
     }
 
-    async fn note_strategy_id_in_transaction(
+    async fn note_exists_in_transaction(
         &self,
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
-    ) -> Result<Option<Option<Uuid>>, AnnotationRepositoryError> {
+    ) -> Result<bool, AnnotationRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         note::Entity::find_by_id(note_id)
             .one(transaction)
             .await
-            .map(|row| row.map(|row| row.strategy_id))
+            .map(|row| row.is_some())
             .map_err(repository_error)
     }
 }
@@ -171,7 +167,6 @@ fn repository_error(error: sea_orm::DbErr) -> AnnotationRepositoryError {
 pub(super) fn to_domain(model: annotation::Model) -> Annotation {
     Annotation {
         id: model.id,
-        strategy_id: model.strategy_id,
         target_symbol: model.target_symbol,
         target_kind: model.target_kind,
         timestamp: model.timestamp,

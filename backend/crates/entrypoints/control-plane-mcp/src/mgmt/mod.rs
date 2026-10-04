@@ -235,10 +235,10 @@ impl MgmtServer {
         self.get_strategy_config_inner(params).await.map(Json)
     }
 
-    /// 戦略 id + 件数で最新ノートメタを返す
+    /// 最新ノートメタを返す
     #[tool(
         name = "list_recent_notes",
-        description = "Return the most recent notes (id / title / status / created_by_kind) for a strategy.",
+        description = "Return the most recent notes across all strategies (id / title / status / created_by_kind).",
         annotations(read_only_hint = true)
     )]
     async fn list_recent_notes(
@@ -283,10 +283,10 @@ impl MgmtServer {
         self.list_note_kinds_inner().await.map(Json)
     }
 
-    /// 戦略 id + 件数で最新アノテーションメタを返す
+    /// 最新アノテーションメタを返す
     #[tool(
         name = "list_recent_annotations",
-        description = "Return the most recent annotations for a strategy.",
+        description = "Return the most recent annotations across all strategies.",
         annotations(read_only_hint = true)
     )]
     async fn list_recent_annotations(

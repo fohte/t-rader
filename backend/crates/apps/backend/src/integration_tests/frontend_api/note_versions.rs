@@ -43,7 +43,6 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "id": "<id>",
-                    "strategy_id": null,
                     "version_id": "<version_id>",
                     "version_no": 1,
                     "is_current": true,

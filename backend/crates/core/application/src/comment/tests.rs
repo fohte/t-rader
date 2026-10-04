@@ -21,7 +21,6 @@ const TARGET_ID: Uuid = Uuid::from_u128(10);
 const OTHER_TARGET_ID: Uuid = Uuid::from_u128(11);
 const PARENT_ID: Uuid = Uuid::from_u128(12);
 const GRANDPARENT_ID: Uuid = Uuid::from_u128(13);
-const OTHER_STRATEGY_ID: Uuid = Uuid::from_u128(15);
 const NORMALIZED_ID: Uuid = Uuid::from_u128(16);
 
 type RecordedChange = crate::change_history::FakeChangeHistoryEntry;
@@ -244,7 +243,7 @@ async fn create_rejects_invalid_line_anchor_shapes(
     } else {
         fixture
             .repository
-            .set_target_without_strategy(CommentTargetKind::Annotation, TARGET_ID);
+            .set_target_exists(CommentTargetKind::Annotation, TARGET_ID);
     }
     let mut command = create_command(target_kind, TARGET_ID, "comment");
     command.anchor_side = anchor_side.map(ToOwned::to_owned);
@@ -565,27 +564,15 @@ async fn delete_records_history_with_the_supplied_actor(fixture: Fixture) {
 }
 
 #[rstest]
-#[case::different_strategy(Some(Some(OTHER_STRATEGY_ID)), None)]
-#[case::target_without_strategy(Some(None), None)]
-#[case::missing_target(None, Some("comment target not found"))]
+#[case::existing_target(true, None)]
+#[case::missing_target(false, Some("comment target not found"))]
 #[tokio::test]
-async fn create_allows_any_existing_target_and_rejects_missing_targets(
+async fn create_accepts_existing_targets_and_rejects_missing_targets(
     fixture: Fixture,
-    #[case] target_strategy_id: Option<Option<Uuid>>,
+    #[case] target_exists: bool,
     #[case] expected_error: Option<&'static str>,
 ) {
-    match target_strategy_id {
-        Some(Some(strategy_id)) => fixture.repository.set_target_strategy_id(
-            CommentTargetKind::NoteVersion,
-            TARGET_ID,
-            strategy_id,
-        ),
-        Some(None) => fixture
-            .repository
-            .set_target_without_strategy(CommentTargetKind::NoteVersion, TARGET_ID),
-        None => {}
-    }
-    if expected_error.is_none() {
+    if target_exists {
         fixture.repository.set_note_version_anchor_bodies(
             TARGET_ID,
             NoteVersionAnchorBodies {

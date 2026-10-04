@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
 import { HistoryPanel } from '#components/note-detail/history-panel'
@@ -43,9 +43,6 @@ function NoteDetailPage() {
   const { version: requestedVersionNo, version_id: requestedVersionId } =
     Route.useSearch()
   const navigate = Route.useNavigate()
-  const { data: note } = $api.useQuery('get', '/api/notes/{id}', {
-    params: { path: { id: noteId } },
-  })
   const {
     data: versions,
     isPending: areVersionsPending,
@@ -101,15 +98,6 @@ function NoteDetailPage() {
 
   return (
     <div className="space-y-4 font-sans text-foreground">
-      {note?.strategy_id != null && (
-        <Link
-          to="/strategies/$id/performance"
-          params={{ id: note.strategy_id }}
-          className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
-        >
-          &lt; 戦略成績に戻る
-        </Link>
-      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="space-y-4 border border-border bg-card px-5 py-5">
           <NoteVersionHeader version={selectedVersion} />

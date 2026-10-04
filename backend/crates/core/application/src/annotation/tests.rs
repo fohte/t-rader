@@ -9,43 +9,32 @@ use uuid::Uuid;
 use super::fake::FakeAnnotationRepository;
 use super::*;
 use crate::change_history::{Actor, FakeChangeHistory, FakeChangeHistoryEntry, Op, TargetKind};
-use crate::strategy_existence::FakeStrategyExistence;
 use crate::unit_of_work::FakeUnitOfWork;
 
 fn build_use_cases() -> (
     AnnotationUseCases,
     Arc<FakeUnitOfWork>,
     Arc<FakeAnnotationRepository>,
-    Arc<FakeStrategyExistence>,
     Arc<FakeChangeHistory>,
 ) {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeAnnotationRepository::default());
-    let strategy_existence = Arc::new(FakeStrategyExistence::new());
     let change_history = Arc::new(FakeChangeHistory::new());
     let use_cases = AnnotationUseCases::new(
         unit_of_work.clone(),
         repository.clone(),
-        strategy_existence.clone(),
         change_history.clone(),
     );
-    (
-        use_cases,
-        unit_of_work,
-        repository,
-        strategy_existence,
-        change_history,
-    )
+    (use_cases, unit_of_work, repository, change_history)
 }
 
 fn fixed_timestamp() -> DateTime<FixedOffset> {
     DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
 }
 
-fn annotation(id: Uuid, strategy_id: Uuid, step_id: Uuid, task_id: &str) -> Annotation {
+fn annotation(id: Uuid, step_id: Uuid, task_id: &str) -> Annotation {
     Annotation {
         id,
-        strategy_id: Some(strategy_id),
         target_symbol: "FICTIONAL-ASSET".into(),
         target_kind: "test-kind".into(),
         timestamp: fixed_timestamp(),
@@ -61,11 +50,9 @@ fn annotation(id: Uuid, strategy_id: Uuid, step_id: Uuid, task_id: &str) -> Anno
     }
 }
 
-fn create_command(strategy_id: Option<Uuid>) -> CreateAnnotationCommand {
+fn create_command() -> CreateAnnotationCommand {
     CreateAnnotationCommand {
-        scope: None,
         actor: Actor::Llm { label: "analyst" },
-        strategy_id,
         target_symbol: " FICTIONAL-ASSET ".into(),
         target_kind: " test-kind ".into(),
         timestamp: fixed_timestamp(),
@@ -100,27 +87,15 @@ impl AnnotationReadQuery for FakeAnnotationReadQuery {
 
     async fn list_recent(
         &self,
-        _strategy_id: Uuid,
         _limit: u64,
     ) -> Result<Vec<RecentAnnotation>, AnnotationReadQueryError> {
         Ok(Vec::new())
     }
 }
 
-#[rstest]
-#[case::unassigned(None)]
-#[case::another_strategy(Some(Uuid::from_u128(49)))]
 #[tokio::test]
-async fn get_annotation_accepts_annotations_with_any_strategy_owner(
-    #[case] strategy_id: Option<Uuid>,
-) {
-    let mut target = annotation(
-        Uuid::from_u128(40),
-        Uuid::from_u128(41),
-        Uuid::from_u128(42),
-        "task",
-    );
-    target.strategy_id = strategy_id;
+async fn get_annotation_returns_the_requested_annotation() {
+    let target = annotation(Uuid::from_u128(40), Uuid::from_u128(41), "task");
     let query = Arc::new(FakeAnnotationReadQuery {
         annotation: target.clone(),
         listed_queries: Mutex::new(Vec::new()),
@@ -130,26 +105,20 @@ async fn get_annotation_accepts_annotations_with_any_strategy_owner(
     let result = use_cases
         .get_annotation(target.id)
         .await
-        .expect("an annotation is readable from a different strategy scope");
+        .expect("the annotation is readable");
 
     assert_eq!(result, target);
 }
 
 #[tokio::test]
-async fn list_annotations_preserves_the_query_strategy_filter() {
-    let annotation = annotation(
-        Uuid::from_u128(44),
-        Uuid::from_u128(45),
-        Uuid::from_u128(46),
-        "task",
-    );
+async fn list_annotations_preserves_the_query() {
+    let annotation = annotation(Uuid::from_u128(44), Uuid::from_u128(45), "task");
     let query = Arc::new(FakeAnnotationReadQuery {
         annotation,
         listed_queries: Mutex::new(Vec::new()),
     });
     let use_cases = AnnotationReadUseCases::new(query.clone());
     let requested_query = AnnotationListQuery {
-        strategy_id: Some(Uuid::from_u128(47)),
         target_symbol: Some("FICTIONAL-ASSET".into()),
         limit: Some(5),
     };
@@ -161,56 +130,33 @@ async fn list_annotations_preserves_the_query_strategy_filter() {
 
     assert_eq!(
         query.listed_queries.lock().await.clone(),
-        vec![requested_query],
+        vec![requested_query]
     );
 }
 
 #[tokio::test]
 async fn create_replaces_only_uncommented_stale_annotations_and_records_history_in_one_transaction()
 {
-    let (use_cases, unit_of_work, repository, strategy_existence, change_history) =
-        build_use_cases();
-    let strategy_id = Uuid::from_u128(1);
+    let (use_cases, unit_of_work, repository, change_history) = build_use_cases();
     let step_id = Uuid::from_u128(2);
     let removable_id = Uuid::from_u128(3);
     let commented_id = Uuid::from_u128(4);
     let current_attempt_id = Uuid::from_u128(5);
     let other_step_id = Uuid::from_u128(6);
-    strategy_existence.insert_strategy(strategy_id).await;
     repository
-        .insert_annotation(annotation(
-            removable_id,
-            strategy_id,
-            step_id,
-            "old-attempt",
-        ))
+        .insert_annotation(annotation(removable_id, step_id, "old-attempt"))
         .await;
     repository
-        .insert_annotation(annotation(
-            commented_id,
-            strategy_id,
-            step_id,
-            "old-attempt",
-        ))
+        .insert_annotation(annotation(commented_id, step_id, "old-attempt"))
         .await;
     repository.set_comment(commented_id).await;
     repository
-        .insert_annotation(annotation(
-            current_attempt_id,
-            strategy_id,
-            step_id,
-            "new-attempt",
-        ))
+        .insert_annotation(annotation(current_attempt_id, step_id, "new-attempt"))
         .await;
     repository
-        .insert_annotation(annotation(
-            other_step_id,
-            strategy_id,
-            Uuid::from_u128(7),
-            "old-attempt",
-        ))
+        .insert_annotation(annotation(other_step_id, Uuid::from_u128(7), "old-attempt"))
         .await;
-    let mut command = create_command(Some(strategy_id));
+    let mut command = create_command();
     command.execution_step_id = Some(step_id);
     command.execution_task_id = Some("new-attempt".into());
 
@@ -251,12 +197,6 @@ async fn create_replaces_only_uncommented_stale_annotations_and_records_history_
         .iter()
         .map(|id| *id == transaction_id)
         .collect();
-    let strategy_transactions: Vec<_> = strategy_existence
-        .transaction_ids()
-        .await
-        .iter()
-        .map(|id| *id == transaction_id)
-        .collect();
 
     assert_eq!(
         (
@@ -264,7 +204,6 @@ async fn create_replaces_only_uncommented_stale_annotations_and_records_history_
             unit_of_work.begun.lock().await.len(),
             unit_of_work.committed.lock().await.clone(),
             repository_transactions,
-            strategy_transactions,
             history,
         ),
         (
@@ -272,7 +211,6 @@ async fn create_replaces_only_uncommented_stale_annotations_and_records_history_
             1,
             vec![transaction_id],
             vec![true, true, true, true],
-            vec![true],
             vec![
                 (
                     true,
@@ -289,10 +227,7 @@ async fn create_replaces_only_uncommented_stale_annotations_and_records_history_
                     TargetKind::Annotation,
                     created.id,
                     Op::Create,
-                    json!({
-                        "strategy_id": strategy_id,
-                        "target_symbol": "FICTIONAL-ASSET",
-                    }),
+                    json!({ "target_symbol": "FICTIONAL-ASSET" }),
                     None,
                 ),
             ],
@@ -311,8 +246,8 @@ async fn create_rejects_invalid_fields_before_opening_transaction(
     #[case] field: &str,
     #[case] value: &str,
 ) {
-    let (use_cases, unit_of_work, _, _, _) = build_use_cases();
-    let mut command = create_command(None);
+    let (use_cases, unit_of_work, _, _) = build_use_cases();
+    let mut command = create_command();
     match field {
         "text" => command.text = value.into(),
         "target_symbol" => command.target_symbol = value.into(),
@@ -332,68 +267,53 @@ async fn create_rejects_invalid_fields_before_opening_transaction(
 }
 
 #[tokio::test]
-async fn create_rejects_strategy_scope_mismatch() {
-    let (use_cases, unit_of_work, _, _, _) = build_use_cases();
-    let scope_id = Uuid::from_u128(10);
-    let mut command = create_command(Some(Uuid::from_u128(11)));
-    command.scope = Some(scope_id.into());
-
-    let result = use_cases.create(command).await;
-
-    assert_eq!(
-        (
-            matches!(result, Err(AnnotationUseCaseError::Validation(_))),
-            unit_of_work.begun.lock().await.len(),
-        ),
-        (true, 0),
-    );
-}
-
-#[rstest]
-#[case::another_strategy(Some(Uuid::from_u128(21)))]
-#[case::no_strategy(None)]
-#[tokio::test]
-async fn create_allows_linked_note_from_any_strategy(#[case] note_strategy_id: Option<Uuid>) {
-    let (use_cases, unit_of_work, repository, strategy_existence, change_history) =
-        build_use_cases();
-    let strategy_id = Uuid::from_u128(20);
+async fn create_accepts_an_existing_linked_note() {
+    let (use_cases, unit_of_work, repository, change_history) = build_use_cases();
     let note_id = Uuid::from_u128(22);
-    strategy_existence.insert_strategy(strategy_id).await;
-    repository
-        .set_note_strategy(note_id, note_strategy_id)
-        .await;
-    let mut command = create_command(Some(strategy_id));
+    repository.set_note_exists(note_id).await;
+    let mut command = create_command();
     command.linked_note_id = Some(note_id);
 
-    let created = use_cases
-        .create(command)
-        .await
-        .expect("linked note from any strategy is accepted");
+    let created = use_cases.create(command).await.expect("linked note exists");
 
     assert_eq!(
         (
-            created.strategy_id,
             created.linked_note_id,
             repository.annotations.lock().await.len(),
             change_history.entries.lock().await.len(),
             unit_of_work.committed.lock().await.len(),
         ),
-        (Some(strategy_id), Some(note_id), 1, 1, 1),
+        (Some(note_id), 1, 1, 1),
     );
 }
 
 #[tokio::test]
-async fn update_allows_annotation_from_another_strategy() {
-    let (use_cases, _, repository, _, _) = build_use_cases();
+async fn create_rejects_a_linked_note_that_does_not_exist() {
+    let (use_cases, unit_of_work, repository, change_history) = build_use_cases();
+    let note_id = Uuid::from_u128(23);
+    let mut command = create_command();
+    command.linked_note_id = Some(note_id);
+
+    let result = use_cases.create(command).await;
+
+    assert_eq!(
+        (
+            matches!(result, Err(AnnotationUseCaseError::LinkedNoteNotFound(id)) if id == note_id),
+            unit_of_work.begun.lock().await.len(),
+            unit_of_work.committed.lock().await.len(),
+            repository.annotations.lock().await.len(),
+            change_history.entries.lock().await.len(),
+        ),
+        (true, 1, 0, 0, 0),
+    );
+}
+
+#[tokio::test]
+async fn update_changes_an_existing_annotation() {
+    let (use_cases, unit_of_work, repository, change_history) = build_use_cases();
     let id = Uuid::from_u128(30);
-    let owner_strategy_id = Uuid::from_u128(31);
     repository
-        .insert_annotation(annotation(
-            id,
-            owner_strategy_id,
-            Uuid::from_u128(33),
-            "task",
-        ))
+        .insert_annotation(annotation(id, Uuid::from_u128(33), "task"))
         .await;
 
     let updated = use_cases
@@ -408,21 +328,26 @@ async fn update_allows_annotation_from_another_strategy() {
             linked_note_id: None,
         })
         .await
-        .expect("annotation from another strategy is updateable");
+        .expect("annotation is updateable");
 
     assert_eq!(
-        (updated.id, updated.strategy_id, updated.text),
-        (id, Some(owner_strategy_id), "updated text".into()),
+        (
+            updated.id,
+            updated.text,
+            *repository.update_calls.lock().await,
+            change_history.entries.lock().await.len(),
+            unit_of_work.committed.lock().await.len(),
+        ),
+        (id, "updated text".into(), 1, 1, 1),
     );
 }
 
 #[tokio::test]
 async fn change_status_does_not_update_or_record_history_when_status_is_unchanged() {
-    let (use_cases, unit_of_work, repository, _, change_history) = build_use_cases();
+    let (use_cases, unit_of_work, repository, change_history) = build_use_cases();
     let id = Uuid::from_u128(30);
     let existing = Annotation {
         id,
-        strategy_id: None,
         target_symbol: "FICTIONAL-ASSET".into(),
         target_kind: "test-kind".into(),
         timestamp: fixed_timestamp(),

@@ -252,7 +252,6 @@ pub struct NoteLinkDto {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
-    pub strategy_id: Option<Uuid>,
     /// 本文が属するバージョン ID。`read_comments` の `target_id` に使う。
     pub version_id: Uuid,
     /// ノート内のバージョン番号。
@@ -327,7 +326,6 @@ pub struct CreateAnnotationParams {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct AnnotationDto {
     pub annotation_id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
