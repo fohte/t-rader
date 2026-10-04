@@ -32,11 +32,6 @@ pub struct NewPrediction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NoteOwner {
-    pub strategy_id: Option<Uuid>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PredictionListQuery {
     pub due_after: Option<NaiveDate>,
     pub due_before: Option<NaiveDate>,

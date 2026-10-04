@@ -11,7 +11,7 @@ use super::repository::{
     FetchedNewsItemContent, NewsItemContentStatus, NewsItemRepository, NewsItemRepositoryError,
     NewsSearchCriteria, UpsertedNewsItem, sanitize_search_keyword,
 };
-use super::types::NewsArticle;
+use super::types::{NewsArticle, NewsArticleContent};
 #[derive(Default)]
 pub struct FakeNewsItemRepository {
     pub upserts: Mutex<Vec<Vec<NewsItem>>>,
@@ -85,6 +85,7 @@ impl NewsItemRepository for FakeNewsItemRepository {
                     url: item.url.clone(),
                     title: item.title.clone(),
                     body_snippet: item.body_snippet.clone(),
+                    content_status: None,
                     published_at: item.published_at.fixed_offset(),
                 });
                 upserted_items.push(UpsertedNewsItem {
@@ -143,6 +144,7 @@ impl NewsItemRepository for FakeNewsItemRepository {
         criteria: NewsSearchCriteria,
     ) -> Result<Vec<NewsArticle>, NewsItemRepositoryError> {
         self.searches.lock().await.push(criteria.clone());
+        let content_rows = self.content_rows.lock().await.clone();
         let keyword = criteria
             .keyword
             .as_deref()
@@ -163,14 +165,51 @@ impl NewsItemRepository for FakeNewsItemRepository {
                                 .body_snippet
                                 .as_deref()
                                 .is_some_and(|snippet| snippet.to_lowercase().contains(keyword))
+                            || content_rows
+                                .get(&article.id)
+                                .and_then(|content| content.body.as_deref())
+                                .is_some_and(|body| body.to_lowercase().contains(keyword))
                     })
             })
             .cloned()
             .collect();
         articles.sort_by_key(|article| std::cmp::Reverse(article.published_at));
+        for article in &mut articles {
+            article.content_status = content_rows
+                .get(&article.id)
+                .map(|content| content.status.as_str().to_string());
+        }
         Ok(articles
             .into_iter()
             .take(usize::try_from(criteria.limit).unwrap_or(usize::MAX))
             .collect())
+    }
+
+    async fn get_content(
+        &self,
+        news_item_id: Uuid,
+    ) -> Result<Option<NewsArticleContent>, NewsItemRepositoryError> {
+        let article = self
+            .articles
+            .lock()
+            .await
+            .iter()
+            .find(|article| article.id == news_item_id)
+            .cloned();
+        let Some(article) = article else {
+            return Ok(None);
+        };
+        let content = self.content_rows.lock().await.get(&news_item_id).cloned();
+
+        Ok(Some(NewsArticleContent {
+            id: article.id,
+            source: article.source,
+            url: article.url,
+            title: article.title,
+            published_at: article.published_at,
+            content_status: content.as_ref().map(|row| row.status.as_str().to_string()),
+            content: content.as_ref().and_then(|row| row.body.clone()),
+            content_error: content.and_then(|row| row.error),
+        }))
     }
 }

@@ -24,7 +24,6 @@ pub(super) fn repository_error(error: sea_orm::DbErr) -> NoteRepositoryError {
 pub(super) fn to_note(model: note::Model) -> Note {
     Note {
         id: model.id,
-        strategy_id: model.strategy_id,
         kind: model.kind,
         trigger: model.trigger,
         trigger_label: model.trigger_label,

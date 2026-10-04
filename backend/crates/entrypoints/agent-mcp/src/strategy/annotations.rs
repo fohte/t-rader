@@ -1,13 +1,12 @@
 //! アノテーション操作の inner method 実装。
 //!
-//! 作成時は実行中の戦略を記録し、読み取りは全戦略を対象にする。
+//! 作成・読み取りともに戦略をまたいで扱う。
 
 use core_application::annotation::{
     AnnotationListQuery, AnnotationReadQueryError, AnnotationReadUseCaseError,
     AnnotationUseCaseError, CreateAnnotationCommand,
 };
 use core_application::change_history::Actor;
-use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -28,7 +27,6 @@ fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
 fn annotation_use_case_to_dto(m: core_application::annotation::Annotation) -> AnnotationDto {
     AnnotationDto {
         annotation_id: m.id,
-        strategy_id: m.strategy_id,
         target_symbol: m.target_symbol,
         target_kind: m.target_kind,
         timestamp: m.timestamp,
@@ -45,20 +43,16 @@ fn annotation_use_case_to_dto(m: core_application::annotation::Annotation) -> An
 impl StrategyServer {
     pub(crate) async fn create_annotation_inner(
         &self,
-        scope: impl Into<StrategyScope>,
         execution_step_id: Option<Uuid>,
         execution_task_id: Option<String>,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
-        let scope = scope.into();
         let price = params.price.map(f64_to_decimal).transpose()?;
         let created = self
             .dependencies
             .annotations
             .create(CreateAnnotationCommand {
-                scope: Some(scope),
                 actor: Actor::Llm { label: "analyst" },
-                strategy_id: Some(scope.id()),
                 target_symbol: params.target_symbol,
                 target_kind: params.target_kind,
                 timestamp: params.timestamp,
@@ -82,7 +76,6 @@ impl StrategyServer {
         params: ReadAnnotationsParams,
     ) -> Result<ReadAnnotationsResult, McpError> {
         let query = AnnotationListQuery {
-            strategy_id: None,
             target_symbol: params
                 .target_symbol
                 .as_deref()
@@ -142,13 +135,12 @@ mod tests {
     use super::{AnnotationDto, annotation_use_case_to_dto};
 
     #[test]
-    fn annotation_dto_preserves_missing_strategy_id() {
+    fn annotation_dto_maps_annotation_fields() {
         let id = Uuid::nil();
         let timestamp =
             DateTime::parse_from_rfc3339("2000-01-01T00:00:00+00:00").expect("valid timestamp");
         let actual = annotation_use_case_to_dto(Annotation {
             id,
-            strategy_id: None,
             target_symbol: "demo-code".into(),
             target_kind: "stock".into(),
             timestamp,
@@ -167,7 +159,6 @@ mod tests {
             actual,
             AnnotationDto {
                 annotation_id: id,
-                strategy_id: None,
                 target_symbol: "demo-code".into(),
                 target_kind: "stock".into(),
                 timestamp,

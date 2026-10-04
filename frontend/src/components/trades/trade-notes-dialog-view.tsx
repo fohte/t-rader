@@ -118,7 +118,7 @@ export function TradeNotesDialogView({
 
         <section className="space-y-2">
           <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-muted-foreground-strong">
-            同じ戦略のノート
+            ノート
           </h3>
           <Input
             aria-label="判断ノートを検索"

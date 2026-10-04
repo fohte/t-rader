@@ -1,11 +1,11 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { CreateStrategyDialog } from '#components/strategy-home/create-strategy-dialog'
+import { StrategyCard } from '#components/strategy-home/strategy-card'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
-import { formatRelative } from '#lib/note-utils'
 
 export const Route = createFileRoute('/strategies/')({
   component: StrategyListPage,
@@ -17,19 +17,6 @@ function StrategyListPage() {
     'get',
     '/api/strategies',
   )
-  const { data: unreadNotes } = $api.useQuery('get', '/api/notes', {
-    params: { query: { status: 'unread' } },
-  })
-
-  const unreadByStrategy = useMemo(() => {
-    const m = new Map<string, number>()
-    for (const n of unreadNotes ?? []) {
-      if (n.strategy_id == null) continue
-      m.set(n.strategy_id, (m.get(n.strategy_id) ?? 0) + 1)
-    }
-    return m
-  }, [unreadNotes])
-
   return (
     <div className="font-sans text-foreground">
       <div className="mb-8 max-w-180">
@@ -58,52 +45,9 @@ function StrategyListPage() {
             </span>
           </div>
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-            {(strategies ?? []).map((s) => {
-              const unread = unreadByStrategy.get(s.id) ?? 0
-              return (
-                <Link
-                  key={s.id}
-                  to="/strategies/$id"
-                  params={{ id: s.id }}
-                  className="flex min-h-47 cursor-pointer flex-col gap-3.5 border border-border bg-card p-4 transition-colors hover:border-muted-foreground"
-                >
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="min-w-0">
-                      <div className="truncate font-mono text-base font-bold leading-tight">
-                        {s.name}
-                      </div>
-                    </div>
-                    {unread > 0 && (
-                      <span className="inline-grid h-5 min-w-5 flex-shrink-0 place-items-center bg-primary px-1.5 font-mono text-2xs text-white">
-                        {unread}
-                      </span>
-                    )}
-                  </div>
-                  {s.description != null && s.description !== '' && (
-                    <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground-strong">
-                      {s.description}
-                    </p>
-                  )}
-                  <div className="mt-auto flex items-center justify-between border-t border-border pt-3 font-mono text-2xs">
-                    <span className="text-muted-foreground">
-                      更新 {formatRelative(s.updated_at)}
-                    </span>
-                    <span className="text-muted-foreground-strong">
-                      {unread > 0 ? (
-                        <>
-                          <span className="font-bold text-primary">
-                            {unread}
-                          </span>{' '}
-                          件 未レビュー
-                        </>
-                      ) : (
-                        'レビュー済み'
-                      )}
-                    </span>
-                  </div>
-                </Link>
-              )
-            })}
+            {(strategies ?? []).map((strategy) => (
+              <StrategyCard key={strategy.id} strategy={strategy} />
+            ))}
             <button
               type="button"
               onClick={() => {

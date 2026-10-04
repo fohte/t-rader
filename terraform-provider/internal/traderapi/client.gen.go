@@ -274,23 +274,23 @@ type Layout string
 
 // Note defines model for Note.
 type Note struct {
-	BodyMd          string                                `json:"body_md"`
-	CreatedAt       time.Time                             `json:"created_at"`
-	CreatedByKind   string                                `json:"created_by_kind"`
-	ExecutionId     nullable.Nullable[string]             `json:"execution_id,omitempty"`
-	FrontmatterJson Value                                 `json:"frontmatter_json"`
-	GraphsJson      []GraphDef                            `json:"graphs_json"`
-	Id              openapi_types.UUID                    `json:"id"`
-	IsCurrent       bool                                  `json:"is_current"`
-	Kind            nullable.Nullable[string]             `json:"kind,omitempty"`
-	Status          string                                `json:"status"`
-	StrategyId      nullable.Nullable[openapi_types.UUID] `json:"strategy_id,omitempty"`
-	Title           string                                `json:"title"`
-	Trigger         nullable.Nullable[string]             `json:"trigger,omitempty"`
-	TriggerLabel    nullable.Nullable[string]             `json:"trigger_label,omitempty"`
-	UpdatedAt       time.Time                             `json:"updated_at"`
-	VersionId       openapi_types.UUID                    `json:"version_id"`
-	VersionNo       int32                                 `json:"version_no"`
+	BodyMd          string                    `json:"body_md"`
+	CreatedAt       time.Time                 `json:"created_at"`
+	CreatedByKind   string                    `json:"created_by_kind"`
+	ExecutionId     nullable.Nullable[string] `json:"execution_id,omitempty"`
+	FrontmatterJson Value                     `json:"frontmatter_json"`
+	GraphsJson      []GraphDef                `json:"graphs_json"`
+	Id              openapi_types.UUID        `json:"id"`
+	IsCurrent       bool                      `json:"is_current"`
+	Kind            nullable.Nullable[string] `json:"kind,omitempty"`
+	Status          string                    `json:"status"`
+	Tags            []string                  `json:"tags"`
+	Title           string                    `json:"title"`
+	Trigger         nullable.Nullable[string] `json:"trigger,omitempty"`
+	TriggerLabel    nullable.Nullable[string] `json:"trigger_label,omitempty"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
+	VersionId       openapi_types.UUID        `json:"version_id"`
+	VersionNo       int32                     `json:"version_no"`
 }
 
 // NoteKind defines model for NoteKind.

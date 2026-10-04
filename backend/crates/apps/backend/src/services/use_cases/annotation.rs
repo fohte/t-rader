@@ -16,7 +16,6 @@ impl UseCases {
         AnnotationUseCases::new(
             self.unit_of_work.clone(),
             Arc::new(PostgresAnnotationRepository),
-            self.strategy_existence.clone(),
             self.change_history.clone(),
         )
     }

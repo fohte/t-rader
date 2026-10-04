@@ -61,6 +61,27 @@ terraform -chdir="$workspace" plan -input=false -no-color -detailed-exitcode
 rm "$workspace/strategy.tf"
 terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
 
+cat > "$workspace/rss-feed.tf" << EOF
+resource "trader_rss_feed" "integration" {
+  source       = "synthetic_rss_feed"
+  display_name = "Synthetic RSS feed"
+  url          = "https://feeds.example.invalid/rss.xml"
+}
+
+output "rss_feed_id" {
+  value = trader_rss_feed.integration.id
+}
+EOF
+terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
+rss_feed_id="$(terraform -chdir="$workspace" output -raw rss_feed_id)"
+terraform -chdir="$workspace" plan -input=false -no-color -detailed-exitcode
+terraform -chdir="$workspace" state rm trader_rss_feed.integration
+terraform -chdir="$workspace" import -input=false -no-color trader_rss_feed.integration "$rss_feed_id"
+terraform -chdir="$workspace" plan -input=false -no-color -detailed-exitcode
+
+rm "$workspace/rss-feed.tf"
+terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
+
 cat > "$workspace/risk-limit.tf" << EOF
 resource "trader_group_axis" "integration" {
   key         = "sample-axis"
