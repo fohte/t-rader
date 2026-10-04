@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use core_application::change_history::{Op, TargetKind};
 use core_application::note_status_change_aggregate::{
     NoteStatusChangeAggregateQuery, NoteStatusChangeAggregateQueryError, NoteStatusChangeCounts,
     NoteStatusChangePeriod,
@@ -30,7 +31,12 @@ impl NoteStatusChangeAggregateQuery for PostgresNoteStatusChangeAggregateQuery {
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 NOTE_STATUS_CHANGE_COUNTS_SQL,
-                [period.from.into(), period.to.into()],
+                [
+                    TargetKind::Note.as_str().into(),
+                    Op::StatusChange.as_str().into(),
+                    period.from.into(),
+                    period.to.into(),
+                ],
             ))
             .await
             .map_err(query_error)?;
@@ -50,10 +56,10 @@ const NOTE_STATUS_CHANGE_COUNTS_SQL: &str = r#"
         COUNT(*) FILTER (WHERE diff_json ->> 'to' = 'approved') AS approved_count,
         COUNT(*) FILTER (WHERE diff_json ->> 'to' = 'rejected') AS rejected_count
     FROM public.change_history
-    WHERE target_kind = 'note'
-        AND op = 'status_change'
-        AND created_at >= $1
-        AND created_at < $2
+    WHERE target_kind = $1
+        AND op = $2
+        AND created_at >= $3
+        AND created_at < $4
 "#;
 
 fn query_error(error: sea_orm::DbErr) -> NoteStatusChangeAggregateQueryError {

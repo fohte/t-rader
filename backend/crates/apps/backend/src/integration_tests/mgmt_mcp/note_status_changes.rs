@@ -112,3 +112,22 @@ async fn status_change_counts_filter_by_note_operation_destination_and_period(
         .expect("serialize expected result"),
     );
 }
+
+#[backend_test_macros::database_test]
+async fn status_change_counts_rejects_empty_period(db: gateway_postgres::DatabaseHandle) {
+    let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
+    let result = server
+        .get_note_status_change_counts(Parameters(GetNoteStatusChangeCountsParams {
+            from: timestamp("2026-09-01T00:00:00Z"),
+            to: timestamp("2026-09-01T00:00:00Z"),
+        }))
+        .await;
+
+    assert_eq!(
+        result.err(),
+        Some(rmcp::ErrorData::invalid_params(
+            "to must be later than from",
+            None,
+        )),
+    );
+}
