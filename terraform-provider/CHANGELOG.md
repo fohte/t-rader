@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.2](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.1...terraform-provider-v0.1.2) (2026-10-04)
+
+
+### Features
+
+* **backend:** RSS 記事本文の保存スキーマとフィード設定を追加する ([#719](https://github.com/fohte/t-rader/issues/719)) ([4079f78](https://github.com/fohte/t-rader/commit/4079f783cc41fee2d6bc80fb8eb96e88cdc6538e))
+* **frontend-api:** ジョブが書いたノートを紐付けから取得する ([#715](https://github.com/fohte/t-rader/issues/715)) ([75f6cee](https://github.com/fohte/t-rader/commit/75f6cee99eeb1e0b078bee8677f67299dcea3278))
+* **risk-policy:** リスク上限を分類軸ごとに設定する ([#691](https://github.com/fohte/t-rader/issues/691)) ([747e89f](https://github.com/fohte/t-rader/commit/747e89f891b3e87539397f86f693fe0e23c6d097))
+
 ## [0.1.1](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.0...terraform-provider-v0.1.1) (2026-10-01)
 
 
