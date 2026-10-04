@@ -82,9 +82,7 @@ impl StrategyEarningsTargetUseCases {
         let requested = [(ref_kind.to_owned(), ref_id.to_owned())];
         let mut resolved = self.refs.resolve(&requested).await?;
         let Some(reference) = resolved.pop() else {
-            return Err(StrategyEarningsTargetUseCaseError::Validation(
-                "reference could not be resolved".into(),
-            ));
+            return Err(StrategyEarningsTargetUseCaseError::ReferenceResolutionInvariant);
         };
         if require_existing && reference.name.is_none() {
             return Err(StrategyEarningsTargetUseCaseError::ReferenceNotFound {

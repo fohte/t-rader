@@ -15,6 +15,8 @@ pub enum StrategyEarningsTargetRepositoryError {
 pub enum StrategyEarningsTargetUseCaseError {
     #[error("{0}")]
     Validation(String),
+    #[error("reference resolution returned no result")]
+    ReferenceResolutionInvariant,
     #[error("{ref_kind} reference not found: {ref_id}")]
     ReferenceNotFound { ref_kind: String, ref_id: String },
     #[error(transparent)]
