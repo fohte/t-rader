@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_application::ingest_status::{
-    DAILY_BARS_INGEST_JOB, EARNINGS_SCHEDULE_INGEST_JOB, FINANCIAL_SUMMARY_INGEST_JOB,
-    FRED_INGEST_JOB, INGEST_JOBS, IngestRun, IngestRunHistory, IngestStatusData,
-    IngestStatusJobDate, IngestStatusRepository, IngestWorkerJob, MARGIN_INGEST_JOB,
-    NEWS_AGGREGATION_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB,
-    SHORT_SALE_REPORT_INGEST_JOB, VALUATION_INGEST_JOB,
+    ALPHA_VANTAGE_CALENDAR_INGEST_JOB, DAILY_BARS_INGEST_JOB, EARNINGS_SCHEDULE_INGEST_JOB,
+    FINANCIAL_SUMMARY_INGEST_JOB, FRED_INGEST_JOB, INGEST_JOBS, IngestRun, IngestRunHistory,
+    IngestStatusData, IngestStatusJobDate, IngestStatusRepository, IngestWorkerJob,
+    MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB,
+    SHORT_RATIO_INGEST_JOB, SHORT_SALE_REPORT_INGEST_JOB, VALUATION_INGEST_JOB,
 };
 use core_application::persistence::PersistenceError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, Value};
@@ -50,6 +50,10 @@ const LATEST_DATA_DATE_QUERIES: &[(&str, &str)] = &[
     (
         FRED_INGEST_JOB,
         "SELECT MAX(date) FROM public.indicator_observation",
+    ),
+    (
+        ALPHA_VANTAGE_CALENDAR_INGEST_JOB,
+        "SELECT MAX(event_date) FROM public.calendar_event WHERE source = 'alpha_vantage'",
     ),
     (
         SHORT_RATIO_INGEST_JOB,

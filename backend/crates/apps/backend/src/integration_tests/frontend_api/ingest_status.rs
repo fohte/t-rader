@@ -8,7 +8,8 @@ mod tests {
 
     use crate::testing::create_test_server_with_graphile_worker;
     use gateway_postgres::entities::{
-        earnings_schedule_ingested_date, ingest_run, jquants_daily_bars_ingested_date,
+        calendar_event, earnings_schedule_ingested_date, ingest_run,
+        jquants_daily_bars_ingested_date,
     };
 
     fn timestamp(value: &str) -> DateTime<FixedOffset> {
@@ -17,6 +18,22 @@ mod tests {
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid fixture date")
+    }
+
+    fn calendar_event(
+        source: &str,
+        external_id: &str,
+        event_date: NaiveDate,
+    ) -> calendar_event::ActiveModel {
+        calendar_event::ActiveModel {
+            source: Set(source.into()),
+            external_id: Set(external_id.into()),
+            category: Set("earnings".into()),
+            country: Set("US".into()),
+            title: Set("Sample Company".into()),
+            event_date: Set(event_date),
+            ..Default::default()
+        }
     }
 
     fn normalize(mut response: Value) -> Value {
@@ -142,6 +159,14 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert earnings schedule date");
+        calendar_event::Entity::insert_many([
+            calendar_event("alpha_vantage", "sample-alpha-earlier", date(2030, 6, 5)),
+            calendar_event("alpha_vantage", "sample-alpha-latest", date(2030, 6, 6)),
+            calendar_event("sample-source", "sample-other-source", date(2030, 6, 7)),
+        ])
+        .exec(&db)
+        .await
+        .expect("insert calendar events");
         let _waiting_id = enqueue_job(&db, timestamp("2030-06-06T12:02:00Z")).await;
         let failed_id = enqueue_job(&db, timestamp("2030-06-06T12:03:00Z")).await;
         mark_job_failed(&db, failed_id).await;
@@ -257,7 +282,7 @@ mod tests {
                             "job": "alpha_vantage_calendar_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
-                            "latest_data_date": null,
+                            "latest_data_date": "2030-06-06",
                             "expected_data_date": "<expected-data-date>",
                             "worker_jobs": []
                         },
