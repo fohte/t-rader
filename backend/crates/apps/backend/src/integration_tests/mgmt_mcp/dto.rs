@@ -7,6 +7,21 @@ use uuid::Uuid;
 use core_application::rss_feed::RssFeed;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct GetNoteStatusChangeCountsParams {
+    pub from: DateTime<FixedOffset>,
+    pub to: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetNoteStatusChangeCountsResult {
+    pub from: DateTime<FixedOffset>,
+    pub to: DateTime<FixedOffset>,
+    pub approved_count: i64,
+    pub rejected_count: i64,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StrategySummary {
     pub strategy_id: Uuid,
