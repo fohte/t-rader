@@ -16,7 +16,6 @@ mod eval_indicator;
 mod holdings;
 mod japanese_stock_only;
 mod macro_indicator;
-mod media;
 mod news;
 mod note_frontmatter;
 mod notes_tests;
@@ -34,5 +33,6 @@ mod tests_common;
 mod tool_router;
 mod trades;
 mod web_search;
+mod youtube;
 
 use test_server::{StrategyServer, ToolOutput};

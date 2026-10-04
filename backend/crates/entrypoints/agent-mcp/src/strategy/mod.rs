@@ -17,7 +17,6 @@ mod graph_dto;
 pub(super) mod holdings;
 pub(super) mod macro_indicator;
 pub(super) mod margin;
-pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod portfolio;
@@ -35,6 +34,7 @@ mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;
 pub(super) mod web_search;
+pub(super) mod youtube;
 
 use std::collections::BTreeMap;
 
@@ -114,7 +114,7 @@ pub(super) fn kata_exec_to_mcp_err(err: KataExecError) -> McpError {
 }
 
 /// `LiteLlmError` の MCP エラー変換。tracing は呼び出し側の strategy_id を残せるよう
-/// 呼び出し元 (`query_media_inner` 等) で行う。
+/// 呼び出し元 (`query_youtube_inner` 等) で行う。
 pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
     match err {
         LiteLlmError::Network(msg) => internal_error(format!("litellm network error: {msg}")),
@@ -435,7 +435,7 @@ mod tests {
 
     #[rstest]
     #[case::search_web("search_web", "example-model-search")]
-    #[case::query_media("query_media", "example-model-media")]
+    #[case::query_youtube("query_youtube", "example-model-youtube")]
     fn tool_model_from_headers_returns_the_value_for_the_requested_tool(
         #[case] tool_name: &str,
         #[case] expected: &str,
@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(
             tool_model_from_headers(
                 &tool_models_headers_with(Some(
-                    br#"{"search_web":"example-model-search","query_media":"example-model-media"}"#,
+                    br#"{"search_web":"example-model-search","query_youtube":"example-model-youtube"}"#,
                 )),
                 tool_name,
             ),
@@ -459,16 +459,16 @@ mod tests {
         "missing x-tool-models header"
     )]
     #[case::missing_search_web(
-        Some(br#"{"query_media":"example-model-media"}"#.as_slice()),
+        Some(br#"{"query_youtube":"example-model-youtube"}"#.as_slice()),
         "search_web",
         rmcp::model::ErrorCode::INTERNAL_ERROR,
         "tool model for search_web is not configured"
     )]
-    #[case::missing_query_media(
+    #[case::missing_query_youtube(
         Some(br#"{"search_web":"example-model-search"}"#.as_slice()),
-        "query_media",
+        "query_youtube",
         rmcp::model::ErrorCode::INTERNAL_ERROR,
-        "tool model for query_media is not configured"
+        "tool model for query_youtube is not configured"
     )]
     #[case::invalid_json(
         Some(b"not-json".as_slice()),
