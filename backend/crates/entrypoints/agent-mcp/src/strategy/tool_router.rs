@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 use rmcp::ErrorData as McpError;
+use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::service::{RequestContext, RoleServer};
@@ -24,8 +25,8 @@ use super::dto::{
     ReadShareholdingStructureResult, ReadShortSaleReportsParams, ReadShortSaleReportsResult,
     ReadTradesParams, ReadTradesResult, ReadValuationParams, ReadValuationResult,
     RecordPredictionParams, RecordPredictionResult, ReplyCommentParams, ReplyCommentResult,
-    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
-    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ResolveCommentParams, ResolveCommentResult, SearchWebParams, SearchWebResult, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::media::TOOL_NAME as QUERY_MEDIA_TOOL_NAME;
@@ -42,7 +43,9 @@ use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
 };
 
-#[tool_router]
+mod news;
+
+#[tool_router(router = general_tool_router)]
 impl StrategyServer {
     /// 利用できるノート種別を返す
     #[tool(
@@ -376,21 +379,6 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
-    #[tool(
-        name = "search_news",
-        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
-        annotations(read_only_hint = true)
-    )]
-    async fn search_news(
-        &self,
-        Parameters(params): Parameters<SearchNewsParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<SearchNewsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.search_news_inner(scope, params).await.map(Json)
-    }
-
     /// 参照型 (stock/indicator/group) を id/name/別名の部分一致で横断検索する
     #[tool(
         name = "search_refs",
@@ -591,6 +579,12 @@ impl StrategyServer {
     ) -> Result<Json<ReadPredictionStatsResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         self.read_prediction_stats_inner(scope).await.map(Json)
+    }
+}
+
+impl StrategyServer {
+    fn tool_router() -> ToolRouter<Self> {
+        Self::general_tool_router() + Self::news_tool_router()
     }
 }
 
