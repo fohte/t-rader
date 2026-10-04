@@ -1,17 +1,12 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
 enum NoteVersion {
     Table,
     ResolvedPriceReferencesJson,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261004_130259_note_version_price_reference_values"
-    }
 }
 
 #[async_trait::async_trait]

@@ -306,7 +306,7 @@ impl NoteUseCases {
 
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
-    use std::sync::{Arc, Mutex as StdMutex};
+    use std::sync::Arc;
 
     use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, Utc};
@@ -322,8 +322,7 @@ mod tests {
         NoteVersionUpdate,
     };
     use crate::strategy_task_step_evidence::{
-        StrategyTaskStepEvidence, StrategyTaskStepEvidenceRepository,
-        StrategyTaskStepEvidenceRepositoryError,
+        FakeStrategyTaskStepEvidenceRepository, StrategyTaskStepEvidence,
     };
     use crate::unit_of_work::FakeUnitOfWork;
 
@@ -337,49 +336,10 @@ mod tests {
     struct LinkNoteRepository {
         source_note: Note,
         source_version: NoteVersion,
+        latest_version: NoteVersion,
         target: NoteLinkTarget,
         inserted_links: Mutex<Vec<NewNoteLink>>,
         inserted_versions: Mutex<Vec<NewNoteVersion>>,
-    }
-
-    #[derive(Default)]
-    struct EvidenceRepository {
-        records: Arc<StdMutex<Vec<StrategyTaskStepEvidence>>>,
-    }
-
-    #[async_trait]
-    impl StrategyTaskStepEvidenceRepository for EvidenceRepository {
-        async fn insert(
-            &self,
-            evidence: StrategyTaskStepEvidence,
-        ) -> Result<(), StrategyTaskStepEvidenceRepositoryError> {
-            self.records
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(evidence);
-            Ok(())
-        }
-
-        async fn find_query_data(
-            &self,
-            _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
-            execution_step_id: Uuid,
-            instrument_id: &str,
-        ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>
-        {
-            Ok(self
-                .records
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .iter()
-                .filter(|record| {
-                    record.execution_step_id == execution_step_id
-                        && record.source == "query_data"
-                        && record.source_ref == instrument_id
-                })
-                .cloned()
-                .collect())
-        }
     }
 
     #[async_trait]
@@ -421,7 +381,7 @@ mod tests {
             _transaction: &UnitOfWorkTransaction,
             note_id: Uuid,
         ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
-            Ok((note_id == SOURCE_NOTE_ID).then(|| self.source_version.clone()))
+            Ok((note_id == SOURCE_NOTE_ID).then(|| self.latest_version.clone()))
         }
 
         async fn find_latest_pending_versions_by_kind(
@@ -617,9 +577,18 @@ mod tests {
         source_version: NoteVersion,
         evidence: Vec<StrategyTaskStepEvidence>,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
+        make_note_use_cases_with_latest(source_version.clone(), source_version, evidence)
+    }
+
+    fn make_note_use_cases_with_latest(
+        source_version: NoteVersion,
+        latest_version: NoteVersion,
+        evidence: Vec<StrategyTaskStepEvidence>,
+    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
         let repository = Arc::new(LinkNoteRepository {
             source_note: source_note(),
             source_version,
+            latest_version,
             target: NoteLinkTarget {
                 id: TARGET_NOTE_ID,
                 current_version_id: Some(TARGET_VERSION_ID),
@@ -627,9 +596,7 @@ mod tests {
             inserted_links: Mutex::new(Vec::new()),
             inserted_versions: Mutex::new(Vec::new()),
         });
-        let evidence_repository = EvidenceRepository {
-            records: Arc::new(StdMutex::new(evidence)),
-        };
+        let evidence_repository = FakeStrategyTaskStepEvidenceRepository::new(evidence);
         let use_cases = NoteUseCases::new(
             Arc::new(FakeUnitOfWork::new()),
             repository.clone(),
@@ -751,13 +718,17 @@ mod tests {
         source_version.execution_id = Some(EXECUTION_STEP_ID.to_string());
         let (use_cases, _) = make_note_use_cases(source_version, vec![query_data_evidence()]);
         let body = concat!(
+            "[[price:fictional-code@2030-01-02:open]] ",
+            "[[price:fictional-code@2030-01-02:high]] ",
+            "[[price:fictional-code@2030-01-02:low]] ",
             "[[price:fictional-code@2030-01-02:close]] ",
+            "[[price:fictional-code@2030-01-02:volume]] ",
             "[[change:fictional-code@2030-01-02..2030-01-03:close]]",
         );
 
         let mut result = use_cases
             .write(NoteWriteCommand {
-                execution_id: None,
+                execution_id: Some(EXECUTION_STEP_ID.to_string()),
                 note_id: Some(SOURCE_NOTE_ID),
                 title: Some("Updated title".into()),
                 body_md: Some(body.into()),
@@ -792,8 +763,24 @@ mod tests {
                         frontmatter_json: json!({}),
                         graphs_json: json!([]),
                         resolved_price_references_json: json!({
+                            "[[price:fictional-code@2030-01-02:open]]": {
+                                "value": 9.0,
+                                "evidence_id": Uuid::from_u128(8).to_string(),
+                            },
+                            "[[price:fictional-code@2030-01-02:high]]": {
+                                "value": 11.0,
+                                "evidence_id": Uuid::from_u128(8).to_string(),
+                            },
+                            "[[price:fictional-code@2030-01-02:low]]": {
+                                "value": 8.0,
+                                "evidence_id": Uuid::from_u128(8).to_string(),
+                            },
                             "[[price:fictional-code@2030-01-02:close]]": {
                                 "value": 10.0,
+                                "evidence_id": Uuid::from_u128(8).to_string(),
+                            },
+                            "[[price:fictional-code@2030-01-02:volume]]": {
+                                "value": 100,
                                 "evidence_id": Uuid::from_u128(8).to_string(),
                             },
                             "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
@@ -811,6 +798,208 @@ mod tests {
                     },
                     created_by_kind: "human".into(),
                 },
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn human_edit_uses_current_version_evidence_without_inheriting_execution_id() {
+        let link = "[[price:fictional-code@2030-01-02:close]]";
+        let mut current = source_version();
+        current.body_md = link.into();
+        current.execution_id = Some(EXECUTION_STEP_ID.to_string());
+        let mut latest = current.clone();
+        latest.id = Uuid::from_u128(12);
+        latest.version_no = 2;
+        latest.body_md = "pending revision".into();
+        latest.execution_id = Some(Uuid::from_u128(13).to_string());
+        latest.status = "unread".into();
+        latest.is_current = false;
+        let (use_cases, repository) =
+            make_note_use_cases_with_latest(current, latest, vec![query_data_evidence()]);
+
+        use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Human title edit".into()),
+                body_md: Some(link.into()),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "human".into(),
+                change_reason: None,
+                actor: Actor::Human,
+                change_diff: None,
+            })
+            .await
+            .expect("current version evidence resolves the link");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the human edit creates a version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 3,
+                title: "Human title edit".into(),
+                body_md: link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: json!({
+                    "[[price:fictional-code@2030-01-02:close]]": {
+                        "value": 10.0,
+                        "evidence_id": Uuid::from_u128(8).to_string(),
+                    },
+                }),
+                status: "approved".into(),
+                is_current: true,
+                change_reason: None,
+                created_by_kind: "human".into(),
+                execution_id: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn human_edit_preserves_resolutions_when_body_is_unchanged() {
+        let link = "[[price:fictional-code@2030-01-02:close]]";
+        let mut current = source_version();
+        current.body_md = link.into();
+        current.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-02:close]]": {
+                "value": 10.0,
+                "evidence_id": Uuid::from_u128(8).to_string(),
+            },
+        });
+        let (use_cases, repository) = make_note_use_cases(current, vec![]);
+
+        use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Human title edit".into()),
+                body_md: Some(link.into()),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "human".into(),
+                change_reason: None,
+                actor: Actor::Human,
+                change_diff: None,
+            })
+            .await
+            .expect("an unchanged body keeps its saved price resolutions");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the human edit creates a version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 2,
+                title: "Human title edit".into(),
+                body_md: link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: json!({
+                    "[[price:fictional-code@2030-01-02:close]]": {
+                        "value": 10.0,
+                        "evidence_id": Uuid::from_u128(8).to_string(),
+                    },
+                }),
+                status: "approved".into(),
+                is_current: true,
+                change_reason: None,
+                created_by_kind: "human".into(),
+                execution_id: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn human_body_edit_recovers_execution_context_from_saved_evidence() {
+        let previous_link = "[[price:fictional-code@2030-01-02:close]]";
+        let updated_link = "[[price:fictional-code@2030-01-03:close]]";
+        let mut current = source_version();
+        current.body_md = previous_link.into();
+        current.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-02:close]]": {
+                "value": 10.0,
+                "evidence_id": Uuid::from_u128(8).to_string(),
+            },
+        });
+        let (use_cases, repository) = make_note_use_cases(current, vec![query_data_evidence()]);
+
+        use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Human body edit".into()),
+                body_md: Some(updated_link.into()),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "human".into(),
+                change_reason: None,
+                actor: Actor::Human,
+                change_diff: None,
+            })
+            .await
+            .expect("saved evidence identifies the original execution");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the human edit creates a version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 2,
+                title: "Human body edit".into(),
+                body_md: updated_link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: json!({
+                    "[[price:fictional-code@2030-01-03:close]]": {
+                        "value": 12.0,
+                        "evidence_id": Uuid::from_u128(8).to_string(),
+                    },
+                }),
+                status: "approved".into(),
+                is_current: true,
+                change_reason: None,
+                created_by_kind: "human".into(),
+                execution_id: None,
             },
         );
     }

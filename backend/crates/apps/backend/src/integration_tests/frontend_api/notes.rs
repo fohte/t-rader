@@ -819,7 +819,7 @@ mod tests {
                             "evidence_id": Uuid::from_u128(903).to_string(),
                         },
                     }),
-                    Some(execution_step_id.to_string()),
+                    None,
                 )),
             ),
         );

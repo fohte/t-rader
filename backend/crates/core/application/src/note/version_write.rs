@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
-use chrono::{DateTime, NaiveDate, Utc};
-use serde_json::{Map, Number, Value, json};
+use chrono::Utc;
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
@@ -42,6 +42,7 @@ impl NoteUseCases {
             .repository
             .find_latest_version(transaction, note.id)
             .await?;
+        let previous_content = current.as_ref().or(latest.as_ref());
         let requires_approval = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             false
         } else if let Some(kind_key) = note.kind.as_deref() {
@@ -65,14 +66,45 @@ impl NoteUseCases {
             ));
         }
 
-        let execution_id = content.execution_id.clone().or_else(|| {
-            latest
-                .as_ref()
-                .and_then(|version| version.execution_id.clone())
-        });
-        let resolved_price_references_json = self
-            .resolve_price_references(transaction, &content.body_md, execution_id.as_deref())
-            .await?;
+        let references =
+            core_domain::note_price_reference::extract_note_price_references(&content.body_md)
+                .map_err(|errors| {
+                    NoteUseCaseError::Validation(
+                        core_domain::note_reference::format_note_token_errors(&errors),
+                    )
+                })?;
+        let body_changed = previous_content
+            .as_ref()
+            .is_none_or(|previous| previous.body_md != content.body_md);
+        let resolved_price_references_json = if references.is_empty() {
+            Value::Object(Map::new())
+        } else if content.execution_id.is_none()
+            && !body_changed
+            && previous_content.is_some_and(|previous| {
+                has_resolutions(&previous.resolved_price_references_json, &references)
+            })
+        {
+            previous_content
+                .map(|previous| previous.resolved_price_references_json.clone())
+                .unwrap_or_else(|| Value::Object(Map::new()))
+        } else {
+            let stored_execution_id = content
+                .execution_id
+                .as_deref()
+                .or_else(|| previous_content.and_then(|previous| previous.execution_id.as_deref()));
+            let evidence_execution_id = if let Some(execution_id) = stored_execution_id {
+                Some(execution_id.to_string())
+            } else {
+                self.infer_price_reference_execution_id(transaction, previous_content)
+                    .await?
+            };
+            self.resolve_price_references(
+                transaction,
+                &references,
+                evidence_execution_id.as_deref(),
+            )
+            .await?
+        };
 
         let becomes_current = !requires_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
@@ -116,7 +148,7 @@ impl NoteUseCases {
                     is_current: becomes_current,
                     change_reason: content.change_reason,
                     created_by_kind: content.created_by_kind,
-                    execution_id,
+                    execution_id: content.execution_id,
                 },
             )
             .await?;
@@ -125,10 +157,6 @@ impl NoteUseCases {
             .update_note_timestamp(transaction, note.id, Utc::now().fixed_offset())
             .await?;
 
-        let previous_content = current.as_ref().or(latest.as_ref());
-        let body_changed = previous_content
-            .as_ref()
-            .is_none_or(|previous| previous.body_md != version.body_md);
         let graphs_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.graphs_json != version.graphs_json);
@@ -194,15 +222,9 @@ impl NoteUseCases {
     async fn resolve_price_references(
         &self,
         transaction: &UnitOfWorkTransaction,
-        body_md: &str,
+        references: &[core_domain::note_price_reference::NotePriceReferenceToken],
         execution_id: Option<&str>,
     ) -> Result<Value, NoteUseCaseError> {
-        let references = core_domain::note_price_reference::extract_note_price_references(body_md)
-            .map_err(|errors| {
-                NoteUseCaseError::Validation(core_domain::note_reference::format_note_token_errors(
-                    &errors,
-                ))
-            })?;
         if references.is_empty() {
             return Ok(Value::Object(Map::new()));
         }
@@ -235,7 +257,7 @@ impl NoteUseCases {
                     ))
                 })?;
             values.insert(
-                token.token,
+                token.token.clone(),
                 json!({
                     "value": value,
                     "evidence_id": evidence_id,
@@ -244,6 +266,29 @@ impl NoteUseCases {
         }
 
         Ok(Value::Object(values))
+    }
+
+    async fn infer_price_reference_execution_id(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        previous_version: Option<&NoteVersion>,
+    ) -> Result<Option<String>, NoteUseCaseError> {
+        let evidence_id = previous_version.and_then(|version| {
+            version
+                .resolved_price_references_json
+                .as_object()?
+                .values()
+                .find_map(|value| value.get("evidence_id")?.as_str()?.parse::<Uuid>().ok())
+        });
+        let Some(evidence_id) = evidence_id else {
+            return Ok(None);
+        };
+        let evidence = self
+            .strategy_task_step_evidence
+            .find_query_data_by_evidence_id(transaction, evidence_id)
+            .await
+            .map_err(StrategyTaskStepEvidenceUseCaseError::from)?;
+        Ok(evidence.map(|evidence| evidence.execution_step_id.to_string()))
     }
 
     pub(super) async fn sync_note_references(
@@ -345,6 +390,33 @@ impl NoteUseCases {
     }
 }
 
+fn has_resolutions(
+    resolved: &Value,
+    references: &[core_domain::note_price_reference::NotePriceReferenceToken],
+) -> bool {
+    let Some(resolved) = resolved.as_object() else {
+        return false;
+    };
+    let expected_tokens: HashSet<_> = references
+        .iter()
+        .map(|reference| reference.token.as_str())
+        .collect();
+    resolved.len() == expected_tokens.len()
+        && expected_tokens.iter().all(|token| {
+            resolved
+                .get(*token)
+                .and_then(Value::as_object)
+                .is_some_and(|entry| {
+                    entry.get("value").is_some_and(|value| !value.is_null())
+                        && entry
+                            .get("evidence_id")
+                            .and_then(Value::as_str)
+                            .and_then(|id| Uuid::parse_str(id).ok())
+                            .is_some()
+                })
+        })
+}
+
 fn reference_instrument_id(
     reference: &core_domain::note_price_reference::NotePriceReference,
 ) -> &str {
@@ -365,46 +437,21 @@ fn resolve_reference_value(
     match reference {
         NotePriceReference::Price { date, field, .. } => {
             evidence.iter().rev().find_map(|snapshot| {
-                evidence_bar_value(snapshot, *date, *field)
-                    .cloned()
+                snapshot
+                    .query_data_bar_value(*date, *field)
                     .map(|value| (value, snapshot.id))
             })
         }
         NotePriceReference::Change {
             start, end, field, ..
         } => evidence.iter().rev().find_map(|snapshot| {
-            let start = evidence_bar_value(snapshot, *start, *field)?.as_f64()?;
-            let end = evidence_bar_value(snapshot, *end, *field)?.as_f64()?;
+            let start = snapshot.query_data_bar_value(*start, *field)?.as_f64()?;
+            let end = snapshot.query_data_bar_value(*end, *field)?.as_f64()?;
             if start == 0.0 {
                 return None;
             }
-            Number::from_f64((end - start) / start * 100.0)
+            serde_json::Number::from_f64((end - start) / start * 100.0)
                 .map(|value| (Value::Number(value), snapshot.id))
         }),
     }
-}
-
-fn evidence_bar_value(
-    evidence: &StrategyTaskStepEvidence,
-    date: NaiveDate,
-    field: core_domain::note_price_reference::PriceReferenceField,
-) -> Option<&Value> {
-    let field_name = match field {
-        core_domain::note_price_reference::PriceReferenceField::Open => "open",
-        core_domain::note_price_reference::PriceReferenceField::High => "high",
-        core_domain::note_price_reference::PriceReferenceField::Low => "low",
-        core_domain::note_price_reference::PriceReferenceField::Close => "close",
-        core_domain::note_price_reference::PriceReferenceField::Volume => "volume",
-    };
-
-    evidence
-        .snapshot
-        .get("bars")?
-        .as_array()?
-        .iter()
-        .find_map(|bar| {
-            let timestamp = bar.get("timestamp")?.as_str()?;
-            let bar_date = DateTime::parse_from_rfc3339(timestamp).ok()?.date_naive();
-            (bar_date == date).then(|| bar.get(field_name)).flatten()
-        })
 }

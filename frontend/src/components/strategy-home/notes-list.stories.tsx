@@ -17,6 +17,7 @@ const notes: Note[] = [
     title: '架空ノートの確認',
     body_md: '表示確認用の本文です。',
     frontmatter_json: {},
+    resolved_price_references_json: {},
     graphs_json: [],
     tags: ['架空タグ'],
     kind: null,
