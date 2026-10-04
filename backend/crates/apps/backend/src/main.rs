@@ -18,6 +18,7 @@ use core_application::llm_client::SharedLlmClient;
 use core_application::margin_source::SharedMarginSource;
 use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
+use core_application::news_content::SharedNewsContentFetcher;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::valuation_source::SharedValuationSource;
@@ -25,7 +26,10 @@ use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
 use gateway_alpha_vantage::AlphaVantageClient;
+use gateway_boj::BojClient;
 use gateway_e_stat::EStatCalendarEventSource;
+use gateway_ecb::EcbClient;
+use gateway_firecrawl::FirecrawlClient;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -262,6 +266,32 @@ async fn main() -> Result<(), StartupError> {
         })?);
     tracing::info!("e-Stat calendar source initialized");
 
+    let news_content_fetcher: Option<SharedNewsContentFetcher> =
+        match std::env::var("FIRECRAWL_API_KEY") {
+            Ok(api_key) if !api_key.is_empty() => {
+                let client = FirecrawlClient::new(&redis_url, api_key).map_err(|error| {
+                    StartupError::Config(format!("failed to initialize Firecrawl client: {error}"))
+                })?;
+                tracing::info!("Firecrawl news content source initialized");
+                Some(Arc::new(client))
+            }
+            _ => {
+                tracing::warn!(
+                    "FIRECRAWL_API_KEY が未設定のため、ニュース本文の取得を起動しません"
+                );
+                None
+            }
+        };
+
+    let boj_calendar_source: Option<SharedCalendarEventSource> =
+        Some(Arc::new(BojClient::new().map_err(|error| {
+            StartupError::Config(format!("failed to initialize BOJ calendar source: {error}"))
+        })?));
+    let ecb_calendar_source: Option<SharedCalendarEventSource> =
+        Some(Arc::new(EcbClient::new().map_err(|error| {
+            StartupError::Config(format!("failed to initialize ECB calendar source: {error}"))
+        })?));
+
     let alpha_vantage_calendar_source: Option<SharedCalendarEventSource> =
         match std::env::var("ALPHA_VANTAGE_API_KEY") {
             Ok(api_key) if !api_key.trim().is_empty() => {
@@ -280,7 +310,6 @@ async fn main() -> Result<(), StartupError> {
                 None
             }
         };
-
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -308,9 +337,14 @@ async fn main() -> Result<(), StartupError> {
         .map(|client| Arc::clone(client) as SharedValuationSource);
     let dependencies = SchedulerDependencies {
         bars: use_cases.bars(),
+        calendar_events: use_cases.calendar_events(),
+        boj_calendar_source,
+        ecb_calendar_source,
         market_daily_bar_source,
         news: use_cases.news(),
         news_aggregator,
+        news_content: use_cases.news_content(),
+        news_content_fetcher,
         earnings_schedules: use_cases.earnings_schedules(),
         earnings_schedule_source,
         financial_summaries: use_cases.financial_summaries(),
@@ -322,7 +356,6 @@ async fn main() -> Result<(), StartupError> {
         valuations: use_cases.valuations(),
         valuation_source,
         indicator_observations: use_cases.indicator_observations(),
-        calendar_events: use_cases.calendar_events(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
         e_stat_calendar_source: Some(e_stat_calendar_source),

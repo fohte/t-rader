@@ -1,0 +1,16 @@
+[package]
+name = "gateway-ecb"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true, features = ["alloc"] }
+chrono-tz = { workspace = true }
+core-application = { workspace = true }
+core-domain = { workspace = true }
+reqwest = { workspace = true, features = ["rustls"] }
+scraper = { workspace = true }
+
+[lints]
+workspace = true

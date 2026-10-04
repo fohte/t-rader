@@ -9,9 +9,12 @@ use tokio::time::timeout;
 use crate::state::SchedulerState;
 
 pub mod alpha_vantage;
+pub mod boj_calendar;
+mod calendar_event;
 pub mod daily_bars;
 pub mod e_stat_calendar;
 pub mod earnings_schedule;
+pub mod ecb_calendar;
 pub mod edinet_holdings;
 pub mod equity_master;
 pub mod financial_summary;
@@ -20,6 +23,7 @@ pub mod fred_release_dates;
 pub mod ingest_run_recovery;
 pub mod jquants;
 pub mod news;
+pub mod news_content;
 pub mod prediction;
 pub mod strategy_task_reconcile;
 pub mod trigger_evaluation;
@@ -83,6 +87,30 @@ where
     .await
 }
 
+pub(super) async fn run_with_ingest_run_log_state_and_failure_stats<F, Fut, Stats>(
+    context: WorkerContext,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: FnOnce(SchedulerState) -> Fut,
+    Fut: Future<Output = Result<Stats, (Stats, String)>>,
+    Stats: Serialize,
+{
+    let Some(state) = context.get_ext::<SchedulerState>() else {
+        return Err("scheduler state is not configured".to_string());
+    };
+
+    run_with_ingest_run_log_with_failure_stats(
+        state.dependencies.ingest_run_log.as_ref(),
+        task_name,
+        duration,
+        task(state.clone()),
+    )
+    .await
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum TimedTaskResult<Stats> {
     Completed(Result<Stats, String>),
@@ -117,6 +145,44 @@ where
     F: Future<Output = Result<Stats, String>>,
     Stats: Serialize,
 {
+    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, async move {
+        task.await.map_err(IngestTaskFailure::Error)
+    })
+    .await
+}
+
+async fn run_with_ingest_run_log_with_failure_stats<F, Stats>(
+    ingest_run_log: &dyn IngestRunLog,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: Future<Output = Result<Stats, (Stats, String)>>,
+    Stats: Serialize,
+{
+    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, async move {
+        task.await
+            .map_err(|(stats, error)| IngestTaskFailure::ErrorWithStats { stats, error })
+    })
+    .await
+}
+
+enum IngestTaskFailure<Stats> {
+    Error(String),
+    ErrorWithStats { stats: Stats, error: String },
+}
+
+async fn run_with_ingest_run_log_inner<F, Stats>(
+    ingest_run_log: &dyn IngestRunLog,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: Future<Output = Result<Stats, IngestTaskFailure<Stats>>>,
+    Stats: Serialize,
+{
     let run_id = match ingest_run_log.start(task_name).await {
         Ok(run_id) => run_id,
         Err(error) => {
@@ -126,16 +192,42 @@ where
         }
     };
 
-    let (task_result, timed_out) = match run_with_timeout(task_name, duration, task).await {
-        TimedTaskResult::Completed(result) => (result, false),
-        TimedTaskResult::TimedOut(error) => (Err(error), true),
+    let (recorded_result, failure_stats, timed_out) = match timeout(duration, task).await {
+        Ok(Ok(stats)) => (
+            serde_json::to_value(stats)
+                .map_err(|error| format!("failed to serialize job stats: {error}")),
+            None,
+            false,
+        ),
+        Ok(Err(IngestTaskFailure::Error(error))) => (Err(error), None, false),
+        Ok(Err(IngestTaskFailure::ErrorWithStats { stats, error })) => {
+            match serde_json::to_value(stats) {
+                Ok(stats) => (Err(error), Some(stats), false),
+                Err(serialization_error) => (
+                    Err(format!(
+                        "{error}; failed to serialize job stats: {serialization_error}"
+                    )),
+                    None,
+                    false,
+                ),
+            }
+        }
+        Err(_) => {
+            let error = format!("{task_name} timed out after {duration:?}");
+            tracing::error!(task = task_name, ?duration, "scheduled job timed out");
+            (Err(error), None, true)
+        }
     };
-    let recorded_result = task_result.and_then(|stats| {
-        serde_json::to_value(stats)
-            .map_err(|error| format!("failed to serialize job stats: {error}"))
-    });
 
-    if let Err(log_error) = ingest_run_log.finish(run_id, recorded_result.clone()).await {
+    let finish_result = match (&recorded_result, failure_stats) {
+        (Err(error), Some(stats)) => {
+            ingest_run_log
+                .finish_with_stats_and_error(run_id, stats, error.clone())
+                .await
+        }
+        _ => ingest_run_log.finish(run_id, recorded_result.clone()).await,
+    };
+    if let Err(log_error) = finish_result {
         match &recorded_result {
             Ok(_) => {
                 tracing::error!(
@@ -187,7 +279,10 @@ mod tests {
 
     use rstest::rstest;
 
-    use super::{TimedTaskResult, run_with_ingest_run_log, run_with_timeout};
+    use super::{
+        TimedTaskResult, run_with_ingest_run_log, run_with_ingest_run_log_with_failure_stats,
+        run_with_timeout,
+    };
 
     const RUN_ID: Uuid = Uuid::from_u128(1);
 
@@ -199,6 +294,11 @@ mod tests {
         Finish {
             run_id: Uuid,
             result: Result<Value, String>,
+        },
+        FinishWithStats {
+            run_id: Uuid,
+            stats: Value,
+            error: String,
         },
     }
 
@@ -233,6 +333,26 @@ mod tests {
                 .lock()
                 .await
                 .push(Call::Finish { run_id, result });
+            if self.fail_finish {
+                Err(PersistenceError::Database(
+                    "database unavailable".to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn finish_with_stats_and_error(
+            &self,
+            run_id: Uuid,
+            stats: Value,
+            error: String,
+        ) -> Result<(), PersistenceError> {
+            self.calls.lock().await.push(Call::FinishWithStats {
+                run_id,
+                stats,
+                error,
+            });
             if self.fail_finish {
                 Err(PersistenceError::Database(
                     "database unavailable".to_string(),
@@ -309,6 +429,36 @@ mod tests {
                     Call::Finish {
                         run_id: RUN_ID,
                         result: Ok(json!({ "rows": 3 })),
+                    },
+                ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn records_partial_stats_when_the_job_fails_with_stats() {
+        let log = Arc::new(FakeIngestRunLog::default());
+
+        let result = run_with_ingest_run_log_with_failure_stats(
+            log.as_ref(),
+            "news_content_fetch",
+            Duration::from_secs(1),
+            async { Err((IngestStats { rows: 3 }, "firecrawl_402".to_owned())) },
+        )
+        .await;
+
+        assert_eq!(
+            (result, log.calls.lock().await.clone()),
+            (
+                Err("firecrawl_402".to_owned()),
+                vec![
+                    Call::Start {
+                        job: "news_content_fetch".to_owned(),
+                    },
+                    Call::FinishWithStats {
+                        run_id: RUN_ID,
+                        stats: json!({ "rows": 3 }),
+                        error: "firecrawl_402".to_owned(),
                     },
                 ],
             ),

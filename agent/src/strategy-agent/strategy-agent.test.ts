@@ -11,9 +11,8 @@ import { z } from 'zod'
 import { logger } from '#logger'
 import type {
   AgentConfig,
-  AgentConfigKey,
+  FetchAgentConfig,
 } from '#strategy-agent/agent-config-client'
-import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
 import type {
   BuildPhaseAgentOptions,
   CompiledPhaseAgent,
@@ -117,7 +116,7 @@ interface McpClientCall {
 }
 
 interface Calls {
-  fetchAgentConfigKey?: AgentConfigKey
+  fetchAgentConfigKey?: Parameters<FetchAgentConfig>[0]
   mcpClientClosed: boolean
   // createMcpClient の呼び出しごとの 1 行。生成数と close タイミングの検証用。
   mcpClients: McpClientCall[]
@@ -363,7 +362,7 @@ describe('runStrategyAgent', () => {
 
   it('maps a fetchAgentConfig error', async () => {
     const { deps } = buildDeps({})
-    const fetchError = new AgentConfigFetchError(
+    const fetchError = new Error(
       'failed to fetch agent config for strategy strategy-1: 500',
     )
 

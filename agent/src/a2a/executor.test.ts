@@ -5,18 +5,16 @@ import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
+import { TraderAgentExecutor } from '#a2a/executor'
 import {
   extractAsOf,
   extractDeadlineAt,
   extractPurpose,
   extractResumeSteps,
   extractStrategyId,
-  HEARTBEAT_INTERVAL_MS,
-  TraderAgentExecutor,
-} from '#a2a/executor'
+} from '#a2a/message-metadata'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
-import { StrategyCandidatesFetchError } from '#strategy-resolution/mgmt-mcp-client'
 import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
 
 class FakeEventBus implements ExecutionEventBus {
@@ -578,6 +576,7 @@ describe('TraderAgentExecutor', () => {
     it('republishes the working status-update on every interval tick, and stops once the task settles', async () => {
       vi.useFakeTimers()
       try {
+        const heartbeatIntervalMs = 1000
         let resolveAgent: (result: StrategyAgentResult) => void = () => {
           throw new Error('resolveAgent called before assignment')
         }
@@ -585,6 +584,7 @@ describe('TraderAgentExecutor', () => {
           resolveAgent = resolve
         })
         const executor = buildExecutor({
+          heartbeatIntervalMs,
           runStrategyAgent: () => agentPromise,
         })
         const eventBus = new FakeEventBus()
@@ -606,7 +606,7 @@ describe('TraderAgentExecutor', () => {
 
         // 初回の working (メッセージなし) の後、step の変化がなくても
         // heartbeatTimer が interval ごとに working を再送する。
-        await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 2)
+        await vi.advanceTimersByTimeAsync(heartbeatIntervalMs * 2)
         const [, firstTick, secondTick] = workingUpdates()
         expect(workingUpdates()).toHaveLength(3)
         // Task.history を汚さないため、interval 発火分も同じ messageId を
@@ -620,7 +620,7 @@ describe('TraderAgentExecutor', () => {
 
         // finally で heartbeatTimer を止めているため、決着後は interval が
         // 進んでも working は増えない。
-        await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 3)
+        await vi.advanceTimersByTimeAsync(heartbeatIntervalMs * 3)
         expect(workingUpdates()).toHaveLength(3)
       } finally {
         vi.useRealTimers()
@@ -893,7 +893,7 @@ describe('TraderAgentExecutor', () => {
     it('fails immediately when fetchStrategyCandidates returns an error', async () => {
       const executor = buildExecutor({
         fetchStrategyCandidates: () =>
-          errAsync(new StrategyCandidatesFetchError('mgmt MCP unreachable')),
+          errAsync(new Error('mgmt MCP unreachable')),
       })
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(
