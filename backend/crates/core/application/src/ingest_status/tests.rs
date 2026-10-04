@@ -126,6 +126,14 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
+                    job: "us_stock_master_ingest".into(),
+                    latest_run: None,
+                    last_succeeded_at: None,
+                    latest_data_date: None,
+                    expected_data_date: None,
+                    worker_jobs: Vec::new(),
+                },
+                IngestJobStatus {
                     job: "shareholding_structure_ingest".into(),
                     latest_run: None,
                     last_succeeded_at: None,

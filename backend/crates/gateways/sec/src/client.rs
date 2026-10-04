@@ -165,7 +165,7 @@ fn parse_stock_master(body: &str) -> Result<Vec<UsStockMasterEntry>, UsStockMast
 
 #[cfg(test)]
 mod tests {
-    use core_application::us_stock_master_source::UsStockMasterSource;
+    use core_application::us_stock_master_source::{UsStockMasterSource, UsStockMasterSourceError};
     use indoc::indoc;
     use rstest::rstest;
     use wiremock::matchers::{header, method, path};
@@ -222,6 +222,29 @@ mod tests {
                     Some("Example Exchange".to_string()),
                 ),
             ],
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn returns_an_error_when_sec_responds_with_a_server_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/company_tickers_exchange.json"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let client = SecClient::with_endpoint(
+            "Synthetic Client contact@fictional.invalid",
+            &format!("{}/company_tickers_exchange.json", server.uri()),
+        )
+        .expect("client initializes");
+
+        assert_eq!(
+            client.fetch_all_us_stocks().await,
+            Err(UsStockMasterSourceError::Failed(
+                "SEC returned HTTP status 503".into(),
+            )),
         );
     }
 }

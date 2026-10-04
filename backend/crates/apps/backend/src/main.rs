@@ -274,7 +274,8 @@ async fn main() -> Result<(), StartupError> {
             }
         };
 
-    let us_stock_master_source: Option<SharedUsStockMasterSource> =
+    let us_stock_master_source: Option<SharedUsStockMasterSource> = if cli.run_mode.starts_worker()
+    {
         match std::env::var("SEC_USER_AGENT") {
             Ok(user_agent) if !user_agent.trim().is_empty() => {
                 let client = SecClient::new(&user_agent).map_err(|error| {
@@ -289,7 +290,10 @@ async fn main() -> Result<(), StartupError> {
                 );
                 None
             }
-        };
+        }
+    } else {
+        None
+    };
 
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()

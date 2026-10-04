@@ -29,6 +29,7 @@ backend/crates/
 │   ├── jquants/
 │   ├── ibkr/
 │   ├── fred/
+│   ├── sec/
 │   ├── rss/
 │   ├── litellm/
 │   ├── kata-exec/

@@ -56,43 +56,6 @@ async fn upserts_registered_stocks_and_preserves_stocks_removed_from_the_list(
     let first_stats = sync.sync(&source).await.expect("first sync succeeds");
     let second_stats = sync.sync(&source).await.expect("repeat sync succeeds");
 
-    let resolved_ref = use_cases
-        .refs()
-        .resolve(&[("stock".to_owned(), "US:QZ9".to_owned())])
-        .await
-        .expect("stock reference resolves")
-        .into_iter()
-        .map(|item| (item.kind, item.id, item.name))
-        .collect::<Vec<_>>();
-    group_axis::Entity::insert(group_axis::ActiveModel {
-        id: Set(uuid::Uuid::new_v4()),
-        key: Set("sample-axis".to_owned()),
-        name: Set("架空軸".to_owned()),
-        description: Set("架空軸".to_owned()),
-        sync_source: Set(None),
-    })
-    .exec_without_returning(&db)
-    .await
-    .expect("group axis inserts");
-    let stock_groups = use_cases.stock_groups();
-    stock_groups
-        .create(CreateStockGroupCommand {
-            axis_key: "sample-axis".to_owned(),
-            key: "sample-group".to_owned(),
-            name: "架空グループ".to_owned(),
-            description: None,
-        })
-        .await
-        .expect("group creates");
-    let group_add_result = stock_groups
-        .add_stock("sample-axis", "sample-group", "US:QZ9")
-        .await
-        .expect("unregistered stock can be added to a group");
-    let group_stock_ids = stock_groups
-        .list_stock_ids("sample-axis", "sample-group")
-        .await
-        .expect("group stock ids query succeeds");
-
     let ids = vec![
         "US:QZ7".to_owned(),
         "US:QZ8".to_owned(),
@@ -118,15 +81,7 @@ async fn upserts_registered_stocks_and_preserves_stocks_removed_from_the_list(
         .collect::<Vec<_>>();
 
     assert_eq!(
-        (
-            first_stats,
-            second_stats,
-            stocks,
-            instruments,
-            resolved_ref,
-            group_add_result,
-            group_stock_ids,
-        ),
+        (first_stats, second_stats, stocks, instruments,),
         (
             UsStockMasterSyncStats { stocks_upserted: 2 },
             UsStockMasterSyncStats { stocks_upserted: 2 },
@@ -164,6 +119,66 @@ async fn upserts_registered_stocks_and_preserves_stocks_removed_from_the_list(
                     "US".to_owned(),
                 ),
             ],
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn synced_stocks_can_be_referenced_and_added_to_a_group_without_registration(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let use_cases = build_use_cases(db.clone());
+    let source = FixedUsStockMasterSource(vec![stock_entry(
+        "QZ9",
+        "未登録の架空銘柄",
+        "Example Exchange",
+    )]);
+    let sync_stats = use_cases
+        .us_stock_master()
+        .sync(&source)
+        .await
+        .expect("sync succeeds");
+    let resolved_ref = use_cases
+        .refs()
+        .resolve(&[("stock".to_owned(), "US:QZ9".to_owned())])
+        .await
+        .expect("stock reference resolves")
+        .into_iter()
+        .map(|item| (item.kind, item.id, item.name))
+        .collect::<Vec<_>>();
+    group_axis::Entity::insert(group_axis::ActiveModel {
+        id: Set(uuid::Uuid::new_v4()),
+        key: Set("sample-axis".to_owned()),
+        name: Set("架空軸".to_owned()),
+        description: Set("架空軸".to_owned()),
+        sync_source: Set(None),
+    })
+    .exec_without_returning(&db)
+    .await
+    .expect("group axis inserts");
+    let stock_groups = use_cases.stock_groups();
+    stock_groups
+        .create(CreateStockGroupCommand {
+            axis_key: "sample-axis".to_owned(),
+            key: "sample-group".to_owned(),
+            name: "架空グループ".to_owned(),
+            description: None,
+        })
+        .await
+        .expect("group creates");
+    let group_add_result = stock_groups
+        .add_stock("sample-axis", "sample-group", "US:QZ9")
+        .await
+        .expect("unregistered stock can be added to a group");
+    let group_stock_ids = stock_groups
+        .list_stock_ids("sample-axis", "sample-group")
+        .await
+        .expect("group stock ids query succeeds");
+
+    assert_eq!(
+        (sync_stats, resolved_ref, group_add_result, group_stock_ids,),
+        (
+            UsStockMasterSyncStats { stocks_upserted: 1 },
             vec![(
                 "stock".to_owned(),
                 "US:QZ9".to_owned(),
