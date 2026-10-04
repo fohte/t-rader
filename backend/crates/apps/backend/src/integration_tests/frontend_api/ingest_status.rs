@@ -278,6 +278,22 @@ mod tests {
                             "worker_jobs": []
                         },
                         {
+                            "job": "boj_calendar_event_ingest",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": null,
+                            "worker_jobs": []
+                        },
+                        {
+                            "job": "ecb_calendar_event_ingest",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": null,
+                            "worker_jobs": []
+                        },
+                        {
                             "job": "short_ratio_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
@@ -307,6 +323,14 @@ mod tests {
                             "last_succeeded_at": null,
                             "latest_data_date": null,
                             "expected_data_date": "<expected-data-date>",
+                            "worker_jobs": []
+                        },
+                        {
+                            "job": "news_content_fetch",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": null,
                             "worker_jobs": []
                         },
                         {

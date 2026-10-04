@@ -8,7 +8,7 @@ export interface AgentConfig {
   readonly agentGraph: string
 }
 
-export class AgentConfigFetchError extends Error {
+class AgentConfigFetchError extends Error {
   constructor(message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause })
     this.name = 'AgentConfigFetchError'
@@ -39,13 +39,13 @@ const isAgentConfigResponseBody = (
   )
 }
 
-export interface AgentConfigKey {
+interface AgentConfigKey {
   readonly purpose: string
 }
 
 export type FetchAgentConfig = (
   key: AgentConfigKey,
-) => ResultAsync<AgentConfig, AgentConfigFetchError>
+) => ResultAsync<AgentConfig, Error>
 
 const agentConfigUrl = (
   backendApiBaseUrl: string,

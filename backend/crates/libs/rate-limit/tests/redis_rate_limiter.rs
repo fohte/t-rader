@@ -114,7 +114,7 @@ async fn acquire_enforces_fractional_quota_interval() -> Result<(), Box<dyn Erro
 }
 
 #[tokio::test]
-async fn acquire_waits_until_max_wait_when_redis_is_unavailable() {
+async fn acquire_reports_redis_unavailable_after_waiting() {
     let limiter = RateLimiter::new("redis://127.0.0.1:1/", "t-rader:test:unavailable:");
     let max_wait = Duration::from_millis(100);
     let started = tokio::time::Instant::now();
@@ -132,7 +132,7 @@ async fn acquire_waits_until_max_wait_when_redis_is_unavailable() {
 
     assert_eq!(
         (result, started.elapsed() >= max_wait),
-        (Err(RateLimitError::MaxWaitExceeded { max_wait }), true,)
+        (Err(RateLimitError::RedisUnavailable), true,)
     );
 }
 

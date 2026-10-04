@@ -23,6 +23,9 @@ entrypoint-frontend-api = { path = "crates/entrypoints/frontend-api" }
 entrypoint-scheduler = { path = "crates/entrypoints/scheduler" }
 gateway-fred = { path = "crates/gateways/fred" }
 gateway-alpha-vantage = { path = "crates/gateways/alpha-vantage" }
+gateway-boj = { path = "crates/gateways/boj" }
+gateway-ecb = { path = "crates/gateways/ecb" }
+gateway-firecrawl = { path = "crates/gateways/firecrawl" }
 gateway-ibkr = { path = "crates/gateways/ibkr" }
 gateway-jquants = { path = "crates/gateways/jquants" }
 gateway-sec = { path = "crates/gateways/sec" }
@@ -43,6 +46,7 @@ clap = "=4.5.60"
 csv = "=1.3.1"
 encoding_rs = "=0.8.41"
 futures-util = "=0.3.34"
+htmd = "=0.5.5"
 indoc = "=2.0.7"
 jpholiday = "=0.2.0"
 jsonschema = { version = "=0.46.9", default-features = false }
@@ -53,6 +57,7 @@ progenitor-client = "=0.14.0"
 quick-xml = "=0.40.1"
 redis = { version = "=0.32.7", default-features = false, features = ["script", "connection-manager", "tokio-comp"] }
 reqwest = { version = "=0.13.5", default-features = false }
+scraper = "=0.27.0"
 rmcp = "=3.1.4"
 rstest = "=0.26.1"
 rust_decimal = "=1.40.0"

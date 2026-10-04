@@ -1,3 +1,5 @@
+import { isRecord } from '#errors'
+
 // The chat model is built with maxRetries: 0 (see strategy-agent.ts), so
 // LangChain core's AsyncCaller never retries a 429 itself — every 429 reaches
 // us on its first failed attempt, stamped with
@@ -6,12 +8,21 @@
 // InsufficientQuotaError and RateLimitQuotaExhaustedError use 'stop',
 // RateLimitCapacityError 'capacity').
 export const isUsageLimitError = (error: unknown): boolean => {
-  if (typeof error !== 'object' || error === null) return false
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- error is an untyped bag; narrowed immediately below via the equality checks
-  const rateLimitType = (error as Record<string, unknown>)['rateLimitType']
-  return (
-    rateLimitType === 'wait' ||
-    rateLimitType === 'stop' ||
-    rateLimitType === 'capacity'
-  )
+  const visited = new Set<object>()
+  let current: unknown = error
+
+  while (isRecord(current) && !visited.has(current)) {
+    visited.add(current)
+    const rateLimitType = current['rateLimitType']
+    if (
+      rateLimitType === 'wait' ||
+      rateLimitType === 'stop' ||
+      rateLimitType === 'capacity'
+    ) {
+      return true
+    }
+    current = current['cause']
+  }
+
+  return false
 }

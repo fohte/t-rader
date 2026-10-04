@@ -6,14 +6,16 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import {
-  type TaskRunListItem,
-  TaskRunListView,
-} from '#components/strategy-shell/task-run-list-view'
+import { TaskRunListView } from '#components/strategy-shell/task-run-list-view'
 
 afterEach(cleanup)
+
+type TaskRunListItem = NonNullable<
+  ComponentProps<typeof TaskRunListView>['tasks']
+>[number]
 
 // Link が親ルートを要求するため、最低限のテストルーターを噛ませる
 async function renderInRouter(tasks: TaskRunListItem[]) {
