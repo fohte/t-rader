@@ -1,5 +1,6 @@
 import { err, ok, Result } from 'neverthrow'
 
+import { isPlainObject } from '#strategy-agent/agent-graph/json'
 import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
 
 class StrategyCandidatesParseError extends Error {
@@ -16,20 +17,16 @@ interface ListStrategiesResponseBody {
 const isListStrategiesResponseBody = (
   value: unknown,
 ): value is ListStrategiesResponseBody => {
-  if (typeof value !== 'object' || value === null) return false
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- value is an untyped bag; each field is narrowed immediately below via typeof
-  const record = value as Record<string, unknown>
+  if (!isPlainObject(value)) return false
+  const record = value
   const strategies = record['strategies']
   return (
     Array.isArray(strategies) &&
     strategies.every(
       (s: unknown) =>
-        typeof s === 'object' &&
-        s !== null &&
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- s is an untyped bag; each field is narrowed immediately below via typeof
-        typeof (s as Record<string, unknown>)['strategy_id'] === 'string' &&
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- s is an untyped bag; each field is narrowed immediately below via typeof
-        typeof (s as Record<string, unknown>)['name'] === 'string',
+        isPlainObject(s) &&
+        typeof s['strategy_id'] === 'string' &&
+        typeof s['name'] === 'string',
     )
   )
 }
@@ -37,12 +34,9 @@ const isListStrategiesResponseBody = (
 const isTextContentBlock = (
   value: unknown,
 ): value is { type: 'text'; text: string } =>
-  typeof value === 'object' &&
-  value !== null &&
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- value is an untyped bag; each field is narrowed immediately below via typeof
-  (value as Record<string, unknown>)['type'] === 'text' &&
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- value is an untyped bag; each field is narrowed immediately below via typeof
-  typeof (value as Record<string, unknown>)['text'] === 'string'
+  isPlainObject(value) &&
+  value['type'] === 'text' &&
+  typeof value['text'] === 'string'
 
 const safeJsonParse = Result.fromThrowable(
   (text: string): unknown => JSON.parse(text),
