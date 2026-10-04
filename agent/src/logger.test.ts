@@ -10,7 +10,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-import { createAppLogger, withLogBindings } from '#logger'
+import { createAppLogger, withLogBindings } from '#logger-factory'
 
 // SDK を入れずに context.with() で span を伝播させるための最小の context manager。
 class AsyncLocalStorageContextManager implements ContextManager {
