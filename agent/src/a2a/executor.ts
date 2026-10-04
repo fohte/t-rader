@@ -49,7 +49,7 @@ const TURN_FAILED_FINGERPRINT = 'a2a.executor.turn-failed'
 // watchdog のデフォルトタイムアウト (env.ts の A2A_WATCHDOG_TIMEOUT_MS、10分)
 // より十分短く保つ。単一フェーズが for_each を含まず、開始から終了まで
 // step の変化が一切ないまま長時間かかっても heartbeat を止めないための間隔。
-const HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000
 
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
@@ -155,6 +155,7 @@ export interface TraderAgentExecutorDeps {
   runStrategyAgent: (
     input: RunStrategyAgentInput,
   ) => Promise<StrategyAgentResult>
+  heartbeatIntervalMs?: number
   // Looks up the current strategy list (via the backend's management MCP)
   // to resolve a strategy_id from free text when the caller doesn't supply
   // one via message metadata.
@@ -372,7 +373,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     // ない間も HEARTBEAT_INTERVAL_MS ごとに再送する。
     const heartbeatTimer = setInterval(() => {
       publishHeartbeat(latestSteps)
-    }, HEARTBEAT_INTERVAL_MS)
+    }, this.deps.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS)
 
     const deadlineController =
       deadlineAt !== undefined ? new AbortController() : undefined

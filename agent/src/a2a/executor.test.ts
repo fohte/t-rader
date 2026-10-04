@@ -168,8 +168,6 @@ const CANDIDATES: readonly StrategyCandidate[] = [
   { strategyId: '22222222-2222-2222-2222-222222222222', name: '中期投資' },
 ]
 
-const HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000
-
 type StatusEvent = {
   status: { state: string; timestamp: string; message?: Message }
 }
@@ -578,6 +576,7 @@ describe('TraderAgentExecutor', () => {
     it('republishes the working status-update on every interval tick, and stops once the task settles', async () => {
       vi.useFakeTimers()
       try {
+        const heartbeatIntervalMs = 1000
         let resolveAgent: (result: StrategyAgentResult) => void = () => {
           throw new Error('resolveAgent called before assignment')
         }
@@ -585,6 +584,7 @@ describe('TraderAgentExecutor', () => {
           resolveAgent = resolve
         })
         const executor = buildExecutor({
+          heartbeatIntervalMs,
           runStrategyAgent: () => agentPromise,
         })
         const eventBus = new FakeEventBus()
@@ -606,7 +606,7 @@ describe('TraderAgentExecutor', () => {
 
         // 初回の working (メッセージなし) の後、step の変化がなくても
         // heartbeatTimer が interval ごとに working を再送する。
-        await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 2)
+        await vi.advanceTimersByTimeAsync(heartbeatIntervalMs * 2)
         const [, firstTick, secondTick] = workingUpdates()
         expect(workingUpdates()).toHaveLength(3)
         // Task.history を汚さないため、interval 発火分も同じ messageId を
@@ -620,7 +620,7 @@ describe('TraderAgentExecutor', () => {
 
         // finally で heartbeatTimer を止めているため、決着後は interval が
         // 進んでも working は増えない。
-        await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 3)
+        await vi.advanceTimersByTimeAsync(heartbeatIntervalMs * 3)
         expect(workingUpdates()).toHaveLength(3)
       } finally {
         vi.useRealTimers()
