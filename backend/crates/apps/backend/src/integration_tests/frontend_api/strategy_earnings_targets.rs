@@ -2,7 +2,7 @@
 mod tests {
     use axum::http::StatusCode;
     use gateway_postgres::entities::strategy_earnings_target;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
@@ -64,14 +64,27 @@ mod tests {
             ))
             .json(&target)
             .await;
-        let rows = strategy_earnings_target::Entity::find()
-            .order_by_asc(strategy_earnings_target::Column::StrategyId)
+        let mut rows = strategy_earnings_target::Entity::find()
             .all(&db)
             .await
             .expect("query stored targets")
             .into_iter()
             .map(|row| (row.strategy_id, row.ref_kind, row.ref_id))
             .collect::<Vec<_>>();
+        rows.sort_unstable();
+        let mut expected_rows = vec![
+            (
+                Uuid::parse_str(&strategy_id).expect("valid strategy ID"),
+                "stock".into(),
+                "SAMPLE001".into(),
+            ),
+            (
+                Uuid::parse_str(&other_strategy_id).expect("valid strategy ID"),
+                "stock".into(),
+                "SAMPLE001".into(),
+            ),
+        ];
+        expected_rows.sort_unstable();
 
         assert_eq!(
             (
@@ -84,18 +97,7 @@ mod tests {
                 (StatusCode::OK, Some(json!({ "changed": true }))),
                 (StatusCode::OK, Some(json!({ "changed": false }))),
                 (StatusCode::OK, Some(json!({ "changed": true }))),
-                vec![
-                    (
-                        Uuid::parse_str(&strategy_id).expect("valid strategy ID"),
-                        "stock".into(),
-                        "SAMPLE001".into(),
-                    ),
-                    (
-                        Uuid::parse_str(&other_strategy_id).expect("valid strategy ID"),
-                        "stock".into(),
-                        "SAMPLE001".into(),
-                    ),
-                ],
+                expected_rows,
             ),
         );
     }
