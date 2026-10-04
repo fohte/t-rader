@@ -7,6 +7,7 @@ use backend::{
 };
 use clap::Parser;
 use core_application::agent_task_client::{AgentTaskClient, SharedAgentTaskClient};
+use core_application::calendar::source::SharedCalendarEventSource;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
 use core_application::equity_master_source::SharedEquityMasterSource;
@@ -23,6 +24,8 @@ use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
+use gateway_boj::BojClient;
+use gateway_ecb::EcbClient;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -249,6 +252,15 @@ async fn main() -> Result<(), StartupError> {
         }
     };
 
+    let boj_calendar_source: Option<SharedCalendarEventSource> =
+        Some(Arc::new(BojClient::new().map_err(|error| {
+            StartupError::Config(format!("failed to initialize BOJ calendar source: {error}"))
+        })?));
+    let ecb_calendar_source: Option<SharedCalendarEventSource> =
+        Some(Arc::new(EcbClient::new().map_err(|error| {
+            StartupError::Config(format!("failed to initialize ECB calendar source: {error}"))
+        })?));
+
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -276,6 +288,9 @@ async fn main() -> Result<(), StartupError> {
         .map(|client| Arc::clone(client) as SharedValuationSource);
     let dependencies = SchedulerDependencies {
         bars: use_cases.bars(),
+        calendar_events: use_cases.calendar_events(),
+        boj_calendar_source,
+        ecb_calendar_source,
         market_daily_bar_source,
         news: use_cases.news(),
         news_aggregator,

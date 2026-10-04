@@ -22,6 +22,8 @@ entrypoint-external-webhook = { path = "crates/entrypoints/external-webhook" }
 entrypoint-frontend-api = { path = "crates/entrypoints/frontend-api" }
 entrypoint-scheduler = { path = "crates/entrypoints/scheduler" }
 gateway-fred = { path = "crates/gateways/fred" }
+gateway-boj = { path = "crates/gateways/boj" }
+gateway-ecb = { path = "crates/gateways/ecb" }
 gateway-ibkr = { path = "crates/gateways/ibkr" }
 gateway-jquants = { path = "crates/gateways/jquants" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }
@@ -36,6 +38,7 @@ cron = "=0.17.0"
 axum-test = "=18.7.0"
 base64 = "=0.22.1"
 chrono = { version = "=0.4.45", default-features = false }
+chrono-tz = "=0.10.4"
 clap = "=4.5.60"
 csv = "=1.3.1"
 encoding_rs = "=0.8.41"
@@ -50,6 +53,7 @@ progenitor-client = "=0.14.0"
 quick-xml = "=0.40.1"
 redis = { version = "=0.32.7", default-features = false, features = ["script", "connection-manager", "tokio-comp"] }
 reqwest = { version = "=0.13.5", default-features = false }
+scraper = "=0.27.0"
 rmcp = "=3.1.4"
 rstest = "=0.26.1"
 rust_decimal = "=1.40.0"
