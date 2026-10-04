@@ -7,6 +7,7 @@ use backend::{
 };
 use clap::Parser;
 use core_application::agent_task_client::{AgentTaskClient, SharedAgentTaskClient};
+use core_application::calendar::source::SharedCalendarEventSource;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
 use core_application::equity_master_source::SharedEquityMasterSource;
@@ -23,6 +24,7 @@ use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
+use gateway_alpha_vantage::AlphaVantageClient;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -233,21 +235,42 @@ async fn main() -> Result<(), StartupError> {
         })?);
     let use_cases = backend::services::use_cases::build_use_cases(db.clone());
 
-    let fred_source: Option<SharedIndicatorObservationSource> = match std::env::var("FRED_API_KEY")
-    {
+    let (fred_source, fred_calendar_event_source): (
+        Option<SharedIndicatorObservationSource>,
+        Option<SharedCalendarEventSource>,
+    ) = match std::env::var("FRED_API_KEY") {
         Ok(api_key) if !api_key.is_empty() => {
-            let fred_client = FredClient::new(api_key).map_err(|err| {
+            let fred_client = Arc::new(FredClient::new(api_key).map_err(|err| {
                 StartupError::Config(format!("failed to initialize FRED client: {err}"))
-            })?;
-            Some(Arc::new(fred_client))
+            })?);
+            let fred_source: SharedIndicatorObservationSource = fred_client.clone();
+            let fred_calendar_event_source: SharedCalendarEventSource = fred_client;
+            (Some(fred_source), Some(fred_calendar_event_source))
         }
         _ => {
-            tracing::warn!(
-                "FRED_API_KEY が未設定のため、FRED マクロ指標履歴の取り込みを起動しません"
-            );
-            None
+            tracing::warn!("FRED_API_KEY が未設定のため、FRED の取り込みを起動しません");
+            (None, None)
         }
     };
+
+    let alpha_vantage_calendar_source: Option<SharedCalendarEventSource> =
+        match std::env::var("ALPHA_VANTAGE_API_KEY") {
+            Ok(api_key) if !api_key.trim().is_empty() => {
+                let client =
+                    AlphaVantageClient::new(api_key.trim().to_string()).map_err(|error| {
+                        StartupError::Config(format!(
+                            "failed to initialize Alpha Vantage client: {error}"
+                        ))
+                    })?;
+                Some(Arc::new(client))
+            }
+            _ => {
+                tracing::warn!(
+                    "ALPHA_VANTAGE_API_KEY が未設定のため、米国決算予定の取り込みを起動しません"
+                );
+                None
+            }
+        };
 
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
@@ -290,8 +313,11 @@ async fn main() -> Result<(), StartupError> {
         valuations: use_cases.valuations(),
         valuation_source,
         indicator_observations: use_cases.indicator_observations(),
+        calendar_events: use_cases.calendar_events(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
+        alpha_vantage_calendar_source,
+        fred_calendar_event_source,
         predictions: use_cases.predictions(),
         short_ratios: use_cases.short_ratios(),
         short_sale_reports: use_cases.short_sale_reports(),

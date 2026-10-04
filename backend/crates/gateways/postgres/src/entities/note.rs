@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub strategy_id: Option<Uuid>,
     pub kind: Option<String>,
     pub trigger: Option<String>,
     pub trigger_label: Option<String>,
@@ -38,14 +37,6 @@ pub enum Relation {
     NoteVersion,
     #[sea_orm(has_many = "super::prediction::Entity")]
     Prediction,
-    #[sea_orm(
-        belongs_to = "super::strategy::Entity",
-        from = "Column::StrategyId",
-        to = "super::strategy::Column::Id",
-        on_update = "NoAction",
-        on_delete = "Cascade"
-    )]
-    Strategy,
     #[sea_orm(has_many = "super::trade_note::Entity")]
     TradeNote,
 }
@@ -83,12 +74,6 @@ impl Related<super::note_version::Entity> for Entity {
 impl Related<super::prediction::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Prediction.def()
-    }
-}
-
-impl Related<super::strategy::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Strategy.def()
     }
 }
 

@@ -8,12 +8,14 @@ use tokio::time::timeout;
 
 use crate::state::SchedulerState;
 
+pub mod alpha_vantage;
 pub mod daily_bars;
 pub mod earnings_schedule;
 pub mod edinet_holdings;
 pub mod equity_master;
 pub mod financial_summary;
 pub mod fred;
+pub mod fred_release_dates;
 pub mod ingest_run_recovery;
 pub mod jquants;
 pub mod news;

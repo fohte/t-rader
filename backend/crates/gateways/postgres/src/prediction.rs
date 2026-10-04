@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_application::prediction::{
-    GradedPrediction, NewPrediction, NewPredictionGrade, NoteOwner, Prediction, PredictionGrade,
+    GradedPrediction, NewPrediction, NewPredictionGrade, Prediction, PredictionGrade,
     PredictionListQuery, PredictionRepository, PredictionRepositoryError,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
@@ -29,21 +29,17 @@ impl PostgresPredictionRepository {
 
 #[async_trait]
 impl PredictionRepository for PostgresPredictionRepository {
-    async fn find_note_owner(
+    async fn note_exists(
         &self,
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
-    ) -> Result<Option<NoteOwner>, PredictionRepositoryError> {
+    ) -> Result<bool, PredictionRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(PredictionRepositoryError::InvalidTransaction)?;
         note::Entity::find_by_id(note_id)
             .one(transaction)
             .await
-            .map(|row| {
-                row.map(|note| NoteOwner {
-                    strategy_id: note.strategy_id,
-                })
-            })
+            .map(|row| row.is_some())
             .map_err(repository_error)
     }
 

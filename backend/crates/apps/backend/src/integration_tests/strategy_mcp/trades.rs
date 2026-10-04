@@ -70,12 +70,11 @@ mod tests {
         let strategy_b = insert_strategy(&db, "b").await;
         let trade_a = seed_trade(&db, strategy_a, "7203", "buy", 100, 1000, ymd(2026, 6, 1)).await;
         let trade_b = seed_trade(&db, strategy_b, "6758", "sell", 50, 2000, ymd(2026, 6, 2)).await;
-        let first_note_id =
-            crate::testing::insert_test_note(&db, strategy_a, "first rationale", "body").await;
+        let first_note_id = crate::testing::insert_test_note(&db, "first rationale", "body").await;
         let first_note_version_id =
             super::super::tests_common::current_note_version_id(&db, first_note_id).await;
         let second_note_id =
-            crate::testing::insert_test_note(&db, strategy_a, "second rationale", "body").await;
+            crate::testing::insert_test_note(&db, "second rationale", "body").await;
         let second_note_version_id =
             super::super::tests_common::current_note_version_id(&db, second_note_id).await;
         let (

@@ -2,39 +2,35 @@
 
 ## Description
 
-戦略に属するノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。
+ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。
 
 ## Columns
 
-| Name          | Type                     | Default           | Nullable | Children                                                                                                                                                                                                                                                  | Parents                                 | Comment                                               |
-| ------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------- |
-| id            | uuid                     |                   | false    | [public.note_ref](public.note_ref.md) [public.annotation](public.annotation.md) [public.trade_note](public.trade_note.md) [public.prediction](public.prediction.md) [public.note_version](public.note_version.md) [public.note_link](public.note_link.md) |                                         |                                                       |
-| strategy_id   | uuid                     |                   | true     |                                                                                                                                                                                                                                                           | [public.strategy](public.strategy.md)   | ノートを所有する戦略。戦略に属さないノートでは null。 |
-| kind          | varchar                  |                   | true     |                                                                                                                                                                                                                                                           | [public.note_kind](public.note_kind.md) | note_kind で定義されたノート分類キー。                |
-| trigger       | varchar                  |                   | true     |                                                                                                                                                                                                                                                           |                                         | ノートが作成された契機の種別。                        |
-| trigger_label | varchar                  |                   | true     |                                                                                                                                                                                                                                                           |                                         | ノート作成の契機に付けた表示ラベル。                  |
-| created_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                           |                                         |                                                       |
-| updated_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                           |                                         |                                                       |
-| execution_id  | text                     |                   | true     |                                                                                                                                                                                                                                                           |                                         | ノートを作成したタスク実行の識別子。                  |
+| Name          | Type                     | Default           | Nullable | Children                                                                                                                                                                                                                                                  | Parents                                 | Comment                                |
+| ------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------- |
+| id            | uuid                     |                   | false    | [public.note_ref](public.note_ref.md) [public.annotation](public.annotation.md) [public.trade_note](public.trade_note.md) [public.prediction](public.prediction.md) [public.note_version](public.note_version.md) [public.note_link](public.note_link.md) |                                         |                                        |
+| kind          | varchar                  |                   | true     |                                                                                                                                                                                                                                                           | [public.note_kind](public.note_kind.md) | note_kind で定義されたノート分類キー。 |
+| trigger       | varchar                  |                   | true     |                                                                                                                                                                                                                                                           |                                         | ノートが作成された契機の種別。         |
+| trigger_label | varchar                  |                   | true     |                                                                                                                                                                                                                                                           |                                         | ノート作成の契機に付けた表示ラベル。   |
+| created_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                           |                                         |                                        |
+| updated_at    | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                           |                                         |                                        |
+| execution_id  | text                     |                   | true     |                                                                                                                                                                                                                                                           |                                         | ノートを作成したタスク実行の識別子。   |
 
 ## Constraints
 
-| Name                                | Type        | Definition                                                                                                                                                                                  |
-| ----------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| note_kind_nonblank_check            | CHECK       | CHECK (((kind IS NULL) OR ((kind)::text ~ '[^[:space:]]'::text)))                                                                                                                           |
-| note_strategy_id_execution_id_check | CHECK       | CHECK (((strategy_id IS NOT NULL) OR (execution_id IS NULL)))                                                                                                                               |
-| note_trigger_check                  | CHECK       | CHECK (((trigger IS NULL) OR ((trigger)::text = ANY ((ARRAY['hook'::character varying, 'cron'::character varying, 'on-demand'::character varying, 'manual'::character varying])::text[])))) |
-| note_strategy_id_fkey               | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE                                                                                                                         |
-| note_pkey                           | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                                            |
-| fk_note_kind                        | FOREIGN KEY | FOREIGN KEY (kind) REFERENCES note_kind(key) ON DELETE RESTRICT                                                                                                                             |
+| Name                     | Type        | Definition                                                                                                                                                                                  |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| note_kind_nonblank_check | CHECK       | CHECK (((kind IS NULL) OR ((kind)::text ~ '[^[:space:]]'::text)))                                                                                                                           |
+| note_trigger_check       | CHECK       | CHECK (((trigger IS NULL) OR ((trigger)::text = ANY ((ARRAY['hook'::character varying, 'cron'::character varying, 'on-demand'::character varying, 'manual'::character varying])::text[])))) |
+| note_pkey                | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                                            |
+| fk_note_kind             | FOREIGN KEY | FOREIGN KEY (kind) REFERENCES note_kind(key) ON DELETE RESTRICT                                                                                                                             |
 
 ## Indexes
 
-| Name                              | Definition                                                                                                                                    |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| note_pkey                         | CREATE UNIQUE INDEX note_pkey ON public.note USING btree (id)                                                                                 |
-| idx_note_strategy_id              | CREATE INDEX idx_note_strategy_id ON public.note USING btree (strategy_id)                                                                    |
-| idx_note_strategy_id_execution_id | CREATE UNIQUE INDEX idx_note_strategy_id_execution_id ON public.note USING btree (strategy_id, execution_id) WHERE (execution_id IS NOT NULL) |
+| Name                  | Definition                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| note_pkey             | CREATE UNIQUE INDEX note_pkey ON public.note USING btree (id)                                                        |
+| idx_note_execution_id | CREATE UNIQUE INDEX idx_note_execution_id ON public.note USING btree (execution_id) WHERE (execution_id IS NOT NULL) |
 
 ## Relations
 
@@ -47,12 +43,10 @@ erDiagram
 "public.prediction" }o--o| "public.note" : "FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE SET NULL"
 "public.note_version" }o--|| "public.note" : "FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE"
 "public.note_link" }o--|| "public.note" : "FOREIGN KEY (to_note_id) REFERENCES note(id) ON DELETE CASCADE"
-"public.note" }o--o| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.note" }o--o| "public.note_kind" : "FOREIGN KEY (kind) REFERENCES note_kind(key) ON DELETE RESTRICT"
 
 "public.note" {
   uuid id
-  uuid strategy_id FK
   varchar kind FK
   varchar trigger
   varchar trigger_label
@@ -67,7 +61,6 @@ erDiagram
 }
 "public.annotation" {
   uuid id
-  uuid strategy_id FK
   varchar target_symbol
   varchar target_kind
   timestamp_with_time_zone timestamp
@@ -119,14 +112,6 @@ erDiagram
   uuid from_version_id FK
   uuid to_note_id FK
   uuid to_version_id FK
-}
-"public.strategy" {
-  uuid id
-  varchar name
-  text description
-  integer sort_order
-  timestamp_with_time_zone created_at
-  timestamp_with_time_zone updated_at
 }
 "public.note_kind" {
   text key

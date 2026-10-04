@@ -10,7 +10,6 @@ use super::ports::Annotation;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AnnotationListQuery {
-    pub strategy_id: Option<Uuid>,
     pub target_symbol: Option<String>,
     pub limit: Option<u64>,
 }
@@ -42,7 +41,6 @@ pub trait AnnotationReadQuery: Send + Sync {
 
     async fn list_recent(
         &self,
-        strategy_id: Uuid,
         limit: u64,
     ) -> Result<Vec<RecentAnnotation>, AnnotationReadQueryError>;
 }

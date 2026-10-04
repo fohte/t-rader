@@ -39,8 +39,12 @@ fohte 個人用の日本株投資プラットフォーム。
 
 ノート / コメント / アノテーションの markdown 本文で参照型を指す内部リンクは prefix 付きにすること。prefix なしの `[[demo-code]]` は許容しない。
 
+外国株の `stock.id` は ISO 3166-1 alpha-2 の割り当て済み国コードとコードを `国:コード` で連結する。`JP` は使わず、日本株は接頭辞なしの既存 ID を使う ([ISO 3166](https://www.iso.org/iso-3166-country-codes.html))。コードには大文字英字、数字、`-` を使う。
+
 ```text
 [[stock:demo-code]]
+[[stock:US:DEMO-A]]
+[[stock:KR:QZ9012]]
 [[indicator:demo-indicator]]
 [[group:demo-axis/demo-group]]
 ```

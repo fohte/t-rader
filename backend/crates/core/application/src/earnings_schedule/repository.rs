@@ -2,12 +2,16 @@ use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_domain::earnings_schedule::EarningsSchedule;
 
-use crate::persistence::PersistenceError;
+use crate::{persistence::PersistenceError, unit_of_work::UnitOfWorkError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EarningsScheduleRepositoryError {
     #[error(transparent)]
     Database(#[from] PersistenceError),
+    #[error(transparent)]
+    UnitOfWork(#[from] UnitOfWorkError),
+    #[error("transaction has an unexpected type")]
+    InvalidTransaction,
     #[error("invalid earnings schedule: {0}")]
     InvalidSchedule(String),
 }
