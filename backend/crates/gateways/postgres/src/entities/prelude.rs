@@ -23,6 +23,7 @@ pub use super::major_shareholder_documents::Entity as MajorShareholderDocuments;
 pub use super::margin_alert::Entity as MarginAlert;
 pub use super::margin_interest::Entity as MarginInterest;
 pub use super::mcp_tool_call_count::Entity as McpToolCallCount;
+pub use super::minute_bars::Entity as MinuteBars;
 pub use super::news_item::Entity as NewsItem;
 pub use super::news_item_content::Entity as NewsItemContent;
 pub use super::note::Entity as Note;

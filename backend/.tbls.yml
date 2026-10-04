@@ -261,6 +261,16 @@ comments:
       low: '調整後の安値。'
       close: '調整後の終値。'
       volume: '調整後の出来高。'
+  - table: minute_bars
+    tableComment: '銘柄ごとの 1 分足価格と出来高を保持する。'
+    columnComments:
+      instrument_id: 'バーの銘柄 ID。'
+      timestamp: 'バーの時刻。'
+      open: 'バーの始値。'
+      high: 'バーの高値。'
+      low: 'バーの安値。'
+      close: 'バーの終値。'
+      volume: 'バーの出来高。'
   - table: cross_shareholding_documents
     tableComment: 'EDINET の政策保有株式に関する提出書類と明細を保持する。'
     columnComments:

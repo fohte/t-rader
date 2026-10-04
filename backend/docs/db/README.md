@@ -53,6 +53,7 @@
 | [public.calendar_event](public.calendar_event.md)                                           | 13      | 指標、中銀イベント、決算などの予定を取得元ごとに保持する。                                             | BASE TABLE |
 | [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)         | 1       | 決算予定を取得した公表日を記録する。                                                                   | BASE TABLE |
 | [public.news_item_content](public.news_item_content.md)                                     | 6       | ニュース記事の本文と取得状態を保持する。                                                               | BASE TABLE |
+| [public.minute_bars](public.minute_bars.md)                                                 | 7       | 銘柄ごとの 1 分足価格と出来高を保持する。                                                              | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -207,6 +208,7 @@ erDiagram
 "public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 "public.stock_group_member" }o--|| "public.stock_group" : "FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE"
 "public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
+"public.minute_bars" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -709,6 +711,15 @@ erDiagram
   text error
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.minute_bars" {
+  varchar instrument_id FK
+  timestamp_with_time_zone timestamp
+  numeric open
+  numeric high
+  numeric low
+  numeric close
+  bigint volume
 }
 ```
 
