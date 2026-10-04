@@ -20,6 +20,7 @@ use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
+use core_application::us_stock_master_source::SharedUsStockMasterSource;
 use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
@@ -32,6 +33,7 @@ use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
 use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
 use gateway_rss::RssNewsAggregator;
+use gateway_sec::SecClient;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
 };
@@ -272,6 +274,23 @@ async fn main() -> Result<(), StartupError> {
             }
         };
 
+    let us_stock_master_source: Option<SharedUsStockMasterSource> =
+        match std::env::var("SEC_USER_AGENT") {
+            Ok(user_agent) if !user_agent.trim().is_empty() => {
+                let client = SecClient::new(&user_agent).map_err(|error| {
+                    StartupError::Config(format!("failed to initialize SEC client: {error}"))
+                })?;
+                tracing::info!("SEC US stock master source initialized");
+                Some(Arc::new(client))
+            }
+            _ => {
+                tracing::warn!(
+                    "SEC_USER_AGENT が未設定のため、米国株のマスタ同期 job を登録しません"
+                );
+                None
+            }
+        };
+
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -308,6 +327,8 @@ async fn main() -> Result<(), StartupError> {
         financial_summary_source,
         equity_master: use_cases.equity_master(),
         equity_master_source,
+        us_stock_master: use_cases.us_stock_master(),
+        us_stock_master_source,
         shareholding_structures: use_cases.shareholding_structures(),
         shareholding_structure_source,
         valuations: use_cases.valuations(),

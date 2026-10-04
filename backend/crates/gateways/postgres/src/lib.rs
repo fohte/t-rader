@@ -55,6 +55,7 @@ mod trade;
 mod transaction;
 mod trigger;
 mod unit_of_work;
+mod us_stock_master;
 mod valuation;
 
 pub use account_risk_policy::PostgresAccountRiskPolicyRepository;
@@ -99,6 +100,7 @@ pub use strategy_task_step_evidence::PostgresStrategyTaskStepEvidenceRepository;
 pub use trade::PostgresTradeRepository;
 pub use trigger::PostgresTriggerRepository;
 pub use unit_of_work::PostgresUnitOfWork;
+pub use us_stock_master::PostgresUsStockMasterRepository;
 pub use valuation::PostgresValuationRepository;
 
 #[cfg(any(test, feature = "test-support"))]

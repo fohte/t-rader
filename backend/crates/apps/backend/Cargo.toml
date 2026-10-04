@@ -21,6 +21,7 @@ gateway-fred = { workspace = true }
 gateway-alpha-vantage = { workspace = true }
 gateway-ibkr = { workspace = true }
 gateway-jquants = { workspace = true }
+gateway-sec = { workspace = true }
 gateway-litellm = { workspace = true }
 gateway-kata-exec = { workspace = true }
 gateway-rss = { workspace = true }

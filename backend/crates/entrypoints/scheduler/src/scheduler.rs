@@ -26,6 +26,7 @@ use crate::{
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
+        us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
     state::{SchedulerDependencies, SchedulerState},
@@ -36,7 +37,7 @@ const JQUANTS_QUEUE: &str = "jquants";
 const FRED_QUEUE: &str = "fred";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 14] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 15] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
     (AlphaVantageCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
     (FredReleaseDatesIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -51,6 +52,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 14] = [
     (ValuationIngest::IDENTIFIER, DAILY_TIMEOUT),
     (EquityMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShareholdingStructureIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (UsStockMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
 ];
 
 #[derive(Clone, Copy, Default)]
@@ -64,6 +66,7 @@ struct ConfiguredJobs {
     financial_summary: bool,
     valuation: bool,
     equity_master: bool,
+    us_stock_master: bool,
     shareholding_structure: bool,
     strategy_task_reconcile: bool,
 }
@@ -89,6 +92,7 @@ impl Scheduler {
             financial_summary: dependencies.financial_summary_source.is_some(),
             valuation: dependencies.valuation_source.is_some(),
             equity_master: dependencies.equity_master_source.is_some(),
+            us_stock_master: dependencies.us_stock_master_source.is_some(),
             shareholding_structure: dependencies.shareholding_structure_source.is_some(),
             strategy_task_reconcile: dependencies.strategy_task_reconcile_enabled,
         })
@@ -113,6 +117,7 @@ impl Scheduler {
             .define_job::<FinancialSummaryIngest>()
             .define_job::<ValuationIngest>()
             .define_job::<EquityMasterIngest>()
+            .define_job::<UsStockMasterIngest>()
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
             .define_job::<AlphaVantageCalendarIngest>()
@@ -211,6 +216,14 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
             13,
             30,
             Some(JQUANTS_QUEUE),
+        )?);
+    }
+    if configured.us_stock_master {
+        crontabs.push(daily_cron::<UsStockMasterIngest>(
+            "us_stock_master_ingest",
+            13,
+            45,
+            None,
         )?);
     }
     if configured.valuation {
@@ -328,6 +341,7 @@ mod tests {
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
+        us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     };
 
@@ -348,6 +362,7 @@ mod tests {
             financial_summary: true,
             valuation: true,
             equity_master: true,
+            us_stock_master: true,
             shareholding_structure: true,
             strategy_task_reconcile: true,
         }
@@ -430,6 +445,12 @@ mod tests {
                 "shareholding_structure_ingest",
                 CrontabFill::days(3),
                 Some(JQUANTS_QUEUE),
+            ),
+            expected_cron::<UsStockMasterIngest>(
+                CrontabTimer::daily_at(13, 45).ok(),
+                "us_stock_master_ingest",
+                CrontabFill::days(3),
+                None,
             ),
             expected_cron::<ValuationIngest>(
                 CrontabTimer::hourly_at(30).ok(),
@@ -552,6 +573,12 @@ mod tests {
                     Some("jquants".to_string()),
                 ),
                 (
+                    Some("us_stock_master_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    None,
+                ),
+                (
                     Some("valuation_ingest".to_string()),
                     Some(CrontabFill::hours(3)),
                     Some(3),
@@ -591,6 +618,7 @@ mod tests {
     #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::us_stock_master_only(ConfiguredJobs { us_stock_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_master_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
     fn schedules_only_configured_sources(
