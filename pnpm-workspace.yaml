@@ -2,6 +2,9 @@ packages:
   - 'frontend'
   - 'agent'
 
+patchedDependencies:
+  '@langchain/core@1.2.10': patches/@langchain__core@1.2.10.patch
+
 allowBuilds:
   # required by vitest's transformer
   esbuild: true
