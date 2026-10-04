@@ -1458,6 +1458,8 @@ export interface components {
       trigger_label?: string | null
     }
     CreateRssFeedRequest: {
+      /** @description 本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。 */
+      content_source?: string
       /** @description UI 表示用名前 */
       display_name: string
       /** @description 省略時は true */
@@ -1844,6 +1846,8 @@ export interface components {
       name?: string | null
     }
     RssFeed: {
+      /** @description 本文の取得方式。none / feed / crawl のいずれか。 */
+      content_source: string
       /** Format: date-time */
       created_at: string
       display_name: string
@@ -2124,6 +2128,8 @@ export interface components {
       trigger_label?: string | null
     }
     UpdateRssFeedRequest: {
+      /** @description 本文取得方式の設定。none / feed / crawl のいずれか。省略時は現在の設定を維持する。 */
+      content_source?: string | null
       display_name?: string | null
       enabled?: boolean | null
       url?: string | null

@@ -31,6 +31,7 @@ mod tests {
                     "display_name": display_name,
                     "url": url,
                     "enabled": true,
+                    "content_source": "none",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -69,6 +70,37 @@ mod tests {
                     "display_name": "Sample Newswire",
                     "url": "https://feeds.example.invalid/markets.xml",
                     "enabled": true,
+                    "content_source": "none",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_accepts_content_source(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let res = server
+            .post("/api/rss-feeds")
+            .json(&json!({
+                "source": "sample-feed",
+                "display_name": "Sample Feed",
+                "url": "https://feeds.example.invalid/sample.xml",
+                "content_source": "feed",
+            }))
+            .await;
+        assert_eq!(
+            (res.status_code(), normalize(res.json())),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "source": "sample-feed",
+                    "display_name": "Sample Feed",
+                    "url": "https://feeds.example.invalid/sample.xml",
+                    "enabled": true,
+                    "content_source": "feed",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -98,6 +130,7 @@ mod tests {
                     "display_name": "Example Feed",
                     "url": "https://example.com/feed.xml",
                     "enabled": true,
+                    "content_source": "none",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -133,7 +166,7 @@ mod tests {
             &res,
             StatusCode::UNPROCESSABLE_ENTITY,
             Some(json!({
-                "error": "Failed to deserialize the JSON body into the target type: unexpected: unknown field `unexpected`, expected one of `source`, `display_name`, `url`, `enabled` at line 1 column 67"
+                "error": "Failed to deserialize the JSON body into the target type: unexpected: unknown field `unexpected`, expected one of `source`, `display_name`, `url`, `enabled`, `content_source` at line 1 column 67"
             })),
         );
     }
@@ -158,6 +191,7 @@ mod tests {
                     "display_name": "Dup",
                     "url": "https://example.com/a",
                     "enabled": true,
+                    "content_source": "none",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -228,6 +262,7 @@ mod tests {
                     "display_name": "A",
                     "url": "https://example.com/a",
                     "enabled": false,
+                    "content_source": "none",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -246,6 +281,7 @@ mod tests {
                     "display_name": "B",
                     "url": "https://example.com/b",
                     "enabled": true,
+                    "content_source": "none",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 })],
@@ -259,7 +295,7 @@ mod tests {
         let id = create_feed(&server, "x", "Old", "https://example.com/a").await;
         let res = server
             .patch(&format!("/api/rss-feeds/{id}"))
-            .json(&json!({ "display_name": "New", "enabled": false }))
+            .json(&json!({ "display_name": "New", "enabled": false, "content_source": "crawl" }))
             .await;
         assert_eq!(
             (res.status_code(), normalize(res.json())),
@@ -271,6 +307,7 @@ mod tests {
                     "display_name": "New",
                     "url": "https://example.com/a",
                     "enabled": false,
+                    "content_source": "crawl",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                 }),
@@ -300,7 +337,7 @@ mod tests {
             &res,
             StatusCode::UNPROCESSABLE_ENTITY,
             Some(json!({
-                "error": "Failed to deserialize the JSON body into the target type: unexpected: unknown field `unexpected`, expected one of `display_name`, `url`, `enabled` at line 1 column 43"
+                "error": "Failed to deserialize the JSON body into the target type: unexpected: unknown field `unexpected`, expected one of `display_name`, `url`, `enabled`, `content_source` at line 1 column 43"
             })),
         );
     }

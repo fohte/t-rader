@@ -6,15 +6,15 @@ RSS フィードなどから取得したニュース記事情報を保持する�
 
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children | Parents | Comment                                        |
-| ------------ | ------------------------ | ----------------- | -------- | -------- | ------- | ---------------------------------------------- |
-| id           | uuid                     | gen_random_uuid() | false    |          |         |                                                |
-| source       | text                     |                   | false    |          |         | ニュースソースの表示名。                       |
-| url          | text                     |                   | false    |          |         | 記事の URL。                                   |
-| title        | text                     |                   | false    |          |         | 記事タイトル。                                 |
-| body_snippet | text                     |                   | true     |          |         | フィードの説明文から切り出した記事本文の抜粋。 |
-| published_at | timestamp with time zone |                   | false    |          |         | 記事の公開日時。                               |
-| fetched_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         | 記事を取得した日時。                           |
+| Name         | Type                     | Default           | Nullable | Children                                                | Parents | Comment                                        |
+| ------------ | ------------------------ | ----------------- | -------- | ------------------------------------------------------- | ------- | ---------------------------------------------- |
+| id           | uuid                     | gen_random_uuid() | false    | [public.news_item_content](public.news_item_content.md) |         |                                                |
+| source       | text                     |                   | false    |                                                         |         | ニュースソースの表示名。                       |
+| url          | text                     |                   | false    |                                                         |         | 記事の URL。                                   |
+| title        | text                     |                   | false    |                                                         |         | 記事タイトル。                                 |
+| body_snippet | text                     |                   | true     |                                                         |         | フィードの説明文から切り出した記事本文の抜粋。 |
+| published_at | timestamp with time zone |                   | false    |                                                         |         | 記事の公開日時。                               |
+| fetched_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                         |         | 記事を取得した日時。                           |
 
 ## Constraints
 
@@ -36,6 +36,7 @@ RSS フィードなどから取得したニュース記事情報を保持する�
 ```mermaid
 erDiagram
 
+"public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
 
 "public.news_item" {
   uuid id
@@ -45,6 +46,14 @@ erDiagram
   text body_snippet
   timestamp_with_time_zone published_at
   timestamp_with_time_zone fetched_at
+}
+"public.news_item_content" {
+  uuid news_item_id FK
+  text status
+  text body
+  text error
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 

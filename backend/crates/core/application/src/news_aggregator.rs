@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::rss_feed::ContentSource;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -22,6 +23,7 @@ pub enum NewsAggregatorError {
 pub struct NewsFeed {
     pub source: String,
     pub url: String,
+    pub content_source: ContentSource,
 }
 
 /// RSS aggregator が返す 1 件のニュース
@@ -33,6 +35,8 @@ pub struct NewsItem {
     pub title: String,
     /// description などからの抜粋 (本文先頭 280 文字程度)
     pub body_snippet: Option<String>,
+    pub content_source: ContentSource,
+    pub content: Option<String>,
     pub published_at: DateTime<Utc>,
 }
 

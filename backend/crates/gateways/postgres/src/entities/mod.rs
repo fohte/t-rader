@@ -26,6 +26,7 @@ pub mod margin_alert;
 pub mod margin_interest;
 pub mod mcp_tool_call_count;
 pub mod news_item;
+pub mod news_item_content;
 pub mod note;
 pub mod note_kind;
 pub mod note_link;
