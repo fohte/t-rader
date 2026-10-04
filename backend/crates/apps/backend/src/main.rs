@@ -18,7 +18,6 @@ use core_application::llm_client::SharedLlmClient;
 use core_application::margin_source::SharedMarginSource;
 use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
-use core_application::news_content::SharedNewsContentFetcher;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::valuation_source::SharedValuationSource;
@@ -26,9 +25,7 @@ use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
 use gateway_alpha_vantage::AlphaVantageClient;
-use gateway_boj::BojClient;
-use gateway_ecb::EcbClient;
-use gateway_firecrawl::FirecrawlClient;
+use gateway_e_stat::EStatCalendarEventSource;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -53,7 +50,8 @@ mod startup;
 use logging::default_log_filter;
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
-    StartupError, jquants_config_from_env, required_redis_url, worker_admin_ui_settings_from_env,
+    NewsAndCentralBankSources, StartupError, initialize_news_and_central_bank_sources,
+    jquants_config_from_env, required_redis_url, worker_admin_ui_settings_from_env,
 };
 
 #[tokio::main]
@@ -257,31 +255,19 @@ async fn main() -> Result<(), StartupError> {
         }
     };
 
-    let news_content_fetcher: Option<SharedNewsContentFetcher> =
-        match std::env::var("FIRECRAWL_API_KEY") {
-            Ok(api_key) if !api_key.is_empty() => {
-                let client = FirecrawlClient::new(&redis_url, api_key).map_err(|error| {
-                    StartupError::Config(format!("failed to initialize Firecrawl client: {error}"))
-                })?;
-                tracing::info!("Firecrawl news content source initialized");
-                Some(Arc::new(client))
-            }
-            _ => {
-                tracing::warn!(
-                    "FIRECRAWL_API_KEY が未設定のため、ニュース本文の取得を起動しません"
-                );
-                None
-            }
-        };
+    let e_stat_calendar_source: SharedCalendarEventSource =
+        Arc::new(EStatCalendarEventSource::new().map_err(|error| {
+            StartupError::Config(format!(
+                "failed to initialize e-Stat calendar source: {error}"
+            ))
+        })?);
+    tracing::info!("e-Stat calendar source initialized");
 
-    let boj_calendar_source: Option<SharedCalendarEventSource> =
-        Some(Arc::new(BojClient::new().map_err(|error| {
-            StartupError::Config(format!("failed to initialize BOJ calendar source: {error}"))
-        })?));
-    let ecb_calendar_source: Option<SharedCalendarEventSource> =
-        Some(Arc::new(EcbClient::new().map_err(|error| {
-            StartupError::Config(format!("failed to initialize ECB calendar source: {error}"))
-        })?));
+    let NewsAndCentralBankSources {
+        news_content_fetcher,
+        boj_calendar_source,
+        ecb_calendar_source,
+    } = initialize_news_and_central_bank_sources(&redis_url)?;
 
     let alpha_vantage_calendar_source: Option<SharedCalendarEventSource> =
         match std::env::var("ALPHA_VANTAGE_API_KEY") {
@@ -349,6 +335,7 @@ async fn main() -> Result<(), StartupError> {
         indicator_observations: use_cases.indicator_observations(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
+        e_stat_calendar_source: Some(e_stat_calendar_source),
         alpha_vantage_calendar_source,
         fred_calendar_event_source,
         predictions: use_cases.predictions(),
