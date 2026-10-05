@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use super::error::AnnotationUseCaseError;
 use super::ports::{
-    Annotation, ChangeAnnotationStatusCommand, CreateAnnotationCommand, DeleteAnnotationCommand,
-    NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
+    Annotation, AnnotationPriceInput, ChangeAnnotationStatusCommand, CreateAnnotationCommand,
+    DeleteAnnotationCommand, NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
 };
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
 use crate::strategy_task_step_evidence::SharedStrategyTaskStepEvidenceRepository;
@@ -43,7 +43,7 @@ impl AnnotationUseCases {
         &self,
         command: CreateAnnotationCommand,
     ) -> Result<Annotation, AnnotationUseCaseError> {
-        validate_price_field(&command)?;
+        let price_input = validate_price_input(command.price, command.execution_step_id)?;
         let target_symbol = non_empty_trimmed(command.target_symbol, "target_symbol")?;
         let target_kind = non_empty_trimmed(command.target_kind, "target_kind")?;
         validate_non_empty(&command.text, "text")?;
@@ -55,19 +55,22 @@ impl AnnotationUseCases {
                 .await?;
         }
 
-        let price = if let Some(field) = command.price_field {
-            Some(
+        let price = match price_input {
+            ValidatedAnnotationPriceInput::None => None,
+            ValidatedAnnotationPriceInput::Value(value) => Some(value),
+            ValidatedAnnotationPriceInput::Field {
+                execution_step_id,
+                field,
+            } => Some(
                 self.resolve_price_field(
                     &transaction,
-                    command.execution_step_id,
+                    execution_step_id,
                     &target_symbol,
-                    command.timestamp.date_naive(),
+                    command.timestamp.with_timezone(&Utc).date_naive(),
                     field,
                 )
                 .await?,
-            )
-        } else {
-            command.price
+            ),
         };
 
         if let (Some(step_id), Some(task_id)) = (
@@ -116,16 +119,11 @@ impl AnnotationUseCases {
     async fn resolve_price_field(
         &self,
         transaction: &UnitOfWorkTransaction,
-        execution_step_id: Option<Uuid>,
+        execution_step_id: Uuid,
         target_symbol: &str,
         date: chrono::NaiveDate,
         field: PriceReferenceField,
     ) -> Result<Decimal, AnnotationUseCaseError> {
-        let execution_step_id = execution_step_id.ok_or_else(|| {
-            AnnotationUseCaseError::Validation(
-                "価格項目の解決には実行ステップの query_data が必要です".into(),
-            )
-        })?;
         let evidence = self
             .strategy_task_step_evidence
             .find_query_data(transaction, execution_step_id, target_symbol)
@@ -384,26 +382,38 @@ fn validate_non_empty(value: &str, name: &str) -> Result<(), AnnotationUseCaseEr
     Ok(())
 }
 
-fn validate_price_field(command: &CreateAnnotationCommand) -> Result<(), AnnotationUseCaseError> {
-    let Some(field) = command.price_field else {
-        return Ok(());
-    };
-    if command.price.is_some() {
-        return Err(AnnotationUseCaseError::Validation(
-            "価格項目を指定する場合、数値価格は指定できません".into(),
-        ));
+enum ValidatedAnnotationPriceInput {
+    None,
+    Value(Decimal),
+    Field {
+        execution_step_id: Uuid,
+        field: PriceReferenceField,
+    },
+}
+
+fn validate_price_input(
+    price: Option<AnnotationPriceInput>,
+    execution_step_id: Option<Uuid>,
+) -> Result<ValidatedAnnotationPriceInput, AnnotationUseCaseError> {
+    match price {
+        None => Ok(ValidatedAnnotationPriceInput::None),
+        Some(AnnotationPriceInput::Value(value)) => Ok(ValidatedAnnotationPriceInput::Value(value)),
+        Some(AnnotationPriceInput::Field(PriceReferenceField::Volume)) => {
+            Err(AnnotationUseCaseError::Validation(
+                "価格項目には `open`, `high`, `low`, `close` のいずれかを指定してください".into(),
+            ))
+        }
+        Some(AnnotationPriceInput::Field(field)) => execution_step_id
+            .map(|execution_step_id| ValidatedAnnotationPriceInput::Field {
+                execution_step_id,
+                field,
+            })
+            .ok_or_else(|| {
+                AnnotationUseCaseError::Validation(
+                    "価格項目の解決には実行ステップの query_data が必要です".into(),
+                )
+            }),
     }
-    if field == PriceReferenceField::Volume {
-        return Err(AnnotationUseCaseError::Validation(
-            "価格項目には `open`, `high`, `low`, `close` のいずれかを指定してください".into(),
-        ));
-    }
-    if command.execution_step_id.is_none() {
-        return Err(AnnotationUseCaseError::Validation(
-            "価格項目の解決には実行ステップの query_data が必要です".into(),
-        ));
-    }
-    Ok(())
 }
 
 fn validate_status(status: &str) -> Result<(), AnnotationUseCaseError> {

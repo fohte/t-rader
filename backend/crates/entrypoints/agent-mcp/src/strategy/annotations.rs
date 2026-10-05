@@ -3,8 +3,8 @@
 //! 作成・読み取りともに戦略をまたいで扱う。
 
 use core_application::annotation::{
-    AnnotationListQuery, AnnotationReadQueryError, AnnotationReadUseCaseError,
-    AnnotationUseCaseError, CreateAnnotationCommand,
+    AnnotationListQuery, AnnotationPriceInput, AnnotationReadQueryError,
+    AnnotationReadUseCaseError, AnnotationUseCaseError, CreateAnnotationCommand,
 };
 use core_application::change_history::Actor;
 use rmcp::ErrorData as McpError;
@@ -63,8 +63,10 @@ impl StrategyServer {
                 target_symbol: params.target_symbol,
                 target_kind: params.target_kind,
                 timestamp: params.timestamp,
-                price: None,
-                price_field: params.price_field.map(to_price_reference_field),
+                price: params
+                    .price_field
+                    .map(to_price_reference_field)
+                    .map(AnnotationPriceInput::Field),
                 text: params.text,
                 status: DEFAULT_ANNOTATION_STATUS.into(),
                 linked_note_id: params.linked_note_id,
@@ -182,28 +184,34 @@ mod tests {
         );
     }
 
-    #[test]
-    fn create_annotation_params_accepts_price_fields_and_rejects_numeric_price() {
-        let required_fields = serde_json::json!({
+    fn required_create_annotation_params() -> serde_json::Value {
+        serde_json::json!({
             "target_symbol": "FICTIONAL-ASSET",
             "target_kind": "sample-tag",
             "timestamp": "2030-01-02T00:00:00Z",
             "text": "sample annotation",
-        });
-        let mut field_params = required_fields.clone();
-        field_params["price_field"] = serde_json::json!("high");
-        let accepted_field = serde_json::from_value::<CreateAnnotationParams>(field_params)
+        })
+    }
+
+    #[test]
+    fn create_annotation_params_accepts_price_field() {
+        let mut params = required_create_annotation_params();
+        params["price_field"] = serde_json::json!("high");
+        let accepted_field = serde_json::from_value::<CreateAnnotationParams>(params)
             .ok()
             .and_then(|params| params.price_field);
 
-        let mut numeric_params = required_fields;
-        numeric_params["price"] = serde_json::json!(123.5);
-        let rejected_numeric_price =
-            serde_json::from_value::<CreateAnnotationParams>(numeric_params).is_err();
+        assert_eq!(accepted_field, Some(AnnotationPriceField::High));
+    }
 
-        assert_eq!(
-            (accepted_field, rejected_numeric_price),
-            (Some(AnnotationPriceField::High), true),
-        );
+    #[test]
+    fn create_annotation_params_rejects_numeric_price() {
+        let mut params = required_create_annotation_params();
+        params["price"] = serde_json::json!(123.5);
+        let parsed = serde_json::from_value::<CreateAnnotationParams>(params)
+            .ok()
+            .map(|_| ());
+
+        assert_eq!(parsed, None);
     }
 }

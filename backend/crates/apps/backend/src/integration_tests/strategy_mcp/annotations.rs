@@ -23,10 +23,10 @@ mod tests {
     async fn create_annotation_then_read_annotations(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "fictional-strategy").await;
         let server = build_server(db.clone());
-        let ts: DateTime<FixedOffset> = "2030-01-02T09:00:00+09:00".parse().expect("ts");
+        let ts: DateTime<FixedOffset> = "2030-01-02T00:00:00+09:00".parse().expect("ts");
         let execution_step_id = Uuid::from_u128(90);
         let evidence_timestamp: DateTime<FixedOffset> =
-            "2030-01-02T00:00:00Z".parse().expect("evidence timestamp");
+            "2030-01-01T00:00:00Z".parse().expect("evidence timestamp");
         strategy_task_step_evidence::Entity::insert(strategy_task_step_evidence::ActiveModel {
             id: Set(Uuid::from_u128(91)),
             execution_step_id: Set(execution_step_id),
@@ -36,14 +36,24 @@ mod tests {
             published_at: Set(Some(evidence_timestamp)),
             effective_at: Set(Some(evidence_timestamp)),
             snapshot: Set(serde_json::json!({
-                "bars": [{
-                    "timestamp": evidence_timestamp,
-                    "open": 11.5,
-                    "high": 13.5,
-                    "low": 10.5,
-                    "close": 12.5,
-                    "volume": 100,
-                }],
+                "bars": [
+                    {
+                        "timestamp": evidence_timestamp,
+                        "open": 11.5,
+                        "high": 13.5,
+                        "low": 10.5,
+                        "close": 12.5,
+                        "volume": 100,
+                    },
+                    {
+                        "timestamp": "2030-01-02T00:00:00Z",
+                        "open": 21.5,
+                        "high": 23.5,
+                        "low": 20.5,
+                        "close": 22.5,
+                        "volume": 200,
+                    },
+                ],
             })),
         })
         .exec(&db)
@@ -119,6 +129,70 @@ mod tests {
                 created_at: ts_sentinel(),
             }],
         );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_annotation_maps_each_price_field_to_its_bar_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "fictional-strategy").await;
+        let server = build_server(db.clone());
+        let execution_step_id = Uuid::from_u128(92);
+        let evidence_timestamp: DateTime<FixedOffset> =
+            "2030-02-02T00:00:00Z".parse().expect("evidence timestamp");
+        strategy_task_step_evidence::Entity::insert(strategy_task_step_evidence::ActiveModel {
+            id: Set(Uuid::from_u128(93)),
+            execution_step_id: Set(execution_step_id),
+            source: Set("query_data".into()),
+            source_ref: Set("FICTIONAL-ASSET".into()),
+            observed_at: Set(evidence_timestamp),
+            published_at: Set(Some(evidence_timestamp)),
+            effective_at: Set(Some(evidence_timestamp)),
+            snapshot: Set(serde_json::json!({
+                "bars": [{
+                    "timestamp": evidence_timestamp,
+                    "open": 11.5,
+                    "high": 13.5,
+                    "low": 10.5,
+                    "close": 12.5,
+                    "volume": 100,
+                }],
+            })),
+        })
+        .exec(&db)
+        .await
+        .expect("seed query data evidence");
+
+        let fields_and_prices = [
+            (AnnotationPriceField::Open, 11.5),
+            (AnnotationPriceField::High, 13.5),
+            (AnnotationPriceField::Low, 10.5),
+            (AnnotationPriceField::Close, 12.5),
+        ];
+        let mut actual_prices = Vec::new();
+        let mut expected_prices = Vec::new();
+        for (field, expected_price) in fields_and_prices {
+            let created = server
+                .create_annotation(
+                    strategy_id,
+                    Some(execution_step_id),
+                    None,
+                    CreateAnnotationParams {
+                        target_symbol: "FICTIONAL-ASSET".into(),
+                        target_kind: "sample-tag".into(),
+                        timestamp: evidence_timestamp,
+                        price_field: Some(field),
+                        text: "sample annotation".into(),
+                        linked_note_id: None,
+                    },
+                )
+                .await
+                .expect("create annotation");
+            actual_prices.push(created.annotation.price);
+            expected_prices.push(Some(expected_price));
+        }
+
+        assert_eq!(actual_prices, expected_prices);
     }
 
     #[backend_test_macros::database_test]

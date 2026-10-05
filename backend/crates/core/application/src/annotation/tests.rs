@@ -97,7 +97,6 @@ fn create_command() -> CreateAnnotationCommand {
         target_kind: " test-kind ".into(),
         timestamp: fixed_timestamp(),
         price: None,
-        price_field: None,
         text: "sample text".into(),
         status: "unread".into(),
         linked_note_id: None,
@@ -324,7 +323,7 @@ async fn create_resolves_the_selected_price_field_from_execution_evidence(
     let (use_cases, unit_of_work, repository, _) = build_use_cases_with_evidence(evidence);
     let mut command = create_command();
     command.execution_step_id = Some(step_id);
-    command.price_field = Some(field);
+    command.price = Some(AnnotationPriceInput::Field(field));
 
     let created = use_cases
         .create(command)
@@ -360,7 +359,7 @@ async fn create_rejects_unresolved_price_before_replacing_stale_annotations() {
     let mut command = create_command();
     command.execution_step_id = Some(step_id);
     command.execution_task_id = Some("current-task".into());
-    command.price_field = Some(PriceReferenceField::Close);
+    command.price = Some(AnnotationPriceInput::Field(PriceReferenceField::Close));
 
     let result = use_cases.create(command).await;
     let annotations = repository.annotations.lock().await;
@@ -381,7 +380,63 @@ async fn create_rejects_unresolved_price_before_replacing_stale_annotations() {
 async fn create_rejects_price_field_without_execution_step_before_opening_transaction() {
     let (use_cases, unit_of_work, repository, _) = build_use_cases();
     let mut command = create_command();
-    command.price_field = Some(PriceReferenceField::Close);
+    command.price = Some(AnnotationPriceInput::Field(PriceReferenceField::Close));
+
+    let result = use_cases.create(command).await;
+
+    assert_eq!(
+        (
+            matches!(result, Err(AnnotationUseCaseError::Validation(_))),
+            unit_of_work.begun.lock().await.len(),
+            repository.annotations.lock().await.len(),
+        ),
+        (true, 0, 0),
+    );
+}
+
+#[tokio::test]
+async fn create_resolves_price_using_the_utc_date_of_the_annotation_timestamp() {
+    let step_id = Uuid::from_u128(83);
+    let mut evidence = query_data_evidence(step_id, "FICTIONAL-ASSET");
+    evidence.snapshot = json!({
+        "bars": [
+            {
+                "timestamp": "2030-01-01T00:00:00Z",
+                "open": 11.5,
+                "high": 13.5,
+                "low": 10.5,
+                "close": 12.5,
+                "volume": 100,
+            },
+            {
+                "timestamp": "2030-01-02T00:00:00Z",
+                "open": 21.5,
+                "high": 23.5,
+                "low": 20.5,
+                "close": 22.5,
+                "volume": 200,
+            },
+        ],
+    });
+    let evidence = Arc::new(FakeStrategyTaskStepEvidenceRepository::new(vec![evidence]));
+    let (use_cases, _, _, _) = build_use_cases_with_evidence(evidence);
+    let mut command = create_command();
+    command.execution_step_id = Some(step_id);
+    command.timestamp = "2030-01-02T00:00:00+09:00"
+        .parse()
+        .expect("timestamp with a non-UTC offset");
+    command.price = Some(AnnotationPriceInput::Field(PriceReferenceField::Close));
+
+    let created = use_cases.create(command).await.expect("close resolves");
+
+    assert_eq!(created.price, Some(Decimal::new(125, 1)));
+}
+
+#[tokio::test]
+async fn create_rejects_volume_as_a_price_field_before_opening_transaction() {
+    let (use_cases, unit_of_work, repository, _) = build_use_cases();
+    let mut command = create_command();
+    command.price = Some(AnnotationPriceInput::Field(PriceReferenceField::Volume));
 
     let result = use_cases.create(command).await;
 
