@@ -27,6 +27,7 @@ mod tests {
             body_md: Set("body".into()),
             frontmatter_json: Set(json!({})),
             graphs_json: Set(json!([])),
+            resolved_price_references_json: Set(json!({})),
             status: Set(status.into()),
             is_current: Set(false),
             change_reason: Set(None),

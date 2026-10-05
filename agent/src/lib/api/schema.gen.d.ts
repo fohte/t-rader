@@ -1450,7 +1450,7 @@ export interface components {
     CreateNoteRequest: {
       /**
        * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-       *     `@current` を付けると以降の現行バージョンに追従する。
+       *     `@current` を付けると以降の現行バージョンに追従する。価格リンクは実行ステップの query_data から解決する。
        */
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
@@ -1685,6 +1685,8 @@ export interface components {
       id: string
       is_current: boolean
       kind?: string | null
+      /** @description 本文中の価格リンクを key、実行データから解決した値を value とする。 */
+      resolved_price_references_json: components['schemas']['Value']
       status: string
       tags: string[]
       title: string
@@ -1744,6 +1746,8 @@ export interface components {
       is_current: boolean
       /** Format: uuid */
       note_id: string
+      /** @description 本文中の価格リンクを key、実行データから解決した値を value とする。 */
+      resolved_price_references_json: components['schemas']['Value']
       /** Format: date-time */
       reviewed_at?: string | null
       status: string
@@ -2135,7 +2139,7 @@ export interface components {
     UpdateNoteRequest: {
       /**
        * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-       *     `@current` を付けると以降の現行バージョンに追従する。
+       *     `@current` を付けると以降の現行バージョンに追従する。価格リンクは元の実行ステップの query_data から解決する。
        */
       body_md?: string | null
       frontmatter_json?: {

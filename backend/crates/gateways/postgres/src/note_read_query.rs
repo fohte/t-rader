@@ -283,6 +283,7 @@ fn to_version(model: note_version::Model) -> NoteVersion {
         body_md: model.body_md,
         frontmatter_json: model.frontmatter_json,
         graphs_json: model.graphs_json,
+        resolved_price_references_json: model.resolved_price_references_json,
         status: model.status,
         is_current: model.is_current,
         change_reason: model.change_reason,

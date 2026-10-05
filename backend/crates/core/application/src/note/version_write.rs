@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, HashSet};
 
 use chrono::Utc;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
 use crate::note::types::{NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate};
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
+use crate::strategy_task_step_evidence::{
+    StrategyTaskStepEvidence, StrategyTaskStepEvidenceUseCaseError,
+};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 const APPROVED_NOTE_STATUS: &str = "approved";
@@ -39,6 +42,7 @@ impl NoteUseCases {
             .repository
             .find_latest_version(transaction, note.id)
             .await?;
+        let previous_content = current.as_ref().or(latest.as_ref());
         let requires_approval = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
             false
         } else if let Some(kind_key) = note.kind.as_deref() {
@@ -61,6 +65,46 @@ impl NoteUseCases {
                 "change_reason is required for updates to this note kind".into(),
             ));
         }
+
+        let references =
+            core_domain::note_price_reference::extract_note_price_references(&content.body_md)
+                .map_err(|errors| {
+                    NoteUseCaseError::Validation(
+                        core_domain::note_reference::format_note_token_errors(&errors),
+                    )
+                })?;
+        let body_changed = previous_content
+            .as_ref()
+            .is_none_or(|previous| previous.body_md != content.body_md);
+        let resolved_price_references_json = if references.is_empty() {
+            Value::Object(Map::new())
+        } else if content.execution_id.is_none()
+            && !body_changed
+            && previous_content.is_some_and(|previous| {
+                has_resolutions(&previous.resolved_price_references_json, &references)
+            })
+        {
+            previous_content
+                .map(|previous| previous.resolved_price_references_json.clone())
+                .unwrap_or_else(|| Value::Object(Map::new()))
+        } else {
+            let stored_execution_id = content
+                .execution_id
+                .as_deref()
+                .or_else(|| previous_content.and_then(|previous| previous.execution_id.as_deref()));
+            let evidence_execution_id = if let Some(execution_id) = stored_execution_id {
+                Some(execution_id.to_string())
+            } else {
+                self.infer_price_reference_execution_id(transaction, previous_content)
+                    .await?
+            };
+            self.resolve_price_references(
+                transaction,
+                &references,
+                evidence_execution_id.as_deref(),
+            )
+            .await?
+        };
 
         let becomes_current = !requires_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
@@ -99,6 +143,7 @@ impl NoteUseCases {
                     body_md: content.body_md,
                     frontmatter_json: content.frontmatter_json,
                     graphs_json: content.graphs_json,
+                    resolved_price_references_json,
                     status: status.to_string(),
                     is_current: becomes_current,
                     change_reason: content.change_reason,
@@ -112,10 +157,6 @@ impl NoteUseCases {
             .update_note_timestamp(transaction, note.id, Utc::now().fixed_offset())
             .await?;
 
-        let previous_content = current.as_ref().or(latest.as_ref());
-        let body_changed = previous_content
-            .as_ref()
-            .is_none_or(|previous| previous.body_md != version.body_md);
         let graphs_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.graphs_json != version.graphs_json);
@@ -176,6 +217,78 @@ impl NoteUseCases {
         .await?;
 
         Ok(version)
+    }
+
+    async fn resolve_price_references(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        references: &[core_domain::note_price_reference::NotePriceReferenceToken],
+        execution_id: Option<&str>,
+    ) -> Result<Value, NoteUseCaseError> {
+        if references.is_empty() {
+            return Ok(Value::Object(Map::new()));
+        }
+
+        let execution_step_id = execution_id
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or_else(|| {
+                NoteUseCaseError::Validation(
+                    "価格参照の解決には実行ステップの query_data が必要です".into(),
+                )
+            })?;
+        let mut evidence_by_instrument = BTreeMap::new();
+        let mut values = Map::new();
+        for token in references {
+            let instrument_id = reference_instrument_id(&token.reference);
+            if !evidence_by_instrument.contains_key(instrument_id) {
+                let evidence = self
+                    .strategy_task_step_evidence
+                    .find_query_data(transaction, execution_step_id, instrument_id)
+                    .await
+                    .map_err(StrategyTaskStepEvidenceUseCaseError::from)?;
+                evidence_by_instrument.insert(instrument_id.to_string(), evidence);
+            }
+            let evidence = &evidence_by_instrument[instrument_id];
+            let (value, evidence_id) = resolve_reference_value(&token.reference, evidence)
+                .ok_or_else(|| {
+                    NoteUseCaseError::Validation(format!(
+                        "価格参照 {0} を実行ステップの query_data から解決できません",
+                        token.token
+                    ))
+                })?;
+            values.insert(
+                token.token.clone(),
+                json!({
+                    "value": value,
+                    "evidence_id": evidence_id,
+                }),
+            );
+        }
+
+        Ok(Value::Object(values))
+    }
+
+    async fn infer_price_reference_execution_id(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        previous_version: Option<&NoteVersion>,
+    ) -> Result<Option<String>, NoteUseCaseError> {
+        let evidence_id = previous_version.and_then(|version| {
+            version
+                .resolved_price_references_json
+                .as_object()?
+                .values()
+                .find_map(|value| value.get("evidence_id")?.as_str()?.parse::<Uuid>().ok())
+        });
+        let Some(evidence_id) = evidence_id else {
+            return Ok(None);
+        };
+        let evidence = self
+            .strategy_task_step_evidence
+            .find_query_data_by_evidence_id(transaction, evidence_id)
+            .await
+            .map_err(StrategyTaskStepEvidenceUseCaseError::from)?;
+        Ok(evidence.map(|evidence| evidence.execution_step_id.to_string()))
     }
 
     pub(super) async fn sync_note_references(
@@ -274,5 +387,71 @@ impl NoteUseCases {
             .insert_note_links(transaction, links)
             .await?;
         Ok(())
+    }
+}
+
+fn has_resolutions(
+    resolved: &Value,
+    references: &[core_domain::note_price_reference::NotePriceReferenceToken],
+) -> bool {
+    let Some(resolved) = resolved.as_object() else {
+        return false;
+    };
+    let expected_tokens: HashSet<_> = references
+        .iter()
+        .map(|reference| reference.token.as_str())
+        .collect();
+    resolved.len() == expected_tokens.len()
+        && expected_tokens.iter().all(|token| {
+            resolved
+                .get(*token)
+                .and_then(Value::as_object)
+                .is_some_and(|entry| {
+                    entry.get("value").is_some_and(|value| !value.is_null())
+                        && entry
+                            .get("evidence_id")
+                            .and_then(Value::as_str)
+                            .and_then(|id| Uuid::parse_str(id).ok())
+                            .is_some()
+                })
+        })
+}
+
+fn reference_instrument_id(
+    reference: &core_domain::note_price_reference::NotePriceReference,
+) -> &str {
+    match reference {
+        core_domain::note_price_reference::NotePriceReference::Price { instrument_id, .. }
+        | core_domain::note_price_reference::NotePriceReference::Change { instrument_id, .. } => {
+            instrument_id
+        }
+    }
+}
+
+fn resolve_reference_value(
+    reference: &core_domain::note_price_reference::NotePriceReference,
+    evidence: &[StrategyTaskStepEvidence],
+) -> Option<(Value, Uuid)> {
+    use core_domain::note_price_reference::NotePriceReference;
+
+    match reference {
+        NotePriceReference::Price { date, field, .. } => {
+            evidence.iter().rev().find_map(|snapshot| {
+                snapshot
+                    .query_data_bar_value(*date, *field)
+                    .map(|value| (value, snapshot.id))
+            })
+        }
+        NotePriceReference::Change {
+            start, end, field, ..
+        } => evidence.iter().rev().find_map(|snapshot| {
+            let start = snapshot.query_data_bar_value(*start, *field)?.as_f64()?;
+            let end = snapshot.query_data_bar_value(*end, *field)?.as_f64()?;
+            if start == 0.0 {
+                return None;
+            }
+            serde_json::Number::from_f64((end - start) / start * 100.0)
+                .map(|value| (Value::Number(value), snapshot.id))
+        }),
     }
 }

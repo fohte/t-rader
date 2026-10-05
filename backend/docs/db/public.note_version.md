@@ -6,22 +6,23 @@
 
 ## Columns
 
-| Name             | Type                     | Default           | Nullable | Children                                                                          | Parents                       | Comment                                  |
-| ---------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------- |
-| id               | uuid                     | gen_random_uuid() | false    | [public.trade_note](public.trade_note.md) [public.note_link](public.note_link.md) |                               |                                          |
-| note_id          | uuid                     |                   | false    |                                                                                   | [public.note](public.note.md) | このバージョンが属するノート。           |
-| version_no       | integer                  |                   | false    |                                                                                   |                               | ノート内で連番となるバージョン番号。     |
-| title            | text                     |                   | false    |                                                                                   |                               | ノートのタイトル。                       |
-| body_md          | text                     |                   | false    |                                                                                   |                               | ノート本文の Markdown。                  |
-| frontmatter_json | jsonb                    | '{}'::jsonb       | false    |                                                                                   |                               | ノートに付随する構造化メタデータ。       |
-| graphs_json      | jsonb                    | '[]'::jsonb       | false    |                                                                                   |                               | ノートに付随するグラフ定義の配列。       |
-| status           | text                     | 'unread'::text    | false    |                                                                                   |                               | このバージョンのレビュー状態。           |
-| is_current       | boolean                  | false             | false    |                                                                                   |                               | ノートの現行バージョンかどうか。         |
-| change_reason    | text                     |                   | true     |                                                                                   |                               | バージョン更新の理由。                   |
-| created_by_kind  | text                     |                   | false    |                                                                                   |                               | バージョンを作成した主体の種別。         |
-| execution_id     | text                     |                   | true     |                                                                                   |                               | バージョンを作成したタスク実行の識別子。 |
-| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                   |                               |                                          |
-| reviewed_at      | timestamp with time zone |                   | true     |                                                                                   |                               | このバージョンをレビューした時刻。       |
+| Name                           | Type                     | Default           | Nullable | Children                                                                          | Parents                       | Comment                                            |
+| ------------------------------ | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------- | ----------------------------- | -------------------------------------------------- |
+| id                             | uuid                     | gen_random_uuid() | false    | [public.trade_note](public.trade_note.md) [public.note_link](public.note_link.md) |                               |                                                    |
+| note_id                        | uuid                     |                   | false    |                                                                                   | [public.note](public.note.md) | このバージョンが属するノート。                     |
+| version_no                     | integer                  |                   | false    |                                                                                   |                               | ノート内で連番となるバージョン番号。               |
+| title                          | text                     |                   | false    |                                                                                   |                               | ノートのタイトル。                                 |
+| body_md                        | text                     |                   | false    |                                                                                   |                               | ノート本文の Markdown。                            |
+| frontmatter_json               | jsonb                    | '{}'::jsonb       | false    |                                                                                   |                               | ノートに付随する構造化メタデータ。                 |
+| graphs_json                    | jsonb                    | '[]'::jsonb       | false    |                                                                                   |                               | ノートに付随するグラフ定義の配列。                 |
+| status                         | text                     | 'unread'::text    | false    |                                                                                   |                               | このバージョンのレビュー状態。                     |
+| is_current                     | boolean                  | false             | false    |                                                                                   |                               | ノートの現行バージョンかどうか。                   |
+| change_reason                  | text                     |                   | true     |                                                                                   |                               | バージョン更新の理由。                             |
+| created_by_kind                | text                     |                   | false    |                                                                                   |                               | バージョンを作成した主体の種別。                   |
+| execution_id                   | text                     |                   | true     |                                                                                   |                               | バージョンを作成したタスク実行の識別子。           |
+| created_at                     | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                   |                               |                                                    |
+| reviewed_at                    | timestamp with time zone |                   | true     |                                                                                   |                               | このバージョンをレビューした時刻。                 |
+| resolved_price_references_json | jsonb                    | '{}'::jsonb       | false    |                                                                                   |                               | 本文中の価格参照リンクと実行時に解決した値の対応。 |
 
 ## Constraints
 
@@ -65,6 +66,7 @@ erDiagram
   text execution_id
   timestamp_with_time_zone created_at
   timestamp_with_time_zone reviewed_at
+  jsonb resolved_price_references_json
 }
 "public.trade_note" {
   uuid trade_id FK

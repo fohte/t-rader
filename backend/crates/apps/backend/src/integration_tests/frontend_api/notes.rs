@@ -17,7 +17,9 @@ mod tests {
     use core_application::strategy_task::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
-    use gateway_postgres::entities::{change_history, comment, note, note_version};
+    use gateway_postgres::entities::{
+        change_history, comment, note, note_version, strategy_task_step_evidence,
+    };
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::sea_query::Expr;
@@ -30,7 +32,7 @@ mod tests {
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
 
     fn normalize_note_version(mut value: Value) -> Value {
@@ -50,6 +52,7 @@ mod tests {
             "title": format!("version {version_no}"),
             "body_md": "body",
             "frontmatter_json": {},
+            "resolved_price_references_json": {},
             "graphs_json": [],
             "status": status,
             "is_current": is_current,
@@ -101,6 +104,7 @@ mod tests {
                     "title": title,
                     "body_md": body_md,
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "tags": [],
                     "kind": null,
                     "status": if created_by_kind == "human" { "approved" } else { "unread" },
@@ -151,6 +155,7 @@ mod tests {
             body_md: Set("body".into()),
             frontmatter_json: Set(json!({})),
             graphs_json: Set(json!([])),
+            resolved_price_references_json: Set(json!({})),
             status: Set(status.into()),
             is_current: Set(is_current),
             change_reason: Set(None),
@@ -279,6 +284,7 @@ mod tests {
                     "title": "市況ノート",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "tags": [],
                     "graphs_json": [],
                     "kind": null,
@@ -331,6 +337,7 @@ mod tests {
                     "title": "tagged note",
                     "body_md": "body",
                     "frontmatter_json": { "tags": ["demo-focus", "demo-review"] },
+                    "resolved_price_references_json": {},
                     "tags": ["demo-focus", "demo-review"],
                     "kind": null,
                     "status": "approved",
@@ -375,6 +382,7 @@ mod tests {
                     "title": "tagged note",
                     "body_md": "body",
                     "frontmatter_json": { "tags": ["sample-label"] },
+                    "resolved_price_references_json": {},
                     "tags": ["sample-label"],
                     "kind": null,
                     "status": "approved",
@@ -439,6 +447,7 @@ mod tests {
                     "title": "sample note",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "tags": [],
                     "kind": null,
                     "status": "approved",
@@ -686,6 +695,137 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn update_note_rejects_unresolved_price_links_and_keeps_original_body(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let note_id = create_test_note_with_body(&server, "title", "original").await;
+
+        let res = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({
+                "body_md": "[[price:fictional-code@2030-01-02:close]]",
+            }))
+            .await;
+        let response = res.json::<Value>();
+        let saved_body = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .map(|version| version.body_md);
+
+        assert_eq!(
+            (res.status_code(), response, saved_body),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({
+                    "error": "価格参照の解決には実行ステップの query_data が必要です",
+                }),
+                Some("original".to_string()),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_note_saves_resolved_price_values_and_keeps_links_in_the_body(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let note_id = create_test_note_with_body(&server, "title", "original").await;
+        let source_version = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .expect("the note has a current version");
+        let execution_step_id = Uuid::from_u128(902);
+        set_test_note_version_execution_id(&db, source_version.id, execution_step_id).await;
+        strategy_task_step_evidence::Entity::insert(strategy_task_step_evidence::ActiveModel {
+            id: Set(Uuid::from_u128(903)),
+            execution_step_id: Set(execution_step_id),
+            source: Set("query_data".into()),
+            source_ref: Set("fictional-code".into()),
+            observed_at: Set(chrono::DateTime::parse_from_rfc3339("2030-01-04T00:00:00Z")
+                .expect("observed timestamp")),
+            published_at: Set(None),
+            effective_at: Set(None),
+            snapshot: Set(json!({
+                "instrument_id": "fictional-code",
+                "bars": [{
+                    "timestamp": "2030-01-02T00:00:00Z",
+                    "open": 9.0,
+                    "high": 11.0,
+                    "low": 8.0,
+                    "close": 10.0,
+                    "volume": 100,
+                }],
+            })),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert query data evidence");
+        let link = "[[price:fictional-code@2030-01-02:close]]";
+
+        let response = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({ "body_md": link }))
+            .await;
+        let saved_version = find_current_note_version(&db, note_id)
+            .await
+            .unwrap()
+            .map(|version| {
+                (
+                    version.body_md,
+                    version.resolved_price_references_json,
+                    version.execution_id,
+                )
+            });
+
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_note_response(response.json()),
+                saved_version,
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<id>",
+                    "version_id": "<version_id>",
+                    "version_no": 2,
+                    "is_current": true,
+                    "title": "title",
+                    "body_md": link,
+                    "frontmatter_json": {},
+                    "resolved_price_references_json": {
+                        "[[price:fictional-code@2030-01-02:close]]": {
+                            "value": 10.0,
+                            "evidence_id": Uuid::from_u128(903).to_string(),
+                        },
+                    },
+                    "tags": [],
+                    "kind": null,
+                    "status": "approved",
+                    "trigger": null,
+                    "trigger_label": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "graphs_json": [],
+                    "execution_id": null,
+                }),
+                Some((
+                    link.to_string(),
+                    json!({
+                        "[[price:fictional-code@2030-01-02:close]]": {
+                            "value": 10.0,
+                            "evidence_id": Uuid::from_u128(903).to_string(),
+                        },
+                    }),
+                    None,
+                )),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn update_note_rejects_non_string_tags_and_keeps_original_frontmatter(
         db: gateway_postgres::DatabaseHandle,
     ) {
@@ -752,6 +892,7 @@ mod tests {
                     "title": "sample title",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "graphs_json": [],
                     "status": "rejected",
                     "is_current": true,
@@ -803,6 +944,7 @@ mod tests {
                     "title": "sample title",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "graphs_json": [],
                     "status": "rejected",
                     "is_current": true,
@@ -887,6 +1029,7 @@ mod tests {
                     "title": "sample title",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "graphs_json": [],
                     "status": "rejected",
                     "is_current": false,
@@ -947,6 +1090,7 @@ mod tests {
                     "title": "t",
                     "body_md": "body",
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "graphs_json": [],
                     "status": "rejected",
                     "is_current": true,
@@ -1111,6 +1255,7 @@ mod tests {
                         line two
                         line three"},
                     "frontmatter_json": {},
+                    "resolved_price_references_json": {},
                     "tags": [],
                     "kind": null,
                     "status": "approved",

@@ -28,6 +28,8 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     title: overrides.title ?? 'title',
     body_md: overrides.body_md ?? 'body',
     frontmatter_json: overrides.frontmatter_json ?? {},
+    resolved_price_references_json:
+      overrides.resolved_price_references_json ?? {},
     graphs_json: overrides.graphs_json ?? [],
     tags: overrides.tags ?? [],
     kind: overrides.kind ?? null,

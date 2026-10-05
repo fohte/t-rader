@@ -2,6 +2,7 @@ use thiserror::Error;
 
 use crate::change_history::ChangeHistoryError;
 use crate::note::repository::NoteRepositoryError;
+use crate::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCaseError;
 use crate::unit_of_work::UnitOfWorkError;
 
 #[derive(Debug, Error)]
@@ -22,4 +23,6 @@ pub enum NoteUseCaseError {
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]
     ChangeHistory(#[from] ChangeHistoryError),
+    #[error(transparent)]
+    StrategyTaskStepEvidence(#[from] StrategyTaskStepEvidenceUseCaseError),
 }

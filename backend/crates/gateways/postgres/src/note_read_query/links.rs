@@ -340,6 +340,7 @@ mod tests {
             body_md: Set("Sample body".to_string()),
             frontmatter_json: Set(serde_json::json!({})),
             graphs_json: Set(serde_json::json!([])),
+            resolved_price_references_json: Set(serde_json::json!({})),
             status: Set("approved".to_string()),
             is_current: Set(is_current),
             change_reason: Set(None),

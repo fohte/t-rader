@@ -119,6 +119,7 @@ comments:
       body_md: 'ノート本文の Markdown。'
       frontmatter_json: 'ノートに付随する構造化メタデータ。'
       graphs_json: 'ノートに付随するグラフ定義の配列。'
+      resolved_price_references_json: '本文中の価格参照リンクと実行時に解決した値の対応。'
       status: 'このバージョンのレビュー状態。'
       is_current: 'ノートの現行バージョンかどうか。'
       change_reason: 'バージョン更新の理由。'

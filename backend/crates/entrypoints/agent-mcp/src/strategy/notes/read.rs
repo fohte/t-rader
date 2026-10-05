@@ -240,6 +240,7 @@ mod tests {
                     body_md: "Example body".into(),
                     frontmatter_json: json!({ "tags": ["demo-focus"] }),
                     graphs_json: json!([]),
+                    resolved_price_references_json: json!({}),
                     status: "approved".into(),
                     is_current: true,
                     change_reason: None,

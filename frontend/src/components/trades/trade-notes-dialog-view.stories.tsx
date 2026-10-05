@@ -33,6 +33,7 @@ function noteStub(id: string, title: string): Note {
     title,
     body_md: '検証用のメモです。',
     frontmatter_json: {},
+    resolved_price_references_json: {},
     graphs_json: [],
     tags: [],
     status: 'unread',

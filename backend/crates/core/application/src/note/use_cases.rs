@@ -5,6 +5,7 @@ use crate::change_history::{ChangeHistoryRecord, Op, SharedChangeHistoryPort, Ta
 use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
 use crate::note::types::{Note, NoteSnapshot};
+use crate::strategy_task_step_evidence::SharedStrategyTaskStepEvidenceRepository;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 pub(super) fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCaseError> {
@@ -22,6 +23,7 @@ pub struct NoteUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) repository: SharedNoteRepository,
     pub(super) change_history: SharedChangeHistoryPort,
+    pub(super) strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
 }
 
 impl NoteUseCases {
@@ -29,11 +31,13 @@ impl NoteUseCases {
         unit_of_work: SharedUnitOfWork,
         repository: SharedNoteRepository,
         change_history: SharedChangeHistoryPort,
+        strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
             change_history,
+            strategy_task_step_evidence,
         }
     }
 

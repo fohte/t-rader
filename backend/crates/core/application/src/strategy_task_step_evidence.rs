@@ -2,17 +2,19 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
-use serde::Serialize;
+use core_domain::note_price_reference::PriceReferenceField;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
+use crate::unit_of_work::UnitOfWorkTransaction;
 
 /// evidence snapshot の肥大化を防ぐため、日足で約 20 年分に制限する。
 const MAX_SNAPSHOT_BARS: usize = 5_000;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct QueryDataBar {
     pub timestamp: DateTime<FixedOffset>,
     pub open: f64,
@@ -35,10 +37,40 @@ pub struct StrategyTaskStepEvidence {
     pub snapshot: serde_json::Value,
 }
 
+impl StrategyTaskStepEvidence {
+    pub fn query_data_bar_value(
+        &self,
+        date: NaiveDate,
+        field: PriceReferenceField,
+    ) -> Option<serde_json::Value> {
+        let snapshot: QueryDataSnapshotBars = serde_json::from_value(self.snapshot.clone()).ok()?;
+        let bar = snapshot
+            .bars
+            .iter()
+            .find(|bar| bar.timestamp.date_naive() == date)?;
+
+        match field {
+            PriceReferenceField::Open => serde_json::Number::from_f64(bar.open),
+            PriceReferenceField::High => serde_json::Number::from_f64(bar.high),
+            PriceReferenceField::Low => serde_json::Number::from_f64(bar.low),
+            PriceReferenceField::Close => serde_json::Number::from_f64(bar.close),
+            PriceReferenceField::Volume => Some(bar.volume.into()),
+        }
+        .map(serde_json::Value::Number)
+    }
+}
+
+#[derive(Deserialize)]
+struct QueryDataSnapshotBars {
+    bars: Vec<QueryDataBar>,
+}
+
 #[derive(Debug, Error)]
 pub enum StrategyTaskStepEvidenceRepositoryError {
     #[error(transparent)]
     Database(#[from] PersistenceError),
+    #[error("transaction has an unexpected type")]
+    InvalidTransaction,
 }
 
 #[async_trait]
@@ -47,6 +79,87 @@ pub trait StrategyTaskStepEvidenceRepository: Send + Sync {
         &self,
         evidence: StrategyTaskStepEvidence,
     ) -> Result<(), StrategyTaskStepEvidenceRepositoryError>;
+    async fn find_query_data(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        execution_step_id: Uuid,
+        instrument_id: &str,
+    ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>;
+    async fn find_query_data_by_evidence_id(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        evidence_id: Uuid,
+    ) -> Result<Option<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>;
+}
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub(crate) struct FakeStrategyTaskStepEvidenceRepository {
+    records: std::sync::Arc<std::sync::Mutex<Vec<StrategyTaskStepEvidence>>>,
+}
+
+#[cfg(test)]
+impl FakeStrategyTaskStepEvidenceRepository {
+    pub(crate) fn new(records: Vec<StrategyTaskStepEvidence>) -> Self {
+        Self {
+            records: std::sync::Arc::new(std::sync::Mutex::new(records)),
+        }
+    }
+
+    fn with_records<T>(
+        &self,
+        operation: impl FnOnce(&mut Vec<StrategyTaskStepEvidence>) -> T,
+    ) -> T {
+        let mut records = self
+            .records
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        operation(&mut records)
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl StrategyTaskStepEvidenceRepository for FakeStrategyTaskStepEvidenceRepository {
+    async fn insert(
+        &self,
+        evidence: StrategyTaskStepEvidence,
+    ) -> Result<(), StrategyTaskStepEvidenceRepositoryError> {
+        self.with_records(|records| records.push(evidence));
+        Ok(())
+    }
+
+    async fn find_query_data(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        execution_step_id: Uuid,
+        instrument_id: &str,
+    ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError> {
+        Ok(self.with_records(|records| {
+            records
+                .iter()
+                .filter(|evidence| {
+                    evidence.execution_step_id == execution_step_id
+                        && evidence.source == "query_data"
+                        && evidence.source_ref == instrument_id
+                })
+                .cloned()
+                .collect()
+        }))
+    }
+
+    async fn find_query_data_by_evidence_id(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        evidence_id: Uuid,
+    ) -> Result<Option<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError> {
+        Ok(self.with_records(|records| {
+            records
+                .iter()
+                .find(|evidence| evidence.id == evidence_id && evidence.source == "query_data")
+                .cloned()
+        }))
+    }
 }
 
 pub type SharedStrategyTaskStepEvidenceRepository =
@@ -113,7 +226,7 @@ impl StrategyTaskStepEvidenceUseCases {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     use chrono::{DateTime, NaiveDate};
     use rstest::rstest;
@@ -121,26 +234,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        MAX_SNAPSHOT_BARS, QueryDataBar, SharedStrategyTaskStepEvidenceRepository,
-        StrategyTaskStepEvidence, StrategyTaskStepEvidenceRepository,
-        StrategyTaskStepEvidenceRepositoryError, StrategyTaskStepEvidenceUseCases,
+        FakeStrategyTaskStepEvidenceRepository, MAX_SNAPSHOT_BARS, QueryDataBar,
+        SharedStrategyTaskStepEvidenceRepository, StrategyTaskStepEvidence,
+        StrategyTaskStepEvidenceUseCases,
     };
-
-    #[derive(Clone, Default)]
-    struct FakeRepository {
-        records: Arc<Mutex<Vec<StrategyTaskStepEvidence>>>,
-    }
-
-    #[async_trait::async_trait]
-    impl StrategyTaskStepEvidenceRepository for FakeRepository {
-        async fn insert(
-            &self,
-            evidence: StrategyTaskStepEvidence,
-        ) -> Result<(), StrategyTaskStepEvidenceRepositoryError> {
-            self.records.lock().expect("record lock").push(evidence);
-            Ok(())
-        }
-    }
 
     fn bar_at(offset: i64) -> QueryDataBar {
         let base = DateTime::parse_from_rfc3339("2030-01-01T00:00:00Z").expect("base timestamp");
@@ -170,7 +267,7 @@ mod tests {
         #[case] first_expected_bar: usize,
         #[case] truncated: bool,
     ) {
-        let repository = FakeRepository::default();
+        let repository = FakeStrategyTaskStepEvidenceRepository::default();
         let repository_for_use_case: SharedStrategyTaskStepEvidenceRepository =
             Arc::new(repository.clone());
         let use_cases = StrategyTaskStepEvidenceUseCases::new(repository_for_use_case);
