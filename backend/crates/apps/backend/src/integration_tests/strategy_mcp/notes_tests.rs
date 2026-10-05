@@ -219,7 +219,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_creates_then_read_note_returns_it(db: gateway_postgres::DatabaseHandle) {
+    async fn write_note_returns_warnings_and_saves_bare_values(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db);
@@ -231,7 +233,7 @@ mod tests {
                 WriteNoteParams {
                     note_id: None,
                     title: Some("first note".into()),
-                    body_md: Some("body".into()),
+                    body_md: Some("close 12,345円 then -6.0%".into()),
                     kind: Some(Some("sample-kind".into())),
                     frontmatter_json: None,
                     change_reason: None,
@@ -240,7 +242,17 @@ mod tests {
             )
             .await
             .expect("write_note");
-        assert!(written.created);
+        assert_eq!(
+            written,
+            WriteNoteResult {
+                note_id: written.note_id,
+                created: true,
+                warnings: vec![
+                    "価格候補の数値「12,345円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                    "相対表現「-6.0%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                ],
+            },
+        );
 
         let read = server
             .read_note(
@@ -260,7 +272,7 @@ mod tests {
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "first note".into(),
-                body_md: Some("body".into()),
+                body_md: Some("close 12,345円 then -6.0%".into()),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: Some("sample-kind".into()),
@@ -498,6 +510,7 @@ mod tests {
                 WriteNoteResult {
                     note_id: created.note_id,
                     created: false,
+                    warnings: vec![],
                 },
                 "case {label}",
             );
@@ -562,6 +575,7 @@ mod tests {
             super::super::dto::WriteNoteResult {
                 note_id,
                 created: false,
+                warnings: vec![],
             },
         );
 
@@ -1988,6 +2002,7 @@ mod tests {
             WriteNoteResult {
                 note_id: first.note_id,
                 created: false,
+                warnings: vec![],
             },
         );
 
@@ -2205,6 +2220,7 @@ mod tests {
             WriteNoteResult {
                 note_id: note_a.note_id,
                 created: false,
+                warnings: vec![],
             },
         );
 

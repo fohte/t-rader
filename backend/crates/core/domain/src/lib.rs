@@ -8,6 +8,7 @@ pub mod holdings;
 pub mod indicator_observation;
 pub mod instrument;
 pub mod margin;
+pub mod note_body_warning;
 pub mod note_graph;
 pub mod note_price_reference;
 pub mod note_reference;

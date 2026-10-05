@@ -142,6 +142,7 @@ pub struct WriteNoteParams {
 pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

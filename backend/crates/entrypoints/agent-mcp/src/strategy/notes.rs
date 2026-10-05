@@ -127,6 +127,9 @@ impl StrategyServer {
         Ok(WriteNoteResult {
             note_id: result.note_id,
             created: result.created,
+            warnings: core_domain::note_body_warning::scan_note_body_warnings(
+                &result.snapshot.version.body_md,
+            ),
         })
     }
 }

@@ -6,6 +6,7 @@ use super::note_graph::GraphDef;
 
 mod markdown;
 
+pub(crate) use markdown::prose_segments;
 pub(crate) use markdown::tokens_outside_code;
 pub use markdown::{NoteToken, extract_tokens};
 
