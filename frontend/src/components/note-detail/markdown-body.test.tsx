@@ -112,6 +112,52 @@ describe('MarkdownBody', () => {
     expect(screen.getByText('未知 [[foo:bar]] は素通り')).toBeInTheDocument()
   })
 
+  it('renders resolved price and change references inline', () => {
+    const { container } = render(
+      <MarkdownBody
+        source="終値 [[price:fictional-code@2030-01-02:close]]、変化 [[change:fictional-code@2030-01-02..2030-01-03:close]]、未解決 [[price:fictional-code@2030-01-04:close]]"
+        resolvedPriceReferences={{
+          '[[price:fictional-code@2030-01-02:close]]': {
+            value: 1234.5,
+            evidence_id: '00000000-0000-0000-0000-000000000001',
+          },
+          '[[change:fictional-code@2030-01-02..2030-01-03:close]]': {
+            value: 2.5,
+            evidence_id: '00000000-0000-0000-0000-000000000002',
+          },
+        }}
+      />,
+    )
+
+    expect(container.textContent).toBe(
+      '終値 1,234.5、変化 +2.5%、未解決 [[price:fictional-code@2030-01-04:close]]',
+    )
+  })
+
+  it.each([
+    { name: 'missing entry', references: {} },
+    {
+      name: 'non-numeric value',
+      references: {
+        '[[price:fictional-code@2030-01-02:close]]': { value: '1234.5' },
+      },
+    },
+  ])(
+    'leaves an unresolved price reference visible ($name)',
+    ({ references }) => {
+      const { container } = render(
+        <MarkdownBody
+          source="価格 [[price:fictional-code@2030-01-02:close]]"
+          resolvedPriceReferences={references}
+        />,
+      )
+
+      expect(container.textContent).toBe(
+        '価格 [[price:fictional-code@2030-01-02:close]]',
+      )
+    },
+  )
+
   it('renders a graph in place of a standalone [[graph:xxx]] token', () => {
     render(
       <MarkdownBody
