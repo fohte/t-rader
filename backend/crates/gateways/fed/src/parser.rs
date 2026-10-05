@@ -106,9 +106,13 @@ fn parse_statement_date(
     }
 
     let date_range = date_text.trim().trim_end_matches('*').trim();
-    let (start_day_text, end_day_text) = date_range
-        .split_once('-')
-        .ok_or_else(|| parse_error(format!("invalid Federal Reserve meeting date: {date_text}")))?;
+    let Some((start_day_text, end_day_text)) = date_range.split_once('-') else {
+        let day_text = date_range.split_whitespace().next().unwrap_or_default();
+        let day = parse_day(day_text, date_text)?;
+        return NaiveDate::from_ymd_opt(year, start_month, day).ok_or_else(|| {
+            parse_error(format!("invalid Federal Reserve meeting date: {date_text}"))
+        });
+    };
     let start_day = parse_day(start_day_text, date_text)?;
     let end_day = parse_day(end_day_text, date_text)?;
     let end_month = explicit_end_month.unwrap_or_else(|| {
@@ -272,36 +276,50 @@ mod tests {
         }
     }
 
+    fn expected_calendar_event_batch() -> CalendarEventBatch {
+        CalendarEventBatch {
+            date_range: DateRange {
+                from: date(2026, 10, 5),
+                to: date(2027, 12, 9),
+            },
+            events: vec![
+                event(
+                    date(2026, 10, 28),
+                    date(2026, 10, 29),
+                    utc(2026, 10, 28, 18),
+                ),
+                event(date(2026, 12, 9), date(2026, 12, 10), utc(2026, 12, 9, 19)),
+                event(date(2027, 1, 27), date(2027, 1, 28), utc(2027, 1, 27, 19)),
+                event(date(2027, 3, 17), date(2027, 3, 18), utc(2027, 3, 17, 18)),
+                event(date(2027, 4, 28), date(2027, 4, 29), utc(2027, 4, 28, 18)),
+                event(date(2027, 6, 9), date(2027, 6, 10), utc(2027, 6, 9, 18)),
+                event(date(2027, 7, 28), date(2027, 7, 29), utc(2027, 7, 28, 18)),
+                event(date(2027, 9, 15), date(2027, 9, 16), utc(2027, 9, 15, 18)),
+                event(
+                    date(2027, 10, 27),
+                    date(2027, 10, 28),
+                    utc(2027, 10, 27, 18),
+                ),
+                event(date(2027, 12, 8), date(2027, 12, 9), utc(2027, 12, 8, 19)),
+            ],
+        }
+    }
+
     #[test]
     fn parses_official_meetings_and_converts_eastern_announcement_time_to_tokyo() {
         assert_eq!(
             parse_calendar_event_batch(CALENDAR_FIXTURE, date(2026, 10, 5)),
-            Ok(CalendarEventBatch {
-                date_range: DateRange {
-                    from: date(2026, 10, 5),
-                    to: date(2027, 12, 9),
-                },
-                events: vec![
-                    event(
-                        date(2026, 10, 28),
-                        date(2026, 10, 29),
-                        utc(2026, 10, 28, 18)
-                    ),
-                    event(date(2026, 12, 9), date(2026, 12, 10), utc(2026, 12, 9, 19)),
-                    event(date(2027, 1, 27), date(2027, 1, 28), utc(2027, 1, 27, 19)),
-                    event(date(2027, 3, 17), date(2027, 3, 18), utc(2027, 3, 17, 18)),
-                    event(date(2027, 4, 28), date(2027, 4, 29), utc(2027, 4, 28, 18)),
-                    event(date(2027, 6, 9), date(2027, 6, 10), utc(2027, 6, 9, 18)),
-                    event(date(2027, 7, 28), date(2027, 7, 29), utc(2027, 7, 28, 18)),
-                    event(date(2027, 9, 15), date(2027, 9, 16), utc(2027, 9, 15, 18)),
-                    event(
-                        date(2027, 10, 27),
-                        date(2027, 10, 28),
-                        utc(2027, 10, 27, 18)
-                    ),
-                    event(date(2027, 12, 8), date(2027, 12, 9), utc(2027, 12, 8, 19)),
-                ],
-            }),
+            Ok(expected_calendar_event_batch()),
+        );
+    }
+
+    #[test]
+    fn parses_single_day_unscheduled_rows_in_past_panels() {
+        let html = CALENDAR_FIXTURE.replace("22 (notation vote)", "15 (unscheduled)");
+
+        assert_eq!(
+            parse_calendar_event_batch(&html, date(2026, 10, 5)),
+            Ok(expected_calendar_event_batch()),
         );
     }
 }
