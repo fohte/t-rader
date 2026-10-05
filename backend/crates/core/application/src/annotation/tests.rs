@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
+use core_domain::note_price_reference::PriceReferenceField;
 use rstest::rstest;
+use rust_decimal::Decimal;
 use serde_json::json;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -9,9 +11,23 @@ use uuid::Uuid;
 use super::fake::FakeAnnotationRepository;
 use super::*;
 use crate::change_history::{Actor, FakeChangeHistory, FakeChangeHistoryEntry, Op, TargetKind};
+use crate::strategy_task_step_evidence::{
+    FakeStrategyTaskStepEvidenceRepository, StrategyTaskStepEvidence,
+};
 use crate::unit_of_work::FakeUnitOfWork;
 
 fn build_use_cases() -> (
+    AnnotationUseCases,
+    Arc<FakeUnitOfWork>,
+    Arc<FakeAnnotationRepository>,
+    Arc<FakeChangeHistory>,
+) {
+    build_use_cases_with_evidence(Arc::new(FakeStrategyTaskStepEvidenceRepository::default()))
+}
+
+fn build_use_cases_with_evidence(
+    strategy_task_step_evidence: Arc<FakeStrategyTaskStepEvidenceRepository>,
+) -> (
     AnnotationUseCases,
     Arc<FakeUnitOfWork>,
     Arc<FakeAnnotationRepository>,
@@ -24,6 +40,7 @@ fn build_use_cases() -> (
         unit_of_work.clone(),
         repository.clone(),
         change_history.clone(),
+        strategy_task_step_evidence,
     );
     (use_cases, unit_of_work, repository, change_history)
 }
@@ -50,6 +67,29 @@ fn annotation(id: Uuid, step_id: Uuid, task_id: &str) -> Annotation {
     }
 }
 
+fn query_data_evidence(step_id: Uuid, source_ref: &str) -> StrategyTaskStepEvidence {
+    let timestamp = fixed_timestamp();
+    StrategyTaskStepEvidence {
+        id: Uuid::from_u128(100),
+        execution_step_id: step_id,
+        source: "query_data".into(),
+        source_ref: source_ref.into(),
+        observed_at: timestamp,
+        published_at: Some(timestamp),
+        effective_at: Some(timestamp),
+        snapshot: json!({
+            "bars": [{
+                "timestamp": timestamp,
+                "open": 11.5,
+                "high": 13.5,
+                "low": 10.5,
+                "close": 12.5,
+                "volume": 100,
+            }],
+        }),
+    }
+}
+
 fn create_command() -> CreateAnnotationCommand {
     CreateAnnotationCommand {
         actor: Actor::Llm { label: "analyst" },
@@ -57,6 +97,7 @@ fn create_command() -> CreateAnnotationCommand {
         target_kind: " test-kind ".into(),
         timestamp: fixed_timestamp(),
         price: None,
+        price_field: None,
         text: "sample text".into(),
         status: "unread".into(),
         linked_note_id: None,
@@ -263,6 +304,94 @@ async fn create_rejects_invalid_fields_before_opening_transaction(
     assert_eq!(
         (validation_error, unit_of_work.begun.lock().await.len()),
         (true, 0)
+    );
+}
+
+#[rstest]
+#[case::open(PriceReferenceField::Open, Decimal::new(115, 1))]
+#[case::high(PriceReferenceField::High, Decimal::new(135, 1))]
+#[case::low(PriceReferenceField::Low, Decimal::new(105, 1))]
+#[case::close(PriceReferenceField::Close, Decimal::new(125, 1))]
+#[tokio::test]
+async fn create_resolves_the_selected_price_field_from_execution_evidence(
+    #[case] field: PriceReferenceField,
+    #[case] expected_price: Decimal,
+) {
+    let step_id = Uuid::from_u128(80);
+    let evidence = Arc::new(FakeStrategyTaskStepEvidenceRepository::new(vec![
+        query_data_evidence(step_id, "FICTIONAL-ASSET"),
+    ]));
+    let (use_cases, unit_of_work, repository, _) = build_use_cases_with_evidence(evidence);
+    let mut command = create_command();
+    command.execution_step_id = Some(step_id);
+    command.price_field = Some(field);
+
+    let created = use_cases
+        .create(command)
+        .await
+        .expect("price field resolves");
+    let stored_price = repository
+        .annotations
+        .lock()
+        .await
+        .get(&created.id)
+        .and_then(|annotation| annotation.price);
+
+    assert_eq!(
+        (
+            created.price,
+            stored_price,
+            unit_of_work.committed.lock().await.len()
+        ),
+        (Some(expected_price), Some(expected_price), 1),
+    );
+}
+
+#[tokio::test]
+async fn create_rejects_unresolved_price_before_replacing_stale_annotations() {
+    let step_id = Uuid::from_u128(81);
+    let evidence = Arc::new(FakeStrategyTaskStepEvidenceRepository::default());
+    let (use_cases, unit_of_work, repository, change_history) =
+        build_use_cases_with_evidence(evidence);
+    let stale_id = Uuid::from_u128(82);
+    repository
+        .insert_annotation(annotation(stale_id, step_id, "previous-task"))
+        .await;
+    let mut command = create_command();
+    command.execution_step_id = Some(step_id);
+    command.execution_task_id = Some("current-task".into());
+    command.price_field = Some(PriceReferenceField::Close);
+
+    let result = use_cases.create(command).await;
+    let annotations = repository.annotations.lock().await;
+
+    assert_eq!(
+        (
+            matches!(result, Err(AnnotationUseCaseError::Validation(_))),
+            annotations.len(),
+            annotations.contains_key(&stale_id),
+            unit_of_work.committed.lock().await.len(),
+            change_history.entries.lock().await.len(),
+        ),
+        (true, 1, true, 0, 0),
+    );
+}
+
+#[tokio::test]
+async fn create_rejects_price_field_without_execution_step_before_opening_transaction() {
+    let (use_cases, unit_of_work, repository, _) = build_use_cases();
+    let mut command = create_command();
+    command.price_field = Some(PriceReferenceField::Close);
+
+    let result = use_cases.create(command).await;
+
+    assert_eq!(
+        (
+            matches!(result, Err(AnnotationUseCaseError::Validation(_))),
+            unit_of_work.begun.lock().await.len(),
+            repository.annotations.lock().await.len(),
+        ),
+        (true, 0, 0),
     );
 }
 

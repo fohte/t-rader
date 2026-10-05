@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, FixedOffset};
-    use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
+    use sea_orm::{ActiveModelTrait, EntityTrait};
     use uuid::Uuid;
 
     use super::super::dto::{
-        AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
-        ReadAnnotationsResult,
+        AnnotationDto, AnnotationPriceField, CreateAnnotationParams, CreateAnnotationResult,
+        ReadAnnotationsParams, ReadAnnotationsResult,
     };
     use super::super::tests_common::{
         ChangeHistoryShape, build_server, change_history_for, insert_strategy,
@@ -16,25 +16,50 @@ mod tests {
         ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
-    use gateway_postgres::entities::annotation;
+    use gateway_postgres::entities::{annotation, strategy_task_step_evidence};
 
     // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
     #[backend_test_macros::database_test]
     async fn create_annotation_then_read_annotations(db: gateway_postgres::DatabaseHandle) {
-        let strategy_id = insert_strategy(&db, "swing").await;
+        let strategy_id = insert_strategy(&db, "fictional-strategy").await;
         let server = build_server(db.clone());
-        let ts: DateTime<FixedOffset> = "2026-06-01T09:00:00+09:00".parse().expect("ts");
+        let ts: DateTime<FixedOffset> = "2030-01-02T09:00:00+09:00".parse().expect("ts");
+        let execution_step_id = Uuid::from_u128(90);
+        let evidence_timestamp: DateTime<FixedOffset> =
+            "2030-01-02T00:00:00Z".parse().expect("evidence timestamp");
+        strategy_task_step_evidence::Entity::insert(strategy_task_step_evidence::ActiveModel {
+            id: Set(Uuid::from_u128(91)),
+            execution_step_id: Set(execution_step_id),
+            source: Set("query_data".into()),
+            source_ref: Set("FICTIONAL-ASSET".into()),
+            observed_at: Set(evidence_timestamp),
+            published_at: Set(Some(evidence_timestamp)),
+            effective_at: Set(Some(evidence_timestamp)),
+            snapshot: Set(serde_json::json!({
+                "bars": [{
+                    "timestamp": evidence_timestamp,
+                    "open": 11.5,
+                    "high": 13.5,
+                    "low": 10.5,
+                    "close": 12.5,
+                    "volume": 100,
+                }],
+            })),
+        })
+        .exec(&db)
+        .await
+        .expect("seed query data evidence");
 
         let created = server
             .create_annotation(
                 strategy_id,
-                None,
+                Some(execution_step_id),
                 None,
                 CreateAnnotationParams {
-                    target_symbol: "7203".into(),
+                    target_symbol: "FICTIONAL-ASSET".into(),
                     target_kind: "custom-tag".into(),
                     timestamp: ts,
-                    price: Some(25000.0),
+                    price_field: Some(AnnotationPriceField::Close),
                     text: "breakout".into(),
                     linked_note_id: None,
                 },
@@ -44,10 +69,10 @@ mod tests {
         let annotation_id = created.annotation.annotation_id;
         let expected = AnnotationDto {
             annotation_id,
-            target_symbol: "7203".into(),
+            target_symbol: "FICTIONAL-ASSET".into(),
             target_kind: "custom-tag".into(),
             timestamp: ts.with_timezone(&chrono::Utc).fixed_offset(),
-            price: Some(25000.0),
+            price: Some(12.5),
             text: "breakout".into(),
             status: DEFAULT_ANNOTATION_STATUS.into(),
             linked_note_id: None,
@@ -88,7 +113,7 @@ mod tests {
                 actor_label: "analyst".into(),
                 op: "create".into(),
                 diff_json: serde_json::json!({
-                    "target_symbol": "7203",
+                    "target_symbol": "FICTIONAL-ASSET",
                 }),
                 summary: None,
                 created_at: ts_sentinel(),
@@ -148,7 +173,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "  ".into(),
                     timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
-                    price: None,
+                    price_field: None,
                     text: "x".into(),
                     linked_note_id: None,
                 },
@@ -179,7 +204,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "custom-tag".into(),
                     timestamp,
-                    price: None,
+                    price_field: None,
                     text: "x".into(),
                     linked_note_id: Some(foreign_note),
                 },
@@ -228,7 +253,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
-                    price: None,
+                    price_field: None,
                     text: "first attempt".into(),
                     linked_note_id: None,
                 },
@@ -245,7 +270,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
-                    price: None,
+                    price_field: None,
                     text: "second attempt".into(),
                     linked_note_id: None,
                 },
@@ -291,7 +316,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
-                    price: None,
+                    price_field: None,
                     text: "already reviewed".into(),
                     linked_note_id: None,
                 },
@@ -316,7 +341,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
-                    price: None,
+                    price_field: None,
                     text: "second attempt".into(),
                     linked_note_id: None,
                 },
@@ -369,7 +394,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
-                    price: None,
+                    price_field: None,
                     text: "commented but unread".into(),
                     linked_note_id: None,
                 },
@@ -394,7 +419,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
-                    price: None,
+                    price_field: None,
                     text: "second attempt".into(),
                     linked_note_id: None,
                 },
@@ -447,7 +472,7 @@ mod tests {
                         target_symbol: "7203".into(),
                         target_kind: "signal".into(),
                         timestamp: ts,
-                        price: None,
+                        price_field: None,
                         text: text.into(),
                         linked_note_id: None,
                     },

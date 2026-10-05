@@ -1,4 +1,6 @@
 use chrono::Utc;
+use core_domain::note_price_reference::PriceReferenceField;
+use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
@@ -8,6 +10,7 @@ use super::ports::{
     NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
 };
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
+use crate::strategy_task_step_evidence::SharedStrategyTaskStepEvidenceRepository;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -18,6 +21,7 @@ pub struct AnnotationUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedAnnotationRepository,
     change_history: SharedChangeHistoryPort,
+    strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
 }
 
 impl AnnotationUseCases {
@@ -25,11 +29,13 @@ impl AnnotationUseCases {
         unit_of_work: SharedUnitOfWork,
         repository: SharedAnnotationRepository,
         change_history: SharedChangeHistoryPort,
+        strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
             change_history,
+            strategy_task_step_evidence,
         }
     }
 
@@ -37,6 +43,7 @@ impl AnnotationUseCases {
         &self,
         command: CreateAnnotationCommand,
     ) -> Result<Annotation, AnnotationUseCaseError> {
+        validate_price_field(&command)?;
         let target_symbol = non_empty_trimmed(command.target_symbol, "target_symbol")?;
         let target_kind = non_empty_trimmed(command.target_kind, "target_kind")?;
         validate_non_empty(&command.text, "text")?;
@@ -47,6 +54,21 @@ impl AnnotationUseCases {
             self.ensure_linked_note_exists(&transaction, note_id)
                 .await?;
         }
+
+        let price = if let Some(field) = command.price_field {
+            Some(
+                self.resolve_price_field(
+                    &transaction,
+                    command.execution_step_id,
+                    &target_symbol,
+                    command.timestamp.date_naive(),
+                    field,
+                )
+                .await?,
+            )
+        } else {
+            command.price
+        };
 
         if let (Some(step_id), Some(task_id)) = (
             command.execution_step_id,
@@ -66,7 +88,7 @@ impl AnnotationUseCases {
                     target_symbol: target_symbol.clone(),
                     target_kind,
                     timestamp: command.timestamp,
-                    price: command.price,
+                    price,
                     text: command.text,
                     status: command.status,
                     linked_note_id: command.linked_note_id,
@@ -89,6 +111,37 @@ impl AnnotationUseCases {
         .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(created)
+    }
+
+    async fn resolve_price_field(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        execution_step_id: Option<Uuid>,
+        target_symbol: &str,
+        date: chrono::NaiveDate,
+        field: PriceReferenceField,
+    ) -> Result<Decimal, AnnotationUseCaseError> {
+        let execution_step_id = execution_step_id.ok_or_else(|| {
+            AnnotationUseCaseError::Validation(
+                "価格項目の解決には実行ステップの query_data が必要です".into(),
+            )
+        })?;
+        let evidence = self
+            .strategy_task_step_evidence
+            .find_query_data(transaction, execution_step_id, target_symbol)
+            .await?;
+        let value = evidence
+            .iter()
+            .rev()
+            .find_map(|snapshot| snapshot.query_data_bar_value(date, field))
+            .and_then(|value| value.as_f64())
+            .and_then(|value| Decimal::try_from(value).ok())
+            .ok_or_else(|| {
+                AnnotationUseCaseError::Validation(
+                    "指定された価格項目を実行ステップの query_data から解決できません".into(),
+                )
+            })?;
+        Ok(value)
     }
 
     pub async fn update(
@@ -327,6 +380,28 @@ fn validate_non_empty(value: &str, name: &str) -> Result<(), AnnotationUseCaseEr
         return Err(AnnotationUseCaseError::Validation(format!(
             "{name} must not be empty"
         )));
+    }
+    Ok(())
+}
+
+fn validate_price_field(command: &CreateAnnotationCommand) -> Result<(), AnnotationUseCaseError> {
+    let Some(field) = command.price_field else {
+        return Ok(());
+    };
+    if command.price.is_some() {
+        return Err(AnnotationUseCaseError::Validation(
+            "価格項目を指定する場合、数値価格は指定できません".into(),
+        ));
+    }
+    if field == PriceReferenceField::Volume {
+        return Err(AnnotationUseCaseError::Validation(
+            "価格項目には `open`, `high`, `low`, `close` のいずれかを指定してください".into(),
+        ));
+    }
+    if command.execution_step_id.is_none() {
+        return Err(AnnotationUseCaseError::Validation(
+            "価格項目の解決には実行ステップの query_data が必要です".into(),
+        ));
     }
     Ok(())
 }

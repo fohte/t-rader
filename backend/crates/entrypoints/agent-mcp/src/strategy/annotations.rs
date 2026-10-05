@@ -8,20 +8,28 @@ use core_application::annotation::{
 };
 use core_application::change_history::Actor;
 use rmcp::ErrorData as McpError;
-use rust_decimal::Decimal;
 use uuid::Uuid;
 
 use super::dto::{
-    AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
-    ReadAnnotationsResult,
+    AnnotationDto, AnnotationPriceField, CreateAnnotationParams, CreateAnnotationResult,
+    ReadAnnotationsParams, ReadAnnotationsResult,
 };
 use super::{
     DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, decimal_to_f64,
     internal_error, invalid_params,
 };
 
-fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
-    Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
+fn to_price_reference_field(
+    field: AnnotationPriceField,
+) -> core_domain::note_price_reference::PriceReferenceField {
+    use core_domain::note_price_reference::PriceReferenceField;
+
+    match field {
+        AnnotationPriceField::Open => PriceReferenceField::Open,
+        AnnotationPriceField::High => PriceReferenceField::High,
+        AnnotationPriceField::Low => PriceReferenceField::Low,
+        AnnotationPriceField::Close => PriceReferenceField::Close,
+    }
 }
 
 fn annotation_use_case_to_dto(m: core_application::annotation::Annotation) -> AnnotationDto {
@@ -47,7 +55,6 @@ impl StrategyServer {
         execution_task_id: Option<String>,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
-        let price = params.price.map(f64_to_decimal).transpose()?;
         let created = self
             .dependencies
             .annotations
@@ -56,7 +63,8 @@ impl StrategyServer {
                 target_symbol: params.target_symbol,
                 target_kind: params.target_kind,
                 timestamp: params.timestamp,
-                price,
+                price: None,
+                price_field: params.price_field.map(to_price_reference_field),
                 text: params.text,
                 status: DEFAULT_ANNOTATION_STATUS.into(),
                 linked_note_id: params.linked_note_id,
@@ -132,6 +140,7 @@ mod tests {
     use core_application::annotation::Annotation;
     use uuid::Uuid;
 
+    use super::super::dto::{AnnotationPriceField, CreateAnnotationParams};
     use super::{AnnotationDto, annotation_use_case_to_dto};
 
     #[test]
@@ -170,6 +179,31 @@ mod tests {
                 created_at: timestamp,
                 updated_at: timestamp,
             }
+        );
+    }
+
+    #[test]
+    fn create_annotation_params_accepts_price_fields_and_rejects_numeric_price() {
+        let required_fields = serde_json::json!({
+            "target_symbol": "FICTIONAL-ASSET",
+            "target_kind": "sample-tag",
+            "timestamp": "2030-01-02T00:00:00Z",
+            "text": "sample annotation",
+        });
+        let mut field_params = required_fields.clone();
+        field_params["price_field"] = serde_json::json!("high");
+        let accepted_field = serde_json::from_value::<CreateAnnotationParams>(field_params)
+            .ok()
+            .and_then(|params| params.price_field);
+
+        let mut numeric_params = required_fields;
+        numeric_params["price"] = serde_json::json!(123.5);
+        let rejected_numeric_price =
+            serde_json::from_value::<CreateAnnotationParams>(numeric_params).is_err();
+
+        assert_eq!(
+            (accepted_field, rejected_numeric_price),
+            (Some(AnnotationPriceField::High), true),
         );
     }
 }

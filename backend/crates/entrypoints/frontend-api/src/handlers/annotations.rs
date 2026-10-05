@@ -112,6 +112,7 @@ pub async fn create_annotation(
             target_kind: p.target_kind,
             timestamp: p.timestamp,
             price: p.price,
+            price_field: None,
             text: p.text,
             status,
             linked_note_id: p.linked_note_id,

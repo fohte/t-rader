@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
+use core_domain::note_price_reference::PriceReferenceField;
 use rust_decimal::Decimal;
 use thiserror::Error;
 use uuid::Uuid;
@@ -50,6 +51,7 @@ pub struct CreateAnnotationCommand {
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
     pub price: Option<Decimal>,
+    pub price_field: Option<PriceReferenceField>,
     pub text: String,
     pub status: String,
     pub linked_note_id: Option<Uuid>,

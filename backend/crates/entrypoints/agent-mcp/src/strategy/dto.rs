@@ -316,13 +316,24 @@ pub struct ListNotesResult {
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateAnnotationParams {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
-    pub price: Option<f64>,
+    /// この実行で取得した query_data から解決する価格項目
+    pub price_field: Option<AnnotationPriceField>,
     pub text: String,
     pub linked_note_id: Option<Uuid>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnnotationPriceField {
+    Open,
+    High,
+    Low,
+    Close,
 }
 
 #[cfg_attr(test, derive(Clone, serde::Deserialize))]

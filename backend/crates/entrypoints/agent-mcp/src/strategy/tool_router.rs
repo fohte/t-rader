@@ -126,7 +126,7 @@ impl StrategyServer {
     /// アノテーションを作成する
     #[tool(
         name = "create_annotation",
-        description = "Create a chart annotation. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."
+        description = "Create a chart annotation. When price_field is set, its value is resolved from query_data fetched during this execution. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."
     )]
     async fn create_annotation(
         &self,
