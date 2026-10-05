@@ -54,6 +54,7 @@
 | [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)         | 1       | 決算予定を取得した公表日を記録する。                                                                   | BASE TABLE |
 | [public.news_item_content](public.news_item_content.md)                                     | 6       | ニュース記事の本文と取得状態を保持する。                                                               | BASE TABLE |
 | [public.minute_bars](public.minute_bars.md)                                                 | 7       | 銘柄ごとの 1 分足価格と出来高を保持する。                                                              | BASE TABLE |
+| [public.strategy_earnings_target](public.strategy_earnings_target.md)                       | 4       | 戦略ごとに決算を追う銘柄とグループを保持する。                                                         | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -207,6 +208,7 @@ erDiagram
 "public.stock_group_member" }o--|| "public.stock_group" : "FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE"
 "public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
 "public.minute_bars" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
+"public.strategy_earnings_target" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -717,6 +719,12 @@ erDiagram
   numeric low
   numeric close
   bigint volume
+}
+"public.strategy_earnings_target" {
+  uuid strategy_id FK
+  text ref_kind
+  text ref_id
+  timestamp_with_time_zone created_at
 }
 ```
 

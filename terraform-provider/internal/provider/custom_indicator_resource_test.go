@@ -25,6 +25,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 const (
@@ -665,8 +666,8 @@ func syntheticCustomIndicatorModel(strategyID *string, scope string) customIndic
 	return model
 }
 
-func syntheticCustomIndicator(strategyID *string) traderapi.CustomIndicator {
-	indicator := traderapi.CustomIndicator{
+func syntheticCustomIndicator(strategyID *string) traderapigen.CustomIndicator {
+	indicator := traderapigen.CustomIndicator{
 		IndicatorId: uuid.MustParse(testCustomIndicatorID),
 		Name:        "synthetic indicator",
 		Code:        "return { value: 42 }",

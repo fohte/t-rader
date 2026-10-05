@@ -15,7 +15,11 @@ import {
 import { useEffect, useRef } from 'react'
 
 import type { components } from '#lib/api/schema.gen'
-import { toCandlestickData, toVolumeData } from '#lib/chart-utils'
+import {
+  type ChartCurrency,
+  toCandlestickData,
+  toVolumeData,
+} from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
 
@@ -35,6 +39,8 @@ interface CandlestickChartProps {
   annotations?: ChartAnnotation[]
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
+  currency?: ChartCurrency
+  intraday?: boolean
   className?: string
 }
 
@@ -52,6 +58,8 @@ export function CandlestickChart({
   annotations,
   onSelectAnnotation,
   selectedAnnotationId,
+  currency,
+  intraday = false,
   className,
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -195,6 +203,37 @@ export function CandlestickChart({
       markersPluginRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    chartRef.current?.applyOptions({
+      timeScale: { timeVisible: intraday, secondsVisible: false },
+    })
+  }, [intraday])
+
+  useEffect(() => {
+    const series = candlestickSeriesRef.current
+    if (series == null) return
+
+    if (currency == null) {
+      series.applyOptions({
+        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      })
+      return
+    }
+
+    const formatter = new Intl.NumberFormat('ja-JP', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    })
+    series.applyOptions({
+      priceFormat: {
+        type: 'custom',
+        minMove: 0.01,
+        formatter: (price: number) => formatter.format(price),
+      },
+    })
+  }, [currency])
 
   // データ更新 (bars 変更時にシリーズのデータのみ差し替え)
   useEffect(() => {

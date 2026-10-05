@@ -22,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 const (
@@ -709,8 +710,8 @@ func rssFeedResourceSchema(t *testing.T) resource.SchemaResponse {
 	return response
 }
 
-func syntheticRssFeed(id, source, displayName, url string, enabled bool) traderapi.RssFeed {
-	return traderapi.RssFeed{
+func syntheticRssFeed(id, source, displayName, url string, enabled bool) traderapigen.RssFeed {
+	return traderapigen.RssFeed{
 		Id:            uuid.MustParse(id),
 		Source:        source,
 		DisplayName:   displayName,

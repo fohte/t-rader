@@ -958,6 +958,25 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/earnings-targets': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略が決算を追う銘柄とグループを一覧する。 */
+    get: operations['list_strategy_earnings_targets']
+    put?: never
+    /** 戦略が決算を追う銘柄またはグループを追加する。 */
+    post: operations['add_strategy_earnings_target']
+    /** 戦略が決算を追う銘柄またはグループを削除する。 */
+    delete: operations['remove_strategy_earnings_target']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/indicators': {
     parameters: {
       query?: never
@@ -1215,6 +1234,10 @@ export interface components {
     AccountRiskPolicyResponse: {
       /** @description 分類軸ごとのグループ比率上限。空配列なら上限なし。 */
       max_group_ratios: components['schemas']['GroupRatio'][]
+    }
+    AddStrategyEarningsTargetRequest: {
+      ref_id: string
+      ref_kind: string
     }
     AgentConfig: {
       agent_graph: string
@@ -1943,6 +1966,15 @@ export interface components {
       a2a_task_id: string
       /** Format: uuid */
       task_id: string
+    }
+    StrategyEarningsTargetChangeResponse: {
+      changed: boolean
+    }
+    StrategyEarningsTargetResponse: {
+      /** Format: date-time */
+      created_at: string
+      ref_id: string
+      ref_kind: string
     }
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
@@ -3370,9 +3402,9 @@ export interface operations {
         instrument_id: string
         /** @description 時間足 (デフォルト: "1d") */
         timeframe?: string
-        /** @description 取得開始日 (YYYY-MM-DD, inclusive) */
+        /** @description 取得開始日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive) */
         from?: string
-        /** @description 取得終了日 (YYYY-MM-DD, inclusive) */
+        /** @description 取得終了日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive) */
         to?: string
       }
       header?: never
@@ -6202,6 +6234,172 @@ export interface operations {
       }
       /** @description agent task client が未設定、または既定の agent_config が見つからない */
       503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_earnings_targets: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 決算対象の一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyEarningsTargetResponse'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  add_strategy_earnings_target: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AddStrategyEarningsTargetRequest']
+      }
+    }
+    responses: {
+      /** @description 追加されたかどうか */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyEarningsTargetChangeResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  remove_strategy_earnings_target: {
+    parameters: {
+      query: {
+        /** @description 参照型 */
+        ref_kind: string
+        /** @description 銘柄またはグループの ID */
+        ref_id: string
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 削除されたかどうか */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyEarningsTargetChangeResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
         headers: {
           [name: string]: unknown
         }

@@ -18,6 +18,7 @@ import (
 	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 var (
@@ -104,7 +105,7 @@ func (r *strategyResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	created, err := client.CreateStrategy(ctx, traderapi.CreateStrategyRequest{
+	created, err := client.CreateStrategy(ctx, traderapigen.CreateStrategyRequest{
 		Name:        plan.Name.ValueString(),
 		Description: stringAttributeNullable(plan.Description),
 		SortOrder:   int32AttributeNullable(plan.SortOrder),
@@ -155,7 +156,7 @@ func (r *strategyResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	updated, err := client.UpdateStrategy(ctx, state.ID.ValueString(), traderapi.UpdateStrategyRequest{
+	updated, err := client.UpdateStrategy(ctx, state.ID.ValueString(), traderapigen.UpdateStrategyRequest{
 		Name:        stringAttributeUpdateNullable(plan.Name),
 		Description: stringAttributeUpdateNullable(plan.Description),
 		SortOrder:   int32AttributeNullable(plan.SortOrder),
@@ -195,7 +196,7 @@ func (r *strategyResource) configuredClient(diagnostics *diag.Diagnostics) (*tra
 	return r.client, true
 }
 
-func modelFromStrategy(strategy traderapi.Strategy) strategyModel {
+func modelFromStrategy(strategy traderapigen.Strategy) strategyModel {
 	return strategyModel{
 		ID:          types.StringValue(strategy.Id.String()),
 		Name:        types.StringValue(strategy.Name),

@@ -22,6 +22,7 @@ pub mod rss_feed;
 pub mod short_ratio;
 pub mod short_sale_report;
 pub mod strategy;
+pub mod strategy_earnings_target;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;
@@ -58,6 +59,10 @@ pub use strategy::{
     CreateStrategyRequest, InvestableAmountResponse, PutInvestableAmountRequest,
     StrategyChatRequest, StrategyChatResponse, StrategyResponse, StrategyTaskStatusResponse,
     StrategyTaskSummary, UpdateStrategyRequest,
+};
+pub use strategy_earnings_target::{
+    AddStrategyEarningsTargetRequest, RemoveStrategyEarningsTargetQuery,
+    StrategyEarningsTargetChangeResponse, StrategyEarningsTargetResponse,
 };
 pub use trade::{
     CreateTradeRequest, PerformanceSummary, PositionSummary, TradeListItem, TradeResponse,

@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  formatRatioPercent,
-  parseRatioPercent,
-  RATIO_PERCENT_ERROR,
-} from '#lib/ratio-percent'
+import { formatRatioPercent, parseRatioPercent } from '#lib/ratio-percent'
 
 describe('parseRatioPercent', () => {
   it.each([
@@ -28,22 +24,34 @@ describe('parseRatioPercent', () => {
     {
       name: 'zero',
       input: '0',
-      expected: { ratio: null, error: RATIO_PERCENT_ERROR },
+      expected: {
+        ratio: null,
+        error: '0 より大きく 100 以下の値を入力してください',
+      },
     },
     {
       name: 'negative',
       input: '-5',
-      expected: { ratio: null, error: RATIO_PERCENT_ERROR },
+      expected: {
+        ratio: null,
+        error: '0 より大きく 100 以下の値を入力してください',
+      },
     },
     {
       name: 'over-100',
       input: '100.1',
-      expected: { ratio: null, error: RATIO_PERCENT_ERROR },
+      expected: {
+        ratio: null,
+        error: '0 より大きく 100 以下の値を入力してください',
+      },
     },
     {
       name: 'not-a-number',
       input: 'abc',
-      expected: { ratio: null, error: RATIO_PERCENT_ERROR },
+      expected: {
+        ratio: null,
+        error: '0 より大きく 100 以下の値を入力してください',
+      },
     },
   ])('$name', ({ input, expected }) => {
     expect(parseRatioPercent(input)).toEqual(expected)

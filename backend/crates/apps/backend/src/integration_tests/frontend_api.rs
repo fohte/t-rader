@@ -170,6 +170,7 @@ mod refs;
 mod risk_policy;
 mod rss_feeds;
 mod strategies;
+mod strategy_earnings_targets;
 mod strategy_investable_amount;
 mod strategy_tasks;
 mod tasks;

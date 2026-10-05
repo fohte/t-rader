@@ -7,6 +7,7 @@ mod news;
 mod predictions;
 mod stock_groups;
 mod stock_registration;
+mod strategy_earnings_targets;
 
 use std::borrow::Cow;
 
@@ -21,7 +22,7 @@ use super::dto::{
     CheckBuyableQtyParams, CheckBuyableQtyResult, CreateAnnotationParams, CreateAnnotationResult,
     EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult,
     ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, QueryDataParams,
-    QueryDataResult, QueryMediaParams, QueryMediaResult, ReadAnnotationsParams,
+    QueryDataResult, QueryYoutubeParams, QueryYoutubeResult, ReadAnnotationsParams,
     ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams,
     ReadFinSummaryResult, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams,
     ReadPortfolioResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
@@ -31,12 +32,12 @@ use super::dto::{
     ResolveCommentResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
-use super::media::TOOL_NAME as QUERY_MEDIA_TOOL_NAME;
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::web_search::TOOL_NAME as SEARCH_WEB_TOOL_NAME;
+use super::youtube::TOOL_NAME as QUERY_YOUTUBE_TOOL_NAME;
 use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
 };
@@ -226,20 +227,22 @@ impl StrategyServer {
         self.eval_indicator_inner(scope, params).await.map(Json)
     }
 
-    /// 動画/音声 URL の内容をテキスト化する
+    /// YouTube 動画について複数の質問にまとめて回答する
     #[tool(
-        name = "query_media",
-        description = "Fetch a video or audio URL (YouTube links are well supported; other public https:// URLs are best-effort) and answer prompt about its content using the model configured for this tool in agent_graph.tool_models, returning free-form text. Use for source material with no text equivalent, such as a YouTube video.",
+        name = "query_youtube",
+        description = "Answer one or more questions about a YouTube video in a single model call. Pass all questions about the same video together because each call rereads the entire video. Include an MM:SS timestamp for every numerical value and every statement attributed to the video. Returns free-form text using the model configured for this tool in agent_graph.tool_models.",
         annotations(read_only_hint = true)
     )]
-    async fn query_media(
+    async fn query_youtube(
         &self,
-        Parameters(params): Parameters<QueryMediaParams>,
+        Parameters(params): Parameters<QueryYoutubeParams>,
         ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<QueryMediaResult>, McpError> {
+    ) -> Result<Json<QueryYoutubeResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let model = tool_model_from_ctx(&ctx, QUERY_MEDIA_TOOL_NAME)?;
-        self.query_media_inner(scope, model, params).await.map(Json)
+        let model = tool_model_from_ctx(&ctx, QUERY_YOUTUBE_TOOL_NAME)?;
+        self.query_youtube_inner(scope, model, params)
+            .await
+            .map(Json)
     }
 
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
@@ -466,6 +469,7 @@ impl StrategyServer {
     fn tool_router() -> ToolRouter<Self> {
         Self::base_tool_router()
             + Self::stock_groups_tool_router()
+            + Self::strategy_earnings_targets_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::news_tool_router()
@@ -549,6 +553,7 @@ mod tests {
         assert_eq!(
             read_only_hints,
             [
+                ("add_earnings_target", None),
                 ("add_ref_terms", None),
                 ("add_stock_to_group", None),
                 ("check_buyable_qty", Some(true)),
@@ -557,12 +562,13 @@ mod tests {
                 ("eval_indicator", None),
                 ("eval_python", None),
                 ("get_news_content", Some(true)),
+                ("list_earnings_targets", Some(true)),
                 ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
                 ("list_stock_group_members", Some(true)),
                 ("query_data", Some(true)),
-                ("query_media", Some(true)),
+                ("query_youtube", Some(true)),
                 ("read_annotations", Some(true)),
                 ("read_comments", Some(true)),
                 ("read_fin_summary", Some(true)),
@@ -578,6 +584,7 @@ mod tests {
                 ("read_valuation", Some(true)),
                 ("record_prediction", None),
                 ("register_stock", None),
+                ("remove_earnings_target", None),
                 ("remove_ref_terms", None),
                 ("remove_stock_from_group", None),
                 ("reply_comment", None),

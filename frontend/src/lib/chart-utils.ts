@@ -7,6 +7,16 @@ import type {
 import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
+export type ChartCurrency = 'JPY' | 'USD'
+
+/** 市場コードから価格表示に使う通貨を返す */
+export function getChartCurrency(
+  market: string | null | undefined,
+): ChartCurrency | undefined {
+  if (market === 'TSE') return 'JPY'
+  if (market === 'US') return 'USD'
+  return undefined
+}
 
 /** ISO 8601 タイムスタンプを Unix タイムスタンプ (秒) に変換する */
 function toUTCTimestamp(isoTimestamp: string): UTCTimestamp {

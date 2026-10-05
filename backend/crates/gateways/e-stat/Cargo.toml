@@ -1,0 +1,21 @@
+[package]
+name = "gateway-e-stat"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true, features = ["alloc"] }
+core-application = { workspace = true }
+core-domain = { workspace = true }
+reqwest = { workspace = true, features = ["rustls"] }
+scraper = { workspace = true }
+
+[dev-dependencies]
+indoc = { workspace = true }
+rstest = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

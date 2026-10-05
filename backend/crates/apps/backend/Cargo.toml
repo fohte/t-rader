@@ -18,12 +18,14 @@ entrypoint-control-plane-mcp = { workspace = true }
 entrypoint-external-webhook = { workspace = true }
 entrypoint-frontend-api = { workspace = true }
 gateway-fred = { workspace = true }
+gateway-e-stat = { workspace = true }
 gateway-alpha-vantage = { workspace = true }
 gateway-boj = { workspace = true }
 gateway-ecb = { workspace = true }
 gateway-firecrawl = { workspace = true }
 gateway-ibkr = { workspace = true }
 gateway-jquants = { workspace = true }
+gateway-sec = { workspace = true }
 gateway-litellm = { workspace = true }
 gateway-kata-exec = { workspace = true }
 gateway-rss = { workspace = true }

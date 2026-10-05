@@ -6,7 +6,8 @@ use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
-use core_domain::bar::Bar;
+use core_domain::bar::{Bar, Timeframe};
+use core_domain::instrument::Market;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 
@@ -30,6 +31,24 @@ impl PostgresBarsRepository {
 #[async_trait]
 impl BarsRepository for PostgresBarsRepository {
     async fn find_bars(&self, query: BarsQuery) -> Result<Vec<Bar>, BarsRepositoryError> {
+        let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
+            return Ok(Vec::new());
+        };
+
+        if timeframe != Timeframe::Daily {
+            let instrument = instruments::Entity::find_by_id(&query.instrument_id)
+                .one(&self.db)
+                .await
+                .map_err(repository_error)?;
+            if instrument.is_none_or(|instrument| instrument.market != Market::Us.to_string()) {
+                return Ok(Vec::new());
+            }
+
+            return bar_queries::find_intraday_bars(&self.db, to_postgres_query(query))
+                .await
+                .map_err(repository_error);
+        }
+
         bar_queries::find_bars(&self.db, to_postgres_query(query))
             .await
             .map(|rows| rows.into_iter().map(Into::into).collect())

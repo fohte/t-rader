@@ -2,6 +2,10 @@ packages:
   - 'frontend'
   - 'agent'
 
+patchedDependencies:
+  # upstream の修正 PR: https://github.com/langchain-ai/langchainjs/pull/11150
+  '@langchain/core@1.2.10': patches/@langchain__core@1.2.10.patch
+
 allowBuilds:
   # required by vitest's transformer
   esbuild: true

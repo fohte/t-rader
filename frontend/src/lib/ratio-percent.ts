@@ -1,4 +1,4 @@
-export const RATIO_PERCENT_ERROR = '0 より大きく 100 以下の値を入力してください'
+const RATIO_PERCENT_ERROR = '0 より大きく 100 以下の値を入力してください'
 
 export type ParsedRatioPercent =
   { ratio: number | null; error: null } | { ratio: null; error: string }

@@ -32,6 +32,8 @@ backend/crates/
 │   ├── firecrawl/
 │   ├── ibkr/
 │   ├── fred/
+│   ├── sec/
+│   ├── e-stat/
 │   ├── rss/
 │   ├── litellm/
 │   ├── kata-exec/

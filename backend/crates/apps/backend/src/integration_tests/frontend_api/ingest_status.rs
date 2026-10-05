@@ -238,6 +238,14 @@ mod tests {
                             "worker_jobs": []
                         },
                         {
+                            "job": "us_stock_master_ingest",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": null,
+                            "worker_jobs": []
+                        },
+                        {
                             "job": "shareholding_structure_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
@@ -255,6 +263,14 @@ mod tests {
                         },
                         {
                             "job": "fred_release_dates_ingest",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": null,
+                            "worker_jobs": []
+                        },
+                        {
+                            "job": "e_stat_calendar_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,

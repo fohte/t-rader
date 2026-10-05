@@ -169,6 +169,12 @@ comments:
       name: '戦略の名称。'
       description: '戦略の説明。'
       sort_order: '戦略一覧の表示順。'
+  - table: strategy_earnings_target
+    tableComment: '戦略ごとに決算を追う銘柄とグループを保持する。'
+    columnComments:
+      strategy_id: '対象を登録した戦略。'
+      ref_kind: '決算を追う参照型。stock / group のいずれか。'
+      ref_id: '決算を追う銘柄またはグループの ID。group は分類軸 key とグループ key を / で連結する。'
   - table: strategy_investable_amount
     tableComment: '戦略ごとに設定した投資可能額の履歴。'
     columnComments:

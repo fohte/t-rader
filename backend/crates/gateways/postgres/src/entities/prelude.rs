@@ -41,6 +41,7 @@ pub use super::stock::Entity as Stock;
 pub use super::stock_group::Entity as StockGroup;
 pub use super::stock_group_member::Entity as StockGroupMember;
 pub use super::strategy::Entity as Strategy;
+pub use super::strategy_earnings_target::Entity as StrategyEarningsTarget;
 pub use super::strategy_investable_amount::Entity as StrategyInvestableAmount;
 pub use super::strategy_task::Entity as StrategyTask;
 pub use super::strategy_task_step::Entity as StrategyTaskStep;

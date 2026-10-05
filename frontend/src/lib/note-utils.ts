@@ -2,36 +2,6 @@ const REF_KINDS_ALT = ['stock', 'indicator', 'group'].join('|')
 const REF_RE = new RegExp(`\\[\\[(${REF_KINDS_ALT}):([^\\]]+)\\]\\]`, 'g')
 export const REF_PREFIX_RE = new RegExp(`^(${REF_KINDS_ALT}):`)
 
-interface RefSource {
-  frontmatter_json: unknown
-  body_md: string
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null
-}
-
-// frontmatter_json に refs があれば優先し、なければ本文から `[[kind:id]]` を抽出する。
-export function extractRefs(note: RefSource): string[] {
-  const fm = isRecord(note.frontmatter_json) ? note.frontmatter_json : null
-  const raw = fm?.['refs']
-  if (Array.isArray(raw)) {
-    return raw.filter((v): v is string => typeof v === 'string')
-  }
-  const found: string[] = []
-  const seen = new Set<string>()
-  for (const m of note.body_md.matchAll(REF_RE)) {
-    const kind = m[1] ?? ''
-    const id = m[2] ?? ''
-    const token = `${kind}:${id}`
-    if (!seen.has(token)) {
-      seen.add(token)
-      found.push(token)
-    }
-  }
-  return found
-}
-
 // 本文からスニペットを抽出する。markdown 装飾はざっくり除去する。
 export function buildSnippet(bodyMd: string, max = 140): string {
   const stripped = bodyMd
