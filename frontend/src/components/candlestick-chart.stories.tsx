@@ -47,9 +47,40 @@ function generateSampleBars(count: number): Bar[] {
   return bars
 }
 
+function generateSampleIntradayBars(count: number): Bar[] {
+  const random = createRandom(2)
+  const bars: Bar[] = []
+  let price = 100
+
+  for (let i = 0; i < count; i++) {
+    const open = price + (random() - 0.5) * 2
+    const close = open + (random() - 0.5) * 3
+    const high = Math.max(open, close) + random()
+    const low = Math.min(open, close) - random()
+
+    bars.push({
+      instrument_id: 'DEMO-US-ALPHA',
+      timeframe: '5m',
+      timestamp: new Date(Date.UTC(2025, 0, 2, 14, 30 + i * 5)).toISOString(),
+      open: Number(open.toFixed(2)),
+      high: Number(high.toFixed(2)),
+      low: Number(low.toFixed(2)),
+      close: Number(close.toFixed(2)),
+      volume: Math.floor(100 + random() * 500),
+    })
+
+    price = close
+  }
+
+  return bars
+}
+
 const meta = {
   title: 'Components/CandlestickChart',
   component: CandlestickChart,
+  args: {
+    currency: 'JPY',
+  },
   decorators: [
     (Story) => (
       <div style={{ width: '100%', height: '600px' }}>
@@ -82,6 +113,28 @@ export const Empty: Story = {
   name: 'shows the empty chart when there are no price bars.',
   args: {
     bars: [],
+    className: 'h-full w-full',
+  },
+}
+
+export const USCurrency: Story = {
+  name: 'shows prices in US dollars for a US instrument.',
+  args: {
+    bars: generateSampleBars(120).map((bar) => ({
+      ...bar,
+      instrument_id: 'US:DEMO-A',
+    })),
+    currency: 'USD',
+    className: 'h-full w-full',
+  },
+}
+
+export const Intraday: Story = {
+  name: 'shows intraday bars with time labels.',
+  args: {
+    bars: generateSampleIntradayBars(30),
+    currency: 'USD',
+    intraday: true,
     className: 'h-full w-full',
   },
 }

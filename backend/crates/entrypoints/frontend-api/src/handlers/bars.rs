@@ -1,7 +1,8 @@
 use axum::Json;
 use axum::extract::State;
-use chrono::NaiveDate;
+use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_application::bars::BarsQuery;
+use core_domain::bar::Timeframe;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
@@ -19,10 +20,10 @@ pub struct BarsQueryParams {
     /// 時間足 (デフォルト: "1d")
     #[serde(default = "default_timeframe")]
     pub timeframe: String,
-    /// 取得開始日 (YYYY-MM-DD, inclusive)
-    pub from: Option<NaiveDate>,
-    /// 取得終了日 (YYYY-MM-DD, inclusive)
-    pub to: Option<NaiveDate>,
+    /// 取得開始日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive)
+    pub from: Option<String>,
+    /// 取得終了日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive)
+    pub to: Option<String>,
 }
 
 fn default_timeframe() -> String {
@@ -51,32 +52,19 @@ pub async fn list_bars(
         ));
     }
 
-    // Bar.timeframe の OpenAPI スキーマは DTO の String 型から導出されるため許容値を含まない。
-    // 実際の許容値はこの配列と bars テーブルの CHECK 制約が正とする。
-    let valid_timeframes = ["1d"];
-    if !valid_timeframes.contains(&params.timeframe.as_str()) {
-        return Err(AppError::Validation(format!(
+    let timeframe = params.timeframe.parse::<Timeframe>().map_err(|_| {
+        let valid_timeframes = Timeframe::ALL.map(|timeframe| timeframe.to_string());
+        AppError::Validation(format!(
             "invalid timeframe: {}. valid values: {:?}",
             params.timeframe, valid_timeframes
-        )));
-    }
+        ))
+    })?;
 
-    // NaiveDate -> DateTime<FixedOffset> に変換
-    // from: その日の 00:00:00 UTC
-    // to: その日の 23:59:59 UTC (inclusive)
-    let from = params
-        .from
-        .and_then(|d| d.and_hms_opt(0, 0, 0))
-        .map(|dt| dt.and_utc().fixed_offset());
-
-    let to = params
-        .to
-        .and_then(|d| d.and_hms_opt(23, 59, 59))
-        .map(|dt| dt.and_utc().fixed_offset());
+    let (from, to) = parse_range(timeframe, params.from.as_deref(), params.to.as_deref())?;
 
     let query = BarsQuery {
         instrument_id: params.instrument_id,
-        timeframe: params.timeframe,
+        timeframe: timeframe.to_string(),
         from,
         to,
     };
@@ -84,4 +72,50 @@ pub async fn list_bars(
     let bars = state.bars_use_cases.find_bars(query).await?;
 
     Ok(Json(bars.into_iter().map(BarResponse::from).collect()))
+}
+
+type DateTimeRange = (Option<DateTime<FixedOffset>>, Option<DateTime<FixedOffset>>);
+
+fn parse_range(
+    timeframe: Timeframe,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<DateTimeRange, AppError> {
+    let parse_boundary = |value: &str, parameter: &str, is_end_of_day: bool| {
+        if timeframe == Timeframe::Daily {
+            let date = value.parse::<NaiveDate>().map_err(|_| {
+                AppError::Validation(format!("{parameter} must be YYYY-MM-DD for 1d"))
+            })?;
+            let time = if is_end_of_day {
+                (23, 59, 59)
+            } else {
+                (0, 0, 0)
+            };
+            return date
+                .and_hms_opt(time.0, time.1, time.2)
+                .map(|datetime| datetime.and_utc().fixed_offset())
+                .ok_or_else(|| AppError::Validation(format!("invalid {parameter} date")));
+        }
+
+        DateTime::parse_from_rfc3339(value).map_err(|_| {
+            AppError::Validation(format!(
+                "{parameter} must be an RFC 3339 datetime for intraday timeframes"
+            ))
+        })
+    };
+
+    let from = from
+        .map(|value| parse_boundary(value, "from", false))
+        .transpose()?;
+    let to = to
+        .map(|value| parse_boundary(value, "to", true))
+        .transpose()?;
+
+    if matches!((&from, &to), (Some(from), Some(to)) if from > to) {
+        return Err(AppError::Validation(
+            "from must be earlier than or equal to to".to_string(),
+        ));
+    }
+
+    Ok((from, to))
 }

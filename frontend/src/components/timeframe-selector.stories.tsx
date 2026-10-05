@@ -18,3 +18,10 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   name: 'shows the daily interval as the selected timeframe.',
 }
+
+export const OneMinute: Story = {
+  name: 'shows the one minute interval as the selected timeframe.',
+  args: {
+    value: '1m',
+  },
+}
