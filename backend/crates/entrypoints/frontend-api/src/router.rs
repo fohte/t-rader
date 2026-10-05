@@ -34,6 +34,11 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
             strategies::put_investable_amount
         ))
         .routes(routes!(
+            strategies::list_strategy_earnings_targets,
+            strategies::add_strategy_earnings_target,
+            strategies::remove_strategy_earnings_target
+        ))
+        .routes(routes!(
             agent_config::list_agent_configs,
             agent_config::create_agent_config
         ))

@@ -28,6 +28,7 @@ mod risk_check;
 mod short_ratio;
 mod short_sale_report;
 mod stock_group_tests;
+mod strategy_earnings_target_tests;
 mod test_server;
 mod tests_common;
 mod tool_router;

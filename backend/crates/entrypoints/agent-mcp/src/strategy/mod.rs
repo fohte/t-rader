@@ -30,6 +30,7 @@ pub(super) mod short_ratio;
 pub(super) mod short_sale_report;
 pub(super) mod stock_groups;
 pub(super) mod stock_registration;
+pub(super) mod strategy_earnings_targets;
 mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;

@@ -24,6 +24,8 @@ pub enum Relation {
     CustomIndicator,
     #[sea_orm(has_many = "super::prediction::Entity")]
     Prediction,
+    #[sea_orm(has_many = "super::strategy_earnings_target::Entity")]
+    StrategyEarningsTarget,
     #[sea_orm(has_many = "super::strategy_investable_amount::Entity")]
     StrategyInvestableAmount,
     #[sea_orm(has_many = "super::strategy_task::Entity")]
@@ -49,6 +51,12 @@ impl Related<super::custom_indicator::Entity> for Entity {
 impl Related<super::prediction::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Prediction.def()
+    }
+}
+
+impl Related<super::strategy_earnings_target::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::StrategyEarningsTarget.def()
     }
 }
 

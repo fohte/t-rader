@@ -23,6 +23,7 @@ use core_application::short_sale_report::ShortSaleReportUseCases;
 use core_application::stock_group::StockGroupUseCases;
 use core_application::stock_registration::StockRegistrationUseCases;
 use core_application::strategy::StrategyUseCases;
+use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
 use core_application::trade::TradeUseCases;
@@ -55,6 +56,7 @@ pub struct StrategyServerDependencies {
     pub short_sale_reports: ShortSaleReportUseCases,
     pub stock_registration: StockRegistrationUseCases,
     pub stock_groups: StockGroupUseCases,
+    pub strategy_earnings_targets: StrategyEarningsTargetUseCases,
     pub strategies: StrategyUseCases,
     pub strategy_scope: Arc<StrategyScopeUseCases>,
     pub strategy_task_step_evidence: StrategyTaskStepEvidenceUseCases,

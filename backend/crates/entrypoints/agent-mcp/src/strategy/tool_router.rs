@@ -7,6 +7,7 @@ mod news;
 mod predictions;
 mod stock_groups;
 mod stock_registration;
+mod strategy_earnings_targets;
 
 use std::borrow::Cow;
 
@@ -468,6 +469,7 @@ impl StrategyServer {
     fn tool_router() -> ToolRouter<Self> {
         Self::base_tool_router()
             + Self::stock_groups_tool_router()
+            + Self::strategy_earnings_targets_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::news_tool_router()
@@ -551,6 +553,7 @@ mod tests {
         assert_eq!(
             read_only_hints,
             [
+                ("add_earnings_target", None),
                 ("add_ref_terms", None),
                 ("add_stock_to_group", None),
                 ("check_buyable_qty", Some(true)),
@@ -559,6 +562,7 @@ mod tests {
                 ("eval_indicator", None),
                 ("eval_python", None),
                 ("get_news_content", Some(true)),
+                ("list_earnings_targets", Some(true)),
                 ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
@@ -580,6 +584,7 @@ mod tests {
                 ("read_valuation", Some(true)),
                 ("record_prediction", None),
                 ("register_stock", None),
+                ("remove_earnings_target", None),
                 ("remove_ref_terms", None),
                 ("remove_stock_from_group", None),
                 ("reply_comment", None),

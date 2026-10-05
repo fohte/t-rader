@@ -111,6 +111,7 @@ pub(crate) fn strategy_server_dependencies(
         short_sale_reports: use_cases.short_sale_reports(),
         stock_registration: use_cases.stock_registration(),
         stock_groups: use_cases.stock_groups(),
+        strategy_earnings_targets: use_cases.strategy_earnings_targets(),
         strategies: use_cases.strategies(),
         strategy_scope: Arc::new(use_cases.strategy_scope()),
         strategy_task_step_evidence: use_cases.strategy_task_step_evidence(),
