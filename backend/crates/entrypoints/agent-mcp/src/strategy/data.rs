@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use core_application::bars::BarsByInstrumentsQuery;
 use core_application::strategy_scope::StrategyScope;
+use core_domain::bar::Timeframe;
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
@@ -62,13 +63,14 @@ impl StrategyServer {
             .to
             .and_hms_opt(23, 59, 59)
             .map(|dt| dt.and_utc().fixed_offset());
+        let timeframe: Timeframe = params.timeframe.unwrap_or_default().into();
 
         let rows = self
             .dependencies
             .bars
             .find_bars_by_instruments(BarsByInstrumentsQuery {
                 instrument_ids: instrument_ids.clone(),
-                timeframe: "1d".to_string(),
+                timeframe: timeframe.to_string(),
                 from,
                 to,
             })

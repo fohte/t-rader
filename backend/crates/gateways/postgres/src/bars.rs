@@ -59,6 +59,32 @@ impl BarsRepository for PostgresBarsRepository {
         &self,
         query: BarsByInstrumentsQuery,
     ) -> Result<Vec<Bar>, BarsRepositoryError> {
+        let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
+            return Ok(Vec::new());
+        };
+
+        if timeframe != Timeframe::Daily {
+            let us_instrument_ids = instruments::Entity::find()
+                .filter(instruments::Column::Id.is_in(query.instrument_ids.clone()))
+                .filter(instruments::Column::Market.eq(Market::Us.to_string()))
+                .all(&self.db)
+                .await
+                .map_err(repository_error)?
+                .into_iter()
+                .map(|instrument| instrument.id)
+                .collect::<Vec<_>>();
+
+            return bar_queries::find_intraday_bars_by_instruments(
+                &self.db,
+                &us_instrument_ids,
+                timeframe,
+                query.from,
+                query.to,
+            )
+            .await
+            .map_err(repository_error);
+        }
+
         bar_queries::find_bars_by_instruments(
             &self.db,
             &query.instrument_ids,

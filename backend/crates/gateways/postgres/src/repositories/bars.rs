@@ -12,10 +12,10 @@ use crate::entities::bars;
 const FIND_ONE_MINUTE_BARS_SQL: &str = r#"
     SELECT instrument_id, timestamp, open, high, low, close, volume
     FROM minute_bars
-    WHERE instrument_id = $1
-      AND ($2::timestamptz IS NULL OR timestamp >= $2)
-      AND ($3::timestamptz IS NULL OR timestamp <= $3)
-    ORDER BY timestamp ASC
+    WHERE instrument_id IN ({instrument_ids})
+      AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
+      AND (${to}::timestamptz IS NULL OR timestamp <= ${to})
+    ORDER BY instrument_id ASC, timestamp ASC
 "#;
 
 const FIND_AGGREGATED_MINUTE_BARS_SQL: &str = r#"
@@ -29,17 +29,17 @@ const FIND_AGGREGATED_MINUTE_BARS_SQL: &str = r#"
             last(close, timestamp) AS close,
             SUM(volume)::bigint AS volume
         FROM minute_bars
-        WHERE instrument_id = $2
-          AND ($3::timestamptz IS NULL OR timestamp >= $3)
+        WHERE instrument_id IN ({instrument_ids})
+          AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
           -- 範囲内に開始する最後の bucket も全 OHLCV を集計する。
-          AND ($4::timestamptz IS NULL OR timestamp < $4 + $1::interval)
+          AND (${to}::timestamptz IS NULL OR timestamp < ${to} + $1::interval)
         GROUP BY instrument_id, time_bucket($1::interval, timestamp)
     )
     SELECT instrument_id, timestamp, open, high, low, close, volume
     FROM aggregated
-    WHERE ($3::timestamptz IS NULL OR timestamp >= $3)
-      AND ($4::timestamptz IS NULL OR timestamp <= $4)
-    ORDER BY timestamp ASC
+    WHERE (${from}::timestamptz IS NULL OR timestamp >= ${from})
+      AND (${to}::timestamptz IS NULL OR timestamp <= ${to})
+    ORDER BY instrument_id ASC, timestamp ASC
 "#;
 
 #[derive(Debug, FromQueryResult)]
@@ -160,32 +160,72 @@ pub async fn find_intraday_bars(
         return Ok(Vec::new());
     };
 
-    let rows = if timeframe == Timeframe::Minute {
-        db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            FIND_ONE_MINUTE_BARS_SQL,
-            [
-                query.instrument_id.into(),
-                query.from.into(),
-                query.to.into(),
-            ],
-        ))
-        .await?
-    } else if let Some(interval) = timeframe.bucket_interval() {
-        db.query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            FIND_AGGREGATED_MINUTE_BARS_SQL,
-            [
-                interval.into(),
-                query.instrument_id.into(),
-                query.from.into(),
-                query.to.into(),
-            ],
-        ))
-        .await?
+    find_intraday_bars_by_instruments(db, &[query.instrument_id], timeframe, query.from, query.to)
+        .await
+}
+
+/// 複数銘柄について 1 分足、または 1 分足から集計した intraday bars を取得する。
+pub async fn find_intraday_bars_by_instruments(
+    db: &impl ConnectionTrait,
+    instrument_ids: &[String],
+    timeframe: Timeframe,
+    from: Option<DateTime<FixedOffset>>,
+    to: Option<DateTime<FixedOffset>>,
+) -> Result<Vec<Bar>, DbErr> {
+    if instrument_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let instrument_placeholders = if timeframe == Timeframe::Minute {
+        (1..=instrument_ids.len())
+            .map(|index| format!("${index}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else if timeframe.bucket_interval().is_some() {
+        (2..=instrument_ids.len() + 1)
+            .map(|index| format!("${index}"))
+            .collect::<Vec<_>>()
+            .join(", ")
     } else {
         return Ok(Vec::new());
     };
+
+    let (sql, mut values) = if timeframe == Timeframe::Minute {
+        let from_index = instrument_ids.len() + 1;
+        let to_index = from_index + 1;
+        (
+            FIND_ONE_MINUTE_BARS_SQL
+                .replace("{instrument_ids}", &instrument_placeholders)
+                .replace("{from}", &from_index.to_string())
+                .replace("{to}", &to_index.to_string()),
+            Vec::with_capacity(instrument_ids.len() + 2),
+        )
+    } else {
+        let from_index = instrument_ids.len() + 2;
+        let to_index = from_index + 1;
+        (
+            FIND_AGGREGATED_MINUTE_BARS_SQL
+                .replace("{instrument_ids}", &instrument_placeholders)
+                .replace("{from}", &from_index.to_string())
+                .replace("{to}", &to_index.to_string()),
+            Vec::with_capacity(instrument_ids.len() + 3),
+        )
+    };
+
+    if let Some(interval) = timeframe.bucket_interval() {
+        values.push(interval.into());
+    }
+    values.extend(instrument_ids.iter().cloned().map(Into::into));
+    values.push(from.into());
+    values.push(to.into());
+
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            values,
+        ))
+        .await?;
 
     rows.iter()
         .map(|row| {
