@@ -26,7 +26,10 @@ impl TaskHandler for TwseIndexIngest {
             |state| async move {
                 let Some(source) = state.dependencies.twse_source else {
                     return Err((
-                        IndicatorObservationIngestResult { series: Vec::new() },
+                        IndicatorObservationIngestResult {
+                            series: Vec::new(),
+                            errors: Vec::new(),
+                        },
                         "TWSE source is not configured".to_string(),
                     ));
                 };
@@ -36,16 +39,23 @@ impl TaskHandler for TwseIndexIngest {
                     .indicator_observations
                     .ingest_batch(source.as_ref(), TWSE_SERIES, None, today)
                     .await;
-                let failures: Vec<_> = result
-                    .series
+                let mut failures: Vec<_> = result
+                    .errors
                     .iter()
-                    .filter_map(|outcome| match outcome {
-                        IndicatorObservationIngestSeriesResult::Succeeded { .. } => None,
-                        IndicatorObservationIngestSeriesResult::Failed { series_id, error } => {
-                            Some(format!("{series_id}: {error}"))
-                        }
-                    })
+                    .map(|error| format!("{}: {}", error.date, error.message))
                     .collect();
+                failures.extend(
+                    result
+                        .series
+                        .iter()
+                        .filter_map(|outcome| match outcome {
+                            IndicatorObservationIngestSeriesResult::Succeeded { .. } => None,
+                            IndicatorObservationIngestSeriesResult::Failed { series_id, error } => {
+                                Some(format!("{series_id}: {error}"))
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                );
                 if failures.is_empty() {
                     Ok(result)
                 } else {

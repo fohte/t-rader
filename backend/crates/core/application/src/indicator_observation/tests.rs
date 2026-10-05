@@ -8,17 +8,24 @@ use rstest::rstest;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::indicator_observation_batch_source::IndicatorObservationBatchSource;
+use crate::indicator_observation_batch_source::{
+    IndicatorObservationBatch, IndicatorObservationBatchSource,
+};
 use crate::indicator_observation_source::{
     IndicatorObservationSource, IndicatorObservationSourceError,
 };
+use crate::persistence::PersistenceError;
 use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
 
 use super::types::{
     IndicatorObservationIngestSeriesResult, IndicatorObservationMetadata,
     IndicatorObservationQuery, IndicatorObservationSeriesDefinition,
 };
-use super::{FakeIndicatorObservationRepository, IndicatorObservationUseCases};
+use super::{
+    FakeIndicatorObservationRepository, IndicatorObservationBatchError,
+    IndicatorObservationRepository, IndicatorObservationRepositoryError,
+    IndicatorObservationUseCases,
+};
 
 #[derive(Default)]
 struct FakeSource {
@@ -31,6 +38,7 @@ struct FakeSource {
 struct FakeBatchSource {
     requests: Mutex<Vec<(Vec<String>, NaiveDate, NaiveDate)>>,
     observations: HashMap<String, Vec<IndicatorObservation>>,
+    errors: Vec<IndicatorObservationBatchError>,
 }
 
 #[async_trait]
@@ -40,7 +48,7 @@ impl IndicatorObservationBatchSource for FakeBatchSource {
         series_ids: &[&str],
         from: NaiveDate,
         to: NaiveDate,
-    ) -> Result<HashMap<String, Vec<IndicatorObservation>>, IndicatorObservationSourceError> {
+    ) -> Result<IndicatorObservationBatch, IndicatorObservationSourceError> {
         self.requests.lock().expect("lock requests").push((
             series_ids
                 .iter()
@@ -49,7 +57,52 @@ impl IndicatorObservationBatchSource for FakeBatchSource {
             from,
             to,
         ));
-        Ok(self.observations.clone())
+        Ok(IndicatorObservationBatch {
+            observations: self.observations.clone(),
+            errors: self.errors.clone(),
+        })
+    }
+}
+
+struct FailingUpsertRepository {
+    inner: FakeIndicatorObservationRepository,
+    failing_indicator_id: &'static str,
+}
+
+#[async_trait]
+impl IndicatorObservationRepository for FailingUpsertRepository {
+    async fn ensure_indicator(
+        &self,
+        metadata: IndicatorObservationMetadata,
+    ) -> Result<(), IndicatorObservationRepositoryError> {
+        self.inner.ensure_indicator(metadata).await
+    }
+
+    async fn find_latest_date(
+        &self,
+        indicator_id: &str,
+    ) -> Result<Option<NaiveDate>, IndicatorObservationRepositoryError> {
+        self.inner.find_latest_date(indicator_id).await
+    }
+
+    async fn upsert_observations(
+        &self,
+        indicator_id: &str,
+        observations: Vec<IndicatorObservation>,
+    ) -> Result<usize, IndicatorObservationRepositoryError> {
+        if indicator_id == self.failing_indicator_id {
+            return Err(PersistenceError::Database("synthetic upsert failure".to_string()).into());
+        }
+        self.inner
+            .upsert_observations(indicator_id, observations)
+            .await
+    }
+
+    async fn find_observations(
+        &self,
+        query: IndicatorObservationQuery,
+    ) -> Result<Vec<IndicatorObservation>, IndicatorObservationRepositoryError> {
+        self.inner.find_observations(query).await
     }
 }
 
@@ -144,7 +197,7 @@ const BATCH_DEFINITIONS: [IndicatorObservationSeriesDefinition; 2] = [
     },
 ];
 
-fn use_cases(repository: Arc<FakeIndicatorObservationRepository>) -> IndicatorObservationUseCases {
+fn use_cases(repository: Arc<dyn IndicatorObservationRepository>) -> IndicatorObservationUseCases {
     IndicatorObservationUseCases::new(repository)
 }
 
@@ -346,6 +399,7 @@ async fn ingest_batch_fetches_and_persists_each_configured_series_for_the_reques
                         upserted: 1,
                     },
                 ],
+                errors: Vec::new(),
             },
             vec![(
                 vec!["SERIES_ALPHA".to_string(), "SERIES_BETA".to_string()],
@@ -380,6 +434,111 @@ async fn ingest_batch_fetches_and_persists_each_configured_series_for_the_reques
                     Decimal::from_str_exact("8.75").expect("valid decimal")
                 ),
             ]),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn ingest_batch_persists_available_dates_and_reports_fetch_failures() {
+    let repository = Arc::new(FakeIndicatorObservationRepository::new());
+    let source = FakeBatchSource {
+        observations: HashMap::from([
+            ("SERIES_ALPHA".to_string(), vec![observation(2, "12.5")]),
+            ("SERIES_BETA".to_string(), vec![observation(2, "8.75")]),
+        ]),
+        errors: vec![IndicatorObservationBatchError {
+            date: date(1),
+            message: "network error: synthetic failure".to_string(),
+        }],
+        ..FakeBatchSource::default()
+    };
+
+    let result = use_cases(repository.clone())
+        .ingest_batch(&source, &BATCH_DEFINITIONS, Some(date(1)), date(5))
+        .await;
+    let observations = repository
+        .observations
+        .lock()
+        .expect("lock observations")
+        .clone();
+
+    assert_eq!(
+        (result, observations),
+        (
+            super::types::IndicatorObservationIngestResult {
+                series: vec![
+                    IndicatorObservationIngestSeriesResult::Succeeded {
+                        series_id: "SERIES_ALPHA".to_string(),
+                        upserted: 1,
+                    },
+                    IndicatorObservationIngestSeriesResult::Succeeded {
+                        series_id: "SERIES_BETA".to_string(),
+                        upserted: 1,
+                    },
+                ],
+                errors: vec![IndicatorObservationBatchError {
+                    date: date(1),
+                    message: "network error: synthetic failure".to_string(),
+                }],
+            },
+            BTreeMap::from([
+                (
+                    ("INDICATOR_ALPHA".to_string(), date(2)),
+                    Decimal::from_str_exact("12.5").expect("valid decimal")
+                ),
+                (
+                    ("INDICATOR_BETA".to_string(), date(2)),
+                    Decimal::from_str_exact("8.75").expect("valid decimal")
+                ),
+            ]),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn ingest_batch_continues_after_a_series_upsert_fails() {
+    let repository = Arc::new(FailingUpsertRepository {
+        inner: FakeIndicatorObservationRepository::new(),
+        failing_indicator_id: "INDICATOR_ALPHA",
+    });
+    let source = FakeBatchSource {
+        observations: HashMap::from([
+            ("SERIES_ALPHA".to_string(), vec![observation(2, "12.5")]),
+            ("SERIES_BETA".to_string(), vec![observation(3, "8.75")]),
+        ]),
+        ..FakeBatchSource::default()
+    };
+
+    let result = use_cases(repository.clone())
+        .ingest_batch(&source, &BATCH_DEFINITIONS, Some(date(1)), date(5))
+        .await;
+    let observations = repository
+        .inner
+        .observations
+        .lock()
+        .expect("lock observations")
+        .clone();
+
+    assert_eq!(
+        (result, observations),
+        (
+            super::types::IndicatorObservationIngestResult {
+                series: vec![
+                    IndicatorObservationIngestSeriesResult::Failed {
+                        series_id: "SERIES_ALPHA".to_string(),
+                        error: "synthetic upsert failure".to_string(),
+                    },
+                    IndicatorObservationIngestSeriesResult::Succeeded {
+                        series_id: "SERIES_BETA".to_string(),
+                        upserted: 1,
+                    },
+                ],
+                errors: Vec::new(),
+            },
+            BTreeMap::from([(
+                ("INDICATOR_BETA".to_string(), date(3)),
+                Decimal::from_str_exact("8.75").expect("valid decimal")
+            )]),
         ),
     );
 }
@@ -420,6 +579,7 @@ async fn ingest_batch_uses_the_earliest_series_lookback_when_no_range_is_given()
                         upserted: 0,
                     },
                 ],
+                errors: Vec::new(),
             },
             vec![(
                 vec!["SERIES_ALPHA".to_string(), "SERIES_BETA".to_string()],
@@ -460,6 +620,7 @@ async fn ingest_batch_uses_the_default_lookback_when_no_series_has_observations(
                         upserted: 0,
                     },
                 ],
+                errors: Vec::new(),
             },
             vec![(
                 vec!["SERIES_ALPHA".to_string(), "SERIES_BETA".to_string()],

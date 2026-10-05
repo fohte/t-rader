@@ -1,9 +1,14 @@
+#[cfg(test)]
+use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, str::FromStr, time::Duration};
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration as ChronoDuration, NaiveDate, Weekday};
 use core_application::{
-    indicator_observation_batch_source::IndicatorObservationBatchSource,
+    indicator_observation::IndicatorObservationBatchError,
+    indicator_observation_batch_source::{
+        IndicatorObservationBatch, IndicatorObservationBatchSource,
+    },
     indicator_observation_source::IndicatorObservationSourceError,
 };
 use core_domain::IndicatorObservation;
@@ -40,6 +45,8 @@ enum TwseRateLimiter {
     Shared(RateLimiter),
     #[cfg(test)]
     TestNoop,
+    #[cfg(test)]
+    TestRecorder(Arc<Mutex<Vec<Duration>>>),
 }
 
 impl TwseRateLimiter {
@@ -57,7 +64,7 @@ impl TwseRateLimiter {
                 .await
                 .map_err(map_rate_limit_error),
             #[cfg(test)]
-            Self::TestNoop => Ok(()),
+            Self::TestNoop | Self::TestRecorder(_) => Ok(()),
         }
     }
 
@@ -69,6 +76,14 @@ impl TwseRateLimiter {
                 .map_err(map_rate_limit_error),
             #[cfg(test)]
             Self::TestNoop => Ok(()),
+            #[cfg(test)]
+            Self::TestRecorder(penalties) => {
+                penalties
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(duration);
+                Ok(())
+            }
         }
     }
 }
@@ -105,6 +120,14 @@ impl TwseClient {
     #[cfg(test)]
     fn without_rate_limiter(base_url: &str) -> Result<Self, IndicatorObservationSourceError> {
         Self::with_rate_limiter(base_url, TwseRateLimiter::TestNoop)
+    }
+
+    #[cfg(test)]
+    fn with_recording_rate_limiter(
+        base_url: &str,
+        penalties: Arc<Mutex<Vec<Duration>>>,
+    ) -> Result<Self, IndicatorObservationSourceError> {
+        Self::with_rate_limiter(base_url, TwseRateLimiter::TestRecorder(penalties))
     }
 
     fn build_url(&self, date: NaiveDate) -> Result<Url, IndicatorObservationSourceError> {
@@ -163,7 +186,7 @@ impl IndicatorObservationBatchSource for TwseClient {
         series_ids: &[&str],
         from: NaiveDate,
         to: NaiveDate,
-    ) -> Result<HashMap<String, Vec<IndicatorObservation>>, IndicatorObservationSourceError> {
+    ) -> Result<IndicatorObservationBatch, IndicatorObservationSourceError> {
         if from > to {
             return Err(IndicatorObservationSourceError::Parse(
                 "observation start date must be on or before end date".to_string(),
@@ -182,13 +205,22 @@ impl IndicatorObservationBatchSource for TwseClient {
             .iter()
             .map(|series_id| ((*series_id).to_string(), Vec::new()))
             .collect();
+        let mut errors = Vec::new();
         let mut date = from;
         loop {
             if !matches!(date.weekday(), Weekday::Sat | Weekday::Sun) {
-                for (series_id, value) in self.fetch_date(date).await? {
-                    if let Some(series) = observations.get_mut(&series_id) {
-                        series.push(IndicatorObservation { date, value });
+                match self.fetch_date(date).await {
+                    Ok(values) => {
+                        for (series_id, value) in values {
+                            if let Some(series) = observations.get_mut(&series_id) {
+                                series.push(IndicatorObservation { date, value });
+                            }
+                        }
                     }
+                    Err(error) => errors.push(IndicatorObservationBatchError {
+                        date,
+                        message: error.to_string(),
+                    }),
                 }
             }
             if date == to {
@@ -202,7 +234,10 @@ impl IndicatorObservationBatchSource for TwseClient {
                     )
                 })?;
         }
-        Ok(observations)
+        Ok(IndicatorObservationBatch {
+            observations,
+            errors,
+        })
     }
 }
 
@@ -268,18 +303,26 @@ fn map_rate_limit_error(error: RateLimitError) -> IndicatorObservationSourceErro
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::error::Error;
     use std::str::FromStr;
-    use std::time::Duration;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use chrono::NaiveDate;
     use core_domain::IndicatorObservation;
     use indoc::indoc;
+    use rate_limit::{Quota, RateLimitError, RateLimiter};
     use rstest::rstest;
     use rust_decimal::Decimal;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{TwseClient, parse_index_values, retry_after_duration};
+    use super::{
+        RATE_LIMIT_HOST_KEY, RATE_LIMIT_PERIOD, TwseClient, TwseRateLimiter, parse_index_values,
+        retry_after_duration,
+    };
+    use core_application::indicator_observation::IndicatorObservationBatchError;
+    use core_application::indicator_observation_batch_source::IndicatorObservationBatch;
     use core_application::indicator_observation_batch_source::IndicatorObservationBatchSource;
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -320,7 +363,7 @@ mod tests {
 
     #[test]
     fn parse_index_values_accepts_a_valid_response_without_trading_rows() {
-        let body = r#"{"stat":"OK","tables":[{"data":[]},{"data":null}]}"#;
+        let body = r#"{"stat":"OK","date":"example","tables":[{"title":"example index table","data":[]},{"data":null}]}"#;
 
         assert_eq!(
             parse_index_values(body).expect("parse response"),
@@ -414,21 +457,175 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client =
-            TwseClient::without_rate_limiter(&format!("{}/exchangeReport/MI_INDEX", server.uri()))
-                .expect("client");
+        let penalties = Arc::new(Mutex::new(Vec::new()));
+        let client = TwseClient::with_recording_rate_limiter(
+            &format!("{}/exchangeReport/MI_INDEX", server.uri()),
+            penalties.clone(),
+        )
+        .expect("client");
         let result = client
             .fetch_observations(&["TAIEX"], date(2099, 1, 2), date(2099, 1, 2))
             .await
-            .map(|_| ())
+            .map(|batch| batch.errors)
             .map_err(|error| error.to_string());
 
+        let penalties = penalties
+            .lock()
+            .expect("lock rate limiter penalties")
+            .clone();
+        let expected_penalties = if matches!(status, 429 | 503) {
+            vec![Duration::from_secs(5)]
+        } else {
+            Vec::new()
+        };
+
         assert_eq!(
-            result,
-            Err(format!(
-                "api error (status {status}): TWSE returned status {status} for 2099-01-02"
-            )),
+            (result, penalties),
+            (
+                Ok(vec![IndicatorObservationBatchError {
+                    date: date(2099, 1, 2),
+                    message: format!(
+                        "api error (status {status}): TWSE returned status {status} for 2099-01-02"
+                    ),
+                }]),
+                expected_penalties,
+            ),
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_observations_keeps_later_dates_when_a_date_fails() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/exchangeReport/MI_INDEX"))
+            .and(query_param("date", "20990102"))
+            .respond_with(
+                ResponseTemplate::new(503)
+                    .insert_header("Retry-After", "5")
+                    .set_body_string("{}"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/exchangeReport/MI_INDEX"))
+            .and(query_param("date", "20990105"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(indoc! {r#"
+                {"stat":"OK","tables":[{"data":[
+                  ["發行量加權股價指數","123.45"],
+                  ["半導體類指數","67.89"]
+                ]}]}
+            "#}))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let penalties = Arc::new(Mutex::new(Vec::new()));
+        let client = TwseClient::with_recording_rate_limiter(
+            &format!("{}/exchangeReport/MI_INDEX", server.uri()),
+            penalties.clone(),
+        )
+        .expect("client");
+        let result = client
+            .fetch_observations(&["TAIEX", "TW_SEMI"], date(2099, 1, 2), date(2099, 1, 5))
+            .await
+            .map_err(|error| error.to_string());
+        let penalties = penalties
+            .lock()
+            .expect("lock rate limiter penalties")
+            .clone();
+
+        assert_eq!(
+            (result, penalties),
+            (
+                Ok(IndicatorObservationBatch {
+                    observations: HashMap::from([
+                        (
+                            "TAIEX".to_string(),
+                            vec![IndicatorObservation {
+                                date: date(2099, 1, 5),
+                                value: Decimal::from_str_exact("123.45").expect("valid decimal"),
+                            }],
+                        ),
+                        (
+                            "TW_SEMI".to_string(),
+                            vec![IndicatorObservation {
+                                date: date(2099, 1, 5),
+                                value: Decimal::from_str_exact("67.89").expect("valid decimal"),
+                            }],
+                        ),
+                    ]),
+                    errors: vec![IndicatorObservationBatchError {
+                        date: date(2099, 1, 2),
+                        message: "api error (status 503): TWSE returned status 503 for 2099-01-02"
+                            .to_string(),
+                    }],
+                }),
+                vec![Duration::from_secs(5)],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn a_429_penalizes_other_twse_clients_sharing_the_redis_prefix()
+    -> Result<(), Box<dyn Error>> {
+        let redis_url = std::env::var("REDIS_URL")?;
+        let unique_suffix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let key_prefix = format!("t-rader:test:twse:{unique_suffix}:");
+        let client_limiter = RateLimiter::new(&redis_url, &key_prefix)?;
+        let other_client_limiter = RateLimiter::new(&redis_url, &key_prefix)?;
+        let redis_ready = client_limiter
+            .acquire(
+                &[Quota::new("preflight", 1, Duration::from_secs(1))],
+                Duration::ZERO,
+            )
+            .await;
+        if matches!(&redis_ready, Err(RateLimitError::RedisUnavailable)) {
+            return Ok(());
+        }
+        redis_ready?;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "5")
+                    .set_body_string("{}"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = TwseClient::with_rate_limiter(
+            &format!("{}/exchangeReport/MI_INDEX", server.uri()),
+            TwseRateLimiter::Shared(client_limiter),
+        )?;
+
+        let errors = client
+            .fetch_observations(&["TAIEX"], date(2099, 1, 2), date(2099, 1, 2))
+            .await
+            .map(|batch| batch.errors)
+            .map_err(|error| error.to_string());
+        let blocked_result = other_client_limiter
+            .acquire(
+                &[Quota::new(RATE_LIMIT_HOST_KEY, 1, RATE_LIMIT_PERIOD)],
+                Duration::ZERO,
+            )
+            .await;
+
+        assert_eq!(
+            (errors, blocked_result),
+            (
+                Ok(vec![IndicatorObservationBatchError {
+                    date: date(2099, 1, 2),
+                    message: "api error (status 429): TWSE returned status 429 for 2099-01-02"
+                        .to_string(),
+                }]),
+                Err(RateLimitError::MaxWaitExceeded {
+                    max_wait: Duration::ZERO,
+                }),
+            ),
+        );
+        Ok(())
     }
 
     #[tokio::test]
@@ -461,34 +658,37 @@ mod tests {
 
         assert_eq!(
             observations,
-            HashMap::from([
-                (
-                    "TAIEX".to_string(),
-                    vec![
-                        IndicatorObservation {
-                            date: date(2099, 1, 2),
-                            value: Decimal::from_str_exact("123.45").expect("valid decimal"),
-                        },
-                        IndicatorObservation {
-                            date: date(2099, 1, 5),
-                            value: Decimal::from_str_exact("123.45").expect("valid decimal"),
-                        },
-                    ],
-                ),
-                (
-                    "TW_SEMI".to_string(),
-                    vec![
-                        IndicatorObservation {
-                            date: date(2099, 1, 2),
-                            value: Decimal::from_str_exact("67.89").expect("valid decimal"),
-                        },
-                        IndicatorObservation {
-                            date: date(2099, 1, 5),
-                            value: Decimal::from_str_exact("67.89").expect("valid decimal"),
-                        },
-                    ],
-                ),
-            ]),
+            IndicatorObservationBatch {
+                observations: HashMap::from([
+                    (
+                        "TAIEX".to_string(),
+                        vec![
+                            IndicatorObservation {
+                                date: date(2099, 1, 2),
+                                value: Decimal::from_str_exact("123.45").expect("valid decimal"),
+                            },
+                            IndicatorObservation {
+                                date: date(2099, 1, 5),
+                                value: Decimal::from_str_exact("123.45").expect("valid decimal"),
+                            },
+                        ],
+                    ),
+                    (
+                        "TW_SEMI".to_string(),
+                        vec![
+                            IndicatorObservation {
+                                date: date(2099, 1, 2),
+                                value: Decimal::from_str_exact("67.89").expect("valid decimal"),
+                            },
+                            IndicatorObservation {
+                                date: date(2099, 1, 5),
+                                value: Decimal::from_str_exact("67.89").expect("valid decimal"),
+                            },
+                        ],
+                    ),
+                ]),
+                errors: Vec::new(),
+            },
         );
     }
 }

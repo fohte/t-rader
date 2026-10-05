@@ -33,6 +33,13 @@ pub struct IndicatorObservationReadResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IndicatorObservationIngestResult {
     pub series: Vec<IndicatorObservationIngestSeriesResult>,
+    pub errors: Vec<IndicatorObservationBatchError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct IndicatorObservationBatchError {
+    pub date: NaiveDate,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

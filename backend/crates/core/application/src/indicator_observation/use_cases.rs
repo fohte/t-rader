@@ -16,33 +16,26 @@ use super::types::{
 
 const LOOKBACK_DAYS: i64 = 10;
 
-struct SeriesDefinition {
-    series_id: &'static str,
-    indicator_id: &'static str,
-    name: &'static str,
-    kind: &'static str,
-}
-
-const SERIES: &[SeriesDefinition] = &[
-    SeriesDefinition {
+pub const FRED_SERIES: &[IndicatorObservationSeriesDefinition] = &[
+    IndicatorObservationSeriesDefinition {
         series_id: "DEXJPUS",
         indicator_id: "USDJPY",
         name: "ドル円",
         kind: "fx",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "VIXCLS",
         indicator_id: "VIX",
         name: "VIX",
         kind: "volatility",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "DGS10",
         indicator_id: "US10Y",
         name: "米10年債利回り",
         kind: "rate",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "NIKKEI225",
         indicator_id: "NIKKEI225",
         name: "日経225",
@@ -79,8 +72,8 @@ impl IndicatorObservationUseCases {
         &self,
         source: &dyn IndicatorObservationSource,
     ) -> IndicatorObservationIngestResult {
-        let mut results = Vec::with_capacity(SERIES.len());
-        for definition in SERIES {
+        let mut results = Vec::with_capacity(FRED_SERIES.len());
+        for definition in FRED_SERIES {
             let result = self.ingest_series(source, definition).await;
             results.push(match result {
                 Ok(upserted) => IndicatorObservationIngestSeriesResult::Succeeded {
@@ -93,7 +86,10 @@ impl IndicatorObservationUseCases {
                 },
             });
         }
-        IndicatorObservationIngestResult { series: results }
+        IndicatorObservationIngestResult {
+            series: results,
+            errors: Vec::new(),
+        }
     }
 
     pub async fn ingest_batch(
@@ -146,7 +142,10 @@ impl IndicatorObservationUseCases {
         }
 
         if prepared.is_empty() {
-            return IndicatorObservationIngestResult { series: results };
+            return IndicatorObservationIngestResult {
+                series: results,
+                errors: Vec::new(),
+            };
         }
 
         let start = starts.into_iter().min().unwrap_or(observation_end);
@@ -158,18 +157,21 @@ impl IndicatorObservationUseCases {
                     error: error.clone(),
                 }
             }));
-            return IndicatorObservationIngestResult { series: results };
+            return IndicatorObservationIngestResult {
+                series: results,
+                errors: Vec::new(),
+            };
         }
 
         let series_ids: Vec<_> = prepared
             .iter()
             .map(|(definition, _)| definition.series_id)
             .collect();
-        let observations = match source
+        let batch = match source
             .fetch_observations(&series_ids, start, observation_end)
             .await
         {
-            Ok(observations) => observations,
+            Ok(batch) => batch,
             Err(error) => {
                 results.extend(prepared.into_iter().map(|(definition, _)| {
                     IndicatorObservationIngestSeriesResult::Failed {
@@ -177,23 +179,26 @@ impl IndicatorObservationUseCases {
                         error: error.to_string(),
                     }
                 }));
-                return IndicatorObservationIngestResult { series: results };
+                return IndicatorObservationIngestResult {
+                    series: results,
+                    errors: Vec::new(),
+                };
             }
         };
 
         for (definition, metadata) in prepared {
-            let Some(series_observations) = observations.get(definition.series_id) else {
+            let Some(series_observations) = batch.observations.get(definition.series_id) else {
                 results.push(IndicatorObservationIngestSeriesResult::Failed {
                     series_id: definition.series_id.to_string(),
                     error: "source response is missing the requested series".to_string(),
                 });
                 continue;
             };
-            match self
+            let upsert_result = self
                 .repository
                 .upsert_observations(&metadata.indicator_id, series_observations.clone())
-                .await
-            {
+                .await;
+            match upsert_result {
                 Ok(upserted) => results.push(IndicatorObservationIngestSeriesResult::Succeeded {
                     series_id: definition.series_id.to_string(),
                     upserted,
@@ -204,7 +209,10 @@ impl IndicatorObservationUseCases {
                 }),
             }
         }
-        IndicatorObservationIngestResult { series: results }
+        IndicatorObservationIngestResult {
+            series: results,
+            errors: batch.errors,
+        }
     }
 
     pub async fn read(
@@ -242,7 +250,7 @@ impl IndicatorObservationUseCases {
     async fn ingest_series(
         &self,
         source: &dyn IndicatorObservationSource,
-        definition: &SeriesDefinition,
+        definition: &IndicatorObservationSeriesDefinition,
     ) -> Result<usize, String> {
         let metadata = IndicatorObservationMetadata {
             indicator_id: definition.indicator_id.to_string(),

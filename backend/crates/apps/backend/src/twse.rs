@@ -64,20 +64,27 @@ fn backfill_start(today: NaiveDate) -> Option<NaiveDate> {
 }
 
 fn failure_message(result: &IndicatorObservationIngestResult) -> Option<String> {
-    let failures = result
-        .series
+    let mut failures = result
+        .errors
         .iter()
-        .filter_map(|outcome| match outcome {
-            IndicatorObservationIngestSeriesResult::Succeeded {
-                series_id,
-                upserted: 0,
-            } => Some(format!("{series_id}: no observations were imported")),
-            IndicatorObservationIngestSeriesResult::Succeeded { .. } => None,
-            IndicatorObservationIngestSeriesResult::Failed { series_id, error } => {
-                Some(format!("{series_id}: {error}"))
-            }
-        })
+        .map(|error| format!("{}: {}", error.date, error.message))
         .collect::<Vec<_>>();
+    failures.extend(
+        result
+            .series
+            .iter()
+            .filter_map(|outcome| match outcome {
+                IndicatorObservationIngestSeriesResult::Succeeded {
+                    series_id,
+                    upserted: 0,
+                } => Some(format!("{series_id}: no observations were imported")),
+                IndicatorObservationIngestSeriesResult::Succeeded { .. } => None,
+                IndicatorObservationIngestSeriesResult::Failed { series_id, error } => {
+                    Some(format!("{series_id}: {error}"))
+                }
+            })
+            .collect::<Vec<_>>(),
+    );
     (!failures.is_empty()).then(|| format!("TWSE index backfill failed: {}", failures.join("; ")))
 }
 
@@ -85,7 +92,8 @@ fn failure_message(result: &IndicatorObservationIngestResult) -> Option<String> 
 mod tests {
     use chrono::NaiveDate;
     use core_application::indicator_observation::{
-        IndicatorObservationIngestResult, IndicatorObservationIngestSeriesResult,
+        IndicatorObservationBatchError, IndicatorObservationIngestResult,
+        IndicatorObservationIngestSeriesResult,
     };
     use rstest::rstest;
 
@@ -109,6 +117,7 @@ mod tests {
                     upserted: 3,
                 },
             ],
+            errors: Vec::new(),
         },
         None,
     )]
@@ -124,6 +133,7 @@ mod tests {
                     error: "synthetic source error".to_string(),
                 },
             ],
+            errors: Vec::new(),
         },
         Some("TWSE index backfill failed: SERIES_BETA: synthetic source error".to_string()),
     )]
@@ -139,8 +149,24 @@ mod tests {
                     upserted: 0,
                 },
             ],
+            errors: Vec::new(),
         },
         Some("TWSE index backfill failed: SERIES_ALPHA: no observations were imported; SERIES_BETA: no observations were imported".to_string()),
+    )]
+    #[case::date_fetch_failed(
+        IndicatorObservationIngestResult {
+            series: vec![
+                IndicatorObservationIngestSeriesResult::Succeeded {
+                    series_id: "SERIES_ALPHA".to_string(),
+                    upserted: 3,
+                },
+            ],
+            errors: vec![IndicatorObservationBatchError {
+                date: date(2026, 9, 2),
+                message: "network error: synthetic failure".to_string(),
+            }],
+        },
+        Some("TWSE index backfill failed: 2026-09-02: network error: synthetic failure".to_string()),
     )]
     fn failure_message_reports_any_series_failure(
         #[case] result: IndicatorObservationIngestResult,
