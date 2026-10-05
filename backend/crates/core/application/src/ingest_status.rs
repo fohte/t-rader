@@ -20,6 +20,7 @@ pub const EQUITY_MASTER_INGEST_JOB: &str = "equity_master_ingest";
 pub const US_STOCK_MASTER_INGEST_JOB: &str = "us_stock_master_ingest";
 pub const SHAREHOLDING_STRUCTURE_INGEST_JOB: &str = "shareholding_structure_ingest";
 pub const FRED_INGEST_JOB: &str = "fred_ingest";
+pub const TWSE_INDEX_INGEST_JOB: &str = "twse_index_ingest";
 pub const E_STAT_CALENDAR_INGEST_JOB: &str = "e_stat_calendar_ingest";
 pub const ALPHA_VANTAGE_CALENDAR_INGEST_JOB: &str = "alpha_vantage_calendar_ingest";
 pub const FRED_RELEASE_DATES_INGEST_JOB: &str = "fred_release_dates_ingest";

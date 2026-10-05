@@ -101,9 +101,10 @@ mod tests {
         assert_eq!(
             (result, log.calls.lock().await.clone()),
             (
-                Ok(19),
+                Ok(20),
                 vec![
                     ("fred_ingest".to_string(), now - Duration::hours(2)),
+                    ("twse_index_ingest".to_string(), now - Duration::hours(2)),
                     (
                         "alpha_vantage_calendar_ingest".to_string(),
                         now - Duration::hours(2)

@@ -5,7 +5,7 @@ use core_application::ingest_status::{
     FRED_INGEST_JOB, INGEST_JOBS, IngestRun, IngestRunHistory, IngestStatusData,
     IngestStatusJobDate, IngestStatusRepository, IngestWorkerJob, MARGIN_INGEST_JOB,
     NEWS_AGGREGATION_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB,
-    SHORT_SALE_REPORT_INGEST_JOB, VALUATION_INGEST_JOB,
+    SHORT_SALE_REPORT_INGEST_JOB, TWSE_INDEX_INGEST_JOB, VALUATION_INGEST_JOB,
 };
 use core_application::persistence::PersistenceError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, Value};
@@ -49,7 +49,13 @@ const LATEST_DATA_DATE_QUERIES: &[(&str, &str)] = &[
     ),
     (
         FRED_INGEST_JOB,
-        "SELECT MAX(date) FROM public.indicator_observation",
+        "SELECT MAX(date) FROM public.indicator_observation \
+         WHERE indicator_id IN ('USDJPY', 'VIX', 'US10Y', 'NIKKEI225')",
+    ),
+    (
+        TWSE_INDEX_INGEST_JOB,
+        "SELECT MAX(date) FROM public.indicator_observation \
+         WHERE indicator_id IN ('TAIEX', 'TW_SEMI')",
     ),
     (
         SHORT_RATIO_INGEST_JOB,
@@ -228,7 +234,7 @@ async fn read_worker_jobs(db: &DatabaseHandle) -> Result<Vec<IngestWorkerJob>, P
 mod tests {
     use std::collections::BTreeSet;
 
-    use core_application::ingest_status::INGEST_JOBS;
+    use core_application::ingest_status::{INGEST_JOBS, TWSE_INDEX_INGEST_JOB};
 
     use super::LATEST_DATA_DATE_QUERIES;
 
@@ -244,6 +250,11 @@ mod tests {
             .map(|(job, _)| *job)
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(queried_jobs, jobs_with_data_dates);
+        let expected_queries = jobs_with_data_dates
+            .into_iter()
+            .chain([TWSE_INDEX_INGEST_JOB])
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(queried_jobs, expected_queries);
     }
 }

@@ -33,6 +33,7 @@ use crate::{
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
+        twse::TwseIndexIngest,
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
@@ -45,8 +46,9 @@ const FRED_QUEUE: &str = "fred";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
 pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 19] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 20] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (TwseIndexIngest::IDENTIFIER, DAILY_TIMEOUT),
     (AlphaVantageCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
     (FredReleaseDatesIngest::IDENTIFIER, DAILY_TIMEOUT),
     (EStatCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -71,6 +73,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 19] = [
 struct ConfiguredJobs {
     daily_bars: bool,
     fred: bool,
+    twse: bool,
     e_stat_calendar: bool,
     alpha_vantage_calendar: bool,
     fred_release_dates: bool,
@@ -101,6 +104,7 @@ impl Scheduler {
         let crontabs = build_crontabs(ConfiguredJobs {
             daily_bars: dependencies.market_daily_bar_source.is_some(),
             fred: dependencies.fred_source.is_some(),
+            twse: dependencies.twse_source.is_some(),
             e_stat_calendar: dependencies.e_stat_calendar_source.is_some(),
             alpha_vantage_calendar: dependencies.alpha_vantage_calendar_source.is_some(),
             fred_release_dates: dependencies.fred_calendar_event_source.is_some(),
@@ -141,6 +145,7 @@ impl Scheduler {
             .define_job::<UsStockMasterIngest>()
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
+            .define_job::<TwseIndexIngest>()
             .define_job::<EStatCalendarIngest>()
             .define_job::<AlphaVantageCalendarIngest>()
             .define_job::<FredReleaseDatesIngest>()
@@ -186,6 +191,15 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
             11,
             30,
             Some(FRED_QUEUE),
+        )?);
+    }
+    if configured.twse {
+        // 台湾時間 15:00 (UTC 07:00) に実行し、取引終了後の公開を待つ。
+        crontabs.push(daily_cron::<TwseIndexIngest>(
+            "twse_index_ingest",
+            7,
+            0,
+            Some(TWSE_QUEUE),
         )?);
     }
     if configured.fred_release_dates {
@@ -396,6 +410,7 @@ fn every_n_minutes_cron<T: TaskHandler>(
 }
 
 const NEWS_CONTENT_QUEUE: &str = "news_content";
+const TWSE_QUEUE: &str = "twse";
 
 #[cfg(test)]
 mod tests {
@@ -421,14 +436,15 @@ mod tests {
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
+        twse::TwseIndexIngest,
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     };
 
     use super::{
         ConfiguredJobs, FRED_QUEUE, JQUANTS_QUEUE, NEWS_CONTENT_QUEUE,
-        STRATEGY_TASK_RECONCILE_QUEUE_NAME, build_crontabs, configure_cron, every_minute_cron,
-        hourly_cron,
+        STRATEGY_TASK_RECONCILE_QUEUE_NAME, TWSE_QUEUE, build_crontabs, configure_cron,
+        every_minute_cron, hourly_cron,
     };
 
     #[fixture]
@@ -436,6 +452,7 @@ mod tests {
         ConfiguredJobs {
             daily_bars: true,
             fred: true,
+            twse: true,
             e_stat_calendar: true,
             alpha_vantage_calendar: true,
             fred_release_dates: true,
@@ -476,6 +493,12 @@ mod tests {
                 "fred_ingest",
                 CrontabFill::days(3),
                 Some(FRED_QUEUE),
+            ),
+            expected_cron::<TwseIndexIngest>(
+                CrontabTimer::daily_at(7, 0).ok(),
+                "twse_index_ingest",
+                CrontabFill::days(3),
+                Some(TWSE_QUEUE),
             ),
             expected_cron::<FredReleaseDatesIngest>(
                 CrontabTimer::daily_at(11, 45).ok(),
@@ -630,6 +653,12 @@ mod tests {
                     Some(FRED_QUEUE.to_string()),
                 ),
                 (
+                    Some("twse_index_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    Some(TWSE_QUEUE.to_string()),
+                ),
+                (
                     Some("fred_release_dates_ingest".to_string()),
                     Some(CrontabFill::days(3)),
                     Some(3),
@@ -746,6 +775,7 @@ mod tests {
     #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "trigger_evaluation"])]
     #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::twse_only(ConfiguredJobs { twse: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "twse_index_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::ecb_calendar_only(ConfiguredJobs { ecb_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "ecb_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]

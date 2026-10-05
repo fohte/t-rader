@@ -9,6 +9,14 @@ pub struct IndicatorObservationMetadata {
     pub kind: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndicatorObservationSeriesDefinition {
+    pub series_id: &'static str,
+    pub indicator_id: &'static str,
+    pub name: &'static str,
+    pub kind: &'static str,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndicatorObservationQuery {
     pub indicator_id: String,

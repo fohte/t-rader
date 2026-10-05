@@ -1,6 +1,8 @@
 use chrono::Duration;
+use chrono::NaiveDate;
 use core_domain::IndicatorObservation;
 
+use crate::indicator_observation_batch_source::IndicatorObservationBatchSource;
 use crate::indicator_observation_source::IndicatorObservationSource;
 use crate::strategy_scope::StrategyScope;
 
@@ -9,6 +11,7 @@ use super::repository::SharedIndicatorObservationRepository;
 use super::types::{
     IndicatorObservationIngestResult, IndicatorObservationIngestSeriesResult,
     IndicatorObservationMetadata, IndicatorObservationQuery, IndicatorObservationReadResult,
+    IndicatorObservationSeriesDefinition,
 };
 
 const LOOKBACK_DAYS: i64 = 10;
@@ -47,6 +50,21 @@ const SERIES: &[SeriesDefinition] = &[
     },
 ];
 
+pub const TWSE_SERIES: &[IndicatorObservationSeriesDefinition] = &[
+    IndicatorObservationSeriesDefinition {
+        series_id: "TAIEX",
+        indicator_id: "TAIEX",
+        name: "台湾加権指数",
+        kind: "index",
+    },
+    IndicatorObservationSeriesDefinition {
+        series_id: "TW_SEMI",
+        indicator_id: "TW_SEMI",
+        name: "台湾半導体指数",
+        kind: "index",
+    },
+];
+
 #[derive(Clone)]
 pub struct IndicatorObservationUseCases {
     repository: SharedIndicatorObservationRepository,
@@ -74,6 +92,117 @@ impl IndicatorObservationUseCases {
                     error: error.to_string(),
                 },
             });
+        }
+        IndicatorObservationIngestResult { series: results }
+    }
+
+    pub async fn ingest_batch(
+        &self,
+        source: &dyn IndicatorObservationBatchSource,
+        definitions: &[IndicatorObservationSeriesDefinition],
+        observation_start: Option<NaiveDate>,
+        observation_end: NaiveDate,
+    ) -> IndicatorObservationIngestResult {
+        let mut prepared = Vec::with_capacity(definitions.len());
+        let mut results = Vec::with_capacity(definitions.len());
+        let mut starts = Vec::with_capacity(definitions.len());
+
+        for definition in definitions {
+            let metadata = IndicatorObservationMetadata {
+                indicator_id: definition.indicator_id.to_string(),
+                name: definition.name.to_string(),
+                kind: definition.kind.to_string(),
+            };
+            if let Err(error) = self.repository.ensure_indicator(metadata.clone()).await {
+                results.push(IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: error.to_string(),
+                });
+                continue;
+            }
+
+            let start = if let Some(start) = observation_start {
+                start
+            } else {
+                match self
+                    .repository
+                    .find_latest_date(&metadata.indicator_id)
+                    .await
+                {
+                    Ok(latest) => latest
+                        .map(|date| date - Duration::days(LOOKBACK_DAYS))
+                        .unwrap_or(observation_end - Duration::days(LOOKBACK_DAYS)),
+                    Err(error) => {
+                        results.push(IndicatorObservationIngestSeriesResult::Failed {
+                            series_id: definition.series_id.to_string(),
+                            error: error.to_string(),
+                        });
+                        continue;
+                    }
+                }
+            };
+            starts.push(start);
+            prepared.push((definition, metadata));
+        }
+
+        if prepared.is_empty() {
+            return IndicatorObservationIngestResult { series: results };
+        }
+
+        let start = starts.into_iter().min().unwrap_or(observation_end);
+        if start > observation_end {
+            let error = "from must be on or before to".to_string();
+            results.extend(prepared.into_iter().map(|(definition, _)| {
+                IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: error.clone(),
+                }
+            }));
+            return IndicatorObservationIngestResult { series: results };
+        }
+
+        let series_ids: Vec<_> = prepared
+            .iter()
+            .map(|(definition, _)| definition.series_id)
+            .collect();
+        let observations = match source
+            .fetch_observations(&series_ids, start, observation_end)
+            .await
+        {
+            Ok(observations) => observations,
+            Err(error) => {
+                results.extend(prepared.into_iter().map(|(definition, _)| {
+                    IndicatorObservationIngestSeriesResult::Failed {
+                        series_id: definition.series_id.to_string(),
+                        error: error.to_string(),
+                    }
+                }));
+                return IndicatorObservationIngestResult { series: results };
+            }
+        };
+
+        for (definition, metadata) in prepared {
+            let Some(series_observations) = observations.get(definition.series_id) else {
+                results.push(IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: "source response is missing the requested series".to_string(),
+                });
+                continue;
+            };
+            match self
+                .repository
+                .upsert_observations(&metadata.indicator_id, series_observations.clone())
+                .await
+            {
+                Ok(upserted) => results.push(IndicatorObservationIngestSeriesResult::Succeeded {
+                    series_id: definition.series_id.to_string(),
+                    upserted,
+                }),
+                Err(error) => results.push(IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: error.to_string(),
+                }),
+            }
         }
         IndicatorObservationIngestResult { series: results }
     }
