@@ -1,51 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildSnippet, extractRefs, formatRelative } from '#lib/note-utils'
-
-describe('extractRefs', () => {
-  it('returns frontmatter refs when present', () => {
-    expect(
-      extractRefs({
-        frontmatter_json: {
-          refs: ['stock:demo-code', 'indicator:demo-indicator'],
-        },
-        body_md: '本文 [[stock:sample-code]]',
-      }),
-    ).toEqual(['stock:demo-code', 'indicator:demo-indicator'])
-  })
-
-  it('falls back to body scan when frontmatter has no refs', () => {
-    expect(
-      extractRefs({
-        frontmatter_json: {},
-        body_md:
-          '[[stock:sample-code]] と [[indicator:demo-indicator]] と [[group:demo-axis/demo-group]] を見る。[[theme:demo-topic]] は旧形式。',
-      }),
-    ).toEqual([
-      'stock:sample-code',
-      'indicator:demo-indicator',
-      'group:demo-axis/demo-group',
-    ])
-  })
-
-  it('deduplicates body refs', () => {
-    expect(
-      extractRefs({
-        frontmatter_json: {},
-        body_md: '[[stock:sample-code]] と再掲 [[stock:sample-code]]',
-      }),
-    ).toEqual(['stock:sample-code'])
-  })
-
-  it('filters non-string values from frontmatter refs', () => {
-    expect(
-      extractRefs({
-        frontmatter_json: { refs: ['stock:demo-code', 42, null] },
-        body_md: '',
-      }),
-    ).toEqual(['stock:demo-code'])
-  })
-})
+import { buildSnippet, formatRelative } from '#lib/note-utils'
 
 describe('buildSnippet', () => {
   it('strips markdown and ref syntax', () => {

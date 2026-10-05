@@ -114,7 +114,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 ## DB 接続
 
 - DB と Redis は `mise run db:up` で起動する。設定は `compose.yaml` と `compose.override.yaml` にあり、全 worktree で共有する
-- backend と agent の dev / test DB は `mise run db:up` が作成する。DB 名は `t-rader_backend_dev` / `t-rader_backend_test` と `t-rader_agent_dev` / `t-rader_agent_test`
+- backend と agent の dev / test DB は `mise run db:up` が作成する。DB 名は `t_rader_backend_dev` / `t_rader_backend_test` と `t_rader_agent_dev` / `t_rader_agent_test`
 - 各 package の `.mise.toml` が `DATABASE_URL` と `TEST_DATABASE_URL` を設定する。ホストポートは mise が `scripts/db-url` と `scripts/redis-url` で実行ごとに解決する
 - `cargo run` や `pnpm dev` を package のディレクトリで実行すると、その package 用の `DATABASE_URL` が使われる
 
@@ -134,6 +134,12 @@ backend の Rust crate に handler / MCP / service を追加・変更すると�
 When a change would push a file's non-test code past ~500 lines, split it along responsibility seams before adding more. Splits must be move-only commits: no logic changes, renames, or reformatting mixed in. Keep external import paths unchanged by keeping the entrypoint file in place and re-exporting the pieces you split out into new files (e.g. `foo.rs` gains a `foo/` directory for its submodules, `index.ts` re-exports from the new files). Tests move together with the code they verify.
 
 Prefer creating a new focused file over appending to the largest existing one.
+
+### テストや story のためだけに export しない
+
+テストや story は、production のコードと同じ公開 API を通して対象を使う。内部の関数・定数・型をテストのためだけに export しない。単体でテストしたいロジックは別モジュールに切り出して production もそこから import し、story で描画する View は container とは別のファイルに置く。
+
+`knip --production` がこの違反を検出する。指摘を `@internal` / `@public` タグや knip の `ignore` 系の設定で隠さない。
 
 ## Error handling rules
 
@@ -155,7 +161,22 @@ function parseConfig(raw: string): Result<Config, ConfigError> {
 }
 ```
 
-Use `ResultAsync.fromPromise()` or `Result.fromThrowable()` to interop with a throwing API without a local try/catch. If the throw-based contract genuinely can't be wrapped that way, catch the exception, wrap it in a `BoundaryError` subclass (see `src/errors.ts`), and rethrow it — `no-restricted-syntax` bans `try`/`throw` as separate selectors, so both the `try` and the `throw` need their own `eslint-disable-next-line no-restricted-syntax` comment explaining why.
+Use `ResultAsync.fromPromise()` or `Result.fromThrowable()` to interop with a throwing API without a local try/catch. If the throw-based contract genuinely can't be wrapped that way, define a package-local base error and subclass it for the boundary:
+
+```ts
+abstract class BoundaryError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause })
+    this.name = new.target.name
+  }
+}
+
+class DataSourceBoundaryError extends BoundaryError {}
+```
+
+When `error_tracking` or `is_web_app` is enabled, call `captureWithFingerprint` from `@fohte/service-kit/observability` immediately before rethrowing to give the error a stable Sentry fingerprint.
+
+Catch the exception, wrap it in the boundary-specific subclass, and rethrow it — `no-restricted-syntax` bans `try`/`throw` as separate selectors, so both the `try` and the `throw` need their own `eslint-disable-next-line no-restricted-syntax` comment explaining why.
 
 ## Storybook
 
@@ -177,7 +198,7 @@ Keep in the route file: data fetching, URL parameter handling, and composing alr
 
 A story's args fully determine what renders; the story never clicks, types, or otherwise interacts to reach that state. `fohte/no-play-in-stories` (`@fohte/eslint-config`) rejects a `play` function on a story or its `meta`, and rejects `parameters.screenshot.skip`, because the `vrt` check screenshots every story as rendered — an interaction-driven story produces whatever the `play` function happens to leave on screen at screenshot time, not a stable state.
 
-For a state that would otherwise take interaction to reach — an open menu/popover/dialog, a field mid-edit — expose it through props (e.g. `open`/`defaultOpen`) instead of driving it with a `play` function, adding the prop or extracting a presentational subcomponent if the component doesn't already support it. Test the interaction itself (click, type, assert) in a co-located `.test.tsx` file, not in a story.
+For a state that would otherwise take interaction to reach — an open menu/popover/dialog, a field mid-edit — expose it through props (e.g. `open`/`defaultOpen`) instead of driving it with a `play` function, adding the prop or extracting a presentational subcomponent into a separate file if the component doesn't already support it. Test the interaction itself (click, type, assert) in a co-located `.test.tsx` file, not in a story.
 
 ### Prefer Storybook over manual browser checks
 

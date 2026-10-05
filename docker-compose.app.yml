@@ -12,7 +12,7 @@ services:
       - path: .env.local
         required: false
     environment:
-      DATABASE_URL: postgres://t-rader:t-rader@db:5432/t-rader_backend_dev
+      DATABASE_URL: postgres://t_rader:t_rader@db:5432/t_rader_backend_dev
       REDIS_URL: redis://rate-limit-test:test-password@redis:6379/
       CARGO_HOME: /usr/local/cargo
     ports:
@@ -34,7 +34,7 @@ services:
       - path: .env.local
         required: false
     environment:
-      DATABASE_URL: postgres://t-rader:t-rader@db:5432/t-rader_agent_dev
+      DATABASE_URL: postgres://t_rader:t_rader@db:5432/t_rader_agent_dev
       TRADER_AGENT_PORT: '8080'
       TRADER_AGENT_URL: http://agent:8080/
       INTERNAL_API_TOKEN: dev-internal-token
