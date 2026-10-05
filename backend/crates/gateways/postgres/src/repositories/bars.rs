@@ -176,43 +176,26 @@ pub async fn find_intraday_bars_by_instruments(
         return Ok(Vec::new());
     }
 
-    let instrument_placeholders = if timeframe == Timeframe::Minute {
-        (1..=instrument_ids.len())
-            .map(|index| format!("${index}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    } else if timeframe.bucket_interval().is_some() {
-        (2..=instrument_ids.len() + 1)
-            .map(|index| format!("${index}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    } else {
-        return Ok(Vec::new());
+    let interval = timeframe.bucket_interval();
+    let (sql_template, first_instrument_index) = match (timeframe, interval) {
+        (Timeframe::Minute, None) => (FIND_ONE_MINUTE_BARS_SQL, 1),
+        (_, Some(_)) => (FIND_AGGREGATED_MINUTE_BARS_SQL, 2),
+        _ => return Ok(Vec::new()),
     };
+    let instrument_placeholders = (first_instrument_index
+        ..first_instrument_index + instrument_ids.len())
+        .map(|index| format!("${index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let from_index = first_instrument_index + instrument_ids.len();
+    let to_index = from_index + 1;
+    let sql = sql_template
+        .replace("{instrument_ids}", &instrument_placeholders)
+        .replace("{from}", &from_index.to_string())
+        .replace("{to}", &to_index.to_string());
+    let mut values = Vec::with_capacity(to_index);
 
-    let (sql, mut values) = if timeframe == Timeframe::Minute {
-        let from_index = instrument_ids.len() + 1;
-        let to_index = from_index + 1;
-        (
-            FIND_ONE_MINUTE_BARS_SQL
-                .replace("{instrument_ids}", &instrument_placeholders)
-                .replace("{from}", &from_index.to_string())
-                .replace("{to}", &to_index.to_string()),
-            Vec::with_capacity(instrument_ids.len() + 2),
-        )
-    } else {
-        let from_index = instrument_ids.len() + 2;
-        let to_index = from_index + 1;
-        (
-            FIND_AGGREGATED_MINUTE_BARS_SQL
-                .replace("{instrument_ids}", &instrument_placeholders)
-                .replace("{from}", &from_index.to_string())
-                .replace("{to}", &to_index.to_string()),
-            Vec::with_capacity(instrument_ids.len() + 3),
-        )
-    };
-
-    if let Some(interval) = timeframe.bucket_interval() {
+    if let Some(interval) = interval {
         values.push(interval.into());
     }
     values.extend(instrument_ids.iter().cloned().map(Into::into));

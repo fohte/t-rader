@@ -17,6 +17,7 @@ pub(super) async fn record_query_data(
     instrument_id: &str,
     from: chrono::NaiveDate,
     to: chrono::NaiveDate,
+    timeframe: &str,
     bars: &[BarDto],
 ) -> Result<(), StrategyTaskStepEvidenceUseCaseError> {
     let bars = bars
@@ -32,6 +33,6 @@ pub(super) async fn record_query_data(
         .collect();
 
     use_cases
-        .record_query_data(execution_step_id, instrument_id, from, to, bars)
+        .record_query_data(execution_step_id, instrument_id, from, to, timeframe, bars)
         .await
 }

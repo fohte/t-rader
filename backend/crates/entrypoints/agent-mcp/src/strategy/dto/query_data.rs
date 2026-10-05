@@ -40,7 +40,7 @@ pub struct QueryDataParams {
     pub from: NaiveDate,
     /// 取得終了日 (YYYY-MM-DD, inclusive)
     pub to: NaiveDate,
-    /// 取得する時間足。省略時は日足 (`1d`)
+    /// 取得する時間足。省略時は日足 (`1d`)。分足の推定バー数は 1 回あたり 50,000 件まで
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeframe: Option<QueryDataTimeframe>,
 }
@@ -56,7 +56,7 @@ pub struct BarDto {
     pub volume: i64,
 }
 
-/// 1 銘柄分の日足バー。データが 1 件も無い銘柄は `bars: []` になる
+/// 指定した時間足の 1 銘柄分のバー。データが 1 件も無い銘柄は `bars: []` になる
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct InstrumentBarsDto {
@@ -67,6 +67,6 @@ pub struct InstrumentBarsDto {
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct QueryDataResult {
-    /// `instrument_ids` と同じ順序
+    /// `instrument_ids` と同じ順序で返す
     pub results: Vec<InstrumentBarsDto>,
 }

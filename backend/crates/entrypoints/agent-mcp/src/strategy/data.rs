@@ -12,11 +12,38 @@ use core_domain::bar::Timeframe;
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
-use super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
+use super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult, QueryDataTimeframe};
 use super::{StrategyServer, decimal_to_f64, internal_error, invalid_params};
 
 /// 1 回の呼び出しで指定できる銘柄数の上限
 pub(super) const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
+const MAX_QUERY_DATA_INTRADAY_BARS: usize = 50_000;
+
+fn estimated_intraday_bars(
+    timeframe: &QueryDataTimeframe,
+    instrument_count: usize,
+    from: chrono::NaiveDate,
+    to: chrono::NaiveDate,
+) -> Option<usize> {
+    // 休場日や時間外取引を含む範囲を見積もるため、暦日 24 時間分で計算する。
+    let bars_per_day = match timeframe {
+        QueryDataTimeframe::Minute => 1_440,
+        QueryDataTimeframe::FiveMinutes => 288,
+        QueryDataTimeframe::FifteenMinutes => 96,
+        QueryDataTimeframe::Hourly => 24,
+        QueryDataTimeframe::FourHours => 6,
+        QueryDataTimeframe::Daily => return None,
+    };
+    let calendar_days = usize::try_from(to.signed_duration_since(from).num_days())
+        .unwrap_or(usize::MAX)
+        .saturating_add(1);
+
+    Some(
+        calendar_days
+            .saturating_mul(instrument_count)
+            .saturating_mul(bars_per_day),
+    )
+}
 
 impl StrategyServer {
     pub(crate) async fn query_data_inner(
@@ -37,7 +64,6 @@ impl StrategyServer {
         if params.from > params.to {
             return Err(invalid_params("from must be on or before to"));
         }
-
         let instrument_ids: Vec<String> = params
             .instrument_ids
             .iter()
@@ -54,6 +80,14 @@ impl StrategyServer {
                 return Err(invalid_params("instrument_ids must not contain duplicates"));
             }
         }
+        if let Some(estimated_bars) = params.timeframe.as_ref().and_then(|timeframe| {
+            estimated_intraday_bars(timeframe, instrument_ids.len(), params.from, params.to)
+        }) && estimated_bars > MAX_QUERY_DATA_INTRADAY_BARS
+        {
+            return Err(invalid_params(format!(
+                "estimated intraday bars must not exceed {MAX_QUERY_DATA_INTRADAY_BARS}"
+            )));
+        }
 
         let from = params
             .from
@@ -64,13 +98,14 @@ impl StrategyServer {
             .and_hms_opt(23, 59, 59)
             .map(|dt| dt.and_utc().fixed_offset());
         let timeframe: Timeframe = params.timeframe.unwrap_or_default().into();
+        let timeframe_name = timeframe.to_string();
 
         let rows = self
             .dependencies
             .bars
             .find_bars_by_instruments(BarsByInstrumentsQuery {
                 instrument_ids: instrument_ids.clone(),
-                timeframe: timeframe.to_string(),
+                timeframe: timeframe_name.clone(),
                 from,
                 to,
             })
@@ -107,6 +142,7 @@ impl StrategyServer {
                     instrument_id,
                     params.from,
                     params.to,
+                    &timeframe_name,
                     &bars,
                 )
                 .await

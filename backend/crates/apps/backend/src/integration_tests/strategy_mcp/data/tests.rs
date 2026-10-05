@@ -104,6 +104,18 @@ async fn insert_test_minute_bars(db: &impl sea_orm::ConnectionTrait, id: &str, b
                 volume: 20,
             },
         ),
+        make_test_minute_bar(
+            id,
+            TestMinuteBar {
+                hour: 14,
+                minute: 35,
+                open: base + 2,
+                high: base + 7,
+                low: base + 1,
+                close: base + 3,
+                volume: 30,
+            },
+        ),
     ])
     .exec_without_returning(db)
     .await
@@ -163,6 +175,48 @@ fn minute_bar_dto(
         low: low as f64,
         close: close as f64,
         volume,
+    }
+}
+
+fn expected_intraday_bars(timeframe: &str, base: i64) -> Vec<BarDto> {
+    match timeframe {
+        "1m" => vec![
+            minute_bar_dto(14, 30, base, base + 5, base - 1, base + 1, 10),
+            minute_bar_dto(14, 31, base + 1, base + 4, base, base + 2, 20),
+            minute_bar_dto(14, 35, base + 2, base + 7, base + 1, base + 3, 30),
+        ],
+        "5m" => vec![
+            minute_bar_dto(14, 30, base, base + 5, base - 1, base + 2, 30),
+            minute_bar_dto(14, 35, base + 2, base + 7, base + 1, base + 3, 30),
+        ],
+        "15m" => vec![minute_bar_dto(
+            14,
+            30,
+            base,
+            base + 7,
+            base - 1,
+            base + 3,
+            60,
+        )],
+        "1h" => vec![minute_bar_dto(
+            14,
+            0,
+            base,
+            base + 7,
+            base - 1,
+            base + 3,
+            60,
+        )],
+        "4h" => vec![minute_bar_dto(
+            12,
+            0,
+            base,
+            base + 7,
+            base - 1,
+            base + 3,
+            60,
+        )],
+        _ => unreachable!("unsupported test timeframe"),
     }
 }
 
@@ -283,13 +337,7 @@ async fn query_data_returns_minute_and_aggregated_intraday_bars(
     insert_test_minute_bars(&db, "fictional-us-instrument-a", 100).await;
     insert_test_minute_bars(&db, "fictional-us-instrument-b", 200).await;
 
-    for (timeframe, aggregate_bucket) in [
-        ("1m", None),
-        ("5m", Some((14, 30))),
-        ("15m", Some((14, 30))),
-        ("1h", Some((14, 0))),
-        ("4h", Some((12, 0))),
-    ] {
+    for timeframe in ["1m", "5m", "15m", "1h", "4h"] {
         let result = server
             .query_data(
                 strategy_id,
@@ -308,43 +356,20 @@ async fn query_data_returns_minute_and_aggregated_intraday_bars(
             .await
             .expect("query");
 
-        let results = if let Some((hour, minute)) = aggregate_bucket {
-            vec![
-                InstrumentBarsDto {
-                    instrument_id: "fictional-us-instrument-b".to_string(),
-                    bars: vec![minute_bar_dto(hour, minute, 200, 205, 199, 202, 30)],
-                },
-                InstrumentBarsDto {
-                    instrument_id: "fictional-instrument-a".to_string(),
-                    bars: vec![],
-                },
-                InstrumentBarsDto {
-                    instrument_id: "fictional-us-instrument-a".to_string(),
-                    bars: vec![minute_bar_dto(hour, minute, 100, 105, 99, 102, 30)],
-                },
-            ]
-        } else {
-            vec![
-                InstrumentBarsDto {
-                    instrument_id: "fictional-us-instrument-b".to_string(),
-                    bars: vec![
-                        minute_bar_dto(14, 30, 200, 205, 199, 201, 10),
-                        minute_bar_dto(14, 31, 201, 204, 200, 202, 20),
-                    ],
-                },
-                InstrumentBarsDto {
-                    instrument_id: "fictional-instrument-a".to_string(),
-                    bars: vec![],
-                },
-                InstrumentBarsDto {
-                    instrument_id: "fictional-us-instrument-a".to_string(),
-                    bars: vec![
-                        minute_bar_dto(14, 30, 100, 105, 99, 101, 10),
-                        minute_bar_dto(14, 31, 101, 104, 100, 102, 20),
-                    ],
-                },
-            ]
-        };
+        let results = vec![
+            InstrumentBarsDto {
+                instrument_id: "fictional-us-instrument-b".to_string(),
+                bars: expected_intraday_bars(timeframe, 200),
+            },
+            InstrumentBarsDto {
+                instrument_id: "fictional-instrument-a".to_string(),
+                bars: vec![],
+            },
+            InstrumentBarsDto {
+                instrument_id: "fictional-us-instrument-a".to_string(),
+                bars: expected_intraday_bars(timeframe, 100),
+            },
+        ];
 
         assert_eq!(result, QueryDataResult { results });
     }
@@ -437,6 +462,7 @@ async fn query_data_records_evidence_per_instrument_when_execution_step_id_prese
                     "instrument_id": "fictional-instrument-a",
                     "from": NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
                     "to": NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
+                    "timeframe": "1d",
                     "bars": [
                         bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 100),
                         bar_dto(NaiveDate::from_ymd_opt(2025, 1, 7).expect("date"), 105),
@@ -462,6 +488,7 @@ async fn query_data_records_evidence_per_instrument_when_execution_step_id_prese
                     "instrument_id": "fictional-instrument-b",
                     "from": NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
                     "to": NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
+                    "timeframe": "1d",
                     "bars": [bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 200)],
                     "total_bars": 1,
                     "truncated": false,
@@ -503,37 +530,50 @@ async fn query_data_records_no_evidence_when_execution_step_id_absent(
         vec![],
         "2025-01-06",
         "2025-01-07",
+        None,
         "instrument_ids must not be empty"
     )]
 #[case::too_many_instrument_ids(
         (0..MAX_QUERY_DATA_INSTRUMENTS + 1).map(|i| i.to_string()).collect(),
         "2025-01-06",
         "2025-01-07",
+        None,
         "instrument_ids must not exceed 100 entries"
     )]
 #[case::blank_instrument_id(
         vec!["  ".to_string()],
         "2025-01-06",
         "2025-01-07",
+        None,
         "instrument_ids must not contain empty values"
     )]
 #[case::duplicate_instrument_id(
         vec!["fictional-instrument-a".to_string(), "fictional-instrument-a".to_string()],
         "2025-01-06",
         "2025-01-07",
+        None,
         "instrument_ids must not contain duplicates"
     )]
 #[case::from_after_to(
         vec!["fictional-instrument-a".to_string()],
         "2025-01-07",
         "2025-01-06",
+        None,
         "from must be on or before to"
+    )]
+#[case::intraday_estimated_bar_limit(
+        vec!["fictional-instrument-a".to_string()],
+        "2025-01-01",
+        "2025-06-01",
+        Some("1m"),
+        "estimated intraday bars must not exceed 50000"
     )]
 #[tokio::test]
 async fn query_data_rejects_invalid_params_through_tool_dispatch(
     #[case] instrument_ids: Vec<String>,
     #[case] from: &str,
     #[case] to: &str,
+    #[case] timeframe: Option<&str>,
     #[case] expected_message: &str,
 ) {
     let strategy_id = Uuid::new_v4();
@@ -546,7 +586,7 @@ async fn query_data_rejects_invalid_params_through_tool_dispatch(
                 instrument_ids,
                 from: from.parse().expect("from date"),
                 to: to.parse().expect("to date"),
-                timeframe: None,
+                timeframe: timeframe.map(str::to_string),
             },
         )
         .await

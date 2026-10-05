@@ -60,7 +60,7 @@ impl StrategyServer {
     /// 複数銘柄 + 期間で指定した時間足のバーデータをまとめて取得する
     #[tool(
         name = "query_data",
-        description = "Fetch OHLCV bars for one or more instruments (up to 100 per call, no duplicates) over a shared date range from the DB. timeframe accepts 1m, 5m, 15m, 1h, 4h, or 1d and defaults to 1d. Intraday bars are available for US instruments; 5m, 15m, 1h, and 4h bars are aggregated from 1m data. Results are in the same order as instrument_ids; an instrument with no data returns an empty bars array rather than an error.",
+        description = "Fetch OHLCV bars for one or more instruments (up to 100 per call, no duplicates) over a shared date range from the DB. timeframe accepts 1m, 5m, 15m, 1h, 4h, or 1d and defaults to 1d. Intraday requests are limited to 50,000 estimated bars per call, based on inclusive calendar days, instruments, and maximum bars per calendar day. Intraday bars are available for US instruments; 5m, 15m, 1h, and 4h bars are aggregated from 1m data. Results are in the same order as instrument_ids; an instrument with no data returns an empty bars array rather than an error.",
         annotations(read_only_hint = true)
     )]
     async fn query_data(
