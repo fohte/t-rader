@@ -3,6 +3,7 @@
 //! 各メソッドは ctx から検証済み `StrategyScope` (と必要なら execution_id) を作り、対応する
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
 
+mod calendar;
 mod news;
 mod predictions;
 mod stock_groups;
@@ -470,6 +471,7 @@ impl StrategyServer {
         Self::base_tool_router()
             + Self::stock_groups_tool_router()
             + Self::strategy_earnings_targets_tool_router()
+            + Self::calendar_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::news_tool_router()
@@ -570,6 +572,7 @@ mod tests {
                 ("query_data", Some(true)),
                 ("query_youtube", Some(true)),
                 ("read_annotations", Some(true)),
+                ("read_calendar", Some(true)),
                 ("read_comments", Some(true)),
                 ("read_fin_summary", Some(true)),
                 ("read_macro_indicator", Some(true)),

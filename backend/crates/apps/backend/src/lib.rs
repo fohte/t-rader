@@ -41,6 +41,7 @@ pub fn build_http_state(
         annotation_read_use_cases: use_cases.annotation_reads(),
         annotation_use_cases: use_cases.annotations(),
         bars_use_cases: use_cases.bars(),
+        calendar_event_read_use_cases: use_cases.calendar_event_reads(),
         change_history_use_cases: use_cases.change_history_reads(),
         comment_read_use_cases: use_cases.comment_reads(),
         comment_use_cases: use_cases.comments(),

@@ -5,6 +5,7 @@
 //! ヘルパを担う。
 
 pub(super) mod annotations;
+pub(super) mod calendar;
 pub(super) mod comments;
 pub(super) mod data;
 mod dependencies;

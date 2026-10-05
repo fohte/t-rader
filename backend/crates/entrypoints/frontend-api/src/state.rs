@@ -7,6 +7,7 @@ use core_application::agent_task_client::{
 };
 use core_application::annotation::{AnnotationReadUseCases, AnnotationUseCases};
 use core_application::bars::BarsUseCases;
+use core_application::calendar::read_use_cases::CalendarEventReadUseCases;
 use core_application::change_history::ChangeHistoryUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
@@ -33,6 +34,7 @@ pub struct FrontendApiState {
     pub annotation_read_use_cases: AnnotationReadUseCases,
     pub annotation_use_cases: AnnotationUseCases,
     pub bars_use_cases: BarsUseCases,
+    pub calendar_event_read_use_cases: CalendarEventReadUseCases,
     pub change_history_use_cases: ChangeHistoryUseCases,
     pub comment_read_use_cases: CommentReadUseCases,
     pub comment_use_cases: CommentUseCases,

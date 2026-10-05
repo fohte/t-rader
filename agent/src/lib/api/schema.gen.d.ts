@@ -295,6 +295,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/calendar/events': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 指定期間のイベントを一覧する */
+    get: operations['list_calendar_events']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/comments': {
     parameters: {
       query?: never
@@ -1327,6 +1344,38 @@ export interface components {
       timestamp: string
       /** Format: int64 */
       volume: number
+    }
+    CalendarEventResponse:
+      | {
+          category: string
+          country: string
+          /** Format: date-time */
+          event_at?: string | null
+          /** Format: date */
+          event_date: string
+          external_id: string
+          fiscal_period?: string | null
+          /** @enum {string} */
+          kind: 'event'
+          source: string
+          stock_id?: string | null
+          time_of_day?: string | null
+          title: string
+        }
+      | {
+          count: number
+          country: string
+          /** Format: date */
+          event_date: string
+          /** @enum {string} */
+          kind: 'other_earnings_summary'
+        }
+    CalendarEventsResponse: {
+      events: components['schemas']['CalendarEventResponse'][]
+      /** Format: date */
+      from: string
+      /** Format: date */
+      to: string
     }
     ChangeHistory: {
       actor_kind: string
@@ -3428,6 +3477,57 @@ export interface operations {
         }
       }
       /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_calendar_events: {
+    parameters: {
+      query?: {
+        /** @description 取得開始日。省略時は今週の月曜日 (JST) */
+        from?: string
+        /** @description 取得終了日。省略時は今週の日曜日 (JST) */
+        to?: string
+        /** @description 決算対象を絞り込む戦略 ID。省略時は決算を日別件数にまとめる */
+        strategy_id?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description イベント一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CalendarEventsResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       500: {
         headers: {
           [name: string]: unknown
