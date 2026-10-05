@@ -181,12 +181,22 @@ fn to_domain(row: calendar_event::Model) -> Result<CalendarEvent, CalendarEventR
         category,
         country: row.country,
         title: row.title,
-        stock_id: row.stock_id,
+        stock_id: row
+            .stock_id
+            .map(|stock_id| normalize_local_code(&stock_id).to_string()),
         fiscal_period: row.fiscal_period,
         event_date: row.event_date,
         event_at: row.event_at.map(|event_at| event_at.with_timezone(&Utc)),
         time_of_day,
     })
+}
+
+fn normalize_local_code(code: &str) -> &str {
+    if code.len() == 5 && code.ends_with('0') {
+        &code[..4]
+    } else {
+        code
+    }
 }
 
 fn repository_error(error: sea_orm::DbErr) -> CalendarEventRepositoryError {
@@ -265,17 +275,15 @@ mod tests {
         central_bank.stock_id = None;
         central_bank.fiscal_period = None;
         central_bank.time_of_day = None;
-        let mut earnings = event(
-            "sample_source",
-            "earnings",
-            "サンプル銘柄 A",
-            date(2099, 8, 11),
-        );
+        let mut earnings = event("jquants", "earnings", "サンプル銘柄 A", date(2099, 8, 11));
+        earnings.stock_id = Some("0001".into());
         earnings.time_of_day = Some(CalendarEventTimeOfDay::PostMarket);
+        let mut stored_earnings = earnings.clone();
+        stored_earnings.stock_id = Some("00010".into());
         repository
             .upsert(
                 &transaction,
-                vec![central_bank.clone(), earnings.clone(), indicator.clone()],
+                vec![central_bank.clone(), stored_earnings, indicator.clone()],
             )
             .await
             .expect("insert events");
