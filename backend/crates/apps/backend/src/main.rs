@@ -20,6 +20,7 @@ use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
+use core_application::us_stock_master_source::SharedUsStockMasterSource;
 use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
@@ -33,6 +34,7 @@ use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
 use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
 use gateway_rss::RssNewsAggregator;
+use gateway_sec::SecClient;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
 };
@@ -53,6 +55,29 @@ use startup::{
     NewsAndCentralBankSources, StartupError, initialize_news_and_central_bank_sources,
     jquants_config_from_env, required_redis_url, worker_admin_ui_settings_from_env,
 };
+
+fn us_stock_master_source(
+    starts_worker: bool,
+    user_agent: Option<String>,
+) -> Result<Option<SharedUsStockMasterSource>, StartupError> {
+    if !starts_worker {
+        return Ok(None);
+    }
+
+    match user_agent {
+        Some(user_agent) if !user_agent.trim().is_empty() => {
+            let client = SecClient::new(&user_agent).map_err(|error| {
+                StartupError::Config(format!("failed to initialize SEC client: {error}"))
+            })?;
+            tracing::info!("SEC US stock master source initialized");
+            Ok(Some(Arc::new(client)))
+        }
+        _ => {
+            tracing::warn!("SEC_USER_AGENT が未設定のため、米国株のマスタ同期 job を登録しません");
+            Ok(None)
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {
@@ -287,6 +312,13 @@ async fn main() -> Result<(), StartupError> {
                 None
             }
         };
+    let sec_user_agent = if cli.run_mode.starts_worker() {
+        std::env::var("SEC_USER_AGENT").ok()
+    } else {
+        None
+    };
+    let us_stock_master_source =
+        us_stock_master_source(cli.run_mode.starts_worker(), sec_user_agent)?;
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -328,6 +360,8 @@ async fn main() -> Result<(), StartupError> {
         financial_summary_source,
         equity_master: use_cases.equity_master(),
         equity_master_source,
+        us_stock_master: use_cases.us_stock_master(),
+        us_stock_master_source,
         shareholding_structures: use_cases.shareholding_structures(),
         shareholding_structure_source,
         valuations: use_cases.valuations(),
@@ -482,4 +516,18 @@ async fn main() -> Result<(), StartupError> {
         run_futures.push(admin_server_run);
     }
     runtime::supervise(run_futures, shutdown_tx).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::us_stock_master_source;
+
+    #[test]
+    fn api_only_mode_does_not_validate_the_sec_user_agent() {
+        let result = us_stock_master_source(false, Some("invalid\nheader".to_owned()))
+            .map(|source| source.is_some())
+            .map_err(|error| error.to_string());
+
+        assert_eq!(result, Ok(false));
+    }
 }

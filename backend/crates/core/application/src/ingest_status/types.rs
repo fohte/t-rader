@@ -8,7 +8,7 @@ use super::{
     EQUITY_MASTER_INGEST_JOB, FINANCIAL_SUMMARY_INGEST_JOB, FRED_INGEST_JOB,
     FRED_RELEASE_DATES_INGEST_JOB, MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB, NEWS_CONTENT_FETCH_JOB,
     PREDICTION_GRADING_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB,
-    SHORT_SALE_REPORT_INGEST_JOB, VALUATION_INGEST_JOB,
+    SHORT_SALE_REPORT_INGEST_JOB, US_STOCK_MASTER_INGEST_JOB, VALUATION_INGEST_JOB,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,7 +17,7 @@ pub struct IngestJobDefinition {
     pub has_data_date: bool,
 }
 
-pub const INGEST_JOBS: [IngestJobDefinition; 18] = [
+pub const INGEST_JOBS: [IngestJobDefinition; 19] = [
     IngestJobDefinition {
         identifier: DAILY_BARS_INGEST_JOB,
         has_data_date: true,
@@ -36,6 +36,10 @@ pub const INGEST_JOBS: [IngestJobDefinition; 18] = [
     },
     IngestJobDefinition {
         identifier: EQUITY_MASTER_INGEST_JOB,
+        has_data_date: false,
+    },
+    IngestJobDefinition {
+        identifier: US_STOCK_MASTER_INGEST_JOB,
         has_data_date: false,
     },
     IngestJobDefinition {
