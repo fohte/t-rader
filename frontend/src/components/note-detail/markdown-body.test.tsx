@@ -122,7 +122,7 @@ describe('MarkdownBody', () => {
             evidence_id: '00000000-0000-0000-0000-000000000001',
           },
           '[[change:fictional-code@2030-01-02..2030-01-03:close]]': {
-            value: 2.5,
+            value: -14.910858995137763,
             evidence_id: '00000000-0000-0000-0000-000000000002',
           },
         }}
@@ -130,7 +130,7 @@ describe('MarkdownBody', () => {
     )
 
     expect(container.textContent).toBe(
-      '終値 1,234.5、変化 +2.5%、未解決 [[price:fictional-code@2030-01-04:close]]',
+      '終値 1,234.5、変化 -14.91%、未解決 [[price:fictional-code@2030-01-04:close]]',
     )
   })
 

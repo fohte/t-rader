@@ -106,10 +106,13 @@ function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
 
 function formatPriceReference(kind: string, value: string): string {
   const numericValue = Number(value)
-  const formattedValue = new Intl.NumberFormat('ja-JP', {
-    maximumSignificantDigits: 15,
-    signDisplay: kind === 'change' ? 'always' : 'auto',
-  }).format(numericValue)
+  const formatOptions: Intl.NumberFormatOptions =
+    kind === 'change'
+      ? { maximumFractionDigits: 2, signDisplay: 'always' }
+      : { maximumSignificantDigits: 15 }
+  const formattedValue = new Intl.NumberFormat('ja-JP', formatOptions).format(
+    numericValue,
+  )
   return kind === 'change' ? `${formattedValue}%` : formattedValue
 }
 
