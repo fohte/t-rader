@@ -23,8 +23,9 @@ pub fn scan_note_body_warnings(body: &str) -> Vec<String> {
 }
 
 fn scan_prose_segment(segment: &str) -> Vec<String> {
-    let relative_ranges = relative_expression_ranges(segment);
-    let mut findings = number_ranges(segment)
+    let number_ranges = number_ranges(segment);
+    let relative_ranges = relative_expression_ranges(segment, &number_ranges);
+    let mut findings = number_ranges
         .into_iter()
         .filter_map(|number| {
             if relative_ranges
@@ -83,10 +84,7 @@ fn number_ranges(text: &str) -> Vec<NumberRange> {
             break;
         };
         let digit_start = search_from + digit_offset;
-        let Some(range_start) = number_range_start(text, digit_start) else {
-            search_from = digit_start + 1;
-            continue;
-        };
+        let range_start = number_range_start(text, digit_start);
         if starts_with_ascii_word_character_before(text, range_start) {
             search_from = digit_start + 1;
             continue;
@@ -136,28 +134,16 @@ fn number_ranges(text: &str) -> Vec<NumberRange> {
     ranges
 }
 
-fn number_range_start(text: &str, digit_start: usize) -> Option<usize> {
-    let Some((previous_start, previous)) = previous_char(text, digit_start) else {
-        return Some(digit_start);
-    };
-    if matches!(previous, '+' | '-' | '−') {
-        if previous_start > 0
-            && previous_char(text, previous_start)
-                .is_some_and(|(_, character)| character.is_ascii_alphanumeric() || character == '_')
-        {
-            return None;
-        }
-        return Some(previous_start);
+fn number_range_start(text: &str, digit_start: usize) -> usize {
+    match previous_char(text, digit_start) {
+        Some((previous_start, '+' | '-' | '−' | '$' | '¥')) => previous_start,
+        _ => digit_start,
     }
-    if matches!(previous, '$' | '¥') {
-        return Some(previous_start);
-    }
-    Some(digit_start)
 }
 
 fn starts_with_ascii_word_character_before(text: &str, start: usize) -> bool {
     previous_char(text, start)
-        .is_some_and(|(_, character)| character.is_ascii_alphanumeric() || character == '_')
+        .is_some_and(|(_, character)| character.is_ascii_alphabetic() || character == '_')
 }
 
 fn is_price_candidate(text: &str, number: &NumberRange) -> bool {
@@ -253,44 +239,44 @@ fn price_unit_end(text: &str, number_end: usize) -> Option<usize> {
         .map(|unit| unit_start + unit.len())
 }
 
-fn relative_expression_ranges(text: &str) -> Vec<Range<usize>> {
+fn relative_expression_ranges(text: &str, numbers: &[NumberRange]) -> Vec<Range<usize>> {
     let mut ranges = Vec::new();
     for (percent_start, percent) in text.char_indices() {
         if !matches!(percent, '%' | '％') {
             continue;
         }
-        let mut expression_start = percent_start;
-        while let Some((previous_start, character)) = previous_char(text, expression_start) {
-            if !(character.is_ascii_digit()
-                || matches!(
-                    character,
-                    '+' | '-' | '−' | '–' | '—' | '~' | '〜' | '～' | ',' | '.' | ' ' | '\t'
-                ))
+        let Some((number_index, number)) = numbers.iter().enumerate().rev().find(|(_, number)| {
+            number.range.end <= percent_start
+                && text[number.range.end..percent_start]
+                    .chars()
+                    .all(char::is_whitespace)
+        }) else {
+            continue;
+        };
+
+        let mut expression_start = number.range.start;
+        let mut current_index = number_index;
+        while current_index > 0 {
+            let previous = &numbers[current_index - 1];
+            let current = &numbers[current_index];
+            if is_price_candidate(text, previous)
+                || !is_range_separator(&text[previous.range.end..current.number_start])
             {
                 break;
             }
-            expression_start = previous_start;
-        }
-        while expression_start < percent_start
-            && text[expression_start..]
-                .chars()
-                .next()
-                .is_some_and(char::is_whitespace)
-        {
-            expression_start += text[expression_start..]
-                .chars()
-                .next()
-                .map_or(0, char::len_utf8);
-        }
-        if !text[expression_start..percent_start]
-            .chars()
-            .any(|character| character.is_ascii_digit())
-        {
-            continue;
+            expression_start = previous.range.start;
+            current_index -= 1;
         }
         ranges.push(expression_start..percent_start + percent.len_utf8());
     }
     ranges
+}
+
+fn is_range_separator(between: &str) -> bool {
+    matches!(
+        between.trim_matches(|character: char| matches!(character, ' ' | '\t')),
+        "+" | "-" | "−" | "–" | "—" | "~" | "〜" | "～"
+    )
 }
 
 fn overlaps(left: &Range<usize>, right: &Range<usize>) -> bool {
@@ -319,8 +305,25 @@ mod tests {
     #[case::small_price_with_spacing("for 950 円", vec![
         "価格候補の数値「950 円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
     ])]
+    #[case::bare_four_digit_price_candidate("9876", vec![
+        "価格候補の数値「9876」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+    ])]
+    #[case::price_before_negative_change("終値 987654 -4.2%", vec![
+        "価格候補の数値「987654」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        "相対表現「-4.2%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+    ])]
+    #[case::price_before_positive_change("close 86420 +3%", vec![
+        "価格候補の数値「86420」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        "相対表現「+3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+    ])]
     #[case::relative_range("日中2〜3%が通常", vec![
         "相対表現「2〜3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+    ])]
+    #[case::spaced_relative_range("日中 2 ~ 3% が通常", vec![
+        "相対表現「2 ~ 3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
+    ])]
+    #[case::hyphen_relative_range("2-3%", vec![
+        "相対表現「2-3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
     ])]
     #[case::ordinary_date_is_not_a_price("2030-01-02", vec![])]
     #[case::links_are_not_scanned(
