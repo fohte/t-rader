@@ -50,6 +50,9 @@ fn parse_meeting_events(
         let Some(year_text) = id.strip_prefix('p') else {
             continue;
         };
+        if year_text.len() != 4 || !year_text.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
         let Ok(year) = year_text.parse::<i32>() else {
             continue;
         };
@@ -288,11 +291,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_future_events_and_keeps_meetings_beyond_the_publication_range() {
-        let today = NaiveDate::from_ymd_opt(2099, 8, 1).expect("valid date");
+    fn parses_official_boj_pages_with_footer_headings() {
+        let today = date(2026, 10, 5);
         let actual = parse_calendar_event_batch(
             include_str!("fixtures/meeting_schedule.html"),
             include_str!("fixtures/publication_schedule.html"),
+            today,
+        )
+        .expect("official pages parse");
+
+        assert_eq!(
+            actual,
+            CalendarEventBatch {
+                date_range: DateRange {
+                    from: today,
+                    to: date(2026, 10, 30),
+                },
+                events: vec![
+                    meeting_event(date(2026, 10, 29), 0),
+                    meeting_event(date(2026, 10, 30), 1),
+                    meeting_event(date(2026, 12, 17), 0),
+                    meeting_event(date(2026, 12, 18), 1),
+                    meeting_event(date(2027, 1, 21), 0),
+                    meeting_event(date(2027, 1, 22), 1),
+                    meeting_event(date(2027, 3, 17), 0),
+                    meeting_event(date(2027, 3, 18), 1),
+                    meeting_event(date(2027, 4, 27), 0),
+                    meeting_event(date(2027, 4, 28), 1),
+                    meeting_event(date(2027, 6, 10), 0),
+                    meeting_event(date(2027, 6, 11), 1),
+                    meeting_event(date(2027, 7, 21), 0),
+                    meeting_event(date(2027, 7, 22), 1),
+                    meeting_event(date(2027, 9, 21), 0),
+                    meeting_event(date(2027, 9, 22), 1),
+                    meeting_event(date(2027, 10, 28), 0),
+                    meeting_event(date(2027, 10, 29), 1),
+                    meeting_event(date(2027, 12, 16), 0),
+                    meeting_event(date(2027, 12, 17), 1),
+                ],
+            },
+        );
+    }
+
+    #[test]
+    fn parses_future_events_and_keeps_meetings_beyond_the_publication_range() {
+        let today = NaiveDate::from_ymd_opt(2099, 8, 1).expect("valid date");
+        let actual = parse_calendar_event_batch(
+            include_str!("fixtures/meeting_schedule_synthetic.html"),
+            include_str!("fixtures/publication_schedule_synthetic.html"),
             today,
         )
         .expect("fixture pages parse");
@@ -305,42 +351,12 @@ mod tests {
                     to: NaiveDate::from_ymd_opt(2099, 9, 4).expect("valid date"),
                 },
                 events: vec![
-                    event(
-                        "meeting-2099-08-18",
-                        "金融政策決定会合 (1日目)",
-                        date(2099, 8, 18),
-                        None,
-                    ),
-                    event(
-                        "meeting-2099-08-19",
-                        "金融政策決定会合 (2日目)",
-                        date(2099, 8, 19),
-                        None,
-                    ),
-                    event(
-                        "meeting-2099-10-06",
-                        "金融政策決定会合 (1日目)",
-                        date(2099, 10, 6),
-                        None,
-                    ),
-                    event(
-                        "meeting-2099-10-07",
-                        "金融政策決定会合 (2日目)",
-                        date(2099, 10, 7),
-                        None,
-                    ),
-                    event(
-                        "meeting-2100-01-20",
-                        "金融政策決定会合 (1日目)",
-                        date(2100, 1, 20),
-                        None,
-                    ),
-                    event(
-                        "meeting-2100-01-21",
-                        "金融政策決定会合 (2日目)",
-                        date(2100, 1, 21),
-                        None,
-                    ),
+                    meeting_event(date(2099, 8, 18), 0),
+                    meeting_event(date(2099, 8, 19), 1),
+                    meeting_event(date(2099, 10, 6), 0),
+                    meeting_event(date(2099, 10, 7), 1),
+                    meeting_event(date(2100, 1, 20), 0),
+                    meeting_event(date(2100, 1, 21), 1),
                     event(
                         "tankan-2099-08-21",
                         "架空の短観公表",
@@ -374,6 +390,15 @@ mod tests {
             event_at,
             time_of_day: None,
         }
+    }
+
+    fn meeting_event(event_date: NaiveDate, day_index: usize) -> CalendarEvent {
+        event(
+            &format!("meeting-{event_date}"),
+            &format!("金融政策決定会合 ({}日目)", day_index + 1),
+            event_date,
+            None,
+        )
     }
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
