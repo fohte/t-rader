@@ -5,6 +5,7 @@ use core_application::{
 };
 use gateway_boj::BojClient;
 use gateway_ecb::EcbClient;
+use gateway_fed::FedClient;
 use gateway_firecrawl::FirecrawlClient;
 
 use super::StartupError;
@@ -13,6 +14,7 @@ pub(crate) struct NewsAndCentralBankSources {
     pub(crate) news_content_fetcher: Option<SharedNewsContentFetcher>,
     pub(crate) boj_calendar_source: Option<SharedCalendarEventSource>,
     pub(crate) ecb_calendar_source: Option<SharedCalendarEventSource>,
+    pub(crate) fed_calendar_source: Option<SharedCalendarEventSource>,
 }
 
 pub(crate) fn initialize_news_and_central_bank_sources(
@@ -43,10 +45,17 @@ pub(crate) fn initialize_news_and_central_bank_sources(
         Some(Arc::new(EcbClient::new().map_err(|error| {
             StartupError::Config(format!("failed to initialize ECB calendar source: {error}"))
         })?));
+    let fed_calendar_source: Option<SharedCalendarEventSource> =
+        Some(Arc::new(FedClient::new().map_err(|error| {
+            StartupError::Config(format!(
+                "failed to initialize Federal Reserve calendar source: {error}"
+            ))
+        })?));
 
     Ok(NewsAndCentralBankSources {
         news_content_fetcher,
         boj_calendar_source,
         ecb_calendar_source,
+        fed_calendar_source,
     })
 }

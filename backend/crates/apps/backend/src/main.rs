@@ -267,6 +267,7 @@ async fn main() -> Result<(), StartupError> {
         news_content_fetcher,
         boj_calendar_source,
         ecb_calendar_source,
+        fed_calendar_source,
     } = initialize_news_and_central_bank_sources(&redis_url)?;
 
     let alpha_vantage_calendar_source: Option<SharedCalendarEventSource> =
@@ -317,6 +318,7 @@ async fn main() -> Result<(), StartupError> {
         calendar_events: use_cases.calendar_events(),
         boj_calendar_source,
         ecb_calendar_source,
+        fed_calendar_source,
         market_daily_bar_source,
         news: use_cases.news(),
         news_aggregator,
