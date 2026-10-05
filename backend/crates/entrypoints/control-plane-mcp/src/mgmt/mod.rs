@@ -1,6 +1,6 @@
 //! 管理 MCP server の tool 実装
 //!
-//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 10 種:
+//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 11 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
@@ -9,6 +9,7 @@
 //! - `get_strategy_config`
 //! - `list_recent_notes`
 //! - `list_recent_annotations`
+//! - `get_note_status_change_counts`
 //! - `list_rss_feeds`
 //! - `update_rss_feed`
 //! - `list_note_kinds`
@@ -25,12 +26,15 @@
 //! - `note_kinds`: ノート種別一覧 (`list_note_kinds_inner`)
 //! - `notes_annotations`: 直近ノート・アノテーション一覧
 //!   (`list_recent_notes_inner` / `list_recent_annotations_inner`)
+//! - `note_status_change_aggregate`: ノートの status 遷移件数集計
+//!   (`get_note_status_change_counts_inner`)
 //!
 //! 本モジュールは tool wrapper (`#[tool_router]` / `#[tool_handler]`) と
 //! 共通のエラー変換ヘルパを担う。
 
 pub(super) mod dto;
 mod note_kinds;
+mod note_status_change_aggregate;
 mod notes_annotations;
 mod rss_feeds;
 mod strategies;
@@ -40,6 +44,7 @@ use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::annotation::AnnotationReadUseCases;
 use core_application::note::NoteReadUseCases;
 use core_application::note_kind::NoteKindUseCases;
+use core_application::note_status_change_aggregate::NoteStatusChangeAggregateUseCases;
 use core_application::persistence::PersistenceError;
 use core_application::rss_feed::RssFeedUseCases;
 use core_application::strategy::{StrategyRepositoryError, StrategyUseCaseError, StrategyUseCases};
@@ -57,11 +62,12 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use std::sync::Arc;
 
 use dto::{
-    GetStrategyConfigParams, GetStrategyConfigResult, GetStrategyTaskStatusParams,
-    GetStrategyTaskStatusResult, ListNoteKindsResult, ListRecentAnnotationsResult,
-    ListRecentNotesResult, ListRecentParams, ListRssFeedsParams, ListRssFeedsResult,
-    ListStrategiesResult, ResumeStrategyTaskParams, ResumeStrategyTaskResult,
-    SubmitStrategyTaskParams, SubmitStrategyTaskResult, UpdateRssFeedParams,
+    GetNoteStatusChangeCountsParams, GetNoteStatusChangeCountsResult, GetStrategyConfigParams,
+    GetStrategyConfigResult, GetStrategyTaskStatusParams, GetStrategyTaskStatusResult,
+    ListNoteKindsResult, ListRecentAnnotationsResult, ListRecentNotesResult, ListRecentParams,
+    ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult, ResumeStrategyTaskParams,
+    ResumeStrategyTaskResult, SubmitStrategyTaskParams, SubmitStrategyTaskResult,
+    UpdateRssFeedParams,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -80,6 +86,7 @@ pub struct MgmtDependencies {
     pub triggers: TriggerUseCases,
     pub note_kinds: NoteKindUseCases,
     pub note_reads: NoteReadUseCases,
+    pub note_status_change_aggregate: NoteStatusChangeAggregateUseCases,
     pub annotation_reads: AnnotationReadUseCases,
     pub rss_feeds: RssFeedUseCases,
     pub agent_client: SharedAgentTaskClient,
@@ -248,6 +255,21 @@ impl MgmtServer {
         self.list_recent_notes_inner(params).await.map(Json)
     }
 
+    /// 指定期間内のノート承認・却下件数
+    #[tool(
+        name = "get_note_status_change_counts",
+        description = "Count note status changes whose destination is approved or rejected in the [from, to) RFC 3339 time range.",
+        annotations(read_only_hint = true)
+    )]
+    async fn get_note_status_change_counts(
+        &self,
+        Parameters(params): Parameters<GetNoteStatusChangeCountsParams>,
+    ) -> Result<Json<GetNoteStatusChangeCountsResult>, McpError> {
+        self.get_note_status_change_counts_inner(params)
+            .await
+            .map(Json)
+    }
+
     /// RSS フィード一覧
     #[tool(
         name = "list_rss_feeds",
@@ -348,6 +370,7 @@ mod tests {
             read_only_hints,
             [
                 ("get_strategy_config", Some(true)),
+                ("get_note_status_change_counts", Some(true)),
                 ("get_strategy_task_status", Some(true)),
                 ("list_recent_annotations", Some(true)),
                 ("list_recent_notes", Some(true)),

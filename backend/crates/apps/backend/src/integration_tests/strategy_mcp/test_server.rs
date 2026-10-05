@@ -67,7 +67,7 @@ impl StrategyServer {
         }
         if let Some(model) = model {
             let models = match name {
-                "query_media" => serde_json::json!({"query_media": model}),
+                "query_youtube" => serde_json::json!({"query_youtube": model}),
                 "search_web" => serde_json::json!({"search_web": model}),
                 _ => serde_json::json!({}),
             };
@@ -208,14 +208,20 @@ impl StrategyServer {
             .await
     }
 
-    pub(super) async fn query_media(
+    pub(super) async fn query_youtube(
         &self,
         scope: impl Into<StrategyScope>,
         model: String,
-        params: strategy_dto::QueryMediaParams,
-    ) -> Result<ToolOutput<strategy_dto::QueryMediaResult>, McpError> {
-        self.invoke("query_media", scope.into().id(), params, None, Some(model))
-            .await
+        params: strategy_dto::QueryYoutubeParams,
+    ) -> Result<ToolOutput<strategy_dto::QueryYoutubeResult>, McpError> {
+        self.invoke(
+            "query_youtube",
+            scope.into().id(),
+            params,
+            None,
+            Some(model),
+        )
+        .await
     }
 
     pub(super) async fn search_web(

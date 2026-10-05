@@ -2,6 +2,7 @@ package traderapi
 
 import (
 	"context"
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"net/http"
 	"reflect"
 	"testing"
@@ -45,7 +46,7 @@ func TestClientCreateCustomIndicator(t *testing.T) {
 			client, requests := newTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
 				writeJSON(t, w, http.StatusCreated, indicator)
 			})
-			payload := CreateCustomIndicatorRequest{
+			payload := gen.CreateCustomIndicatorRequest{
 				Code:         "synthetic_code",
 				Description:  nullable.NewNullableWithValue("synthetic description"),
 				InputSchema:  map[string]interface{}{},
@@ -57,11 +58,11 @@ func TestClientCreateCustomIndicator(t *testing.T) {
 			request := <-requests
 			if got, want := struct {
 				Request observedRequest
-				Result  CustomIndicator
+				Result  gen.CustomIndicator
 				Error   string
 			}{request, result, errorMessage(err)}, struct {
 				Request observedRequest
-				Result  CustomIndicator
+				Result  gen.CustomIndicator
 				Error   string
 			}{
 				Request: observedRequest{
@@ -93,11 +94,11 @@ func TestClientGetCustomIndicator(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  CustomIndicator
+		Result  gen.CustomIndicator
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  CustomIndicator
+		Result  gen.CustomIndicator
 		Error   string
 	}{
 		Request: observedRequest{
@@ -121,17 +122,17 @@ func TestClientUpdateCustomIndicatorClearsDescription(t *testing.T) {
 		writeJSON(t, w, http.StatusOK, indicator)
 	})
 
-	result, err := client.UpdateCustomIndicator(context.Background(), testCustomIndicatorID, UpdateCustomIndicatorRequest{
+	result, err := client.UpdateCustomIndicator(context.Background(), testCustomIndicatorID, gen.UpdateCustomIndicatorRequest{
 		Description: nullable.NewNullNullable[string](),
 	})
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  CustomIndicator
+		Result  gen.CustomIndicator
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  CustomIndicator
+		Result  gen.CustomIndicator
 		Error   string
 	}{
 		Request: observedRequest{
@@ -177,8 +178,8 @@ func TestClientDeleteCustomIndicator(t *testing.T) {
 	}
 }
 
-func testCustomIndicator(scope string, strategyID *string, description nullable.Nullable[string]) CustomIndicator {
-	indicator := CustomIndicator{
+func testCustomIndicator(scope string, strategyID *string, description nullable.Nullable[string]) gen.CustomIndicator {
+	indicator := gen.CustomIndicator{
 		Code:         "synthetic_code",
 		CreatedAt:    time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
 		Description:  description,

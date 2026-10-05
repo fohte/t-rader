@@ -150,6 +150,14 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
+                    job: "e_stat_calendar_ingest".into(),
+                    latest_run: None,
+                    last_succeeded_at: None,
+                    latest_data_date: None,
+                    expected_data_date: None,
+                    worker_jobs: Vec::new(),
+                },
+                IngestJobStatus {
                     job: "alpha_vantage_calendar_ingest".into(),
                     latest_run: None,
                     last_succeeded_at: None,
@@ -203,6 +211,14 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
+                    worker_jobs: Vec::new(),
+                },
+                IngestJobStatus {
+                    job: "news_content_fetch".into(),
+                    latest_run: None,
+                    last_succeeded_at: None,
+                    latest_data_date: None,
+                    expected_data_date: None,
                     worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {

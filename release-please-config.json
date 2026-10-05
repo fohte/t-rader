@@ -3,6 +3,7 @@
     "terraform-provider": {
       "release-type": "simple",
       "component": "terraform-provider",
+      "exclude-paths": ["terraform-provider/internal/traderapi/gen"],
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true
     }

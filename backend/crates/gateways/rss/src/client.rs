@@ -11,6 +11,8 @@ use crate::http::RssHttpClient;
 
 /// snippet を本文先頭から切り出す最大長 (バイトではなく文字数)
 const SNIPPET_MAX_CHARS: usize = 280;
+const CONTENT_TRUNCATION_THRESHOLD_CHARS: usize = 100_000;
+const CONTENT_TRUNCATION_NOTICE: &str = "[本文は 100,000 字を超えたため、後続を省略しました]";
 
 /// 公開 RSS 集約 NewsAggregator
 pub struct RssNewsAggregator {
@@ -158,8 +160,112 @@ impl ItemFields {
     }
 }
 
+#[derive(Default)]
+struct ContentEncoded {
+    enabled: bool,
+    active: bool,
+    has_child_elements: bool,
+    parts: Vec<ContentEncodedPart>,
+}
+
+enum ContentEncodedPart {
+    Html(String),
+    Reference(String),
+}
+
+impl ContentEncoded {
+    fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            ..Self::default()
+        }
+    }
+
+    fn clear(&mut self) {
+        self.active = false;
+        self.has_child_elements = false;
+        self.parts.clear();
+    }
+
+    fn start(&mut self) {
+        self.active = true;
+        self.has_child_elements = false;
+        self.parts.clear();
+    }
+
+    fn end(&mut self) {
+        self.active = false;
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn push_start_tag(&mut self, tag: &[u8]) {
+        self.push_child_markup(format!("<{}>", String::from_utf8_lossy(tag)));
+    }
+
+    fn push_end_tag(&mut self, tag: &[u8]) {
+        if self.active && self.enabled {
+            self.push_html(&format!("</{}>", String::from_utf8_lossy(tag)));
+        }
+    }
+
+    fn push_empty_tag(&mut self, tag: &[u8]) {
+        self.push_child_markup(format!("<{}/>", String::from_utf8_lossy(tag)));
+    }
+
+    fn push_text(&mut self, text: &str) {
+        if self.active && self.enabled {
+            self.push_html(text);
+        }
+    }
+
+    fn push_reference(&mut self, reference: &str) {
+        if self.active && self.enabled {
+            self.parts
+                .push(ContentEncodedPart::Reference(reference.to_string()));
+        }
+    }
+
+    fn html(&self) -> String {
+        let mut html = String::new();
+        for part in &self.parts {
+            match part {
+                ContentEncodedPart::Html(part) => html.push_str(part),
+                ContentEncodedPart::Reference(reference) => {
+                    // 参照の解釈は content:encoded 全体の形式が分かってから決める。
+                    if self.has_child_elements {
+                        html.push_str(reference);
+                    } else {
+                        html.push_str(&decode_html_entities(reference));
+                    }
+                }
+            }
+        }
+        html
+    }
+
+    fn push_child_markup(&mut self, markup: String) {
+        if self.active {
+            self.has_child_elements = true;
+            if self.enabled {
+                self.push_html(&markup);
+            }
+        }
+    }
+
+    fn push_html(&mut self, html: &str) {
+        if let Some(ContentEncodedPart::Html(previous)) = self.parts.last_mut() {
+            previous.push_str(html);
+        } else {
+            self.parts.push(ContentEncodedPart::Html(html.to_string()));
+        }
+    }
+}
+
 /// RSS の `<item>` から `title` / `link` / `description` / 日付を最小限パースする。
-/// RSS 2.0 の `pubDate` と RSS 1.0 の `dc:date` を拾い、その他のタグは無視する。
+/// RSS 2.0 の `pubDate` と RSS 1.0 の `dc:date` を拾い、feed 設定では `content:encoded` も読む。
 ///
 /// Atom 1.0 (`<entry>` / `<published>` / `<summary>`) には対応していない。フィード側で
 /// 形式が切り替わった場合はエラーにならず 0 件を返す。
@@ -170,11 +276,13 @@ fn parse_rss(
     body: &str,
 ) -> Result<Vec<NewsItem>, NewsAggregatorError> {
     let mut reader = Reader::from_str(body);
+    // HTML のインラインタグ前後の空白を保ち、RSS フィールドは build_item で trim する。
     reader.config_mut().trim_text(false);
 
     let mut items: Vec<NewsItem> = Vec::new();
     let mut in_item = false;
     let mut fields = ItemFields::default();
+    let mut content_encoded = ContentEncoded::new(content_source == ContentSource::Feed);
 
     loop {
         match reader
@@ -186,27 +294,38 @@ fn parse_rss(
                 if name == b"item" {
                     in_item = true;
                     fields.clear();
+                    content_encoded.clear();
                 } else if in_item {
-                    fields.start(&name);
+                    if name == b"content:encoded" {
+                        content_encoded.start();
+                    } else if content_encoded.is_active() {
+                        content_encoded.push_start_tag(e.as_ref());
+                    } else {
+                        fields.start(&name);
+                    }
                 }
             }
             Event::End(e) => {
                 let name = e.name().as_ref().to_vec();
                 if name == b"item" {
                     in_item = false;
-                    if let Some(item) = build_item(
-                        source,
-                        content_source,
-                        fields.title.trim(),
-                        fields.link.trim(),
-                        fields.description.trim(),
-                        fields.pub_date.trim(),
-                        fields.dc_date.trim(),
-                    ) {
+                    content_encoded.end();
+                    if let Some(item) =
+                        build_item(source, content_source, &fields, &content_encoded)?
+                    {
                         items.push(item);
                     }
+                } else if in_item && name == b"content:encoded" {
+                    content_encoded.end();
+                } else if in_item && content_encoded.is_active() {
+                    content_encoded.push_end_tag(e.name().as_ref());
                 } else if in_item {
                     fields.end(&name);
+                }
+            }
+            Event::Empty(e) => {
+                if in_item && content_encoded.is_active() {
+                    content_encoded.push_empty_tag(e.as_ref());
                 }
             }
             Event::Text(t) => {
@@ -214,14 +333,22 @@ fn parse_rss(
                     let text = t
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("text: {e}")))?;
-                    fields.push_text(text.as_ref());
+                    if content_encoded.is_active() {
+                        content_encoded.push_text(text.as_ref());
+                    } else {
+                        fields.push_text(text.as_ref());
+                    }
                 }
             }
             Event::CData(c) => {
                 if in_item {
                     let text = String::from_utf8(c.into_inner().into_owned())
                         .map_err(|e| NewsAggregatorError::Parse(format!("cdata: {e}")))?;
-                    fields.push_text(&text);
+                    if content_encoded.is_active() {
+                        content_encoded.push_text(&text);
+                    } else {
+                        fields.push_text(&text);
+                    }
                 }
             }
             Event::GeneralRef(reference) => {
@@ -229,8 +356,12 @@ fn parse_rss(
                     let name = reference
                         .decode()
                         .map_err(|e| NewsAggregatorError::Parse(format!("reference: {e}")))?;
-                    let text = format!("&{name};");
-                    fields.push_text(&text);
+                    let entity = format!("&{name};");
+                    if content_encoded.is_active() {
+                        content_encoded.push_reference(&entity);
+                    } else {
+                        fields.push_text(&entity);
+                    }
                 }
             }
             Event::Eof => break,
@@ -244,38 +375,64 @@ fn parse_rss(
 fn build_item(
     source: &str,
     content_source: ContentSource,
-    title: &str,
-    link: &str,
-    description: &str,
-    pub_date: &str,
-    dc_date: &str,
-) -> Option<NewsItem> {
+    fields: &ItemFields,
+    content_encoded: &ContentEncoded,
+) -> Result<Option<NewsItem>, NewsAggregatorError> {
+    let title = fields.title.trim();
+    let link = fields.link.trim();
     if title.is_empty() || link.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let published_at = parse_pub_date(if pub_date.is_empty() {
-        dc_date
+    let Some(published_at) = parse_pub_date(if fields.pub_date.is_empty() {
+        &fields.dc_date
     } else {
-        pub_date
-    })?;
+        &fields.pub_date
+    }) else {
+        return Ok(None);
+    };
     // GeneralRef は参照表記のまま戻しているため、CDATA 内の参照と一緒にここで一度だけ解決する。
     let title = decode_html_entities(title);
     let link = decode_html_entities(link);
     // description は HTML を含むことがある (Yahoo / Bloomberg / Reuters の RSS は <p>...</p>
     // を CDATA で入れてくる)。表示にも interest substring match にも生 HTML を残したくないので
     // タグを削ってから truncate する。
-    let cleaned = strip_html_tags(&decode_html_entities(description));
+    let cleaned = strip_html_tags(&decode_html_entities(&fields.description));
     let trimmed = cleaned.trim();
     let snippet = (!trimmed.is_empty()).then(|| truncate_chars(trimmed, SNIPPET_MAX_CHARS));
-    Some(NewsItem {
+    let content = parse_content(content_encoded.html().trim())?;
+    Ok(Some(NewsItem {
         source: source.to_string(),
         url: link.trim().to_string(),
         title: title.trim().to_string(),
         body_snippet: snippet,
         content_source,
-        content: None,
+        content,
         published_at,
-    })
+    }))
+}
+
+fn parse_content(content_encoded: &str) -> Result<Option<String>, NewsAggregatorError> {
+    if content_encoded.is_empty() {
+        return Ok(None);
+    }
+    let markdown = htmd::convert(content_encoded)
+        .map_err(|e| NewsAggregatorError::Parse(format!("content:encoded html: {e}")))?;
+    let markdown = markdown.trim();
+    if markdown.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(truncate_content(markdown)))
+}
+
+fn truncate_content(content: &str) -> String {
+    if content.chars().count() <= CONTENT_TRUNCATION_THRESHOLD_CHARS {
+        return content.to_string();
+    }
+    let mut truncated = truncate_chars(content, CONTENT_TRUNCATION_THRESHOLD_CHARS);
+    truncated.push('\n');
+    truncated.push('\n');
+    truncated.push_str(CONTENT_TRUNCATION_NOTICE);
+    truncated
 }
 
 /// 最低限の HTML エンティティをデコードする (`&amp;` `&lt;` `&gt;` `&quot;` `&apos;` `&#NNN;` `&#xHHH;`)。
@@ -424,6 +581,11 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    const EXPECTED_CDATA_MARKDOWN: &str = indoc! {r#"
+        ## 概要
+
+        本文の**重要事項**。"#};
+
     async fn mount_response(server: &MockServer, path_value: &str, response: ResponseTemplate) {
         Mock::given(method("GET"))
             .and(path(path_value))
@@ -459,6 +621,24 @@ mod tests {
     fn single_item_feed(title: &str, url: &str) -> String {
         format!(
             r#"<rss version="2.0"><channel><item><title>{title}</title><link>{url}</link><pubDate>Mon, 01 Jan 2024 09:00:00 +0900</pubDate></item></channel></rss>"#
+        )
+    }
+
+    fn single_item_feed_with_content(content_encoded: &str) -> String {
+        format!(
+            indoc! {r#"
+                <rss version="2.0" xmlns:content="urn:example:content">
+                  <channel>
+                    <item>
+                      <title>記事の見出し</title>
+                      <link>https://example.invalid/news/1</link>
+                      <content:encoded>{content_encoded}</content:encoded>
+                      <pubDate>Mon, 01 Jan 2024 09:00:00 +0900</pubDate>
+                    </item>
+                  </channel>
+                </rss>
+            "#},
+            content_encoded = content_encoded,
         )
     }
 
@@ -662,6 +842,107 @@ mod tests {
                     published_at: ymd_hms(2026, 6, 25, 1, 30, 0),
                 },
             ],
+        );
+    }
+
+    #[rstest]
+    #[case::cdata(
+        "<![CDATA[<h2>概要</h2><p>本文の<strong>重要事項</strong>。</p>]]>",
+        EXPECTED_CDATA_MARKDOWN
+    )]
+    #[case::xml_escaped("&lt;p&gt;本文 &amp; 補足&lt;/p&gt;", "本文 & 補足")]
+    #[case::nested_html_tags("<p>本文の<strong>重要事項</strong>。</p>", "本文の**重要事項**。")]
+    #[case::inline_tag_spaces("<p>左 <strong>強調</strong> 右</p>", "左 **強調** 右")]
+    #[case::escaped_tag_text(
+        "<p>左 &lt;script&gt;本文&lt;/script&gt; 右</p>",
+        "左 \\<script>本文\\</script> 右"
+    )]
+    #[case::escaped_tag_before_child(
+        "&lt;strong&gt;注意&lt;/strong&gt;<p>本文</p>",
+        indoc! {r#"
+            \<strong>注意\</strong>
+
+            本文"#}
+    )]
+    #[case::named_html_entity("<p>左&nbsp;右</p>", "左 右")]
+    fn parse_rss_converts_content_encoded_to_markdown(
+        #[case] content_encoded: &str,
+        #[case] expected_content: &str,
+    ) {
+        let xml = single_item_feed_with_content(content_encoded);
+
+        assert_eq!(
+            parse_rss("Test", ContentSource::Feed, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source: ContentSource::Feed,
+                content: Some(expected_content.into()),
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
+    #[case::none(ContentSource::None)]
+    #[case::crawl(ContentSource::Crawl)]
+    fn parse_rss_ignores_content_encoded_for_other_sources(#[case] content_source: ContentSource) {
+        let xml = single_item_feed_with_content("<![CDATA[<p>本文 <strong>重要</strong>。</p>]]>");
+
+        assert_eq!(
+            parse_rss("Test", content_source, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source,
+                content: None,
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
+    fn parse_rss_leaves_content_empty_when_content_encoded_is_missing() {
+        let xml = single_item_feed("記事の見出し", "https://example.invalid/news/1");
+
+        assert_eq!(
+            parse_rss("Test", ContentSource::Feed, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source: ContentSource::Feed,
+                content: None,
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
+    fn parse_rss_truncates_long_content_with_a_notice() {
+        let content_encoded = format!("<![CDATA[<p>{}</p>]]>", "あ".repeat(100_001));
+        let xml = single_item_feed_with_content(&content_encoded);
+        let mut expected_content = "あ".repeat(100_000);
+        expected_content.push('\n');
+        expected_content.push('\n');
+        expected_content.push_str("[本文は 100,000 字を超えたため、後続を省略しました]");
+
+        assert_eq!(
+            parse_rss("Test", ContentSource::Feed, &xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "記事の見出し".into(),
+                body_snippet: None,
+                content_source: ContentSource::Feed,
+                content: Some(expected_content),
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
         );
     }
 

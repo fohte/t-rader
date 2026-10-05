@@ -1,5 +1,5 @@
-package: traderapi
-output: internal/traderapi/client.gen.go
+package: gen
+output: internal/traderapi/gen/client.gen.go
 generate:
   models: true
   client: true

@@ -25,7 +25,7 @@ describe('parseAgentGraph', () => {
     const yaml = `
 tool_models:
   search_web: example-model-search
-  query_media: example-model-media
+  query_youtube: example-model-youtube
 phases:
   - key: plan
     label: 調査計画
@@ -51,7 +51,7 @@ phases:
       ok({
         toolModels: {
           search_web: 'example-model-search',
-          query_media: 'example-model-media',
+          query_youtube: 'example-model-youtube',
         },
         phases: [
           {

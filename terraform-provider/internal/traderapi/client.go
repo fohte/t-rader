@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"github.com/google/uuid"
 )
 
@@ -25,7 +26,7 @@ const strategiesPath = "/api/strategies"
 const maxErrorBodyBytes = 64 * 1024
 
 type Client struct {
-	api *ClientWithResponses
+	api *gen.ClientWithResponses
 }
 
 func New(baseURL, clientID, clientSecret string) (*Client, error) {
@@ -34,10 +35,10 @@ func New(baseURL, clientID, clientSecret string) (*Client, error) {
 		return nil, errors.New("base_url must be an absolute HTTP or HTTPS URL without credentials, query, or fragment")
 	}
 
-	apiClient, err := NewClientWithResponses(
+	apiClient, err := gen.NewClientWithResponses(
 		parsedURL.String(),
-		WithHTTPClient(errorBodyLimitDoer{client: &http.Client{Timeout: 30 * time.Second}}),
-		WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
+		gen.WithHTTPClient(errorBodyLimitDoer{client: &http.Client{Timeout: 30 * time.Second}}),
+		gen.WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
 			request.Header.Set("Accept", "application/json")
 			if clientID != "" {
 				request.Header.Set("CF-Access-Client-Id", clientID)
@@ -54,7 +55,7 @@ func New(baseURL, clientID, clientSecret string) (*Client, error) {
 }
 
 // OpenAPI はリソース実装向けの生成 client を返します。
-func (c *Client) OpenAPI() *ClientWithResponses {
+func (c *Client) OpenAPI() *gen.ClientWithResponses {
 	return c.api
 }
 
@@ -66,52 +67,52 @@ func (c *Client) CheckConnection(ctx context.Context) error {
 	return responseError(response.HTTPResponse, response.Body)
 }
 
-func (c *Client) CreateStrategy(ctx context.Context, payload CreateStrategyRequest) (Strategy, error) {
+func (c *Client) CreateStrategy(ctx context.Context, payload gen.CreateStrategyRequest) (gen.Strategy, error) {
 	response, err := c.api.CreateStrategyWithResponse(ctx, payload)
 	if err != nil {
-		return Strategy{}, fmt.Errorf("send create strategy request: %w", err)
+		return gen.Strategy{}, fmt.Errorf("send create strategy request: %w", err)
 	}
 	if err := responseError(response.HTTPResponse, response.Body); err != nil {
-		return Strategy{}, err
+		return gen.Strategy{}, err
 	}
 	if response.JSON201 == nil {
-		return Strategy{}, errors.New("backend returned HTTP 201 without a JSON response")
+		return gen.Strategy{}, errors.New("backend returned HTTP 201 without a JSON response")
 	}
 	return *response.JSON201, nil
 }
 
-func (c *Client) GetStrategy(ctx context.Context, id string) (Strategy, error) {
+func (c *Client) GetStrategy(ctx context.Context, id string) (gen.Strategy, error) {
 	strategyID, err := parseStrategyID(id)
 	if err != nil {
-		return Strategy{}, err
+		return gen.Strategy{}, err
 	}
 	response, err := c.api.GetStrategyWithResponse(ctx, strategyID)
 	if err != nil {
-		return Strategy{}, fmt.Errorf("send get strategy request: %w", err)
+		return gen.Strategy{}, fmt.Errorf("send get strategy request: %w", err)
 	}
 	if err := responseError(response.HTTPResponse, response.Body); err != nil {
-		return Strategy{}, err
+		return gen.Strategy{}, err
 	}
 	if response.JSON200 == nil {
-		return Strategy{}, errors.New("backend returned HTTP 200 without a JSON response")
+		return gen.Strategy{}, errors.New("backend returned HTTP 200 without a JSON response")
 	}
 	return *response.JSON200, nil
 }
 
-func (c *Client) UpdateStrategy(ctx context.Context, id string, payload UpdateStrategyRequest) (Strategy, error) {
+func (c *Client) UpdateStrategy(ctx context.Context, id string, payload gen.UpdateStrategyRequest) (gen.Strategy, error) {
 	strategyID, err := parseStrategyID(id)
 	if err != nil {
-		return Strategy{}, err
+		return gen.Strategy{}, err
 	}
 	response, err := c.api.UpdateStrategyWithResponse(ctx, strategyID, payload)
 	if err != nil {
-		return Strategy{}, fmt.Errorf("send update strategy request: %w", err)
+		return gen.Strategy{}, fmt.Errorf("send update strategy request: %w", err)
 	}
 	if err := responseError(response.HTTPResponse, response.Body); err != nil {
-		return Strategy{}, err
+		return gen.Strategy{}, err
 	}
 	if response.JSON200 == nil {
-		return Strategy{}, errors.New("backend returned HTTP 200 without a JSON response")
+		return gen.Strategy{}, errors.New("backend returned HTTP 200 without a JSON response")
 	}
 	return *response.JSON200, nil
 }

@@ -18,6 +18,7 @@ use crate::{
         alpha_vantage::AlphaVantageCalendarIngest,
         boj_calendar::BojCalendarEventIngest,
         daily_bars::DailyBarsIngest,
+        e_stat_calendar::EStatCalendarIngest,
         earnings_schedule::EarningsScheduleIngest,
         ecb_calendar::EcbCalendarEventIngest,
         edinet_holdings::ShareholdingStructureIngest,
@@ -28,6 +29,7 @@ use crate::{
         ingest_run_recovery::IngestRunRecovery,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
+        news_content::NewsContentFetch,
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
@@ -41,10 +43,12 @@ const JQUANTS_QUEUE: &str = "jquants";
 const FRED_QUEUE: &str = "fred";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 16] = [
+pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 18] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
     (AlphaVantageCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
     (FredReleaseDatesIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (EStatCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
     (BOJ_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
     (ECB_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
     (ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -55,6 +59,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 16] = [
     (EarningsScheduleIngest::IDENTIFIER, DAILY_TIMEOUT),
     (FinancialSummaryIngest::IDENTIFIER, DAILY_TIMEOUT),
     (NewsAggregation::IDENTIFIER, DAILY_TIMEOUT),
+    (NewsContentFetch::IDENTIFIER, NEWS_CONTENT_JOB_TIMEOUT),
     (ValuationIngest::IDENTIFIER, DAILY_TIMEOUT),
     (EquityMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShareholdingStructureIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -64,6 +69,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 16] = [
 struct ConfiguredJobs {
     daily_bars: bool,
     fred: bool,
+    e_stat_calendar: bool,
     alpha_vantage_calendar: bool,
     fred_release_dates: bool,
     boj_calendar: bool,
@@ -75,6 +81,7 @@ struct ConfiguredJobs {
     equity_master: bool,
     shareholding_structure: bool,
     strategy_task_reconcile: bool,
+    news_content: bool,
 }
 
 pub struct Scheduler {
@@ -87,9 +94,11 @@ impl Scheduler {
         dependencies: SchedulerDependencies,
         shutdown_signal: impl Future<Output = ()> + Send + 'static,
     ) -> Result<Self, String> {
+        let news_content_configured = dependencies.news_content_fetcher.is_some();
         let crontabs = build_crontabs(ConfiguredJobs {
             daily_bars: dependencies.market_daily_bar_source.is_some(),
             fred: dependencies.fred_source.is_some(),
+            e_stat_calendar: dependencies.e_stat_calendar_source.is_some(),
             alpha_vantage_calendar: dependencies.alpha_vantage_calendar_source.is_some(),
             fred_release_dates: dependencies.fred_calendar_event_source.is_some(),
             boj_calendar: dependencies.boj_calendar_source.is_some(),
@@ -102,6 +111,7 @@ impl Scheduler {
             equity_master: dependencies.equity_master_source.is_some(),
             shareholding_structure: dependencies.shareholding_structure_source.is_some(),
             strategy_task_reconcile: dependencies.strategy_task_reconcile_enabled,
+            news_content: news_content_configured,
         })
         .map_err(|error| error.to_string())?;
         let state = SchedulerState { dependencies };
@@ -109,7 +119,7 @@ impl Scheduler {
             Cron::every_n_minutes::<IngestRunRecovery>(INGEST_RUN_RECOVERY_INTERVAL_MINUTES)
                 .map_err(|error| error.to_string())?
                 .fill(CrontabFill::minutes(10));
-        let worker = WorkerOptions::default()
+        let worker_options = WorkerOptions::default()
             .pg_pool(pool)
             .schema(GRAPHILE_WORKER_SCHEMA)
             .concurrency(2)
@@ -126,6 +136,7 @@ impl Scheduler {
             .define_job::<EquityMasterIngest>()
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
+            .define_job::<EStatCalendarIngest>()
             .define_job::<AlphaVantageCalendarIngest>()
             .define_job::<FredReleaseDatesIngest>()
             .define_job::<BojCalendarEventIngest>()
@@ -136,7 +147,13 @@ impl Scheduler {
             .define_job::<MarginIngest>()
             .define_job::<PredictionGrading>()
             .define_job::<StrategyTaskReconcile>()
-            .define_job::<TriggerEvaluation>()
+            .define_job::<TriggerEvaluation>();
+        let worker_options = if news_content_configured {
+            worker_options.define_job::<NewsContentFetch>()
+        } else {
+            worker_options
+        };
+        let worker = worker_options
             .with_crons(crontabs)
             .with_cron(recovery_cron)
             .init()
@@ -172,6 +189,14 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
             11,
             45,
             Some(FRED_QUEUE),
+        )?);
+    }
+    if configured.e_stat_calendar {
+        crontabs.push(daily_cron::<EStatCalendarIngest>(
+            "e_stat_calendar_ingest",
+            11,
+            45,
+            None,
         )?);
     }
     if configured.alpha_vantage_calendar {
@@ -270,6 +295,13 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
             Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME),
         ));
     }
+    if configured.news_content {
+        crontabs.push(every_n_minutes_cron::<NewsContentFetch>(
+            "news_content_fetch",
+            10,
+            Some(NEWS_CONTENT_QUEUE),
+        )?);
+    }
     crontabs.push(every_minute_cron::<TriggerEvaluation>(
         "trigger_evaluation",
         None,
@@ -337,6 +369,21 @@ fn every_minute_cron<T: TaskHandler>(id: &str, queue: Option<&str>) -> Crontab {
     configure_cron::<T>(CrontabTimer::every_minute(), id, None, queue)
 }
 
+fn every_n_minutes_cron<T: TaskHandler>(
+    id: &str,
+    minutes: u32,
+    queue: Option<&str>,
+) -> Result<Crontab, CrontabTimerError> {
+    Ok(configure_cron::<T>(
+        CrontabTimer::every_n_minutes(minutes)?,
+        id,
+        None,
+        queue,
+    ))
+}
+
+const NEWS_CONTENT_QUEUE: &str = "news_content";
+
 #[cfg(test)]
 mod tests {
     use chrono::Weekday;
@@ -347,6 +394,7 @@ mod tests {
         alpha_vantage::AlphaVantageCalendarIngest,
         boj_calendar::BojCalendarEventIngest,
         daily_bars::DailyBarsIngest,
+        e_stat_calendar::EStatCalendarIngest,
         earnings_schedule::EarningsScheduleIngest,
         ecb_calendar::EcbCalendarEventIngest,
         edinet_holdings::ShareholdingStructureIngest,
@@ -356,6 +404,7 @@ mod tests {
         fred_release_dates::FredReleaseDatesIngest,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
+        news_content::NewsContentFetch,
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
@@ -363,8 +412,9 @@ mod tests {
     };
 
     use super::{
-        ConfiguredJobs, FRED_QUEUE, JQUANTS_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
-        build_crontabs, configure_cron, every_minute_cron, hourly_cron,
+        ConfiguredJobs, FRED_QUEUE, JQUANTS_QUEUE, NEWS_CONTENT_QUEUE,
+        STRATEGY_TASK_RECONCILE_QUEUE_NAME, build_crontabs, configure_cron, every_minute_cron,
+        hourly_cron,
     };
 
     #[fixture]
@@ -372,6 +422,7 @@ mod tests {
         ConfiguredJobs {
             daily_bars: true,
             fred: true,
+            e_stat_calendar: true,
             alpha_vantage_calendar: true,
             fred_release_dates: true,
             boj_calendar: true,
@@ -383,6 +434,7 @@ mod tests {
             equity_master: true,
             shareholding_structure: true,
             strategy_task_reconcile: true,
+            news_content: true,
         }
     }
 
@@ -415,6 +467,12 @@ mod tests {
                 "fred_release_dates_ingest",
                 CrontabFill::days(3),
                 Some(FRED_QUEUE),
+            ),
+            expected_cron::<EStatCalendarIngest>(
+                CrontabTimer::daily_at(11, 45).ok(),
+                "e_stat_calendar_ingest",
+                CrontabFill::days(3),
+                None,
             ),
             expected_cron::<AlphaVantageCalendarIngest>(
                 CrontabTimer::daily_at(11, 45).ok(),
@@ -498,6 +556,14 @@ mod tests {
                 "strategy_task_reconcile",
                 Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME),
             )),
+            CrontabTimer::every_n_minutes(10).ok().map(|timer| {
+                configure_cron::<NewsContentFetch>(
+                    timer,
+                    "news_content_fetch",
+                    None,
+                    Some(NEWS_CONTENT_QUEUE),
+                )
+            }),
             Some(every_minute_cron::<TriggerEvaluation>(
                 "trigger_evaluation",
                 None,
@@ -547,6 +613,12 @@ mod tests {
                     Some(CrontabFill::days(3)),
                     Some(3),
                     Some(FRED_QUEUE.to_string()),
+                ),
+                (
+                    Some("e_stat_calendar_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    None,
                 ),
                 (
                     Some("alpha_vantage_calendar_ingest".to_string()),
@@ -632,6 +704,12 @@ mod tests {
                     Some(3),
                     Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME.to_string()),
                 ),
+                (
+                    Some("news_content_fetch".to_string()),
+                    None,
+                    Some(3),
+                    Some(NEWS_CONTENT_QUEUE.to_string()),
+                ),
                 (Some("trigger_evaluation".to_string()), None, Some(3), None,),
             ]),
         );
@@ -641,6 +719,7 @@ mod tests {
     #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "trigger_evaluation"])]
     #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::ecb_calendar_only(ConfiguredJobs { ecb_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "ecb_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::alpha_vantage_calendar_only(ConfiguredJobs { alpha_vantage_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "alpha_vantage_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
@@ -652,6 +731,7 @@ mod tests {
     #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::news_content_enabled(ConfiguredJobs { news_content: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "news_content_fetch", "trigger_evaluation"])]
     fn schedules_only_configured_sources(
         #[case] configured: ConfiguredJobs,
         #[case] expected_ids: Vec<&str>,

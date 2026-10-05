@@ -18,10 +18,11 @@ use sea_orm::ActiveValue::Set;
 use crate::integration_tests::mcp_tool::call_tool_output;
 
 use super::dto::{
-    GetStrategyConfigResult, GetStrategyTaskStatusResult, ListRecentAnnotationsResult,
-    ListRecentNotesResult, ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult,
-    ResumeStrategyTaskParams, ResumeStrategyTaskResult, SubmitStrategyTaskParams,
-    SubmitStrategyTaskResult, UpdateRssFeedParams,
+    GetNoteStatusChangeCountsParams, GetNoteStatusChangeCountsResult, GetStrategyConfigResult,
+    GetStrategyTaskStatusResult, ListRecentAnnotationsResult, ListRecentNotesResult,
+    ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult, ResumeStrategyTaskParams,
+    ResumeStrategyTaskResult, SubmitStrategyTaskParams, SubmitStrategyTaskResult,
+    UpdateRssFeedParams,
 };
 
 #[derive(Clone)]
@@ -114,6 +115,13 @@ impl MgmtTestServer {
         Parameters(params): Parameters<super::dto::ListRecentParams>,
     ) -> Result<Json<ListRecentAnnotationsResult>, McpError> {
         invoke(&self.server, "list_recent_annotations", params).await
+    }
+
+    pub(crate) async fn get_note_status_change_counts(
+        &self,
+        Parameters(params): Parameters<GetNoteStatusChangeCountsParams>,
+    ) -> Result<Json<GetNoteStatusChangeCountsResult>, McpError> {
+        invoke(&self.server, "get_note_status_change_counts", params).await
     }
 
     pub(crate) async fn list_rss_feeds(

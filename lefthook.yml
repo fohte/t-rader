@@ -18,7 +18,7 @@ pre-commit:
     openapi-go-client:
       priority: 3
       glob: '*.rs'
-      run: scripts/generate-terraform-api-client && git add terraform-provider/internal/traderapi/client.gen.go
+      run: scripts/generate-terraform-api-client && git add terraform-provider/internal/traderapi/gen/client.gen.go
 
     format:
       # Remove trailing whitespace and ensure final newline
@@ -85,9 +85,8 @@ pre-commit:
       run: pnpm exec eslint {staged_files}
 
     ast-grep:
-      glob: '*.rs'
+      glob: '*.{js,ts,jsx,tsx,mjs,cjs,mts,cts,rs}'
       run: ast-grep scan {staged_files}
-
     # Using glob instead of file_types because text/x-rust is not supported
     # by the mimetype library used by lefthook.
     # See: https://github.com/gabriel-vasile/mimetype/blob/master/supported_mimes.md

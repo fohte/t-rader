@@ -7,24 +7,28 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  parseAgentGraphPhases,
+  readTaskSteps,
+  StepDetail,
+  TaskExecutionTree,
+  type TaskStep,
+} from '#components/strategy-shell/task-execution-tree'
 import {
   buildPhaseNodes,
   buildTraceUrl,
   findEnumBadge,
   formatDuration,
-  isTaskStep,
   listEnumEntries,
-  parseAgentGraphPhases,
-  StepDetail,
   stepSubtitle,
-  TaskExecutionTree,
-  type TaskExecutionTreeProps,
-  type TaskStep,
-} from '#components/strategy-shell/task-execution-tree'
+} from '#components/strategy-shell/task-execution-tree/model'
 
 afterEach(cleanup)
+
+type TaskExecutionTreeProps = ComponentProps<typeof TaskExecutionTree>
 
 // Link (ノートリンク) が親ルートを要求するため、最低限のテストルーターを噛ませる
 async function renderInRouter(ui: React.ReactElement) {
@@ -72,9 +76,10 @@ function makeProps(
   }
 }
 
-describe('isTaskStep', () => {
-  it('accepts a step with all required fields', () => {
-    expect(isTaskStep(makeStep({ phase_key: 'plan' }))).toBe(true)
+describe('readTaskSteps', () => {
+  it('keeps a step with all required fields', () => {
+    const step = makeStep({ phase_key: 'plan' })
+    expect(readTaskSteps([step])).toEqual([step])
   })
 
   it.each([
@@ -90,7 +95,7 @@ describe('isTaskStep', () => {
     const step = Object.fromEntries(
       Object.entries(full).filter(([key]) => key !== field),
     )
-    expect(isTaskStep(step)).toBe(false)
+    expect(readTaskSteps([step])).toEqual([])
   })
 })
 

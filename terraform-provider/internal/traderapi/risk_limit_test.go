@@ -2,6 +2,7 @@ package traderapi
 
 import (
 	"context"
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"net/http"
 	"reflect"
 	"testing"
@@ -10,7 +11,7 @@ import (
 func TestClientGetRiskLimit(t *testing.T) {
 	t.Parallel()
 
-	expected := AccountRiskPolicyResponse{MaxGroupRatios: []GroupRatio{{Axis: "sample-axis", Ratio: 0.37}}}
+	expected := gen.AccountRiskPolicyResponse{MaxGroupRatios: []gen.GroupRatio{{Axis: "sample-axis", Ratio: 0.37}}}
 	client, requests := newTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
 		writeJSON(t, w, http.StatusOK, map[string]any{
 			"max_group_ratios": []map[string]any{{"axis": "sample-axis", "ratio": 0.37}},
@@ -21,12 +22,12 @@ func TestClientGetRiskLimit(t *testing.T) {
 	request := <-requests
 	got := struct {
 		Request observedRequest
-		Result  AccountRiskPolicyResponse
+		Result  gen.AccountRiskPolicyResponse
 		Error   string
 	}{Request: request, Result: result, Error: errorMessage(err)}
 	want := struct {
 		Request observedRequest
-		Result  AccountRiskPolicyResponse
+		Result  gen.AccountRiskPolicyResponse
 		Error   string
 	}{
 		Request: observedRequest{
@@ -48,28 +49,28 @@ func TestClientPutRiskLimit(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		payload PutAccountRiskPolicyRequest
+		payload gen.PutAccountRiskPolicyRequest
 		body    string
-		result  AccountRiskPolicyResponse
+		result  gen.AccountRiskPolicyResponse
 	}{
 		{
 			name: "empty list removes all limits",
-			payload: PutAccountRiskPolicyRequest{
-				MaxGroupRatios: []GroupRatio{},
+			payload: gen.PutAccountRiskPolicyRequest{
+				MaxGroupRatios: []gen.GroupRatio{},
 			},
 			body:   `{"max_group_ratios":[]}`,
-			result: AccountRiskPolicyResponse{MaxGroupRatios: []GroupRatio{}},
+			result: gen.AccountRiskPolicyResponse{MaxGroupRatios: []gen.GroupRatio{}},
 		},
 		{
 			name: "multiple ratios set limits",
-			payload: PutAccountRiskPolicyRequest{
-				MaxGroupRatios: []GroupRatio{
+			payload: gen.PutAccountRiskPolicyRequest{
+				MaxGroupRatios: []gen.GroupRatio{
 					{Axis: "sample-axis", Ratio: 0.37},
 					{Axis: "another-sample-axis", Ratio: 0.2},
 				},
 			},
 			body: `{"max_group_ratios":[{"axis":"sample-axis","ratio":0.37},{"axis":"another-sample-axis","ratio":0.2}]}`,
-			result: AccountRiskPolicyResponse{MaxGroupRatios: []GroupRatio{
+			result: gen.AccountRiskPolicyResponse{MaxGroupRatios: []gen.GroupRatio{
 				{Axis: "sample-axis", Ratio: 0.37},
 				{Axis: "another-sample-axis", Ratio: 0.2},
 			}},
@@ -88,12 +89,12 @@ func TestClientPutRiskLimit(t *testing.T) {
 			request := <-requests
 			got := struct {
 				Request observedRequest
-				Result  AccountRiskPolicyResponse
+				Result  gen.AccountRiskPolicyResponse
 				Error   string
 			}{Request: request, Result: result, Error: errorMessage(err)}
 			want := struct {
 				Request observedRequest
-				Result  AccountRiskPolicyResponse
+				Result  gen.AccountRiskPolicyResponse
 				Error   string
 			}{
 				Request: observedRequest{

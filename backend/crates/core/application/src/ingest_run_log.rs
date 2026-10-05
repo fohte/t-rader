@@ -15,6 +15,16 @@ pub trait IngestRunLog: Send + Sync {
         result: Result<Value, String>,
     ) -> Result<(), PersistenceError>;
 
+    async fn finish_with_stats_and_error(
+        &self,
+        run_id: Uuid,
+        stats: Value,
+        error: String,
+    ) -> Result<(), PersistenceError> {
+        self.finish(run_id, Err(format!("{error}; stats={stats}")))
+            .await
+    }
+
     async fn fail_interrupted_before(
         &self,
         job: &str,

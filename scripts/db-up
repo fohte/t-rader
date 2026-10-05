@@ -10,7 +10,7 @@ ensure_database() {
   local database_name="$1"
 
   docker compose exec -T db psql \
-    --username "t-rader" \
+    --username "t_rader" \
     --dbname postgres \
     --set ON_ERROR_STOP=1 \
     --set "db_name=$database_name" << 'SQL'

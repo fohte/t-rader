@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 var (
@@ -91,7 +92,7 @@ func (r *groupAxisResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	created, err := client.CreateGroupAxis(ctx, traderapi.CreateGroupAxisRequest{
+	created, err := client.CreateGroupAxis(ctx, traderapigen.CreateGroupAxisRequest{
 		Key:         plan.Key.ValueString(),
 		Name:        plan.Name.ValueString(),
 		Description: plan.Description.ValueString(),
@@ -138,7 +139,7 @@ func (r *groupAxisResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	updated, err := client.UpdateGroupAxis(ctx, plan.Key.ValueString(), traderapi.UpdateGroupAxisRequest{
+	updated, err := client.UpdateGroupAxis(ctx, plan.Key.ValueString(), traderapigen.UpdateGroupAxisRequest{
 		Name:        stringAttributeUpdateNullable(plan.Name),
 		Description: stringAttributeUpdateNullable(plan.Description),
 		SyncSource:  stringAttributeUpdateNullable(plan.SyncSource),
@@ -178,7 +179,7 @@ func (r *groupAxisResource) configuredClient(diagnostics *diag.Diagnostics) (*tr
 	return r.client, true
 }
 
-func modelFromGroupAxis(axis traderapi.GroupAxis) groupAxisModel {
+func modelFromGroupAxis(axis traderapigen.GroupAxis) groupAxisModel {
 	return groupAxisModel{
 		Key:         types.StringValue(axis.Key),
 		Name:        types.StringValue(axis.Name),

@@ -14,7 +14,7 @@ drop_database() {
   fi
 
   docker compose exec -T db dropdb \
-    --username "t-rader" \
+    --username "t_rader" \
     --if-exists \
     --force \
     "$current_database_name"
@@ -59,13 +59,13 @@ run_db_doc() {
   fi
 
   if [[ "$package" == "." ]]; then
-    current_database_name="t-rader_doc_$$"
+    current_database_name="t_rader_doc_$$"
   else
-    current_database_name="t-rader_doc_${package}_$$"
+    current_database_name="t_rader_doc_${package//-/_}_$$"
   fi
 
   docker compose exec -T db createdb \
-    --username "t-rader" \
+    --username "t_rader" \
     --template template0 \
     "$current_database_name"
 

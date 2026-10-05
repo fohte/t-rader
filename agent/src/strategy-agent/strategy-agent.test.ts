@@ -4,6 +4,7 @@ import { HumanMessage } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatOpenAI } from '@langchain/openai'
+import { createAgent, createMiddleware } from 'langchain'
 import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -48,6 +49,33 @@ class FakeChatModel extends BaseChatModel {
   override _generate(): Promise<ChatResult> {
     return Promise.reject(
       new Error('FakeChatModel should never be invoked directly in tests'),
+    )
+  }
+}
+
+type RateLimitType = 'wait' | 'stop' | 'capacity'
+
+class RateLimitedChatModel extends BaseChatModel {
+  constructor(private readonly rateLimitType: RateLimitType) {
+    super({})
+  }
+
+  override bindTools(
+    ...args: Parameters<NonNullable<BaseChatModel['bindTools']>>
+  ): ReturnType<NonNullable<BaseChatModel['bindTools']>> {
+    void args
+    return this
+  }
+
+  override _llmType(): string {
+    return 'fake'
+  }
+
+  override _generate(): Promise<ChatResult> {
+    return Promise.reject(
+      Object.assign(new Error('rate limited'), {
+        rateLimitType: this.rateLimitType,
+      }),
     )
   }
 }
@@ -282,10 +310,10 @@ describe('runStrategyAgent', () => {
   it.each([
     {
       name: 'configured tool_models',
-      agentGraph: `tool_models:\n  search_web: example-model-search\n  query_media: example-model-media\n${AGENT_GRAPH}`,
+      agentGraph: `tool_models:\n  search_web: example-model-search\n  query_youtube: example-model-youtube\n${AGENT_GRAPH}`,
       expectedToolModels: {
         search_web: 'example-model-search',
-        query_media: 'example-model-media',
+        query_youtube: 'example-model-youtube',
       },
     },
     {
@@ -343,6 +371,56 @@ describe('runStrategyAgent', () => {
       message: 'フェーズ「Work」(work) の実行に失敗しました: rate limited',
       errorKind: 'usage_limit',
     })
+  })
+
+  it('maps rate limits wrapped by real createAgent to usage_limit', async () => {
+    const actual = await Promise.all(
+      (['wait', 'stop', 'capacity'] as const).map(async (rateLimitType) => {
+        const agent = createAgent({
+          model: new RateLimitedChatModel(rateLimitType),
+          middleware: [
+            createMiddleware({
+              name: 'outer-wrapper',
+              wrapModelCall: (request, handler) => handler(request),
+            }),
+            createMiddleware({
+              name: 'inner-wrapper',
+              wrapModelCall: (request, handler) => handler(request),
+            }),
+          ],
+        })
+        const wrappedError = await agent
+          .invoke({ messages: [new HumanMessage('example prompt')] })
+          .then(
+            () => new Error('rate-limit model unexpectedly succeeded'),
+            (error: unknown) =>
+              error instanceof Error ? error : new Error(String(error)),
+          )
+        const { deps } = buildDeps({
+          buildPhaseAgentInvoke: () => Promise.reject(wrappedError),
+        })
+
+        return await runStrategyAgent(deps, buildRunInput())
+      }),
+    )
+
+    expect(actual).toEqual([
+      {
+        status: 'failed',
+        message: 'フェーズ「Work」(work) の実行に失敗しました: rate limited',
+        errorKind: 'usage_limit',
+      },
+      {
+        status: 'failed',
+        message: 'フェーズ「Work」(work) の実行に失敗しました: rate limited',
+        errorKind: 'usage_limit',
+      },
+      {
+        status: 'failed',
+        message: 'フェーズ「Work」(work) の実行に失敗しました: rate limited',
+        errorKind: 'usage_limit',
+      },
+    ])
   })
 
   it('maps a generic thrown phase error to error_kind agent_error', async () => {

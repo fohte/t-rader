@@ -31,10 +31,7 @@ export function handlePositions(layout: Layout): {
     : { source: Position.Right, target: Position.Left }
 }
 
-export function edgeStrokeWidth(
-  value: number | undefined,
-  maxValue: number,
-): number {
+function edgeStrokeWidth(value: number | undefined, maxValue: number): number {
   if (typeof value !== 'number' || maxValue <= 0) return EDGE_STROKE_MIN
   return (
     EDGE_STROKE_MIN + (value / maxValue) * (EDGE_STROKE_MAX - EDGE_STROKE_MIN)

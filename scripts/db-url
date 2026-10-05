@@ -18,9 +18,9 @@ case "$environment" in
 esac
 
 if [ "$package" = "." ]; then
-  database_name="t-rader_$environment"
+  database_name="t_rader_$environment"
 else
-  database_name="t-rader_${package}_$environment"
+  database_name="t_rader_${package//-/_}_$environment"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -36,4 +36,4 @@ case "$port" in
   '' | *[!0-9]*) port=0 ;;
 esac
 
-printf 'postgresql://t-rader:t-rader@127.0.0.1:%s/%s\n' "$port" "$database_name"
+printf 'postgresql://t_rader:t_rader@127.0.0.1:%s/%s\n' "$port" "$database_name"

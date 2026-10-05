@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 var (
@@ -124,7 +125,7 @@ func (r *rssFeedResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	contentSource := plan.ContentSource.ValueString()
-	created, err := client.CreateRssFeed(ctx, traderapi.CreateRssFeedRequest{
+	created, err := client.CreateRssFeed(ctx, traderapigen.CreateRssFeedRequest{
 		Source:        plan.Source.ValueString(),
 		DisplayName:   plan.DisplayName.ValueString(),
 		Url:           plan.URL.ValueString(),
@@ -177,7 +178,7 @@ func (r *rssFeedResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updated, err := client.UpdateRssFeed(ctx, state.ID.ValueString(), traderapi.UpdateRssFeedRequest{
+	updated, err := client.UpdateRssFeed(ctx, state.ID.ValueString(), traderapigen.UpdateRssFeedRequest{
 		DisplayName:   stringAttributeUpdateNullable(plan.DisplayName),
 		Url:           stringAttributeUpdateNullable(plan.URL),
 		ContentSource: stringAttributeUpdateNullable(plan.ContentSource),
@@ -218,7 +219,7 @@ func (r *rssFeedResource) configuredClient(diagnostics *diag.Diagnostics) (*trad
 	return r.client, true
 }
 
-func modelFromRssFeed(feed traderapi.RssFeed) rssFeedModel {
+func modelFromRssFeed(feed traderapigen.RssFeed) rssFeedModel {
 	return rssFeedModel{
 		ID:            types.StringValue(feed.Id.String()),
 		Source:        types.StringValue(feed.Source),

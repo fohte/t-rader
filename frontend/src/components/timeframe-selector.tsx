@@ -11,10 +11,11 @@ import { cn } from '#lib/utils'
 
 /** サポートするタイムフレームの定義 */
 const TIMEFRAMES = [
-  { value: '5m', label: '5m', enabled: false },
-  { value: '15m', label: '15m', enabled: false },
-  { value: '1h', label: '1h', enabled: false },
-  { value: '4h', label: '4h', enabled: false },
+  { value: '1m', label: '1m', enabled: true },
+  { value: '5m', label: '5m', enabled: true },
+  { value: '15m', label: '15m', enabled: true },
+  { value: '1h', label: '1h', enabled: true },
+  { value: '4h', label: '4h', enabled: true },
   { value: '1d', label: '1D', enabled: true },
   { value: '1w', label: '1W', enabled: false },
 ] as const

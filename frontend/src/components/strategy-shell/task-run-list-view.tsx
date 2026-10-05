@@ -4,7 +4,7 @@ import { sourceLabel } from '#components/strategy-shell/task-run-view'
 import { Skeleton } from '#components/ui/skeleton'
 import { formatRelative } from '#lib/note-utils'
 
-export interface TaskRunListItem {
+interface TaskRunListItem {
   taskId: string
   strategyId: string
   strategyName?: string
