@@ -7,7 +7,12 @@
       "ignore": ["commitlint-plugin-no-external-refs.cjs"]
     },
     "frontend": {
+<<<<<<< before updating
       "entry": ["src/routes/**/*.tsx!"],
+||||||| last update
+      "entry": ["src/lib/**"],
+=======
+>>>>>>> after updating
       "ignoreDependencies": [
         "reg-suit",
         "reg-publish-s3-plugin",

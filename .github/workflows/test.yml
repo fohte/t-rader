@@ -362,7 +362,13 @@ jobs:
         env:
           POSTGRES_USER: t_rader
           POSTGRES_PASSWORD: t_rader
+<<<<<<< before updating
           POSTGRES_DB: t_rader_entity_check
+||||||| last update
+          POSTGRES_DB: ${{ steps.changed.outputs.all_changed_files }}
+=======
+          POSTGRES_DB: ${{ steps.changed.outputs.all_modified_files }}
+>>>>>>> after updating
         ports:
           - 5432:5432
         options: >-
@@ -900,3 +906,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://example.invalid/agent_dev
         run: pnpm exec knip
+
+      - name: Run knip in production mode
+        run: pnpm exec knip --production

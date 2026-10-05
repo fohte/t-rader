@@ -14,7 +14,7 @@ drop_database() {
   fi
 
   docker compose exec -T db dropdb \
-    --username "t-rader" \
+    --username "t_rader" \
     --if-exists \
     --force \
     "$current_database_name"
@@ -59,14 +59,20 @@ run_db_doc() {
   fi
 
   if [[ "$package" == "." ]]; then
-    current_database_name="t-rader_doc_$$"
+    current_database_name="t_rader_doc_$$"
   else
-    current_database_name="t-rader_doc_${package}_$$"
+    current_database_name="t_rader_doc_${package//-/_}_$$"
   fi
 
   docker compose exec -T db createdb \
+<<<<<<< before updating
     --username "t-rader" \
     --template template0 \
+||||||| last update
+    --username "t-rader" \
+=======
+    --username "t_rader" \
+>>>>>>> after updating
     "$current_database_name"
 
   local database_url
