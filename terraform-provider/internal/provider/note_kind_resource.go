@@ -15,6 +15,7 @@ import (
 	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 var (
@@ -95,7 +96,7 @@ func (r *noteKindResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	created, err := client.CreateNoteKind(ctx, traderapi.CreateNoteKindRequest{
+	created, err := client.CreateNoteKind(ctx, traderapigen.CreateNoteKindRequest{
 		Description:      stringAttributeNullable(plan.Description),
 		DisplayName:      plan.DisplayName.ValueString(),
 		Key:              plan.Key.ValueString(),
@@ -145,7 +146,7 @@ func (r *noteKindResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	updated, err := client.UpdateNoteKind(ctx, plan.Key.ValueString(), traderapi.UpdateNoteKindRequest{
+	updated, err := client.UpdateNoteKind(ctx, plan.Key.ValueString(), traderapigen.UpdateNoteKindRequest{
 		Description:      stringAttributeUpdateNullable(plan.Description),
 		DisplayName:      nullable.NewNullableWithValue(plan.DisplayName.ValueString()),
 		RequiresApproval: nullable.NewNullableWithValue(plan.RequiresApproval.ValueBool()),
@@ -186,7 +187,7 @@ func (r *noteKindResource) configuredClient(diagnostics *diag.Diagnostics) (*tra
 	return r.client, true
 }
 
-func modelFromNoteKind(noteKind traderapi.NoteKind) noteKindModel {
+func modelFromNoteKind(noteKind traderapigen.NoteKind) noteKindModel {
 	return noteKindModel{
 		Key:              types.StringValue(noteKind.Key),
 		DisplayName:      types.StringValue(noteKind.DisplayName),

@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 const riskLimitResourceID = "account"
@@ -160,7 +161,7 @@ func (r *riskLimitResource) upsert(ctx context.Context, plan tfsdk.Plan, state *
 	if diagnostics.HasError() {
 		return
 	}
-	updated, err := client.PutRiskLimit(ctx, traderapi.PutAccountRiskPolicyRequest{
+	updated, err := client.PutRiskLimit(ctx, traderapigen.PutAccountRiskPolicyRequest{
 		MaxGroupRatios: groupRatios,
 	})
 	if err != nil {
@@ -175,7 +176,7 @@ func (r *riskLimitResource) upsert(ctx context.Context, plan tfsdk.Plan, state *
 	diagnostics.Append(state.Set(ctx, model)...)
 }
 
-func riskLimitModelFromResponse(ctx context.Context, response traderapi.AccountRiskPolicyResponse) (riskLimitModel, diag.Diagnostics) {
+func riskLimitModelFromResponse(ctx context.Context, response traderapigen.AccountRiskPolicyResponse) (riskLimitModel, diag.Diagnostics) {
 	groupRatios, diagnostics := maxGroupRatiosAttribute(ctx, response.MaxGroupRatios)
 	if diagnostics.HasError() {
 		return riskLimitModel{}, diagnostics
@@ -197,9 +198,9 @@ func emptyRiskLimitGroupRatios() types.List {
 	return types.ListValueMust(riskLimitGroupRatioObjectType(), []attr.Value{})
 }
 
-func riskLimitGroupRatiosForRequest(ctx context.Context, value types.List) ([]traderapi.GroupRatio, diag.Diagnostics) {
+func riskLimitGroupRatiosForRequest(ctx context.Context, value types.List) ([]traderapigen.GroupRatio, diag.Diagnostics) {
 	if value.IsNull() {
-		return []traderapi.GroupRatio{}, nil
+		return []traderapigen.GroupRatio{}, nil
 	}
 	if value.IsUnknown() {
 		var diagnostics diag.Diagnostics
@@ -213,9 +214,9 @@ func riskLimitGroupRatiosForRequest(ctx context.Context, value types.List) ([]tr
 		return nil, diagnostics
 	}
 
-	groupRatios := make([]traderapi.GroupRatio, 0, len(models))
+	groupRatios := make([]traderapigen.GroupRatio, 0, len(models))
 	for _, model := range models {
-		groupRatios = append(groupRatios, traderapi.GroupRatio{
+		groupRatios = append(groupRatios, traderapigen.GroupRatio{
 			Axis:  model.Axis.ValueString(),
 			Ratio: model.Ratio.ValueFloat64(),
 		})
@@ -223,7 +224,7 @@ func riskLimitGroupRatiosForRequest(ctx context.Context, value types.List) ([]tr
 	return groupRatios, diagnostics
 }
 
-func maxGroupRatiosAttribute(ctx context.Context, values []traderapi.GroupRatio) (types.List, diag.Diagnostics) {
+func maxGroupRatiosAttribute(ctx context.Context, values []traderapigen.GroupRatio) (types.List, diag.Diagnostics) {
 	models := make([]riskLimitGroupRatioModel, 0, len(values))
 	for _, value := range values {
 		models = append(models, riskLimitGroupRatioModel{

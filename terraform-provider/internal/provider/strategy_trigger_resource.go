@@ -18,6 +18,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 var (
@@ -140,11 +141,11 @@ func (r *strategyTriggerResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddAttributeError(path.Root("event_match"), "Invalid event_match", err.Error())
 		return
 	}
-	created, err := client.CreateStrategyTrigger(ctx, plan.StrategyID.ValueString(), traderapi.CreateTriggerRequest{
+	created, err := client.CreateStrategyTrigger(ctx, plan.StrategyID.ValueString(), traderapigen.CreateTriggerRequest{
 		Enabled:        boolAttributeNullable(plan.Enabled),
 		EventMatch:     eventMatch,
 		HookSlug:       stringAttributeNullable(plan.HookSlug),
-		Kind:           traderapi.TriggerKind(plan.Kind.ValueString()),
+		Kind:           traderapigen.TriggerKind(plan.Kind.ValueString()),
 		Purpose:        stringAttributeNullable(plan.Purpose),
 		PromptTemplate: plan.PromptTemplate.ValueString(),
 		Schedule:       stringAttributeNullable(plan.Schedule),
@@ -209,7 +210,7 @@ func (r *strategyTriggerResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddAttributeError(path.Root("event_match"), "Invalid event_match", err.Error())
 		return
 	}
-	updated, err := client.UpdateTrigger(ctx, state.ID.ValueString(), traderapi.UpdateTriggerRequest{
+	updated, err := client.UpdateTrigger(ctx, state.ID.ValueString(), traderapigen.UpdateTriggerRequest{
 		Enabled:        boolAttributeNullable(plan.Enabled),
 		EventMatch:     eventMatch,
 		HookSlug:       stringAttributeUpdateNullable(plan.HookSlug),
@@ -256,7 +257,7 @@ func (r *strategyTriggerResource) configuredClient(diagnostics *diag.Diagnostics
 	return r.client, true
 }
 
-func modelFromStrategyTrigger(ctx context.Context, trigger traderapi.Trigger) (strategyTriggerModel, error) {
+func modelFromStrategyTrigger(ctx context.Context, trigger traderapigen.Trigger) (strategyTriggerModel, error) {
 	eventMatch, err := dynamicEventMatchFromAPI(ctx, trigger.EventMatch)
 	if err != nil {
 		return strategyTriggerModel{}, err

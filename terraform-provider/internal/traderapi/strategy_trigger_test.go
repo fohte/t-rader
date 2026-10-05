@@ -2,6 +2,7 @@ package traderapi
 
 import (
 	"encoding/json"
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"reflect"
 	"testing"
 
@@ -12,14 +13,14 @@ func TestTriggerWithExactEventMatchPreservesIntegerPrecision(t *testing.T) {
 	t.Parallel()
 
 	type result struct {
-		Trigger Trigger
+		Trigger gen.Trigger
 		Err     error
 	}
 
-	trigger, err := triggerWithExactEventMatch(Trigger{}, []byte(`{"event_match":{"large_integer":9007199254740993}}`))
+	trigger, err := triggerWithExactEventMatch(gen.Trigger{}, []byte(`{"event_match":{"large_integer":9007199254740993}}`))
 	got := result{Trigger: trigger, Err: err}
 	want := result{
-		Trigger: Trigger{
+		Trigger: gen.Trigger{
 			EventMatch: nullable.NewNullableWithValue(map[string]interface{}{
 				"large_integer": json.Number("9007199254740993"),
 			}),

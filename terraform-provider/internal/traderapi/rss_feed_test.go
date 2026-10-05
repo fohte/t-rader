@@ -3,6 +3,7 @@ package traderapi
 import (
 	"context"
 	"errors"
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"net/http"
 	"reflect"
 	"testing"
@@ -22,7 +23,7 @@ func TestClientCreateRssFeed(t *testing.T) {
 		writeJSON(t, w, http.StatusCreated, created)
 	})
 
-	result, err := client.CreateRssFeed(context.Background(), CreateRssFeedRequest{
+	result, err := client.CreateRssFeed(context.Background(), gen.CreateRssFeedRequest{
 		DisplayName: "Synthetic Feed",
 		Enabled:     nullable.NewNullableWithValue(true),
 		Source:      "synthetic_feed",
@@ -31,11 +32,11 @@ func TestClientCreateRssFeed(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  RssFeed
+		Result  gen.RssFeed
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  RssFeed
+		Result  gen.RssFeed
 		Error   string
 	}{
 		Request: observedRequest{
@@ -65,11 +66,11 @@ func TestClientGetRssFeed(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  RssFeed
+		Result  gen.RssFeed
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  RssFeed
+		Result  gen.RssFeed
 		Error   string
 	}{
 		Request: observedRequest{
@@ -93,7 +94,7 @@ func TestClientUpdateRssFeed(t *testing.T) {
 		writeJSON(t, w, http.StatusOK, updated)
 	})
 
-	result, err := client.UpdateRssFeed(context.Background(), testRssFeedID, UpdateRssFeedRequest{
+	result, err := client.UpdateRssFeed(context.Background(), testRssFeedID, gen.UpdateRssFeedRequest{
 		DisplayName: nullable.NewNullableWithValue("Updated Synthetic Feed"),
 		Enabled:     nullable.NewNullNullable[bool](),
 		Url:         nullable.NewNullableWithValue("https://example.invalid/updated.xml"),
@@ -101,11 +102,11 @@ func TestClientUpdateRssFeed(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  RssFeed
+		Result  gen.RssFeed
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  RssFeed
+		Result  gen.RssFeed
 		Error   string
 	}{
 		Request: observedRequest{
@@ -199,7 +200,7 @@ func TestClientRejectsNonUUIDRssFeedID(t *testing.T) {
 		{
 			name: "update",
 			call: func(client *Client) error {
-				_, err := client.UpdateRssFeed(context.Background(), "not-a-uuid", UpdateRssFeedRequest{})
+				_, err := client.UpdateRssFeed(context.Background(), "not-a-uuid", gen.UpdateRssFeedRequest{})
 				return err
 			},
 		},
@@ -239,8 +240,8 @@ func TestClientRejectsNonUUIDRssFeedID(t *testing.T) {
 	}
 }
 
-func testRssFeed() RssFeed {
-	return RssFeed{
+func testRssFeed() gen.RssFeed {
+	return gen.RssFeed{
 		CreatedAt:   time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
 		DisplayName: "Synthetic Feed",
 		Enabled:     true,
@@ -251,7 +252,7 @@ func testRssFeed() RssFeed {
 	}
 }
 
-func testRssFeedWithUpdate() RssFeed {
+func testRssFeedWithUpdate() gen.RssFeed {
 	feed := testRssFeed()
 	feed.DisplayName = "Updated Synthetic Feed"
 	feed.UpdatedAt = time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -71,7 +72,7 @@ func TestClientCreateStrategy(t *testing.T) {
 	description := "synthetic description"
 	sortOrder := int32(3)
 
-	result, err := client.CreateStrategy(context.Background(), CreateStrategyRequest{
+	result, err := client.CreateStrategy(context.Background(), gen.CreateStrategyRequest{
 		Name:        created.Name,
 		Description: nullable.NewNullableWithValue(description),
 		SortOrder:   nullable.NewNullableWithValue(sortOrder),
@@ -79,11 +80,11 @@ func TestClientCreateStrategy(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  Strategy
+		Result  gen.Strategy
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  Strategy
+		Result  gen.Strategy
 		Error   string
 	}{
 		Request: observedRequest{
@@ -111,13 +112,13 @@ func TestClientUpdateStrategy(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		payload UpdateStrategyRequest
+		payload gen.UpdateStrategyRequest
 		body    string
-		result  Strategy
+		result  gen.Strategy
 	}{
 		{
 			name: "omitted description leaves API value unchanged",
-			payload: UpdateStrategyRequest{
+			payload: gen.UpdateStrategyRequest{
 				Name:      nullable.NewNullableWithValue(name),
 				SortOrder: nullable.NewNullableWithValue(sortOrder),
 			},
@@ -126,7 +127,7 @@ func TestClientUpdateStrategy(t *testing.T) {
 		},
 		{
 			name: "null description clears API value",
-			payload: UpdateStrategyRequest{
+			payload: gen.UpdateStrategyRequest{
 				Description: nullable.NewNullNullable[string](),
 			},
 			body:   `{"description":null}`,
@@ -134,7 +135,7 @@ func TestClientUpdateStrategy(t *testing.T) {
 		},
 		{
 			name: "description value updates API value",
-			payload: UpdateStrategyRequest{
+			payload: gen.UpdateStrategyRequest{
 				Description: descriptionValue,
 			},
 			body:   `{"description":"updated synthetic description"}`,
@@ -154,11 +155,11 @@ func TestClientUpdateStrategy(t *testing.T) {
 			request := <-requests
 			if got, want := struct {
 				Request observedRequest
-				Result  Strategy
+				Result  gen.Strategy
 				Error   string
 			}{request, result, errorMessage(err)}, struct {
 				Request observedRequest
-				Result  Strategy
+				Result  gen.Strategy
 				Error   string
 			}{
 				Request: observedRequest{
@@ -190,11 +191,11 @@ func TestClientGetStrategy(t *testing.T) {
 	request := <-requests
 	if got, want := struct {
 		Request observedRequest
-		Result  Strategy
+		Result  gen.Strategy
 		Error   string
 	}{request, result, errorMessage(err)}, struct {
 		Request observedRequest
-		Result  Strategy
+		Result  gen.Strategy
 		Error   string
 	}{
 		Request: observedRequest{
@@ -298,9 +299,9 @@ func newTestClient(t *testing.T, handler testHandler) (*Client, <-chan observedR
 	return client, requests
 }
 
-func testStrategy() Strategy {
+func testStrategy() gen.Strategy {
 	description := "synthetic description"
-	return Strategy{
+	return gen.Strategy{
 		Id:          uuid.MustParse(testStrategyID),
 		Name:        "synthetic strategy",
 		Description: nullable.NewNullableWithValue(description),
@@ -310,7 +311,7 @@ func testStrategy() Strategy {
 	}
 }
 
-func testStrategyWithUpdate() Strategy {
+func testStrategyWithUpdate() gen.Strategy {
 	strategy := testStrategy()
 	strategy.Name = "updated synthetic strategy"
 	strategy.SortOrder = 5
@@ -318,13 +319,13 @@ func testStrategyWithUpdate() Strategy {
 	return strategy
 }
 
-func testStrategyWithClearedDescription() Strategy {
+func testStrategyWithClearedDescription() gen.Strategy {
 	strategy := testStrategyWithUpdate()
 	strategy.Description = nullable.NewNullNullable[string]()
 	return strategy
 }
 
-func testStrategyWithDescription(description string) Strategy {
+func testStrategyWithDescription(description string) gen.Strategy {
 	strategy := testStrategyWithUpdate()
 	strategy.Description = nullable.NewNullableWithValue(description)
 	return strategy

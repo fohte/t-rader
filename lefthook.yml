@@ -18,7 +18,7 @@ pre-commit:
     openapi-go-client:
       priority: 3
       glob: '*.rs'
-      run: scripts/generate-terraform-api-client && git add terraform-provider/internal/traderapi/client.gen.go
+      run: scripts/generate-terraform-api-client && git add terraform-provider/internal/traderapi/gen/client.gen.go
 
     format:
       # Remove trailing whitespace and ensure final newline

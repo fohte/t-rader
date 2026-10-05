@@ -18,6 +18,7 @@ import (
 	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
+	traderapigen "github.com/fohte/t-rader/terraform-provider/internal/traderapi/gen"
 )
 
 var (
@@ -136,7 +137,7 @@ func (r *customIndicatorResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	created, err := client.CreateCustomIndicator(ctx, strategyID, traderapi.CreateCustomIndicatorRequest{
+	created, err := client.CreateCustomIndicator(ctx, strategyID, traderapigen.CreateCustomIndicatorRequest{
 		Name:         plan.Name.ValueString(),
 		Code:         plan.Code.ValueString(),
 		InputSchema:  inputSchema,
@@ -211,7 +212,7 @@ func (r *customIndicatorResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	updated, err := client.UpdateCustomIndicator(ctx, state.ID.ValueString(), traderapi.UpdateCustomIndicatorRequest{
+	updated, err := client.UpdateCustomIndicator(ctx, state.ID.ValueString(), traderapigen.UpdateCustomIndicatorRequest{
 		Name:         stringAttributeUpdateNullable(plan.Name),
 		Code:         stringAttributeUpdateNullable(plan.Code),
 		InputSchema:  nullable.NewNullableWithValue(inputSchema),
@@ -261,7 +262,7 @@ func (r *customIndicatorResource) configuredClient(diagnostics *diag.Diagnostics
 	return r.client, true
 }
 
-func modelFromCustomIndicator(indicator traderapi.CustomIndicator) (customIndicatorModel, error) {
+func modelFromCustomIndicator(indicator traderapigen.CustomIndicator) (customIndicatorModel, error) {
 	inputSchema, err := customIndicatorDynamic(indicator.InputSchema)
 	if err != nil {
 		return customIndicatorModel{}, fmt.Errorf("decode input_schema: %w", err)
@@ -288,7 +289,7 @@ func modelFromCustomIndicator(indicator traderapi.CustomIndicator) (customIndica
 	}, nil
 }
 
-func modelFromCustomIndicatorWithPlan(indicator traderapi.CustomIndicator, plan customIndicatorModel) (customIndicatorModel, error) {
+func modelFromCustomIndicatorWithPlan(indicator traderapigen.CustomIndicator, plan customIndicatorModel) (customIndicatorModel, error) {
 	model, err := modelFromCustomIndicator(indicator)
 	if err != nil {
 		return customIndicatorModel{}, err
