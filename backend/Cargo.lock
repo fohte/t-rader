@@ -624,6 +624,7 @@ dependencies = [
  "gateway-litellm",
  "gateway-postgres",
  "gateway-rss",
+ "gateway-sec",
  "gateway-t-rader-agent",
  "graphile_worker",
  "graphile_worker_admin_ui",
@@ -2270,6 +2271,22 @@ dependencies = [
  "rstest",
  "tokio",
  "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "gateway-sec"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "core-application",
+ "core-domain",
+ "indoc",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
  "wiremock",
 ]
 

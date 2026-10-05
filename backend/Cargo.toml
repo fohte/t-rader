@@ -30,6 +30,7 @@ gateway-fed = { path = "crates/gateways/fed" }
 gateway-firecrawl = { path = "crates/gateways/firecrawl" }
 gateway-ibkr = { path = "crates/gateways/ibkr" }
 gateway-jquants = { path = "crates/gateways/jquants" }
+gateway-sec = { path = "crates/gateways/sec" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }
 gateway-litellm = { path = "crates/gateways/litellm" }
 gateway-postgres = { path = "crates/gateways/postgres" }

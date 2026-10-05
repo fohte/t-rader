@@ -51,5 +51,7 @@ pub mod strategy_task_step_evidence;
 pub mod trade;
 pub mod trigger;
 pub mod unit_of_work;
+pub mod us_stock_master;
+pub mod us_stock_master_source;
 pub mod valuation;
 pub mod valuation_source;

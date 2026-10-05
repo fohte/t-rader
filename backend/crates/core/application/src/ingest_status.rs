@@ -17,6 +17,7 @@ pub const EARNINGS_SCHEDULE_INGEST_JOB: &str = "earnings_schedule_ingest";
 pub const FINANCIAL_SUMMARY_INGEST_JOB: &str = "financial_summary_ingest";
 pub const VALUATION_INGEST_JOB: &str = "valuation_ingest";
 pub const EQUITY_MASTER_INGEST_JOB: &str = "equity_master_ingest";
+pub const US_STOCK_MASTER_INGEST_JOB: &str = "us_stock_master_ingest";
 pub const SHAREHOLDING_STRUCTURE_INGEST_JOB: &str = "shareholding_structure_ingest";
 pub const FRED_INGEST_JOB: &str = "fred_ingest";
 pub const E_STAT_CALENDAR_INGEST_JOB: &str = "e_stat_calendar_ingest";

@@ -25,6 +25,8 @@ use core_application::{
     short_selling_source::SharedShortSellingSource,
     strategy_task::StrategyTaskUseCases,
     trigger::TriggerUseCases,
+    us_stock_master::UsStockMasterUseCases,
+    us_stock_master_source::SharedUsStockMasterSource,
     valuation::ValuationUseCases,
     valuation_source::SharedValuationSource,
 };
@@ -47,6 +49,8 @@ pub struct SchedulerDependencies {
     pub financial_summary_source: Option<SharedFinancialSummarySource>,
     pub equity_master: EquityMasterUseCases,
     pub equity_master_source: Option<SharedEquityMasterSource>,
+    pub us_stock_master: UsStockMasterUseCases,
+    pub us_stock_master_source: Option<SharedUsStockMasterSource>,
     pub shareholding_structures: ShareholdingStructureUseCases,
     pub shareholding_structure_source: Option<SharedShareholdingStructureSource>,
     pub valuations: ValuationUseCases,
