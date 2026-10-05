@@ -351,42 +351,12 @@ mod tests {
                     to: NaiveDate::from_ymd_opt(2099, 9, 4).expect("valid date"),
                 },
                 events: vec![
-                    event(
-                        "meeting-2099-08-18",
-                        "金融政策決定会合 (1日目)",
-                        date(2099, 8, 18),
-                        None,
-                    ),
-                    event(
-                        "meeting-2099-08-19",
-                        "金融政策決定会合 (2日目)",
-                        date(2099, 8, 19),
-                        None,
-                    ),
-                    event(
-                        "meeting-2099-10-06",
-                        "金融政策決定会合 (1日目)",
-                        date(2099, 10, 6),
-                        None,
-                    ),
-                    event(
-                        "meeting-2099-10-07",
-                        "金融政策決定会合 (2日目)",
-                        date(2099, 10, 7),
-                        None,
-                    ),
-                    event(
-                        "meeting-2100-01-20",
-                        "金融政策決定会合 (1日目)",
-                        date(2100, 1, 20),
-                        None,
-                    ),
-                    event(
-                        "meeting-2100-01-21",
-                        "金融政策決定会合 (2日目)",
-                        date(2100, 1, 21),
-                        None,
-                    ),
+                    meeting_event(date(2099, 8, 18), 0),
+                    meeting_event(date(2099, 8, 19), 1),
+                    meeting_event(date(2099, 10, 6), 0),
+                    meeting_event(date(2099, 10, 7), 1),
+                    meeting_event(date(2100, 1, 20), 0),
+                    meeting_event(date(2100, 1, 21), 1),
                     event(
                         "tankan-2099-08-21",
                         "架空の短観公表",
