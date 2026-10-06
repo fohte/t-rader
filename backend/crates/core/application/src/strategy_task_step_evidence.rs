@@ -44,6 +44,13 @@ impl StrategyTaskStepEvidence {
         field: PriceReferenceField,
     ) -> Option<serde_json::Value> {
         let snapshot: QueryDataSnapshotBars = serde_json::from_value(self.snapshot.clone()).ok()?;
+        if snapshot
+            .timeframe
+            .as_deref()
+            .is_some_and(|timeframe| timeframe != "1d")
+        {
+            return None;
+        }
         let bar = snapshot
             .bars
             .iter()
@@ -62,6 +69,8 @@ impl StrategyTaskStepEvidence {
 
 #[derive(Deserialize)]
 struct QueryDataSnapshotBars {
+    #[serde(default)]
+    timeframe: Option<String>,
     bars: Vec<QueryDataBar>,
 }
 
@@ -240,6 +249,7 @@ mod tests {
         SharedStrategyTaskStepEvidenceRepository, StrategyTaskStepEvidence,
         StrategyTaskStepEvidenceUseCases,
     };
+    use core_domain::note_price_reference::PriceReferenceField;
 
     fn bar_at(offset: i64) -> QueryDataBar {
         let base = DateTime::parse_from_rfc3339("2030-01-01T00:00:00Z").expect("base timestamp");
@@ -258,6 +268,45 @@ mod tests {
         evidence.observed_at =
             DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z").expect("timestamp sentinel");
         evidence
+    }
+
+    #[rstest]
+    #[case::daily("1d", Some(json!(12.5)))]
+    #[case::intraday("1m", None)]
+    fn query_data_bar_value_resolves_only_daily_snapshots(
+        #[case] timeframe: &str,
+        #[case] expected: Option<serde_json::Value>,
+    ) {
+        let timestamp =
+            DateTime::parse_from_rfc3339("2030-01-01T00:00:00Z").expect("bar timestamp");
+        let evidence = StrategyTaskStepEvidence {
+            id: Uuid::nil(),
+            execution_step_id: Uuid::nil(),
+            source: "query_data".to_string(),
+            source_ref: "fictional-instrument".to_string(),
+            observed_at: timestamp,
+            published_at: Some(timestamp),
+            effective_at: Some(timestamp),
+            snapshot: json!({
+                "timeframe": timeframe,
+                "bars": [{
+                    "timestamp": timestamp,
+                    "open": 11.5,
+                    "high": 13.5,
+                    "low": 10.5,
+                    "close": 12.5,
+                    "volume": 100,
+                }],
+            }),
+        };
+
+        assert_eq!(
+            evidence.query_data_bar_value(
+                NaiveDate::from_ymd_opt(2030, 1, 1).expect("bar date"),
+                PriceReferenceField::Close,
+            ),
+            expected,
+        );
     }
 
     #[rstest]
