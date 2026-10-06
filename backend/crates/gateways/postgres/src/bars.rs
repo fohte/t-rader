@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use chrono::NaiveDate;
+use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
 };
@@ -9,7 +9,10 @@ use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
+    Statement,
+};
 
 use crate::DatabaseHandle;
 use crate::entities::{instruments, jquants_daily_bars_ingested_date};
@@ -82,6 +85,68 @@ impl BarsRepository for PostgresBarsRepository {
             .map_err(repository_error)
     }
 
+    async fn find_us_stock_bar_targets(
+        &self,
+    ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
+        #[derive(FromQueryResult)]
+        struct TargetRow {
+            instrument_id: String,
+            latest_daily_bar: Option<DateTime<FixedOffset>>,
+            latest_minute_bar: Option<DateTime<FixedOffset>>,
+        }
+
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                r#"SELECT
+                    instruments.id AS instrument_id,
+                    daily_bar.timestamp AS latest_daily_bar,
+                    minute_bar.timestamp AS latest_minute_bar
+                FROM instruments
+                LEFT JOIN LATERAL (
+                    SELECT timestamp
+                    FROM bars
+                    WHERE instrument_id = instruments.id AND timeframe = '1d'
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ) AS daily_bar ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT timestamp
+                    FROM minute_bars
+                    WHERE instrument_id = instruments.id
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ) AS minute_bar ON TRUE
+                WHERE instruments.market = 'US'
+                  AND (
+                    EXISTS (
+                        SELECT 1 FROM stock_group_member
+                        WHERE stock_group_member.stock_id = instruments.id
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM note_ref
+                        WHERE note_ref.ref_kind = 'stock'
+                          AND note_ref.ref_id = instruments.id
+                    )
+                  )
+                ORDER BY instruments.id"#,
+            ))
+            .await
+            .map_err(repository_error)?;
+
+        rows.iter()
+            .map(|row| {
+                let row = TargetRow::from_query_result(row, "").map_err(repository_error)?;
+                Ok(core_application::bars::UsStockBarTarget {
+                    instrument_id: row.instrument_id,
+                    latest_daily_bar: row.latest_daily_bar.map(|timestamp| timestamp.to_utc()),
+                    latest_minute_bar: row.latest_minute_bar.map(|timestamp| timestamp.to_utc()),
+                })
+            })
+            .collect()
+    }
+
     async fn find_ingested_dates(
         &self,
         from: NaiveDate,
@@ -131,6 +196,17 @@ impl BarsRepository for PostgresBarsRepository {
     ) -> Result<(), BarsRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         bar_queries::upsert_bars(transaction, bars)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn upsert_minute_bars(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        bars: Vec<Bar>,
+    ) -> Result<(), BarsRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        bar_queries::upsert_minute_bars(transaction, bars)
             .await
             .map_err(repository_error)
     }

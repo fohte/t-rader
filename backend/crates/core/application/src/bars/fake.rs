@@ -2,20 +2,21 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_domain::bar::Bar;
+use core_domain::bar::{Bar, Timeframe};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{BarsRepository, BarsRepositoryError};
-use super::types::{BarsByInstrumentsQuery, BarsQuery};
+use super::types::{BarsByInstrumentsQuery, BarsQuery, UsStockBarTarget};
 
 #[derive(Default)]
 pub struct FakeBarsRepository {
     pub bars: Mutex<Vec<Bar>>,
     pub ingested_dates: Mutex<HashSet<NaiveDate>>,
     pub instruments: Mutex<HashSet<String>>,
+    pub us_stock_targets: Mutex<HashSet<String>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
 }
 
@@ -30,6 +31,10 @@ impl FakeBarsRepository {
 
     pub async fn seed_ingested_dates(&self, dates: HashSet<NaiveDate>) {
         self.ingested_dates.lock().await.extend(dates);
+    }
+
+    pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
+        self.us_stock_targets.lock().await.extend(instrument_ids);
     }
 }
 
@@ -93,6 +98,35 @@ impl BarsRepository for FakeBarsRepository {
             .cloned())
     }
 
+    async fn find_us_stock_bar_targets(
+        &self,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+        let target_ids = self.us_stock_targets.lock().await.clone();
+        let bars = self.bars.lock().await;
+        let mut targets = target_ids
+            .into_iter()
+            .map(|instrument_id| UsStockBarTarget {
+                latest_daily_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Daily
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                latest_minute_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                instrument_id,
+            })
+            .collect::<Vec<_>>();
+        targets.sort_by(|left, right| left.instrument_id.cmp(&right.instrument_id));
+        Ok(targets)
+    }
+
     async fn find_ingested_dates(
         &self,
         from: NaiveDate,
@@ -136,6 +170,14 @@ impl BarsRepository for FakeBarsRepository {
             }
         }
         Ok(())
+    }
+
+    async fn upsert_minute_bars(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        bars: Vec<Bar>,
+    ) -> Result<(), BarsRepositoryError> {
+        self.upsert_bars(transaction, bars).await
     }
 
     async fn mark_ingested(

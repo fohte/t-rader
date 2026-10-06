@@ -27,6 +27,7 @@ pub mod news_content;
 pub mod prediction;
 pub mod strategy_task_reconcile;
 pub mod trigger_evaluation;
+pub mod us_stock_bars;
 pub mod us_stock_master;
 pub mod valuation;
 

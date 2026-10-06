@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{BarsByInstrumentsQuery, BarsQuery};
+use super::types::{BarsByInstrumentsQuery, BarsQuery, UsStockBarTarget};
 
 #[derive(Debug, Error)]
 pub enum BarsRepositoryError {
@@ -33,6 +33,9 @@ pub trait BarsRepository: Send + Sync {
         timeframe: &str,
     ) -> Result<Option<Bar>, BarsRepositoryError>;
 
+    async fn find_us_stock_bar_targets(&self)
+    -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+
     async fn find_ingested_dates(
         &self,
         from: NaiveDate,
@@ -45,6 +48,12 @@ pub trait BarsRepository: Send + Sync {
     ) -> Result<(), BarsRepositoryError>;
 
     async fn upsert_bars(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        bars: Vec<Bar>,
+    ) -> Result<(), BarsRepositoryError>;
+
+    async fn upsert_minute_bars(
         &self,
         transaction: &UnitOfWorkTransaction,
         bars: Vec<Bar>,

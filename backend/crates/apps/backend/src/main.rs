@@ -52,8 +52,9 @@ mod startup;
 use logging::default_log_filter;
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
-    NewsAndCentralBankSources, StartupError, initialize_news_and_central_bank_sources,
-    jquants_config_from_env, required_redis_url, worker_admin_ui_settings_from_env,
+    NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
+    initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
+    worker_admin_ui_settings_from_env,
 };
 
 fn us_stock_master_source(
@@ -319,6 +320,8 @@ async fn main() -> Result<(), StartupError> {
     };
     let us_stock_master_source =
         us_stock_master_source(cli.run_mode.starts_worker(), sec_user_agent)?;
+    let us_stock_bar_source =
+        alpaca_us_stock_bar_source_from_env(cli.run_mode.starts_worker(), &redis_url)?;
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -362,6 +365,7 @@ async fn main() -> Result<(), StartupError> {
         equity_master_source,
         us_stock_master: use_cases.us_stock_master(),
         us_stock_master_source,
+        us_stock_bar_source,
         shareholding_structures: use_cases.shareholding_structures(),
         shareholding_structure_source,
         valuations: use_cases.valuations(),
