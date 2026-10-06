@@ -1,4 +1,11 @@
-import type { Data, Node, Root, RootContent } from 'mdast'
+import type {
+  BlockContent,
+  Data,
+  DefinitionContent,
+  Node,
+  Root,
+  RootContent,
+} from 'mdast'
 import { findAndReplace } from 'mdast-util-find-and-replace'
 
 import { REF_PREFIX_RE } from '#lib/note-utils'
@@ -19,12 +26,21 @@ interface NoteGraphBlock extends Node {
   data: Data & { hName: string; hProperties: Record<string, string> }
 }
 
+interface NoteChangeFigure extends Node {
+  type: 'noteChangeFigure'
+  data: Data & { hName: string; hProperties: { token: string } }
+}
+
 declare module 'mdast' {
   interface PhrasingContentMap {
     noteToken: NoteToken
   }
+  interface BlockContentMap {
+    noteChangeFigure: NoteChangeFigure
+  }
   interface RootContentMap {
     noteGraphBlock: NoteGraphBlock
+    noteChangeFigure: NoteChangeFigure
   }
 }
 
@@ -45,8 +61,19 @@ function noteGraphBlock(graphId: string): NoteGraphBlock {
   }
 }
 
+function noteChangeFigure(token: string): NoteChangeFigure {
+  return {
+    type: 'noteChangeFigure',
+    data: { hName: 'note-change-figure', hProperties: { token } },
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isNode(value: unknown): value is Node {
+  return isRecord(value) && typeof value.type === 'string'
 }
 
 function resolvedPriceReferenceValue(
@@ -79,7 +106,52 @@ function replaceGraphParagraphs(root: Root): void {
   })
 }
 
-// 本文中の価格参照はトークンのまま保ち、解決値は表示時だけ展開する。
+function collectChangeReferenceTokens(node: Node, tokens: Set<string>): void {
+  if (
+    node.type === 'noteToken' &&
+    node.data != null &&
+    isRecord(node.data) &&
+    node.data.hName === 'note-change-reference' &&
+    isRecord(node.data.hProperties) &&
+    typeof node.data.hProperties.token === 'string'
+  ) {
+    tokens.add(node.data.hProperties.token)
+  }
+
+  if ('children' in node && Array.isArray(node.children)) {
+    node.children.forEach((child: unknown) => {
+      if (isNode(child)) collectChangeReferenceTokens(child, tokens)
+    })
+  }
+}
+
+function appendChangeFigures(
+  children: RootContent[] | Array<BlockContent | DefinitionContent>,
+): void {
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index]
+    if (child == null) continue
+
+    if (child.type === 'paragraph') {
+      const tokens = new Set<string>()
+      collectChangeReferenceTokens(child, tokens)
+      const figures = [...tokens].map(noteChangeFigure)
+      children.splice(index + 1, 0, ...figures)
+      index += figures.length
+      continue
+    }
+
+    if (child.type === 'blockquote') {
+      appendChangeFigures(child.children)
+    } else if (child.type === 'list') {
+      child.children.forEach((item) => {
+        appendChangeFigures(item.children)
+      })
+    }
+  }
+}
+
+// 参照トークンは本文に残し、解決値は表示時だけ展開する。
 export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
   return (tree: Root) => {
     replaceGraphParagraphs(tree)
@@ -95,9 +167,18 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
           priceReferenceKind == null
             ? undefined
             : resolvedPriceReferenceValue(resolvedPriceReferences, token)
-        if (priceReferenceKind != null && priceReferenceValue != null) {
+        if (priceReferenceKind === 'change') {
+          return noteToken('note-change-reference', {
+            token,
+            ...(priceReferenceValue == null
+              ? {}
+              : { value: String(priceReferenceValue) }),
+          })
+        }
+
+        if (priceReferenceKind === 'price' && priceReferenceValue != null) {
           return noteToken('note-price-reference', {
-            kind: priceReferenceKind,
+            kind: 'price',
             value: String(priceReferenceValue),
           })
         }
@@ -115,5 +196,8 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
         return false
       },
     ])
+
+    // ブロック図は段落内に置けないため、変化率を含む段落の直後に図を挿入する。
+    appendChangeFigures(tree.children)
   }
 }

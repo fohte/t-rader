@@ -89,6 +89,34 @@ describe('remarkNoteTokens', () => {
     expect(tree).toEqual(textTree('未知 [[foo:bar]] は素通り'))
   })
 
+  it('keeps a change value inline and appends its figure after the paragraph', () => {
+    const token = '[[change:fictional-code@2030-01-02..2030-01-03:close]]'
+    const tree = textTree(`期間変化 ${token}`)
+    remarkNoteTokens({ [token]: { value: -12.1 } })(tree)
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: '期間変化 ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-change-reference',
+                hProperties: { token, value: '-12.1' },
+              },
+            },
+          ],
+        },
+        {
+          type: 'noteChangeFigure',
+          data: { hName: 'note-change-figure', hProperties: { token } },
+        },
+      ],
+    })
+  })
+
   it.each(['sector', 'theme'] as const)(
     'leaves the removed %s reference kind as literal text',
     (kind) => {

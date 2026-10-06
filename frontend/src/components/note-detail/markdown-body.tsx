@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
+import { ChangeReferenceFigure } from '#components/note-detail/change-reference-figure'
 import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { RefChip } from '#components/strategy-shell/ref-chip'
 import type { components } from '#lib/api/schema.gen'
@@ -29,6 +30,8 @@ type NoteTokenComponents = {
   'note-graph': ComponentType<{ graphId: string }>
   'note-link': ComponentType<{ noteId: string; token: string }>
   'note-price-reference': ComponentType<{ kind: string; value: string }>
+  'note-change-reference': ComponentType<{ token: string; value?: string }>
+  'note-change-figure': ComponentType<{ token: string }>
 }
 
 // backend は Option<T> を持つフィールドを `T | null` として返す。
@@ -249,6 +252,14 @@ export function MarkdownBody({
       <span className="font-mono font-medium tabular-nums">
         {formatPriceReference(kind, value)}
       </span>
+    ),
+    'note-change-reference': ({ token, value }) => (
+      <span className="font-mono font-medium tabular-nums">
+        {value == null ? token : formatPriceReference('change', value)}
+      </span>
+    ),
+    'note-change-figure': ({ token }) => (
+      <ChangeReferenceFigure token={token} />
     ),
     'note-graph': ({ graphId }) => {
       const apiDef = graphs.find((g) => g.id === graphId)
