@@ -617,6 +617,7 @@ dependencies = [
  "gateway-boj",
  "gateway-e-stat",
  "gateway-ecb",
+ "gateway-eoddata",
  "gateway-fed",
  "gateway-firecrawl",
  "gateway-fred",
@@ -2135,6 +2136,25 @@ dependencies = [
  "core-domain",
  "reqwest",
  "scraper",
+]
+
+[[package]]
+name = "gateway-eoddata"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "chrono-tz",
+ "core-application",
+ "core-domain",
+ "indoc",
+ "reqwest",
+ "rstest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wiremock",
 ]
 
 [[package]]

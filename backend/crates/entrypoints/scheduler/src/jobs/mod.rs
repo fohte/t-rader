@@ -16,6 +16,7 @@ pub mod e_stat_calendar;
 pub mod earnings_schedule;
 pub mod ecb_calendar;
 pub mod edinet_holdings;
+pub mod eoddata_kospi;
 pub mod equity_master;
 pub mod fed_calendar;
 pub mod financial_summary;

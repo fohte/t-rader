@@ -1,12 +1,18 @@
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, FixedOffset, NaiveDate};
+    use core_application::indicator_observation::{
+        IndicatorObservationMetadata, IndicatorObservationRepository,
+    };
+    use core_domain::IndicatorObservation;
+    use rust_decimal::Decimal;
     use sea_orm::ActiveValue::Set;
     use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, Statement};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
     use crate::testing::create_test_server_with_graphile_worker;
+    use gateway_postgres::PostgresIndicatorObservationRepository;
     use gateway_postgres::entities::{
         earnings_schedule_ingested_date, ingest_run, jquants_daily_bars_ingested_date,
     };
@@ -88,6 +94,47 @@ mod tests {
         .expect("mark graphile job running");
     }
 
+    async fn seed_indicator_observations(db: &gateway_postgres::DatabaseHandle) {
+        let repository = PostgresIndicatorObservationRepository::new(db.clone());
+        for (indicator_id, name, observations) in [
+            (
+                "KOSPI",
+                "韓国総合株価指数",
+                vec![
+                    IndicatorObservation {
+                        date: date(2030, 6, 6),
+                        value: Decimal::from(100),
+                    },
+                    IndicatorObservation {
+                        date: date(2030, 6, 7),
+                        value: Decimal::from(101),
+                    },
+                ],
+            ),
+            (
+                "TEST_OTHER",
+                "架空指標",
+                vec![IndicatorObservation {
+                    date: date(2030, 6, 9),
+                    value: Decimal::from(200),
+                }],
+            ),
+        ] {
+            repository
+                .ensure_indicator(IndicatorObservationMetadata {
+                    indicator_id: indicator_id.to_string(),
+                    name: name.to_string(),
+                    kind: "index".to_string(),
+                })
+                .await
+                .expect("seed indicator");
+            repository
+                .upsert_observations(indicator_id, observations)
+                .await
+                .expect("seed observations");
+        }
+    }
+
     #[backend_test_macros::database_test]
     async fn get_returns_latest_run_data_date_and_graphile_queue_states(
         db: gateway_postgres::DatabaseHandle,
@@ -142,6 +189,7 @@ mod tests {
         .exec(&db)
         .await
         .expect("insert earnings schedule date");
+        seed_indicator_observations(&db).await;
         let _waiting_id = enqueue_job(&db, timestamp("2030-06-06T12:02:00Z")).await;
         let failed_id = enqueue_job(&db, timestamp("2030-06-06T12:03:00Z")).await;
         mark_job_failed(&db, failed_id).await;
@@ -258,6 +306,14 @@ mod tests {
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
+                            "expected_data_date": "<expected-data-date>",
+                            "worker_jobs": []
+                        },
+                        {
+                            "job": "eoddata_kospi_ingest",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": "2030-06-07",
                             "expected_data_date": "<expected-data-date>",
                             "worker_jobs": []
                         },

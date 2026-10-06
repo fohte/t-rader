@@ -19,6 +19,7 @@ entrypoint-control-plane-mcp = { workspace = true }
 entrypoint-external-webhook = { workspace = true }
 entrypoint-frontend-api = { workspace = true }
 gateway-fred = { workspace = true }
+gateway-eoddata = { workspace = true }
 gateway-twse = { workspace = true }
 gateway-e-stat = { workspace = true }
 gateway-alpha-vantage = { workspace = true }

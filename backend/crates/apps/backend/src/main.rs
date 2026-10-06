@@ -52,8 +52,9 @@ use logging::default_log_filter;
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
-    initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
-    us_stock_master_source, worker_admin_ui_settings_from_env,
+    eoddata_kospi_source_from_env, initialize_news_and_central_bank_sources,
+    jquants_config_from_env, required_redis_url, us_stock_master_source,
+    worker_admin_ui_settings_from_env,
 };
 
 #[tokio::main]
@@ -261,6 +262,8 @@ async fn main() -> Result<(), StartupError> {
         }
     };
 
+    let eoddata_kospi_source = eoddata_kospi_source_from_env()?;
+
     let e_stat_calendar_source: SharedCalendarEventSource =
         Arc::new(EStatCalendarEventSource::new().map_err(|error| {
             StartupError::Config(format!(
@@ -355,6 +358,7 @@ async fn main() -> Result<(), StartupError> {
         indicator_observations: use_cases.indicator_observations(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
+        eoddata_kospi_source,
         twse_source: twse::worker_source(cli.run_mode, &redis_url)?,
         e_stat_calendar_source: Some(e_stat_calendar_source),
         alpha_vantage_calendar_source,

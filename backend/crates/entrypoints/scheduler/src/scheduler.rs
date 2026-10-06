@@ -23,6 +23,7 @@ use crate::{
         earnings_schedule::EarningsScheduleIngest,
         ecb_calendar::EcbCalendarEventIngest,
         edinet_holdings::ShareholdingStructureIngest,
+        eoddata_kospi::EodDataKospiIngest,
         equity_master::EquityMasterIngest,
         fed_calendar::FedCalendarEventIngest,
         financial_summary::FinancialSummaryIngest,
@@ -47,11 +48,13 @@ pub const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
 const JQUANTS_QUEUE: &str = "jquants";
 const ALPACA_QUEUE: &str = "alpaca";
 const FRED_QUEUE: &str = "fred";
+const EODDATA_QUEUE: &str = "eoddata";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
 pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 22] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 23] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (EodDataKospiIngest::IDENTIFIER, DAILY_TIMEOUT),
     (TwseIndexIngest::IDENTIFIER, DAILY_TIMEOUT),
     (AlphaVantageCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
     (FredReleaseDatesIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -79,6 +82,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 22] = [
 struct ConfiguredJobs {
     daily_bars: bool,
     fred: bool,
+    eoddata_kospi: bool,
     twse: bool,
     e_stat_calendar: bool,
     alpha_vantage_calendar: bool,
@@ -112,6 +116,7 @@ impl Scheduler {
         let crontabs = build_crontabs(ConfiguredJobs {
             daily_bars: dependencies.market_daily_bar_source.is_some(),
             fred: dependencies.fred_source.is_some(),
+            eoddata_kospi: dependencies.eoddata_kospi_source.is_some(),
             twse: dependencies.twse_source.is_some(),
             e_stat_calendar: dependencies.e_stat_calendar_source.is_some(),
             alpha_vantage_calendar: dependencies.alpha_vantage_calendar_source.is_some(),
@@ -156,6 +161,7 @@ impl Scheduler {
             .define_job::<UsStockBarsIngest>()
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
+            .define_job::<EodDataKospiIngest>()
             .define_job::<TwseIndexIngest>()
             .define_job::<EStatCalendarIngest>()
             .define_job::<AlphaVantageCalendarIngest>()
@@ -203,6 +209,14 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
             11,
             30,
             Some(FRED_QUEUE),
+        )?);
+    }
+    if configured.eoddata_kospi {
+        crontabs.push(daily_cron::<EodDataKospiIngest>(
+            "eoddata_kospi_ingest",
+            9,
+            0,
+            Some(EODDATA_QUEUE),
         )?);
     }
     if configured.twse {
@@ -454,6 +468,7 @@ mod tests {
         earnings_schedule::EarningsScheduleIngest,
         ecb_calendar::EcbCalendarEventIngest,
         edinet_holdings::ShareholdingStructureIngest,
+        eoddata_kospi::EodDataKospiIngest,
         equity_master::EquityMasterIngest,
         fed_calendar::FedCalendarEventIngest,
         financial_summary::FinancialSummaryIngest,
@@ -472,9 +487,9 @@ mod tests {
     };
 
     use super::{
-        ALPACA_QUEUE, ConfiguredJobs, FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE, JQUANTS_QUEUE,
-        NEWS_CONTENT_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, TWSE_QUEUE, build_crontabs,
-        configure_cron, every_minute_cron, hourly_cron,
+        ALPACA_QUEUE, ConfiguredJobs, EODDATA_QUEUE, FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE,
+        JQUANTS_QUEUE, NEWS_CONTENT_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, TWSE_QUEUE,
+        build_crontabs, configure_cron, every_minute_cron, hourly_cron,
     };
 
     #[fixture]
@@ -482,6 +497,7 @@ mod tests {
         ConfiguredJobs {
             daily_bars: true,
             fred: true,
+            eoddata_kospi: true,
             twse: true,
             e_stat_calendar: true,
             alpha_vantage_calendar: true,
@@ -525,6 +541,12 @@ mod tests {
                 "fred_ingest",
                 CrontabFill::days(3),
                 Some(FRED_QUEUE),
+            ),
+            expected_cron::<EodDataKospiIngest>(
+                CrontabTimer::daily_at(9, 0).ok(),
+                "eoddata_kospi_ingest",
+                CrontabFill::days(3),
+                Some(EODDATA_QUEUE),
             ),
             expected_cron::<TwseIndexIngest>(
                 CrontabTimer::daily_at(7, 0).ok(),
@@ -697,6 +719,12 @@ mod tests {
                     Some(FRED_QUEUE.to_string()),
                 ),
                 (
+                    Some("eoddata_kospi_ingest".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    Some(EODDATA_QUEUE.to_string()),
+                ),
+                (
                     Some("twse_index_ingest".to_string()),
                     Some(CrontabFill::days(3)),
                     Some(3),
@@ -831,6 +859,7 @@ mod tests {
     #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "trigger_evaluation"])]
     #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::eoddata_kospi_only(ConfiguredJobs { eoddata_kospi: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "eoddata_kospi_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::twse_only(ConfiguredJobs { twse: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "twse_index_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
