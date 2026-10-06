@@ -79,7 +79,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference query_data bars; fields are open, high, low, close, or volume, and change resolves to a percentage. These links remain in the body while their values are saved separately. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference daily (1d) query_data bars; intraday snapshots cannot resolve date-based references. Fields are open, high, low, close, or volume, and change resolves to a percentage. These links remain in the body while their values are saved separately. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -127,7 +127,7 @@ impl StrategyServer {
     /// アノテーションを作成する
     #[tool(
         name = "create_annotation",
-        description = "Create a chart annotation. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."
+        description = "Create a chart annotation. When price_field is set, its value is resolved from a matching daily (1d) query_data bar fetched during this execution. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."
     )]
     async fn create_annotation(
         &self,

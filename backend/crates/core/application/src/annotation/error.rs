@@ -15,4 +15,8 @@ pub enum AnnotationUseCaseError {
     UnitOfWork(#[from] crate::unit_of_work::UnitOfWorkError),
     #[error(transparent)]
     ChangeHistory(#[from] crate::change_history::ChangeHistoryError),
+    #[error(transparent)]
+    StrategyTaskStepEvidence(
+        #[from] crate::strategy_task_step_evidence::StrategyTaskStepEvidenceRepositoryError,
+    ),
 }

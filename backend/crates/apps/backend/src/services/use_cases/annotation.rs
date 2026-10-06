@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use core_application::annotation::{AnnotationReadUseCases, AnnotationUseCases};
-use gateway_postgres::{PostgresAnnotationReadQuery, PostgresAnnotationRepository};
+use gateway_postgres::{
+    PostgresAnnotationReadQuery, PostgresAnnotationRepository,
+    PostgresStrategyTaskStepEvidenceRepository,
+};
 
 use super::UseCases;
 
@@ -17,6 +20,9 @@ impl UseCases {
             self.unit_of_work.clone(),
             Arc::new(PostgresAnnotationRepository),
             self.change_history.clone(),
+            Arc::new(PostgresStrategyTaskStepEvidenceRepository::new(
+                self.db.clone(),
+            )),
         )
     }
 }

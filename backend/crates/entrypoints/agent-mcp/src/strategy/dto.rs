@@ -11,10 +11,12 @@ use uuid::Uuid;
 use super::graph_dto::GraphDef;
 use super::serde_helpers::deserialize_nullable_option;
 
+mod annotations;
 mod financials;
 mod news;
 mod portfolio;
 mod query_data;
+pub use annotations::*;
 pub use financials::*;
 pub use news::*;
 pub use portfolio::*;
@@ -141,50 +143,6 @@ pub struct ListNotesParams {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ListNotesResult {
     pub notes: Vec<NoteDto>,
-}
-
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct CreateAnnotationParams {
-    pub target_symbol: String,
-    pub target_kind: String,
-    pub timestamp: DateTime<FixedOffset>,
-    pub price: Option<f64>,
-    pub text: String,
-    pub linked_note_id: Option<Uuid>,
-}
-
-#[cfg_attr(test, derive(Clone, serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct AnnotationDto {
-    pub annotation_id: Uuid,
-    pub target_symbol: String,
-    pub target_kind: String,
-    pub timestamp: DateTime<FixedOffset>,
-    pub price: Option<f64>,
-    pub text: String,
-    pub status: String,
-    pub linked_note_id: Option<Uuid>,
-    pub created_by_kind: String,
-    pub created_at: DateTime<FixedOffset>,
-    pub updated_at: DateTime<FixedOffset>,
-}
-
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct CreateAnnotationResult {
-    pub annotation: AnnotationDto,
-}
-
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct ReadAnnotationsParams {
-    pub target_symbol: Option<String>,
-    pub limit: Option<u32>,
-}
-
-#[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct ReadAnnotationsResult {
-    pub annotations: Vec<AnnotationDto>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
