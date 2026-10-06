@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+use core_domain::bar::Timeframe;
 use core_domain::note_price_reference::PriceReferenceField;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -46,8 +47,7 @@ impl StrategyTaskStepEvidence {
         let snapshot: QueryDataSnapshotBars = serde_json::from_value(self.snapshot.clone()).ok()?;
         if snapshot
             .timeframe
-            .as_deref()
-            .is_some_and(|timeframe| timeframe != "1d")
+            .is_some_and(|timeframe| timeframe != Timeframe::Daily)
         {
             return None;
         }
@@ -69,8 +69,7 @@ impl StrategyTaskStepEvidence {
 
 #[derive(Deserialize)]
 struct QueryDataSnapshotBars {
-    #[serde(default)]
-    timeframe: Option<String>,
+    timeframe: Option<Timeframe>,
     bars: Vec<QueryDataBar>,
 }
 

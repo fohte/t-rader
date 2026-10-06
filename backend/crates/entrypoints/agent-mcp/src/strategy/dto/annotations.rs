@@ -9,7 +9,7 @@ pub struct CreateAnnotationParams {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
-    /// この実行で取得した query_data から解決する価格項目
+    /// この実行で取得した日足 (1d) の query_data から解決する価格項目
     pub price_field: Option<AnnotationPriceField>,
     pub text: String,
     pub linked_note_id: Option<Uuid>,
