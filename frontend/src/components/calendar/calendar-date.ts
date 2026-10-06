@@ -1,4 +1,4 @@
-export type CalendarCountry = 'JP' | 'US' | 'EU'
+type CalendarCountry = 'JP' | 'US' | 'EU'
 export type CalendarCountryFilter = CalendarCountry | 'all'
 
 export type CalendarWeekRange = {
