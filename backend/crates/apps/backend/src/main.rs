@@ -48,6 +48,7 @@ mod logging;
 mod runtime;
 mod signals;
 mod startup;
+mod twse;
 
 use logging::default_log_filter;
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
@@ -100,7 +101,7 @@ async fn main() -> Result<(), StartupError> {
         )
         .init();
 
-    let jquants_config = if cli.migrate_only {
+    let jquants_config = if cli.migrate_only || cli.backfill_twse_indices {
         None
     } else {
         jquants_config_from_env()?
@@ -141,13 +142,17 @@ async fn main() -> Result<(), StartupError> {
         return Ok(());
     }
 
-    let admin_ui_settings = if cli.run_mode.starts_worker() {
+    let admin_ui_settings = if cli.run_mode.starts_worker() && !cli.backfill_twse_indices {
         Some(worker_admin_ui_settings_from_env()?)
     } else {
         None
     };
 
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
+
+    if cli.backfill_twse_indices {
+        return twse::backfill(db, &redis_url).await;
+    }
 
     let app_db = DatabaseHandle::from(db.clone());
     let provider_kind = std::env::var("DATA_PROVIDER")
@@ -371,6 +376,7 @@ async fn main() -> Result<(), StartupError> {
         indicator_observations: use_cases.indicator_observations(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
+        twse_source: twse::worker_source(cli.run_mode, &redis_url)?,
         e_stat_calendar_source: Some(e_stat_calendar_source),
         alpha_vantage_calendar_source,
         fred_calendar_event_source,
