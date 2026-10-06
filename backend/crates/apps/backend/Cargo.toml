@@ -23,6 +23,7 @@ gateway-eoddata = { workspace = true }
 gateway-twse = { workspace = true }
 gateway-e-stat = { workspace = true }
 gateway-alpha-vantage = { workspace = true }
+gateway-alpaca = { workspace = true }
 gateway-boj = { workspace = true }
 gateway-ecb = { workspace = true }
 gateway-fed = { workspace = true }

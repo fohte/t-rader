@@ -612,6 +612,7 @@ dependencies = [
  "entrypoint-frontend-api",
  "entrypoint-scheduler",
  "futures-util",
+ "gateway-alpaca",
  "gateway-alpha-vantage",
  "gateway-boj",
  "gateway-e-stat",
@@ -2056,6 +2057,26 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gateway-alpaca"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "core-domain",
+ "rate-limit",
+ "reqwest",
+ "rstest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]

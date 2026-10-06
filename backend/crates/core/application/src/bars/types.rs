@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, FixedOffset, NaiveDate};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -24,6 +24,21 @@ pub struct BarsByInstrumentsQuery {
 pub struct IngestStats {
     pub days_attempted: usize,
     pub bars_upserted: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsStockBarTarget {
+    pub instrument_id: String,
+    pub latest_daily_bar: Option<DateTime<Utc>>,
+    pub latest_minute_bar: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+pub struct UsStockBarsIngestStats {
+    pub symbols_attempted: usize,
+    pub requests_attempted: usize,
+    pub daily_bars_upserted: usize,
+    pub minute_bars_upserted: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]

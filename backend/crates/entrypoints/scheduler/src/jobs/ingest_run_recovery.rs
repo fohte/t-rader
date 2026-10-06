@@ -101,7 +101,7 @@ mod tests {
         assert_eq!(
             (result, log.calls.lock().await.clone()),
             (
-                Ok(22),
+                Ok(23),
                 vec![
                     ("fred_ingest".to_string(), now - Duration::hours(2)),
                     ("eoddata_kospi_ingest".to_string(), now - Duration::hours(2)),
@@ -161,6 +161,7 @@ mod tests {
                         "us_stock_master_ingest".to_string(),
                         now - Duration::hours(2)
                     ),
+                    ("us_stock_bars_ingest".to_string(), now - Duration::hours(2)),
                 ],
             ),
         );

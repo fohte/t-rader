@@ -1,4 +1,10 @@
+use std::sync::Arc;
+
+use core_application::bars::SharedUsStockBarSource;
+use core_application::us_stock_master_source::SharedUsStockMasterSource;
+use gateway_alpaca::AlpacaClient;
 use gateway_jquants::JQuantsPlan;
+use gateway_sec::SecClient;
 use sea_orm::DbErr;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
@@ -71,6 +77,71 @@ pub(super) fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>,
         std::env::var("JQUANTS_API_KEY").ok(),
         std::env::var("JQUANTS_PLAN").ok(),
     )
+}
+
+fn alpaca_us_stock_bar_source(
+    starts_worker: bool,
+    redis_url: &str,
+    api_key_id: Option<String>,
+    secret_key: Option<String>,
+) -> Result<Option<SharedUsStockBarSource>, StartupError> {
+    if !starts_worker {
+        return Ok(None);
+    }
+
+    match (api_key_id, secret_key) {
+        (Some(api_key_id), Some(secret_key))
+            if !api_key_id.trim().is_empty() && !secret_key.trim().is_empty() =>
+        {
+            let client = AlpacaClient::new(redis_url, api_key_id.trim(), secret_key.trim())
+                .map_err(|error| {
+                    StartupError::Config(format!("failed to initialize Alpaca client: {error}"))
+                })?;
+            tracing::info!("Alpaca US stock bar source initialized");
+            Ok(Some(Arc::new(client)))
+        }
+        _ => {
+            tracing::warn!(
+                "ALPACA_API_KEY_ID または ALPACA_API_SECRET_KEY が未設定のため、米国株の株価取り込み job を登録しません"
+            );
+            Ok(None)
+        }
+    }
+}
+
+pub(super) fn alpaca_us_stock_bar_source_from_env(
+    starts_worker: bool,
+    redis_url: &str,
+) -> Result<Option<SharedUsStockBarSource>, StartupError> {
+    alpaca_us_stock_bar_source(
+        starts_worker,
+        redis_url,
+        std::env::var("ALPACA_API_KEY_ID").ok(),
+        std::env::var("ALPACA_API_SECRET_KEY").ok(),
+    )
+}
+
+pub(super) fn us_stock_master_source(
+    starts_worker: bool,
+    user_agent: Option<String>,
+) -> Result<Option<SharedUsStockMasterSource>, StartupError> {
+    if !starts_worker {
+        return Ok(None);
+    }
+
+    match user_agent {
+        Some(user_agent) if !user_agent.trim().is_empty() => {
+            let client = SecClient::new(&user_agent).map_err(|error| {
+                StartupError::Config(format!("failed to initialize SEC client: {error}"))
+            })?;
+            tracing::info!("SEC US stock master source initialized");
+            Ok(Some(Arc::new(client)))
+        }
+        _ => {
+            tracing::warn!("SEC_USER_AGENT が未設定のため、米国株のマスタ同期 job を登録しません");
+            Ok(None)
+        }
+    }
 }
 
 pub(super) fn required_redis_url(value: Option<String>) -> Result<String, StartupError> {
@@ -170,6 +241,29 @@ mod tests {
             jquants_config(api_key, plan).map_err(|error| error.to_string()),
             expected,
         );
+    }
+
+    #[rstest]
+    #[case::api_mode(false, Some("synthetic-key"), Some("synthetic-secret"), false)]
+    #[case::missing_key_id(true, None, Some("synthetic-secret"), false)]
+    #[case::missing_secret(true, Some("synthetic-key"), None, false)]
+    #[case::both_credentials(true, Some("synthetic-key"), Some("synthetic-secret"), true)]
+    fn alpaca_source_requires_both_credentials_and_a_worker(
+        #[case] starts_worker: bool,
+        #[case] key: Option<&str>,
+        #[case] secret: Option<&str>,
+        #[case] expected: bool,
+    ) {
+        let actual = alpaca_us_stock_bar_source(
+            starts_worker,
+            "redis://localhost:6379",
+            key.map(str::to_owned),
+            secret.map(str::to_owned),
+        )
+        .map(|source| source.is_some())
+        .map_err(|error| error.to_string());
+
+        assert_eq!(actual, Ok(expected));
     }
 
     #[rstest]
