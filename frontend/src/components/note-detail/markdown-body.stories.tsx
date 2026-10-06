@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { http, HttpResponse } from 'msw'
 
+import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixture'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 import { mockResolveRef } from '#storybook/mock-resolve-ref'
@@ -52,29 +53,6 @@ const SAMPLE = `# サンプル銘柄の記録
 print("nsjail で集計したサンプル")
 \`\`\`
 `
-
-const CHANGE_REFERENCE_BARS: components['schemas']['Bar'][] = [
-  {
-    instrument_id: 'fictional-code',
-    timeframe: '1d',
-    timestamp: '2030-01-02T00:00:00Z',
-    open: 120,
-    high: 128,
-    low: 118,
-    close: 125,
-    volume: 1200,
-  },
-  {
-    instrument_id: 'fictional-code',
-    timeframe: '1d',
-    timestamp: '2030-01-03T00:00:00Z',
-    open: 125,
-    high: 127,
-    low: 114,
-    close: 116,
-    volume: 1500,
-  },
-]
 
 const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
   {

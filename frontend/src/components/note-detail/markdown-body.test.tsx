@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixture'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 
@@ -44,29 +45,6 @@ const GRAPH_DEF: components['schemas']['GraphDef'] = {
   ],
   edges: [{ source: 'a', target: 'b' }],
 }
-
-const CHANGE_REFERENCE_BARS: components['schemas']['Bar'][] = [
-  {
-    instrument_id: 'fictional-code',
-    timeframe: '1d',
-    timestamp: '2030-01-02T00:00:00Z',
-    open: 120,
-    high: 128,
-    low: 118,
-    close: 125,
-    volume: 1200,
-  },
-  {
-    instrument_id: 'fictional-code',
-    timeframe: '1d',
-    timestamp: '2030-01-03T00:00:00Z',
-    open: 125,
-    high: 127,
-    low: 114,
-    close: 116,
-    volume: 1500,
-  },
-]
 
 describe('MarkdownBody', () => {
   it('renders a gfm table with alignment', () => {
@@ -176,7 +154,8 @@ describe('MarkdownBody', () => {
     )
 
     expect(container.textContent).toBe(
-      '終値 1,234.5、変化 -14.91%、未解決 [[price:fictional-code@2030-01-04:close]]\nfictional-code · 2030-01-02 – 2030-01-03 2 bars',
+      `終値 1,234.5、変化 -14.91%、未解決 [[price:fictional-code@2030-01-04:close]]
+fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
     )
   })
 
@@ -200,7 +179,6 @@ describe('MarkdownBody', () => {
             },
           },
         },
-        { enabled: true },
       ],
     ])
   })

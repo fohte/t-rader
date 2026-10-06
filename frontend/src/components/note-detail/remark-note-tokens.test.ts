@@ -10,6 +10,13 @@ function textTree(value: string): Root {
   }
 }
 
+function paragraph(value: string) {
+  return {
+    type: 'paragraph' as const,
+    children: [{ type: 'text' as const, value }],
+  }
+}
+
 describe('remarkNoteTokens', () => {
   it('replaces prefixed refs with note-ref nodes', () => {
     const tree = textTree(
@@ -104,14 +111,140 @@ describe('remarkNoteTokens', () => {
               type: 'noteToken',
               data: {
                 hName: 'note-change-reference',
-                hProperties: { token, value: '-12.1' },
+                hProperties: {
+                  token,
+                  instrumentId: 'fictional-code',
+                  start: '2030-01-02',
+                  end: '2030-01-03',
+                  value: '-12.1',
+                },
               },
             },
           ],
         },
         {
           type: 'noteChangeFigure',
-          data: { hName: 'note-change-figure', hProperties: { token } },
+          data: {
+            hName: 'note-change-figure',
+            hProperties: {
+              instrumentId: 'fictional-code',
+              start: '2030-01-02',
+              end: '2030-01-03',
+            },
+          },
+        },
+      ],
+    })
+  })
+
+  it.each([
+    {
+      name: 'an impossible date',
+      token: '[[change:fictional-code@2030-02-30..2030-03-01:close]]',
+    },
+    {
+      name: 'a reversed date range',
+      token: '[[change:fictional-code@2030-01-03..2030-01-02:close]]',
+    },
+  ])('leaves $name as literal text without a figure', ({ token }) => {
+    const tree = textTree(`期間変化 ${token}`)
+    remarkNoteTokens()(tree)
+    expect(tree).toEqual(textTree(`期間変化 ${token}`))
+  })
+
+  it('appends figures inside blockquotes and list items', () => {
+    const token = '[[change:fictional-code@2030-01-02..2030-01-03:close]]'
+    const tree: Root = {
+      type: 'root',
+      children: [
+        { type: 'blockquote', children: [paragraph(token)] },
+        {
+          type: 'list',
+          ordered: false,
+          children: [
+            {
+              type: 'listItem',
+              children: [paragraph(token)],
+            },
+          ],
+        },
+      ],
+    }
+    remarkNoteTokens()(tree)
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'blockquote',
+          children: [
+            {
+              type: 'paragraph',
+              children: [
+                {
+                  type: 'noteToken',
+                  data: {
+                    hName: 'note-change-reference',
+                    hProperties: {
+                      token,
+                      instrumentId: 'fictional-code',
+                      start: '2030-01-02',
+                      end: '2030-01-03',
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              type: 'noteChangeFigure',
+              data: {
+                hName: 'note-change-figure',
+                hProperties: {
+                  instrumentId: 'fictional-code',
+                  start: '2030-01-02',
+                  end: '2030-01-03',
+                },
+              },
+            },
+          ],
+        },
+        {
+          type: 'list',
+          ordered: false,
+          children: [
+            {
+              type: 'listItem',
+              children: [
+                {
+                  type: 'paragraph',
+                  children: [
+                    {
+                      type: 'noteToken',
+                      data: {
+                        hName: 'note-change-reference',
+                        hProperties: {
+                          token,
+                          instrumentId: 'fictional-code',
+                          start: '2030-01-02',
+                          end: '2030-01-03',
+                        },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'noteChangeFigure',
+                  data: {
+                    hName: 'note-change-figure',
+                    hProperties: {
+                      instrumentId: 'fictional-code',
+                      start: '2030-01-02',
+                      end: '2030-01-03',
+                    },
+                  },
+                },
+              ],
+            },
+          ],
         },
       ],
     })

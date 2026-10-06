@@ -8,6 +8,10 @@ import type {
 } from 'mdast'
 import { findAndReplace } from 'mdast-util-find-and-replace'
 
+import {
+  type ParsedNoteChangeReference,
+  parseNoteChangeReference,
+} from '#lib/note-change-reference'
 import { REF_PREFIX_RE } from '#lib/note-utils'
 
 const TOKEN_RE = /\[\[([^\]]+)\]\]/g
@@ -28,7 +32,7 @@ interface NoteGraphBlock extends Node {
 
 interface NoteChangeFigure extends Node {
   type: 'noteChangeFigure'
-  data: Data & { hName: string; hProperties: { token: string } }
+  data: Data & { hName: string; hProperties: ParsedNoteChangeReference }
 }
 
 declare module 'mdast' {
@@ -61,10 +65,12 @@ function noteGraphBlock(graphId: string): NoteGraphBlock {
   }
 }
 
-function noteChangeFigure(token: string): NoteChangeFigure {
+function noteChangeFigure(
+  reference: ParsedNoteChangeReference,
+): NoteChangeFigure {
   return {
     type: 'noteChangeFigure',
-    data: { hName: 'note-change-figure', hProperties: { token } },
+    data: { hName: 'note-change-figure', hProperties: reference },
   }
 }
 
@@ -106,21 +112,32 @@ function replaceGraphParagraphs(root: Root): void {
   })
 }
 
-function collectChangeReferenceTokens(node: Node, tokens: Set<string>): void {
+function collectChangeReferences(
+  node: Node,
+  references: Map<string, ParsedNoteChangeReference>,
+): void {
   if (
     node.type === 'noteToken' &&
     node.data != null &&
     isRecord(node.data) &&
     node.data.hName === 'note-change-reference' &&
     isRecord(node.data.hProperties) &&
-    typeof node.data.hProperties.token === 'string'
+    typeof node.data.hProperties.token === 'string' &&
+    typeof node.data.hProperties.instrumentId === 'string' &&
+    typeof node.data.hProperties.start === 'string' &&
+    typeof node.data.hProperties.end === 'string'
   ) {
-    tokens.add(node.data.hProperties.token)
+    const token = node.data.hProperties.token
+    references.set(token, {
+      instrumentId: node.data.hProperties.instrumentId,
+      start: node.data.hProperties.start,
+      end: node.data.hProperties.end,
+    })
   }
 
   if ('children' in node && Array.isArray(node.children)) {
     node.children.forEach((child: unknown) => {
-      if (isNode(child)) collectChangeReferenceTokens(child, tokens)
+      if (isNode(child)) collectChangeReferences(child, references)
     })
   }
 }
@@ -133,9 +150,9 @@ function appendChangeFigures(
     if (child == null) continue
 
     if (child.type === 'paragraph') {
-      const tokens = new Set<string>()
-      collectChangeReferenceTokens(child, tokens)
-      const figures = [...tokens].map(noteChangeFigure)
+      const references = new Map<string, ParsedNoteChangeReference>()
+      collectChangeReferences(child, references)
+      const figures = [...references.values()].map(noteChangeFigure)
       children.splice(index + 1, 0, ...figures)
       index += figures.length
       continue
@@ -158,27 +175,25 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
     findAndReplace(tree, [
       TOKEN_RE,
       (token: string, inner: string) => {
-        const priceReferenceKind = inner.startsWith('price:')
-          ? 'price'
-          : inner.startsWith('change:')
-            ? 'change'
-            : undefined
-        const priceReferenceValue =
-          priceReferenceKind == null
-            ? undefined
-            : resolvedPriceReferenceValue(resolvedPriceReferences, token)
-        if (priceReferenceKind === 'change') {
+        if (inner.startsWith('change:')) {
+          const reference = parseNoteChangeReference(token)
+          if (reference == null) return false
+          const value = resolvedPriceReferenceValue(
+            resolvedPriceReferences,
+            token,
+          )
           return noteToken('note-change-reference', {
             token,
-            ...(priceReferenceValue == null
-              ? {}
-              : { value: String(priceReferenceValue) }),
+            ...reference,
+            ...(value == null ? {} : { value: String(value) }),
           })
         }
 
-        if (priceReferenceKind === 'price' && priceReferenceValue != null) {
+        const priceReferenceValue = inner.startsWith('price:')
+          ? resolvedPriceReferenceValue(resolvedPriceReferences, token)
+          : undefined
+        if (priceReferenceValue != null) {
           return noteToken('note-price-reference', {
-            kind: 'price',
             value: String(priceReferenceValue),
           })
         }
