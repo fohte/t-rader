@@ -1,4 +1,3 @@
-use core_application::indicator_observation::IndicatorObservationMetadata;
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::Serialize;
 
@@ -28,15 +27,7 @@ impl TaskHandler for EodDataKospiIngest {
                 let upserted = state
                     .dependencies
                     .indicator_observations
-                    .ingest_single_series(
-                        source.as_ref(),
-                        "KSIC",
-                        IndicatorObservationMetadata {
-                            indicator_id: "KOSPI".to_string(),
-                            name: "韓国総合株価指数".to_string(),
-                            kind: "index".to_string(),
-                        },
-                    )
+                    .ingest_eoddata_series(source.as_ref())
                     .await?;
 
                 Ok(EodDataKospiIngestStats { upserted })

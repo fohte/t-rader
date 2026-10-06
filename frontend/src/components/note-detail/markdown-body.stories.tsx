@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
+import { http, HttpResponse } from 'msw'
 
+import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 import { mockResolveRef } from '#storybook/mock-resolve-ref'
@@ -72,7 +74,12 @@ const meta = {
   component: MarkdownBody,
   parameters: {
     layout: 'padded',
-    msw: { handlers: [mockResolveRef(NAMES)] },
+    msw: {
+      handlers: [
+        mockResolveRef(NAMES),
+        http.get('/api/bars', () => HttpResponse.json(CHANGE_REFERENCE_BARS)),
+      ],
+    },
   },
   decorators: [
     (Story) => (

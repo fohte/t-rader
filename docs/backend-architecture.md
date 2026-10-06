@@ -38,6 +38,7 @@ backend/crates/
 │   ├── rss/
 │   ├── litellm/
 │   ├── kata-exec/
+│   ├── twse/
 │   └── t-rader-agent/
 └── libs/                 # 外部 crate と同じ扱いの自前ライブラリ
     ├── rate-limit/       # Redis を使った共有 rate limit

@@ -23,6 +23,7 @@ entrypoint-frontend-api = { path = "crates/entrypoints/frontend-api" }
 entrypoint-scheduler = { path = "crates/entrypoints/scheduler" }
 gateway-fred = { path = "crates/gateways/fred" }
 gateway-eoddata = { path = "crates/gateways/eoddata" }
+gateway-twse = { path = "crates/gateways/twse" }
 gateway-e-stat = { path = "crates/gateways/e-stat" }
 gateway-alpha-vantage = { path = "crates/gateways/alpha-vantage" }
 gateway-boj = { path = "crates/gateways/boj" }

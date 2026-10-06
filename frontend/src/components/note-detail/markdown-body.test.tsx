@@ -2,10 +2,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
+
+const { useBarsQuery } = vi.hoisted(() => ({ useBarsQuery: vi.fn() }))
+
+vi.mock('#lib/api/client', () => ({ $api: { useQuery: useBarsQuery } }))
+vi.mock('#components/candlestick-chart', () => ({
+  CandlestickChart: ({ bars }: { bars: unknown[] }) => (
+    <div> {bars.length} bars</div>
+  ),
+}))
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
@@ -16,7 +26,15 @@ function QueryClientWrapper({ children }: { children: ReactNode }) {
   )
 }
 
-afterEach(cleanup)
+beforeEach(() => {
+  useBarsQuery.mockReturnValue({ data: [], isPending: false, isError: false })
+})
+
+afterEach(() => {
+  cleanup()
+  queryClient.clear()
+  useBarsQuery.mockReset()
+})
 
 const GRAPH_DEF: components['schemas']['GraphDef'] = {
   id: 'g1',
@@ -112,7 +130,12 @@ describe('MarkdownBody', () => {
     expect(screen.getByText('未知 [[foo:bar]] は素通り')).toBeInTheDocument()
   })
 
-  it('renders resolved price and change references inline', () => {
+  it('renders resolved values inline and appends the change figure', () => {
+    useBarsQuery.mockReturnValue({
+      data: CHANGE_REFERENCE_BARS,
+      isPending: false,
+      isError: false,
+    })
     const { container } = render(
       <MarkdownBody
         source="終値 [[price:fictional-code@2030-01-02:close]]、変化 [[change:fictional-code@2030-01-02..2030-01-03:close]]、未解決 [[price:fictional-code@2030-01-04:close]]"
@@ -127,10 +150,52 @@ describe('MarkdownBody', () => {
           },
         }}
       />,
+      { wrapper: QueryClientWrapper },
     )
 
     expect(container.textContent).toBe(
-      '終値 1,234.5、変化 -14.91%、未解決 [[price:fictional-code@2030-01-04:close]]',
+      `終値 1,234.5、変化 -14.91%、未解決 [[price:fictional-code@2030-01-04:close]]
+fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
+    )
+  })
+
+  it('requests daily bars for the change reference instrument and date range', () => {
+    render(
+      <MarkdownBody source="[[change:US:FICTIONAL-A@2030-01-02..2030-01-03:close]]" />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    expect(useBarsQuery.mock.calls).toEqual([
+      [
+        'get',
+        '/api/bars',
+        {
+          params: {
+            query: {
+              instrument_id: 'US:FICTIONAL-A',
+              timeframe: '1d',
+              from: '2030-01-02',
+              to: '2030-01-03',
+            },
+          },
+        },
+      ],
+    ])
+  })
+
+  it('keeps an unresolved change token visible when its bars cannot be loaded', () => {
+    useBarsQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+    })
+    const token = '[[change:US:FICTIONAL-A@2030-01-02..2030-01-03:close]]'
+    const { container } = render(<MarkdownBody source={token} />, {
+      wrapper: QueryClientWrapper,
+    })
+
+    expect(container.textContent).toBe(
+      '[[change:US:FICTIONAL-A@2030-01-02..2030-01-03:close]]\nUS:FICTIONAL-A · 2030-01-02 – 2030-01-03区間のチャートを表示できません',
     )
   })
 

@@ -1,6 +1,8 @@
 use chrono::Duration;
+use chrono::NaiveDate;
 use core_domain::IndicatorObservation;
 
+use crate::indicator_observation_batch_source::IndicatorObservationBatchSource;
 use crate::indicator_observation_source::IndicatorObservationSource;
 use crate::strategy_scope::StrategyScope;
 
@@ -9,61 +11,80 @@ use super::repository::SharedIndicatorObservationRepository;
 use super::types::{
     IndicatorObservationIngestResult, IndicatorObservationIngestSeriesResult,
     IndicatorObservationMetadata, IndicatorObservationQuery, IndicatorObservationReadResult,
+    IndicatorObservationSeriesDefinition,
 };
 
 const LOOKBACK_DAYS: i64 = 10;
 
-struct SeriesDefinition {
-    series_id: &'static str,
-    indicator_id: &'static str,
-    name: &'static str,
-    kind: &'static str,
-}
-
-const SERIES: &[SeriesDefinition] = &[
-    SeriesDefinition {
+pub const FRED_SERIES: &[IndicatorObservationSeriesDefinition] = &[
+    IndicatorObservationSeriesDefinition {
         series_id: "DEXJPUS",
         indicator_id: "USDJPY",
         name: "ドル円",
         kind: "fx",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "VIXCLS",
         indicator_id: "VIX",
         name: "VIX",
         kind: "volatility",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "DGS10",
         indicator_id: "US10Y",
         name: "米10年債利回り",
         kind: "rate",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "NIKKEI225",
         indicator_id: "NIKKEI225",
         name: "日経225",
         kind: "index",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "SP500",
         indicator_id: "SP500",
         name: "S&P 500",
         kind: "index",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "NASDAQCOM",
         indicator_id: "NASDAQ",
         name: "NASDAQ総合指数",
         kind: "index",
     },
-    SeriesDefinition {
+    IndicatorObservationSeriesDefinition {
         series_id: "NASDAQSOX",
         indicator_id: "SOX",
         name: "フィラデルフィア半導体株指数",
         kind: "index",
     },
 ];
+
+pub const TWSE_SERIES: &[IndicatorObservationSeriesDefinition] = &[
+    IndicatorObservationSeriesDefinition {
+        series_id: "TAIEX",
+        indicator_id: "TAIEX",
+        name: "台湾加権指数",
+        kind: "index",
+    },
+    IndicatorObservationSeriesDefinition {
+        series_id: "TW_SEMI",
+        indicator_id: "TW_SEMI",
+        name: "台湾半導体指数",
+        kind: "index",
+    },
+];
+
+pub const EODDATA_KOSPI_SERIES: IndicatorObservationSeriesDefinition =
+    IndicatorObservationSeriesDefinition {
+        series_id: "KSIC",
+        indicator_id: "KOSPI",
+        name: "韓国総合株価指数",
+        kind: "index",
+    };
+
+pub const EODDATA_SERIES: &[IndicatorObservationSeriesDefinition] = &[EODDATA_KOSPI_SERIES];
 
 #[derive(Clone)]
 pub struct IndicatorObservationUseCases {
@@ -79,8 +100,8 @@ impl IndicatorObservationUseCases {
         &self,
         source: &dyn IndicatorObservationSource,
     ) -> IndicatorObservationIngestResult {
-        let mut results = Vec::with_capacity(SERIES.len());
-        for definition in SERIES {
+        let mut results = Vec::with_capacity(FRED_SERIES.len());
+        for definition in FRED_SERIES {
             let result = self.ingest_series(source, definition).await;
             results.push(match result {
                 Ok(upserted) => IndicatorObservationIngestSeriesResult::Succeeded {
@@ -93,7 +114,140 @@ impl IndicatorObservationUseCases {
                 },
             });
         }
-        IndicatorObservationIngestResult { series: results }
+        IndicatorObservationIngestResult {
+            series: results,
+            errors: Vec::new(),
+        }
+    }
+
+    pub async fn ingest_eoddata_series(
+        &self,
+        source: &dyn IndicatorObservationSource,
+    ) -> Result<usize, String> {
+        self.ingest_series(source, &EODDATA_KOSPI_SERIES).await
+    }
+
+    pub async fn ingest_batch(
+        &self,
+        source: &dyn IndicatorObservationBatchSource,
+        definitions: &[IndicatorObservationSeriesDefinition],
+        observation_start: Option<NaiveDate>,
+        observation_end: NaiveDate,
+    ) -> IndicatorObservationIngestResult {
+        let mut prepared = Vec::with_capacity(definitions.len());
+        let mut results = Vec::with_capacity(definitions.len());
+        let mut starts = Vec::with_capacity(definitions.len());
+
+        for definition in definitions {
+            let metadata = IndicatorObservationMetadata {
+                indicator_id: definition.indicator_id.to_string(),
+                name: definition.name.to_string(),
+                kind: definition.kind.to_string(),
+            };
+            if let Err(error) = self.repository.ensure_indicator(metadata.clone()).await {
+                results.push(IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: error.to_string(),
+                });
+                continue;
+            }
+
+            let start = if let Some(start) = observation_start {
+                start
+            } else {
+                match self
+                    .repository
+                    .find_latest_date(&metadata.indicator_id)
+                    .await
+                {
+                    Ok(latest) => latest
+                        .map(|date| date - Duration::days(LOOKBACK_DAYS))
+                        .unwrap_or(observation_end - Duration::days(LOOKBACK_DAYS)),
+                    Err(error) => {
+                        results.push(IndicatorObservationIngestSeriesResult::Failed {
+                            series_id: definition.series_id.to_string(),
+                            error: error.to_string(),
+                        });
+                        continue;
+                    }
+                }
+            };
+            starts.push(start);
+            prepared.push((definition, metadata));
+        }
+
+        if prepared.is_empty() {
+            return IndicatorObservationIngestResult {
+                series: results,
+                errors: Vec::new(),
+            };
+        }
+
+        let start = starts.into_iter().min().unwrap_or(observation_end);
+        if start > observation_end {
+            let error = "from must be on or before to".to_string();
+            results.extend(prepared.into_iter().map(|(definition, _)| {
+                IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: error.clone(),
+                }
+            }));
+            return IndicatorObservationIngestResult {
+                series: results,
+                errors: Vec::new(),
+            };
+        }
+
+        let series_ids: Vec<_> = prepared
+            .iter()
+            .map(|(definition, _)| definition.series_id)
+            .collect();
+        let batch = match source
+            .fetch_observations(&series_ids, start, observation_end)
+            .await
+        {
+            Ok(batch) => batch,
+            Err(error) => {
+                results.extend(prepared.into_iter().map(|(definition, _)| {
+                    IndicatorObservationIngestSeriesResult::Failed {
+                        series_id: definition.series_id.to_string(),
+                        error: error.to_string(),
+                    }
+                }));
+                return IndicatorObservationIngestResult {
+                    series: results,
+                    errors: Vec::new(),
+                };
+            }
+        };
+
+        for (definition, metadata) in prepared {
+            let Some(series_observations) = batch.observations.get(definition.series_id) else {
+                results.push(IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: "source response is missing the requested series".to_string(),
+                });
+                continue;
+            };
+            let upsert_result = self
+                .repository
+                .upsert_observations(&metadata.indicator_id, series_observations.clone())
+                .await;
+            match upsert_result {
+                Ok(upserted) => results.push(IndicatorObservationIngestSeriesResult::Succeeded {
+                    series_id: definition.series_id.to_string(),
+                    upserted,
+                }),
+                Err(error) => results.push(IndicatorObservationIngestSeriesResult::Failed {
+                    series_id: definition.series_id.to_string(),
+                    error: error.to_string(),
+                }),
+            }
+        }
+        IndicatorObservationIngestResult {
+            series: results,
+            errors: batch.errors,
+        }
     }
 
     pub async fn read(
@@ -131,23 +285,13 @@ impl IndicatorObservationUseCases {
     async fn ingest_series(
         &self,
         source: &dyn IndicatorObservationSource,
-        definition: &SeriesDefinition,
+        definition: &IndicatorObservationSeriesDefinition,
     ) -> Result<usize, String> {
         let metadata = IndicatorObservationMetadata {
             indicator_id: definition.indicator_id.to_string(),
             name: definition.name.to_string(),
             kind: definition.kind.to_string(),
         };
-        self.ingest_single_series(source, definition.series_id, metadata)
-            .await
-    }
-
-    pub async fn ingest_single_series(
-        &self,
-        source: &dyn IndicatorObservationSource,
-        series_id: &str,
-        metadata: IndicatorObservationMetadata,
-    ) -> Result<usize, String> {
         self.repository
             .ensure_indicator(metadata.clone())
             .await
@@ -160,7 +304,7 @@ impl IndicatorObservationUseCases {
             .map_err(|error| error.to_string())?;
         let observation_start = latest.map(|date| date - Duration::days(LOOKBACK_DAYS));
         let observations: Vec<IndicatorObservation> = source
-            .fetch_observations(series_id, observation_start)
+            .fetch_observations(definition.series_id, observation_start)
             .await
             .map_err(|error| error.to_string())?;
 
