@@ -100,6 +100,24 @@ export const Default: Story = {
   args: { source: SAMPLE, noteLinks: NOTE_LINKS },
 }
 
+export const WithResolvedPriceReferences: Story = {
+  name: 'renders resolved values and leaves a missing price token visible.',
+  args: {
+    source:
+      '終値 [[price:fictional-code@2030-01-02:close]]、期間変化 [[change:fictional-code@2030-01-02..2030-01-03:close]]、未解決 [[price:fictional-code@2030-01-04:close]]',
+    resolvedPriceReferences: {
+      '[[price:fictional-code@2030-01-02:close]]': {
+        value: 1234.5,
+        evidence_id: '00000000-0000-0000-0000-000000000001',
+      },
+      '[[change:fictional-code@2030-01-02..2030-01-03:close]]': {
+        value: 2.5,
+        evidence_id: '00000000-0000-0000-0000-000000000002',
+      },
+    },
+  },
+}
+
 // 以下のノード/ティッカーはすべて架空のもの。実在の企業・銘柄コードとは無関係
 const GRAPH_SAMPLE = `# 架空エコシステムの業界構造メモ
 

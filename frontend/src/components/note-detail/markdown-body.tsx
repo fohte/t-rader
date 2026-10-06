@@ -17,6 +17,7 @@ interface MarkdownBodyProps {
   source: string
   graphs?: ApiGraphDef[]
   noteLinks?: NoteLinkItem[]
+  resolvedPriceReferences?: components['schemas']['Value']
   onAnno?: (id: string) => void
   onRef?: (token: string) => void
 }
@@ -27,6 +28,7 @@ type NoteTokenComponents = {
   'note-anno': ComponentType<{ annoId: string }>
   'note-graph': ComponentType<{ graphId: string }>
   'note-link': ComponentType<{ noteId: string; token: string }>
+  'note-price-reference': ComponentType<{ kind: string; value: string }>
 }
 
 // backend は Option<T> を持つフィールドを `T | null` として返す。
@@ -102,10 +104,23 @@ function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
     : undefined
 }
 
+function formatPriceReference(kind: string, value: string): string {
+  const numericValue = Number(value)
+  const formatOptions: Intl.NumberFormatOptions =
+    kind === 'change'
+      ? { maximumFractionDigits: 2, signDisplay: 'always' }
+      : { maximumSignificantDigits: 15 }
+  const formattedValue = new Intl.NumberFormat('ja-JP', formatOptions).format(
+    numericValue,
+  )
+  return kind === 'change' ? `${formattedValue}%` : formattedValue
+}
+
 export function MarkdownBody({
   source,
   graphs = [],
   noteLinks = [],
+  resolvedPriceReferences,
   onAnno,
   onRef,
 }: MarkdownBodyProps) {
@@ -230,6 +245,11 @@ export function MarkdownBody({
         <span className="text-em-85 text-muted-foreground">annotation</span>
       </button>
     ),
+    'note-price-reference': ({ kind, value }) => (
+      <span className="font-mono font-medium tabular-nums">
+        {formatPriceReference(kind, value)}
+      </span>
+    ),
     'note-graph': ({ graphId }) => {
       const apiDef = graphs.find((g) => g.id === graphId)
       if (!apiDef)
@@ -260,7 +280,7 @@ export function MarkdownBody({
   return (
     <div className="text-foreground">
       <Markdown
-        remarkPlugins={[remarkGfm, remarkNoteTokens]}
+        remarkPlugins={[remarkGfm, [remarkNoteTokens, resolvedPriceReferences]]}
         components={components}
       >
         {source}
