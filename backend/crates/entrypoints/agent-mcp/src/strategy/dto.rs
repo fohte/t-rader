@@ -56,6 +56,8 @@ pub struct WriteNoteParams {
 pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
+    /// 本文の価格候補と相対表現への警告。誤検出を含むため、目安表現はそのままで構いません。
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
