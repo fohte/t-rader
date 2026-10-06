@@ -29,7 +29,7 @@ pub struct PostgresEarningsScheduleRepository {
 impl PostgresEarningsScheduleRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self {
-            calendar_events: PostgresCalendarEventRepository::new(),
+            calendar_events: PostgresCalendarEventRepository::new(db.clone()),
             unit_of_work: PostgresUnitOfWork::new(db.clone()),
             db,
         }

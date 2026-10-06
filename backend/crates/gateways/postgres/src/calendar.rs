@@ -4,28 +4,53 @@ use core_application::calendar::repository::{
     CalendarEventRepository, CalendarEventRepositoryError,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
-use core_domain::calendar_event::CalendarEvent;
+use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, Iterable, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, Iterable, QueryFilter, QueryOrder};
 
+use crate::DatabaseHandle;
 use crate::entities::calendar_event;
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
 const MAX_UPSERT_ROWS_PER_STATEMENT: usize = 1_000;
 
-#[derive(Clone, Default)]
-pub struct PostgresCalendarEventRepository;
+#[derive(Clone)]
+pub struct PostgresCalendarEventRepository {
+    db: DatabaseHandle,
+}
 
 impl PostgresCalendarEventRepository {
-    pub fn new() -> Self {
-        Self
+    pub fn new(db: DatabaseHandle) -> Self {
+        Self { db }
     }
 }
 
 #[async_trait]
 impl CalendarEventRepository for PostgresCalendarEventRepository {
+    async fn list_events(
+        &self,
+        date_range: &core_application::daily_bar_source::DateRange,
+    ) -> Result<Vec<CalendarEvent>, CalendarEventRepositoryError> {
+        calendar_event::Entity::find()
+            .filter(calendar_event::Column::EventDate.gte(date_range.from))
+            .filter(calendar_event::Column::EventDate.lte(date_range.to))
+            .order_by_asc(calendar_event::Column::EventDate)
+            .order_by_asc(calendar_event::Column::Country)
+            .order_by_asc(calendar_event::Column::Category)
+            .order_by_asc(calendar_event::Column::EventAt)
+            .order_by_asc(calendar_event::Column::Title)
+            .order_by_asc(calendar_event::Column::Source)
+            .order_by_asc(calendar_event::Column::ExternalId)
+            .all(&self.db)
+            .await
+            .map_err(repository_error)?
+            .into_iter()
+            .map(to_domain)
+            .collect()
+    }
+
     async fn upsert(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -122,18 +147,72 @@ fn to_active_model(event: CalendarEvent) -> calendar_event::ActiveModel {
     }
 }
 
+fn to_domain(row: calendar_event::Model) -> Result<CalendarEvent, CalendarEventRepositoryError> {
+    let category = match row.category.as_str() {
+        "indicator" => CalendarEventCategory::Indicator,
+        "central_bank" => CalendarEventCategory::CentralBank,
+        "earnings" => CalendarEventCategory::Earnings,
+        value => {
+            return Err(CalendarEventRepositoryError::Database(
+                core_application::persistence::PersistenceError::Database(format!(
+                    "unknown calendar event category: {value}"
+                )),
+            ));
+        }
+    };
+    let time_of_day = match row.time_of_day.as_deref() {
+        Some("pre_market") => Some(core_domain::calendar_event::CalendarEventTimeOfDay::PreMarket),
+        Some("post_market") => {
+            Some(core_domain::calendar_event::CalendarEventTimeOfDay::PostMarket)
+        }
+        Some(value) => {
+            return Err(CalendarEventRepositoryError::Database(
+                core_application::persistence::PersistenceError::Database(format!(
+                    "unknown calendar event time of day: {value}"
+                )),
+            ));
+        }
+        None => None,
+    };
+
+    Ok(CalendarEvent {
+        source: row.source,
+        external_id: row.external_id,
+        category,
+        country: row.country,
+        title: row.title,
+        stock_id: row
+            .stock_id
+            .map(|stock_id| normalize_local_code(&stock_id).to_string()),
+        fiscal_period: row.fiscal_period,
+        event_date: row.event_date,
+        event_at: row.event_at.map(|event_at| event_at.with_timezone(&Utc)),
+        time_of_day,
+    })
+}
+
+fn normalize_local_code(code: &str) -> &str {
+    if code.len() == 5 && code.ends_with('0') {
+        &code[..4]
+    } else {
+        code
+    }
+}
+
 fn repository_error(error: sea_orm::DbErr) -> CalendarEventRepositoryError {
     CalendarEventRepositoryError::Database(persistence_error(error))
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
+    use chrono::{DateTime, NaiveDate, Utc};
     use core_application::{
         calendar::repository::CalendarEventRepository, daily_bar_source::DateRange,
         unit_of_work::UnitOfWork,
     };
-    use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
+    use core_domain::calendar_event::{
+        CalendarEvent, CalendarEventCategory, CalendarEventTimeOfDay,
+    };
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
     use super::PostgresCalendarEventRepository;
@@ -164,10 +243,71 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn list_events_filters_inclusive_dates_and_maps_all_event_fields(db: DatabaseHandle) {
+        let repository = PostgresCalendarEventRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        let mut indicator = event(
+            "sample_source",
+            "indicator",
+            "サンプル指標",
+            date(2099, 8, 10),
+        );
+        indicator.category = CalendarEventCategory::Indicator;
+        indicator.country = "US".into();
+        indicator.stock_id = None;
+        indicator.fiscal_period = None;
+        indicator.event_at = Some(DateTime::from_naive_utc_and_offset(
+            date(2099, 8, 10)
+                .and_hms_opt(13, 30, 0)
+                .expect("valid time"),
+            Utc,
+        ));
+        indicator.time_of_day = None;
+        let mut central_bank = event(
+            "sample_source",
+            "central-bank",
+            "サンプル中銀イベント",
+            date(2099, 8, 11),
+        );
+        central_bank.category = CalendarEventCategory::CentralBank;
+        central_bank.country = "EU".into();
+        central_bank.stock_id = None;
+        central_bank.fiscal_period = None;
+        central_bank.time_of_day = None;
+        let mut earnings = event("jquants", "earnings", "サンプル銘柄 A", date(2099, 8, 11));
+        earnings.stock_id = Some("0001".into());
+        earnings.time_of_day = Some(CalendarEventTimeOfDay::PostMarket);
+        let mut stored_earnings = earnings.clone();
+        stored_earnings.stock_id = Some("00010".into());
+        repository
+            .upsert(
+                &transaction,
+                vec![central_bank.clone(), stored_earnings, indicator.clone()],
+            )
+            .await
+            .expect("insert events");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit transaction");
+
+        let actual = repository
+            .list_events(&DateRange {
+                from: date(2099, 8, 10),
+                to: date(2099, 8, 11),
+            })
+            .await
+            .expect("list events");
+
+        assert_eq!(actual, vec![indicator, central_bank, earnings]);
+    }
+
+    #[backend_test_macros::database_test]
     async fn upsert_replaces_matching_events_and_deletes_only_missing_future_events_in_range(
         db: DatabaseHandle,
     ) {
-        let repository = PostgresCalendarEventRepository::new();
+        let repository = PostgresCalendarEventRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         let stored = vec![
@@ -260,7 +400,7 @@ mod tests {
     async fn empty_external_ids_delete_all_missing_future_events_in_source_range(
         db: DatabaseHandle,
     ) {
-        let repository = PostgresCalendarEventRepository::new();
+        let repository = PostgresCalendarEventRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         repository
@@ -333,7 +473,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn upsert_chunks_large_event_batches(db: DatabaseHandle) {
-        let repository = PostgresCalendarEventRepository::new();
+        let repository = PostgresCalendarEventRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         let events = (0..6_001)

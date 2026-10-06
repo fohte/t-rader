@@ -1641,6 +1641,89 @@
         }
       }
     },
+    "/api/calendar/events": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "指定期間のイベントを一覧する",
+        "operationId": "list_calendar_events",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "取得開始日。省略時は今週の月曜日 (JST)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "取得終了日。省略時は今週の日曜日 (JST)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "description": "決算対象を絞り込む戦略 ID。省略時は決算を日別件数にまとめる",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "イベント一覧",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarEventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/comments": {
       "get": {
         "tags": [
@@ -7593,6 +7676,126 @@
           }
         }
       },
+      "CalendarEventResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "source",
+              "external_id",
+              "category",
+              "country",
+              "title",
+              "event_date",
+              "kind"
+            ],
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "country": {
+                "type": "string"
+              },
+              "event_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "event_date": {
+                "type": "string",
+                "format": "date"
+              },
+              "external_id": {
+                "type": "string"
+              },
+              "fiscal_period": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "event"
+                ]
+              },
+              "source": {
+                "type": "string"
+              },
+              "stock_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "time_of_day": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "country",
+              "event_date",
+              "count",
+              "kind"
+            ],
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "country": {
+                "type": "string"
+              },
+              "event_date": {
+                "type": "string",
+                "format": "date"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "other_earnings_summary"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "CalendarEventsResponse": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventResponse"
+            }
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
       "ChangeHistory": {
         "type": "object",
         "required": [
@@ -10350,6 +10553,10 @@
     {
       "name": "bars",
       "description": "バーデータ (OHLCV)"
+    },
+    {
+      "name": "calendar",
+      "description": "週間イベントカレンダー"
     },
     {
       "name": "strategies",

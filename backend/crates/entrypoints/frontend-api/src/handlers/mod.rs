@@ -2,6 +2,7 @@ pub mod agent_config;
 pub mod agent_options;
 pub mod annotations;
 pub mod bars;
+pub mod calendar;
 pub mod comments;
 pub mod config;
 pub mod custom_indicators;

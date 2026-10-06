@@ -4,6 +4,7 @@
 //! 直下のテストは entrypoint をまたぐシナリオと共有 helper を扱う。
 
 mod agent_webhook;
+pub(crate) mod calendar_test_support;
 mod external_webhook;
 mod frontend_api;
 pub(crate) mod mcp_tool;
