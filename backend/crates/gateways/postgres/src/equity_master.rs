@@ -471,10 +471,20 @@ mod tests {
         let before = snapshot(&db).await;
         let after_count = upsert(&db, &[entry("ZZ91", Some("架空業種A"), Some("5678"))]).await;
         let after = snapshot(&db).await;
+        let cleared_count = upsert(&db, &[entry("ZZ91", Some("架空業種A"), None)]).await;
+        let cleared = snapshot(&db).await;
 
         assert_eq!(
-            (before_count, after_count, before, after),
             (
+                before_count,
+                after_count,
+                cleared_count,
+                before,
+                after,
+                cleared
+            ),
+            (
+                1,
                 1,
                 1,
                 expected_snapshot(
@@ -491,6 +501,10 @@ mod tests {
                         "架空業種A",
                         Some("5678")
                     )],
+                    vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種A",)],
+                ),
+                expected_snapshot(
+                    vec![expected_group("synthetic-axis-a", "架空業種A", None)],
                     vec![expected_member("ZZ91", "synthetic-axis-a", "架空業種A",)],
                 ),
             ),

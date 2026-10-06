@@ -1,4 +1,5 @@
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::{DbBackend, Statement};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -6,6 +7,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        ensure_supported_sync_sources(manager).await?;
         manager
             .alter_table(
                 Table::alter()
@@ -63,6 +65,24 @@ impl MigrationTrait for Migration {
     }
 }
 
+async fn ensure_supported_sync_sources(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let row = manager
+        .get_connection()
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT sync_source FROM group_axis WHERE sync_source IS NOT NULL AND sync_source <> 'jquants' LIMIT 1",
+        ))
+        .await?;
+    let Some(row) = row else {
+        return Ok(());
+    };
+    let sync_source: String = row.try_get("", "sync_source")?;
+
+    Err(DbErr::Custom(format!(
+        "unsupported group_axis.sync_source value {sync_source:?}; resolve it before migrating"
+    )))
+}
+
 #[derive(DeriveIden)]
 enum GroupAxis {
     Table,
@@ -85,7 +105,7 @@ mod tests {
     )]
 
     use sea_orm::sea_query::{Alias, Query};
-    use sea_orm::{ConnectionTrait, Database, TransactionTrait};
+    use sea_orm::{ConnectionTrait, Database, DbErr, TransactionTrait};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     use super::Migration;
@@ -107,60 +127,86 @@ mod tests {
             .await
             .expect("set isolated schema");
         transaction
-            .execute_unprepared(
-                "CREATE TABLE group_axis (
+            .execute_unprepared(indoc::indoc! {r#"
+                CREATE TABLE group_axis (
                     id text PRIMARY KEY,
                     key text NOT NULL,
                     name text NOT NULL,
                     description text NOT NULL,
                     sync_source text
-                )",
-            )
+                )
+            "#})
             .await
             .expect("create group axis table");
         transaction
-            .execute_unprepared(
-                "CREATE TABLE stock_group (
+            .execute_unprepared(indoc::indoc! {r#"
+                CREATE TABLE stock_group (
                     id text PRIMARY KEY,
                     axis_id text NOT NULL,
                     key text NOT NULL,
                     name text NOT NULL,
                     description text,
                     sync_source_code text
-                )",
-            )
+                )
+            "#})
             .await
             .expect("create stock group table");
         transaction
-            .execute_unprepared(
-                "CREATE TABLE stock_group_member (
+            .execute_unprepared(indoc::indoc! {r#"
+                CREATE TABLE stock_group_member (
                     stock_id text NOT NULL,
                     group_id text NOT NULL
-                )",
-            )
+                )
+            "#})
             .await
             .expect("create stock group member table");
         transaction
-            .execute_unprepared(
-                "INSERT INTO group_axis (id, key, name, description, sync_source)
-                 VALUES ('00000000-0000-0000-0000-000000000001', 'sample-axis', 'Sample axis', 'A synthetic classification axis', 'jquants')",
-            )
+            .execute_unprepared(indoc::indoc! {r#"
+                INSERT INTO group_axis (id, key, name, description, sync_source)
+                VALUES ('00000000-0000-0000-0000-000000000001', 'sample-axis', 'Sample axis', 'A synthetic classification axis', 'jquants')
+            "#})
             .await
             .expect("insert group axis");
         transaction
-            .execute_unprepared(
-                "INSERT INTO stock_group (id, axis_id, key, name, description, sync_source_code)
-                 VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'sample-group', 'Sample group', 'A synthetic group description', '1234')",
-            )
+            .execute_unprepared(indoc::indoc! {r#"
+                INSERT INTO stock_group (id, axis_id, key, name, description, sync_source_code)
+                VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'sample-group', 'Sample group', 'A synthetic group description', '1234')
+            "#})
             .await
             .expect("insert stock group");
         transaction
-            .execute_unprepared(
-                "INSERT INTO stock_group_member (stock_id, group_id)
-                 VALUES ('DEMO-STOCK-A', '00000000-0000-0000-0000-000000000002')",
-            )
+            .execute_unprepared(indoc::indoc! {r#"
+                INSERT INTO stock_group_member (stock_id, group_id)
+                VALUES ('DEMO-STOCK-A', '00000000-0000-0000-0000-000000000002')
+            "#})
             .await
             .expect("insert stock group member");
+
+        transaction
+            .execute_unprepared(indoc::indoc! {r#"
+                INSERT INTO group_axis (id, key, name, description, sync_source)
+                VALUES ('00000000-0000-0000-0000-000000000003', 'unsupported-axis', 'Unsupported axis', 'A synthetic unsupported axis', 'sample-source')
+            "#})
+            .await
+            .expect("insert unsupported group axis");
+
+        let migration_error = Migration
+            .up(&SchemaManager::new(&transaction))
+            .await
+            .err()
+            .and_then(|error| match error {
+                DbErr::Custom(message) => Some(message),
+                _ => None,
+            });
+        let mut sources_after_rejection =
+            select_strings(&transaction, "group_axis", &["sync_source"]).await;
+        sources_after_rejection.sort();
+        transaction
+            .execute_unprepared(
+                "DELETE FROM group_axis WHERE id = '00000000-0000-0000-0000-000000000003'",
+            )
+            .await
+            .expect("remove unsupported group axis");
 
         Migration
             .up(&SchemaManager::new(&transaction))
@@ -182,31 +228,6 @@ mod tests {
             .await,
             select_strings(&transaction, "stock_group_member", &["stock_id", "group_id"]).await,
         );
-        assert_eq!(
-            migrated,
-            (
-                vec![vec![
-                    "00000000-0000-0000-0000-000000000001".into(),
-                    "sample-axis".into(),
-                    "Sample axis".into(),
-                    "A synthetic classification axis".into(),
-                    "tse_sector33".into(),
-                ]],
-                vec![vec![
-                    "00000000-0000-0000-0000-000000000002".into(),
-                    "00000000-0000-0000-0000-000000000001".into(),
-                    "sample-group".into(),
-                    "Sample group".into(),
-                    "A synthetic group description".into(),
-                    "1234".into(),
-                ]],
-                vec![vec![
-                    "DEMO-STOCK-A".into(),
-                    "00000000-0000-0000-0000-000000000002".into(),
-                ]],
-            ),
-        );
-
         Migration
             .down(&SchemaManager::new(&transaction))
             .await
@@ -234,31 +255,65 @@ mod tests {
             .await,
             select_strings(&transaction, "stock_group_member", &["stock_id", "group_id"]).await,
         );
+        transaction.rollback().await.expect("roll back test schema");
+
         assert_eq!(
-            rolled_back,
             (
-                vec![vec![
-                    "00000000-0000-0000-0000-000000000001".into(),
-                    "sample-axis".into(),
-                    "Sample axis".into(),
-                    "A synthetic classification axis".into(),
-                    "jquants".into(),
-                ]],
-                vec![vec![
-                    "00000000-0000-0000-0000-000000000002".into(),
-                    "00000000-0000-0000-0000-000000000001".into(),
-                    "sample-group".into(),
-                    "Sample group".into(),
-                    "A synthetic group description".into(),
-                    "1234".into(),
-                ]],
-                vec![vec![
-                    "DEMO-STOCK-A".into(),
-                    "00000000-0000-0000-0000-000000000002".into(),
-                ]],
+                migration_error,
+                sources_after_rejection,
+                migrated,
+                rolled_back,
+            ),
+            (
+                Some(
+                    "unsupported group_axis.sync_source value \"sample-source\"; resolve it before migrating"
+                        .into(),
+                ),
+                vec![vec!["jquants".into()], vec!["sample-source".into()]],
+                (
+                    vec![vec![
+                        "00000000-0000-0000-0000-000000000001".into(),
+                        "sample-axis".into(),
+                        "Sample axis".into(),
+                        "A synthetic classification axis".into(),
+                        "tse_sector33".into(),
+                    ]],
+                    vec![vec![
+                        "00000000-0000-0000-0000-000000000002".into(),
+                        "00000000-0000-0000-0000-000000000001".into(),
+                        "sample-group".into(),
+                        "Sample group".into(),
+                        "A synthetic group description".into(),
+                        "1234".into(),
+                    ]],
+                    vec![vec![
+                        "DEMO-STOCK-A".into(),
+                        "00000000-0000-0000-0000-000000000002".into(),
+                    ]],
+                ),
+                (
+                    vec![vec![
+                        "00000000-0000-0000-0000-000000000001".into(),
+                        "sample-axis".into(),
+                        "Sample axis".into(),
+                        "A synthetic classification axis".into(),
+                        "jquants".into(),
+                    ]],
+                    vec![vec![
+                        "00000000-0000-0000-0000-000000000002".into(),
+                        "00000000-0000-0000-0000-000000000001".into(),
+                        "sample-group".into(),
+                        "Sample group".into(),
+                        "A synthetic group description".into(),
+                        "1234".into(),
+                    ]],
+                    vec![vec![
+                        "DEMO-STOCK-A".into(),
+                        "00000000-0000-0000-0000-000000000002".into(),
+                    ]],
+                ),
             ),
         );
-        transaction.rollback().await.expect("roll back test schema");
     }
 
     async fn select_strings(

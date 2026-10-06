@@ -47,7 +47,7 @@ impl FakeStockGroupRepository {
         &self,
         axis_key: &str,
         group_key: &str,
-        source_code: Option<&str>,
+        code: Option<&str>,
     ) {
         let Some(axis) = self.axes.lock().await.get(axis_key).cloned() else {
             return;
@@ -60,11 +60,8 @@ impl FakeStockGroupRepository {
             name: group_key.to_owned(),
             description: None,
         };
-        if let Some(source_code) = source_code {
-            self.codes
-                .lock()
-                .await
-                .insert(group.id, source_code.to_owned());
+        if let Some(code) = code {
+            self.codes.lock().await.insert(group.id, code.to_owned());
         }
         self.groups.lock().await.insert(group.id, group);
     }
