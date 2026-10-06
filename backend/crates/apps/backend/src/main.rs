@@ -27,7 +27,6 @@ use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
 use gateway_alpha_vantage::AlphaVantageClient;
 use gateway_e_stat::EStatCalendarEventSource;
-use gateway_eoddata::EodDataClient;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -54,8 +53,9 @@ mod twse;
 use logging::default_log_filter;
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
-    NewsAndCentralBankSources, StartupError, initialize_news_and_central_bank_sources,
-    jquants_config_from_env, required_redis_url, worker_admin_ui_settings_from_env,
+    NewsAndCentralBankSources, StartupError, eoddata_kospi_source_from_env,
+    initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
+    worker_admin_ui_settings_from_env,
 };
 
 fn us_stock_master_source(
@@ -286,24 +286,7 @@ async fn main() -> Result<(), StartupError> {
         }
     };
 
-    let eoddata_kospi_source: Option<SharedIndicatorObservationSource> =
-        match std::env::var("EODDATA_API_KEY") {
-            Ok(api_key) if !api_key.trim().is_empty() => {
-                let client = Arc::new(EodDataClient::new(api_key.trim().to_string()).map_err(
-                    |error| {
-                        StartupError::Config(format!(
-                            "failed to initialize EODData client: {error}"
-                        ))
-                    },
-                )?);
-                let source: SharedIndicatorObservationSource = client;
-                Some(source)
-            }
-            _ => {
-                tracing::warn!("EODDATA_API_KEY が未設定のため、KOSPI の取り込みを起動しません");
-                None
-            }
-        };
+    let eoddata_kospi_source = eoddata_kospi_source_from_env()?;
 
     let e_stat_calendar_source: SharedCalendarEventSource =
         Arc::new(EStatCalendarEventSource::new().map_err(|error| {

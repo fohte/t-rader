@@ -2,8 +2,10 @@ use gateway_jquants::JQuantsPlan;
 use sea_orm::DbErr;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+mod eoddata_source;
 mod news_and_central_bank_sources;
 
+pub(super) use eoddata_source::eoddata_kospi_source_from_env;
 pub(super) use news_and_central_bank_sources::{
     NewsAndCentralBankSources, initialize_news_and_central_bank_sources,
 };
