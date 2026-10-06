@@ -106,6 +106,7 @@ const meta = {
     countryFilter: 'all',
     isPending: false,
     errorMessage: undefined,
+    strategyErrorMessage: undefined,
     onPreviousWeek: () => {},
     onNextWeek: () => {},
     onStrategyChange: () => {},
@@ -140,4 +141,9 @@ export const Empty: Story = {
 export const Error: Story = {
   name: 'イベントを取得できませんでした。',
   args: { errorMessage: 'イベントの取得に失敗しました' },
+}
+
+export const StrategyError: Story = {
+  name: '戦略一覧の取得に失敗しました。',
+  args: { strategyErrorMessage: '戦略一覧の取得に失敗しました' },
 }

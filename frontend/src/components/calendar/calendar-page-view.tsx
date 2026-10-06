@@ -22,6 +22,7 @@ export function CalendarPageView({
   countryFilter,
   isPending,
   errorMessage,
+  strategyErrorMessage,
   onPreviousWeek,
   onNextWeek,
   onStrategyChange,
@@ -34,6 +35,7 @@ export function CalendarPageView({
   countryFilter: CalendarCountryFilter
   isPending: boolean
   errorMessage: string | undefined
+  strategyErrorMessage: string | undefined
   onPreviousWeek: () => void
   onNextWeek: () => void
   onStrategyChange: (value: string | undefined) => void
@@ -79,21 +81,38 @@ export function CalendarPageView({
             </button>
           </div>
 
-          <select
-            aria-label="戦略"
-            value={selectedStrategyId ?? ''}
-            onChange={(event) => {
-              onStrategyChange(event.target.value || undefined)
-            }}
-            className="h-8 max-w-44 border border-border bg-card px-2 text-xs text-foreground"
-          >
-            <option value="">全戦略</option>
-            {strategies.map((strategy) => (
-              <option key={strategy.id} value={strategy.id}>
-                {strategy.name}
-              </option>
-            ))}
-          </select>
+          <div className="grid gap-1">
+            <select
+              aria-label="戦略"
+              aria-invalid={strategyErrorMessage != null}
+              aria-describedby={
+                strategyErrorMessage != null
+                  ? 'calendar-strategy-error'
+                  : undefined
+              }
+              value={selectedStrategyId ?? ''}
+              onChange={(event) => {
+                onStrategyChange(event.target.value || undefined)
+              }}
+              className="h-8 max-w-44 border border-border bg-card px-2 text-xs text-foreground"
+            >
+              <option value="">全戦略</option>
+              {strategies.map((strategy) => (
+                <option key={strategy.id} value={strategy.id}>
+                  {strategy.name}
+                </option>
+              ))}
+            </select>
+            {strategyErrorMessage != null && (
+              <p
+                id="calendar-strategy-error"
+                role="alert"
+                className="max-w-44 text-2xs text-destructive"
+              >
+                {strategyErrorMessage}
+              </p>
+            )}
+          </div>
 
           <select
             aria-label="国"
@@ -137,52 +156,44 @@ export function CalendarPageView({
                 <h2 className="border-t border-border px-3 py-1.5 text-muted-foreground-strong first:border-t-0 sm:px-4">
                   {day.label}
                 </h2>
-                {day.rows.map((row) => (
-                  <div
-                    key={row.key}
-                    className="flex items-start gap-1.5 px-3 py-1 sm:gap-2 sm:px-4"
-                  >
-                    <span className="w-18 shrink-0 pt-0.5 text-right tabular-nums text-muted-foreground">
-                      {row.time}
-                    </span>
-                    <span className="w-10 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
-                      {row.country}
-                    </span>
-                    <span className="w-12 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
-                      {row.category}
-                    </span>
-                    {row.stockId != null ? (
-                      <Link
-                        to="/charts/$instrumentId"
-                        params={{ instrumentId: row.stockId }}
-                        className={`min-w-0 flex-1 break-words hover:underline ${
-                          row.emphasized
-                            ? 'text-destructive'
-                            : row.target
-                              ? 'font-semibold text-foreground'
-                              : 'text-foreground'
-                        }`}
-                      >
-                        {row.title}
-                      </Link>
-                    ) : (
-                      <span
-                        className={`min-w-0 flex-1 break-words ${
-                          row.emphasized
-                            ? 'text-destructive'
-                            : row.target
-                              ? 'font-semibold text-foreground'
-                              : row.category === '決算' &&
-                                  row.title.startsWith('他 ')
-                                ? 'text-muted-foreground'
-                                : 'text-foreground'
-                        }`}
-                      >
-                        {row.title}
+                {day.rows.map((row) => {
+                  const titleTone = row.emphasized
+                    ? 'text-destructive'
+                    : row.target
+                      ? 'font-semibold text-foreground'
+                      : row.muted
+                        ? 'text-muted-foreground'
+                        : 'text-foreground'
+                  const titleClassName = `min-w-0 flex-1 break-words ${titleTone}`
+
+                  return (
+                    <div
+                      key={row.key}
+                      className="flex items-start gap-1.5 px-3 py-1 sm:gap-2 sm:px-4"
+                    >
+                      <span className="w-18 shrink-0 pt-0.5 text-right tabular-nums text-muted-foreground">
+                        {row.time}
                       </span>
-                    )}
-                  </div>
-                ))}
+                      <span className="w-10 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
+                        {row.country}
+                      </span>
+                      <span className="w-12 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
+                        {row.category}
+                      </span>
+                      {row.stockId != null ? (
+                        <Link
+                          to="/charts/$instrumentId"
+                          params={{ instrumentId: row.stockId }}
+                          className={`${titleClassName} hover:underline`}
+                        >
+                          {row.title}
+                        </Link>
+                      ) : (
+                        <span className={titleClassName}>{row.title}</span>
+                      )}
+                    </div>
+                  )
+                })}
               </section>
             ))}
           </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  formatCalendarWeekRange,
   getCalendarWeekRange,
   getTokyoDate,
   shiftCalendarWeek,
@@ -29,6 +30,14 @@ describe('shiftCalendarWeek', () => {
     [1, '2099-01-12'],
   ])('moves a week by %s', (amount, expected) => {
     expect(shiftCalendarWeek('2099-01-05', amount)).toBe(expected)
+  })
+})
+
+describe('formatCalendarWeekRange', () => {
+  it('shows both years when a week crosses into a new year', () => {
+    expect(
+      formatCalendarWeekRange({ from: '2098-12-28', to: '2099-01-03' }),
+    ).toBe('2098/12/28 – 2099/1/3')
   })
 })
 

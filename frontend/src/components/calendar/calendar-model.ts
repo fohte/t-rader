@@ -20,6 +20,7 @@ type CalendarRowView = {
   stockId?: string
   emphasized: boolean
   target: boolean
+  muted: boolean
 }
 
 type CalendarDayView = {
@@ -35,6 +36,12 @@ const CATEGORY_LABELS: Readonly<Record<string, string>> = {
 }
 
 const EMPHASIZED_FRED_RELEASE_IDS: ReadonlySet<string> = new Set(['10', '50'])
+const MARKET_TIME_SORT_ORDER: Readonly<
+  Record<string, Readonly<Record<'pre_market' | 'post_market', number>>>
+> = {
+  JP: { pre_market: 8 * 60, post_market: 15 * 60 + 30 },
+  US: { pre_market: 22 * 60, post_market: 5 * 60 },
+}
 
 function formatJstTime(eventAt: string): { label: string; minutes: number } {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -59,10 +66,16 @@ function getEventTime(event: Event): { label: string; sortOrder: number } {
     return { label: time.label, sortOrder: time.minutes }
   }
   if (event.time_of_day === 'pre_market') {
-    return { label: '寄り前', sortOrder: -1 }
+    return {
+      label: '寄り前',
+      sortOrder: MARKET_TIME_SORT_ORDER[event.country]?.pre_market ?? -1,
+    }
   }
   if (event.time_of_day === 'post_market') {
-    return { label: '引け後', sortOrder: 1440 }
+    return {
+      label: '引け後',
+      sortOrder: MARKET_TIME_SORT_ORDER[event.country]?.post_market ?? 1440,
+    }
   }
   return { label: '', sortOrder: 2880 }
 }
@@ -100,6 +113,7 @@ function buildEventRow(
       stockId: isDomesticEarnings ? stockId : undefined,
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',
+      muted: false,
     },
     sortOrder: time.sortOrder,
   }
@@ -118,6 +132,7 @@ function buildOtherEarningsRow(event: OtherEarningsSummary): {
       title: `他 ${event.count.toString()} 社`,
       emphasized: false,
       target: false,
+      muted: true,
     },
     sortOrder: 2881,
   }

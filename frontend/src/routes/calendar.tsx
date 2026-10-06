@@ -35,7 +35,10 @@ function CalendarRoute() {
       },
     },
   })
-  const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
+  const { data: strategies = [], isError: isStrategyError } = $api.useQuery(
+    'get',
+    '/api/strategies',
+  )
 
   return (
     <CalendarPageView
@@ -46,6 +49,9 @@ function CalendarRoute() {
       countryFilter={country ?? 'all'}
       isPending={isPending}
       errorMessage={isError ? 'イベントの取得に失敗しました' : undefined}
+      strategyErrorMessage={
+        isStrategyError ? '戦略一覧の取得に失敗しました' : undefined
+      }
       onPreviousWeek={() => {
         void navigate({
           search: (previous) => ({

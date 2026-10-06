@@ -16,6 +16,14 @@ afterEach(cleanup)
 
 const WEEK_RANGE = { from: '2099-01-05', to: '2099-01-11' }
 const NOOP = (): void => {}
+const STRATEGY: Strategy = {
+  id: '00000000-0000-0000-0000-000000000001',
+  name: '検証用戦略',
+  description: null,
+  sort_order: 0,
+  created_at: '2099-01-01T00:00:00Z',
+  updated_at: '2099-01-01T00:00:00Z',
+}
 
 function makeProps(
   overrides: Partial<CalendarPageViewProps> = {},
@@ -28,6 +36,7 @@ function makeProps(
     countryFilter: 'all',
     isPending: false,
     errorMessage: undefined,
+    strategyErrorMessage: undefined,
     onPreviousWeek: NOOP,
     onNextWeek: NOOP,
     onStrategyChange: NOOP,
@@ -59,6 +68,17 @@ describe('CalendarPageView', () => {
     expect(onPreviousWeek.mock.calls).toEqual([[]])
   })
 
+  it('requests the next week when its navigation button is selected', async () => {
+    const user = userEvent.setup()
+    const onNextWeek = vi.fn()
+
+    await renderCalendarPageView(makeProps({ onNextWeek }))
+
+    await user.click(screen.getByRole('button', { name: '次の週' }))
+
+    expect(onNextWeek.mock.calls).toEqual([[]])
+  })
+
   it('reports the selected country filter', async () => {
     const user = userEvent.setup()
     const onCountryChange = vi.fn()
@@ -73,25 +93,44 @@ describe('CalendarPageView', () => {
   it('reports the selected strategy filter', async () => {
     const user = userEvent.setup()
     const onStrategyChange = vi.fn()
-    const strategy: Strategy = {
-      id: '00000000-0000-0000-0000-000000000001',
-      name: '検証用戦略',
-      description: null,
-      sort_order: 0,
-      created_at: '2099-01-01T00:00:00Z',
-      updated_at: '2099-01-01T00:00:00Z',
-    }
 
     await renderCalendarPageView(
-      makeProps({ strategies: [strategy], onStrategyChange }),
+      makeProps({ strategies: [STRATEGY], onStrategyChange }),
     )
 
     await user.selectOptions(
       screen.getByRole('combobox', { name: '戦略' }),
-      strategy.id,
+      STRATEGY.id,
     )
 
-    expect(onStrategyChange.mock.calls).toEqual([[strategy.id]])
+    expect(onStrategyChange.mock.calls).toEqual([[STRATEGY.id]])
+  })
+
+  it('clears the strategy filter when all strategies is selected', async () => {
+    const user = userEvent.setup()
+    const onStrategyChange = vi.fn()
+
+    await renderCalendarPageView(
+      makeProps({
+        strategies: [STRATEGY],
+        selectedStrategyId: STRATEGY.id,
+        onStrategyChange,
+      }),
+    )
+
+    await user.selectOptions(screen.getByRole('combobox', { name: '戦略' }), '')
+
+    expect(onStrategyChange.mock.calls).toEqual([[undefined]])
+  })
+
+  it('shows a strategy list error beside the strategy filter', async () => {
+    await renderCalendarPageView(
+      makeProps({ strategyErrorMessage: '戦略一覧の取得に失敗しました' }),
+    )
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      '戦略一覧の取得に失敗しました',
+    )
   })
 
   it('links domestic earnings to the stock chart', async () => {
