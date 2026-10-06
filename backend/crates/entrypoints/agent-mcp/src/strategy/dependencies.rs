@@ -8,6 +8,7 @@ use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::financial_summary::FinancialSummaryUseCases;
+use core_application::group_axis::GroupAxisUseCases;
 use core_application::indicator_observation::IndicatorObservationUseCases;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
@@ -42,6 +43,7 @@ pub struct StrategyServerDependencies {
     pub custom_indicators: CustomIndicatorUseCases,
     pub daily_bar_source: Option<SharedDailyBarSource>,
     pub financial_summaries: FinancialSummaryUseCases,
+    pub group_axes: GroupAxisUseCases,
     pub indicator_observations: IndicatorObservationUseCases,
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_client: Option<SharedLlmClient>,

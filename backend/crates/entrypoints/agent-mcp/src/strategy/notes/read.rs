@@ -1,4 +1,5 @@
 use super::super::graph_dto::GraphDef;
+use core_application::group_axis::GroupAxisUseCaseError;
 use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot, frontmatter_tags,
 };
@@ -94,6 +95,11 @@ pub(crate) fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
     }
 }
 
+fn group_axis_error_to_mcp(error: GroupAxisUseCaseError) -> McpError {
+    tracing::error!(error = %error, "strategy mcp failed to list group axes");
+    internal_error(format!("database error: {error}"))
+}
+
 impl StrategyServer {
     pub(crate) async fn read_note_inner(
         &self,
@@ -125,7 +131,7 @@ impl StrategyServer {
     async fn list_notes_including_pending(
         &self,
         params: ListNotesParams,
-        reference: Option<(String, String)>,
+        references: Option<Vec<(String, String)>>,
         page_size: u64,
     ) -> Result<ListNotesResult, McpError> {
         let limit = clamp_limit(params.limit) as usize;
@@ -141,7 +147,7 @@ impl StrategyServer {
                     kind: params.kind.clone(),
                     status: params.status.clone(),
                     tag: params.tag.clone(),
-                    reference: reference.clone(),
+                    references: references.clone(),
                     updated_after: params.updated_after,
                     include_pending: true,
                     cursor,
@@ -164,6 +170,45 @@ impl StrategyServer {
         Ok(ListNotesResult { notes })
     }
 
+    async fn note_references(
+        &self,
+        reference: Option<(String, String)>,
+    ) -> Result<Option<Vec<(String, String)>>, McpError> {
+        let Some((kind, id)) = reference else {
+            return Ok(None);
+        };
+        if kind != "stock" {
+            return Ok(Some(vec![(kind, id)]));
+        }
+
+        let mut axis_keys = self
+            .dependencies
+            .group_axes
+            .list()
+            .await
+            .map_err(group_axis_error_to_mcp)?
+            .into_iter()
+            .map(|axis| axis.key)
+            .collect::<Vec<_>>();
+        axis_keys.sort();
+        let memberships = self
+            .dependencies
+            .stock_groups
+            .list_memberships(std::slice::from_ref(&id), &axis_keys)
+            .await
+            .map_err(super::super::stock_groups::stock_group_error)?;
+        let mut references = vec![(kind, id)];
+        references.extend(memberships.into_iter().map(|membership| {
+            (
+                "group".to_string(),
+                format!("{}/{}", membership.axis_key, membership.group_key),
+            )
+        }));
+        references.sort();
+        references.dedup();
+        Ok(Some(references))
+    }
+
     pub(crate) async fn list_notes_inner(
         &self,
         params: ListNotesParams,
@@ -176,10 +221,11 @@ impl StrategyServer {
             )));
         }
         let reference = params.r#ref.as_deref().map(parse_note_ref).transpose()?;
+        let references = self.note_references(reference).await?;
 
         if params.include_pending.unwrap_or(false) {
             return self
-                .list_notes_including_pending(params, reference, PENDING_LIST_SCAN_PAGE_SIZE)
+                .list_notes_including_pending(params, references, PENDING_LIST_SCAN_PAGE_SIZE)
                 .await;
         }
 
@@ -188,7 +234,7 @@ impl StrategyServer {
             .note_reads
             .list_notes(NoteListQuery {
                 kind: params.kind,
-                reference,
+                references,
                 status: params.status,
                 tag: params.tag,
                 updated_after: params.updated_after,
