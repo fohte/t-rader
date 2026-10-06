@@ -354,6 +354,7 @@ mod tests {
         assert_eq!(
             tool_names,
             vec![
+                "get_note_status_change_counts",
                 "get_strategy_config",
                 "get_strategy_task_status",
                 "list_note_kinds",

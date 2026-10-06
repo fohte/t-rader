@@ -45,6 +45,24 @@ const SERIES: &[SeriesDefinition] = &[
         name: "日経225",
         kind: "index",
     },
+    SeriesDefinition {
+        series_id: "SP500",
+        indicator_id: "SP500",
+        name: "S&P 500",
+        kind: "index",
+    },
+    SeriesDefinition {
+        series_id: "NASDAQCOM",
+        indicator_id: "NASDAQ",
+        name: "NASDAQ総合指数",
+        kind: "index",
+    },
+    SeriesDefinition {
+        series_id: "NASDAQSOX",
+        indicator_id: "SOX",
+        name: "フィラデルフィア半導体株指数",
+        kind: "index",
+    },
 ];
 
 #[derive(Clone)]

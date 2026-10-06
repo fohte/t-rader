@@ -331,7 +331,7 @@ pub struct EvalIndicatorResult {
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadMacroIndicatorParams {
-    /// indicator の id (例: "USDJPY", "VIX", "US10Y", "NIKKEI225")。search_refs で発見できる
+    /// indicator の id。利用可能な id は search_refs で確認できる
     pub indicator_id: String,
     /// 取得開始日 (YYYY-MM-DD, inclusive)
     pub from: NaiveDate,
@@ -343,7 +343,7 @@ pub struct ReadMacroIndicatorParams {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct IndicatorObservationDto {
     pub date: NaiveDate,
-    /// FRED 由来の単位そのまま (例: USDJPY は 1 ドルあたりの円、US10Y は %)
+    /// FRED から取得した原単位で返す
     pub value: f64,
 }
 

@@ -207,6 +207,14 @@ async fn ingest_uses_lookback_updates_values_and_preserves_existing_metadata() {
         .expect("lock indicators")
         .get("USDJPY")
         .cloned();
+    let mut indicators: Vec<_> = repository
+        .indicators
+        .lock()
+        .expect("lock indicators")
+        .values()
+        .cloned()
+        .collect();
+    indicators.sort_by_key(|indicator| indicator.indicator_id.clone());
     let normalized: Vec<_> = result
         .series
         .iter()
@@ -217,17 +225,72 @@ async fn ingest_uses_lookback_updates_values_and_preserves_existing_metadata() {
         .collect();
 
     assert_eq!(
-        (normalized, requests.len(), requests[0].1, stored, metadata),
+        (normalized, requests, stored, metadata, indicators),
         (
-            vec![(true, 1), (true, 0), (true, 0), (true, 0)],
-            4,
-            Some(date(1) - chrono::Duration::days(10)),
+            vec![
+                (true, 1),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+            ],
+            vec![
+                (
+                    "DEXJPUS".to_string(),
+                    Some(date(1) - chrono::Duration::days(10))
+                ),
+                ("VIXCLS".to_string(), None),
+                ("DGS10".to_string(), None),
+                ("NIKKEI225".to_string(), None),
+                ("SP500".to_string(), None),
+                ("NASDAQCOM".to_string(), None),
+                ("NASDAQSOX".to_string(), None),
+            ],
             Some(Decimal::from(2)),
             Some(IndicatorObservationMetadata {
                 indicator_id: "USDJPY".to_string(),
                 name: "既存名".to_string(),
                 kind: "custom".to_string(),
             }),
+            vec![
+                IndicatorObservationMetadata {
+                    indicator_id: "NASDAQ".to_string(),
+                    name: "NASDAQ総合指数".to_string(),
+                    kind: "index".to_string(),
+                },
+                IndicatorObservationMetadata {
+                    indicator_id: "NIKKEI225".to_string(),
+                    name: "日経225".to_string(),
+                    kind: "index".to_string(),
+                },
+                IndicatorObservationMetadata {
+                    indicator_id: "SOX".to_string(),
+                    name: "フィラデルフィア半導体株指数".to_string(),
+                    kind: "index".to_string(),
+                },
+                IndicatorObservationMetadata {
+                    indicator_id: "SP500".to_string(),
+                    name: "S&P 500".to_string(),
+                    kind: "index".to_string(),
+                },
+                IndicatorObservationMetadata {
+                    indicator_id: "US10Y".to_string(),
+                    name: "米10年債利回り".to_string(),
+                    kind: "rate".to_string(),
+                },
+                IndicatorObservationMetadata {
+                    indicator_id: "USDJPY".to_string(),
+                    name: "既存名".to_string(),
+                    kind: "custom".to_string(),
+                },
+                IndicatorObservationMetadata {
+                    indicator_id: "VIX".to_string(),
+                    name: "VIX".to_string(),
+                    kind: "volatility".to_string(),
+                },
+            ],
         ),
     );
 }
@@ -257,8 +320,16 @@ async fn ingest_continues_with_later_series_after_a_source_failure() {
     assert_eq!(
         (normalized, starts),
         (
-            vec![(false, 0), (true, 0), (true, 0), (true, 0)],
-            vec![None; 4],
+            vec![
+                (false, 0),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+                (true, 0),
+            ],
+            vec![None; 7],
         ),
     );
 }
