@@ -46,6 +46,15 @@ export function Header() {
           <NavLink to="/annotations" label="アノテーション" />
           <NavLink to="/runs" label="実行履歴" />
           <NavLink to="/indicators" label="indicators" />
+          <Link
+            to="/calendar"
+            search={{ strategy: strategyId }}
+            activeOptions={{ exact: false }}
+            className={NAV_INACTIVE}
+            activeProps={{ className: NAV_ACTIVE }}
+          >
+            カレンダー
+          </Link>
           <NavLink to="/strategies" label="戦略" />
         </div>
 
