@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
+use core_domain::note_price_reference::PriceReferenceField;
 use rust_decimal::Decimal;
 use thiserror::Error;
 use uuid::Uuid;
@@ -49,13 +50,19 @@ pub struct CreateAnnotationCommand {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
-    pub price: Option<Decimal>,
+    pub price: Option<AnnotationPriceInput>,
     pub text: String,
     pub status: String,
     pub linked_note_id: Option<Uuid>,
     pub created_by_kind: String,
     pub execution_step_id: Option<Uuid>,
     pub execution_task_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AnnotationPriceInput {
+    Value(Decimal),
+    Field(PriceReferenceField),
 }
 
 #[derive(Debug, Clone, PartialEq)]

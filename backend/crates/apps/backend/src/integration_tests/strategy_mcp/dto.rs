@@ -144,6 +144,7 @@ pub struct WriteNoteParams {
 pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -200,9 +201,18 @@ pub struct CreateAnnotationParams {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
-    pub price: Option<f64>,
+    pub price_field: Option<AnnotationPriceField>,
     pub text: String,
     pub linked_note_id: Option<Uuid>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnnotationPriceField {
+    Open,
+    High,
+    Low,
+    Close,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

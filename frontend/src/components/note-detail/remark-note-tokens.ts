@@ -1,6 +1,17 @@
-import type { Data, Node, Root, RootContent } from 'mdast'
+import type {
+  BlockContent,
+  Data,
+  DefinitionContent,
+  Node,
+  Root,
+  RootContent,
+} from 'mdast'
 import { findAndReplace } from 'mdast-util-find-and-replace'
 
+import {
+  type ParsedNoteChangeReference,
+  parseNoteChangeReference,
+} from '#lib/note-change-reference'
 import { REF_PREFIX_RE } from '#lib/note-utils'
 
 const TOKEN_RE = /\[\[([^\]]+)\]\]/g
@@ -19,12 +30,21 @@ interface NoteGraphBlock extends Node {
   data: Data & { hName: string; hProperties: Record<string, string> }
 }
 
+interface NoteChangeFigure extends Node {
+  type: 'noteChangeFigure'
+  data: Data & { hName: string; hProperties: ParsedNoteChangeReference }
+}
+
 declare module 'mdast' {
   interface PhrasingContentMap {
     noteToken: NoteToken
   }
+  interface BlockContentMap {
+    noteChangeFigure: NoteChangeFigure
+  }
   interface RootContentMap {
     noteGraphBlock: NoteGraphBlock
+    noteChangeFigure: NoteChangeFigure
   }
 }
 
@@ -45,8 +65,21 @@ function noteGraphBlock(graphId: string): NoteGraphBlock {
   }
 }
 
+function noteChangeFigure(
+  reference: ParsedNoteChangeReference,
+): NoteChangeFigure {
+  return {
+    type: 'noteChangeFigure',
+    data: { hName: 'note-change-figure', hProperties: reference },
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isNode(value: unknown): value is Node {
+  return isRecord(value) && typeof value.type === 'string'
 }
 
 function resolvedPriceReferenceValue(
@@ -79,25 +112,88 @@ function replaceGraphParagraphs(root: Root): void {
   })
 }
 
-// 本文中の価格参照はトークンのまま保ち、解決値は表示時だけ展開する。
+function collectChangeReferences(
+  node: Node,
+  references: Map<string, ParsedNoteChangeReference>,
+): void {
+  if (
+    node.type === 'noteToken' &&
+    node.data != null &&
+    isRecord(node.data) &&
+    node.data.hName === 'note-change-reference' &&
+    isRecord(node.data.hProperties) &&
+    typeof node.data.hProperties.token === 'string' &&
+    typeof node.data.hProperties.instrumentId === 'string' &&
+    typeof node.data.hProperties.start === 'string' &&
+    typeof node.data.hProperties.end === 'string'
+  ) {
+    const token = node.data.hProperties.token
+    references.set(token, {
+      instrumentId: node.data.hProperties.instrumentId,
+      start: node.data.hProperties.start,
+      end: node.data.hProperties.end,
+    })
+  }
+
+  if ('children' in node && Array.isArray(node.children)) {
+    node.children.forEach((child: unknown) => {
+      if (isNode(child)) collectChangeReferences(child, references)
+    })
+  }
+}
+
+function appendChangeFigures(
+  children: RootContent[] | Array<BlockContent | DefinitionContent>,
+): void {
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index]
+    if (child == null) continue
+
+    if (child.type === 'paragraph') {
+      const references = new Map<string, ParsedNoteChangeReference>()
+      collectChangeReferences(child, references)
+      const figures = [...references.values()].map(noteChangeFigure)
+      children.splice(index + 1, 0, ...figures)
+      index += figures.length
+      continue
+    }
+
+    if (child.type === 'blockquote') {
+      appendChangeFigures(child.children)
+    } else if (child.type === 'list') {
+      child.children.forEach((item) => {
+        appendChangeFigures(item.children)
+      })
+    }
+  }
+}
+
+// 参照トークンは本文に残し、解決値は表示時だけ展開する。
 export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
   return (tree: Root) => {
     replaceGraphParagraphs(tree)
     findAndReplace(tree, [
       TOKEN_RE,
       (token: string, inner: string) => {
-        const priceReferenceKind = inner.startsWith('price:')
-          ? 'price'
-          : inner.startsWith('change:')
-            ? 'change'
-            : undefined
-        const priceReferenceValue =
-          priceReferenceKind == null
-            ? undefined
-            : resolvedPriceReferenceValue(resolvedPriceReferences, token)
-        if (priceReferenceKind != null && priceReferenceValue != null) {
+        if (inner.startsWith('change:')) {
+          const reference = parseNoteChangeReference(token)
+          if (reference == null) return false
+          const value = resolvedPriceReferenceValue(
+            resolvedPriceReferences,
+            token,
+          )
+          return noteToken('note-change-reference', {
+            token,
+            ...reference,
+            ...(value == null ? {} : { value: String(value) }),
+          })
+        }
+
+        const priceReferenceValue = inner.startsWith('price:')
+          ? resolvedPriceReferenceValue(resolvedPriceReferences, token)
+          : undefined
+        if (priceReferenceValue != null) {
           return noteToken('note-price-reference', {
-            kind: priceReferenceKind,
             value: String(priceReferenceValue),
           })
         }
@@ -115,5 +211,8 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
         return false
       },
     ])
+
+    // ブロック図は段落内に置けないため、変化率を含む段落の直後に図を挿入する。
+    appendChangeFigures(tree.children)
   }
 }

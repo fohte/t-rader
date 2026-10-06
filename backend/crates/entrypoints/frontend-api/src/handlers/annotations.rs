@@ -2,9 +2,10 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use core_application::annotation::{
-    AnnotationListQuery, AnnotationReadQueryError, AnnotationReadUseCaseError,
-    AnnotationRepositoryError, AnnotationUseCaseError, ChangeAnnotationStatusCommand,
-    CreateAnnotationCommand, DeleteAnnotationCommand, UpdateAnnotationCommand,
+    AnnotationListQuery, AnnotationPriceInput, AnnotationReadQueryError,
+    AnnotationReadUseCaseError, AnnotationRepositoryError, AnnotationUseCaseError,
+    ChangeAnnotationStatusCommand, CreateAnnotationCommand, DeleteAnnotationCommand,
+    UpdateAnnotationCommand,
 };
 use core_application::change_history::{Actor, ChangeHistoryError};
 use core_application::strategy_task::TaskSource;
@@ -111,7 +112,7 @@ pub async fn create_annotation(
             target_symbol: p.target_symbol,
             target_kind: p.target_kind,
             timestamp: p.timestamp,
-            price: p.price,
+            price: p.price.map(AnnotationPriceInput::Value),
             text: p.text,
             status,
             linked_note_id: p.linked_note_id,

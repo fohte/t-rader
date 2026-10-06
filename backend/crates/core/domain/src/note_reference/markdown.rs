@@ -190,3 +190,28 @@ pub(crate) fn tokens_outside_code(body: &str) -> Vec<NoteToken<'_>> {
         })
         .collect()
 }
+
+pub(crate) fn prose_segments(body: &str) -> Vec<&str> {
+    let mut excluded_ranges = markdown_code_ranges(body);
+    excluded_ranges.extend(
+        extract_tokens(body)
+            .into_iter()
+            .map(|token| token.start..token.end),
+    );
+    excluded_ranges.sort_unstable_by_key(|range| range.start);
+
+    let mut segments = Vec::new();
+    let mut cursor = 0;
+    for range in excluded_ranges {
+        let start = cursor.max(range.start);
+        if cursor < start {
+            segments.push(&body[cursor..start]);
+        }
+        cursor = cursor.max(range.end);
+    }
+    if cursor < body.len() {
+        segments.push(&body[cursor..]);
+    }
+
+    segments
+}

@@ -1,13 +1,16 @@
 use chrono::Utc;
+use core_domain::note_price_reference::PriceReferenceField;
+use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use super::error::AnnotationUseCaseError;
 use super::ports::{
-    Annotation, ChangeAnnotationStatusCommand, CreateAnnotationCommand, DeleteAnnotationCommand,
-    NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
+    Annotation, AnnotationPriceInput, ChangeAnnotationStatusCommand, CreateAnnotationCommand,
+    DeleteAnnotationCommand, NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
 };
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
+use crate::strategy_task_step_evidence::SharedStrategyTaskStepEvidenceRepository;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -18,6 +21,7 @@ pub struct AnnotationUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedAnnotationRepository,
     change_history: SharedChangeHistoryPort,
+    strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
 }
 
 impl AnnotationUseCases {
@@ -25,11 +29,13 @@ impl AnnotationUseCases {
         unit_of_work: SharedUnitOfWork,
         repository: SharedAnnotationRepository,
         change_history: SharedChangeHistoryPort,
+        strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
             change_history,
+            strategy_task_step_evidence,
         }
     }
 
@@ -37,6 +43,7 @@ impl AnnotationUseCases {
         &self,
         command: CreateAnnotationCommand,
     ) -> Result<Annotation, AnnotationUseCaseError> {
+        let price_input = validate_price_input(command.price, command.execution_step_id)?;
         let target_symbol = non_empty_trimmed(command.target_symbol, "target_symbol")?;
         let target_kind = non_empty_trimmed(command.target_kind, "target_kind")?;
         validate_non_empty(&command.text, "text")?;
@@ -47,6 +54,24 @@ impl AnnotationUseCases {
             self.ensure_linked_note_exists(&transaction, note_id)
                 .await?;
         }
+
+        let price = match price_input {
+            ValidatedAnnotationPriceInput::None => None,
+            ValidatedAnnotationPriceInput::Value(value) => Some(value),
+            ValidatedAnnotationPriceInput::Field {
+                execution_step_id,
+                field,
+            } => Some(
+                self.resolve_price_field(
+                    &transaction,
+                    execution_step_id,
+                    &target_symbol,
+                    command.timestamp.with_timezone(&Utc).date_naive(),
+                    field,
+                )
+                .await?,
+            ),
+        };
 
         if let (Some(step_id), Some(task_id)) = (
             command.execution_step_id,
@@ -66,7 +91,7 @@ impl AnnotationUseCases {
                     target_symbol: target_symbol.clone(),
                     target_kind,
                     timestamp: command.timestamp,
-                    price: command.price,
+                    price,
                     text: command.text,
                     status: command.status,
                     linked_note_id: command.linked_note_id,
@@ -89,6 +114,32 @@ impl AnnotationUseCases {
         .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(created)
+    }
+
+    async fn resolve_price_field(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        execution_step_id: Uuid,
+        target_symbol: &str,
+        date: chrono::NaiveDate,
+        field: PriceReferenceField,
+    ) -> Result<Decimal, AnnotationUseCaseError> {
+        let evidence = self
+            .strategy_task_step_evidence
+            .find_query_data(transaction, execution_step_id, target_symbol)
+            .await?;
+        let value = evidence
+            .iter()
+            .rev()
+            .find_map(|snapshot| snapshot.query_data_bar_value(date, field))
+            .and_then(|value| value.as_f64())
+            .and_then(|value| Decimal::try_from(value).ok())
+            .ok_or_else(|| {
+                AnnotationUseCaseError::Validation(
+                    "指定された価格項目を実行ステップの query_data から解決できません".into(),
+                )
+            })?;
+        Ok(value)
     }
 
     pub async fn update(
@@ -329,6 +380,40 @@ fn validate_non_empty(value: &str, name: &str) -> Result<(), AnnotationUseCaseEr
         )));
     }
     Ok(())
+}
+
+enum ValidatedAnnotationPriceInput {
+    None,
+    Value(Decimal),
+    Field {
+        execution_step_id: Uuid,
+        field: PriceReferenceField,
+    },
+}
+
+fn validate_price_input(
+    price: Option<AnnotationPriceInput>,
+    execution_step_id: Option<Uuid>,
+) -> Result<ValidatedAnnotationPriceInput, AnnotationUseCaseError> {
+    match price {
+        None => Ok(ValidatedAnnotationPriceInput::None),
+        Some(AnnotationPriceInput::Value(value)) => Ok(ValidatedAnnotationPriceInput::Value(value)),
+        Some(AnnotationPriceInput::Field(PriceReferenceField::Volume)) => {
+            Err(AnnotationUseCaseError::Validation(
+                "価格項目には `open`, `high`, `low`, `close` のいずれかを指定してください".into(),
+            ))
+        }
+        Some(AnnotationPriceInput::Field(field)) => execution_step_id
+            .map(|execution_step_id| ValidatedAnnotationPriceInput::Field {
+                execution_step_id,
+                field,
+            })
+            .ok_or_else(|| {
+                AnnotationUseCaseError::Validation(
+                    "価格項目の解決には実行ステップの query_data が必要です".into(),
+                )
+            }),
+    }
 }
 
 fn validate_status(status: &str) -> Result<(), AnnotationUseCaseError> {
