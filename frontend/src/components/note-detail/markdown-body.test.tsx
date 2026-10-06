@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixture'
+import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 

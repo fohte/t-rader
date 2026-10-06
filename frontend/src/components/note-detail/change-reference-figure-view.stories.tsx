@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixture'
+import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { ChangeReferenceFigureView } from '#components/note-detail/change-reference-figure-view'
 
 const meta = {

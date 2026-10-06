@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { http, HttpResponse } from 'msw'
 
-import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixture'
+import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 import { mockResolveRef } from '#storybook/mock-resolve-ref'
