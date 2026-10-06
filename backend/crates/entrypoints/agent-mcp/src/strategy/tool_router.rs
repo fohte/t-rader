@@ -112,7 +112,7 @@ impl StrategyServer {
     /// 全ノート一覧を返す (新しい順)
     #[tool(
         name = "list_notes",
-        description = "List all notes, newest first. Filter by kind, tag (exact match against frontmatter_json.tags), ref (kind:id), status, and/or updated_after. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
+        description = "List all notes, newest first. Filter by kind, tag (exact match against frontmatter_json.tags), ref (kind:id), status, and/or updated_after. For ref=stock:<id>, also include notes linked to every group containing that stock; each note is returned once. Set include_pending: true to include notes without a current version, using their latest version. Set include_body: false to omit body_md and save context.",
         annotations(read_only_hint = true)
     )]
     async fn list_notes(

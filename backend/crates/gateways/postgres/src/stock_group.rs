@@ -162,14 +162,14 @@ impl StockGroupRepository for PostgresStockGroupRepository {
         &self,
         unit_of_work: &UnitOfWorkTransaction,
         stock_ids: &[String],
-        axis_keys: &[String],
+        axis_keys: Option<&[String]>,
     ) -> Result<Vec<StockGroupMembership>, StockGroupRepositoryError> {
-        if stock_ids.is_empty() || axis_keys.is_empty() {
+        if stock_ids.is_empty() || axis_keys.is_some_and(|axis_keys| axis_keys.is_empty()) {
             return Ok(Vec::new());
         }
         let transaction =
             transaction_ref(unit_of_work).ok_or(StockGroupRepositoryError::InvalidTransaction)?;
-        stock_group_member::Entity::find()
+        let query = stock_group_member::Entity::find()
             .join(
                 JoinType::InnerJoin,
                 stock_group_member::Relation::StockGroup.def(),
@@ -180,10 +180,15 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             .column_as(stock_group::Column::Key, "group_key")
             .column(stock_group_member::Column::StockId)
             .filter(stock_group_member::Column::StockId.is_in(stock_ids.to_vec()))
-            .filter(group_axis::Column::Key.is_in(axis_keys.to_vec()))
             .order_by_asc(group_axis::Column::Key)
             .order_by_asc(stock_group::Column::Key)
-            .order_by_asc(stock_group_member::Column::StockId)
+            .order_by_asc(stock_group_member::Column::StockId);
+        let query = if let Some(axis_keys) = axis_keys {
+            query.filter(group_axis::Column::Key.is_in(axis_keys.to_vec()))
+        } else {
+            query
+        };
+        query
             .into_model::<StockGroupMembershipRow>()
             .all(transaction)
             .await

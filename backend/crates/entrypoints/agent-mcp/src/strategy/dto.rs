@@ -125,7 +125,7 @@ pub struct ListNotesParams {
     pub limit: Option<u32>,
     /// 指定した note_kind のノートだけを返す
     pub kind: Option<String>,
-    /// `kind:id` の形式で参照先にリンクしたノートだけを返す
+    /// `kind:id` の形式で参照先にリンクしたノートだけを返す。stock を指定すると所属するすべての group へのリンクも含む。
     #[serde(rename = "ref")]
     pub r#ref: Option<String>,
     /// "approved" / "unread" / "rejected" のいずれかで絞り込む。省略時は全 status
