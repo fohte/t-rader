@@ -9,6 +9,8 @@ pub struct QueryDataParams {
     pub instrument_ids: Vec<String>,
     pub from: NaiveDate,
     pub to: NaiveDate,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeframe: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
