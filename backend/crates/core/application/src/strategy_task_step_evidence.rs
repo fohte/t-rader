@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-/// evidence snapshot の肥大化を防ぐため、日足で約 20 年分に制限する。
+/// evidence snapshot の肥大化を防ぐため、保存するバー数を制限する。
 const MAX_SNAPSHOT_BARS: usize = 5_000;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -187,6 +187,7 @@ impl StrategyTaskStepEvidenceUseCases {
         instrument_id: &str,
         from: NaiveDate,
         to: NaiveDate,
+        timeframe: &str,
         bars: Vec<QueryDataBar>,
     ) -> Result<(), StrategyTaskStepEvidenceUseCaseError> {
         let total_bars = bars.len();
@@ -202,6 +203,7 @@ impl StrategyTaskStepEvidenceUseCases {
             "instrument_id": instrument_id,
             "from": from,
             "to": to,
+            "timeframe": timeframe,
             "bars": snapshot_bars,
             "total_bars": total_bars,
             "truncated": truncated,
@@ -259,10 +261,11 @@ mod tests {
     }
 
     #[rstest]
-    #[case::empty(0, 0, false)]
-    #[case::truncated_keeps_the_latest_bars(MAX_SNAPSHOT_BARS + 1, 1, true)]
+    #[case::empty("1d", 0, 0, false)]
+    #[case::truncated_keeps_the_latest_bars("1m", MAX_SNAPSHOT_BARS + 1, 1, true)]
     #[tokio::test]
     async fn record_query_data_stores_the_expected_snapshot(
+        #[case] timeframe: &str,
         #[case] total_bars: usize,
         #[case] first_expected_bar: usize,
         #[case] truncated: bool,
@@ -281,7 +284,14 @@ mod tests {
         let latest_bar_at = bars.last().map(|bar| bar.timestamp);
 
         use_cases
-            .record_query_data(execution_step_id, "fictional-instrument", from, to, bars)
+            .record_query_data(
+                execution_step_id,
+                "fictional-instrument",
+                from,
+                to,
+                timeframe,
+                bars,
+            )
             .await
             .expect("record evidence");
 
@@ -307,6 +317,7 @@ mod tests {
                     "instrument_id": "fictional-instrument",
                     "from": from,
                     "to": to,
+                    "timeframe": timeframe,
                     "bars": expected_bars,
                     "total_bars": total_bars,
                     "truncated": truncated,
