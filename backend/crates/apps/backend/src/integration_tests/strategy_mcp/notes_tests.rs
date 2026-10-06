@@ -2295,7 +2295,11 @@ mod tests {
         assert_eq!(
             (result.as_json().clone(), current.title, current.body_md),
             (
-                serde_json::json!({"note_id": note_id, "created": false}),
+                serde_json::json!({
+                    "note_id": note_id,
+                    "created": false,
+                    "warnings": [],
+                }),
                 "revised title".into(),
                 "revised body".into(),
             ),
