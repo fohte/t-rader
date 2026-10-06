@@ -20,7 +20,6 @@ use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
-use core_application::us_stock_master_source::SharedUsStockMasterSource;
 use core_application::valuation_source::SharedValuationSource;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
@@ -34,7 +33,6 @@ use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
 use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
 use gateway_rss::RssNewsAggregator;
-use gateway_sec::SecClient;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
 };
@@ -54,31 +52,8 @@ use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
     initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
-    worker_admin_ui_settings_from_env,
+    us_stock_master_source, worker_admin_ui_settings_from_env,
 };
-
-fn us_stock_master_source(
-    starts_worker: bool,
-    user_agent: Option<String>,
-) -> Result<Option<SharedUsStockMasterSource>, StartupError> {
-    if !starts_worker {
-        return Ok(None);
-    }
-
-    match user_agent {
-        Some(user_agent) if !user_agent.trim().is_empty() => {
-            let client = SecClient::new(&user_agent).map_err(|error| {
-                StartupError::Config(format!("failed to initialize SEC client: {error}"))
-            })?;
-            tracing::info!("SEC US stock master source initialized");
-            Ok(Some(Arc::new(client)))
-        }
-        _ => {
-            tracing::warn!("SEC_USER_AGENT が未設定のため、米国株のマスタ同期 job を登録しません");
-            Ok(None)
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {

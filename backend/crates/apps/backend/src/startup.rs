@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use core_application::bars::SharedUsStockBarSource;
+use core_application::us_stock_master_source::SharedUsStockMasterSource;
 use gateway_alpaca::AlpacaClient;
 use gateway_jquants::JQuantsPlan;
+use gateway_sec::SecClient;
 use sea_orm::DbErr;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
@@ -115,6 +117,29 @@ pub(super) fn alpaca_us_stock_bar_source_from_env(
         std::env::var("ALPACA_API_KEY_ID").ok(),
         std::env::var("ALPACA_API_SECRET_KEY").ok(),
     )
+}
+
+pub(super) fn us_stock_master_source(
+    starts_worker: bool,
+    user_agent: Option<String>,
+) -> Result<Option<SharedUsStockMasterSource>, StartupError> {
+    if !starts_worker {
+        return Ok(None);
+    }
+
+    match user_agent {
+        Some(user_agent) if !user_agent.trim().is_empty() => {
+            let client = SecClient::new(&user_agent).map_err(|error| {
+                StartupError::Config(format!("failed to initialize SEC client: {error}"))
+            })?;
+            tracing::info!("SEC US stock master source initialized");
+            Ok(Some(Arc::new(client)))
+        }
+        _ => {
+            tracing::warn!("SEC_USER_AGENT が未設定のため、米国株のマスタ同期 job を登録しません");
+            Ok(None)
+        }
+    }
 }
 
 pub(super) fn required_redis_url(value: Option<String>) -> Result<String, StartupError> {
