@@ -36,6 +36,7 @@ use crate::{
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
         twse::TwseIndexIngest,
+        us_stock_bars::UsStockBarsIngest,
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
@@ -44,11 +45,12 @@ use crate::{
 
 pub const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
 const JQUANTS_QUEUE: &str = "jquants";
+const ALPACA_QUEUE: &str = "alpaca";
 const FRED_QUEUE: &str = "fred";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
 pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 21] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 22] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
     (TwseIndexIngest::IDENTIFIER, DAILY_TIMEOUT),
     (AlphaVantageCalendarIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -70,6 +72,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 21] = [
     (EquityMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShareholdingStructureIngest::IDENTIFIER, DAILY_TIMEOUT),
     (UsStockMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (UsStockBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
 ];
 
 #[derive(Clone, Copy, Default)]
@@ -89,6 +92,7 @@ struct ConfiguredJobs {
     valuation: bool,
     equity_master: bool,
     us_stock_master: bool,
+    us_stock_bars: bool,
     shareholding_structure: bool,
     strategy_task_reconcile: bool,
     news_content: bool,
@@ -122,6 +126,7 @@ impl Scheduler {
             valuation: dependencies.valuation_source.is_some(),
             equity_master: dependencies.equity_master_source.is_some(),
             us_stock_master: dependencies.us_stock_master_source.is_some(),
+            us_stock_bars: dependencies.us_stock_bar_source.is_some(),
             shareholding_structure: dependencies.shareholding_structure_source.is_some(),
             strategy_task_reconcile: dependencies.strategy_task_reconcile_enabled,
             news_content: news_content_configured,
@@ -148,6 +153,7 @@ impl Scheduler {
             .define_job::<ValuationIngest>()
             .define_job::<EquityMasterIngest>()
             .define_job::<UsStockMasterIngest>()
+            .define_job::<UsStockBarsIngest>()
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
             .define_job::<TwseIndexIngest>()
@@ -308,6 +314,14 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
             None,
         )?);
     }
+    if configured.us_stock_bars {
+        crontabs.push(hourly_cron::<UsStockBarsIngest>(
+            "us_stock_bars_ingest",
+            20,
+            CrontabFill::hours(3),
+            Some(ALPACA_QUEUE),
+        )?);
+    }
     if configured.valuation {
         crontabs.push(hourly_cron::<ValuationIngest>(
             "valuation_ingest",
@@ -452,12 +466,13 @@ mod tests {
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
         twse::TwseIndexIngest,
+        us_stock_bars::UsStockBarsIngest,
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     };
 
     use super::{
-        ConfiguredJobs, FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE, JQUANTS_QUEUE,
+        ALPACA_QUEUE, ConfiguredJobs, FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE, JQUANTS_QUEUE,
         NEWS_CONTENT_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, TWSE_QUEUE, build_crontabs,
         configure_cron, every_minute_cron, hourly_cron,
     };
@@ -480,6 +495,7 @@ mod tests {
             valuation: true,
             equity_master: true,
             us_stock_master: true,
+            us_stock_bars: true,
             shareholding_structure: true,
             strategy_task_reconcile: true,
             news_content: true,
@@ -599,6 +615,12 @@ mod tests {
                 "us_stock_master_ingest",
                 CrontabFill::days(3),
                 None,
+            ),
+            expected_cron::<UsStockBarsIngest>(
+                CrontabTimer::hourly_at(20).ok(),
+                "us_stock_bars_ingest",
+                CrontabFill::hours(3),
+                Some(ALPACA_QUEUE),
             ),
             expected_cron::<ValuationIngest>(
                 CrontabTimer::hourly_at(30).ok(),
@@ -765,6 +787,12 @@ mod tests {
                     None,
                 ),
                 (
+                    Some("us_stock_bars_ingest".to_string()),
+                    Some(CrontabFill::hours(3)),
+                    Some(3),
+                    Some(ALPACA_QUEUE.to_string()),
+                ),
+                (
                     Some("valuation_ingest".to_string()),
                     Some(CrontabFill::hours(3)),
                     Some(3),
@@ -816,6 +844,7 @@ mod tests {
     #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::us_stock_master_only(ConfiguredJobs { us_stock_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_master_ingest", "prediction_grading", "trigger_evaluation"])]
+    #[case::us_stock_bars_only(ConfiguredJobs { us_stock_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_bars_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "trigger_evaluation"])]
     #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
     #[case::news_content_enabled(ConfiguredJobs { news_content: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "news_content_fetch", "trigger_evaluation"])]

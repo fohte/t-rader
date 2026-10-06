@@ -2,20 +2,22 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_domain::bar::Bar;
+use core_domain::bar::{Bar, Timeframe};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{BarsRepository, BarsRepositoryError};
-use super::types::{BarsByInstrumentsQuery, BarsQuery};
+use super::types::{BarsByInstrumentsQuery, BarsQuery, UsStockBarTarget};
 
 #[derive(Default)]
 pub struct FakeBarsRepository {
     pub bars: Mutex<Vec<Bar>>,
+    pub minute_bars: Mutex<Vec<Bar>>,
     pub ingested_dates: Mutex<HashSet<NaiveDate>>,
     pub instruments: Mutex<HashSet<String>>,
+    pub us_stock_targets: Mutex<HashSet<String>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
 }
 
@@ -25,21 +27,33 @@ impl FakeBarsRepository {
     }
 
     pub async fn seed_bars(&self, bars: Vec<Bar>) {
+        let (minute_bars, bars): (Vec<_>, Vec<_>) = bars
+            .into_iter()
+            .partition(|bar| bar.timeframe == Timeframe::Minute);
         self.bars.lock().await.extend(bars);
+        self.minute_bars.lock().await.extend(minute_bars);
     }
 
     pub async fn seed_ingested_dates(&self, dates: HashSet<NaiveDate>) {
         self.ingested_dates.lock().await.extend(dates);
+    }
+
+    pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
+        self.us_stock_targets.lock().await.extend(instrument_ids);
+    }
+
+    async fn all_bars(&self) -> Vec<Bar> {
+        let mut bars = self.bars.lock().await.clone();
+        bars.extend(self.minute_bars.lock().await.iter().cloned());
+        bars
     }
 }
 
 #[async_trait]
 impl BarsRepository for FakeBarsRepository {
     async fn find_bars(&self, query: BarsQuery) -> Result<Vec<Bar>, BarsRepositoryError> {
-        let mut bars: Vec<Bar> = self
-            .bars
-            .lock()
-            .await
+        let all_bars = self.all_bars().await;
+        let mut bars: Vec<Bar> = all_bars
             .iter()
             .filter(|bar| {
                 let timestamp = bar.timestamp.fixed_offset();
@@ -58,10 +72,8 @@ impl BarsRepository for FakeBarsRepository {
         &self,
         query: BarsByInstrumentsQuery,
     ) -> Result<Vec<Bar>, BarsRepositoryError> {
-        let mut bars: Vec<Bar> = self
-            .bars
-            .lock()
-            .await
+        let all_bars = self.all_bars().await;
+        let mut bars: Vec<Bar> = all_bars
             .iter()
             .filter(|bar| {
                 let timestamp = bar.timestamp.fixed_offset();
@@ -81,16 +93,44 @@ impl BarsRepository for FakeBarsRepository {
         instrument_id: &str,
         timeframe: &str,
     ) -> Result<Option<Bar>, BarsRepositoryError> {
-        Ok(self
-            .bars
-            .lock()
-            .await
+        let all_bars = self.all_bars().await;
+        Ok(all_bars
             .iter()
             .filter(|bar| {
                 bar.instrument_id == instrument_id && bar.timeframe.to_string() == timeframe
             })
             .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
             .cloned())
+    }
+
+    async fn find_us_stock_bar_targets(
+        &self,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+        let target_ids = self.us_stock_targets.lock().await.clone();
+        let daily_bars = self.bars.lock().await;
+        let minute_bars = self.minute_bars.lock().await;
+        let mut targets = target_ids
+            .into_iter()
+            .map(|instrument_id| UsStockBarTarget {
+                latest_daily_bar: daily_bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Daily
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                latest_minute_bar: minute_bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                instrument_id,
+            })
+            .collect::<Vec<_>>();
+        targets.sort_by(|left, right| left.instrument_id.cmp(&right.instrument_id));
+        Ok(targets)
     }
 
     async fn find_ingested_dates(
@@ -124,17 +164,18 @@ impl BarsRepository for FakeBarsRepository {
     ) -> Result<(), BarsRepositoryError> {
         self.record_transaction(transaction).await?;
         let mut bars = self.bars.lock().await;
-        for new_bar in new_bars {
-            if let Some(existing) = bars.iter_mut().find(|bar| {
-                bar.instrument_id == new_bar.instrument_id
-                    && bar.timeframe == new_bar.timeframe
-                    && bar.timestamp == new_bar.timestamp
-            }) {
-                *existing = new_bar;
-            } else {
-                bars.push(new_bar);
-            }
-        }
+        upsert_bar_batch(&mut bars, new_bars);
+        Ok(())
+    }
+
+    async fn upsert_minute_bars(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        new_bars: Vec<Bar>,
+    ) -> Result<(), BarsRepositoryError> {
+        self.record_transaction(transaction).await?;
+        let mut minute_bars = self.minute_bars.lock().await;
+        upsert_bar_batch(&mut minute_bars, new_bars);
         Ok(())
     }
 
@@ -146,6 +187,20 @@ impl BarsRepository for FakeBarsRepository {
         self.record_transaction(transaction).await?;
         self.ingested_dates.lock().await.insert(date);
         Ok(())
+    }
+}
+
+fn upsert_bar_batch(bars: &mut Vec<Bar>, new_bars: Vec<Bar>) {
+    for new_bar in new_bars {
+        if let Some(existing) = bars.iter_mut().find(|bar| {
+            bar.instrument_id == new_bar.instrument_id
+                && bar.timeframe == new_bar.timeframe
+                && bar.timestamp == new_bar.timestamp
+        }) {
+            *existing = new_bar;
+        } else {
+            bars.push(new_bar);
+        }
     }
 }
 
