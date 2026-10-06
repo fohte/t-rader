@@ -120,10 +120,10 @@ type CreateCustomIndicatorRequest struct {
 
 // CreateGroupAxisRequest defines model for CreateGroupAxisRequest.
 type CreateGroupAxisRequest struct {
+	DeriveFrom  nullable.Nullable[string] `json:"derive_from,omitempty"`
 	Description string                    `json:"description"`
 	Key         string                    `json:"key"`
 	Name        string                    `json:"name"`
-	SyncSource  nullable.Nullable[string] `json:"sync_source,omitempty"`
 }
 
 // CreateNoteKindRequest defines model for CreateNoteKindRequest.
@@ -241,10 +241,10 @@ type GraphNode struct {
 
 // GroupAxis defines model for GroupAxis.
 type GroupAxis struct {
+	DeriveFrom  nullable.Nullable[string] `json:"derive_from,omitempty"`
 	Description string                    `json:"description"`
 	Key         string                    `json:"key"`
 	Name        string                    `json:"name"`
-	SyncSource  nullable.Nullable[string] `json:"sync_source,omitempty"`
 }
 
 // GroupRatio defines model for GroupRatio.
@@ -487,9 +487,9 @@ type UpdateCustomIndicatorRequest struct {
 
 // UpdateGroupAxisRequest defines model for UpdateGroupAxisRequest.
 type UpdateGroupAxisRequest struct {
+	DeriveFrom  nullable.Nullable[string] `json:"derive_from,omitempty"`
 	Description nullable.Nullable[string] `json:"description,omitempty"`
 	Name        nullable.Nullable[string] `json:"name,omitempty"`
-	SyncSource  nullable.Nullable[string] `json:"sync_source,omitempty"`
 }
 
 // UpdateNoteKindRequest defines model for UpdateNoteKindRequest.

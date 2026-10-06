@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::testing::insert_test_group_with_sync_source_code;
+use crate::testing::insert_test_group_with_code;
 
 use super::StrategyServer;
 use super::dto::ReadSectorShortRatioParams;
@@ -63,12 +63,12 @@ async fn rejects_unknown_group_key_through_tool_dispatch() {
 
 #[backend_test_macros::database_test]
 async fn reads_sector_rows_and_maps_values_to_tool_json(db: gateway_postgres::DatabaseHandle) {
-    insert_test_group_with_sync_source_code(
+    insert_test_group_with_code(
         &db,
-        "sample-jquants-axis",
-        "その他",
-        "その他",
-        Some("jquants"),
+        "sample-derived-axis",
+        "架空分類 A",
+        "架空分類 A",
+        Some("tse_sector33"),
         Some("1234"),
     )
     .await;
@@ -87,7 +87,7 @@ async fn reads_sector_rows_and_maps_values_to_tool_json(db: gateway_postgres::Da
         .read_sector_short_ratio(
             strategy_id,
             ReadSectorShortRatioParams {
-                sector: "その他".into(),
+                sector: "架空分類 A".into(),
                 from: Some(ymd(2025, 1, 5)),
                 to: Some(ymd(2025, 1, 6)),
                 limit: Some(5),
@@ -99,7 +99,7 @@ async fn reads_sector_rows_and_maps_values_to_tool_json(db: gateway_postgres::Da
     assert_eq!(
         result.as_json().clone(),
         json!({
-            "sector": "その他",
+            "sector": "架空分類 A",
             "items": [
                 {
                     "date": "2025-01-06",
@@ -146,12 +146,12 @@ async fn rejects_unknown_group_key_against_database(db: gateway_postgres::Databa
 
 #[backend_test_macros::database_test]
 async fn reports_when_group_code_has_not_been_synchronized(db: gateway_postgres::DatabaseHandle) {
-    insert_test_group_with_sync_source_code(
+    insert_test_group_with_code(
         &db,
-        "sample-jquants-axis",
-        "その他",
-        "その他",
-        Some("jquants"),
+        "sample-derived-axis",
+        "架空分類 A",
+        "架空分類 A",
+        Some("tse_sector33"),
         None,
     )
     .await;
@@ -162,7 +162,7 @@ async fn reports_when_group_code_has_not_been_synchronized(db: gateway_postgres:
         .read_sector_short_ratio(
             strategy_id,
             ReadSectorShortRatioParams {
-                sector: "その他".into(),
+                sector: "架空分類 A".into(),
                 from: None,
                 to: None,
                 limit: None,
@@ -174,29 +174,29 @@ async fn reports_when_group_code_has_not_been_synchronized(db: gateway_postgres:
     assert_eq!(
         error,
         rmcp::ErrorData::internal_error(
-            "J-Quants code for industry group \"その他\" is not synchronized yet",
+            "J-Quants code for industry group \"架空分類 A\" is not synchronized yet",
             None,
         ),
     );
 }
 
 #[backend_test_macros::database_test]
-async fn reads_sector_rows_using_the_jquants_group_code(db: gateway_postgres::DatabaseHandle) {
-    insert_test_group_with_sync_source_code(
+async fn reads_sector_rows_using_the_derived_group_code(db: gateway_postgres::DatabaseHandle) {
+    insert_test_group_with_code(
         &db,
-        "sample-jquants-axis",
-        "その他",
-        "その他",
-        Some("jquants"),
+        "sample-derived-axis",
+        "架空分類 A",
+        "架空分類 A",
+        Some("tse_sector33"),
         Some("1234"),
     )
     .await;
-    insert_test_group_with_sync_source_code(
+    insert_test_group_with_code(
         &db,
         "sample-other-axis",
-        "その他",
+        "架空分類 A",
         "合成分類",
-        Some("synthetic-source"),
+        None,
         Some("5678"),
     )
     .await;
@@ -215,7 +215,7 @@ async fn reads_sector_rows_using_the_jquants_group_code(db: gateway_postgres::Da
         .read_sector_short_ratio(
             strategy_id,
             ReadSectorShortRatioParams {
-                sector: "その他".into(),
+                sector: "架空分類 A".into(),
                 from: Some(ymd(2025, 1, 5)),
                 to: Some(ymd(2025, 1, 6)),
                 limit: Some(5),
@@ -227,7 +227,7 @@ async fn reads_sector_rows_using_the_jquants_group_code(db: gateway_postgres::Da
     assert_eq!(
         result.as_json().clone(),
         json!({
-            "sector": "その他",
+            "sector": "架空分類 A",
             "items": [
                 {
                     "date": "2025-01-06",

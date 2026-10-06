@@ -283,7 +283,7 @@ pub async fn insert_test_group(
     group_key: &str,
     name: &str,
 ) -> String {
-    insert_test_group_with_sync_source_code(db, axis_key, group_key, name, None, None)
+    insert_test_group_with_code(db, axis_key, group_key, name, None, None)
         .await
         .0
 }
@@ -294,11 +294,10 @@ pub async fn insert_test_group_membership(
     axis_key: &str,
     group_key: &str,
     name: &str,
-    sync_source: Option<&str>,
+    derive_from: Option<&str>,
 ) {
     let (_, group_id) =
-        insert_test_group_with_sync_source_code(db, axis_key, group_key, name, sync_source, None)
-            .await;
+        insert_test_group_with_code(db, axis_key, group_key, name, derive_from, None).await;
     stock_group_member::ActiveModel {
         stock_id: Set(stock_id.into()),
         group_id: Set(group_id),
@@ -309,14 +308,14 @@ pub async fn insert_test_group_membership(
     .expect("insert test group membership");
 }
 
-/// テストで同期元と同期元コードを持つグループを seed する。
-pub async fn insert_test_group_with_sync_source_code(
+/// テストで derive_from とコードを持つグループを seed する。
+pub async fn insert_test_group_with_code(
     db: &impl ConnectionTrait,
     axis_key: &str,
     group_key: &str,
     name: &str,
-    sync_source: Option<&str>,
-    sync_source_code: Option<&str>,
+    derive_from: Option<&str>,
+    code: Option<&str>,
 ) -> (String, Uuid) {
     let axis_id = Uuid::new_v4();
     group_axis::ActiveModel {
@@ -324,7 +323,7 @@ pub async fn insert_test_group_with_sync_source_code(
         key: Set(axis_key.into()),
         name: Set("Sample Axis".into()),
         description: Set("Sample axis for tests".into()),
-        sync_source: Set(sync_source.map(str::to_string)),
+        derive_from: Set(derive_from.map(str::to_string)),
     }
     .insert(db)
     .await
@@ -336,7 +335,7 @@ pub async fn insert_test_group_with_sync_source_code(
         key: Set(group_key.into()),
         name: Set(name.into()),
         description: Set(None),
-        sync_source_code: Set(sync_source_code.map(str::to_string)),
+        code: Set(code.map(str::to_string)),
     }
     .insert(db)
     .await

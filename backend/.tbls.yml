@@ -76,7 +76,7 @@ comments:
       key: '分類軸を識別するキー。'
       name: '分類軸の表示名。'
       description: '分類軸の説明。'
-      sync_source: '分類軸の同期元を示す値。'
+      derive_from: '銘柄マスタの共通項目からグループを生成する設定。'
   - table: mcp_tool_call_count
     tableComment: 'タスク実行ごとの MCP ツール呼び出し数を追跡する。'
     columnComments:
@@ -157,7 +157,7 @@ comments:
       key: '同じ分類軸の中でグループを識別するキー。'
       name: 'グループの表示名。'
       description: 'グループの説明。'
-      sync_source_code: '同期元がグループに付与したコード。同期対象の分類軸でのみ使用する。'
+      code: '分類軸の共通項目が持つグループコード。'
   - table: stock_group_member
     tableComment: '銘柄と銘柄グループの所属関係を保持する。'
     columnComments:

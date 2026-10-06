@@ -132,14 +132,14 @@ impl RefRepository for PostgresRefRepository {
             .map(|index| format!("${index}"))
             .collect::<Vec<_>>()
             .join(", ");
-        let sync_source_placeholder = ids.len() + 1;
+        let derive_from_placeholder = ids.len() + 1;
         let sql = format!(
             "SELECT s.id AS stock_id, \
                     MIN(sg.key) FILTER (WHERE ga.id IS NOT NULL) AS sector_id \
              FROM stock s \
              LEFT JOIN stock_group_member sgm ON sgm.stock_id = s.id \
              LEFT JOIN stock_group sg ON sg.id = sgm.group_id \
-             LEFT JOIN group_axis ga ON ga.id = sg.axis_id AND ga.sync_source = ${sync_source_placeholder} \
+             LEFT JOIN group_axis ga ON ga.id = sg.axis_id AND ga.derive_from = ${derive_from_placeholder} \
              WHERE s.id IN ({placeholders}) \
              GROUP BY s.id"
         );
@@ -147,7 +147,11 @@ impl RefRepository for PostgresRefRepository {
             .iter()
             .map(|id| id.clone().into())
             .collect::<Vec<sea_orm::Value>>();
-        values.push(crate::JQUANTS_SYNC_SOURCE.to_owned().into());
+        values.push(
+            core_application::equity_master::TSE_SECTOR33_DERIVE_FROM
+                .to_owned()
+                .into(),
+        );
         self.db
             .query_all_raw(Statement::from_sql_and_values(
                 sea_orm::DatabaseBackend::Postgres,
@@ -452,7 +456,7 @@ mod tests {
         axis_key: &str,
         group_key: &str,
         name: &str,
-        sync_source: Option<&str>,
+        derive_from: Option<&str>,
     ) -> (String, Uuid) {
         let axis_id = Uuid::new_v4();
         group_axis::ActiveModel {
@@ -460,7 +464,7 @@ mod tests {
             key: Set(axis_key.into()),
             name: Set("Sample Axis".into()),
             description: Set("Sample axis for tests".into()),
-            sync_source: Set(sync_source.map(str::to_string)),
+            derive_from: Set(derive_from.map(str::to_string)),
         }
         .insert(db)
         .await
@@ -472,7 +476,7 @@ mod tests {
             key: Set(group_key.into()),
             name: Set(name.into()),
             description: Set(None),
-            sync_source_code: Set(None),
+            code: Set(None),
         }
         .insert(db)
         .await
@@ -492,17 +496,17 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn stock_sectors_returns_jquants_group_keys_and_ignores_other_axes(
+    async fn stock_sectors_returns_derived_group_keys_and_ignores_other_axes(
         db: crate::DatabaseHandle,
     ) {
         seed_stock(&db, "DEMO-STOCK-A", "Demo Stock A").await;
         seed_stock(&db, "DEMO-STOCK-B", "Demo Stock B").await;
         let (_, industry_group_id) = seed_group(
             &db,
-            "synthetic-jquants-axis",
+            "synthetic-derived-axis",
             "synthetic-industry",
             "Sample Industry",
-            Some("jquants"),
+            Some("tse_sector33"),
         )
         .await;
         let (_, manual_group_id) = seed_group(

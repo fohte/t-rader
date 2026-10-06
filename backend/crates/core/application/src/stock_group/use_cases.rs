@@ -8,8 +8,8 @@ use crate::unit_of_work::SharedUnitOfWork;
 use super::error::StockGroupUseCaseError;
 use super::repository::{GroupAxis, SharedStockGroupRepository, StockGroupRepositoryError};
 use super::types::{
-    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupMembership,
-    StockGroupSyncSourceCodeLookup, UpdateStockGroupCommand,
+    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupCodeLookup, StockGroupMembership,
+    UpdateStockGroupCommand,
 };
 
 #[derive(Clone)]
@@ -148,33 +148,33 @@ impl StockGroupUseCases {
         Ok(stock_ids)
     }
 
-    pub async fn find_sync_source_code(
+    pub async fn find_code_by_derive_from(
         &self,
-        sync_source: &str,
+        derive_from: &str,
         group_key: &str,
-    ) -> Result<StockGroupSyncSourceCodeLookup, StockGroupUseCaseError> {
+    ) -> Result<StockGroupCodeLookup, StockGroupUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
         let codes = self
             .repository
-            .find_sync_source_codes(&transaction, sync_source, group_key)
+            .find_codes_by_derive_from(&transaction, derive_from, group_key)
             .await?;
         self.unit_of_work.commit(transaction).await?;
 
         if codes.is_empty() {
-            return Ok(StockGroupSyncSourceCodeLookup::NotFound);
+            return Ok(StockGroupCodeLookup::NotFound);
         }
         if codes.iter().any(Option::is_none) {
-            return Ok(StockGroupSyncSourceCodeLookup::Missing);
+            return Ok(StockGroupCodeLookup::Missing);
         }
 
         let mut codes = codes.into_iter().flatten();
         let Some(code) = codes.next() else {
-            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
+            return Ok(StockGroupCodeLookup::Ambiguous);
         };
         if codes.any(|other| other != code) {
-            return Ok(StockGroupSyncSourceCodeLookup::Ambiguous);
+            return Ok(StockGroupCodeLookup::Ambiguous);
         }
-        Ok(StockGroupSyncSourceCodeLookup::Found(code))
+        Ok(StockGroupCodeLookup::Found(code))
     }
 
     pub async fn list_memberships(
@@ -341,7 +341,7 @@ fn validate_name(value: &str) -> Result<String, StockGroupUseCaseError> {
 }
 
 fn ensure_agent_managed(axis: &GroupAxis) -> Result<(), StockGroupUseCaseError> {
-    if axis.sync_source.is_some() {
+    if axis.derive_from.is_some() {
         return Err(StockGroupUseCaseError::Validation(
             "stock groups on synchronized axes cannot be changed by MCP".into(),
         ));

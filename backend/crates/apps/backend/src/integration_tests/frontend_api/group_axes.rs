@@ -34,7 +34,7 @@ mod tests {
                 "key": "sample-axis",
                 "name": "Sample Axis",
                 "description": "A synthetic classification axis",
-                "sync_source": "sample-source",
+                "derive_from": "tse_sector33",
             }))
             .await;
         assert_eq!(
@@ -45,7 +45,7 @@ mod tests {
                     "key": "sample-axis",
                     "name": "Sample Axis",
                     "description": "A synthetic classification axis",
-                    "sync_source": "sample-source",
+                    "derive_from": "tse_sector33",
                 }),
             ),
         );
@@ -71,7 +71,7 @@ mod tests {
                     "key": "sample-axis",
                     "name": "Sample Axis",
                     "description": "A synthetic classification axis",
-                    "sync_source": "sample-source",
+                    "derive_from": "tse_sector33",
                 }),
             ),
         );
@@ -97,7 +97,7 @@ mod tests {
                     "key": "sample-axis",
                     "name": "Sample Axis",
                     "description": "A synthetic classification axis",
-                    "sync_source": "sample-source",
+                    "derive_from": "tse_sector33",
                 }]),
             ),
         );
@@ -105,7 +105,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn update_changes_fields_and_clears_sync_source(
+    async fn update_changes_fields_and_clears_derive_from(
         #[future] group_axis_test_context: (
             axum_test::TestServer,
             gateway_postgres::DatabaseHandle,
@@ -116,7 +116,7 @@ mod tests {
 
         let updated = server
             .patch("/api/group-axes/sample-axis")
-            .json(&json!({ "name": "Updated Axis", "sync_source": null }))
+            .json(&json!({ "name": "Updated Axis", "derive_from": null }))
             .await;
         assert_eq!(
             (updated.status_code(), updated.json::<Value>()),
@@ -126,7 +126,7 @@ mod tests {
                     "key": "sample-axis",
                     "name": "Updated Axis",
                     "description": "A synthetic classification axis",
-                    "sync_source": null,
+                    "derive_from": null,
                 }),
             ),
         );
@@ -177,6 +177,59 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
+    async fn create_rejects_unsupported_derive_from(
+        #[future] group_axis_test_context: (
+            axum_test::TestServer,
+            gateway_postgres::DatabaseHandle,
+        ),
+    ) {
+        let (server, _) = group_axis_test_context.await;
+        let response = server
+            .post("/api/group-axes")
+            .json(&json!({
+                "key": "sample-axis",
+                "name": "Sample Axis",
+                "description": "A synthetic classification axis",
+                "derive_from": "unregistered-field",
+            }))
+            .await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "unsupported derive_from value: unregistered-field" }),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn update_rejects_unsupported_derive_from(
+        #[future] group_axis_test_context: (
+            axum_test::TestServer,
+            gateway_postgres::DatabaseHandle,
+        ),
+    ) {
+        let (server, _) = group_axis_test_context.await;
+        create_group_axis(&server).await;
+
+        let response = server
+            .patch("/api/group-axes/sample-axis")
+            .json(&json!({ "derive_from": "unregistered-field" }))
+            .await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "unsupported derive_from value: unregistered-field" }),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
     async fn deleting_group_axis_with_groups_returns_conflict(
         #[future] group_axis_test_context: (
             axum_test::TestServer,
@@ -198,7 +251,7 @@ mod tests {
             key: Set("sample-group".into()),
             name: Set("Sample Group".into()),
             description: Set(None),
-            sync_source_code: Set(None),
+            code: Set(None),
         })
         .exec_without_returning(&db)
         .await
@@ -245,7 +298,7 @@ mod tests {
                 "key": "sample-axis",
                 "name": "Sample Axis",
                 "description": "A synthetic classification axis",
-                "sync_source": "sample-source",
+                "derive_from": "tse_sector33",
             }))
             .await;
         assert_response_eq(
@@ -255,7 +308,7 @@ mod tests {
                 "key": "sample-axis",
                 "name": "Sample Axis",
                 "description": "A synthetic classification axis",
-                "sync_source": "sample-source",
+                "derive_from": "tse_sector33",
             })),
         );
     }

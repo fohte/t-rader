@@ -346,7 +346,7 @@ impl StrategyServer {
     /// 業種別の空売りの売買代金と空売り比率を日ごとに返す
     #[tool(
         name = "read_sector_short_ratio",
-        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is a group key on an axis whose sync_source is jquants; its synchronized source code selects the rows. Unknown groups are rejected, and a group without a synchronized code returns an error. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
+        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is a group key on an axis whose derive_from is tse_sector33; its synchronized code selects the rows. Unknown groups are rejected, and a group without a code returns an error. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
         annotations(read_only_hint = true)
     )]
     async fn read_sector_short_ratio(

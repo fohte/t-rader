@@ -89,13 +89,13 @@ mod tests {
         }
     }
 
-    async fn insert_axis(db: &impl sea_orm::ConnectionTrait, sync_source: Option<&str>) {
+    async fn insert_axis(db: &impl sea_orm::ConnectionTrait, derive_from: Option<&str>) {
         group_axis::ActiveModel {
             id: Set(Uuid::new_v4()),
             key: Set("sample-axis".into()),
             name: Set("Sample axis".into()),
             description: Set("Sample description".into()),
-            sync_source: Set(sync_source.map(str::to_owned)),
+            derive_from: Set(derive_from.map(str::to_owned)),
         }
         .insert(db)
         .await
@@ -611,7 +611,7 @@ mod tests {
     }
     #[backend_test_macros::database_test]
     async fn synchronized_axes_reject_all_mutations(db: gateway_postgres::DatabaseHandle) {
-        insert_axis(&db, Some("sample-sync")).await;
+        insert_axis(&db, Some("tse_sector33")).await;
         let server = build_server(db.clone()).await;
         let create = server
             .create_stock_group(CreateStockGroupParams {

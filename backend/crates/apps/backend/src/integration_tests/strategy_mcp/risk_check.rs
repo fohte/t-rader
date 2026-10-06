@@ -94,7 +94,7 @@ mod tests {
             key: Set("sample-axis".to_string()),
             name: Set("Sample axis".to_string()),
             description: Set("Sample axis for tests".to_string()),
-            sync_source: Set(None),
+            derive_from: Set(None),
         })
         .exec(db)
         .await
@@ -115,7 +115,7 @@ mod tests {
             key: Set(key.to_string()),
             name: Set("Sample group".to_string()),
             description: Set(None),
-            sync_source_code: Set(None),
+            code: Set(None),
         })
         .exec(db)
         .await

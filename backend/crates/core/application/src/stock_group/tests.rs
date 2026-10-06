@@ -7,9 +7,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::{
-    CreateStockGroupCommand, FakeStockGroupRepository, StockGroup, StockGroupMembership,
-    StockGroupSyncSourceCodeLookup, StockGroupUseCaseError, StockGroupUseCases,
-    UpdateStockGroupCommand,
+    CreateStockGroupCommand, FakeStockGroupRepository, StockGroup, StockGroupCodeLookup,
+    StockGroupMembership, StockGroupUseCaseError, StockGroupUseCases, UpdateStockGroupCommand,
 };
 use crate::stock_group::SharedStockGroupRepository;
 
@@ -56,48 +55,48 @@ async fn create_group(harness: &Harness) -> Result<StockGroup, StockGroupUseCase
 
 #[rstest]
 #[tokio::test]
-async fn source_code_lookup_distinguishes_missing_and_ambiguous_groups(harness: Harness) {
+async fn derived_code_lookup_distinguishes_missing_and_ambiguous_groups(harness: Harness) {
     harness
         .repository
-        .insert_axis("sample-axis-a", Some("synthetic-source"))
+        .insert_axis("sample-axis-a", Some("tse_sector33"))
         .await;
     harness
         .repository
-        .insert_axis("sample-axis-b", Some("synthetic-source"))
+        .insert_axis("sample-axis-b", Some("tse_sector33"))
         .await;
     harness
         .repository
-        .insert_sync_group("sample-axis-a", "sample-coded", Some("1234"))
+        .insert_group_with_code("sample-axis-a", "sample-coded", Some("1234"))
         .await;
     harness
         .repository
-        .insert_sync_group("sample-axis-a", "sample-pending", None)
+        .insert_group_with_code("sample-axis-a", "sample-pending", None)
         .await;
     harness
         .repository
-        .insert_sync_group("sample-axis-a", "sample-conflict", Some("1234"))
+        .insert_group_with_code("sample-axis-a", "sample-conflict", Some("1234"))
         .await;
     harness
         .repository
-        .insert_sync_group("sample-axis-b", "sample-conflict", Some("5678"))
+        .insert_group_with_code("sample-axis-b", "sample-conflict", Some("5678"))
         .await;
 
     let results = vec![
         harness
             .use_cases
-            .find_sync_source_code("synthetic-source", "sample-unknown")
+            .find_code_by_derive_from("tse_sector33", "sample-unknown")
             .await,
         harness
             .use_cases
-            .find_sync_source_code("synthetic-source", "sample-pending")
+            .find_code_by_derive_from("tse_sector33", "sample-pending")
             .await,
         harness
             .use_cases
-            .find_sync_source_code("synthetic-source", "sample-coded")
+            .find_code_by_derive_from("tse_sector33", "sample-coded")
             .await,
         harness
             .use_cases
-            .find_sync_source_code("synthetic-source", "sample-conflict")
+            .find_code_by_derive_from("tse_sector33", "sample-conflict")
             .await,
     ];
     let results = results
@@ -108,10 +107,10 @@ async fn source_code_lookup_distinguishes_missing_and_ambiguous_groups(harness: 
     assert_eq!(
         results,
         vec![
-            Ok(StockGroupSyncSourceCodeLookup::NotFound),
-            Ok(StockGroupSyncSourceCodeLookup::Missing),
-            Ok(StockGroupSyncSourceCodeLookup::Found("1234".into())),
-            Ok(StockGroupSyncSourceCodeLookup::Ambiguous),
+            Ok(StockGroupCodeLookup::NotFound),
+            Ok(StockGroupCodeLookup::Missing),
+            Ok(StockGroupCodeLookup::Found("1234".into())),
+            Ok(StockGroupCodeLookup::Ambiguous),
         ],
     );
 }
@@ -449,7 +448,7 @@ async fn stock_group_history(
 async fn synchronized_axes_reject_group_and_membership_mutations(harness: Harness) {
     harness
         .repository
-        .insert_axis("sample-axis", Some("sample-sync"))
+        .insert_axis("sample-axis", Some("tse_sector33"))
         .await;
 
     let errors = vec![

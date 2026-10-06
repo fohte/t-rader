@@ -58,7 +58,7 @@ mod tests {
         equity_master_source::{EquityMasterSource, EquityMasterSourceError},
         unit_of_work::{FakeUnitOfWork, SharedUnitOfWork, UnitOfWorkTransaction},
     };
-    use core_domain::equity_master::EquityMasterEntry;
+    use core_domain::equity_master::{EquityMasterAttributeValue, EquityMasterEntry};
     use rstest::{fixture, rstest};
 
     use super::sync_equity_master;
@@ -106,8 +106,10 @@ mod tests {
             id: "ZZ99".to_string(),
             name: "架空銘柄".to_string(),
             market: Some("架空市場".to_string()),
-            sector_name: Some("架空業種".to_string()),
-            sector_code: Some("1234".to_string()),
+            tse_sector33: Some(EquityMasterAttributeValue {
+                code: Some("1234".to_string()),
+                name: "架空業種".to_string(),
+            }),
             product_category: Some("000".to_string()),
         }
     }

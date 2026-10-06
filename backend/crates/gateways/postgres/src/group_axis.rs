@@ -59,7 +59,7 @@ impl GroupAxisRepository for PostgresGroupAxisRepository {
             key: Set(axis.key),
             name: Set(axis.name),
             description: Set(axis.description),
-            sync_source: Set(axis.sync_source),
+            derive_from: Set(axis.derive_from),
             ..Default::default()
         })
         .exec_with_returning(transaction)
@@ -80,7 +80,7 @@ impl GroupAxisRepository for PostgresGroupAxisRepository {
             key: Unchanged(axis.key),
             name: Set(axis.name),
             description: Set(axis.description),
-            sync_source: Set(axis.sync_source),
+            derive_from: Set(axis.derive_from),
         }
         .update(transaction)
         .await
@@ -114,6 +114,6 @@ fn to_group_axis(model: group_axis::Model) -> GroupAxis {
         key: model.key,
         name: model.name,
         description: model.description,
-        sync_source: model.sync_source,
+        derive_from: model.derive_from,
     }
 }

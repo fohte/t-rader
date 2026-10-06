@@ -23,10 +23,10 @@ mod tests {
         insert_test_group_membership(
             &db,
             "MOCK_001",
-            "synthetic-jquants-axis",
+            "synthetic-derived-axis",
             "synthetic-industry",
             "Sample Industry",
-            Some("jquants"),
+            Some("tse_sector33"),
         )
         .await;
 

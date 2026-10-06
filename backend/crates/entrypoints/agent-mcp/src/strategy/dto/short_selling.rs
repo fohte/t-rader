@@ -58,7 +58,7 @@ pub struct ReadShortSaleReportsResult {
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadSectorShortRatioParams {
-    /// `sync_source = 'jquants'` の分類軸にあるグループ key
+    /// `derive_from = 'tse_sector33'` の分類軸にあるグループ key
     pub sector: String,
     /// 対象日の下限 (YYYY-MM-DD, inclusive)。省略時は下限なし
     pub from: Option<NaiveDate>,

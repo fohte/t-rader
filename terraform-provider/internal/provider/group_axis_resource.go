@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
@@ -20,8 +21,9 @@ import (
 )
 
 var (
-	_ resource.Resource                = (*groupAxisResource)(nil)
-	_ resource.ResourceWithImportState = (*groupAxisResource)(nil)
+	_ resource.Resource                 = (*groupAxisResource)(nil)
+	_ resource.ResourceWithImportState  = (*groupAxisResource)(nil)
+	_ resource.ResourceWithUpgradeState = (*groupAxisResource)(nil)
 )
 
 type groupAxisResource struct {
@@ -29,6 +31,13 @@ type groupAxisResource struct {
 }
 
 type groupAxisModel struct {
+	Key         types.String `tfsdk:"key"`
+	Name        types.String `tfsdk:"name"`
+	Description types.String `tfsdk:"description"`
+	DeriveFrom  types.String `tfsdk:"derive_from"`
+}
+
+type groupAxisModelV0 struct {
 	Key         types.String `tfsdk:"key"`
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
@@ -46,6 +55,7 @@ func (r *groupAxisResource) Metadata(_ context.Context, req resource.MetadataReq
 func (r *groupAxisResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "t-rader の分類軸を管理します。",
+		Version:             1,
 		Attributes: map[string]schema.Attribute{
 			"key": schema.StringAttribute{
 				Required:            true,
@@ -61,10 +71,55 @@ func (r *groupAxisResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Required:            true,
 				MarkdownDescription: "分類する観点の説明。",
 			},
-			"sync_source": schema.StringAttribute{
+			"derive_from": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "分類軸のグループ内容を同期するデータソース。",
+				MarkdownDescription: "銘柄マスタの共通項目名。現在は `tse_sector33` を指定できます。",
 			},
+		},
+	}
+}
+
+func (r *groupAxisResource) UpgradeState(_ context.Context) map[int64]resource.StateUpgrader {
+	return map[int64]resource.StateUpgrader{
+		0: {
+			PriorSchema: groupAxisPriorSchemaV0(),
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				if req.State == nil {
+					resp.Diagnostics.AddError("Error upgrading group axis state", "The prior state is unavailable.")
+					return
+				}
+
+				var prior groupAxisModelV0
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				var currentSchema resource.SchemaResponse
+				r.Schema(ctx, resource.SchemaRequest{}, &currentSchema)
+				resp.State = tfsdk.State{Schema: currentSchema.Schema}
+				deriveFrom := prior.SyncSource
+				if !deriveFrom.IsNull() && !deriveFrom.IsUnknown() && deriveFrom.ValueString() == "jquants" {
+					deriveFrom = types.StringValue("tse_sector33")
+				}
+				resp.Diagnostics.Append(resp.State.Set(ctx, groupAxisModel{
+					Key:         prior.Key,
+					Name:        prior.Name,
+					Description: prior.Description,
+					DeriveFrom:  deriveFrom,
+				})...)
+			},
+		},
+	}
+}
+
+func groupAxisPriorSchemaV0() *schema.Schema {
+	return &schema.Schema{
+		Attributes: map[string]schema.Attribute{
+			"key":         schema.StringAttribute{Required: true},
+			"name":        schema.StringAttribute{Required: true},
+			"description": schema.StringAttribute{Required: true},
+			"sync_source": schema.StringAttribute{Optional: true},
 		},
 	}
 }
@@ -96,7 +151,7 @@ func (r *groupAxisResource) Create(ctx context.Context, req resource.CreateReque
 		Key:         plan.Key.ValueString(),
 		Name:        plan.Name.ValueString(),
 		Description: plan.Description.ValueString(),
-		SyncSource:  stringAttributeNullable(plan.SyncSource),
+		DeriveFrom:  stringAttributeNullable(plan.DeriveFrom),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating group axis", err.Error())
@@ -142,7 +197,7 @@ func (r *groupAxisResource) Update(ctx context.Context, req resource.UpdateReque
 	updated, err := client.UpdateGroupAxis(ctx, plan.Key.ValueString(), traderapigen.UpdateGroupAxisRequest{
 		Name:        stringAttributeUpdateNullable(plan.Name),
 		Description: stringAttributeUpdateNullable(plan.Description),
-		SyncSource:  stringAttributeUpdateNullable(plan.SyncSource),
+		DeriveFrom:  stringAttributeUpdateNullable(plan.DeriveFrom),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating group axis", err.Error())
@@ -184,7 +239,7 @@ func modelFromGroupAxis(axis traderapigen.GroupAxis) groupAxisModel {
 		Key:         types.StringValue(axis.Key),
 		Name:        types.StringValue(axis.Name),
 		Description: types.StringValue(axis.Description),
-		SyncSource:  stringNullableAttribute(axis.SyncSource),
+		DeriveFrom:  stringNullableAttribute(axis.DeriveFrom),
 	}
 }
 

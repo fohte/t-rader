@@ -24,10 +24,10 @@ mod tests {
         let client = mock.client().expect("client");
         let axis = group_axis::Entity::insert(group_axis::ActiveModel {
             id: Set(uuid::Uuid::new_v4()),
-            key: Set("sample-jquants-axis".into()),
+            key: Set("sample-derived-axis".into()),
             name: Set("Sample synchronized axis".into()),
             description: Set("Synthetic test axis".into()),
-            sync_source: Set(Some("jquants".into())),
+            derive_from: Set(Some("tse_sector33".into())),
         })
         .exec_with_returning(&db)
         .await
@@ -65,7 +65,7 @@ mod tests {
                 stock.name,
                 stock.market,
                 stock.product_category,
-                group.sync_source_code,
+                group.code,
             ),
             (
                 SyncStats { stocks_upserted: 1 },

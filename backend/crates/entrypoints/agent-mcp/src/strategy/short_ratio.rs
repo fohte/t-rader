@@ -1,15 +1,16 @@
 //! 戦略実行 MCP の `read_sector_short_ratio` tool。`short_ratio` (J-Quants
 //! `/markets/short-ratio` の業種別空売り比率) をグループ key・期間で読む。
 //!
-//! tool の入力は `sync_source = 'jquants'` の分類軸にあるグループ key で受け取る。
-//! `short_ratio.sector33_code` は市場データ側のコードのため、対応する同期元コードを
-//! stock_group から取得する。
+//! tool の入力は `derive_from = 'tse_sector33'` の分類軸にあるグループ key で受け取る。
+//! `short_ratio.sector33_code` は市場データ側のコードのため、対応する `stock_group.code` を
+//! 取得する。
 //! 空売り比率の定義 (空売り (価格規制あり+なし) の売買代金 / 実注文と空売りを合わせた
 //! 売買代金) は JPX の空売り集計公表ページに基づく。戦略に属さない市場データのため
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
+use core_application::equity_master::TSE_SECTOR33_DERIVE_FROM;
 use core_application::short_ratio::ShortRatioQuery;
-use core_application::stock_group::StockGroupSyncSourceCodeLookup;
+use core_application::stock_group::StockGroupCodeLookup;
 use core_application::strategy_scope::StrategyScope;
 use core_domain::short_ratio::ShortRatio;
 use rmcp::ErrorData as McpError;
@@ -17,8 +18,6 @@ use rust_decimal::Decimal;
 
 use super::dto::{ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto};
 use super::{StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params};
-
-const JQUANTS_SYNC_SOURCE: &str = "jquants";
 
 /// 空売り比率 = 空売り (価格規制あり+なし) の売買代金 / (実注文+空売り) の売買代金合計。
 /// いずれかが null (売買が無い日) なら null。合計が 0 のときも 0 除算を避けて null にする。
@@ -63,27 +62,27 @@ impl StrategyServer {
         let sector33_code = self
             .dependencies
             .stock_groups
-            .find_sync_source_code(JQUANTS_SYNC_SOURCE, &params.sector)
+            .find_code_by_derive_from(TSE_SECTOR33_DERIVE_FROM, &params.sector)
             .await
             .map_err(|error| {
                 tracing::error!(%error, "strategy mcp stock group lookup failed");
                 internal_error(format!("database error: {error}"))
             })?;
         let sector33_code = match sector33_code {
-            StockGroupSyncSourceCodeLookup::NotFound => {
+            StockGroupCodeLookup::NotFound => {
                 return Err(invalid_params(format!(
                     "unknown J-Quants industry group key: {:?}",
                     params.sector
                 )));
             }
-            StockGroupSyncSourceCodeLookup::Missing => {
+            StockGroupCodeLookup::Missing => {
                 return Err(internal_error(format!(
                     "J-Quants code for industry group {:?} is not synchronized yet",
                     params.sector
                 )));
             }
-            StockGroupSyncSourceCodeLookup::Found(code) => code,
-            StockGroupSyncSourceCodeLookup::Ambiguous => {
+            StockGroupCodeLookup::Found(code) => code,
+            StockGroupCodeLookup::Ambiguous => {
                 return Err(internal_error(format!(
                     "J-Quants code for industry group {:?} is ambiguous",
                     params.sector

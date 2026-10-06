@@ -28,7 +28,7 @@ func TestGroupAxisResourceCreate(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		writeGroupAxisResponse(t, w, `{"key":"sample-axis","name":"Sample Axis","description":"A synthetic classification axis","sync_source":null}`)
+		writeGroupAxisResponse(t, w, `{"key":"sample-axis","name":"Sample Axis","description":"A synthetic classification axis","derive_from":"tse_sector33"}`)
 	})
 	resourceSchema := groupAxisResourceSchema(t)
 	plan := tfsdk.Plan{Schema: resourceSchema.Schema}
@@ -36,7 +36,7 @@ func TestGroupAxisResourceCreate(t *testing.T) {
 		Key:         types.StringValue("sample-axis"),
 		Name:        types.StringValue("Sample Axis"),
 		Description: types.StringValue("A synthetic classification axis"),
-		SyncSource:  types.StringNull(),
+		DeriveFrom:  types.StringValue("tse_sector33"),
 	})
 	if planDiagnostics.HasError() {
 		t.Fatalf("build create plan: %v", planDiagnostics)
@@ -65,18 +65,67 @@ func TestGroupAxisResourceCreate(t *testing.T) {
 		Request: &apiRequestObservation{
 			Method: http.MethodPost,
 			Path:   "/api/group-axes",
-			Body:   `{"description":"A synthetic classification axis","key":"sample-axis","name":"Sample Axis"}`,
+			Body:   `{"derive_from":"tse_sector33","description":"A synthetic classification axis","key":"sample-axis","name":"Sample Axis"}`,
 		},
 		State: groupAxisModel{
 			Key:         types.StringValue("sample-axis"),
 			Name:        types.StringValue("Sample Axis"),
 			Description: types.StringValue("A synthetic classification axis"),
-			SyncSource:  types.StringNull(),
+			DeriveFrom:  types.StringValue("tse_sector33"),
 		},
 		Diagnostics: nil,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("create output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestGroupAxisResourceUpgradeStateV0(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	resourceSchema := groupAxisResourceSchema(t)
+	priorState := tfsdk.State{Schema: *groupAxisPriorSchemaV0()}
+	priorDiagnostics := priorState.Set(ctx, groupAxisModelV0{
+		Key:         types.StringValue("sample-axis"),
+		Name:        types.StringValue("Sample Axis"),
+		Description: types.StringValue("A synthetic classification axis"),
+		SyncSource:  types.StringValue("jquants"),
+	})
+	if priorDiagnostics.HasError() {
+		t.Fatalf("build version 0 state: %v", priorDiagnostics)
+	}
+
+	upgrader := (&groupAxisResource{}).UpgradeState(ctx)[0]
+	var response resource.UpgradeStateResponse
+	upgrader.StateUpgrader(ctx, resource.UpgradeStateRequest{State: &priorState}, &response)
+
+	var upgraded groupAxisModel
+	response.Diagnostics.Append(response.State.Get(ctx, &upgraded)...)
+	got := struct {
+		SchemaVersion int64
+		State         groupAxisModel
+		Diagnostics   []apiDiagnosticObservation
+	}{
+		SchemaVersion: resourceSchema.Schema.Version,
+		State:         upgraded,
+		Diagnostics:   apiResourceDiagnosticsOutput(response.Diagnostics),
+	}
+	want := struct {
+		SchemaVersion int64
+		State         groupAxisModel
+		Diagnostics   []apiDiagnosticObservation
+	}{
+		SchemaVersion: 1,
+		State: groupAxisModel{
+			Key:         types.StringValue("sample-axis"),
+			Name:        types.StringValue("Sample Axis"),
+			Description: types.StringValue("A synthetic classification axis"),
+			DeriveFrom:  types.StringValue("tse_sector33"),
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("state upgrade output mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -90,7 +139,7 @@ func TestGroupAxisResourceRead(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		writeGroupAxisResponse(t, w, `{"key":"sample-axis","name":"Refreshed Axis","description":"A synthetic classification axis","sync_source":"sample-source"}`)
+		writeGroupAxisResponse(t, w, `{"key":"sample-axis","name":"Refreshed Axis","description":"A synthetic classification axis","derive_from":"tse_sector33"}`)
 	})
 	resourceSchema := groupAxisResourceSchema(t)
 	state := tfsdk.State{Schema: resourceSchema.Schema}
@@ -98,7 +147,7 @@ func TestGroupAxisResourceRead(t *testing.T) {
 		Key:         types.StringValue("sample-axis"),
 		Name:        types.StringValue("Stale Axis"),
 		Description: types.StringValue("A stale description"),
-		SyncSource:  types.StringNull(),
+		DeriveFrom:  types.StringNull(),
 	})
 	if stateDiagnostics.HasError() {
 		t.Fatalf("build prior state: %v", stateDiagnostics)
@@ -125,7 +174,7 @@ func TestGroupAxisResourceRead(t *testing.T) {
 			Key:         types.StringValue("sample-axis"),
 			Name:        types.StringValue("Refreshed Axis"),
 			Description: types.StringValue("A synthetic classification axis"),
-			SyncSource:  types.StringValue("sample-source"),
+			DeriveFrom:  types.StringValue("tse_sector33"),
 		},
 		Diagnostics: nil,
 	}
@@ -134,7 +183,7 @@ func TestGroupAxisResourceRead(t *testing.T) {
 	}
 }
 
-func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
+func TestGroupAxisResourceUpdateClearsDeriveFrom(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -144,7 +193,7 @@ func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		writeGroupAxisResponse(t, w, `{"key":"sample-axis","name":"Updated Axis","description":"A synthetic classification axis","sync_source":null}`)
+		writeGroupAxisResponse(t, w, `{"key":"sample-axis","name":"Updated Axis","description":"A synthetic classification axis","derive_from":null}`)
 	})
 	resourceSchema := groupAxisResourceSchema(t)
 	state := tfsdk.State{Schema: resourceSchema.Schema}
@@ -152,7 +201,7 @@ func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
 		Key:         types.StringValue("sample-axis"),
 		Name:        types.StringValue("Sample Axis"),
 		Description: types.StringValue("A synthetic classification axis"),
-		SyncSource:  types.StringValue("sample-source"),
+		DeriveFrom:  types.StringValue("tse_sector33"),
 	})
 	if stateDiagnostics.HasError() {
 		t.Fatalf("build prior state: %v", stateDiagnostics)
@@ -162,7 +211,7 @@ func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
 		Key:         types.StringValue("sample-axis"),
 		Name:        types.StringValue("Updated Axis"),
 		Description: types.StringValue("A synthetic classification axis"),
-		SyncSource:  types.StringNull(),
+		DeriveFrom:  types.StringNull(),
 	})
 	if planDiagnostics.HasError() {
 		t.Fatalf("build update plan: %v", planDiagnostics)
@@ -187,13 +236,13 @@ func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
 		Request: &apiRequestObservation{
 			Method: http.MethodPatch,
 			Path:   "/api/group-axes/sample-axis",
-			Body:   `{"description":"A synthetic classification axis","name":"Updated Axis","sync_source":null}`,
+			Body:   `{"derive_from":null,"description":"A synthetic classification axis","name":"Updated Axis"}`,
 		},
 		State: groupAxisModel{
 			Key:         types.StringValue("sample-axis"),
 			Name:        types.StringValue("Updated Axis"),
 			Description: types.StringValue("A synthetic classification axis"),
-			SyncSource:  types.StringNull(),
+			DeriveFrom:  types.StringNull(),
 		},
 		Diagnostics: nil,
 	}
@@ -220,7 +269,7 @@ func TestGroupAxisResourceDeleteReportsConflict(t *testing.T) {
 		Key:         types.StringValue("sample-axis"),
 		Name:        types.StringValue("Sample Axis"),
 		Description: types.StringValue("A synthetic classification axis"),
-		SyncSource:  types.StringNull(),
+		DeriveFrom:  types.StringNull(),
 	})
 	if stateDiagnostics.HasError() {
 		t.Fatalf("build prior state: %v", stateDiagnostics)
@@ -260,7 +309,7 @@ func TestGroupAxisResourceKeyChangeRequiresReplacement(t *testing.T) {
 		Key:         types.StringValue("sample-axis"),
 		Name:        types.StringValue("Sample Axis"),
 		Description: types.StringValue("A synthetic classification axis"),
-		SyncSource:  types.StringNull(),
+		DeriveFrom:  types.StringNull(),
 	})
 	if stateDiagnostics.HasError() {
 		t.Fatalf("build prior state: %v", stateDiagnostics)
@@ -270,7 +319,7 @@ func TestGroupAxisResourceKeyChangeRequiresReplacement(t *testing.T) {
 		Key:         types.StringValue("replacement-axis"),
 		Name:        types.StringValue("Sample Axis"),
 		Description: types.StringValue("A synthetic classification axis"),
-		SyncSource:  types.StringNull(),
+		DeriveFrom:  types.StringNull(),
 	})
 	if planDiagnostics.HasError() {
 		t.Fatalf("build replacement plan: %v", planDiagnostics)

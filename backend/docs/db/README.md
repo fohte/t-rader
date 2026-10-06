@@ -661,7 +661,7 @@ erDiagram
   text key
   text name
   text description
-  text sync_source
+  text derive_from
 }
 "public.stock_group" {
   uuid id
@@ -669,7 +669,7 @@ erDiagram
   text key
   text name
   text description
-  text sync_source_code
+  text code
 }
 "public.stock_group_member" {
   varchar stock_id FK

@@ -11,7 +11,7 @@ use super::types::{NewStockGroup, StockGroup, StockGroupMembership};
 pub struct GroupAxis {
     pub id: Uuid,
     pub key: String,
-    pub sync_source: Option<String>,
+    pub derive_from: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -38,10 +38,10 @@ pub trait StockGroupRepository: Send + Sync {
         group_key: &str,
     ) -> Result<Option<StockGroup>, StockGroupRepositoryError>;
 
-    async fn find_sync_source_codes(
+    async fn find_codes_by_derive_from(
         &self,
         transaction: &UnitOfWorkTransaction,
-        sync_source: &str,
+        derive_from: &str,
         group_key: &str,
     ) -> Result<Vec<Option<String>>, StockGroupRepositoryError>;
 
