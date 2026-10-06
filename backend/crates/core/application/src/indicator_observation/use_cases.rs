@@ -138,6 +138,16 @@ impl IndicatorObservationUseCases {
             name: definition.name.to_string(),
             kind: definition.kind.to_string(),
         };
+        self.ingest_single_series(source, definition.series_id, metadata)
+            .await
+    }
+
+    pub async fn ingest_single_series(
+        &self,
+        source: &dyn IndicatorObservationSource,
+        series_id: &str,
+        metadata: IndicatorObservationMetadata,
+    ) -> Result<usize, String> {
         self.repository
             .ensure_indicator(metadata.clone())
             .await
@@ -150,7 +160,7 @@ impl IndicatorObservationUseCases {
             .map_err(|error| error.to_string())?;
         let observation_start = latest.map(|date| date - Duration::days(LOOKBACK_DAYS));
         let observations: Vec<IndicatorObservation> = source
-            .fetch_observations(definition.series_id, observation_start)
+            .fetch_observations(series_id, observation_start)
             .await
             .map_err(|error| error.to_string())?;
 

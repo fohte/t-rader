@@ -27,6 +27,7 @@ use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
 use gateway_alpha_vantage::AlphaVantageClient;
 use gateway_e_stat::EStatCalendarEventSource;
+use gateway_eoddata::EodDataClient;
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
@@ -280,6 +281,25 @@ async fn main() -> Result<(), StartupError> {
         }
     };
 
+    let eoddata_kospi_source: Option<SharedIndicatorObservationSource> =
+        match std::env::var("EODDATA_API_KEY") {
+            Ok(api_key) if !api_key.trim().is_empty() => {
+                let client = Arc::new(EodDataClient::new(api_key.trim().to_string()).map_err(
+                    |error| {
+                        StartupError::Config(format!(
+                            "failed to initialize EODData client: {error}"
+                        ))
+                    },
+                )?);
+                let source: SharedIndicatorObservationSource = client;
+                Some(source)
+            }
+            _ => {
+                tracing::warn!("EODDATA_API_KEY が未設定のため、KOSPI の取り込みを起動しません");
+                None
+            }
+        };
+
     let e_stat_calendar_source: SharedCalendarEventSource =
         Arc::new(EStatCalendarEventSource::new().map_err(|error| {
             StartupError::Config(format!(
@@ -371,6 +391,7 @@ async fn main() -> Result<(), StartupError> {
         indicator_observations: use_cases.indicator_observations(),
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
+        eoddata_kospi_source,
         e_stat_calendar_source: Some(e_stat_calendar_source),
         alpha_vantage_calendar_source,
         fred_calendar_event_source,

@@ -58,6 +58,7 @@ pub struct SchedulerDependencies {
     pub indicator_observations: IndicatorObservationUseCases,
     pub ingest_run_log: SharedIngestRunLog,
     pub fred_source: Option<SharedIndicatorObservationSource>,
+    pub eoddata_kospi_source: Option<SharedIndicatorObservationSource>,
     pub e_stat_calendar_source: Option<SharedCalendarEventSource>,
     pub alpha_vantage_calendar_source: Option<SharedCalendarEventSource>,
     pub fred_calendar_event_source: Option<SharedCalendarEventSource>,

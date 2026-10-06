@@ -262,6 +262,14 @@ mod tests {
                             "worker_jobs": []
                         },
                         {
+                            "job": "eoddata_kospi_ingest",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": "<expected-data-date>",
+                            "worker_jobs": []
+                        },
+                        {
                             "job": "fred_release_dates_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
