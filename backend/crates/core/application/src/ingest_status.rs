@@ -26,6 +26,7 @@ pub const ALPHA_VANTAGE_CALENDAR_INGEST_JOB: &str = "alpha_vantage_calendar_inge
 pub const FRED_RELEASE_DATES_INGEST_JOB: &str = "fred_release_dates_ingest";
 pub const BOJ_CALENDAR_EVENT_INGEST_JOB: &str = "boj_calendar_event_ingest";
 pub const ECB_CALENDAR_EVENT_INGEST_JOB: &str = "ecb_calendar_event_ingest";
+pub const FED_CALENDAR_EVENT_INGEST_JOB: &str = "fed_calendar_event_ingest";
 pub const SHORT_RATIO_INGEST_JOB: &str = "short_ratio_ingest";
 pub const SHORT_SALE_REPORT_INGEST_JOB: &str = "short_sale_report_ingest";
 pub const MARGIN_INGEST_JOB: &str = "margin_ingest";

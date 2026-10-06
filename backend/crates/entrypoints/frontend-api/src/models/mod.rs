@@ -3,6 +3,7 @@ pub mod agent_options;
 pub mod annotation;
 pub mod bar;
 pub mod bar_response;
+pub mod calendar;
 pub mod change_history;
 pub mod comment;
 pub mod config;
@@ -34,6 +35,7 @@ pub use agent_config::{
 pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 pub use annotation::{AnnotationResponse, CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar_response::BarResponse;
+pub use calendar::CalendarEventsResponse;
 pub use change_history::ChangeHistoryResponse;
 pub use comment::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
 pub use config::ConfigResponse;

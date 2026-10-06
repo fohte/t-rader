@@ -162,6 +162,36 @@ mod tests {
 
     #[async_trait]
     impl CalendarEventRepository for FakeCalendarEventRepository {
+        async fn list_events(
+            &self,
+            date_range: &DateRange,
+        ) -> Result<Vec<CalendarEvent>, CalendarEventRepositoryError> {
+            let mut events = self
+                .snapshot()
+                .into_iter()
+                .filter(|event| {
+                    event.event_date >= date_range.from && event.event_date <= date_range.to
+                })
+                .collect::<Vec<_>>();
+            events.sort_by(|left, right| {
+                (
+                    &left.event_date,
+                    &left.country,
+                    &left.title,
+                    &left.source,
+                    &left.external_id,
+                )
+                    .cmp(&(
+                        &right.event_date,
+                        &right.country,
+                        &right.title,
+                        &right.source,
+                        &right.external_id,
+                    ))
+            });
+            Ok(events)
+        }
+
         async fn upsert(
             &self,
             _transaction: &UnitOfWorkTransaction,

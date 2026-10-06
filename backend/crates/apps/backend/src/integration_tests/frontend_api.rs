@@ -156,6 +156,7 @@ mod agent_config;
 mod agent_options;
 mod annotations;
 mod bars;
+mod calendar;
 mod comments;
 mod config;
 mod custom_indicators;

@@ -38,6 +38,7 @@ pub struct SchedulerDependencies {
     pub calendar_events: CalendarEventUseCases,
     pub boj_calendar_source: Option<SharedCalendarEventSource>,
     pub ecb_calendar_source: Option<SharedCalendarEventSource>,
+    pub fed_calendar_source: Option<SharedCalendarEventSource>,
     pub market_daily_bar_source: Option<SharedMarketDailyBarSource>,
     pub news: NewsUseCases,
     pub news_aggregator: SharedNewsAggregator,

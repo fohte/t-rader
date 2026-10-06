@@ -313,11 +313,11 @@ mod tests {
         assert_eq!(
             (
                 indicator_latest_date_query(FRED_SERIES, 12),
-                indicator_latest_date_query(TWSE_SERIES, 16),
+                indicator_latest_date_query(TWSE_SERIES, 19),
             ),
             (
-                "SELECT MAX(date) FROM public.indicator_observation WHERE indicator_id IN ($12, $13, $14, $15)".to_string(),
-                "SELECT MAX(date) FROM public.indicator_observation WHERE indicator_id IN ($16, $17)".to_string(),
+                "SELECT MAX(date) FROM public.indicator_observation WHERE indicator_id IN ($12, $13, $14, $15, $16, $17, $18)".to_string(),
+                "SELECT MAX(date) FROM public.indicator_observation WHERE indicator_id IN ($19, $20)".to_string(),
             ),
         );
     }

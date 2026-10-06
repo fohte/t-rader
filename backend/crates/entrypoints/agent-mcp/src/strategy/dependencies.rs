@@ -3,6 +3,7 @@ use std::sync::Arc;
 use core_application::account_risk_policy::AccountRiskPolicyUseCases;
 use core_application::annotation::{AnnotationReadUseCases, AnnotationUseCases};
 use core_application::bars::BarsUseCases;
+use core_application::calendar::read_use_cases::CalendarEventReadUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
 use core_application::daily_bar_source::SharedDailyBarSource;
@@ -35,6 +36,7 @@ pub struct StrategyServerDependencies {
     pub annotation_reads: AnnotationReadUseCases,
     pub annotations: AnnotationUseCases,
     pub bars: BarsUseCases,
+    pub calendar_event_reads: CalendarEventReadUseCases,
     pub comment_reads: CommentReadUseCases,
     pub comments: CommentUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
