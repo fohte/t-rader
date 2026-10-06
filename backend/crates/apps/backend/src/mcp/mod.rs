@@ -90,6 +90,7 @@ pub(crate) fn strategy_server_dependencies(
         annotation_reads: use_cases.annotation_reads(),
         annotations: use_cases.annotations(),
         bars: use_cases.bars(),
+        calendar_event_reads: use_cases.calendar_event_reads(),
         comment_reads: use_cases.comment_reads(),
         comments: use_cases.comments(),
         custom_indicators: use_cases.custom_indicators(),
@@ -353,6 +354,7 @@ mod tests {
         assert_eq!(
             tool_names,
             vec![
+                "get_note_status_change_counts",
                 "get_strategy_config",
                 "get_strategy_task_status",
                 "list_note_kinds",

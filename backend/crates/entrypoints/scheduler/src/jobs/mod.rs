@@ -17,6 +17,7 @@ pub mod earnings_schedule;
 pub mod ecb_calendar;
 pub mod edinet_holdings;
 pub mod equity_master;
+pub mod fed_calendar;
 pub mod financial_summary;
 pub mod fred;
 pub mod fred_release_dates;

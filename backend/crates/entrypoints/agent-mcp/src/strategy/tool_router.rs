@@ -3,6 +3,7 @@
 //! 各メソッドは ctx から検証済み `StrategyScope` (と必要なら execution_id) を作り、対応する
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
 
+mod calendar;
 mod news;
 mod predictions;
 mod stock_groups;
@@ -57,10 +58,10 @@ impl StrategyServer {
         self.list_note_kinds_inner().await.map(Json)
     }
 
-    /// 複数銘柄 + 期間で日足バーデータをまとめて取得する
+    /// 複数銘柄 + 期間で指定した時間足のバーデータをまとめて取得する
     #[tool(
         name = "query_data",
-        description = "Fetch daily OHLCV bars for one or more instruments (up to 100 per call, no duplicates) over a shared date range from the DB. Results are in the same order as instrument_ids; an instrument with no ingested data returns an empty bars array rather than an error.",
+        description = "Fetch OHLCV bars for one or more instruments (up to 100 per call, no duplicates) over a shared date range from the DB. timeframe accepts 1m, 5m, 15m, 1h, 4h, or 1d and defaults to 1d. Intraday requests are limited to 50,000 estimated bars per call, based on inclusive calendar days, instruments, and maximum bars per calendar day. Intraday bars are available for US instruments; 5m, 15m, 1h, and 4h bars are aggregated from 1m data. Results are in the same order as instrument_ids; an instrument with no data returns an empty bars array rather than an error.",
         annotations(read_only_hint = true)
     )]
     async fn query_data(
@@ -359,10 +360,10 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// マクロ指標 (ドル円, VIX, 米10年債利回り, 日経225 等) の日次観測値を期間指定で返す
+    /// マクロ指標 (ドル円, VIX, 米10年債利回り, 日経225, 米国株価指数等) の日次観測値を期間指定で返す
     #[tool(
         name = "read_macro_indicator",
-        description = "Read daily observations (date + value) for a macro indicator between from and to (inclusive), oldest first. Discover available indicator_id values via search_refs (ref_kind=indicator), e.g. USDJPY, VIX, US10Y, NIKKEI225. Values are in the source's native units (USDJPY: yen per dollar, VIX: index level, US10Y: percent). Days with no observation (holidays, no update) are simply absent rather than interpolated; USDJPY in particular is batched weekly at the source and can lag by up to about a week, so the last item's date shows how fresh the latest available value is. Returns an empty list if the indicator_id is unknown or has no data in range.",
+        description = "Read daily observations (date + value) for a macro indicator between from and to (inclusive), oldest first. Discover available indicator_id values via search_refs (ref_kind=indicator). Values use source-native units: exchange rates use quoted currency per base currency, index and volatility series use index points, and yields use percentages. Days with no observation (holidays, no update) are simply absent rather than interpolated; USDJPY in particular is batched weekly at the source and can lag by up to about a week, so the last item's date shows how fresh the latest available value is. Returns an empty list if the indicator_id is unknown or has no data in range.",
         annotations(read_only_hint = true)
     )]
     async fn read_macro_indicator(
@@ -470,6 +471,7 @@ impl StrategyServer {
         Self::base_tool_router()
             + Self::stock_groups_tool_router()
             + Self::strategy_earnings_targets_tool_router()
+            + Self::calendar_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::news_tool_router()
@@ -570,6 +572,7 @@ mod tests {
                 ("query_data", Some(true)),
                 ("query_youtube", Some(true)),
                 ("read_annotations", Some(true)),
+                ("read_calendar", Some(true)),
                 ("read_comments", Some(true)),
                 ("read_fin_summary", Some(true)),
                 ("read_macro_indicator", Some(true)),

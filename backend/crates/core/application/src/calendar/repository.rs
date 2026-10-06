@@ -16,6 +16,11 @@ pub enum CalendarEventRepositoryError {
 
 #[async_trait]
 pub trait CalendarEventRepository: Send + Sync {
+    async fn list_events(
+        &self,
+        date_range: &DateRange,
+    ) -> Result<Vec<CalendarEvent>, CalendarEventRepositoryError>;
+
     async fn upsert(
         &self,
         transaction: &UnitOfWorkTransaction,

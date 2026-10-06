@@ -9,6 +9,7 @@ pub(crate) use test_api::{
 };
 
 mod annotations;
+mod calendar_tests;
 mod comments;
 mod data;
 mod eval;

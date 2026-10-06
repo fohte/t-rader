@@ -29,6 +29,28 @@ impl PostgresBarsRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self { db }
     }
+
+    async fn us_instrument_ids(
+        &self,
+        instrument_ids: &[String],
+    ) -> Result<Vec<String>, BarsRepositoryError> {
+        if instrument_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        instruments::Entity::find()
+            .filter(instruments::Column::Id.is_in(instrument_ids.to_vec()))
+            .filter(instruments::Column::Market.eq(Market::Us.to_string()))
+            .all(&self.db)
+            .await
+            .map(|instruments| {
+                instruments
+                    .into_iter()
+                    .map(|instrument| instrument.id)
+                    .collect()
+            })
+            .map_err(repository_error)
+    }
 }
 
 #[async_trait]
@@ -39,11 +61,11 @@ impl BarsRepository for PostgresBarsRepository {
         };
 
         if timeframe != Timeframe::Daily {
-            let instrument = instruments::Entity::find_by_id(&query.instrument_id)
-                .one(&self.db)
-                .await
-                .map_err(repository_error)?;
-            if instrument.is_none_or(|instrument| instrument.market != Market::Us.to_string()) {
+            if self
+                .us_instrument_ids(std::slice::from_ref(&query.instrument_id))
+                .await?
+                .is_empty()
+            {
                 return Ok(Vec::new());
             }
 
@@ -62,6 +84,24 @@ impl BarsRepository for PostgresBarsRepository {
         &self,
         query: BarsByInstrumentsQuery,
     ) -> Result<Vec<Bar>, BarsRepositoryError> {
+        let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
+            return Ok(Vec::new());
+        };
+
+        if timeframe != Timeframe::Daily {
+            let us_instrument_ids = self.us_instrument_ids(&query.instrument_ids).await?;
+
+            return bar_queries::find_intraday_bars_by_instruments(
+                &self.db,
+                &us_instrument_ids,
+                timeframe,
+                query.from,
+                query.to,
+            )
+            .await
+            .map_err(repository_error);
+        }
+
         bar_queries::find_bars_by_instruments(
             &self.db,
             &query.instrument_ids,

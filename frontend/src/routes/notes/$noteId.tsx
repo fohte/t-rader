@@ -105,6 +105,9 @@ function NoteDetailPage() {
             source={selectedVersion.body_md}
             graphs={selectedVersion.graphs_json}
             noteLinks={noteLinks?.outgoing}
+            resolvedPriceReferences={
+              selectedVersion.resolved_price_references_json
+            }
           />
           <NoteVersionDiffPanel
             key={selectedVersion.id}
