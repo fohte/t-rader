@@ -245,20 +245,38 @@ fn has_price_unit(text: &str, number_end: usize) -> bool {
 }
 
 fn bar_count_unit_end(text: &str, number_end: usize) -> Option<usize> {
+    let (unit, unit_end) = unit_after(text, number_end, &["営業日", "取引日", "足", "本"])?;
+    if matches!(unit, "足" | "本")
+        && text[unit_end..]
+            .chars()
+            .next()
+            .is_some_and(is_cjk_ideograph)
+    {
+        return None;
+    }
+    if matches!(unit, "営業日" | "取引日") && text[unit_end..].starts_with('分') {
+        return Some(unit_end + '分'.len_utf8());
+    }
+    Some(unit_end)
+}
+
+fn is_cjk_ideograph(character: char) -> bool {
+    ('\u{4E00}'..='\u{9FFF}').contains(&character)
+}
+
+fn unit_after(
+    text: &str,
+    number_end: usize,
+    units: &[&'static str],
+) -> Option<(&'static str, usize)> {
     let suffix = &text[number_end..];
     let trimmed_suffix = suffix.trim_start();
     let unit_start = number_end + suffix.len() - trimmed_suffix.len();
-    ["営業日", "取引日", "足", "本"]
-        .into_iter()
-        .find(|unit| trimmed_suffix.starts_with(unit))
-        .map(|unit| {
-            let unit_end = unit_start + unit.len();
-            if matches!(unit, "営業日" | "取引日") && text[unit_end..].starts_with('分') {
-                unit_end + '分'.len_utf8()
-            } else {
-                unit_end
-            }
-        })
+    units.iter().copied().find_map(|unit| {
+        trimmed_suffix
+            .strip_prefix(unit)
+            .map(|_| (unit, unit_start + unit.len()))
+    })
 }
 
 fn extend_price_unit(text: &str, mut end: usize) -> usize {
@@ -269,13 +287,8 @@ fn extend_price_unit(text: &str, mut end: usize) -> usize {
 }
 
 fn price_unit_end(text: &str, number_end: usize) -> Option<usize> {
-    let suffix = &text[number_end..];
-    let trimmed_suffix = suffix.trim_start();
-    let unit_start = number_end + suffix.len() - trimmed_suffix.len();
-    ["円", "万", "億", "千", "株", "ドル"]
-        .into_iter()
-        .find(|unit| trimmed_suffix.starts_with(unit))
-        .map(|unit| unit_start + unit.len())
+    unit_after(text, number_end, &["円", "万", "億", "千", "株", "ドル"])
+        .map(|(_, unit_end)| unit_end)
 }
 
 fn relative_expression_ranges(text: &str, numbers: &[NumberRange]) -> Vec<Range<usize>> {
@@ -348,10 +361,11 @@ mod tests {
         "価格候補の数値「9876」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
     ])]
     #[case::bar_counts(
-        "73足、18 本、61営業日、34 営業日分、26取引日、45 取引日分、10637本",
+        "73足、18 本、53本のローソク足、61営業日、34 営業日分、26取引日、45 取引日分、10637本",
         vec![
             "ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".to_string(),
             "ローソク足の本数「18 本」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".to_string(),
+            "ローソク足の本数「53本」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".to_string(),
             "ローソク足の本数「61営業日」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".to_string(),
             "ローソク足の本数「34 営業日分」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".to_string(),
             "ローソク足の本数「26取引日」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".to_string(),
@@ -377,6 +391,13 @@ mod tests {
         "相対表現「2-3%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".to_string(),
     ])]
     #[case::ordinary_date_is_not_a_price("2030-01-02", vec![])]
+    #[case::price_followed_by_honjitsu(
+        "終値 2,673 本日は反落",
+        vec![
+            "価格候補の数値「2,673」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        ],
+    )]
+    #[case::date_followed_by_ashimoto("9/6 足元では", vec![])]
     #[case::links_are_not_scanned(
         "[[price:fictional-code@2030-01-02:close]] [[change:fictional-code@2030-01-02..2030-01-03:close]]",
         vec![],
@@ -391,10 +412,7 @@ mod tests {
         "},
         vec![],
     )]
-    fn scans_only_unlinked_price_and_relative_values(
-        #[case] body: &str,
-        #[case] expected: Vec<String>,
-    ) {
+    fn scans_unlinked_note_body_warnings(#[case] body: &str, #[case] expected: Vec<String>) {
         assert_eq!(scan_note_body_warnings(body), expected);
     }
 }
