@@ -1,5 +1,4 @@
 use super::super::graph_dto::GraphDef;
-use core_application::group_axis::GroupAxisUseCaseError;
 use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot, frontmatter_tags,
 };
@@ -95,11 +94,6 @@ pub(crate) fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
     }
 }
 
-fn group_axis_error_to_mcp(error: GroupAxisUseCaseError) -> McpError {
-    tracing::error!(error = %error, "strategy mcp failed to list group axes");
-    internal_error(format!("database error: {error}"))
-}
-
 impl StrategyServer {
     pub(crate) async fn read_note_inner(
         &self,
@@ -181,20 +175,10 @@ impl StrategyServer {
             return Ok(Some(vec![(kind, id)]));
         }
 
-        let mut axis_keys = self
-            .dependencies
-            .group_axes
-            .list()
-            .await
-            .map_err(group_axis_error_to_mcp)?
-            .into_iter()
-            .map(|axis| axis.key)
-            .collect::<Vec<_>>();
-        axis_keys.sort();
         let memberships = self
             .dependencies
             .stock_groups
-            .list_memberships(std::slice::from_ref(&id), &axis_keys)
+            .list_memberships(std::slice::from_ref(&id), None)
             .await
             .map_err(super::super::stock_groups::stock_group_error)?;
         let mut references = vec![(kind, id)];

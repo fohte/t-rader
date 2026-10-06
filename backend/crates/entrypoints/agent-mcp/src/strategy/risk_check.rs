@@ -104,7 +104,7 @@ impl StrategyServer {
         let memberships = self
             .dependencies
             .stock_groups
-            .list_memberships(&symbols, &axis_keys)
+            .list_memberships(&symbols, Some(&axis_keys))
             .await
             .map_err(super::stock_groups::stock_group_error)?;
         let mut groups_by_axis_and_symbol: HashMap<(String, String), BTreeSet<String>> =

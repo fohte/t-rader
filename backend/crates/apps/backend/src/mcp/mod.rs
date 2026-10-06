@@ -96,7 +96,6 @@ pub(crate) fn strategy_server_dependencies(
         custom_indicators: use_cases.custom_indicators(),
         daily_bar_source,
         financial_summaries: use_cases.financial_summaries(),
-        group_axes: use_cases.group_axes(),
         indicator_observations: use_cases.indicator_observations(),
         kata_executor,
         llm_client,
