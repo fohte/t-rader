@@ -233,7 +233,7 @@ mod tests {
                 WriteNoteParams {
                     note_id: None,
                     title: Some("first note".into()),
-                    body_md: Some("close 12,345円 then -6.0%".into()),
+                    body_md: Some("close 12,345円 then -6.0%; 73足".into()),
                     kind: Some(Some("sample-kind".into())),
                     frontmatter_json: None,
                     change_reason: None,
@@ -250,6 +250,7 @@ mod tests {
                 warnings: vec![
                     "価格候補の数値「12,345円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
                     "相対表現「-6.0%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                    "ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".into(),
                 ],
             },
         );
@@ -272,7 +273,7 @@ mod tests {
                 version_id: Uuid::nil(),
                 version_no: 1,
                 title: "first note".into(),
-                body_md: Some("close 12,345円 then -6.0%".into()),
+                body_md: Some("close 12,345円 then -6.0%; 73足".into()),
                 frontmatter_json: serde_json::Map::new(),
                 tags: vec![],
                 kind: Some("sample-kind".into()),
