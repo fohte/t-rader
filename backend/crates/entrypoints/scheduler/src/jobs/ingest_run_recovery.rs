@@ -101,7 +101,7 @@ mod tests {
         assert_eq!(
             (result, log.calls.lock().await.clone()),
             (
-                Ok(19),
+                Ok(20),
                 vec![
                     ("fred_ingest".to_string(), now - Duration::hours(2)),
                     (
@@ -122,6 +122,10 @@ mod tests {
                     ),
                     (
                         "ecb_calendar_event_ingest".to_string(),
+                        now - Duration::hours(2),
+                    ),
+                    (
+                        "fed_calendar_event_ingest".to_string(),
                         now - Duration::hours(2),
                     ),
                     ("short_ratio_ingest".to_string(), now - Duration::hours(2)),

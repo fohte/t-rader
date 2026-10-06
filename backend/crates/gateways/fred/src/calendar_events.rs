@@ -24,7 +24,7 @@ struct ReleaseDefinition {
     minute: u32,
 }
 
-const RELEASES: [ReleaseDefinition; 6] = [
+const RELEASES: [ReleaseDefinition; 5] = [
     ReleaseDefinition {
         id: 10,
         title: "消費者物価指数 (CPI)",
@@ -59,13 +59,6 @@ const RELEASES: [ReleaseDefinition; 6] = [
         category: CalendarEventCategory::Indicator,
         hour: 8,
         minute: 30,
-    },
-    ReleaseDefinition {
-        id: 101,
-        title: "FOMC 声明",
-        category: CalendarEventCategory::CentralBank,
-        hour: 14,
-        minute: 0,
     },
 ];
 
@@ -408,13 +401,6 @@ mod tests {
             (54, json!({"count": 0, "release_dates": []})),
             (53, json!({"count": 0, "release_dates": []})),
             (9, json!({"count": 0, "release_dates": []})),
-            (
-                101,
-                json!({"count": 2, "release_dates": [
-                    {"release_id": 101, "date": "2040-07-31"},
-                    {"release_id": 101, "date": "2040-08-01"}
-                ]}),
-            ),
         ];
         for (release_id, response) in release_dates {
             Mock::given(method("GET"))
@@ -441,32 +427,18 @@ mod tests {
                     from: date(2040, 1, 1),
                     to: date(2040, 8, 1),
                 },
-                events: vec![
-                    CalendarEvent {
-                        source: SOURCE.to_string(),
-                        external_id: "101:2040-07-31".to_string(),
-                        category: CalendarEventCategory::CentralBank,
-                        country: "US".to_string(),
-                        title: "FOMC 声明".to_string(),
-                        stock_id: None,
-                        fiscal_period: None,
-                        event_date: date(2040, 8, 1),
-                        event_at: Some(utc(2040, 7, 31, 18, 0)),
-                        time_of_day: None,
-                    },
-                    CalendarEvent {
-                        source: SOURCE.to_string(),
-                        external_id: "10:2040-08-01".to_string(),
-                        category: CalendarEventCategory::Indicator,
-                        country: "US".to_string(),
-                        title: "消費者物価指数 (CPI)".to_string(),
-                        stock_id: None,
-                        fiscal_period: None,
-                        event_date: date(2040, 8, 1),
-                        event_at: Some(utc(2040, 8, 1, 12, 30)),
-                        time_of_day: None,
-                    },
-                ],
+                events: vec![CalendarEvent {
+                    source: SOURCE.to_string(),
+                    external_id: "10:2040-08-01".to_string(),
+                    category: CalendarEventCategory::Indicator,
+                    country: "US".to_string(),
+                    title: "消費者物価指数 (CPI)".to_string(),
+                    stock_id: None,
+                    fiscal_period: None,
+                    event_date: date(2040, 8, 1),
+                    event_at: Some(utc(2040, 8, 1, 12, 30)),
+                    time_of_day: None,
+                },],
             }),
         );
     }

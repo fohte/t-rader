@@ -615,6 +615,7 @@ dependencies = [
  "gateway-boj",
  "gateway-e-stat",
  "gateway-ecb",
+ "gateway-fed",
  "gateway-firecrawl",
  "gateway-fred",
  "gateway-ibkr",
@@ -2102,6 +2103,19 @@ dependencies = [
 
 [[package]]
 name = "gateway-ecb"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "chrono-tz",
+ "core-application",
+ "core-domain",
+ "reqwest",
+ "scraper",
+]
+
+[[package]]
+name = "gateway-fed"
 version = "0.1.0"
 dependencies = [
  "async-trait",
