@@ -3,7 +3,7 @@ import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 
-export type ChangeReferenceFigureState =
+type ChangeReferenceFigureState =
   | { status: 'loading' }
   | { status: 'error' }
   | { status: 'empty' }
