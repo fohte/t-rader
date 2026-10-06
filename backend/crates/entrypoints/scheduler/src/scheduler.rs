@@ -4,7 +4,7 @@ use chrono::Weekday;
 use core_application::{
     ingest_status::{
         BOJ_CALENDAR_EVENT_INGEST_JOB, ECB_CALENDAR_EVENT_INGEST_JOB,
-        FED_CALENDAR_EVENT_INGEST_JOB, FRED_RELEASE_DATES_INGEST_JOB, US_STOCK_BARS_INGEST_JOB,
+        FED_CALENDAR_EVENT_INGEST_JOB, FRED_RELEASE_DATES_INGEST_JOB,
     },
     strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME,
 };
@@ -70,7 +70,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 21] = [
     (EquityMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShareholdingStructureIngest::IDENTIFIER, DAILY_TIMEOUT),
     (UsStockMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (US_STOCK_BARS_INGEST_JOB, DAILY_TIMEOUT),
+    (UsStockBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
 ];
 
 #[derive(Clone, Copy, Default)]
@@ -302,7 +302,7 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
     }
     if configured.us_stock_bars {
         crontabs.push(hourly_cron::<UsStockBarsIngest>(
-            US_STOCK_BARS_INGEST_JOB,
+            "us_stock_bars_ingest",
             20,
             CrontabFill::hours(3),
             Some(ALPACA_QUEUE),
@@ -457,8 +457,8 @@ mod tests {
 
     use super::{
         ALPACA_QUEUE, ConfiguredJobs, FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE, JQUANTS_QUEUE,
-        NEWS_CONTENT_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, US_STOCK_BARS_INGEST_JOB,
-        build_crontabs, configure_cron, every_minute_cron, hourly_cron,
+        NEWS_CONTENT_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, build_crontabs, configure_cron,
+        every_minute_cron, hourly_cron,
     };
 
     #[fixture]
@@ -595,7 +595,7 @@ mod tests {
             ),
             expected_cron::<UsStockBarsIngest>(
                 CrontabTimer::hourly_at(20).ok(),
-                US_STOCK_BARS_INGEST_JOB,
+                "us_stock_bars_ingest",
                 CrontabFill::hours(3),
                 Some(ALPACA_QUEUE),
             ),

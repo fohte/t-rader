@@ -325,7 +325,7 @@ fn decimal_from_number(value: serde_json::Number) -> Result<Decimal, AlpacaError
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Utc};
-    use core_application::bars::{UsStockBarQuery, UsStockBarSource};
+    use core_application::bars::{UsStockBarQuery, UsStockBarSource, UsStockBarSourceError};
     use core_domain::bar::{Bar, Timeframe};
     use rstest::rstest;
     use rust_decimal::Decimal;
@@ -333,7 +333,7 @@ mod tests {
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{AlpacaClient, AlpacaError};
+    use super::AlpacaClient;
 
     fn date(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -351,6 +351,8 @@ mod tests {
             .and(header("APCA-API-SECRET-KEY", "synthetic-secret"))
             .and(query_param("symbols", "QZ.7"))
             .and(query_param("timeframe", "1Day"))
+            .and(query_param("start", "1970-01-01T00:00:00+00:00"))
+            .and(query_param("end", "2040-01-03T00:00:00+00:00"))
             .and(query_param("adjustment", "split"))
             .and(query_param("feed", "iex"))
             .and(query_param("limit", "10000"))
@@ -433,15 +435,35 @@ mod tests {
     }
 
     #[rstest]
-    #[case::missing_prefix("QZ7", AlpacaError::Config("US stock ID has no country prefix: QZ7".to_owned()))]
-    #[case::wrong_market("KR:QZ7", AlpacaError::Config("stock is not in the US market: KR:QZ7".to_owned()))]
+    #[case::missing_prefix(
+        "QZ7",
+        "invalid Alpaca API configuration: US stock ID has no country prefix: QZ7"
+    )]
+    #[case::wrong_market(
+        "KR:QZ7",
+        "invalid Alpaca API configuration: stock is not in the US market: KR:QZ7"
+    )]
     #[tokio::test]
     async fn rejects_stock_ids_that_are_not_us_prefixed(
         #[case] instrument_id: &str,
-        #[case] expected: AlpacaError,
+        #[case] expected: &str,
     ) {
-        let result = super::alpaca_symbol(instrument_id);
+        let server = MockServer::start().await;
+        let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
+            .expect("test client is configured");
+        let result = client
+            .fetch_page(&UsStockBarQuery {
+                instrument_ids: vec![instrument_id.to_owned()],
+                timeframe: Timeframe::Daily,
+                from: date("1970-01-01T00:00:00Z"),
+                to: date("2040-01-03T00:00:00Z"),
+                page_token: None,
+            })
+            .await;
 
-        assert_eq!(result, Err(expected));
+        assert_eq!(
+            result,
+            Err(UsStockBarSourceError::Failed(expected.to_owned()))
+        );
     }
 }

@@ -1,3 +1,4 @@
+use chrono::Utc;
 use core_application::bars::{
     BarsUseCaseError, BarsUseCases, SharedUsStockBarSource, UsStockBarsIngestStats,
 };
@@ -22,7 +23,7 @@ impl TaskHandler for UsStockBarsIngest {
                     state.dependencies.us_stock_bar_source,
                     "Alpaca US stock bar source",
                 )?;
-                ingest_us_stock_bars(&state.dependencies.bars, source).await
+                ingest_us_stock_bars(&state.dependencies.bars, source, Utc::now()).await
             },
         )
         .await
@@ -32,9 +33,10 @@ impl TaskHandler for UsStockBarsIngest {
 async fn ingest_us_stock_bars(
     use_cases: &BarsUseCases,
     source: SharedUsStockBarSource,
+    now: chrono::DateTime<Utc>,
 ) -> Result<UsStockBarsIngestStats, String> {
     let stats = use_cases
-        .ingest_us_stock_bars(source.as_ref())
+        .ingest_us_stock_bars(source.as_ref(), now)
         .await
         .map_err(|error: BarsUseCaseError| error.to_string())?;
     tracing::debug!(

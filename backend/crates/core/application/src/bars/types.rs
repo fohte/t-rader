@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
-use core_domain::bar::Timeframe;
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -40,16 +39,6 @@ pub struct UsStockBarsIngestStats {
     pub requests_attempted: usize,
     pub daily_bars_upserted: usize,
     pub minute_bars_upserted: usize,
-}
-
-impl UsStockBarTarget {
-    pub fn latest_bar(&self, timeframe: Timeframe) -> Option<DateTime<Utc>> {
-        match timeframe {
-            Timeframe::Daily => self.latest_daily_bar,
-            Timeframe::Minute => self.latest_minute_bar,
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
