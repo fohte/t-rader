@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.2...terraform-provider-v0.1.3) (2026-10-07)
+
+
+### Features
+
+* **group-axis:** 銘柄マスタ項目から分類グループを導出する ([#766](https://github.com/fohte/t-rader/issues/766)) ([069cc2a](https://github.com/fohte/t-rader/commit/069cc2a239f2874442d9b254bfe1dcd510de7ea1))
+* **terraform-provider:** 戦略の決算対象リソースを追加する ([#767](https://github.com/fohte/t-rader/issues/767)) ([bef0370](https://github.com/fohte/t-rader/commit/bef03702dac2818e9f096b7141c66af998ef2ca3))
+
 ## [0.1.2](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.1...terraform-provider-v0.1.2) (2026-10-04)
 
 
