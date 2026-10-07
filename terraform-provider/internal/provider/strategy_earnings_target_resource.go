@@ -70,7 +70,7 @@ func (r *strategyEarningsTargetResource) Schema(_ context.Context, _ resource.Sc
 				Required:            true,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:          []validator.String{strategyEarningsTargetRefIDValidator{}},
-				MarkdownDescription: "銘柄 ID または `軸の key/グループの key`。変更時は登録を作り直します。",
+				MarkdownDescription: "正規の銘柄 ID または `軸の key/グループの key`。alias は指定できません。変更時は登録を作り直します。",
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
@@ -103,6 +103,15 @@ func (r *strategyEarningsTargetResource) Create(ctx context.Context, req resourc
 		return
 	}
 
+	resolved, err := client.ResolveRef(ctx, plan.RefKind.ValueString(), plan.RefID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error resolving strategy earnings target reference", err.Error())
+		return
+	}
+	if resolved.Kind != plan.RefKind.ValueString() || resolved.Id != plan.RefID.ValueString() {
+		resp.Diagnostics.AddAttributeError(path.Root("ref_id"), "Non-canonical earnings target ref_id", fmt.Sprintf("ref_id resolves to %q. Specify the canonical ID to keep Terraform state aligned with the backend.", resolved.Id))
+		return
+	}
 	if err := client.AddStrategyEarningsTarget(ctx, plan.StrategyID.ValueString(), plan.RefKind.ValueString(), plan.RefID.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error creating strategy earnings target", err.Error())
 		return
@@ -174,7 +183,7 @@ func (r *strategyEarningsTargetResource) ImportState(ctx context.Context, req re
 		resp.Diagnostics.AddError("Invalid Import ID", "The first import ID component must be a strategy UUID.")
 		return
 	}
-	if parts[1] != "stock" && parts[1] != "group" {
+	if !isStrategyEarningsTargetRefKind(parts[1]) {
 		resp.Diagnostics.AddError("Invalid Import ID", "ref_kind in the import ID must be stock or group.")
 		return
 	}
@@ -221,6 +230,15 @@ func strategyEarningsTargetID(strategyID, refKind, refID string) string {
 
 type strategyEarningsTargetRefKindValidator struct{}
 
+func isStrategyEarningsTargetRefKind(refKind string) bool {
+	switch refKind {
+	case "stock", "group":
+		return true
+	default:
+		return false
+	}
+}
+
 func (strategyEarningsTargetRefKindValidator) Description(context.Context) string {
 	return "ref_kind は stock または group にしてください。"
 }
@@ -233,10 +251,7 @@ func (strategyEarningsTargetRefKindValidator) ValidateString(_ context.Context, 
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
 	}
-	switch req.ConfigValue.ValueString() {
-	case "stock", "group":
-		return
-	default:
+	if !isStrategyEarningsTargetRefKind(req.ConfigValue.ValueString()) {
 		resp.Diagnostics.AddAttributeError(req.Path, "Invalid earnings target ref_kind", "ref_kind は stock または group にしてください。")
 	}
 }
@@ -252,8 +267,15 @@ func (v strategyEarningsTargetRefIDValidator) MarkdownDescription(ctx context.Co
 }
 
 func (strategyEarningsTargetRefIDValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || req.ConfigValue.ValueString() != "" {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
 	}
-	resp.Diagnostics.AddAttributeError(req.Path, "Invalid earnings target ref_id", "ref_id は空にできません。")
+	value := req.ConfigValue.ValueString()
+	if value == "" {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid earnings target ref_id", "ref_id は空にできません。")
+		return
+	}
+	if strings.TrimSpace(value) != value {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid earnings target ref_id", "ref_id の前後に空白を指定できません。")
+	}
 }

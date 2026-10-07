@@ -26,6 +26,23 @@ func (c *Client) ListStrategyEarningsTargets(ctx context.Context, strategyID str
 	return *response.JSON200, nil
 }
 
+func (c *Client) ResolveRef(ctx context.Context, refKind, refID string) (gen.RefResolution, error) {
+	response, err := c.api.ResolveRefsWithResponse(ctx, &gen.ResolveRefsParams{Link: refKind + ":" + refID})
+	if err != nil {
+		return gen.RefResolution{}, fmt.Errorf("send resolve reference request: %w", err)
+	}
+	if err := responseError(response.HTTPResponse, response.Body); err != nil {
+		return gen.RefResolution{}, err
+	}
+	if response.JSON200 == nil {
+		return gen.RefResolution{}, errors.New("backend returned HTTP 200 without a JSON response")
+	}
+	if len(*response.JSON200) != 1 {
+		return gen.RefResolution{}, fmt.Errorf("backend returned %d references for one resolve request", len(*response.JSON200))
+	}
+	return (*response.JSON200)[0], nil
+}
+
 func (c *Client) AddStrategyEarningsTarget(ctx context.Context, strategyID, refKind, refID string) error {
 	parsedStrategyID, err := parseStrategyID(strategyID)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -32,13 +33,15 @@ func TestStrategyEarningsTargetResourceCreate(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	requests := make(chan earningsTargetRequestObservation, 2)
+	requests := make(chan earningsTargetRequestObservation, 3)
 	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		requests <- recordEarningsTargetRequest(t, r)
-		switch r.Method {
-		case http.MethodPost:
+		switch {
+		case r.URL.Path == "/api/refs/resolve":
+			writeEarningsTargetResponse(t, w, http.StatusOK, `[{"kind":"group","id":"synthetic-axis/synthetic-group","name":"Synthetic Group"}]`)
+		case r.Method == http.MethodPost:
 			writeEarningsTargetResponse(t, w, http.StatusOK, `{"changed":true}`)
-		case http.MethodGet:
+		case r.Method == http.MethodGet:
 			writeEarningsTargetResponse(t, w, http.StatusOK, `[{"ref_kind":"group","ref_id":"synthetic-axis/synthetic-group","created_at":"2026-01-02T03:04:05Z"}]`)
 		default:
 			writeEarningsTargetResponse(t, w, http.StatusMethodNotAllowed, `{"error":"unexpected method"}`)
@@ -65,9 +68,10 @@ func TestStrategyEarningsTargetResourceCreate(t *testing.T) {
 		State       strategyEarningsTargetModel
 		Diagnostics []apiDiagnosticObservation
 	}
-	got := output{Requests: []earningsTargetRequestObservation{<-requests, <-requests}, State: state, Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
+	got := output{Requests: []earningsTargetRequestObservation{<-requests, <-requests, <-requests}, State: state, Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
 	want := output{
 		Requests: []earningsTargetRequestObservation{
+			{Method: http.MethodGet, Path: "/api/refs/resolve", Query: "link=group%3Asynthetic-axis%2Fsynthetic-group"},
 			{Method: http.MethodPost, Path: "/api/strategies/" + testEarningsTargetStrategyID + "/earnings-targets", Body: `{"ref_id":"synthetic-axis/synthetic-group","ref_kind":"group"}`},
 			{Method: http.MethodGet, Path: "/api/strategies/" + testEarningsTargetStrategyID + "/earnings-targets"},
 		},
@@ -81,6 +85,50 @@ func TestStrategyEarningsTargetResourceCreate(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("create output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestStrategyEarningsTargetResourceRejectsAliasResolvedID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	requests := make(chan earningsTargetRequestObservation, 1)
+	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests <- recordEarningsTargetRequest(t, r)
+		writeEarningsTargetResponse(t, w, http.StatusOK, `[{"kind":"stock","id":"synthetic-canonical-id","name":"Synthetic Stock"}]`)
+	})
+	resourceSchema := strategyEarningsTargetTestSchema(t)
+	plan := tfsdk.Plan{Schema: resourceSchema}
+	if diagnostics := plan.Set(ctx, strategyEarningsTargetModel{
+		ID:         types.StringUnknown(),
+		StrategyID: types.StringValue(testEarningsTargetStrategyID),
+		RefKind:    types.StringValue("stock"),
+		RefID:      types.StringValue("synthetic-alias"),
+		CreatedAt:  types.StringUnknown(),
+	}); diagnostics.HasError() {
+		t.Fatalf("build create plan: %v", diagnostics)
+	}
+	response := resource.CreateResponse{State: tfsdk.State{Schema: resourceSchema}}
+	(&strategyEarningsTargetResource{client: client}).Create(ctx, resource.CreateRequest{Plan: plan}, &response)
+
+	type output struct {
+		Requests    []earningsTargetRequestObservation
+		StateEmpty  bool
+		Diagnostics []apiDiagnosticObservation
+	}
+	got := output{Requests: []earningsTargetRequestObservation{<-requests}, StateEmpty: response.State.Raw.IsNull(), Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
+	want := output{
+		Requests:   []earningsTargetRequestObservation{{Method: http.MethodGet, Path: "/api/refs/resolve", Query: "link=stock%3Asynthetic-alias"}},
+		StateEmpty: true,
+		Diagnostics: []apiDiagnosticObservation{{
+			Severity: "Error",
+			Summary:  "Non-canonical earnings target ref_id",
+			Detail:   `ref_id resolves to "synthetic-canonical-id". Specify the canonical ID to keep Terraform state aligned with the backend.`,
+			Path:     "ref_id",
+		}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("non-canonical reference output mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -150,6 +198,38 @@ func TestStrategyEarningsTargetResourceReadRemovesExternallyDeletedTarget(t *tes
 	}
 }
 
+func TestStrategyEarningsTargetResourceReadRemovesTargetWhenStrategyIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	requests := make(chan earningsTargetRequestObservation, 1)
+	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests <- recordEarningsTargetRequest(t, r)
+		writeEarningsTargetResponse(t, w, http.StatusNotFound, `{"error":"synthetic missing strategy"}`)
+	})
+	resourceSchema := strategyEarningsTargetTestSchema(t)
+	state := tfsdk.State{Schema: resourceSchema}
+	if diagnostics := state.Set(ctx, testEarningsTargetModel()); diagnostics.HasError() {
+		t.Fatalf("build read state: %v", diagnostics)
+	}
+	response := resource.ReadResponse{State: state}
+	(&strategyEarningsTargetResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
+
+	type output struct {
+		Request      earningsTargetRequestObservation
+		StateRemoved bool
+		Diagnostics  []apiDiagnosticObservation
+	}
+	got := output{Request: <-requests, StateRemoved: response.State.Raw.IsNull(), Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
+	want := output{
+		Request:      earningsTargetRequestObservation{Method: http.MethodGet, Path: "/api/strategies/" + testEarningsTargetStrategyID + "/earnings-targets"},
+		StateRemoved: true,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("read not-found output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
 func TestStrategyEarningsTargetResourceDelete(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +261,38 @@ func TestStrategyEarningsTargetResourceDelete(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("delete output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestStrategyEarningsTargetResourceDeleteNotFoundIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	requests := make(chan earningsTargetRequestObservation, 1)
+	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests <- recordEarningsTargetRequest(t, r)
+		writeEarningsTargetResponse(t, w, http.StatusNotFound, `{"error":"synthetic missing strategy"}`)
+	})
+	resourceSchema := strategyEarningsTargetTestSchema(t)
+	state := tfsdk.State{Schema: resourceSchema}
+	if diagnostics := state.Set(ctx, testEarningsTargetModel()); diagnostics.HasError() {
+		t.Fatalf("build delete state: %v", diagnostics)
+	}
+	response := resource.DeleteResponse{}
+	(&strategyEarningsTargetResource{client: client}).Delete(ctx, resource.DeleteRequest{State: state}, &response)
+
+	type output struct {
+		Request     earningsTargetRequestObservation
+		Diagnostics []apiDiagnosticObservation
+	}
+	got := output{Request: <-requests, Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
+	want := output{Request: earningsTargetRequestObservation{
+		Method: http.MethodDelete,
+		Path:   "/api/strategies/" + testEarningsTargetStrategyID + "/earnings-targets",
+		Query:  "ref_id=synthetic-axis%2Fsynthetic-group&ref_kind=group",
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("delete not-found output mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -315,6 +427,40 @@ func TestStrategyEarningsTargetIdentityChangesRequireReplacement(t *testing.T) {
 			}{RequiresReplace: true}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("plan modifier output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
+	}
+}
+
+func TestStrategyEarningsTargetValidators(t *testing.T) {
+	t.Parallel()
+
+	resourceSchema := strategyEarningsTargetTestSchema(t)
+	cases := []struct {
+		name      string
+		attribute string
+		value     string
+		want      []apiDiagnosticObservation
+	}{
+		{name: "stock kind is accepted", attribute: "ref_kind", value: "stock"},
+		{name: "group kind is accepted", attribute: "ref_kind", value: "group"},
+		{name: "unsupported kind is rejected", attribute: "ref_kind", value: "indicator", want: []apiDiagnosticObservation{{Severity: "Error", Summary: "Invalid earnings target ref_kind", Detail: "ref_kind は stock または group にしてください。", Path: "ref_kind"}}},
+		{name: "non-empty reference id is accepted", attribute: "ref_id", value: testEarningsTargetRefID},
+		{name: "empty reference id is rejected", attribute: "ref_id", value: "", want: []apiDiagnosticObservation{{Severity: "Error", Summary: "Invalid earnings target ref_id", Detail: "ref_id は空にできません。", Path: "ref_id"}}},
+		{name: "padded reference id is rejected", attribute: "ref_id", value: " synthetic-id ", want: []apiDiagnosticObservation{{Severity: "Error", Summary: "Invalid earnings target ref_id", Detail: "ref_id の前後に空白を指定できません。", Path: "ref_id"}}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			attribute := resourceSchema.Attributes[testCase.attribute].(schema.StringAttribute)
+			var response validator.StringResponse
+			attribute.Validators[0].ValidateString(context.Background(), validator.StringRequest{
+				Path:        path.Root(testCase.attribute),
+				ConfigValue: types.StringValue(testCase.value),
+			}, &response)
+			got := apiResourceDiagnosticsOutput(response.Diagnostics)
+			if !reflect.DeepEqual(got, testCase.want) {
+				t.Fatalf("validator output mismatch: got=%#v want=%#v", got, testCase.want)
 			}
 		})
 	}
