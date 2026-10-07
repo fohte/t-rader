@@ -46,7 +46,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use core_domain::equity_master::EquityMasterEntry;
+    use core_domain::equity_master::{EquityMasterAttributeValue, EquityMasterEntry};
     use rstest::{fixture, rstest};
     use tokio::sync::Mutex;
 
@@ -137,8 +137,10 @@ mod tests {
             id: "ZZ99".into(),
             name: "架空銘柄".into(),
             market: Some("架空市場".into()),
-            sector_name: Some("架空業種".into()),
-            sector_code: Some("1234".into()),
+            tse_sector33: Some(EquityMasterAttributeValue {
+                code: Some("1234".into()),
+                name: "架空業種".into(),
+            }),
             product_category: Some("000".into()),
         }
     }

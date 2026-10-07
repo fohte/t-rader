@@ -81,7 +81,7 @@ async fn stock_ref_includes_notes_for_every_member_group_without_duplicates(
                 key: axis_key.into(),
                 name: "Sample axis".into(),
                 description: "Sample axis".into(),
-                sync_source: None,
+                derive_from: None,
             })
             .await
             .expect("create group axis");

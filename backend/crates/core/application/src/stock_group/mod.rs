@@ -11,8 +11,8 @@ pub use repository::{
     GroupAxis, SharedStockGroupRepository, StockGroupRepository, StockGroupRepositoryError,
 };
 pub use types::{
-    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupMembership,
-    StockGroupSyncSourceCodeLookup, UpdateStockGroupCommand,
+    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupCodeLookup, StockGroupMembership,
+    UpdateStockGroupCommand,
 };
 pub use use_cases::StockGroupUseCases;
 

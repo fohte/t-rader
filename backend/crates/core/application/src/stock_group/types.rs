@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StockGroupSyncSourceCodeLookup {
+pub enum StockGroupCodeLookup {
     NotFound,
     Missing,
     Found(String),

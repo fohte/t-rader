@@ -9,7 +9,7 @@ pub struct GroupAxisResponse {
     pub key: String,
     pub name: String,
     pub description: String,
-    pub sync_source: Option<String>,
+    pub derive_from: Option<String>,
 }
 
 impl From<GroupAxis> for GroupAxisResponse {
@@ -18,7 +18,7 @@ impl From<GroupAxis> for GroupAxisResponse {
             key: axis.key,
             name: axis.name,
             description: axis.description,
-            sync_source: axis.sync_source,
+            derive_from: axis.derive_from,
         }
     }
 }

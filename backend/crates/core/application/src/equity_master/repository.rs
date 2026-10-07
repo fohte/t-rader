@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use core_domain::equity_master::EquityMasterEntry;
 use thiserror::Error;
 
+use super::derived_group::EquityMasterGroupAttributeError;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -11,6 +12,8 @@ use crate::unit_of_work::UnitOfWorkTransaction;
 pub enum EquityMasterRepositoryError {
     #[error(transparent)]
     Database(#[from] PersistenceError),
+    #[error(transparent)]
+    GroupAttribute(#[from] EquityMasterGroupAttributeError),
     #[error("transaction has an unexpected type")]
     InvalidTransaction,
 }

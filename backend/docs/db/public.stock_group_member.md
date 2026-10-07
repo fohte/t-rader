@@ -54,7 +54,7 @@ erDiagram
   text key
   text name
   text description
-  text sync_source_code
+  text code
 }
 ```
 

@@ -6,14 +6,14 @@
 
 ## Columns
 
-| Name             | Type | Default           | Nullable | Children                                                  | Parents                                   | Comment                                                            |
-| ---------------- | ---- | ----------------- | -------- | --------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------ |
-| id               | uuid | gen_random_uuid() | false    | [public.stock_group_member](public.stock_group_member.md) |                                           |                                                                    |
-| axis_id          | uuid |                   | false    |                                                           | [public.group_axis](public.group_axis.md) | グループが属する分類軸。                                           |
-| key              | text |                   | false    |                                                           |                                           | 同じ分類軸の中でグループを識別するキー。                           |
-| name             | text |                   | false    |                                                           |                                           | グループの表示名。                                                 |
-| description      | text |                   | true     |                                                           |                                           | グループの説明。                                                   |
-| sync_source_code | text |                   | true     |                                                           |                                           | 同期元がグループに付与したコード。同期対象の分類軸でのみ使用する。 |
+| Name        | Type | Default           | Nullable | Children                                                  | Parents                                   | Comment                                  |
+| ----------- | ---- | ----------------- | -------- | --------------------------------------------------------- | ----------------------------------------- | ---------------------------------------- |
+| id          | uuid | gen_random_uuid() | false    | [public.stock_group_member](public.stock_group_member.md) |                                           |                                          |
+| axis_id     | uuid |                   | false    |                                                           | [public.group_axis](public.group_axis.md) | グループが属する分類軸。                 |
+| key         | text |                   | false    |                                                           |                                           | 同じ分類軸の中でグループを識別するキー。 |
+| name        | text |                   | false    |                                                           |                                           | グループの表示名。                       |
+| description | text |                   | true     |                                                           |                                           | グループの説明。                         |
+| code        | text |                   | true     |                                                           |                                           | 分類軸の共通項目が持つグループコード。   |
 
 ## Constraints
 
@@ -43,7 +43,7 @@ erDiagram
   text key
   text name
   text description
-  text sync_source_code
+  text code
 }
 "public.stock_group_member" {
   varchar stock_id FK
@@ -55,7 +55,7 @@ erDiagram
   text key
   text name
   text description
-  text sync_source
+  text derive_from
 }
 ```
 

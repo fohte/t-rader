@@ -15,7 +15,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub description: String,
     #[sea_orm(column_type = "Text", nullable)]
-    pub sync_source: Option<String>,
+    pub derive_from: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -1,3 +1,4 @@
+use crate::equity_master::group_value_extractor;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::SharedUnitOfWork;
 
@@ -40,6 +41,7 @@ impl GroupAxisUseCases {
     ) -> Result<GroupAxis, GroupAxisUseCaseError> {
         let key = validate_key(&command.key)?;
         let name = validate_name(&command.name)?;
+        let derive_from = validate_derive_from(command.derive_from)?;
         let transaction = self.unit_of_work.begin().await?;
         let created = match self
             .repository
@@ -49,7 +51,7 @@ impl GroupAxisUseCases {
                     key: key.clone(),
                     name,
                     description: command.description,
-                    sync_source: command.sync_source,
+                    derive_from,
                 },
             )
             .await
@@ -72,6 +74,7 @@ impl GroupAxisUseCases {
         command: UpdateGroupAxisCommand,
     ) -> Result<GroupAxis, GroupAxisUseCaseError> {
         let key = validate_key(key)?;
+        let derive_from = command.derive_from.map(validate_derive_from).transpose()?;
         let transaction = self.unit_of_work.begin().await?;
         let current = self
             .repository
@@ -87,8 +90,8 @@ impl GroupAxisUseCases {
         if let Some(description) = command.description {
             updated.description = description;
         }
-        if let Some(sync_source) = command.sync_source {
-            updated.sync_source = sync_source;
+        if let Some(derive_from) = derive_from {
+            updated.derive_from = derive_from;
         }
         if updated == current {
             self.unit_of_work.commit(transaction).await?;
@@ -125,6 +128,16 @@ impl GroupAxisUseCases {
         self.unit_of_work.commit(transaction).await?;
         Ok(())
     }
+}
+
+fn validate_derive_from(
+    derive_from: Option<String>,
+) -> Result<Option<String>, GroupAxisUseCaseError> {
+    if let Some(derive_from) = &derive_from {
+        group_value_extractor(derive_from)
+            .map_err(|error| GroupAxisUseCaseError::Validation(error.to_string()))?;
+    }
+    Ok(derive_from)
 }
 
 fn validate_key(key: &str) -> Result<String, GroupAxisUseCaseError> {

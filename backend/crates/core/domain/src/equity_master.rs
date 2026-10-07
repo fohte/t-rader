@@ -4,7 +4,12 @@ pub struct EquityMasterEntry {
     pub id: String,
     pub name: String,
     pub market: Option<String>,
-    pub sector_name: Option<String>,
-    pub sector_code: Option<String>,
+    pub tse_sector33: Option<EquityMasterAttributeValue>,
     pub product_category: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EquityMasterAttributeValue {
+    pub code: Option<String>,
+    pub name: String,
 }

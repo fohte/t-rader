@@ -14,7 +14,7 @@ use super::types::{NewStockGroup, StockGroup, StockGroupMembership};
 pub struct FakeStockGroupRepository {
     axes: Mutex<HashMap<String, GroupAxis>>,
     groups: Mutex<HashMap<Uuid, StockGroup>>,
-    sync_source_codes: Mutex<HashMap<Uuid, String>>,
+    codes: Mutex<HashMap<Uuid, String>>,
     stocks: Mutex<HashSet<String>>,
     members: Mutex<HashSet<(Uuid, String)>>,
     insert_conflict: Mutex<Option<String>>,
@@ -26,11 +26,11 @@ impl FakeStockGroupRepository {
         Self::default()
     }
 
-    pub async fn insert_axis(&self, key: &str, sync_source: Option<&str>) -> GroupAxis {
+    pub async fn insert_axis(&self, key: &str, derive_from: Option<&str>) -> GroupAxis {
         let axis = GroupAxis {
             id: Uuid::new_v4(),
             key: key.to_owned(),
-            sync_source: sync_source.map(str::to_owned),
+            derive_from: derive_from.map(str::to_owned),
         };
         self.axes
             .lock()
@@ -43,11 +43,11 @@ impl FakeStockGroupRepository {
         self.stocks.lock().await.insert(stock_id.to_owned());
     }
 
-    pub async fn insert_sync_group(
+    pub async fn insert_group_with_code(
         &self,
         axis_key: &str,
         group_key: &str,
-        source_code: Option<&str>,
+        code: Option<&str>,
     ) {
         let Some(axis) = self.axes.lock().await.get(axis_key).cloned() else {
             return;
@@ -60,11 +60,8 @@ impl FakeStockGroupRepository {
             name: group_key.to_owned(),
             description: None,
         };
-        if let Some(source_code) = source_code {
-            self.sync_source_codes
-                .lock()
-                .await
-                .insert(group.id, source_code.to_owned());
+        if let Some(code) = code {
+            self.codes.lock().await.insert(group.id, code.to_owned());
         }
         self.groups.lock().await.insert(group.id, group);
     }
@@ -118,21 +115,21 @@ impl StockGroupRepository for FakeStockGroupRepository {
             }))
     }
 
-    async fn find_sync_source_codes(
+    async fn find_codes_by_derive_from(
         &self,
         transaction: &UnitOfWorkTransaction,
-        sync_source: &str,
+        derive_from: &str,
         group_key: &str,
     ) -> Result<Vec<Option<String>>, StockGroupRepositoryError> {
         self.record_transaction(transaction).await?;
         let axes = self.axes.lock().await;
         let axis_ids = axes
             .values()
-            .filter(|axis| axis.sync_source.as_deref() == Some(sync_source))
+            .filter(|axis| axis.derive_from.as_deref() == Some(derive_from))
             .map(|axis| axis.id)
             .collect::<HashSet<_>>();
         let groups = self.groups.lock().await;
-        let codes = self.sync_source_codes.lock().await;
+        let codes = self.codes.lock().await;
         Ok(groups
             .values()
             .filter(|group| axis_ids.contains(&group.axis_id) && group.key == group_key)

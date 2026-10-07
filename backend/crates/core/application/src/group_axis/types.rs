@@ -6,7 +6,7 @@ pub struct GroupAxis {
     pub key: String,
     pub name: String,
     pub description: String,
-    pub sync_source: Option<String>,
+    pub derive_from: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub struct NewGroupAxis {
     pub key: String,
     pub name: String,
     pub description: String,
-    pub sync_source: Option<String>,
+    pub derive_from: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -22,12 +22,12 @@ pub struct CreateGroupAxisCommand {
     pub key: String,
     pub name: String,
     pub description: String,
-    pub sync_source: Option<String>,
+    pub derive_from: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateGroupAxisCommand {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub sync_source: Option<Option<String>>,
+    pub derive_from: Option<Option<String>>,
 }

@@ -6,13 +6,13 @@
 
 ## Columns
 
-| Name        | Type | Default           | Nullable | Children                                    | Parents | Comment                  |
-| ----------- | ---- | ----------------- | -------- | ------------------------------------------- | ------- | ------------------------ |
-| id          | uuid | gen_random_uuid() | false    | [public.stock_group](public.stock_group.md) |         |                          |
-| key         | text |                   | false    |                                             |         | 分類軸を識別するキー。   |
-| name        | text |                   | false    |                                             |         | 分類軸の表示名。         |
-| description | text |                   | false    |                                             |         | 分類軸の説明。           |
-| sync_source | text |                   | true     |                                             |         | 分類軸の同期元を示す値。 |
+| Name        | Type | Default           | Nullable | Children                                    | Parents | Comment                                          |
+| ----------- | ---- | ----------------- | -------- | ------------------------------------------- | ------- | ------------------------------------------------ |
+| id          | uuid | gen_random_uuid() | false    | [public.stock_group](public.stock_group.md) |         |                                                  |
+| key         | text |                   | false    |                                             |         | 分類軸を識別するキー。                           |
+| name        | text |                   | false    |                                             |         | 分類軸の表示名。                                 |
+| description | text |                   | false    |                                             |         | 分類軸の説明。                                   |
+| derive_from | text |                   | true     |                                             |         | 銘柄マスタの共通項目からグループを生成する設定。 |
 
 ## Constraints
 
@@ -40,7 +40,7 @@ erDiagram
   text key
   text name
   text description
-  text sync_source
+  text derive_from
 }
 "public.stock_group" {
   uuid id
@@ -48,7 +48,7 @@ erDiagram
   text key
   text name
   text description
-  text sync_source_code
+  text code
 }
 ```
 

@@ -42,7 +42,7 @@ impl StockGroupRepository for PostgresStockGroupRepository {
                 row.map(|row| GroupAxis {
                     id: row.id,
                     key: row.key,
-                    sync_source: row.sync_source,
+                    derive_from: row.derive_from,
                 })
             })
             .map_err(repository_error)
@@ -66,10 +66,10 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             .map_err(repository_error)
     }
 
-    async fn find_sync_source_codes(
+    async fn find_codes_by_derive_from(
         &self,
         unit_of_work: &UnitOfWorkTransaction,
-        sync_source: &str,
+        derive_from: &str,
         group_key: &str,
     ) -> Result<Vec<Option<String>>, StockGroupRepositoryError> {
         let transaction =
@@ -77,8 +77,8 @@ impl StockGroupRepository for PostgresStockGroupRepository {
         stock_group::Entity::find()
             .join(JoinType::InnerJoin, stock_group::Relation::GroupAxis.def())
             .select_only()
-            .column(stock_group::Column::SyncSourceCode)
-            .filter(group_axis::Column::SyncSource.eq(sync_source))
+            .column(stock_group::Column::Code)
+            .filter(group_axis::Column::DeriveFrom.eq(derive_from))
             .filter(stock_group::Column::Key.eq(group_key))
             .into_tuple::<Option<String>>()
             .all(transaction)
@@ -99,7 +99,7 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             key: Set(group.key),
             name: Set(group.name),
             description: Set(group.description),
-            sync_source_code: Set(None),
+            code: Set(None),
         })
         .exec_with_returning(transaction)
         .await
@@ -120,7 +120,7 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             key: Unchanged(group.key),
             name: Set(group.name),
             description: Set(group.description),
-            sync_source_code: NotSet,
+            code: NotSet,
         }
         .update(transaction)
         .await

@@ -1483,10 +1483,10 @@ export interface components {
       }
     }
     CreateGroupAxisRequest: {
+      derive_from?: string | null
       description: string
       key: string
       name: string
-      sync_source?: string | null
     }
     CreateNoteKindRequest: {
       description?: string | null
@@ -1632,10 +1632,10 @@ export interface components {
       y?: number | null
     }
     GroupAxis: {
+      derive_from?: string | null
       description: string
       key: string
       name: string
-      sync_source?: string | null
     }
     GroupRatio: {
       /** @description 分類軸のキー。 */
@@ -2174,9 +2174,9 @@ export interface components {
       } | null
     }
     UpdateGroupAxisRequest: {
+      derive_from?: string | null
       description?: string | null
       name?: string | null
-      sync_source?: string | null
     }
     UpdateNoteKindRequest: {
       description?: string | null

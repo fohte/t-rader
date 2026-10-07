@@ -8146,6 +8146,12 @@
           "description"
         ],
         "properties": {
+          "derive_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": "string"
           },
@@ -8154,12 +8160,6 @@
           },
           "name": {
             "type": "string"
-          },
-          "sync_source": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         },
         "additionalProperties": false
@@ -8647,6 +8647,12 @@
           "description"
         ],
         "properties": {
+          "derive_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": "string"
           },
@@ -8655,12 +8661,6 @@
           },
           "name": {
             "type": "string"
-          },
-          "sync_source": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },
@@ -10271,6 +10271,12 @@
       "UpdateGroupAxisRequest": {
         "type": "object",
         "properties": {
+          "derive_from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -10278,12 +10284,6 @@
             ]
           },
           "name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "sync_source": {
             "type": [
               "string",
               "null"

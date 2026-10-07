@@ -151,7 +151,7 @@ async fn synced_stocks_can_be_referenced_and_added_to_a_group_without_registrati
         key: Set("sample-axis".to_owned()),
         name: Set("架空軸".to_owned()),
         description: Set("架空軸".to_owned()),
-        sync_source: Set(None),
+        derive_from: Set(None),
     })
     .exec_without_returning(&db)
     .await

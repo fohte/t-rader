@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use core_domain::equity_master::EquityMasterEntry;
+use core_domain::equity_master::{EquityMasterAttributeValue, EquityMasterEntry};
 
 use super::JQuantsClient;
 use super::response::EquitiesMasterResponse;
@@ -37,8 +37,10 @@ impl JQuantsClient {
                 id: super::normalize_local_code(&m.code).to_string(),
                 name: m.company_name,
                 market: non_empty(m.market_name),
-                sector_name: non_empty(m.sector_name),
-                sector_code: non_empty(m.sector_code),
+                tse_sector33: non_empty(m.sector_name).map(|name| EquityMasterAttributeValue {
+                    code: non_empty(m.sector_code),
+                    name,
+                }),
                 product_category: non_empty(m.product_category),
             })
             .collect())

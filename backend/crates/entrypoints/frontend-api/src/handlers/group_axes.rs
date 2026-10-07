@@ -19,7 +19,7 @@ pub struct CreateGroupAxisRequest {
     pub name: String,
     pub description: String,
     #[serde(default)]
-    pub sync_source: Option<String>,
+    pub derive_from: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -33,7 +33,7 @@ pub struct UpdateGroupAxisRequest {
         default,
         deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
     )]
-    pub sync_source: Option<Option<String>>,
+    pub derive_from: Option<Option<String>>,
 }
 
 /// 分類軸一覧
@@ -85,7 +85,7 @@ pub async fn create_group_axis(
             key: payload.key,
             name: payload.name,
             description: payload.description,
-            sync_source: payload.sync_source,
+            derive_from: payload.derive_from,
         })
         .await?;
     Ok((StatusCode::CREATED, Json(created.into())))
@@ -139,7 +139,7 @@ pub async fn update_group_axis(
             UpdateGroupAxisCommand {
                 name: payload.name,
                 description: payload.description,
-                sync_source: payload.sync_source,
+                derive_from: payload.derive_from,
             },
         )
         .await?;
