@@ -701,3 +701,40 @@ async fn ingest_batch_uses_the_default_lookback_when_no_series_has_observations(
         ),
     );
 }
+
+#[tokio::test]
+async fn ingest_eoddata_series_maps_ksic_to_kospi_and_persists_observations() {
+    let repository = Arc::new(FakeIndicatorObservationRepository::new());
+    let source = FakeSource::with_response(0, vec![observation(3, "1234.56")]);
+
+    let result = use_cases(repository.clone())
+        .ingest_eoddata_series(&source)
+        .await;
+    let requests = source.requests.lock().expect("lock requests").clone();
+    let stored = repository
+        .observations
+        .lock()
+        .expect("lock observations")
+        .get(&("KOSPI".to_string(), date(3)))
+        .copied();
+    let registered = repository
+        .indicators
+        .lock()
+        .expect("lock indicators")
+        .get("KOSPI")
+        .cloned();
+
+    assert_eq!(
+        (result, requests, stored, registered),
+        (
+            Ok(1),
+            vec![("KSIC".to_string(), None)],
+            Some(Decimal::from_str_exact("1234.56").expect("valid decimal")),
+            Some(IndicatorObservationMetadata {
+                indicator_id: "KOSPI".to_string(),
+                name: "韓国総合株価指数".to_string(),
+                kind: "index".to_string(),
+            }),
+        ),
+    );
+}

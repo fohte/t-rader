@@ -180,7 +180,7 @@ impl StockGroupUseCases {
     pub async fn list_memberships(
         &self,
         stock_ids: &[String],
-        axis_keys: &[String],
+        axis_keys: Option<&[String]>,
     ) -> Result<Vec<StockGroupMembership>, StockGroupUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
         let mut memberships = self

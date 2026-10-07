@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::bars::us_stock_source::UsStockBarSourceError;
 use crate::daily_bar_source::DailyBarSourceError;
 use crate::market_daily_bar_source::MarketDailyBarSourceError;
 use crate::unit_of_work::UnitOfWorkError;
@@ -16,4 +17,6 @@ pub enum BarsUseCaseError {
     DailyBarSource(#[from] DailyBarSourceError),
     #[error(transparent)]
     MarketDailyBarSource(#[from] MarketDailyBarSourceError),
+    #[error(transparent)]
+    UsStockBarSource(#[from] UsStockBarSourceError),
 }

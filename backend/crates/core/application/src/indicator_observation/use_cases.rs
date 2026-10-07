@@ -76,6 +76,16 @@ pub const TWSE_SERIES: &[IndicatorObservationSeriesDefinition] = &[
     },
 ];
 
+pub const EODDATA_KOSPI_SERIES: IndicatorObservationSeriesDefinition =
+    IndicatorObservationSeriesDefinition {
+        series_id: "KSIC",
+        indicator_id: "KOSPI",
+        name: "韓国総合株価指数",
+        kind: "index",
+    };
+
+pub const EODDATA_SERIES: &[IndicatorObservationSeriesDefinition] = &[EODDATA_KOSPI_SERIES];
+
 #[derive(Clone)]
 pub struct IndicatorObservationUseCases {
     repository: SharedIndicatorObservationRepository,
@@ -108,6 +118,13 @@ impl IndicatorObservationUseCases {
             series: results,
             errors: Vec::new(),
         }
+    }
+
+    pub async fn ingest_eoddata_series(
+        &self,
+        source: &dyn IndicatorObservationSource,
+    ) -> Result<usize, String> {
+        self.ingest_series(source, &EODDATA_KOSPI_SERIES).await
     }
 
     pub async fn ingest_batch(

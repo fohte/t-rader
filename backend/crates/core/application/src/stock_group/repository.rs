@@ -73,7 +73,7 @@ pub trait StockGroupRepository: Send + Sync {
         &self,
         transaction: &UnitOfWorkTransaction,
         stock_ids: &[String],
-        axis_keys: &[String],
+        axis_keys: Option<&[String]>,
     ) -> Result<Vec<StockGroupMembership>, StockGroupRepositoryError>;
 
     async fn add_stock(

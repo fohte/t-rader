@@ -535,7 +535,7 @@ async fn list_memberships_returns_every_group_for_requested_stocks_and_axes(harn
         .use_cases
         .list_memberships(
             &["demo-stock".to_string(), "unrelated-stock".to_string()],
-            &["sample-axis".to_string(), "other-axis".to_string()],
+            Some(&["sample-axis".to_string(), "other-axis".to_string()]),
         )
         .await
         .expect("membership listing succeeds");

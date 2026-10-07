@@ -16,7 +16,9 @@ pub use types::{
     IndicatorObservationQuery, IndicatorObservationReadResult,
     IndicatorObservationSeriesDefinition,
 };
-pub use use_cases::{FRED_SERIES, IndicatorObservationUseCases, TWSE_SERIES};
+pub use use_cases::{
+    EODDATA_KOSPI_SERIES, EODDATA_SERIES, FRED_SERIES, IndicatorObservationUseCases, TWSE_SERIES,
+};
 
 #[cfg(any(test, feature = "test-support"))]
 pub use fake::FakeIndicatorObservationRepository;

@@ -17,6 +17,7 @@ function createHeaderRouter(initialPath: string) {
       '/annotations',
       '/runs',
       '/indicators',
+      '/calendar',
     ],
     initialPath,
   })
@@ -54,4 +55,9 @@ export const StrategyHome: Story = {
 export const Portfolio: Story = {
   name: 'shows the header with portfolio navigation active.',
   render: () => <RouterProvider router={createHeaderRouter('/portfolio')} />,
+}
+
+export const Calendar: Story = {
+  name: 'shows the header with calendar navigation active.',
+  render: () => <RouterProvider router={createHeaderRouter('/calendar')} />,
 }

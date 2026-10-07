@@ -42,9 +42,9 @@ impl PostgresNoteReadQuery {
             select =
                 select.filter(note::Column::Id.in_subquery(current_note_ids_matching_tag(tag)));
         }
-        if let Some((kind, id)) = query.reference.as_ref() {
-            select =
-                select.filter(note::Column::Id.in_subquery(note_ids_matching_ref(kind, id, None)));
+        if let Some(references) = query.references.as_ref() {
+            select = select
+                .filter(note::Column::Id.in_subquery(note_ids_matching_refs(references, None)));
         }
         if let Some(updated_after) = query.updated_after {
             select = select.filter(note::Column::UpdatedAt.gte(updated_after));
@@ -90,10 +90,10 @@ impl PostgresNoteReadQuery {
             Some(status) => current_note_ids_with_status(status),
             None => current_note_ids(),
         };
-        if let Some((kind, id)) = query.reference.as_ref() {
-            current_candidate_ids = note_ids_matching_ref(kind, id, Some(current_candidate_ids));
+        if let Some(references) = query.references.as_ref() {
+            current_candidate_ids = note_ids_matching_refs(references, Some(current_candidate_ids));
         }
-        if query.status.is_some() || query.reference.is_some() {
+        if query.status.is_some() || query.references.is_some() {
             select = select.filter(
                 Condition::any()
                     .add(note::Column::Id.in_subquery(current_candidate_ids))
@@ -151,10 +151,10 @@ impl PostgresNoteReadQuery {
             {
                 continue;
             }
-            if let Some((kind, id)) = query.reference.as_ref()
+            if let Some(references) = query.references.as_ref()
                 && !version.is_current
             {
-                match version_matches_reference(&version, kind, id) {
+                match version_matches_references(&version, references) {
                     Ok(true) => {}
                     Ok(false) => continue,
                     Err(error) => {
@@ -217,26 +217,37 @@ fn current_note_ids_with_status(status: &str) -> sea_orm::sea_query::SelectState
         .into_query()
 }
 
-fn note_ids_matching_ref(
-    kind: &str,
-    id: &str,
+fn note_ids_matching_refs(
+    references: &[(String, String)],
     restrict_to: Option<sea_orm::sea_query::SelectStatement>,
 ) -> sea_orm::sea_query::SelectStatement {
     let mut query = note_ref::Entity::find()
         .select_only()
-        .column(note_ref::Column::NoteId)
-        .filter(note_ref::Column::RefKind.eq(kind))
-        .filter(note_ref::Column::RefId.eq(id));
+        .column(note_ref::Column::NoteId);
+    if references.is_empty() {
+        query = query.filter(Expr::cust("false"));
+    } else {
+        let matches_reference =
+            references
+                .iter()
+                .fold(Condition::any(), |condition, (kind, id)| {
+                    condition.add(
+                        Condition::all()
+                            .add(note_ref::Column::RefKind.eq(kind))
+                            .add(note_ref::Column::RefId.eq(id)),
+                    )
+                });
+        query = query.filter(matches_reference);
+    }
     if let Some(restrict_to) = restrict_to {
         query = query.filter(note_ref::Column::NoteId.in_subquery(restrict_to));
     }
     query.into_query()
 }
 
-fn version_matches_reference(
+fn version_matches_references(
     version: &note_version::Model,
-    kind: &str,
-    id: &str,
+    references: &[(String, String)],
 ) -> Result<bool, String> {
     let graphs: Vec<GraphDef> = serde_json::from_value(version.graphs_json.clone())
         .map_err(|error| format!("failed to deserialize note_version.graphs_json: {error}"))?;
@@ -245,10 +256,12 @@ fn version_matches_reference(
         &graphs,
         BodyTokenPolicy::AllowLegacyBodyTokens,
     )
-    .map(|references| {
-        references
-            .iter()
-            .any(|reference| reference.0 == kind && reference.1 == id)
+    .map(|version_references| {
+        references.iter().any(|(kind, id)| {
+            version_references
+                .iter()
+                .any(|reference| reference.0.as_str() == kind && reference.1.as_str() == id)
+        })
     })
     .map_err(|errors| {
         format!(

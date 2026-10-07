@@ -199,11 +199,11 @@ impl StockGroupRepository for FakeStockGroupRepository {
         &self,
         transaction: &UnitOfWorkTransaction,
         stock_ids: &[String],
-        axis_keys: &[String],
+        axis_keys: Option<&[String]>,
     ) -> Result<Vec<StockGroupMembership>, StockGroupRepositoryError> {
         self.record_transaction(transaction).await?;
         let stock_ids = stock_ids.iter().collect::<HashSet<_>>();
-        let axis_keys = axis_keys.iter().collect::<HashSet<_>>();
+        let axis_keys = axis_keys.map(|axis_keys| axis_keys.iter().collect::<HashSet<_>>());
         let groups = self.groups.lock().await;
         let axes = self.axes.lock().await;
         let members = self.members.lock().await;
@@ -213,7 +213,13 @@ impl StockGroupRepository for FakeStockGroupRepository {
             .filter_map(|(group_id, stock_id)| {
                 let group = groups.get(group_id)?;
                 let axis = axes.get(&group.axis_key)?;
-                axis_keys.contains(&axis.key).then(|| StockGroupMembership {
+                if axis_keys
+                    .as_ref()
+                    .is_some_and(|axis_keys| !axis_keys.contains(&axis.key))
+                {
+                    return None;
+                }
+                Some(StockGroupMembership {
                     axis_key: axis.key.clone(),
                     group_key: group.key.clone(),
                     stock_id: stock_id.clone(),

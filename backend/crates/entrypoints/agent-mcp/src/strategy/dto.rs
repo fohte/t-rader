@@ -58,7 +58,8 @@ pub struct WriteNoteParams {
 pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
-    /// 本文の価格候補と相対表現への警告。誤検出を含むため、目安表現はそのままで構いません。
+    /// 本文の価格候補、相対表現、ローソク足の本数に関する警告。
+    /// 誤検出を含む案内であり、ノートの保存は拒否されません。
     pub warnings: Vec<String>,
 }
 
@@ -124,7 +125,7 @@ pub struct ListNotesParams {
     pub limit: Option<u32>,
     /// 指定した note_kind のノートだけを返す
     pub kind: Option<String>,
-    /// `kind:id` の形式で参照先にリンクしたノートだけを返す
+    /// `kind:id` の形式で参照先にリンクしたノートだけを返す。stock を指定すると所属するすべての group へのリンクも含む。
     #[serde(rename = "ref")]
     pub r#ref: Option<String>,
     /// "approved" / "unread" / "rejected" のいずれかで絞り込む。省略時は全 status
