@@ -405,7 +405,7 @@ mod tests {
             key: Set(format!("synthetic-axis-{suffix}")),
             name: Set("Synthetic Axis".to_owned()),
             description: Set("Synthetic axis for a database test".to_owned()),
-            sync_source: Set(None),
+            derive_from: Set(None),
         })
         .exec_without_returning(&db)
         .await
@@ -417,7 +417,7 @@ mod tests {
             key: Set(format!("synthetic-group-{suffix}")),
             name: Set("Synthetic Group".to_owned()),
             description: Set(None),
-            sync_source_code: Set(None),
+            code: Set(None),
         })
         .exec_without_returning(&db)
         .await
