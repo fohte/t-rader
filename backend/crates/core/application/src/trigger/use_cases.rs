@@ -12,11 +12,14 @@ use crate::strategy_scope::StrategyScope;
 use crate::strategy_task::{StrategyTaskUseCases, SubmittedTask, TaskSource};
 use crate::unit_of_work::SharedUnitOfWork;
 
+use self::validation::{validate_event_match, validate_template};
 use super::error::TriggerUseCaseError;
 use super::repository::SharedTriggerRepository;
 use super::schedule::{parse_schedule, should_fire};
 use super::template::{build_standard_context, evaluate_event_match, expand_template};
 use super::types::{CreateTriggerCommand, NewTrigger, Trigger, TriggerKind, UpdateTriggerCommand};
+
+mod validation;
 
 const MAX_CONCURRENT_FIRES: usize = 8;
 
@@ -461,25 +464,6 @@ fn ensure_scope(trigger: &Trigger, scope: StrategyScope) -> Result<(), TriggerUs
         Ok(())
     } else {
         Err(TriggerUseCaseError::NotFound(trigger.trigger_id))
-    }
-}
-
-fn validate_template(template: &str) -> Result<String, TriggerUseCaseError> {
-    let template = template.trim().to_string();
-    if template.is_empty() {
-        return Err(TriggerUseCaseError::Validation(
-            "prompt_template must not be empty".into(),
-        ));
-    }
-    Ok(template)
-}
-
-fn validate_event_match(event_match: Option<&Value>) -> Result<(), TriggerUseCaseError> {
-    match event_match {
-        Some(value) if !value.is_object() && !value.is_null() => Err(
-            TriggerUseCaseError::Validation("event_match must be an object or null".into()),
-        ),
-        _ => Ok(()),
     }
 }
 
