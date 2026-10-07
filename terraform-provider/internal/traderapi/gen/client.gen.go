@@ -268,6 +268,13 @@ type HookResponse struct {
 	TaskId nullable.Nullable[openapi_types.UUID] `json:"task_id,omitempty"`
 }
 
+// Indicator defines model for Indicator.
+type Indicator struct {
+	Id   string `json:"id"`
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+
 // InvestableAmountResponse 戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。
 // history が 1 行も無い戦略では両方 null。
 type InvestableAmountResponse struct {
@@ -347,6 +354,18 @@ type PutInvestableAmountRequest struct {
 	EffectiveAt nullable.Nullable[time.Time] `json:"effective_at,omitempty"`
 }
 
+// RefResolution `[[kind:id]]` のリンクテキストを解決した結果
+type RefResolution struct {
+	// Id 別名で解決できた場合、入力ではなく正規の id
+	Id string `json:"id"`
+
+	// Kind "stock" | "indicator" | "group"
+	Kind string `json:"kind"`
+
+	// Name 一致しなかった場合は None
+	Name nullable.Nullable[string] `json:"name,omitempty"`
+}
+
 // RssFeed defines model for RssFeed.
 type RssFeed struct {
 	// ContentSource 本文の取得方式。none / feed / crawl のいずれか。
@@ -368,6 +387,17 @@ type SkillBody struct {
 // SkillsBody defines model for SkillsBody.
 type SkillsBody struct {
 	Skills map[string]string `json:"skills"`
+}
+
+// Stock defines model for Stock.
+type Stock struct {
+	CreatedAt       time.Time                 `json:"created_at"`
+	Id              string                    `json:"id"`
+	Market          nullable.Nullable[string] `json:"market,omitempty"`
+	Name            string                    `json:"name"`
+	ProductCategory nullable.Nullable[string] `json:"product_category,omitempty"`
+	SectorId        nullable.Nullable[string] `json:"sector_id,omitempty"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
 }
 
 // Strategy defines model for Strategy.
@@ -539,6 +569,24 @@ type ReceiveAgentTaskNotificationJSONBody = interface{}
 
 // ReceiveHookJSONBody defines parameters for ReceiveHook.
 type ReceiveHookJSONBody = interface{}
+
+// ListIndicatorsParams defines parameters for ListIndicators.
+type ListIndicatorsParams struct {
+	// Q 部分一致クエリ。空のときは先頭から最大 50 件返す
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// ResolveRefsParams defines parameters for ResolveRefs.
+type ResolveRefsParams struct {
+	// Link `[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定。group の id は `axis-key/group-key`。
+	Link string `form:"link" json:"link"`
+}
+
+// ListStocksParams defines parameters for ListStocks.
+type ListStocksParams struct {
+	// Q 部分一致クエリ。空のときは先頭から最大 50 件返す
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
 
 // ListRssFeedsParams defines parameters for ListRssFeeds.
 type ListRssFeedsParams struct {
@@ -1015,6 +1063,36 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
 	UpdateNoteKind(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListIndicators indicator 検索
+	//
+	// Corresponds with GET /api/refs/indicators (the `ListIndicators` operationId).
+	ListIndicators(ctx context.Context, params *ListIndicatorsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRefIndicator indicator 詳細
+	//
+	// Corresponds with GET /api/refs/indicators/{id} (the `GetRefIndicator` operationId).
+	GetRefIndicator(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ResolveRefs `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
+	//
+	// `link=stock:demo-code,indicator:demo-index,group:demo-axis/demo-group` のようにカンマ区切りで複数渡せる。
+	// id が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の
+	// id と name を返す (レスポンスの id が入力と異なることがある)。
+	// どちらにも一致しないものは name = null、id は入力のまま返す。
+	//
+	// Corresponds with GET /api/refs/resolve (the `ResolveRefs` operationId).
+	ResolveRefs(ctx context.Context, params *ResolveRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListStocks stock 検索
+	//
+	// Corresponds with GET /api/refs/stocks (the `ListStocks` operationId).
+	ListStocks(ctx context.Context, params *ListStocksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStock stock 詳細
+	//
+	// Corresponds with GET /api/refs/stocks/{id} (the `GetStock` operationId).
+	GetStock(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRssFeeds RSS フィード一覧
 	//
@@ -2009,6 +2087,86 @@ func (c *OpenAPIClient) UpdateNoteKindWithBody(ctx context.Context, key string, 
 // Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
 func (c *OpenAPIClient) UpdateNoteKind(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateNoteKindRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListIndicators indicator 検索
+//
+// Corresponds with GET /api/refs/indicators (the `ListIndicators` operationId).
+func (c *OpenAPIClient) ListIndicators(ctx context.Context, params *ListIndicatorsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIndicatorsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRefIndicator indicator 詳細
+//
+// Corresponds with GET /api/refs/indicators/{id} (the `GetRefIndicator` operationId).
+func (c *OpenAPIClient) GetRefIndicator(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRefIndicatorRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ResolveRefs `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
+//
+// `link=stock:demo-code,indicator:demo-index,group:demo-axis/demo-group` のようにカンマ区切りで複数渡せる。
+// id が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の
+// id と name を返す (レスポンスの id が入力と異なることがある)。
+// どちらにも一致しないものは name = null、id は入力のまま返す。
+//
+// Corresponds with GET /api/refs/resolve (the `ResolveRefs` operationId).
+func (c *OpenAPIClient) ResolveRefs(ctx context.Context, params *ResolveRefsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewResolveRefsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListStocks stock 検索
+//
+// Corresponds with GET /api/refs/stocks (the `ListStocks` operationId).
+func (c *OpenAPIClient) ListStocks(ctx context.Context, params *ListStocksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStocksRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetStock stock 詳細
+//
+// Corresponds with GET /api/refs/stocks/{id} (the `GetStock` operationId).
+func (c *OpenAPIClient) GetStock(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStockRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -3828,6 +3986,232 @@ func NewUpdateNoteKindRequestWithBody(server string, key string, contentType str
 	return req, nil
 }
 
+// NewListIndicatorsRequest constructs an http.Request for the ListIndicators method
+func NewListIndicatorsRequest(server string, params *ListIndicatorsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/indicators")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRefIndicatorRequest constructs an http.Request for the GetRefIndicator method
+func NewGetRefIndicatorRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/indicators/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewResolveRefsRequest constructs an http.Request for the ResolveRefs method
+func NewResolveRefsRequest(server string, params *ResolveRefsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/resolve")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "link", params.Link, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListStocksRequest constructs an http.Request for the ListStocks method
+func NewListStocksRequest(server string, params *ListStocksParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/stocks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetStockRequest constructs an http.Request for the GetStock method
+func NewGetStockRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/stocks/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListRssFeedsRequest constructs an http.Request for the ListRssFeeds method
 func NewListRssFeedsRequest(server string, params *ListRssFeedsParams) (*http.Request, error) {
 	var err error
@@ -5337,6 +5721,46 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PATCH /api/note-kinds/{key} (the `UpdateNoteKind` operationId).
 	UpdateNoteKindWithResponse(ctx context.Context, key string, body UpdateNoteKindJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateNoteKindResult, error)
+
+	// ListIndicatorsWithResponse indicator 検索
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/indicators (the `ListIndicators` operationId).
+	ListIndicatorsWithResponse(ctx context.Context, params *ListIndicatorsParams, reqEditors ...RequestEditorFn) (*ListIndicatorsResult, error)
+
+	// GetRefIndicatorWithResponse indicator 詳細
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/indicators/{id} (the `GetRefIndicator` operationId).
+	GetRefIndicatorWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetRefIndicatorResult, error)
+
+	// ResolveRefsWithResponse `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
+	//
+	// `link=stock:demo-code,indicator:demo-index,group:demo-axis/demo-group` のようにカンマ区切りで複数渡せる。
+	// id が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の
+	// id と name を返す (レスポンスの id が入力と異なることがある)。
+	// どちらにも一致しないものは name = null、id は入力のまま返す。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/resolve (the `ResolveRefs` operationId).
+	ResolveRefsWithResponse(ctx context.Context, params *ResolveRefsParams, reqEditors ...RequestEditorFn) (*ResolveRefsResult, error)
+
+	// ListStocksWithResponse stock 検索
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/stocks (the `ListStocks` operationId).
+	ListStocksWithResponse(ctx context.Context, params *ListStocksParams, reqEditors ...RequestEditorFn) (*ListStocksResult, error)
+
+	// GetStockWithResponse stock 詳細
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/stocks/{id} (the `GetStock` operationId).
+	GetStockWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetStockResult, error)
 
 	// ListRssFeedsWithResponse RSS フィード一覧
 	//
@@ -7605,6 +8029,267 @@ func (r UpdateNoteKindResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r UpdateNoteKindResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListIndicatorsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Indicator
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIndicatorsResult) GetJSON200() *[]Indicator {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListIndicatorsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIndicatorsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIndicatorsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIndicatorsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIndicatorsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRefIndicatorResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Indicator
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRefIndicatorResult) GetJSON200() *Indicator {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetRefIndicatorResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetRefIndicatorResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRefIndicatorResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRefIndicatorResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRefIndicatorResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRefIndicatorResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ResolveRefsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]RefResolution
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ResolveRefsResult) GetJSON200() *[]RefResolution {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ResolveRefsResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ResolveRefsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ResolveRefsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ResolveRefsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ResolveRefsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ResolveRefsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListStocksResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Stock
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListStocksResult) GetJSON200() *[]Stock {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListStocksResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListStocksResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListStocksResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListStocksResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListStocksResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetStockResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Stock
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetStockResult) GetJSON200() *Stock {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetStockResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetStockResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetStockResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetStockResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetStockResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetStockResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10026,6 +10711,76 @@ func (c *ClientWithResponses) UpdateNoteKindWithResponse(ctx context.Context, ke
 	return ParseUpdateNoteKindResult(rsp)
 }
 
+// ListIndicatorsWithResponse indicator 検索
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/indicators (the `ListIndicators` operationId).
+func (c *ClientWithResponses) ListIndicatorsWithResponse(ctx context.Context, params *ListIndicatorsParams, reqEditors ...RequestEditorFn) (*ListIndicatorsResult, error) {
+	rsp, err := c.ListIndicators(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIndicatorsResult(rsp)
+}
+
+// GetRefIndicatorWithResponse indicator 詳細
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/indicators/{id} (the `GetRefIndicator` operationId).
+func (c *ClientWithResponses) GetRefIndicatorWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetRefIndicatorResult, error) {
+	rsp, err := c.GetRefIndicator(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRefIndicatorResult(rsp)
+}
+
+// ResolveRefsWithResponse `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
+//
+// `link=stock:demo-code,indicator:demo-index,group:demo-axis/demo-group` のようにカンマ区切りで複数渡せる。
+// id が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の
+// id と name を返す (レスポンスの id が入力と異なることがある)。
+// どちらにも一致しないものは name = null、id は入力のまま返す。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/resolve (the `ResolveRefs` operationId).
+func (c *ClientWithResponses) ResolveRefsWithResponse(ctx context.Context, params *ResolveRefsParams, reqEditors ...RequestEditorFn) (*ResolveRefsResult, error) {
+	rsp, err := c.ResolveRefs(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseResolveRefsResult(rsp)
+}
+
+// ListStocksWithResponse stock 検索
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/stocks (the `ListStocks` operationId).
+func (c *ClientWithResponses) ListStocksWithResponse(ctx context.Context, params *ListStocksParams, reqEditors ...RequestEditorFn) (*ListStocksResult, error) {
+	rsp, err := c.ListStocks(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListStocksResult(rsp)
+}
+
+// GetStockWithResponse stock 詳細
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/stocks/{id} (the `GetStock` operationId).
+func (c *ClientWithResponses) GetStockWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetStockResult, error) {
+	rsp, err := c.GetStock(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStockResult(rsp)
+}
+
 // ListRssFeedsWithResponse RSS フィード一覧
 //
 // Returns a wrapper object for the known response body format(s).
@@ -12045,6 +12800,192 @@ func ParseUpdateNoteKindResult(rsp *http.Response) (*UpdateNoteKindResult, error
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListIndicatorsResult parses an HTTP response from a ListIndicatorsWithResponse call
+func ParseListIndicatorsResult(rsp *http.Response) (*ListIndicatorsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIndicatorsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Indicator
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRefIndicatorResult parses an HTTP response from a GetRefIndicatorWithResponse call
+func ParseGetRefIndicatorResult(rsp *http.Response) (*GetRefIndicatorResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRefIndicatorResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Indicator
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseResolveRefsResult parses an HTTP response from a ResolveRefsWithResponse call
+func ParseResolveRefsResult(rsp *http.Response) (*ResolveRefsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ResolveRefsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []RefResolution
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListStocksResult parses an HTTP response from a ListStocksWithResponse call
+func ParseListStocksResult(rsp *http.Response) (*ListStocksResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListStocksResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Stock
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetStockResult parses an HTTP response from a GetStockWithResponse call
+func ParseGetStockResult(rsp *http.Response) (*GetStockResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetStockResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Stock
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ErrorResponse

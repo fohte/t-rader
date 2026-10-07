@@ -14,5 +14,6 @@ output-options:
     - rss_feeds
     - strategies
     - triggers
+    - refs
   nullable-type: true
   response-type-suffix: Result
