@@ -16,6 +16,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(ingest_status::get_ingest_status))
         .routes(routes!(bars::list_bars))
         .routes(routes!(calendar::list_calendar_events))
+        .routes(routes!(calendar::list_other_earnings))
         .routes(routes!(
             strategies::list_strategies,
             strategies::create_strategy

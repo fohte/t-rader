@@ -33,6 +33,19 @@ pub struct CalendarEventsResponse {
     pub events: Vec<CalendarEventResponse>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CalendarOtherEarningsResponse {
+    pub events: Vec<CalendarEventResponse>,
+}
+
+impl From<Vec<CalendarEvent>> for CalendarOtherEarningsResponse {
+    fn from(events: Vec<CalendarEvent>) -> Self {
+        Self {
+            events: events.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl From<CalendarEventReadResult> for CalendarEventsResponse {
     fn from(result: CalendarEventReadResult) -> Self {
         Self {

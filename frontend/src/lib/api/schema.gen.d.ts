@@ -312,6 +312,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/calendar/other-earnings': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 指定した国・日の集約対象決算を一覧する */
+    get: operations['list_other_earnings']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/comments': {
     parameters: {
       query?: never
@@ -1376,6 +1393,9 @@ export interface components {
       from: string
       /** Format: date */
       to: string
+    }
+    CalendarOtherEarningsResponse: {
+      events: components['schemas']['CalendarEventResponse'][]
     }
     ChangeHistory: {
       actor_kind: string
@@ -3514,6 +3534,57 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['CalendarEventsResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_other_earnings: {
+    parameters: {
+      query: {
+        /** @description 決算日 */
+        event_date: string
+        /** @description 上場市場の国・地域 */
+        country: string
+        /** @description 決算対象を絞り込む戦略 ID */
+        strategy_id?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 集約対象の決算一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CalendarOtherEarningsResponse']
         }
       }
       400: {

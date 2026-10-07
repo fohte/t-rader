@@ -1724,6 +1724,88 @@
         }
       }
     },
+    "/api/calendar/other-earnings": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "指定した国・日の集約対象決算を一覧する",
+        "operationId": "list_other_earnings",
+        "parameters": [
+          {
+            "name": "event_date",
+            "in": "query",
+            "description": "決算日",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "上場市場の国・地域",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "description": "決算対象を絞り込む戦略 ID",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "集約対象の決算一覧",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarOtherEarningsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/comments": {
       "get": {
         "tags": [
@@ -7793,6 +7875,20 @@
           "to": {
             "type": "string",
             "format": "date"
+          }
+        }
+      },
+      "CalendarOtherEarningsResponse": {
+        "type": "object",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventResponse"
+            }
           }
         }
       },

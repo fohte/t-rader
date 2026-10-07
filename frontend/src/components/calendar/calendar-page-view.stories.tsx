@@ -87,6 +87,35 @@ const events: CalendarEvent[] = [
   },
 ]
 
+const otherEarningsEvents: CalendarEvent[] = [
+  {
+    kind: 'event',
+    source: 'jquants',
+    external_id: 'sample-other-earnings-a',
+    category: 'earnings',
+    country: 'JP',
+    title: '架空機械',
+    stock_id: '0001',
+    fiscal_period: '2099-01-01',
+    event_date: '2099-01-06',
+    event_at: null,
+    time_of_day: 'pre_market',
+  },
+  {
+    kind: 'event',
+    source: 'jquants',
+    external_id: 'sample-other-earnings-b',
+    category: 'earnings',
+    country: 'JP',
+    title: '架空素材',
+    stock_id: '0002',
+    fiscal_period: '2099-01-01',
+    event_date: '2099-01-06',
+    event_at: null,
+    time_of_day: 'post_market',
+  },
+]
+
 function createCalendarRouter(component: () => React.ReactNode) {
   return createStoryRouter(component, {
     paths: ['/calendar', '/charts/$instrumentId'],
@@ -107,10 +136,15 @@ const meta = {
     isPending: false,
     errorMessage: undefined,
     strategyErrorMessage: undefined,
+    expandedOtherEarnings: undefined,
+    otherEarningsEvents: undefined,
+    isOtherEarningsPending: false,
+    otherEarningsErrorMessage: undefined,
     onPreviousWeek: () => {},
     onNextWeek: () => {},
     onStrategyChange: () => {},
     onCountryChange: () => {},
+    onOtherEarningsToggle: () => {},
   },
   render: (args) => (
     <RouterProvider
@@ -146,4 +180,54 @@ export const Error: Story = {
 export const StrategyError: Story = {
   name: '戦略一覧の取得に失敗しました。',
   args: { strategyErrorMessage: '戦略一覧の取得に失敗しました' },
+}
+
+export const OtherEarningsExpanded: Story = {
+  name: '他社の決算一覧を展開しています。',
+  args: {
+    calendar: {
+      from: weekRange.from,
+      to: weekRange.to,
+      events: events.map((event) =>
+        event.kind === 'other_earnings_summary'
+          ? { ...event, count: 2 }
+          : event,
+      ),
+    },
+    expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
+    otherEarningsEvents,
+  },
+}
+
+export const OtherEarningsLoading: Story = {
+  name: '他社の決算一覧を読み込んでいます。',
+  args: {
+    expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
+    isOtherEarningsPending: true,
+  },
+}
+
+export const OtherEarningsEmpty: Story = {
+  name: '他社の決算が見つかりませんでした。',
+  args: {
+    calendar: {
+      from: weekRange.from,
+      to: weekRange.to,
+      events: events.map((event) =>
+        event.kind === 'other_earnings_summary'
+          ? { ...event, count: 1 }
+          : event,
+      ),
+    },
+    expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
+    otherEarningsEvents: [],
+  },
+}
+
+export const OtherEarningsError: Story = {
+  name: '他社の決算一覧を取得できませんでした。',
+  args: {
+    expandedOtherEarnings: { country: 'JP', eventDate: '2099-01-06' },
+    otherEarningsErrorMessage: '決算一覧の取得に失敗しました',
+  },
 }

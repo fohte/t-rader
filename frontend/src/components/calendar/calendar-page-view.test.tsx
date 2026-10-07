@@ -37,10 +37,15 @@ function makeProps(
     isPending: false,
     errorMessage: undefined,
     strategyErrorMessage: undefined,
+    expandedOtherEarnings: undefined,
+    otherEarningsEvents: undefined,
+    isOtherEarningsPending: false,
+    otherEarningsErrorMessage: undefined,
     onPreviousWeek: NOOP,
     onNextWeek: NOOP,
     onStrategyChange: NOOP,
     onCountryChange: NOOP,
+    onOtherEarningsToggle: NOOP,
     ...overrides,
   }
 }
@@ -157,5 +162,29 @@ describe('CalendarPageView', () => {
         .getByRole('link', { name: '架空工業 (0000)' })
         .getAttribute('href'),
     ).toBe('/charts/0000')
+  })
+
+  it('requests the other earnings for the selected country and date', async () => {
+    const user = userEvent.setup()
+    const onOtherEarningsToggle = vi.fn()
+    const summary: CalendarEvent = {
+      kind: 'other_earnings_summary',
+      country: 'JP',
+      event_date: '2099-01-06',
+      count: 2,
+    }
+
+    await renderCalendarPageView(
+      makeProps({
+        calendar: { ...WEEK_RANGE, events: [summary] },
+        onOtherEarningsToggle,
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: '他 2 社' }))
+
+    expect(onOtherEarningsToggle.mock.calls).toEqual([
+      [{ country: 'JP', eventDate: '2099-01-06' }],
+    ])
   })
 })

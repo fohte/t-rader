@@ -98,6 +98,7 @@ describe('buildCalendarDays', () => {
             emphasized: false,
             target: true,
             muted: false,
+            otherEarnings: undefined,
           },
           {
             key: 'sample-central-bank-event',
@@ -109,6 +110,7 @@ describe('buildCalendarDays', () => {
             emphasized: true,
             target: false,
             muted: false,
+            otherEarnings: undefined,
           },
           {
             key: 'sample-stock-earnings',
@@ -120,6 +122,7 @@ describe('buildCalendarDays', () => {
             emphasized: false,
             target: true,
             muted: false,
+            otherEarnings: undefined,
           },
           {
             key: 'sample-pre-market-earnings',
@@ -131,6 +134,7 @@ describe('buildCalendarDays', () => {
             emphasized: false,
             target: true,
             muted: false,
+            otherEarnings: undefined,
           },
           {
             key: '10:2099-01-06',
@@ -142,6 +146,7 @@ describe('buildCalendarDays', () => {
             emphasized: true,
             target: false,
             muted: false,
+            otherEarnings: undefined,
           },
           {
             key: 'JP:2099-01-06:other-earnings',
@@ -152,6 +157,7 @@ describe('buildCalendarDays', () => {
             emphasized: false,
             target: false,
             muted: true,
+            otherEarnings: { country: 'JP', eventDate: '2099-01-06' },
           },
         ],
       },
@@ -174,6 +180,7 @@ describe('buildCalendarDays', () => {
             emphasized: true,
             target: false,
             muted: false,
+            otherEarnings: undefined,
           },
           {
             key: 'sample-stock-earnings',
@@ -185,6 +192,7 @@ describe('buildCalendarDays', () => {
             emphasized: false,
             target: false,
             muted: false,
+            otherEarnings: undefined,
           },
           {
             key: 'JP:2099-01-06:other-earnings',
@@ -196,6 +204,7 @@ describe('buildCalendarDays', () => {
             emphasized: false,
             target: false,
             muted: true,
+            otherEarnings: { country: 'JP', eventDate: '2099-01-06' },
           },
         ],
       },

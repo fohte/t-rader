@@ -21,6 +21,7 @@ type CalendarRowView = {
   emphasized: boolean
   target: boolean
   muted: boolean
+  otherEarnings: { country: string; eventDate: string } | undefined
 }
 
 type CalendarDayView = {
@@ -114,6 +115,7 @@ function buildEventRow(
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',
       muted: false,
+      otherEarnings: undefined,
     },
     sortOrder: time.sortOrder,
   }
@@ -133,6 +135,7 @@ function buildOtherEarningsRow(event: OtherEarningsSummary): {
       emphasized: false,
       target: false,
       muted: true,
+      otherEarnings: { country: event.country, eventDate: event.event_date },
     },
     sortOrder: 2881,
   }

@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import {
   getCalendarWeekRange,
@@ -18,6 +18,9 @@ export const Route = createFileRoute('/calendar')({
 function CalendarRoute() {
   const { country, strategy, week } = Route.useSearch()
   const navigate = Route.useNavigate()
+  const [expandedOtherEarnings, setExpandedOtherEarnings] = useState<
+    { country: string; eventDate: string } | undefined
+  >()
   const weekRange = useMemo(
     () => getCalendarWeekRange(week ?? getTokyoDate()),
     [week],
@@ -35,6 +38,32 @@ function CalendarRoute() {
       },
     },
   })
+  const isExpandedSummaryVisible =
+    expandedOtherEarnings != null &&
+    (country == null || country === expandedOtherEarnings.country) &&
+    calendar?.events.some(
+      (event) =>
+        event.kind === 'other_earnings_summary' &&
+        event.country === expandedOtherEarnings.country &&
+        event.event_date === expandedOtherEarnings.eventDate,
+    ) === true
+  const activeExpandedOtherEarnings = isExpandedSummaryVisible
+    ? expandedOtherEarnings
+    : undefined
+  const otherEarningsQuery = $api.useQuery(
+    'get',
+    '/api/calendar/other-earnings',
+    {
+      params: {
+        query: {
+          country: activeExpandedOtherEarnings?.country ?? 'JP',
+          event_date: activeExpandedOtherEarnings?.eventDate ?? weekRange.from,
+          strategy_id: strategy,
+        },
+      },
+    },
+    { enabled: activeExpandedOtherEarnings != null },
+  )
   const { data: strategies = [], isError: isStrategyError } = $api.useQuery(
     'get',
     '/api/strategies',
@@ -52,7 +81,14 @@ function CalendarRoute() {
       strategyErrorMessage={
         isStrategyError ? '戦略一覧の取得に失敗しました' : undefined
       }
+      expandedOtherEarnings={activeExpandedOtherEarnings}
+      otherEarningsEvents={otherEarningsQuery.data?.events}
+      isOtherEarningsPending={otherEarningsQuery.isPending}
+      otherEarningsErrorMessage={
+        otherEarningsQuery.isError ? '決算一覧の取得に失敗しました' : undefined
+      }
       onPreviousWeek={() => {
+        setExpandedOtherEarnings(undefined)
         void navigate({
           search: (previous) => ({
             ...previous,
@@ -61,6 +97,7 @@ function CalendarRoute() {
         })
       }}
       onNextWeek={() => {
+        setExpandedOtherEarnings(undefined)
         void navigate({
           search: (previous) => ({
             ...previous,
@@ -69,17 +106,27 @@ function CalendarRoute() {
         })
       }}
       onStrategyChange={(value) => {
+        setExpandedOtherEarnings(undefined)
         void navigate({
           search: (previous) => ({ ...previous, strategy: value }),
         })
       }}
       onCountryChange={(value) => {
+        setExpandedOtherEarnings(undefined)
         void navigate({
           search: (previous) => ({
             ...previous,
             country: value === 'all' ? undefined : value,
           }),
         })
+      }}
+      onOtherEarningsToggle={(selection) => {
+        setExpandedOtherEarnings((current) =>
+          current?.country === selection.country &&
+          current.eventDate === selection.eventDate
+            ? undefined
+            : selection,
+        )
       }}
     />
   )
