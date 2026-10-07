@@ -17,6 +17,7 @@ pub struct TriggerResponse {
     pub event_match: Option<HashMap<String, serde_json::Value>>,
     pub prompt_template: String,
     pub enabled: bool,
+    pub business_days_only: bool,
     #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
     pub last_fired_at: Option<DateTime<FixedOffset>>,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
@@ -42,6 +43,7 @@ impl From<core_application::trigger::Trigger> for TriggerResponse {
             event_match,
             prompt_template: trigger.prompt_template,
             enabled: trigger.enabled,
+            business_days_only: trigger.business_days_only,
             last_fired_at: trigger.last_fired_at,
             created_at: trigger.created_at,
             updated_at: trigger.updated_at,
@@ -72,6 +74,10 @@ pub struct CreateTriggerRequest {
     pub prompt_template: String,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// 東証の営業日に限り cron trigger を起動する。省略時は false。
+    #[serde(default)]
+    #[schema(default = false)]
+    pub business_days_only: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -96,6 +102,8 @@ pub struct UpdateTriggerRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub prompt_template: Option<String>,
     pub enabled: Option<bool>,
+    /// 省略時は現在の設定を保持する。
+    pub business_days_only: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]

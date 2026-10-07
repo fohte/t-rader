@@ -10,6 +10,7 @@ test-support = ["dep:tokio", "tokio/macros", "tokio/rt"]
 [dependencies]
 async-trait = { workspace = true }
 chrono = { workspace = true, features = ["alloc", "clock"] }
+chrono-tz = { workspace = true }
 core-domain = { workspace = true }
 cron = { workspace = true }
 futures-util = { workspace = true }

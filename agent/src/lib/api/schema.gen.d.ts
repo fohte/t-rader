@@ -1558,6 +1558,11 @@ export interface components {
       symbol: string
     }
     CreateTriggerRequest: {
+      /**
+       * @description 東証の営業日に限り cron trigger を起動する。省略時は false。
+       * @default false
+       */
+      business_days_only: boolean | null
       enabled?: boolean | null
       event_match?: unknown
       /** @description kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子) */
@@ -2126,6 +2131,7 @@ export interface components {
       trade_id: string
     }
     Trigger: {
+      business_days_only: boolean
       /** Format: date-time */
       created_at: string
       enabled: boolean
@@ -2230,6 +2236,8 @@ export interface components {
       symbol?: string | null
     }
     UpdateTriggerRequest: {
+      /** @description 省略時は現在の設定を保持する。 */
+      business_days_only?: boolean | null
       enabled?: boolean | null
       /** @description 省略時は変更せず、`null` 指定時は条件を解除する。 */
       event_match?: unknown

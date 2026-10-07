@@ -32,17 +32,18 @@ type strategyTriggerResource struct {
 }
 
 type strategyTriggerModel struct {
-	ID             types.String  `tfsdk:"id"`
-	StrategyID     types.String  `tfsdk:"strategy_id"`
-	Purpose        types.String  `tfsdk:"purpose"`
-	Kind           types.String  `tfsdk:"kind"`
-	Schedule       types.String  `tfsdk:"schedule"`
-	HookSlug       types.String  `tfsdk:"hook_slug"`
-	EventMatch     types.Dynamic `tfsdk:"event_match"`
-	PromptTemplate types.String  `tfsdk:"prompt_template"`
-	Enabled        types.Bool    `tfsdk:"enabled"`
-	CreatedAt      types.String  `tfsdk:"created_at"`
-	UpdatedAt      types.String  `tfsdk:"updated_at"`
+	ID               types.String  `tfsdk:"id"`
+	StrategyID       types.String  `tfsdk:"strategy_id"`
+	Purpose          types.String  `tfsdk:"purpose"`
+	Kind             types.String  `tfsdk:"kind"`
+	Schedule         types.String  `tfsdk:"schedule"`
+	HookSlug         types.String  `tfsdk:"hook_slug"`
+	EventMatch       types.Dynamic `tfsdk:"event_match"`
+	PromptTemplate   types.String  `tfsdk:"prompt_template"`
+	Enabled          types.Bool    `tfsdk:"enabled"`
+	BusinessDaysOnly types.Bool    `tfsdk:"business_days_only"`
+	CreatedAt        types.String  `tfsdk:"created_at"`
+	UpdatedAt        types.String  `tfsdk:"updated_at"`
 }
 
 func NewStrategyTriggerResource() resource.Resource {
@@ -98,6 +99,11 @@ func (r *strategyTriggerResource) Schema(_ context.Context, _ resource.SchemaReq
 				Computed:            true,
 				MarkdownDescription: "trigger の有効状態。新規作成時に省略すると API の既定値を使用します。",
 			},
+			"business_days_only": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "東証の営業日のみ cron trigger を起動します。新規作成時に省略すると false です。",
+			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "作成日時 (RFC 3339)。",
@@ -142,13 +148,14 @@ func (r *strategyTriggerResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 	created, err := client.CreateStrategyTrigger(ctx, plan.StrategyID.ValueString(), traderapigen.CreateTriggerRequest{
-		Enabled:        boolAttributeNullable(plan.Enabled),
-		EventMatch:     eventMatch,
-		HookSlug:       stringAttributeNullable(plan.HookSlug),
-		Kind:           traderapigen.TriggerKind(plan.Kind.ValueString()),
-		Purpose:        stringAttributeNullable(plan.Purpose),
-		PromptTemplate: plan.PromptTemplate.ValueString(),
-		Schedule:       stringAttributeNullable(plan.Schedule),
+		Enabled:          boolAttributeNullable(plan.Enabled),
+		EventMatch:       eventMatch,
+		HookSlug:         stringAttributeNullable(plan.HookSlug),
+		Kind:             traderapigen.TriggerKind(plan.Kind.ValueString()),
+		Purpose:          stringAttributeNullable(plan.Purpose),
+		PromptTemplate:   plan.PromptTemplate.ValueString(),
+		Schedule:         stringAttributeNullable(plan.Schedule),
+		BusinessDaysOnly: boolAttributeNullable(plan.BusinessDaysOnly),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating strategy trigger", err.Error())
@@ -211,12 +218,13 @@ func (r *strategyTriggerResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 	updated, err := client.UpdateTrigger(ctx, state.ID.ValueString(), traderapigen.UpdateTriggerRequest{
-		Enabled:        boolAttributeNullable(plan.Enabled),
-		EventMatch:     eventMatch,
-		HookSlug:       stringAttributeUpdateNullable(plan.HookSlug),
-		Purpose:        stringAttributeUpdateNullable(plan.Purpose),
-		PromptTemplate: stringAttributeUpdateNullable(plan.PromptTemplate),
-		Schedule:       stringAttributeUpdateNullable(plan.Schedule),
+		Enabled:          boolAttributeNullable(plan.Enabled),
+		EventMatch:       eventMatch,
+		HookSlug:         stringAttributeUpdateNullable(plan.HookSlug),
+		Purpose:          stringAttributeUpdateNullable(plan.Purpose),
+		PromptTemplate:   stringAttributeUpdateNullable(plan.PromptTemplate),
+		Schedule:         stringAttributeUpdateNullable(plan.Schedule),
+		BusinessDaysOnly: boolAttributeNullable(plan.BusinessDaysOnly),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating strategy trigger", err.Error())
@@ -267,17 +275,18 @@ func modelFromStrategyTrigger(ctx context.Context, trigger traderapigen.Trigger)
 		return strategyTriggerModel{}, errors.New("backend returned a trigger without strategy_id")
 	}
 	return strategyTriggerModel{
-		ID:             types.StringValue(trigger.TriggerId.String()),
-		StrategyID:     strategyID,
-		Purpose:        stringNullableAttribute(trigger.Purpose),
-		Kind:           types.StringValue(trigger.Kind),
-		Schedule:       stringNullableAttribute(trigger.Schedule),
-		HookSlug:       stringNullableAttribute(trigger.HookSlug),
-		EventMatch:     eventMatch,
-		PromptTemplate: types.StringValue(trigger.PromptTemplate),
-		Enabled:        types.BoolValue(trigger.Enabled),
-		CreatedAt:      types.StringValue(trigger.CreatedAt.Format(time.RFC3339Nano)),
-		UpdatedAt:      types.StringValue(trigger.UpdatedAt.Format(time.RFC3339Nano)),
+		ID:               types.StringValue(trigger.TriggerId.String()),
+		StrategyID:       strategyID,
+		Purpose:          stringNullableAttribute(trigger.Purpose),
+		Kind:             types.StringValue(trigger.Kind),
+		Schedule:         stringNullableAttribute(trigger.Schedule),
+		HookSlug:         stringNullableAttribute(trigger.HookSlug),
+		EventMatch:       eventMatch,
+		PromptTemplate:   types.StringValue(trigger.PromptTemplate),
+		Enabled:          types.BoolValue(trigger.Enabled),
+		BusinessDaysOnly: types.BoolValue(trigger.BusinessDaysOnly),
+		CreatedAt:        types.StringValue(trigger.CreatedAt.Format(time.RFC3339Nano)),
+		UpdatedAt:        types.StringValue(trigger.UpdatedAt.Format(time.RFC3339Nano)),
 	}, nil
 }
 
@@ -342,6 +351,14 @@ func (strategyTriggerConfigValidator) ValidateResource(ctx context.Context, req 
 		default:
 			resp.Diagnostics.AddAttributeError(path.Root("event_match"), "Invalid event_match", "event_match には object を指定してください。")
 		}
+	}
+	if !config.BusinessDaysOnly.IsNull() && !config.BusinessDaysOnly.IsUnknown() &&
+		config.BusinessDaysOnly.ValueBool() && config.Kind.ValueString() != "cron" {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("business_days_only"),
+			"Unexpected business_days_only",
+			"business_days_only は kind が cron の場合にのみ true にできます。",
+		)
 	}
 
 	scheduleUnknown := config.Schedule.IsUnknown()

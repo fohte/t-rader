@@ -15,7 +15,7 @@ use crate::unit_of_work::SharedUnitOfWork;
 use self::validation::{validate_event_match, validate_template};
 use super::error::TriggerUseCaseError;
 use super::repository::SharedTriggerRepository;
-use super::schedule::{parse_schedule, should_fire};
+use super::schedule::{parse_schedule, should_fire_cron_trigger};
 use super::template::{build_standard_context, evaluate_event_match, expand_template};
 use super::types::{CreateTriggerCommand, NewTrigger, Trigger, TriggerKind, UpdateTriggerCommand};
 
@@ -108,6 +108,7 @@ impl TriggerUseCases {
                     event_match: command.event_match,
                     prompt_template,
                     enabled: command.enabled.unwrap_or(true),
+                    business_days_only: command.business_days_only.unwrap_or(false),
                 },
             )
             .await?;
@@ -305,7 +306,13 @@ impl TriggerUseCases {
                 match parse_schedule(expression) {
                     Ok(schedule) => {
                         let last_fired_at = trigger.last_fired_at.map(|value| value.with_timezone(&Utc));
-                        should_fire(&schedule, last_fired_at, now, interval)
+                        should_fire_cron_trigger(
+                            &schedule,
+                            last_fired_at,
+                            now,
+                            interval,
+                            trigger.business_days_only,
+                        )
                             .then_some(trigger.trigger_id)
                     }
                     Err(error) => {
@@ -394,6 +401,11 @@ fn validate_create(
             }
         }
         TriggerKind::Hook => {
+            if command.business_days_only.unwrap_or(false) {
+                return Err(TriggerUseCaseError::Validation(
+                    "business_days_only can only be true when kind=cron".into(),
+                ));
+            }
             if hook_slug.as_deref().is_none_or(str::is_empty) {
                 return Err(TriggerUseCaseError::Validation(
                     "hook_slug is required for kind=hook".into(),
@@ -451,6 +463,14 @@ fn apply_update(
     }
     if let Some(enabled) = command.enabled {
         trigger.enabled = enabled;
+    }
+    if let Some(business_days_only) = command.business_days_only {
+        if business_days_only && trigger.kind != TriggerKind::Cron {
+            return Err(TriggerUseCaseError::Validation(
+                "business_days_only can only be true when kind=cron".into(),
+            ));
+        }
+        trigger.business_days_only = business_days_only;
     }
     if let Some(purpose) = command.purpose {
         trigger.purpose = purpose;
@@ -550,6 +570,7 @@ mod tests {
             event_match: None,
             prompt_template: "sample prompt".to_string(),
             enabled: true,
+            business_days_only: false,
             last_fired_at: None,
             created_at: now,
             updated_at: now,

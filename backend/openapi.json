@@ -8399,6 +8399,14 @@
           "prompt_template"
         ],
         "properties": {
+          "business_days_only": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "東証の営業日に限り cron trigger を起動する。省略時は false。",
+            "default": false
+          },
           "enabled": {
             "type": [
               "boolean",
@@ -10089,10 +10097,14 @@
           "kind",
           "prompt_template",
           "enabled",
+          "business_days_only",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "business_days_only": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -10503,6 +10515,13 @@
       "UpdateTriggerRequest": {
         "type": "object",
         "properties": {
+          "business_days_only": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "省略時は現在の設定を保持する。"
+          },
           "enabled": {
             "type": [
               "boolean",

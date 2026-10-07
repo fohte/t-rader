@@ -253,6 +253,7 @@ comments:
       event_match: 'hook の payload が起動条件を満たすか判定する条件。'
       prompt_template: '起動時にエージェントへ渡す指示文のテンプレート。'
       enabled: 'trigger が有効かどうか。'
+      business_days_only: '東証の営業日に限り cron trigger を起動するかどうか。'
       last_fired_at: '最後に trigger が発火した時刻。'
       purpose: '実行に使用する agent_config の purpose キー。'
   - table: bars

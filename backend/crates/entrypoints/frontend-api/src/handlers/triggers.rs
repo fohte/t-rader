@@ -81,6 +81,7 @@ pub async fn create_strategy_trigger(
                 event_match: payload.event_match,
                 prompt_template: payload.prompt_template,
                 enabled: payload.enabled,
+                business_days_only: payload.business_days_only,
             },
         )
         .await
@@ -156,6 +157,7 @@ pub async fn update_trigger(
                 event_match: payload.event_match,
                 prompt_template: payload.prompt_template,
                 enabled: payload.enabled,
+                business_days_only: payload.business_days_only,
             },
         )
         .await
