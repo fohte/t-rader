@@ -16,7 +16,7 @@ use crate::{
         PaperOrderResult, PaperOrderSide, PaperOrderWithResult, PaperTradeFillStats,
         PaperTradeRepository, PaperTradeRepositoryError, PaperTradeUseCases,
     },
-    unit_of_work::FakeUnitOfWork,
+    unit_of_work::{FakeTransaction, FakeUnitOfWork},
 };
 
 const ACCOUNT_ID: Uuid = Uuid::from_u128(1);
@@ -31,9 +31,14 @@ struct FakePaperTradeRepository {
     accounts: Mutex<Vec<PaperAccount>>,
     orders: Mutex<Vec<PaperOrderWithResult>>,
     inserted_orders: Mutex<Vec<NewPaperOrder>>,
+    result_transaction_ids: Mutex<Vec<Uuid>>,
 }
 
 impl FakePaperTradeRepository {
+    fn empty() -> Self {
+        Self::with_accounts(Vec::new(), Vec::new())
+    }
+
     fn new(account: PaperAccount, orders: Vec<PaperOrder>) -> Self {
         let orders = orders
             .into_iter()
@@ -42,15 +47,24 @@ impl FakePaperTradeRepository {
                 result: None,
             })
             .collect();
-        Self::with_results(account, orders)
+        Self::with_accounts(vec![account], orders)
     }
 
     fn with_results(account: PaperAccount, orders: Vec<PaperOrderWithResult>) -> Self {
+        Self::with_accounts(vec![account], orders)
+    }
+
+    fn with_accounts(accounts: Vec<PaperAccount>, orders: Vec<PaperOrderWithResult>) -> Self {
         Self {
-            accounts: Mutex::new(vec![account]),
+            accounts: Mutex::new(accounts),
             orders: Mutex::new(orders),
             inserted_orders: Mutex::new(Vec::new()),
+            result_transaction_ids: Mutex::new(Vec::new()),
         }
+    }
+
+    async fn accounts(&self) -> Vec<PaperAccount> {
+        self.accounts.lock().await.clone()
     }
 
     async fn results(&self) -> Vec<Option<PaperOrderResult>> {
@@ -64,6 +78,10 @@ impl FakePaperTradeRepository {
 
     async fn inserted_orders(&self) -> Vec<NewPaperOrder> {
         self.inserted_orders.lock().await.clone()
+    }
+
+    async fn result_transaction_ids(&self) -> Vec<Uuid> {
+        self.result_transaction_ids.lock().await.clone()
     }
 }
 
@@ -100,7 +118,7 @@ impl PaperTradeRepository for FakePaperTradeRepository {
             side: order.side,
             qty: order.qty,
             note_version_id: order.note_version_id,
-            ordered_at: order.ordered_at,
+            ordered_at: decided_at(5),
         };
         self.orders.lock().await.push(PaperOrderWithResult {
             order: order.clone(),
@@ -125,9 +143,19 @@ impl PaperTradeRepository for FakePaperTradeRepository {
 
     async fn insert_result(
         &self,
-        _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+        transaction: &crate::unit_of_work::UnitOfWorkTransaction,
         result: PaperOrderResult,
     ) -> Result<(), PaperTradeRepositoryError> {
+        let Some(transaction_id) = transaction
+            .downcast_ref::<FakeTransaction>()
+            .map(|transaction| transaction.id)
+        else {
+            return Err(PaperTradeRepositoryError::InvalidTransaction);
+        };
+        self.result_transaction_ids
+            .lock()
+            .await
+            .push(transaction_id);
         let mut orders = self.orders.lock().await;
         let Some(item) = orders
             .iter_mut()
@@ -157,7 +185,18 @@ fn use_cases(
     repository: Arc<FakePaperTradeRepository>,
     bars: Arc<FakeBarsRepository>,
 ) -> PaperTradeUseCases {
-    PaperTradeUseCases::new(Arc::new(FakeUnitOfWork::new()), repository, bars)
+    use_cases_with_unit_of_work(repository, bars).0
+}
+
+fn use_cases_with_unit_of_work(
+    repository: Arc<FakePaperTradeRepository>,
+    bars: Arc<FakeBarsRepository>,
+) -> (PaperTradeUseCases, Arc<FakeUnitOfWork>) {
+    let unit_of_work = Arc::new(FakeUnitOfWork::new());
+    (
+        PaperTradeUseCases::new(unit_of_work.clone(), repository, bars),
+        unit_of_work,
+    )
 }
 
 async fn fill_and_snapshot(
@@ -181,6 +220,32 @@ fn account(initial_cash: i64) -> PaperAccount {
         initial_cash_jpy: Decimal::from(initial_cash),
         benchmark_stock_id: None,
         started_on: date(1),
+    }
+}
+
+fn new_account(
+    name: &str,
+    purpose: &str,
+    initial_cash_jpy: i64,
+    benchmark_stock_id: Option<&str>,
+) -> NewPaperAccount {
+    NewPaperAccount {
+        name: name.to_string(),
+        strategy_id: Uuid::from_u128(6),
+        purpose: purpose.to_string(),
+        initial_cash_jpy: Decimal::from(initial_cash_jpy),
+        benchmark_stock_id: benchmark_stock_id.map(str::to_string),
+        started_on: date(1),
+    }
+}
+
+fn new_order(stock_id: &str, qty: i64) -> NewPaperOrder {
+    NewPaperOrder {
+        account_id: ACCOUNT_ID,
+        stock_id: stock_id.to_string(),
+        side: PaperOrderSide::Buy,
+        qty,
+        note_version_id: NOTE_VERSION_ID,
     }
 }
 
@@ -236,22 +301,172 @@ async fn fills_at_the_first_bar_after_the_japan_order_date_using_its_open() {
     bars.seed_bars(vec![bar(6, 40), bar(7, 50)]).await;
     bars.seed_ingested_dates(HashSet::from([date(7)])).await;
 
-    let use_cases = use_cases(repository.clone(), bars);
+    let (use_cases, unit_of_work) = use_cases_with_unit_of_work(repository.clone(), bars);
     let outcome = fill_and_snapshot(&use_cases, &repository, decided_at(7)).await;
+    let committed = unit_of_work.committed.lock().await.clone();
+    let result_transactions = repository.result_transaction_ids().await;
+    let commit_state = (
+        committed.len(),
+        result_transactions.len(),
+        result_transactions
+            .iter()
+            .map(|transaction_id| committed.contains(transaction_id))
+            .collect::<Vec<_>>(),
+    );
+
+    assert_eq!(
+        (outcome, commit_state),
+        (
+            (
+                PaperTradeFillStats {
+                    filled: 1,
+                    rejected: 0,
+                },
+                vec![Some(PaperOrderResult::Filled {
+                    order_id: FIRST_ORDER_ID,
+                    fill_date: date(7),
+                    fill_price: Decimal::from(50),
+                    decided_at: decided_at(7),
+                })],
+            ),
+            (1, 1, vec![true]),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn create_account_trims_fields_before_persisting() {
+    let repository = Arc::new(FakePaperTradeRepository::empty());
+    let (use_cases, unit_of_work) =
+        use_cases_with_unit_of_work(repository.clone(), Arc::new(FakeBarsRepository::new()));
+
+    let result = use_cases
+        .create_account(new_account(
+            "  Demo account  ",
+            "  demo-purpose  ",
+            10_000,
+            None,
+        ))
+        .await
+        .map_err(|error| error.to_string());
+    let persisted_accounts = repository.accounts().await;
+    let committed_count = unit_of_work.committed.lock().await.len();
+    let expected_account = PaperAccount {
+        id: ACCOUNT_ID,
+        name: "Demo account".to_string(),
+        strategy_id: Uuid::from_u128(6),
+        purpose: "demo-purpose".to_string(),
+        initial_cash_jpy: Decimal::from(10_000),
+        benchmark_stock_id: None,
+        started_on: date(1),
+    };
+
+    assert_eq!(
+        (result, persisted_accounts, committed_count),
+        (Ok(expected_account.clone()), vec![expected_account], 1),
+    );
+}
+
+#[rstest::rstest]
+#[case::empty_name("", "demo-purpose", 10_000, None, "name must not be empty")]
+#[case::empty_purpose("Demo account", "  ", 10_000, None, "purpose must not be empty")]
+#[case::non_positive_cash(
+    "Demo account",
+    "demo-purpose",
+    0,
+    None,
+    "initial_cash_jpy must be greater than zero"
+)]
+#[case::foreign_benchmark(
+    "Demo account",
+    "demo-purpose",
+    10_000,
+    Some("US:DEMO-A"),
+    "benchmark_stock_id must identify a Japanese stock"
+)]
+#[tokio::test]
+async fn create_account_rejects_invalid_input_without_writing(
+    #[case] name: &str,
+    #[case] purpose: &str,
+    #[case] initial_cash_jpy: i64,
+    #[case] benchmark_stock_id: Option<&str>,
+    #[case] expected_error: &str,
+) {
+    let repository = Arc::new(FakePaperTradeRepository::empty());
+    let (use_cases, unit_of_work) =
+        use_cases_with_unit_of_work(repository.clone(), Arc::new(FakeBarsRepository::new()));
+
+    let result = use_cases
+        .create_account(new_account(
+            name,
+            purpose,
+            initial_cash_jpy,
+            benchmark_stock_id,
+        ))
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string());
+    let outcome = (
+        result,
+        repository.accounts().await,
+        unit_of_work.committed.lock().await.len(),
+    );
+
+    assert_eq!(outcome, (Err(expected_error.to_string()), Vec::new(), 0),);
+}
+
+#[tokio::test]
+async fn record_order_persists_a_valid_japanese_lot_order() {
+    let repository = Arc::new(FakePaperTradeRepository::new(account(10_000), Vec::new()));
+    let (use_cases, unit_of_work) =
+        use_cases_with_unit_of_work(repository.clone(), Arc::new(FakeBarsRepository::new()));
+    let new_order = new_order(STOCK_ID, 100);
+
+    let result = use_cases
+        .record_order(new_order.clone())
+        .await
+        .map_err(|error| error.to_string());
+    let inserted_orders = repository.inserted_orders().await;
+    let committed_count = unit_of_work.committed.lock().await.len();
+    let expected_order = PaperOrder {
+        id: FIRST_ORDER_ID,
+        account_id: ACCOUNT_ID,
+        stock_id: STOCK_ID.to_string(),
+        side: PaperOrderSide::Buy,
+        qty: 100,
+        note_version_id: NOTE_VERSION_ID,
+        ordered_at: decided_at(5),
+    };
+
+    assert_eq!(
+        (result, inserted_orders, committed_count),
+        (Ok(expected_order), vec![new_order], 1),
+    );
+}
+
+#[tokio::test]
+async fn record_order_does_not_write_when_the_account_is_missing() {
+    let repository = Arc::new(FakePaperTradeRepository::empty());
+    let (use_cases, unit_of_work) =
+        use_cases_with_unit_of_work(repository.clone(), Arc::new(FakeBarsRepository::new()));
+
+    let result = use_cases
+        .record_order(new_order(STOCK_ID, 100))
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string());
+    let outcome = (
+        result,
+        repository.inserted_orders().await,
+        unit_of_work.committed.lock().await.len(),
+    );
 
     assert_eq!(
         outcome,
         (
-            PaperTradeFillStats {
-                filled: 1,
-                rejected: 0,
-            },
-            vec![Some(PaperOrderResult::Filled {
-                order_id: FIRST_ORDER_ID,
-                fill_date: date(7),
-                fill_price: Decimal::from(50),
-                decided_at: decided_at(7),
-            })],
+            Err(format!("paper account {ACCOUNT_ID} not found")),
+            Vec::<NewPaperOrder>::new(),
+            0,
         ),
     );
 }
@@ -513,16 +728,7 @@ async fn record_order_rejects_invalid_input_without_writing(
 ) {
     let repository = Arc::new(FakePaperTradeRepository::new(account(10_000), Vec::new()));
     let use_cases = use_cases(repository.clone(), Arc::new(FakeBarsRepository::new()));
-    let result = use_cases
-        .record_order(NewPaperOrder {
-            account_id: ACCOUNT_ID,
-            stock_id: stock_id.to_string(),
-            side: PaperOrderSide::Buy,
-            qty,
-            note_version_id: NOTE_VERSION_ID,
-            ordered_at: decided_at(5),
-        })
-        .await;
+    let result = use_cases.record_order(new_order(stock_id, qty)).await;
     let outcome = (
         result.map(|_| ()).map_err(|error| error.to_string()),
         repository.inserted_orders().await,

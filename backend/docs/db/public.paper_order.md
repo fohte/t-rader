@@ -14,7 +14,7 @@
 | side            | text                     |                   | false    |                                                           |                                                 | 買い注文または売り注文。                   |
 | qty             | bigint                   |                   | false    |                                                           |                                                 | 注文数量。                                 |
 | note_version_id | uuid                     |                   | false    |                                                           | [public.note_version](public.note_version.md)   | 注文の根拠として記録したノートバージョン。 |
-| ordered_at      | timestamp with time zone |                   | false    |                                                           |                                                 | 注文を記録した時刻。                       |
+| ordered_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                           |                                                 | 注文を記録した時刻。                       |
 
 ## Constraints
 

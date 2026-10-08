@@ -36,6 +36,14 @@ impl PaperOrderSide {
             Self::Sell => "sell",
         }
     }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "buy" => Some(Self::Buy),
+            "sell" => Some(Self::Sell),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,7 +64,6 @@ pub struct NewPaperOrder {
     pub side: PaperOrderSide,
     pub qty: i64,
     pub note_version_id: Uuid,
-    pub ordered_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

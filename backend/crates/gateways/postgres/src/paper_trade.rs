@@ -63,7 +63,7 @@ impl PaperTradeRepository for PostgresPaperTradeRepository {
             side: Set(order.side.as_str().to_string()),
             qty: Set(order.qty),
             note_version_id: Set(order.note_version_id),
-            ordered_at: Set(order.ordered_at),
+            ordered_at: NotSet,
         })
         .exec_with_returning(transaction)
         .await
@@ -189,16 +189,12 @@ fn to_account(model: paper_account::Model) -> PaperAccount {
 }
 
 fn to_order(model: paper_order::Model) -> Result<PaperOrder, PaperTradeRepositoryError> {
-    let side = match model.side.as_str() {
-        "buy" => PaperOrderSide::Buy,
-        "sell" => PaperOrderSide::Sell,
-        _ => {
-            return Err(PaperTradeRepositoryError::InvalidData(format!(
-                "paper_order.side has unsupported value: {}",
-                model.side
-            )));
-        }
-    };
+    let side = PaperOrderSide::parse(&model.side).ok_or_else(|| {
+        PaperTradeRepositoryError::InvalidData(format!(
+            "paper_order.side has unsupported value: {}",
+            model.side
+        ))
+    })?;
     Ok(PaperOrder {
         id: model.id,
         account_id: model.account_id,
