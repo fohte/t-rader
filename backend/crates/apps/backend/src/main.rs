@@ -364,6 +364,7 @@ async fn main() -> Result<(), StartupError> {
         alpha_vantage_calendar_source,
         fred_calendar_event_source,
         predictions: use_cases.predictions(),
+        paper_trades: use_cases.paper_trade(),
         short_ratios: use_cases.short_ratios(),
         short_sale_reports: use_cases.short_sale_reports(),
         margins: use_cases.margins(),

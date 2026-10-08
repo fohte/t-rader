@@ -33,6 +33,7 @@ use crate::{
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         news_content::NewsContentFetch,
+        paper_order_filling::PaperOrderFilling,
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
@@ -52,7 +53,7 @@ const EODDATA_QUEUE: &str = "eoddata";
 const MAX_ATTEMPTS: u16 = 3;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
 pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 23] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 24] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
     (EodDataKospiIngest::IDENTIFIER, DAILY_TIMEOUT),
     (TwseIndexIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -66,6 +67,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 23] = [
     (ShortSaleReportIngest::IDENTIFIER, DAILY_TIMEOUT),
     (MarginIngest::IDENTIFIER, DAILY_TIMEOUT),
     (PredictionGrading::IDENTIFIER, WEEKLY_TIMEOUT),
+    (PaperOrderFilling::IDENTIFIER, DAILY_TIMEOUT),
     (DailyBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
     (EarningsScheduleIngest::IDENTIFIER, DAILY_TIMEOUT),
     (FinancialSummaryIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -174,6 +176,7 @@ impl Scheduler {
             .define_job::<ShortSaleReportIngest>()
             .define_job::<MarginIngest>()
             .define_job::<PredictionGrading>()
+            .define_job::<PaperOrderFilling>()
             .define_job::<StrategyTaskReconcile>()
             .define_job::<TriggerEvaluation>();
         let worker_options = if news_content_configured {
@@ -358,6 +361,12 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
         14,
         0,
     )?);
+    crontabs.push(daily_cron::<PaperOrderFilling>(
+        core_application::ingest_status::PAPER_ORDER_FILLING_JOB,
+        16,
+        0,
+        None,
+    )?);
     if configured.strategy_task_reconcile {
         crontabs.push(every_minute_cron::<StrategyTaskReconcile>(
             "strategy_task_reconcile",
@@ -477,6 +486,7 @@ mod tests {
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         news_content::NewsContentFetch,
+        paper_order_filling::PaperOrderFilling,
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
@@ -662,6 +672,12 @@ mod tests {
                 CrontabFill::weeks(2),
                 None,
             ),
+            expected_cron::<PaperOrderFilling>(
+                CrontabTimer::daily_at(16, 0).ok(),
+                core_application::ingest_status::PAPER_ORDER_FILLING_JOB,
+                CrontabFill::days(3),
+                None,
+            ),
             Some(every_minute_cron::<StrategyTaskReconcile>(
                 "strategy_task_reconcile",
                 Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME),
@@ -839,6 +855,12 @@ mod tests {
                     None,
                 ),
                 (
+                    Some("paper_order_filling".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    None,
+                ),
+                (
                     Some("strategy_task_reconcile".to_string()),
                     None,
                     Some(3),
@@ -856,27 +878,27 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "trigger_evaluation"])]
-    #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::eoddata_kospi_only(ConfiguredJobs { eoddata_kospi: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "eoddata_kospi_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::twse_only(ConfiguredJobs { twse: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "twse_index_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::ecb_calendar_only(ConfiguredJobs { ecb_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "ecb_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::fed_calendar_only(ConfiguredJobs { fed_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fed_calendar_event_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::alpha_vantage_calendar_only(ConfiguredJobs { alpha_vantage_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "alpha_vantage_calendar_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::fred_release_dates_only(ConfiguredJobs { fred_release_dates: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_release_dates_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::us_stock_master_only(ConfiguredJobs { us_stock_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_master_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::us_stock_bars_only(ConfiguredJobs { us_stock_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_bars_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "trigger_evaluation"])]
-    #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
-    #[case::news_content_enabled(ConfiguredJobs { news_content: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "news_content_fetch", "trigger_evaluation"])]
+    #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::eoddata_kospi_only(ConfiguredJobs { eoddata_kospi: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "eoddata_kospi_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::twse_only(ConfiguredJobs { twse: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "twse_index_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::ecb_calendar_only(ConfiguredJobs { ecb_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "ecb_calendar_event_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::fed_calendar_only(ConfiguredJobs { fed_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fed_calendar_event_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::alpha_vantage_calendar_only(ConfiguredJobs { alpha_vantage_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "alpha_vantage_calendar_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::fred_release_dates_only(ConfiguredJobs { fred_release_dates: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_release_dates_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::us_stock_master_only(ConfiguredJobs { us_stock_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_master_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::us_stock_bars_only(ConfiguredJobs { us_stock_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_bars_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
+    #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::news_content_enabled(ConfiguredJobs { news_content: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "news_content_fetch", "trigger_evaluation"])]
     fn schedules_only_configured_sources(
         #[case] configured: ConfiguredJobs,
         #[case] expected_ids: Vec<&str>,
