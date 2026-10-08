@@ -74,9 +74,8 @@ pub struct CreateTriggerRequest {
     pub prompt_template: String,
     #[serde(default)]
     pub enabled: Option<bool>,
-    /// 東証の営業日に限り cron trigger を起動する。省略時は false。
+    /// 土日・日本の祝日・年末年始を休場日として扱い、東証の営業日に限って cron trigger を起動する。臨時休場日は判定しない。省略時は false。
     #[serde(default)]
-    #[schema(default = false)]
     pub business_days_only: Option<bool>,
 }
 

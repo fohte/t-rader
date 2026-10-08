@@ -102,7 +102,7 @@ func (r *strategyTriggerResource) Schema(_ context.Context, _ resource.SchemaReq
 			"business_days_only": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "東証の営業日のみ cron trigger を起動します。新規作成時に省略すると false です。",
+				MarkdownDescription: "土日・日本の祝日・年末年始を休場日として扱います。臨時休場日を除き、東証の営業日にのみ cron trigger を起動します。新規作成時に省略すると false です。",
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,

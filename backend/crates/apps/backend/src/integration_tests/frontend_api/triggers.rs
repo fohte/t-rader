@@ -70,6 +70,7 @@ mod tests {
     async fn create_cron_trigger_with_business_days_only(
         server: &axum_test::TestServer,
         strategy_id: &str,
+        business_days_only: bool,
     ) -> String {
         let created = server
             .post(&format!("/api/strategies/{strategy_id}/triggers"))
@@ -77,7 +78,7 @@ mod tests {
                 "kind": "cron",
                 "schedule": "0 9 * * 1-5",
                 "prompt_template": "x",
-                "business_days_only": true,
+                "business_days_only": business_days_only,
             }))
             .await;
         created.json::<Value>()["trigger_id"]
@@ -171,10 +172,49 @@ mod tests {
     ) {
         let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
-        let tid = create_cron_trigger_with_business_days_only(&server, &sid).await;
+        let tid = create_cron_trigger_with_business_days_only(&server, &sid, true).await;
         let updated = server
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({}))
+            .await;
+        let fetched = server.get(&format!("/api/triggers/{tid}")).await;
+        let expected = json!({
+            "trigger_id": tid,
+            "strategy_id": sid,
+            "purpose": null,
+            "kind": "cron",
+            "schedule": "0 9 * * 1-5",
+            "hook_slug": null,
+            "event_match": null,
+            "prompt_template": "x",
+            "enabled": true,
+            "business_days_only": true,
+            "last_fired_at": null,
+            "created_at": "<created_at>",
+            "updated_at": "<updated_at>",
+        });
+
+        assert_eq!(
+            (
+                updated.status_code(),
+                normalize_trigger(updated.json(), true),
+                fetched.status_code(),
+                normalize_trigger(fetched.json(), true),
+            ),
+            (StatusCode::OK, expected.clone(), StatusCode::OK, expected),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_business_days_only_can_enable_existing_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let tid = create_cron_trigger_with_business_days_only(&server, &sid, false).await;
+        let updated = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({ "business_days_only": true }))
             .await;
         let fetched = server.get(&format!("/api/triggers/{tid}")).await;
         let expected = json!({
@@ -210,7 +250,7 @@ mod tests {
     ) {
         let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
-        let tid = create_cron_trigger_with_business_days_only(&server, &sid).await;
+        let tid = create_cron_trigger_with_business_days_only(&server, &sid, true).await;
         let updated = server
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({ "business_days_only": false }))
@@ -296,6 +336,45 @@ mod tests {
             &response,
             StatusCode::BAD_REQUEST,
             Some(json!({"error": "business_days_only can only be true when kind=cron"})),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_hook_trigger_rejects_business_days_only(db: gateway_postgres::DatabaseHandle) {
+        let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
+        let updated = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({ "business_days_only": true }))
+            .await;
+        let fetched = server.get(&format!("/api/triggers/{tid}")).await;
+
+        assert_eq!(
+            (
+                updated.status_code(),
+                updated.json::<Value>(),
+                fetched.status_code(),
+                normalize_trigger(fetched.json(), true),
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": "business_days_only can only be true when kind=cron"}),
+                StatusCode::OK,
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "hook",
+                    "schedule": null,
+                    "hook_slug": "sample-hook",
+                    "event_match": {"event": {"eq": "initial"}},
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "business_days_only": false,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
         );
     }
 

@@ -1558,11 +1558,8 @@ export interface components {
       symbol: string
     }
     CreateTriggerRequest: {
-      /**
-       * @description 東証の営業日に限り cron trigger を起動する。省略時は false。
-       * @default false
-       */
-      business_days_only: boolean | null
+      /** @description 土日・日本の祝日・年末年始を休場日として扱い、東証の営業日に限って cron trigger を起動する。臨時休場日は判定しない。省略時は false。 */
+      business_days_only?: boolean | null
       enabled?: boolean | null
       event_match?: unknown
       /** @description kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子) */

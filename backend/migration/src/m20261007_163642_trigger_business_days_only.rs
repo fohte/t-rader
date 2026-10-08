@@ -1,12 +1,7 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261007_163642_trigger_business_days_only"
-    }
-}
 
 #[derive(DeriveIden)]
 enum Trigger {

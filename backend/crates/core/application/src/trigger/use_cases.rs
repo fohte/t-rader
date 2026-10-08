@@ -12,7 +12,7 @@ use crate::strategy_scope::StrategyScope;
 use crate::strategy_task::{StrategyTaskUseCases, SubmittedTask, TaskSource};
 use crate::unit_of_work::SharedUnitOfWork;
 
-use self::validation::{validate_event_match, validate_template};
+use self::validation::{validate_business_days_only, validate_event_match, validate_template};
 use super::error::TriggerUseCaseError;
 use super::repository::SharedTriggerRepository;
 use super::schedule::{parse_schedule, should_fire_cron_trigger};
@@ -387,6 +387,7 @@ fn validate_create(
         .as_deref()
         .map(str::trim)
         .map(str::to_string);
+    validate_business_days_only(command.business_days_only.unwrap_or(false), &command.kind)?;
     match command.kind {
         TriggerKind::Cron => {
             if schedule.as_deref().is_none_or(str::is_empty) {
@@ -401,11 +402,6 @@ fn validate_create(
             }
         }
         TriggerKind::Hook => {
-            if command.business_days_only.unwrap_or(false) {
-                return Err(TriggerUseCaseError::Validation(
-                    "business_days_only can only be true when kind=cron".into(),
-                ));
-            }
             if hook_slug.as_deref().is_none_or(str::is_empty) {
                 return Err(TriggerUseCaseError::Validation(
                     "hook_slug is required for kind=hook".into(),
@@ -465,11 +461,7 @@ fn apply_update(
         trigger.enabled = enabled;
     }
     if let Some(business_days_only) = command.business_days_only {
-        if business_days_only && trigger.kind != TriggerKind::Cron {
-            return Err(TriggerUseCaseError::Validation(
-                "business_days_only can only be true when kind=cron".into(),
-            ));
-        }
+        validate_business_days_only(business_days_only, &trigger.kind)?;
         trigger.business_days_only = business_days_only;
     }
     if let Some(purpose) = command.purpose {
