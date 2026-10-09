@@ -11,7 +11,8 @@ use super::{
 };
 
 const MAX_PENDING_ITEMS: u64 = 20;
-const MAX_RUN_DURATION: Duration = Duration::from_secs(8 * 60);
+// 408 時の再取得に最大 250 秒かかっても、job timeout の 10 分以内に処理を返せるようにする。
+const MAX_RUN_DURATION: Duration = Duration::from_secs(5 * 60);
 const MAX_CONTENT_CHARS: usize = 100_000;
 const EXPIRE_AFTER: ChronoDuration = ChronoDuration::hours(48);
 

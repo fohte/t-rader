@@ -5,7 +5,7 @@ use core_application::news_content::{
     NewsContentFetchError, NewsContentFetchOutcome, NewsContentFetcher, NewsContentInterruption,
 };
 use rate_limit::{Quota, RateLimitError, RateLimiter};
-use reqwest::{Client, Url};
+use reqwest::{Client, StatusCode, Url};
 use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
@@ -18,7 +18,8 @@ const FIRECRAWL_RATE_LIMIT: u32 = 5;
 const FIRECRAWL_RATE_PERIOD: Duration = Duration::from_secs(60);
 const RATE_LIMIT_MAX_WAIT: Duration = Duration::from_secs(60);
 const HOST_PENALTY: Duration = Duration::from_secs(60 * 60);
-const HTTP_TIMEOUT: Duration = Duration::from_secs(35);
+const FIRECRAWL_TIMEOUT: Duration = Duration::from_secs(60);
+const HTTP_TIMEOUT: Duration = Duration::from_secs(FIRECRAWL_TIMEOUT.as_secs() + 5);
 
 #[derive(Debug, Error)]
 pub enum FirecrawlClientError {
@@ -32,7 +33,10 @@ pub enum FirecrawlClientError {
 enum FirecrawlRateLimiter {
     Shared(RateLimiter),
     #[cfg(test)]
-    Disabled,
+    TestDouble {
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        deny_on: Option<usize>,
+    },
 }
 
 pub struct FirecrawlClient {
@@ -79,7 +83,29 @@ impl FirecrawlClient {
         api_key: String,
         timeout: Duration,
     ) -> Result<Self, FirecrawlClientError> {
-        Self::with_components(endpoint, api_key, FirecrawlRateLimiter::Disabled, timeout)
+        Self::with_counting_rate_limiter(
+            endpoint,
+            api_key,
+            timeout,
+            std::sync::Arc::default(),
+            None,
+        )
+    }
+
+    #[cfg(test)]
+    fn with_counting_rate_limiter(
+        endpoint: String,
+        api_key: String,
+        timeout: Duration,
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        deny_on: Option<usize>,
+    ) -> Result<Self, FirecrawlClientError> {
+        Self::with_components(
+            endpoint,
+            api_key,
+            FirecrawlRateLimiter::TestDouble { calls, deny_on },
+            timeout,
+        )
     }
 
     async fn acquire(&self, host_key: &str) -> Result<bool, NewsContentFetchError> {
@@ -96,7 +122,10 @@ impl FirecrawlClient {
                 }
             }
             #[cfg(test)]
-            FirecrawlRateLimiter::Disabled => Ok(true),
+            FirecrawlRateLimiter::TestDouble { calls, deny_on } => {
+                let call = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                Ok(*deny_on != Some(call))
+            }
         }
     }
 
@@ -107,7 +136,7 @@ impl FirecrawlClient {
                 .await
                 .map_err(|_| NewsContentFetchError::RateLimiter),
             #[cfg(test)]
-            FirecrawlRateLimiter::Disabled => Ok(()),
+            FirecrawlRateLimiter::TestDouble { .. } => Ok(()),
         }
     }
 
@@ -160,6 +189,32 @@ impl FirecrawlClient {
             _ => Ok(NewsContentFetchOutcome::Retry),
         }
     }
+
+    async fn scrape(
+        &self,
+        article_url: &Url,
+        only_clean_content: bool,
+    ) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request_body = json!({
+            "url": article_url.as_str(),
+            "formats": ["markdown"],
+            "onlyMainContent": true,
+            "timeout": FIRECRAWL_TIMEOUT.as_secs() * 1_000,
+            "maxAge": 0,
+            "storeInCache": false,
+            "parsers": [{ "type": "pdf", "mode": "fast", "maxPages": 10 }],
+        });
+        if only_clean_content {
+            request_body["onlyCleanContent"] = json!(true);
+        }
+
+        self.client
+            .post(&self.endpoint)
+            .bearer_auth(&self.api_key)
+            .json(&request_body)
+            .send()
+            .await
+    }
 }
 
 #[async_trait]
@@ -177,22 +232,17 @@ impl NewsContentFetcher for FirecrawlClient {
             return Ok(NewsContentFetchOutcome::Retry);
         }
 
-        let response = self
-            .client
-            .post(&self.endpoint)
-            .bearer_auth(&self.api_key)
-            .json(&json!({
-                "url": article_url.as_str(),
-                "formats": ["markdown"],
-                "onlyMainContent": true,
-                "timeout": 30_000,
-                "maxAge": 0,
-                "storeInCache": false,
-                "parsers": [{ "type": "pdf", "mode": "fast", "maxPages": 10 }],
-            }))
-            .send()
-            .await;
+        let response = self.scrape(&article_url, true).await;
         match response {
+            Ok(response) if response.status() == StatusCode::REQUEST_TIMEOUT => {
+                if !self.acquire(&host_key).await? {
+                    return Ok(NewsContentFetchOutcome::Retry);
+                }
+                match self.scrape(&article_url, false).await {
+                    Ok(response) => self.handle_response(response, &host_key).await,
+                    Err(_) => Ok(NewsContentFetchOutcome::Retry),
+                }
+            }
             Ok(response) => self.handle_response(response, &host_key).await,
             Err(_) => Ok(NewsContentFetchOutcome::Retry),
         }
@@ -227,6 +277,8 @@ mod tests {
     use reqwest::header::AUTHORIZATION;
     use rstest::rstest;
     use serde_json::json;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use wiremock::matchers::{body_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -302,7 +354,8 @@ mod tests {
                 "url": "https://example.invalid/article",
                 "formats": ["markdown"],
                 "onlyMainContent": true,
-                "timeout": 30_000,
+                "onlyCleanContent": true,
+                "timeout": 60_000,
                 "maxAge": 0,
                 "storeInCache": false,
                 "parsers": [{ "type": "pdf", "mode": "fast", "maxPages": 10 }],
@@ -326,6 +379,69 @@ mod tests {
         assert_eq!(
             actual,
             Ok(NewsContentFetchOutcome::Fetched("full article".to_owned()))
+        );
+    }
+
+    #[rstest]
+    #[case::fallback_success(
+        200,
+        NewsContentFetchOutcome::Fetched("fallback article".to_owned()),
+        None,
+        1
+    )]
+    #[case::fallback_timeout(408, NewsContentFetchOutcome::Retry, None, 1)]
+    #[case::fallback_rate_limited(200, NewsContentFetchOutcome::Retry, Some(2), 0)]
+    #[tokio::test]
+    async fn fetch_retries_without_clean_content_after_firecrawl_timeout(
+        #[case] fallback_status: u16,
+        #[case] expected: NewsContentFetchOutcome,
+        #[case] deny_on: Option<usize>,
+        #[case] expected_fallback_requests: u64,
+    ) {
+        let server = MockServer::start().await;
+        let common_body = json!({
+            "url": "https://example.invalid/article",
+            "formats": ["markdown"],
+            "onlyMainContent": true,
+            "timeout": 60_000,
+            "maxAge": 0,
+            "storeInCache": false,
+            "parsers": [{ "type": "pdf", "mode": "fast", "maxPages": 10 }],
+        });
+        let mut clean_body = common_body.clone();
+        clean_body["onlyCleanContent"] = json!(true);
+        Mock::given(method("POST"))
+            .and(path("/v2/scrape"))
+            .and(body_json(clean_body))
+            .respond_with(ResponseTemplate::new(408))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v2/scrape"))
+            .and(body_json(common_body))
+            .respond_with(ResponseTemplate::new(fallback_status).set_body_json(json!({
+                "success": true,
+                "data": { "markdown": "fallback article", "metadata": { "statusCode": 200 } },
+            })))
+            .expect(expected_fallback_requests)
+            .mount(&server)
+            .await;
+        let rate_limit_calls = Arc::new(AtomicUsize::new(0));
+        let client = FirecrawlClient::with_counting_rate_limiter(
+            format!("{}/v2/scrape", server.uri()),
+            "fake-firecrawl-key".to_owned(),
+            Duration::from_secs(1),
+            rate_limit_calls.clone(),
+            deny_on,
+        )
+        .expect("test client builds");
+
+        let actual = client.fetch("https://example.invalid/article").await;
+
+        assert_eq!(
+            (actual, rate_limit_calls.load(Ordering::SeqCst)),
+            (Ok(expected), 2)
         );
     }
 
