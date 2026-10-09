@@ -47,6 +47,12 @@ pub(crate) struct DailyBar {
     pub adj_close: Option<f64>,
     #[serde(rename = "AdjVo")]
     pub adj_volume: Option<f64>,
+    #[serde(
+        rename = "AdjFactor",
+        default,
+        deserialize_with = "deserialize_optional_number"
+    )]
+    pub adj_factor: Option<f64>,
 }
 
 /// J-Quants API V2 銘柄マスタレスポンス (`GET /v2/equities/master`)

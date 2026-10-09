@@ -308,6 +308,7 @@ impl IbkrClient {
                 low: Self::to_decimal(h.l)?,
                 close: Self::to_decimal(h.c)?,
                 volume: h.v.round() as i64,
+                adjustment_factor: Decimal::ONE,
             });
         }
 

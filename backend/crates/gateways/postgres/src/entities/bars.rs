@@ -17,6 +17,7 @@ pub struct Model {
     pub low: Decimal,
     pub close: Decimal,
     pub volume: i64,
+    pub adjustment_factor: Decimal,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

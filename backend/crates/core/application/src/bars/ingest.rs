@@ -1,9 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use chrono::{Duration, NaiveDate, Utc};
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::business_day::latest_business_day;
+use rust_decimal::Decimal;
 
+use crate::daily_bar_source::DailyBarSource;
 use crate::market_daily_bar_source::MarketDailyBarSource;
 
 use super::error::BarsUseCaseError;
@@ -19,10 +21,11 @@ impl BarsUseCases {
     /// 日足を取り込む 1 サイクルを実行する。
     pub async fn run_ingest_cycle(
         &self,
-        source: &dyn MarketDailyBarSource,
+        market_source: &dyn MarketDailyBarSource,
+        instrument_source: &dyn DailyBarSource,
     ) -> Result<IngestStats, BarsUseCaseError> {
         let today = Utc::now().date_naive();
-        let Some(range) = source.fetchable_range(today) else {
+        let Some(range) = market_source.fetchable_range(today) else {
             tracing::debug!("日足を取得できないため取り込みをスキップします");
             return Ok(IngestStats::default());
         };
@@ -39,7 +42,10 @@ impl BarsUseCases {
 
         for date in targets {
             stats.days_attempted += 1;
-            match self.ingest_date(source, date).await {
+            match self
+                .ingest_date(market_source, instrument_source, date)
+                .await
+            {
                 Ok(0) => tracing::debug!(%date, "この日の日足はまだ公開されていません"),
                 Ok(count) => stats.bars_upserted += count,
                 Err(error) => tracing::warn!(
@@ -55,16 +61,22 @@ impl BarsUseCases {
 
     async fn ingest_date(
         &self,
-        source: &dyn MarketDailyBarSource,
+        market_source: &dyn MarketDailyBarSource,
+        instrument_source: &dyn DailyBarSource,
         date: NaiveDate,
     ) -> Result<usize, BarsUseCaseError> {
-        let bars = source.fetch_daily_bars_by_date(date).await?;
+        let bars = market_source.fetch_daily_bars_by_date(date).await?;
         if bars.is_empty() {
             return Ok(0);
         }
 
         let instrument_ids: HashSet<String> =
             bars.iter().map(|bar| bar.instrument_id.clone()).collect();
+        let adjusted_instrument_ids: BTreeSet<String> = bars
+            .iter()
+            .filter(|bar| bar.adjustment_factor != Decimal::ONE)
+            .map(|bar| bar.instrument_id.clone())
+            .collect();
         let count = bars.len();
         let transaction = self.unit_of_work.begin().await?;
         self.repository
@@ -73,6 +85,19 @@ impl BarsUseCases {
         self.repository.upsert_bars(&transaction, bars).await?;
         self.repository.mark_ingested(&transaction, date).await?;
         self.unit_of_work.commit(transaction).await?;
+
+        for instrument_id in adjusted_instrument_ids {
+            if let Err(error) = self
+                .backfill_daily_bars(instrument_source, &instrument_id)
+                .await
+            {
+                tracing::warn!(
+                    instrument_id,
+                    error = %error,
+                    "調整係数が変わった銘柄の日足全期間再取得に失敗しました",
+                );
+            }
+        }
 
         Ok(count)
     }
@@ -168,7 +193,7 @@ mod tests {
     use tokio::sync::Mutex;
 
     use crate::bars::{BarsUseCases, FakeBarsRepository, IngestStats};
-    use crate::daily_bar_source::DateRange;
+    use crate::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
     use crate::market_daily_bar_source::{MarketDailyBarSource, MarketDailyBarSourceError};
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
@@ -191,6 +216,7 @@ mod tests {
             low: Decimal::new(close - 10, 0),
             close: Decimal::new(close, 0),
             volume: 1000,
+            adjustment_factor: Decimal::ONE,
         }
     }
 
@@ -275,6 +301,53 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct FakeDailyBarSource {
+        bars_by_instrument: Arc<Mutex<HashMap<String, Vec<Bar>>>>,
+        requested: Arc<Mutex<Vec<(String, DateRange)>>>,
+    }
+
+    impl FakeDailyBarSource {
+        fn new() -> Self {
+            Self {
+                bars_by_instrument: Arc::new(Mutex::new(HashMap::new())),
+                requested: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        async fn set_bars(&self, instrument_id: &str, bars: Vec<Bar>) {
+            self.bars_by_instrument
+                .lock()
+                .await
+                .insert(instrument_id.to_owned(), bars);
+        }
+    }
+
+    #[async_trait]
+    impl DailyBarSource for FakeDailyBarSource {
+        async fn fetch_daily_bars(
+            &self,
+            instrument_id: &str,
+            range: &DateRange,
+        ) -> Result<Vec<Bar>, DailyBarSourceError> {
+            self.requested
+                .lock()
+                .await
+                .push((instrument_id.to_owned(), range.clone()));
+            Ok(self
+                .bars_by_instrument
+                .lock()
+                .await
+                .get(instrument_id)
+                .cloned()
+                .unwrap_or_default())
+        }
+
+        fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+            Some((date(2008, 5, 7), date(2099, 12, 31)))
+        }
+    }
+
     struct BarsFixture {
         use_cases: BarsUseCases,
         unit_of_work: Arc<FakeUnitOfWork>,
@@ -315,7 +388,11 @@ mod tests {
         source.set_bars(to, vec![bar.clone()]).await;
         seed_old_dates(&bars_fixture.repository, to).await;
 
-        let result = bars_fixture.use_cases.run_ingest_cycle(&source).await;
+        let instrument_source = FakeDailyBarSource::new();
+        let result = bars_fixture
+            .use_cases
+            .run_ingest_cycle(&source, &instrument_source)
+            .await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
         let transaction_ids = bars_fixture.unit_of_work.begun.lock().await.clone();
@@ -363,7 +440,11 @@ mod tests {
         let source = FakeMarketDailyBarSource::new(to);
         seed_old_dates(&bars_fixture.repository, to).await;
 
-        let result = bars_fixture.use_cases.run_ingest_cycle(&source).await;
+        let instrument_source = FakeDailyBarSource::new();
+        let result = bars_fixture
+            .use_cases
+            .run_ingest_cycle(&source, &instrument_source)
+            .await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
 
@@ -404,7 +485,11 @@ mod tests {
         source.set_bars(previous, vec![bar.clone()]).await;
         source.fail_on(to).await;
 
-        let result = bars_fixture.use_cases.run_ingest_cycle(&source).await;
+        let instrument_source = FakeDailyBarSource::new();
+        let result = bars_fixture
+            .use_cases
+            .run_ingest_cycle(&source, &instrument_source)
+            .await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
         let ingested_dates = bars_fixture.repository.ingested_dates.lock().await.clone();
@@ -428,6 +513,59 @@ mod tests {
                 false,
                 true,
                 1,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn ingest_cycle_refetches_split_instrument_history_and_replaces_old_bars(
+        bars_fixture: BarsFixture,
+    ) {
+        let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
+        let source = FakeMarketDailyBarSource::new(to);
+        let business_days = seed_old_dates(&bars_fixture.repository, to).await;
+        let old_date = business_days[0];
+        let stale_bar = make_bar("SAMPLE-SPLIT", old_date, 200);
+        bars_fixture.repository.seed_bars(vec![stale_bar]).await;
+
+        let mut split_date_bar = make_bar("SAMPLE-SPLIT", to, 100);
+        split_date_bar.adjustment_factor = Decimal::new(5, 1);
+        source.set_bars(to, vec![split_date_bar.clone()]).await;
+
+        let mut adjusted_old_bar = make_bar("SAMPLE-SPLIT", old_date, 100);
+        adjusted_old_bar.adjustment_factor = Decimal::new(5, 1);
+        let instrument_source = FakeDailyBarSource::new();
+        instrument_source
+            .set_bars(
+                "SAMPLE-SPLIT",
+                vec![adjusted_old_bar.clone(), split_date_bar.clone()],
+            )
+            .await;
+
+        let result = bars_fixture
+            .use_cases
+            .run_ingest_cycle(&source, &instrument_source)
+            .await;
+        let stats = result.expect("ingest cycle succeeds");
+        let stored_bars = bars_fixture.repository.bars.lock().await.clone();
+        let requested = instrument_source.requested.lock().await.clone();
+
+        assert_eq!(
+            (stats, stored_bars, requested),
+            (
+                IngestStats {
+                    days_attempted: REFETCH_WINDOW_BUSINESS_DAYS,
+                    bars_upserted: 1,
+                },
+                vec![adjusted_old_bar, split_date_bar],
+                vec![(
+                    "SAMPLE-SPLIT".to_string(),
+                    DateRange {
+                        from: date(2008, 5, 7),
+                        to: date(2099, 12, 31),
+                    },
+                )],
             ),
         );
     }

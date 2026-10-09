@@ -315,6 +315,9 @@ async fn main() -> Result<(), StartupError> {
     let market_daily_bar_source: Option<SharedMarketDailyBarSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedMarketDailyBarSource);
+    let daily_bar_ingest_source: Option<SharedDailyBarSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedDailyBarSource);
     let earnings_schedule_source: Option<SharedEarningsScheduleSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedEarningsScheduleSource);
@@ -337,6 +340,7 @@ async fn main() -> Result<(), StartupError> {
         boj_calendar_source,
         ecb_calendar_source,
         fed_calendar_source,
+        daily_bar_source: daily_bar_ingest_source,
         market_daily_bar_source,
         news: use_cases.news(),
         news_aggregator,

@@ -314,6 +314,7 @@ impl AlpacaBar {
             volume: volume.to_i64().ok_or_else(|| {
                 AlpacaError::Parse(format!("bar volume is out of range: {volume}"))
             })?,
+            adjustment_factor: Decimal::ONE,
         })
     }
 }
@@ -398,6 +399,7 @@ mod tests {
                     low: Decimal::new(1112, 2),
                     close: Decimal::new(1345, 2),
                     volume: 25,
+                    adjustment_factor: Decimal::ONE,
                 }],
                 next_page_token: Some("synthetic-page".to_owned()),
             },

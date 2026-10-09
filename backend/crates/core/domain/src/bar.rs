@@ -93,4 +93,6 @@ pub struct Bar {
     pub close: Decimal,
     /// 出来高
     pub volume: i64,
+    /// 価格に適用された調整係数
+    pub adjustment_factor: Decimal,
 }

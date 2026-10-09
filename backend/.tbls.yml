@@ -294,6 +294,7 @@ comments:
       low: '調整後の安値。'
       close: '調整後の終値。'
       volume: '調整後の出来高。'
+      adjustment_factor: '調整後価格に適用した係数。'
   - table: minute_bars
     tableComment: '銘柄ごとの 1 分足価格と出来高を保持する。'
     columnComments:

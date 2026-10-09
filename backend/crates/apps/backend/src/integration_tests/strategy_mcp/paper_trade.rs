@@ -193,6 +193,7 @@ mod tests {
                 low: rust_decimal::Decimal::from(open.min(close)),
                 close: rust_decimal::Decimal::from(close),
                 volume: 100,
+                adjustment_factor: rust_decimal::Decimal::ONE,
             }],
         )
         .await
