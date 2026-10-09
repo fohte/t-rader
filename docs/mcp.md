@@ -9,7 +9,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 両 path とも JSON-RPC over Streamable HTTP (SSE) で通信する。`rmcp` は MCP spec [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28) までのプロトコル世代を自動判別して同時に扱う。
 
-- **`< 2026-07-28` (レガシー)**: `initialize` → `mcp-session-id` ヘッダで以後のリクエストを継続する。t-rader-agent (`@modelcontextprotocol/sdk`) はこの世代で接続する。
+- **`< 2026-07-28` (レガシー)**: `/mcp/mgmt` は `initialize` 後に `mcp-session-id` ヘッダでリクエストを継続する。`/mcp/strategy` は session を発行せず、リクエストごとに stateless に処理する。t-rader-agent (`@modelcontextprotocol/sdk`) はこの世代で接続する。
 - **`2026-07-28` 以降**: SEP-2567 により session の概念が無くなり、リクエストごとに stateless に処理される (`mcp-session-id` は発行されない)。discover lifecycle (SEP-2575) を使う外部クライアントはこの世代で接続する。`initialize` を経ず `MCP-Protocol-Version` ヘッダのみで直接 tool を呼ぶ場合、SEP-2243 の `Mcp-Method` ヘッダも必須になる (`Mcp-Name` は `tools/call` など対象を名指しする method でのみ必須)。
 
 ## 管理 MCP (`/mcp/mgmt`)
@@ -107,13 +107,14 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 ## session 管理方針
 
-`mcp-session-id` ヘッダで識別される session は `LocalSessionManager` の in-memory state のみで管理し、永続化しない。
-backend Pod が再起動すると、それまでの `mcp-session-id` は未知の session として扱われる。
-クライアントは `initialize` からやり直す。
+`/mcp/mgmt` の session は `LocalSessionManager` の in-memory state のみで管理し、永続化しない。
+backend Pod が再起動すると、それまでの `mcp-session-id` は未知の session として扱われるため、クライアントは `initialize` からやり直す。
 
-session は永続化しない。
-GET (SSE) 接続のたびに shadow stream (`rmcp` 内部の keep-alive 用チャネル、上限 32) が積まれる一方、クライアントが同じ session id を叩き続ける限り永続化された session はアイドル判定に入らず GC できない。
-再起動のたびに同じ session が復元され、shadow stream が上限に達して警告ログが出力され続ける原因になる。
+`/mcp/strategy` は protocol 世代にかかわらず session を作らず、各リクエストの `x-strategy-id` などのヘッダから context を組み立てる。
+
+mgmt session は永続化しない。
+GET (SSE) 接続のたびに shadow stream (`rmcp` 内部の keep-alive 用チャネル、上限 32) が積まれる一方、クライアントが同じ session id を叩き続ける限り session はアイドル判定に入らず GC できない。
+shadow stream が上限に達すると警告ログが出力され続ける原因になる。
 
 ## `MCP_ALLOWED_HOSTS`
 
