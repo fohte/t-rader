@@ -7,7 +7,7 @@ use core_application::paper_trade::{
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::LockType;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::entities::{paper_account, paper_order, paper_order_result};
@@ -63,6 +63,7 @@ impl PaperTradeRepository for PostgresPaperTradeRepository {
         let transaction = transaction_ref(unit_of_work_transaction)
             .ok_or(PaperTradeRepositoryError::InvalidTransaction)?;
         paper_account::Entity::find()
+            .order_by_asc(paper_account::Column::Name)
             .all(transaction)
             .await
             .map(|rows| rows.into_iter().map(to_account).collect())

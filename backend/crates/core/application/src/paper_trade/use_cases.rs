@@ -28,6 +28,13 @@ impl PaperTradeUseCases {
         }
     }
 
+    pub async fn list_accounts(&self) -> Result<Vec<PaperAccount>, PaperTradeUseCaseError> {
+        let transaction = self.unit_of_work.begin().await?;
+        let accounts = self.repository.list_accounts(&transaction).await?;
+        self.unit_of_work.commit(transaction).await?;
+        Ok(accounts)
+    }
+
     pub async fn create_account(
         &self,
         mut account: NewPaperAccount,

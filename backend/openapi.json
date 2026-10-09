@@ -4496,6 +4496,119 @@
         }
       }
     },
+    "/api/paper-accounts": {
+      "get": {
+        "tags": [
+          "paper_accounts"
+        ],
+        "summary": "ペーパートレード口座一覧",
+        "operationId": "list_paper_accounts",
+        "responses": {
+          "200": {
+            "description": "ペーパートレード口座一覧",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaperAccount"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "paper_accounts"
+        ],
+        "summary": "ペーパートレード口座を作成",
+        "operationId": "create_paper_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaperAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "作成されたペーパートレード口座",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストまたは参照先が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "戦略と purpose の組み合わせが既に存在する",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/refs/indicators": {
       "get": {
         "tags": [
@@ -8358,6 +8471,47 @@
         },
         "additionalProperties": false
       },
+      "CreatePaperAccountRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "strategy_id",
+          "purpose",
+          "initial_cash_jpy",
+          "started_on"
+        ],
+        "properties": {
+          "benchmark_stock_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "initial_cash_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "started_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateRssFeedRequest": {
         "type": "object",
         "required": [
@@ -9285,6 +9439,47 @@
           "version_no": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "PaperAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "strategy_id",
+          "purpose",
+          "initial_cash_jpy",
+          "started_on"
+        ],
+        "properties": {
+          "benchmark_stock_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "initial_cash_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "name": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "started_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -10715,6 +10910,10 @@
     {
       "name": "triggers",
       "description": "戦略 trigger (cron / hook)"
+    },
+    {
+      "name": "paper_accounts",
+      "description": "ペーパートレード口座"
     },
     {
       "name": "imports",

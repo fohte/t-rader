@@ -17,6 +17,7 @@ use utoipa::OpenApi;
         (name = "trades", description = "取引履歴と損益サマリ"),
         (name = "tasks", description = "戦略タスクの実行履歴 (口座横断)"),
         (name = "triggers", description = "戦略 trigger (cron / hook)"),
+        (name = "paper_accounts", description = "ペーパートレード口座"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
         (name = "group_axes", description = "銘柄を分類する軸"),

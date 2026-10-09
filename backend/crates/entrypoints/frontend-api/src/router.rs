@@ -6,8 +6,8 @@ use crate::api_doc::ApiDoc;
 use crate::handlers::{
     agent_config, agent_options, annotations, bars, calendar, comments, config, custom_indicators,
     group_axes, history, imports, ingest_status, note_kinds, note_links, note_predictions,
-    note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
-    triggers,
+    note_versions, notes, paper_accounts, refs, risk_policy, rss_feeds, strategies, tasks,
+    trade_notes, trades, triggers,
 };
 use crate::state::FrontendApiState;
 
@@ -94,6 +94,10 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(history::list_history))
         .routes(routes!(history::get_history))
         .routes(routes!(trades::trades_summary))
+        .routes(routes!(
+            paper_accounts::list_paper_accounts,
+            paper_accounts::create_paper_account
+        ))
         .routes(routes!(trades::list_trades, trades::create_trade))
         .routes(routes!(
             trades::get_trade,
