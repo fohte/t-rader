@@ -2,7 +2,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { AIMessage, HumanMessage } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { createAgent } from 'langchain'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { AbortedModelCallError } from '#strategy-agent/aborting-model-call-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
@@ -60,6 +60,20 @@ const runAgent = async (model: ScriptedChatModel, invocations = 1) => {
   return { outcomes, attempts: model.attempts }
 }
 
+const runAgentWithFakeTimers = async (
+  model: ScriptedChatModel,
+  invocations = 1,
+) => {
+  vi.useFakeTimers()
+  try {
+    const result = runAgent(model, invocations)
+    await vi.runAllTimersAsync()
+    return await result
+  } finally {
+    vi.useRealTimers()
+  }
+}
+
 describe('createModelCallRetryMiddleware', () => {
   it('retries a call-duration abort once for each model call', async () => {
     const model = new ScriptedChatModel(
@@ -68,7 +82,7 @@ describe('createModelCallRetryMiddleware', () => {
         () => new AbortedModelCallError('duration expired', 'call-duration'),
       ),
     )
-    expect(await runAgent(model, 2)).toEqual({
+    expect(await runAgentWithFakeTimers(model, 2)).toEqual({
       outcomes: ['rejected', 'rejected'],
       attempts: 4,
     })
@@ -82,7 +96,7 @@ describe('createModelCallRetryMiddleware', () => {
     timeoutError.name = 'TimeoutError'
     const model = new ScriptedChatModel([serverError, timeoutError])
 
-    expect(await runAgent(model)).toEqual({
+    expect(await runAgentWithFakeTimers(model)).toEqual({
       outcomes: ['resolved'],
       attempts: 3,
     })
