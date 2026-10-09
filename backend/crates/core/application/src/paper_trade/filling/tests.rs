@@ -87,6 +87,13 @@ impl FakePaperTradeRepository {
 
 #[async_trait]
 impl PaperTradeRepository for FakePaperTradeRepository {
+    async fn list_accounts(
+        &self,
+        _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+    ) -> Result<Vec<PaperAccount>, PaperTradeRepositoryError> {
+        Ok(self.accounts.lock().await.clone())
+    }
+
     async fn insert_account(
         &self,
         _transaction: &crate::unit_of_work::UnitOfWorkTransaction,

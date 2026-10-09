@@ -17,6 +17,7 @@ use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
 use core_application::note_kind::NoteKindUseCases;
+use core_application::paper_trade::PaperTradeUseCases;
 use core_application::prediction::PredictionUseCases;
 use core_application::refs::RefUseCases;
 use core_application::rss_feed::RssFeedUseCases;
@@ -44,6 +45,7 @@ pub struct FrontendApiState {
     pub note_kind_use_cases: NoteKindUseCases,
     pub note_read_use_cases: NoteReadUseCases,
     pub note_use_cases: NoteUseCases,
+    pub paper_trade_use_cases: PaperTradeUseCases,
     pub prediction_use_cases: PredictionUseCases,
     pub ref_use_cases: RefUseCases,
     pub rss_feed_use_cases: RssFeedUseCases,

@@ -51,6 +51,7 @@ pub fn build_http_state(
         note_kind_use_cases: use_cases.note_kinds(),
         note_read_use_cases: use_cases.note_reads(),
         note_use_cases: use_cases.notes(),
+        paper_trade_use_cases: use_cases.paper_trade(),
         prediction_use_cases: use_cases.predictions(),
         ref_use_cases: use_cases.refs(),
         rss_feed_use_cases: use_cases.rss_feeds(),

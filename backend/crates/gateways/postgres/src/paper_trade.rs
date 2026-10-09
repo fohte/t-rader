@@ -7,7 +7,7 @@ use core_application::paper_trade::{
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::LockType;
-use sea_orm::{EntityTrait, QuerySelect};
+use sea_orm::{EntityTrait, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::entities::{paper_account, paper_order, paper_order_result};
@@ -25,6 +25,20 @@ impl PostgresPaperTradeRepository {
 
 #[async_trait]
 impl PaperTradeRepository for PostgresPaperTradeRepository {
+    async fn list_accounts(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<PaperAccount>, PaperTradeRepositoryError> {
+        let transaction =
+            transaction_ref(transaction).ok_or(PaperTradeRepositoryError::InvalidTransaction)?;
+        paper_account::Entity::find()
+            .order_by_asc(paper_account::Column::Name)
+            .all(transaction)
+            .await
+            .map(|rows| rows.into_iter().map(to_account).collect())
+            .map_err(repository_error)
+    }
+
     async fn insert_account(
         &self,
         transaction: &UnitOfWorkTransaction,

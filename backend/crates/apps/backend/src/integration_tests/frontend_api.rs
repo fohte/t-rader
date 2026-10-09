@@ -167,6 +167,7 @@ mod note_kinds;
 mod note_predictions;
 mod note_versions;
 mod notes;
+mod paper_accounts;
 mod refs;
 mod risk_policy;
 mod rss_feeds;

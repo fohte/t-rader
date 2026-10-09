@@ -24,6 +24,11 @@ pub enum PaperTradeRepositoryError {
 
 #[async_trait]
 pub trait PaperTradeRepository: Send + Sync {
+    async fn list_accounts(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<PaperAccount>, PaperTradeRepositoryError>;
+
     async fn insert_account(
         &self,
         transaction: &UnitOfWorkTransaction,

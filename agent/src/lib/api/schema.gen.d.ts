@@ -810,6 +810,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/paper-accounts': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ペーパートレード口座一覧 */
+    get: operations['list_paper_accounts']
+    put?: never
+    /** ペーパートレード口座を作成 */
+    post: operations['create_paper_account']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/refs/indicators': {
     parameters: {
       query?: never
@@ -1537,6 +1555,17 @@ export interface components {
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
     }
+    CreatePaperAccountRequest: {
+      benchmark_stock_id?: string | null
+      /** Format: double */
+      initial_cash_jpy: number
+      name: string
+      purpose: string
+      /** Format: date */
+      started_on: string
+      /** Format: uuid */
+      strategy_id: string
+    }
     CreateRssFeedRequest: {
       /** @description 本文取得方式の設定。none / feed / crawl のいずれか。省略時は none。 */
       content_source?: string
@@ -1825,6 +1854,19 @@ export interface components {
       title: string
       /** Format: int32 */
       version_no: number
+    }
+    PaperAccount: {
+      benchmark_stock_id?: string | null
+      /** Format: uuid */
+      id: string
+      /** Format: double */
+      initial_cash_jpy: number
+      name: string
+      purpose: string
+      /** Format: date */
+      started_on: string
+      /** Format: uuid */
+      strategy_id: string
     }
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
@@ -5643,6 +5685,102 @@ export interface operations {
       }
       /** @description agent task client が未設定、または agent_config が見つからない */
       503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_paper_accounts: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description ペーパートレード口座一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PaperAccount'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_paper_account: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreatePaperAccountRequest']
+      }
+    }
+    responses: {
+      /** @description 作成されたペーパートレード口座 */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PaperAccount']
+        }
+      }
+      /** @description リクエストまたは参照先が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略と purpose の組み合わせが既に存在する */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
         headers: {
           [name: string]: unknown
         }
