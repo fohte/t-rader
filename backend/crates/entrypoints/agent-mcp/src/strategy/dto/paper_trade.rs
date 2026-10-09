@@ -53,6 +53,13 @@ pub struct PaperTradeOrderDto {
     pub reject_reason: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReadPaperPortfolioParams {
+    /// `read_paper_stats` から取得した口座 ID。省略時は接続元 task の口座を読む。
+    pub account_id: Option<Uuid>,
+}
+
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadPaperPortfolioResult {

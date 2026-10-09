@@ -5,7 +5,8 @@ use rmcp::{tool, tool_router};
 
 use super::super::StrategyServer;
 use super::super::dto::{
-    PlacePaperOrderParams, PlacePaperOrderResult, ReadPaperPortfolioResult, ReadPaperStatsResult,
+    PlacePaperOrderParams, PlacePaperOrderResult, ReadPaperPortfolioParams,
+    ReadPaperPortfolioResult, ReadPaperStatsResult,
 };
 
 #[tool_router(router = paper_trade_tool_router, vis = "pub(super)")]
@@ -27,19 +28,20 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// 接続元 task の戦略と purpose に対応するペーパートレード口座を返す
+    /// 口座 ID が指定されていればその口座を、なければ接続元 task の口座を返す
     #[tool(
         name = "read_paper_portfolio",
-        description = "Read the paper account selected by the current x-strategy-id and x-execution-id task purpose. Returns cash, open positions with latest daily-close valuation, the order history and fill/rejection results, and each order's note_version_id. read_note requires the parent note_id and this value as version_id to inspect the decision version. A strategy task execution context is required.",
+        description = "Read a specified paper account, or select the account for the current x-strategy-id and x-execution-id task purpose when account_id is omitted. Use an account_id returned by read_paper_stats to inspect any account; x-execution-id is required only when account_id is omitted. Returns cash, open positions with latest daily-close valuation, the order history and fill/rejection results, and each order's note_version_id. read_note requires the parent note_id and this value as version_id to inspect the decision version. A strategy scope is required.",
         annotations(read_only_hint = true)
     )]
     async fn read_paper_portfolio(
         &self,
+        Parameters(params): Parameters<ReadPaperPortfolioParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadPaperPortfolioResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let task_id = super::super::execution_task_id_from_ctx(&ctx);
-        self.read_paper_portfolio_inner(scope, task_id)
+        self.read_paper_portfolio_inner(scope, task_id, params)
             .await
             .map(Json)
     }

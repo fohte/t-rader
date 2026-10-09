@@ -43,13 +43,13 @@ mod tests {
     async fn set_task_execution_id(
         db: &gateway_postgres::DatabaseHandle,
         strategy_id: Uuid,
-        purpose: &str,
+        purpose: Option<&str>,
     ) -> String {
         let task_id = crate::testing::insert_test_strategy_task(
             db,
             strategy_id,
-            "record a paper order",
-            Some(purpose),
+            "paper trading task",
+            purpose,
             ts_sentinel(),
         )
         .await;
@@ -290,8 +290,8 @@ mod tests {
             create_account(&db, strategy_id, "Sample account A", "purpose-a", None).await;
         let second_account_id =
             create_account(&db, strategy_id, "Sample account B", "purpose-b", None).await;
-        let first_task_id = set_task_execution_id(&db, strategy_id, "purpose-a").await;
-        let second_task_id = set_task_execution_id(&db, strategy_id, "purpose-b").await;
+        let first_task_id = set_task_execution_id(&db, strategy_id, Some("purpose-a")).await;
+        let second_task_id = set_task_execution_id(&db, strategy_id, Some("purpose-b")).await;
         crate::testing::insert_test_stock(&db, "TST1", "Sample stock").await;
         let note_id =
             crate::testing::insert_test_note(&db, "Sample rationale", "Order basis").await;
@@ -433,7 +433,7 @@ mod tests {
         let strategy_id = insert_strategy(&db, "paper strategy").await;
         let account_id =
             create_account(&db, strategy_id, "Sample account", "purpose-a", None).await;
-        let task_id = set_task_execution_id(&db, strategy_id, "purpose-a").await;
+        let task_id = set_task_execution_id(&db, strategy_id, Some("purpose-a")).await;
         crate::testing::insert_test_stock(&db, "TST2", "Sample stock").await;
         let note_id =
             crate::testing::insert_test_note(&db, "Sample rationale", "Order basis").await;
@@ -543,6 +543,141 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn read_paper_portfolio_reads_stats_account_without_task_purpose(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let source_strategy_id = insert_strategy(&db, "source strategy").await;
+        let reader_strategy_id = insert_strategy(&db, "reader strategy").await;
+        create_account(
+            &db,
+            source_strategy_id,
+            "Sample source account",
+            "purpose-a",
+            None,
+        )
+        .await;
+        let source_task_id =
+            set_task_execution_id(&db, source_strategy_id, Some("purpose-a")).await;
+        let reader_task_id = set_task_execution_id(&db, reader_strategy_id, None).await;
+        crate::testing::insert_test_stock(&db, "TST6", "Sample stock").await;
+        let note_id =
+            crate::testing::insert_test_note(&db, "Sample rationale", "Order basis").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let server = super::super::tests_common::build_server(db.clone());
+        let order_id = place_order(
+            &server,
+            source_strategy_id,
+            &source_task_id,
+            "TST6",
+            "buy",
+            note_version_id,
+        )
+        .await;
+        set_ordered_at(&db, order_id, date(5)).await;
+        insert_filled_result(&db, order_id, date(6), 100).await;
+        seed_daily_bar(&db, "TST6", date(7), 110, 120).await;
+
+        let stats = server
+            .invoke::<_, Value>(
+                "read_paper_stats",
+                reader_strategy_id,
+                json!({}),
+                None,
+                None,
+            )
+            .await
+            .expect("read paper stats");
+        let account_id = stats.as_json()["accounts"]
+            .as_array()
+            .expect("accounts are an array")
+            .iter()
+            .find(|account| account["account_name"] == "Sample source account")
+            .expect("source account is listed in stats")["account_id"]
+            .clone();
+        let expected_account_id = account_id.clone();
+        let expected_strategy_id =
+            serde_json::to_value(source_strategy_id).expect("serialize strategy ID");
+        let expected_note_version_id =
+            serde_json::to_value(note_version_id).expect("serialize note version ID");
+        let expected_order_ids = vec![serde_json::to_value(order_id).expect("serialize order ID")];
+        let portfolio = server
+            .invoke::<_, Value>(
+                "read_paper_portfolio",
+                reader_strategy_id,
+                json!({ "account_id": account_id }),
+                Some(execution_id(&reader_task_id)),
+                None,
+            )
+            .await
+            .expect("read paper account from a task without a purpose")
+            .normalize_json(|value| {
+                normalize_portfolio(
+                    value,
+                    &expected_account_id,
+                    &expected_strategy_id,
+                    &expected_note_version_id,
+                    &expected_order_ids,
+                );
+            });
+        let ordered_at = serde_json::to_value(ts_sentinel()).expect("serialize timestamp");
+
+        assert_eq!(
+            portfolio.as_json(),
+            &json!({
+                "account_id": "normalized-account-id",
+                "account_name": "Sample source account",
+                "strategy_id": "normalized-strategy-id",
+                "purpose": "purpose-a",
+                "started_on": "2025-01-01",
+                "as_of": "2025-01-07",
+                "initial_cash_jpy": 100_000.0,
+                "cash_jpy": 90_000.0,
+                "positions": [{
+                    "stock_id": "TST6",
+                    "qty": 100,
+                    "avg_cost_jpy": 100.0,
+                    "current_price_jpy": 120.0,
+                    "market_value_jpy": 12_000.0,
+                    "unrealized_pnl_jpy": 2_000.0,
+                }],
+                "orders": [{
+                    "order_id": "normalized-order-id-0",
+                    "stock_id": "TST6",
+                    "side": "buy",
+                    "qty": 100,
+                    "note_version_id": "normalized-note-version-id",
+                    "ordered_at": ordered_at,
+                    "outcome": "filled",
+                    "fill_date": "2025-01-06",
+                    "fill_price_jpy": 100.0,
+                    "reject_reason": null,
+                }],
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn read_paper_portfolio_rejects_unknown_account_id(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db, "reader strategy").await;
+        let server = super::super::tests_common::build_server(db);
+        let error = server
+            .invoke::<_, Value>(
+                "read_paper_portfolio",
+                strategy_id,
+                json!({ "account_id": Uuid::new_v4() }),
+                None,
+                None,
+            )
+            .await
+            .expect_err("unknown account ID is rejected");
+
+        assert_eq!(
+            error,
+            rmcp::ErrorData::invalid_params("paper account does not exist", None),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn read_paper_stats_maps_returns_and_missing_benchmark_data(
         db: gateway_postgres::DatabaseHandle,
     ) {
@@ -556,7 +691,7 @@ mod tests {
             Some("TSTB"),
         )
         .await;
-        let task_id = set_task_execution_id(&db, strategy_id, "purpose-a").await;
+        let task_id = set_task_execution_id(&db, strategy_id, Some("purpose-a")).await;
         crate::testing::insert_test_stock(&db, "TST3", "Sample stock").await;
         let note_id =
             crate::testing::insert_test_note(&db, "Sample rationale", "Order basis").await;
@@ -635,7 +770,7 @@ mod tests {
             None,
         )
         .await;
-        let task_id = set_task_execution_id(&db, task_strategy_id, "shared-purpose").await;
+        let task_id = set_task_execution_id(&db, task_strategy_id, Some("shared-purpose")).await;
         let server = super::super::tests_common::build_server(db);
 
         let error = server
@@ -669,7 +804,7 @@ mod tests {
     ) {
         let strategy_id = insert_strategy(&db, "paper strategy").await;
         create_account(&db, strategy_id, "Sample account", "purpose-a", None).await;
-        let task_id = set_task_execution_id(&db, strategy_id, "purpose-a").await;
+        let task_id = set_task_execution_id(&db, strategy_id, Some("purpose-a")).await;
         crate::testing::insert_test_stock(&db, "TST5", "Sample stock").await;
         let note_id =
             crate::testing::insert_test_note(&db, "Sample rationale", "Order basis").await;
