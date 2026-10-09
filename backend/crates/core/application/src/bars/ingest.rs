@@ -417,6 +417,7 @@ mod tests {
                     .lock()
                     .await
                     .clone(),
+                instrument_source.requested.lock().await.clone(),
             ),
             (
                 true,
@@ -429,6 +430,7 @@ mod tests {
                 HashSet::from(["SAMPLE-ALPHA".to_string()]),
                 vec![transaction_id],
                 vec![transaction_id; 3],
+                Vec::<(String, DateRange)>::new(),
             ),
         );
     }

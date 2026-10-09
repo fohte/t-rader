@@ -3,7 +3,7 @@ use core_domain::bar::{Bar, Timeframe};
 use rstest::rstest;
 use rust_decimal::Decimal;
 use serde_json::json;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
 use crate::jquants::mock::{JQuantsMockServer, MockBar};
@@ -101,6 +101,53 @@ mod fetch_daily_bars {
                 close: dec(105.0),
                 volume: 1000,
                 adjustment_factor: expected_factor,
+            }],
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_defaults_adjustment_factor_when_field_is_omitted()
+    -> Result<(), DailyBarSourceError> {
+        let mock = JQuantsMockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("code", "0000"))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{
+                    "Date": "2025-01-06",
+                    "Code": "00000",
+                    "AdjO": 100.0,
+                    "AdjH": 110.0,
+                    "AdjL": 95.0,
+                    "AdjC": 105.0,
+                    "AdjVo": 1000.0,
+                }],
+                "pagination_key": null,
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        let client = mock.client()?;
+        let bars = client.fetch_daily_bars("0000", &default_range()).await?;
+
+        assert_eq!(
+            bars,
+            vec![Bar {
+                instrument_id: "0000".to_string(),
+                timeframe: Timeframe::Daily,
+                timestamp: date(2025, 1, 6)
+                    .and_hms_opt(0, 0, 0)
+                    .expect("fixture time")
+                    .and_utc(),
+                open: dec(100.0),
+                high: dec(110.0),
+                low: dec(95.0),
+                close: dec(105.0),
+                volume: 1000,
+                adjustment_factor: Decimal::ONE,
             }],
         );
         Ok(())

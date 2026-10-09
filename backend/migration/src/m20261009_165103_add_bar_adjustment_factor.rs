@@ -1,17 +1,12 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
 enum Bars {
     Table,
     AdjustmentFactor,
-}
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261009_165103_add_bar_adjustment_factor"
-    }
 }
 
 #[async_trait::async_trait]
