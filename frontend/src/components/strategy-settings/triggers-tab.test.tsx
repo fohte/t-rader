@@ -25,6 +25,7 @@ interface CreateBody {
   event_match?: Record<string, never> | null
   prompt_template?: string
   enabled?: boolean
+  business_days_only?: boolean
 }
 
 interface UpdateBody {
@@ -34,6 +35,7 @@ interface UpdateBody {
   event_match?: Record<string, never> | null
   prompt_template?: string
   enabled?: boolean
+  business_days_only?: boolean
 }
 
 interface TriggerStore {
@@ -55,6 +57,7 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
     event_match: overrides.event_match ?? null,
     prompt_template: overrides.prompt_template ?? '',
     enabled: overrides.enabled ?? true,
+    business_days_only: overrides.business_days_only ?? false,
     last_fired_at: overrides.last_fired_at ?? null,
     created_at: overrides.created_at ?? '2026-01-01T00:00:00Z',
     updated_at: overrides.updated_at ?? '2026-01-01T00:00:00Z',
@@ -115,6 +118,7 @@ function installMiddleware(initial: Trigger[] = []) {
             event_match: body.event_match ?? null,
             prompt_template: body.prompt_template ?? '',
             enabled: body.enabled ?? true,
+            business_days_only: body.business_days_only ?? false,
           })
           const list = store.byStrategy.get(sid) ?? []
           list.push(created)
@@ -160,6 +164,10 @@ function installMiddleware(initial: Trigger[] = []) {
                 : current.prompt_template,
             enabled:
               'enabled' in body ? (body.enabled ?? true) : current.enabled,
+            business_days_only:
+              'business_days_only' in body
+                ? (body.business_days_only ?? false)
+                : current.business_days_only,
           }
           store.byId.set(tid, updated)
           const key = updated.strategy_id ?? ''

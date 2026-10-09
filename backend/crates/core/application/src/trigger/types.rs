@@ -40,6 +40,7 @@ pub struct Trigger {
     pub event_match: Option<Value>,
     pub prompt_template: String,
     pub enabled: bool,
+    pub business_days_only: bool,
     pub last_fired_at: Option<DateTime<FixedOffset>>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
@@ -56,6 +57,7 @@ pub struct NewTrigger {
     pub event_match: Option<Value>,
     pub prompt_template: String,
     pub enabled: bool,
+    pub business_days_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +69,7 @@ pub struct CreateTriggerCommand {
     pub event_match: Option<Value>,
     pub prompt_template: String,
     pub enabled: Option<bool>,
+    pub business_days_only: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -77,4 +80,5 @@ pub struct UpdateTriggerCommand {
     pub event_match: Option<Option<Value>>,
     pub prompt_template: Option<String>,
     pub enabled: Option<bool>,
+    pub business_days_only: Option<bool>,
 }

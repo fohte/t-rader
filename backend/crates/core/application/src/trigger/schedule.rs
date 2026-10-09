@@ -2,6 +2,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use core_domain::business_day::latest_business_day;
 use cron::Schedule;
 
 pub(super) fn parse_schedule(expr: &str) -> Result<Schedule, cron::error::Error> {
@@ -33,6 +34,34 @@ pub(super) fn should_fire(
         .after(&after)
         .next()
         .is_some_and(|next| next <= now)
+}
+
+pub(super) fn should_fire_cron_trigger(
+    schedule: &Schedule,
+    last_fired_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+    interval: Duration,
+    business_days_only: bool,
+) -> bool {
+    if !business_days_only {
+        return should_fire(schedule, last_fired_at, now, interval);
+    }
+
+    let jst_date = now.with_timezone(&chrono_tz::Asia::Tokyo).date_naive();
+    if latest_business_day(jst_date) != jst_date {
+        return false;
+    }
+
+    let after = last_fired_at.unwrap_or_else(|| {
+        now - chrono::Duration::from_std(interval).unwrap_or(chrono::Duration::zero())
+    });
+    schedule
+        .after(&after)
+        .take_while(|due| *due <= now)
+        .any(|due| {
+            let due_date = due.with_timezone(&chrono_tz::Asia::Tokyo).date_naive();
+            latest_business_day(due_date) == due_date
+        })
 }
 
 fn posix_to_quartz_dow(day: u32) -> u32 {
@@ -97,7 +126,7 @@ mod tests {
     use chrono::{DateTime, Utc};
     use rstest::rstest;
 
-    use super::{parse_schedule, should_fire};
+    use super::{parse_schedule, should_fire, should_fire_cron_trigger};
 
     const DEFAULT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -192,6 +221,42 @@ mod tests {
             last_fired_at,
             timestamp(now),
             interval,
+        );
+        assert_eq!(due, expected);
+    }
+
+    #[rstest]
+    #[case::business_day("0 0 * * *", None, "2025-02-10T00:00:00Z", true, true)]
+    #[case::holiday("0 15 * * *", None, "2025-02-10T15:00:00Z", true, false)]
+    #[case::holiday_with_filter_disabled("0 15 * * *", None, "2025-02-10T15:00:00Z", false, true)]
+    #[case::holiday_backlog_does_not_fire_before_next_slot(
+        "0 0 * * *",
+        Some("2025-02-10T00:00:00Z"),
+        "2025-02-11T15:00:00Z",
+        true,
+        false
+    )]
+    #[case::next_business_slot_fires_after_holiday_backlog(
+        "0 0 * * *",
+        Some("2025-02-10T00:00:00Z"),
+        "2025-02-12T00:00:00Z",
+        true,
+        true
+    )]
+    fn evaluates_business_day_filter(
+        #[case] expression: &str,
+        #[case] last_fired_at: Option<&str>,
+        #[case] now: &str,
+        #[case] business_days_only: bool,
+        #[case] expected: bool,
+    ) {
+        let last_fired_at = last_fired_at.map(timestamp);
+        let due = should_fire_cron_trigger(
+            &parse_schedule(expression).expect("valid schedule"),
+            last_fired_at,
+            timestamp(now),
+            DEFAULT_INTERVAL,
+            business_days_only,
         );
         assert_eq!(due, expected);
     }

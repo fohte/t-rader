@@ -16,7 +16,7 @@
 | [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                                     | BASE TABLE |
 | [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                                               | BASE TABLE |
 | [public.strategy_task](public.strategy_task.md)                                             | 14      | 戦略に対して投入したエージェントタスクの内容と実行状態を記録する。                                     | BASE TABLE |
-| [public.trigger](public.trigger.md)                                                         | 12      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                                             | BASE TABLE |
+| [public.trigger](public.trigger.md)                                                         | 13      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                                             | BASE TABLE |
 | [public.custom_indicator](public.custom_indicator.md)                                       | 10      | 共有または戦略ごとに定義する実行可能なカスタム指標。                                                   | BASE TABLE |
 | [public.news_item](public.news_item.md)                                                     | 7       | RSS フィードなどから取得したニュース記事情報を保持する。                                               | BASE TABLE |
 | [public.rss_feed](public.rss_feed.md)                                                       | 8       | ニュース取り込み元となる RSS フィードを管理する。                                                      | BASE TABLE |
@@ -345,6 +345,7 @@ erDiagram
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
   text purpose FK
+  boolean business_days_only
 }
 "public.custom_indicator" {
   uuid indicator_id

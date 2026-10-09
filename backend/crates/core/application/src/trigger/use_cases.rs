@@ -12,11 +12,14 @@ use crate::strategy_scope::StrategyScope;
 use crate::strategy_task::{StrategyTaskUseCases, SubmittedTask, TaskSource};
 use crate::unit_of_work::SharedUnitOfWork;
 
+use self::validation::{validate_business_days_only, validate_event_match, validate_template};
 use super::error::TriggerUseCaseError;
 use super::repository::SharedTriggerRepository;
-use super::schedule::{parse_schedule, should_fire};
+use super::schedule::{parse_schedule, should_fire_cron_trigger};
 use super::template::{build_standard_context, evaluate_event_match, expand_template};
 use super::types::{CreateTriggerCommand, NewTrigger, Trigger, TriggerKind, UpdateTriggerCommand};
+
+mod validation;
 
 const MAX_CONCURRENT_FIRES: usize = 8;
 
@@ -105,6 +108,7 @@ impl TriggerUseCases {
                     event_match: command.event_match,
                     prompt_template,
                     enabled: command.enabled.unwrap_or(true),
+                    business_days_only: command.business_days_only.unwrap_or(false),
                 },
             )
             .await?;
@@ -302,7 +306,13 @@ impl TriggerUseCases {
                 match parse_schedule(expression) {
                     Ok(schedule) => {
                         let last_fired_at = trigger.last_fired_at.map(|value| value.with_timezone(&Utc));
-                        should_fire(&schedule, last_fired_at, now, interval)
+                        should_fire_cron_trigger(
+                            &schedule,
+                            last_fired_at,
+                            now,
+                            interval,
+                            trigger.business_days_only,
+                        )
                             .then_some(trigger.trigger_id)
                     }
                     Err(error) => {
@@ -377,6 +387,7 @@ fn validate_create(
         .as_deref()
         .map(str::trim)
         .map(str::to_string);
+    validate_business_days_only(command.business_days_only.unwrap_or(false), &command.kind)?;
     match command.kind {
         TriggerKind::Cron => {
             if schedule.as_deref().is_none_or(str::is_empty) {
@@ -449,6 +460,10 @@ fn apply_update(
     if let Some(enabled) = command.enabled {
         trigger.enabled = enabled;
     }
+    if let Some(business_days_only) = command.business_days_only {
+        validate_business_days_only(business_days_only, &trigger.kind)?;
+        trigger.business_days_only = business_days_only;
+    }
     if let Some(purpose) = command.purpose {
         trigger.purpose = purpose;
     }
@@ -461,25 +476,6 @@ fn ensure_scope(trigger: &Trigger, scope: StrategyScope) -> Result<(), TriggerUs
         Ok(())
     } else {
         Err(TriggerUseCaseError::NotFound(trigger.trigger_id))
-    }
-}
-
-fn validate_template(template: &str) -> Result<String, TriggerUseCaseError> {
-    let template = template.trim().to_string();
-    if template.is_empty() {
-        return Err(TriggerUseCaseError::Validation(
-            "prompt_template must not be empty".into(),
-        ));
-    }
-    Ok(template)
-}
-
-fn validate_event_match(event_match: Option<&Value>) -> Result<(), TriggerUseCaseError> {
-    match event_match {
-        Some(value) if !value.is_object() && !value.is_null() => Err(
-            TriggerUseCaseError::Validation("event_match must be an object or null".into()),
-        ),
-        _ => Ok(()),
     }
 }
 
@@ -566,6 +562,7 @@ mod tests {
             event_match: None,
             prompt_template: "sample prompt".to_string(),
             enabled: true,
+            business_days_only: false,
             last_fired_at: None,
             created_at: now,
             updated_at: now,

@@ -129,6 +129,7 @@ impl TriggerRepository for FakeTriggerRepository {
             event_match: trigger.event_match,
             prompt_template: trigger.prompt_template,
             enabled: trigger.enabled,
+            business_days_only: trigger.business_days_only,
             last_fired_at: None,
             created_at: now,
             updated_at: now,

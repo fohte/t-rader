@@ -162,8 +162,10 @@ type CreateStrategyRequest struct {
 
 // CreateTriggerRequest defines model for CreateTriggerRequest.
 type CreateTriggerRequest struct {
-	Enabled    nullable.Nullable[bool] `json:"enabled,omitempty"`
-	EventMatch interface{}             `json:"event_match,omitempty"`
+	// BusinessDaysOnly 土日・日本の祝日・年末年始を休場日として扱い、東証の営業日に限って cron trigger を起動する。臨時休場日は判定しない。省略時は false。
+	BusinessDaysOnly nullable.Nullable[bool] `json:"business_days_only,omitempty"`
+	Enabled          nullable.Nullable[bool] `json:"enabled,omitempty"`
+	EventMatch       interface{}             `json:"event_match,omitempty"`
 
 	// HookSlug kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子)
 	HookSlug       nullable.Nullable[string] `json:"hook_slug,omitempty"`
@@ -489,18 +491,19 @@ type StrategyTaskSummary struct {
 
 // Trigger defines model for Trigger.
 type Trigger struct {
-	CreatedAt      time.Time                                 `json:"created_at"`
-	Enabled        bool                                      `json:"enabled"`
-	EventMatch     nullable.Nullable[map[string]interface{}] `json:"event_match,omitempty"`
-	HookSlug       nullable.Nullable[string]                 `json:"hook_slug,omitempty"`
-	Kind           string                                    `json:"kind"`
-	LastFiredAt    nullable.Nullable[time.Time]              `json:"last_fired_at,omitempty"`
-	PromptTemplate string                                    `json:"prompt_template"`
-	Purpose        nullable.Nullable[string]                 `json:"purpose,omitempty"`
-	Schedule       nullable.Nullable[string]                 `json:"schedule,omitempty"`
-	StrategyId     nullable.Nullable[openapi_types.UUID]     `json:"strategy_id,omitempty"`
-	TriggerId      openapi_types.UUID                        `json:"trigger_id"`
-	UpdatedAt      time.Time                                 `json:"updated_at"`
+	BusinessDaysOnly bool                                      `json:"business_days_only"`
+	CreatedAt        time.Time                                 `json:"created_at"`
+	Enabled          bool                                      `json:"enabled"`
+	EventMatch       nullable.Nullable[map[string]interface{}] `json:"event_match,omitempty"`
+	HookSlug         nullable.Nullable[string]                 `json:"hook_slug,omitempty"`
+	Kind             string                                    `json:"kind"`
+	LastFiredAt      nullable.Nullable[time.Time]              `json:"last_fired_at,omitempty"`
+	PromptTemplate   string                                    `json:"prompt_template"`
+	Purpose          nullable.Nullable[string]                 `json:"purpose,omitempty"`
+	Schedule         nullable.Nullable[string]                 `json:"schedule,omitempty"`
+	StrategyId       nullable.Nullable[openapi_types.UUID]     `json:"strategy_id,omitempty"`
+	TriggerId        openapi_types.UUID                        `json:"trigger_id"`
+	UpdatedAt        time.Time                                 `json:"updated_at"`
 }
 
 // TriggerKind defines model for TriggerKind.
@@ -549,7 +552,9 @@ type UpdateStrategyRequest struct {
 
 // UpdateTriggerRequest defines model for UpdateTriggerRequest.
 type UpdateTriggerRequest struct {
-	Enabled nullable.Nullable[bool] `json:"enabled,omitempty"`
+	// BusinessDaysOnly 省略時は現在の設定を保持する。
+	BusinessDaysOnly nullable.Nullable[bool] `json:"business_days_only,omitempty"`
+	Enabled          nullable.Nullable[bool] `json:"enabled,omitempty"`
 
 	// EventMatch 省略時は変更せず、`null` 指定時は条件を解除する。
 	EventMatch     interface{}               `json:"event_match,omitempty"`
