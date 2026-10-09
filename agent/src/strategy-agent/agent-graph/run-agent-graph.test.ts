@@ -162,14 +162,19 @@ const createDeferred = <T>() => {
   return { promise, resolve: resolvePromise }
 }
 
-const findAssignedItem = (
+const findAssignedItem = <T extends string>(
   messageText: string,
-  items: readonly string[],
-): string | undefined =>
-  items.find((item) =>
-    messageText.includes(
-      `割り当てられた対象:\n\`\`\`json\n${JSON.stringify(item, null, 2)}\n\`\`\``,
-    ),
+  items: readonly T[],
+): T | undefined =>
+  items.find(
+    (item) =>
+      messageText ===
+      buildPhaseMessageText({
+        originalPromptText: 'req',
+        phasePrompt: 'do work',
+        item,
+        priorResults: { plan: { items } },
+      }),
   )
 
 describe('runAgentGraph', () => {
@@ -318,7 +323,7 @@ describe('runAgentGraph', () => {
       deadlineSignal: controller.signal,
     })
 
-    const actual = Array.of(result, normalizeExecutionStepIds(calls))
+    const actual = Array.of<unknown>(result, normalizeExecutionStepIds(calls))
     expect(actual).toEqual([
       {
         status: 'failed',
@@ -560,7 +565,7 @@ describe('runAgentGraph', () => {
   })
 
   it('starts the next for_each item when a worker becomes available', async () => {
-    const items = ['item-one', 'item-two', 'item-three', 'item-four']
+    const items = ['item-one', 'item-two', 'item-three', 'item-four'] as const
     const completions = new Map(
       items.map(
         (item) =>
@@ -637,7 +642,7 @@ describe('runAgentGraph', () => {
     }
     const result = await runPromise
 
-    const actual = Array.of(
+    const actual = Array.of<unknown>(
       started,
       nextItemStartedBeforeFirstCompleted,
       result,
@@ -1432,7 +1437,7 @@ describe('runAgentGraph', () => {
     ])
   })
 
-  it('continues running remaining chunks and threads only the successful outputs into the next phase when some for_each items fail', async () => {
+  it('continues with remaining items and threads only successful outputs into the next phase when some for_each items fail', async () => {
     const messageTextForWorkItem = (item: unknown): string =>
       buildPhaseMessageText({
         originalPromptText: 'req',

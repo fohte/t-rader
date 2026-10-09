@@ -19,8 +19,8 @@ export const createPreviousStepMatcher = (
   const remaining = [...previousStepsForPhase]
   return {
     // item の値そのもので前回実行との対応を取る (for_each の要素には
-    // 安定した ID が無いため)。呼び出し元 (chunk.map) のコールバックは最初の
-    // await まで同期的に逐次実行されるため、共有配列への splice で安全に消費できる。
+    // 安定した ID が無いため)。各 worker は item を取得してから処理を await するため、
+    // 共有配列から重複 item に対応する previous step を順に消費できる。
     take: (item) => {
       const matchedIndex = remaining.findIndex(
         (s) => JSON.stringify(s.item) === JSON.stringify(item),
