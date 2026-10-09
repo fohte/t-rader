@@ -30,8 +30,24 @@ import {
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
+import {
+  type CaptureWithFingerprintMock,
+  normalizeCaptureWithFingerprintCalls,
+} from '#test/capture-with-fingerprint'
 import { createFirstOccurrenceLabeler } from '#test/first-occurrence-labeler'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
+import {
+  type ChatOpenAIFetch,
+  createStubChatModel,
+} from '#test/stub-chat-model'
+
+const { captureWithFingerprintMock } = vi.hoisted(() => ({
+  captureWithFingerprintMock: vi.fn<CaptureWithFingerprintMock>(),
+}))
+
+vi.mock('@fohte/service-kit/observability', () => ({
+  captureWithFingerprint: captureWithFingerprintMock,
+}))
 
 let capturedMcpClientConfig: unknown
 
@@ -760,20 +776,13 @@ describe('createStrategyAgentDeps', () => {
     expect(model.reasoning).toEqual({ effort: 'high' })
   })
 
-  type ChatOpenAIFetch = NonNullable<
-    NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
-  >['fetch']
-
   const buildStubModel = (
     fetch: ChatOpenAIFetch,
     streaming = false,
   ): ChatOpenAI =>
-    new ChatOpenAI({
-      apiKey: 'test-key',
+    createStubChatModel(fetch, {
       model: 'example-model-test-stream',
-      maxRetries: 0,
       streaming,
-      configuration: { baseURL: 'http://localhost', fetch },
     })
 
   type ChatOpenAIRequestInit = Parameters<NonNullable<ChatOpenAIFetch>>[1]
@@ -783,6 +792,17 @@ describe('createStrategyAgentDeps', () => {
     if (typeof body !== 'string') throw new Error('expected string body')
     return body
   }
+
+  const getForcedSubmissionOutput = (
+    structuredResponse: unknown,
+    requestedToolCounts: readonly number[],
+  ) => ({
+    structuredResponse,
+    requestedToolCounts,
+    captures: normalizeCaptureWithFingerprintCalls(
+      captureWithFingerprintMock.mock.calls,
+    ),
+  })
 
   const chatCompletionsRequestSchema = z.object({
     messages: z.array(z.object({ role: z.string(), content: z.unknown() })),
@@ -977,6 +997,7 @@ describe('createStrategyAgentDeps', () => {
   }
 
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
+    captureWithFingerprintMock.mockClear()
     const requestedToolCounts: number[] = []
     let callCount = 0
     const model = buildStubModel((_url, init) => {
@@ -1010,14 +1031,25 @@ describe('createStrategyAgentDeps', () => {
     })
     const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
 
-    expect(result.structuredResponse).toEqual({
-      status: 'completed',
-      message: 'done',
+    expect(
+      getForcedSubmissionOutput(result.structuredResponse, requestedToolCounts),
+    ).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestedToolCounts: [
+        ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
+        1,
+      ],
+      captures: [
+        {
+          errorName: 'Error',
+          errorMessage:
+            'finalTurnMiddleware: forcing structured-output submission at model call 15',
+          fingerprint: ['final-turn-middleware.forced-submission'],
+          level: 'warning',
+          extras: null,
+        },
+      ],
     })
-    expect(requestedToolCounts).toEqual([
-      ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
-      1,
-    ])
   })
 
   it('logs immediately when the model ends without a structured-output tool call', async () => {

@@ -23,7 +23,9 @@ export const finalTurnMiddleware = createMiddleware({
       `finalTurnMiddleware: forcing structured-output submission at model call ${String(request.state.modelCallCount)}`,
     )
     logger.warn({}, error.message)
-    captureWithFingerprint(error, FINAL_TURN_FORCED_FINGERPRINT)
+    captureWithFingerprint(error, FINAL_TURN_FORCED_FINGERPRINT, {
+      level: 'warning',
+    })
     // 構造化出力用の tool は createAgent 側が responseFormat から自動で
     // 追加するため、ここでは通常 tool を空にするだけでよい。
     return handler({ ...request, tools: [] })
