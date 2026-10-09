@@ -1,4 +1,4 @@
-import { type AnyAgentMiddleware, modelRetryMiddleware } from 'langchain'
+import { type AnyAgentMiddleware, createMiddleware } from 'langchain'
 
 import { isRecord } from '#errors'
 import { logger } from '#logger'
@@ -16,6 +16,12 @@ const CONNECTION_ERROR_CODES = new Set([
   'UND_ERR_HEADERS_TIMEOUT',
   'UND_ERR_BODY_TIMEOUT',
 ])
+
+const MAX_RETRIES = 2
+const MAX_CALL_DURATION_RETRIES = 1
+const RETRY_INITIAL_DELAY_MS = 1_000
+const RETRY_BACKOFF_FACTOR = 2
+const RETRY_MAX_DELAY_MS = 60_000
 
 const getErrorChain = (error: Error): Error[] => {
   const chain: Error[] = []
@@ -58,6 +64,33 @@ const getOriginalError = (error: Error): Error => {
   for (const cause of getErrorChain(error)) originalError = cause
   return originalError
 }
+
+const isCallDurationAbort = (error: Error): boolean =>
+  getErrorChain(error).some(
+    (cause) =>
+      cause instanceof AbortedModelCallError &&
+      cause.reason === 'call-duration',
+  )
+
+const getRetryDelay = (error: Error, retryNumber: number): number => {
+  const delay = Math.min(
+    RETRY_INITIAL_DELAY_MS * RETRY_BACKOFF_FACTOR ** retryNumber,
+    RETRY_MAX_DELAY_MS,
+  )
+  const jitteredDelay = Math.max(
+    0,
+    delay + (Math.random() * 2 - 1) * delay * 0.25,
+  )
+  const retryAfterMs = isRecord(error) ? error['retryAfterMs'] : undefined
+
+  return Math.max(
+    jitteredDelay,
+    typeof retryAfterMs === 'number' && retryAfterMs >= 0 ? retryAfterMs : 0,
+  )
+}
+
+const waitForRetry = (delayMs: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, delayMs))
 
 const isRetryableModelCallError = (error: Error): boolean => {
   const errorChain = getErrorChain(error)
@@ -102,18 +135,47 @@ const isRetryableModelCallError = (error: Error): boolean => {
 }
 
 export const createModelCallRetryMiddleware = (): AnyAgentMiddleware => {
-  // modelRetryMiddleware の公開型が Zod v3 に固定され、createAgent の interop 型と一致しない。
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 公開型の不整合を吸収する。middleware 実装は createAgent と同じ LangChain パッケージから取得している。
-  return modelRetryMiddleware({
-    maxRetries: 2,
-    onFailure: 'error',
-    retryOn: (error) => {
-      if (!isRetryableModelCallError(error)) return false
-      logger.warn(
-        { err: getOriginalError(error) },
-        'model call failed with a retryable error',
-      )
-      return true
+  return createMiddleware({
+    name: 'modelCallRetryMiddleware',
+    wrapModelCall: (request, handler) => {
+      const delegated = {
+        ...request,
+        modelSettings: { maxRetries: 0, ...request.modelSettings },
+      }
+
+      const callModel = (
+        retriesMade: number,
+        callDurationRetriesMade: number,
+      ): ReturnType<typeof handler> =>
+        Promise.resolve()
+          .then(() => handler(delegated))
+          .catch(async (caught: unknown) => {
+            const error =
+              caught instanceof Error ? caught : new Error(String(caught))
+            const isCallDuration = isCallDurationAbort(error)
+
+            if (
+              !isRetryableModelCallError(error) ||
+              retriesMade >= MAX_RETRIES ||
+              (isCallDuration &&
+                callDurationRetriesMade >= MAX_CALL_DURATION_RETRIES)
+            ) {
+              return Promise.reject(error)
+            }
+
+            logger.warn(
+              { err: getOriginalError(error) },
+              'model call failed with a retryable error',
+            )
+            await waitForRetry(getRetryDelay(error, retriesMade))
+
+            return callModel(
+              retriesMade + 1,
+              callDurationRetriesMade + Number(isCallDuration),
+            )
+          })
+
+      return callModel(0, 0)
     },
-  }) as unknown as AnyAgentMiddleware
+  })
 }
