@@ -13,7 +13,26 @@ use super::{DAILY_TIMEOUT, run_with_state};
 const MAX_CONCURRENT_STATUS_FETCHES: usize = 8;
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(from = "StrategyTaskReconcilePayload")]
 pub struct StrategyTaskReconcile;
+
+// webhook は {}、cron は payload 未指定時に null を渡す。
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum StrategyTaskReconcilePayload {
+    Null(()),
+    EmptyObject(EmptyObject),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EmptyObject {}
+
+impl From<StrategyTaskReconcilePayload> for StrategyTaskReconcile {
+    fn from(_payload: StrategyTaskReconcilePayload) -> Self {
+        Self
+    }
+}
 
 impl TaskHandler for StrategyTaskReconcile {
     const IDENTIFIER: &'static str = STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
@@ -109,10 +128,23 @@ mod tests {
         },
         unit_of_work::FakeUnitOfWork,
     };
+    use rstest::rstest;
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
-    use super::reconcile_in_flight_tasks;
+    use super::{StrategyTaskReconcile, reconcile_in_flight_tasks};
+
+    #[rstest]
+    #[case::cron_payload_null(serde_json::Value::Null)]
+    #[case::webhook_payload_empty_object(serde_json::json!({}))]
+    fn deserializes_reconcile_job_payloads(#[case] payload: serde_json::Value) {
+        assert_eq!(
+            serde_json::from_value::<StrategyTaskReconcile>(payload)
+                .map(|_| ())
+                .map_err(|error| error.to_string()),
+            Ok(()),
+        );
+    }
 
     struct PartialFailureRepository {
         tasks: Vec<StrategyTask>,
