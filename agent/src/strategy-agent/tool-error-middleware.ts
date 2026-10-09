@@ -19,7 +19,8 @@ const isMcpTransportOrInternalError = (error: unknown): error is Error => {
   return (
     message.includes('Streamable HTTP error:') ||
     /\bHTTP\s+[45]\d{2}\b/i.test(message) ||
-    /MCP error -32603:/i.test(message) ||
+    /MCP error -(?:32603|32001|32000):/i.test(message) ||
+    /\bfetch failed\b/i.test(message) ||
     /\bSession not found\b/i.test(message)
   )
 }

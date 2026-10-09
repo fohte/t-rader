@@ -1,20 +1,15 @@
 import { HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { DynamicStructuredTool } from '@langchain/core/tools'
-import { ChatOpenAI } from '@langchain/openai'
 import { createAgent } from 'langchain'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { createStrategyToolErrorMiddleware } from '#strategy-agent/tool-error-middleware'
-
-type CaptureWithFingerprintMock = (
-  error: unknown,
-  fingerprint: string | readonly string[],
-  context?: {
-    readonly level?: string
-    readonly extras?: Readonly<Record<string, unknown>>
-  },
-) => void
+import {
+  type CaptureWithFingerprintMock,
+  normalizeCaptureWithFingerprintCalls,
+} from '#test/capture-with-fingerprint'
+import { createStubChatModel } from '#test/stub-chat-model'
 
 const { captureWithFingerprintMock } = vi.hoisted(() => ({
   captureWithFingerprintMock: vi.fn<CaptureWithFingerprintMock>(),
@@ -23,18 +18,6 @@ const { captureWithFingerprintMock } = vi.hoisted(() => ({
 vi.mock('@fohte/service-kit/observability', () => ({
   captureWithFingerprint: captureWithFingerprintMock,
 }))
-
-type ChatOpenAIFetch = NonNullable<
-  NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
->['fetch']
-
-const buildStubModel = (fetch: ChatOpenAIFetch): ChatOpenAI =>
-  new ChatOpenAI({
-    apiKey: 'test-key',
-    model: 'example-model-test-tool-errors',
-    maxRetries: 0,
-    configuration: { baseURL: 'http://localhost', fetch },
-  })
 
 const buildToolCallResponse = (): Response =>
   new Response(
@@ -78,29 +61,29 @@ const buildStopResponse = (): Response =>
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
 
-const normalizeCaptureCalls = () =>
-  captureWithFingerprintMock.mock.calls.map(
-    ([error, fingerprint, context]) => ({
-      errorName: error instanceof Error ? error.name : typeof error,
-      errorMessage: error instanceof Error ? error.message : String(error),
-      fingerprint:
-        typeof fingerprint === 'string' ? [fingerprint] : [...fingerprint],
-      level: context?.level ?? null,
-      extras: context?.extras ?? null,
-    }),
-  )
+const normalizeToolMessage = (message: string): string => {
+  const errorStart = message.indexOf(' with error: ')
+  const retryInstruction = '\n Please fix the error and try again.'
+  const retryInstructionStart = message.lastIndexOf(retryInstruction)
+  if (errorStart < 0 || retryInstructionStart < errorStart) return message
+
+  return `${message.slice(0, errorStart)} with error: <tool input validation error>${message.slice(retryInstructionStart)}`
+}
 
 const runFailingTool = async (options: {
   readonly toolError: Error
   readonly toolSchema?: z.ZodType
 }) => {
   let modelCallCount = 0
-  const model = buildStubModel(() => {
-    modelCallCount += 1
-    return Promise.resolve(
-      modelCallCount === 1 ? buildToolCallResponse() : buildStopResponse(),
-    )
-  })
+  const model = createStubChatModel(
+    () => {
+      modelCallCount += 1
+      return Promise.resolve(
+        modelCallCount === 1 ? buildToolCallResponse() : buildStopResponse(),
+      )
+    },
+    { model: 'example-model-test-tool-errors' },
+  )
   const tool = new DynamicStructuredTool({
     name: 'demo_lookup',
     description: 'Returns a demo result',
@@ -117,8 +100,10 @@ const runFailingTool = async (options: {
   return {
     toolMessages: result.messages
       .filter((message) => ToolMessage.isInstance(message))
-      .map((message) => message.text),
-    captures: normalizeCaptureCalls(),
+      .map((message) => normalizeToolMessage(message.text)),
+    captures: normalizeCaptureWithFingerprintCalls(
+      captureWithFingerprintMock.mock.calls,
+    ),
   }
 }
 
@@ -138,6 +123,20 @@ describe('createStrategyToolErrorMiddleware', () => {
       name: 'MCP internal errors',
       message:
         'Error calling tool demo_lookup: MCP error -32603: Internal error',
+    },
+    {
+      name: 'MCP connection failures',
+      message: 'Error calling tool demo_lookup: TypeError: fetch failed',
+    },
+    {
+      name: 'MCP request timeouts',
+      message:
+        'Error calling tool demo_lookup: MCP error -32001: Request timed out',
+    },
+    {
+      name: 'MCP connection closures',
+      message:
+        'Error calling tool demo_lookup: MCP error -32000: Connection closed',
     },
   ])('captures $name with a tool-specific fingerprint', async ({ message }) => {
     captureWithFingerprintMock.mockClear()
@@ -172,7 +171,12 @@ describe('createStrategyToolErrorMiddleware', () => {
       toolSchema: z.object({ query: z.string() }),
     })
 
-    expect(result.captures).toEqual([])
+    expect(result).toEqual({
+      toolMessages: [
+        "Error: Error invoking tool 'demo_lookup' with kwargs {} with error: <tool input validation error>\n Please fix the error and try again.",
+      ],
+      captures: [],
+    })
   })
 
   it('does not capture MCP tool business errors', async () => {

@@ -30,17 +30,16 @@ import {
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
+import {
+  type CaptureWithFingerprintMock,
+  normalizeCaptureWithFingerprintCalls,
+} from '#test/capture-with-fingerprint'
 import { createFirstOccurrenceLabeler } from '#test/first-occurrence-labeler'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
-
-type CaptureWithFingerprintMock = (
-  error: unknown,
-  fingerprint: string | readonly string[],
-  context?: {
-    readonly level?: string
-    readonly extras?: Readonly<Record<string, unknown>>
-  },
-) => void
+import {
+  type ChatOpenAIFetch,
+  createStubChatModel,
+} from '#test/stub-chat-model'
 
 const { captureWithFingerprintMock } = vi.hoisted(() => ({
   captureWithFingerprintMock: vi.fn<CaptureWithFingerprintMock>(),
@@ -777,20 +776,13 @@ describe('createStrategyAgentDeps', () => {
     expect(model.reasoning).toEqual({ effort: 'high' })
   })
 
-  type ChatOpenAIFetch = NonNullable<
-    NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
-  >['fetch']
-
   const buildStubModel = (
     fetch: ChatOpenAIFetch,
     streaming = false,
   ): ChatOpenAI =>
-    new ChatOpenAI({
-      apiKey: 'test-key',
+    createStubChatModel(fetch, {
       model: 'example-model-test-stream',
-      maxRetries: 0,
       streaming,
-      configuration: { baseURL: 'http://localhost', fetch },
     })
 
   type ChatOpenAIRequestInit = Parameters<NonNullable<ChatOpenAIFetch>>[1]
@@ -801,25 +793,15 @@ describe('createStrategyAgentDeps', () => {
     return body
   }
 
-  const normalizeCaptureCalls = () =>
-    captureWithFingerprintMock.mock.calls.map(
-      ([error, fingerprint, context]) => ({
-        errorName: error instanceof Error ? error.name : typeof error,
-        errorMessage: error instanceof Error ? error.message : String(error),
-        fingerprint:
-          typeof fingerprint === 'string' ? [fingerprint] : [...fingerprint],
-        level: context?.level ?? null,
-        extras: context?.extras ?? null,
-      }),
-    )
-
   const getForcedSubmissionOutput = (
     structuredResponse: unknown,
     requestedToolCounts: readonly number[],
   ) => ({
     structuredResponse,
     requestedToolCounts,
-    captures: normalizeCaptureCalls(),
+    captures: normalizeCaptureWithFingerprintCalls(
+      captureWithFingerprintMock.mock.calls,
+    ),
   })
 
   const chatCompletionsRequestSchema = z.object({
