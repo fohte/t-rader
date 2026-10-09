@@ -64,3 +64,15 @@ export const EmphasizedEvent: Story = {
     target: false,
   },
 }
+
+export const OtherEarningsSummary: Story = {
+  name: '他社決算の件数を展開ボタンとして表示します。',
+  args: {
+    time: '',
+    title: '他 2 社',
+    stockId: undefined,
+    target: false,
+    muted: true,
+    titleAction: { expanded: true, onClick: () => {} },
+  },
+}

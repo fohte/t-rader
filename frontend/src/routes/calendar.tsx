@@ -7,6 +7,10 @@ import {
   shiftCalendarWeek,
   validateCalendarSearch,
 } from '#components/calendar/calendar-date'
+import {
+  isSameOtherEarningsSelection,
+  type OtherEarningsSelection,
+} from '#components/calendar/calendar-model'
 import { CalendarPageView } from '#components/calendar/calendar-page-view'
 import { $api } from '#lib/api/client'
 
@@ -18,9 +22,8 @@ export const Route = createFileRoute('/calendar')({
 function CalendarRoute() {
   const { country, strategy, week } = Route.useSearch()
   const navigate = Route.useNavigate()
-  const [expandedOtherEarnings, setExpandedOtherEarnings] = useState<
-    { country: string; eventDate: string } | undefined
-  >()
+  const [expandedOtherEarnings, setExpandedOtherEarnings] =
+    useState<OtherEarningsSelection>()
   const weekRange = useMemo(
     () => getCalendarWeekRange(week ?? getTokyoDate()),
     [week],
@@ -122,8 +125,7 @@ function CalendarRoute() {
       }}
       onOtherEarningsToggle={(selection) => {
         setExpandedOtherEarnings((current) =>
-          current?.country === selection.country &&
-          current.eventDate === selection.eventDate
+          isSameOtherEarningsSelection(current, selection)
             ? undefined
             : selection,
         )

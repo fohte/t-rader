@@ -9,6 +9,7 @@ export function CalendarEventRow({
   emphasized,
   target,
   muted,
+  titleAction,
 }: {
   time: string
   country: string
@@ -18,6 +19,11 @@ export function CalendarEventRow({
   emphasized: boolean
   target: boolean
   muted: boolean
+  titleAction?: {
+    expanded: boolean
+    controlsId?: string
+    onClick: () => void
+  }
 }) {
   const titleTone = emphasized
     ? 'text-destructive'
@@ -39,7 +45,17 @@ export function CalendarEventRow({
       <span className="w-12 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
         {category}
       </span>
-      {stockId != null ? (
+      {titleAction != null ? (
+        <button
+          type="button"
+          aria-expanded={titleAction.expanded}
+          aria-controls={titleAction.controlsId}
+          onClick={titleAction.onClick}
+          className={`${titleClassName} text-left hover:text-foreground hover:underline`}
+        >
+          {title}
+        </button>
+      ) : stockId != null ? (
         <Link
           to="/charts/$instrumentId"
           params={{ instrumentId: stockId }}

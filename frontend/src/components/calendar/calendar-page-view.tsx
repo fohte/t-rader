@@ -7,15 +7,17 @@ import {
   isCalendarCountryFilter,
 } from '#components/calendar/calendar-date'
 import { CalendarEventRow } from '#components/calendar/calendar-event-row'
-import { buildCalendarDays } from '#components/calendar/calendar-model'
+import {
+  buildCalendarDays,
+  isSameOtherEarningsSelection,
+  type OtherEarningsSelection,
+} from '#components/calendar/calendar-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 
 type CalendarEventsResponse = components['schemas']['CalendarEventsResponse']
 type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Strategy = components['schemas']['Strategy']
-type OtherEarningsSelection = { country: string; eventDate: string }
-
 export function CalendarPageView({
   calendar,
   weekRange,
@@ -177,8 +179,10 @@ export function CalendarPageView({
                   const otherEarnings = row.otherEarnings
                   const isExpanded =
                     otherEarnings != null &&
-                    expandedOtherEarnings?.country === otherEarnings.country &&
-                    expandedOtherEarnings.eventDate === otherEarnings.eventDate
+                    isSameOtherEarningsSelection(
+                      expandedOtherEarnings,
+                      otherEarnings,
+                    )
                   const detailsId =
                     otherEarnings == null
                       ? undefined
@@ -186,41 +190,27 @@ export function CalendarPageView({
 
                   return (
                     <div key={row.key}>
-                      {otherEarnings != null ? (
-                        <div className="flex items-start gap-1.5 px-3 py-1 sm:gap-2 sm:px-4">
-                          <span className="w-18 shrink-0 pt-0.5 text-right tabular-nums text-muted-foreground">
-                            {row.time}
-                          </span>
-                          <span className="w-10 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
-                            {row.country}
-                          </span>
-                          <span className="w-12 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
-                            {row.category}
-                          </span>
-                          <button
-                            type="button"
-                            aria-expanded={isExpanded}
-                            aria-controls={isExpanded ? detailsId : undefined}
-                            onClick={() => {
-                              onOtherEarningsToggle(otherEarnings)
-                            }}
-                            className="min-w-0 flex-1 break-words text-left text-muted-foreground hover:text-foreground hover:underline"
-                          >
-                            {row.title}
-                          </button>
-                        </div>
-                      ) : (
-                        <CalendarEventRow
-                          time={row.time}
-                          country={row.country}
-                          category={row.category}
-                          title={row.title}
-                          stockId={row.stockId}
-                          emphasized={row.emphasized}
-                          target={row.target}
-                          muted={row.muted}
-                        />
-                      )}
+                      <CalendarEventRow
+                        time={row.time}
+                        country={row.country}
+                        category={row.category}
+                        title={row.title}
+                        stockId={row.stockId}
+                        emphasized={row.emphasized}
+                        target={row.target}
+                        muted={row.muted}
+                        titleAction={
+                          otherEarnings == null
+                            ? undefined
+                            : {
+                                expanded: isExpanded,
+                                controlsId: isExpanded ? detailsId : undefined,
+                                onClick: () => {
+                                  onOtherEarningsToggle(otherEarnings)
+                                },
+                              }
+                        }
+                      />
                       {isExpanded && (
                         <div id={detailsId} aria-live="polite">
                           {isOtherEarningsPending ? (

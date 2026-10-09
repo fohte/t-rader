@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate, Utc};
@@ -89,12 +92,7 @@ impl CalendarEventReadUseCases {
         let mut items = Vec::with_capacity(events.len());
         let mut summary_indices = HashMap::new();
         for event in events {
-            if event.category != CalendarEventCategory::Earnings
-                || event
-                    .stock_id
-                    .as_ref()
-                    .is_some_and(|stock_id| tracked_stock_ids.contains(stock_id))
-            {
+            if !is_other_earnings(&event, &tracked_stock_ids) {
                 items.push(CalendarEventReadItem::Event(event));
                 continue;
             }
@@ -139,12 +137,7 @@ impl CalendarEventReadUseCases {
             .await?
             .into_iter()
             .filter(|event| {
-                event.category == CalendarEventCategory::Earnings
-                    && event.country == country
-                    && !event
-                        .stock_id
-                        .as_ref()
-                        .is_some_and(|stock_id| tracked_stock_ids.contains(stock_id))
+                event.country == country && is_other_earnings(event, &tracked_stock_ids)
             })
             .collect())
     }
@@ -152,17 +145,25 @@ impl CalendarEventReadUseCases {
     async fn tracked_stock_ids(
         &self,
         strategy_scope: Option<StrategyScope>,
-    ) -> Result<std::collections::HashSet<String>, CalendarEventReadUseCaseError> {
+    ) -> Result<HashSet<String>, CalendarEventReadUseCaseError> {
         Ok(match strategy_scope {
             Some(scope) => self
                 .target_source
                 .list_stock_ids(scope)
                 .await?
                 .into_iter()
-                .collect::<std::collections::HashSet<_>>(),
-            None => std::collections::HashSet::new(),
+                .collect::<HashSet<_>>(),
+            None => HashSet::new(),
         })
     }
+}
+
+fn is_other_earnings(event: &CalendarEvent, tracked_stock_ids: &HashSet<String>) -> bool {
+    event.category == CalendarEventCategory::Earnings
+        && !event
+            .stock_id
+            .as_ref()
+            .is_some_and(|stock_id| tracked_stock_ids.contains(stock_id))
 }
 
 fn resolve_date_range(

@@ -11,6 +11,21 @@ type OtherEarningsSummary = Extract<
   { kind: 'other_earnings_summary' }
 >
 
+export type OtherEarningsSelection = {
+  country: string
+  eventDate: string
+}
+
+export function isSameOtherEarningsSelection(
+  current: OtherEarningsSelection | undefined,
+  selection: OtherEarningsSelection,
+): boolean {
+  return (
+    current?.country === selection.country &&
+    current.eventDate === selection.eventDate
+  )
+}
+
 type CalendarRowView = {
   key: string
   time: string
@@ -21,7 +36,7 @@ type CalendarRowView = {
   emphasized: boolean
   target: boolean
   muted: boolean
-  otherEarnings: { country: string; eventDate: string } | undefined
+  otherEarnings: OtherEarningsSelection | undefined
 }
 
 type CalendarDayView = {
