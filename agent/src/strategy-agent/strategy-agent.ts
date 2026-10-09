@@ -6,12 +6,7 @@ import { SystemMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
-import {
-  createAgent,
-  toolErrorMiddleware,
-  ToolInvocationError,
-  toolStrategy,
-} from 'langchain'
+import { createAgent, toolStrategy } from 'langchain'
 import { errAsync, ResultAsync } from 'neverthrow'
 
 import { extractMessageText } from '#a2a/message-text'
@@ -43,6 +38,7 @@ import {
   createToolCallCapMiddleware,
   MAX_TOOL_CALLS_PER_MODEL_CALL,
 } from '#strategy-agent/tool-call-cap-middleware'
+import { createStrategyToolErrorMiddleware } from '#strategy-agent/tool-error-middleware'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
 // OpenCode Go's OpenAI-compatible endpoint.
@@ -115,20 +111,9 @@ const buildCompiledAgent = (
     responseFormat: options.responseFormat,
     middleware: [
       createGenAiTracingMiddleware({ providerName: genAiProviderName }),
-      // wrapToolCall middleware (added by the tracing middleware above for
-      // its execute_tool span) makes LangChain's ToolNode stop
-      // auto-recovering thrown tool errors into a ToolMessage, so this
-      // restores that recovery explicitly, matching ToolNode's own default
-      // handleToolErrors text (`${error}\n Please fix your mistakes.`).
-      // ToolInvocationError (tool-input schema validation failures) is
-      // passed through as-is since its message already ends with its own
-      // "fix and retry" instruction.
-      toolErrorMiddleware({
-        onError: (error) =>
-          ToolInvocationError.isInstance(error)
-            ? String(error)
-            : `${String(error)}\n Please fix your mistakes.`,
-      }),
+      // tracing middleware の wrapToolCall は tool error を自動復旧しないため、
+      // 通常の ToolMessage に戻しつつ MCP の通信障害を記録する。
+      createStrategyToolErrorMiddleware(),
       finalTurnMiddleware,
       // finalTurnMiddleware より内側 (モデル呼び出しに最も近い位置) に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。

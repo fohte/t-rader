@@ -33,6 +33,23 @@ import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-mid
 import { createFirstOccurrenceLabeler } from '#test/first-occurrence-labeler'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
+type CaptureWithFingerprintMock = (
+  error: unknown,
+  fingerprint: string | readonly string[],
+  context?: {
+    readonly level?: string
+    readonly extras?: Readonly<Record<string, unknown>>
+  },
+) => void
+
+const { captureWithFingerprintMock } = vi.hoisted(() => ({
+  captureWithFingerprintMock: vi.fn<CaptureWithFingerprintMock>(),
+}))
+
+vi.mock('@fohte/service-kit/observability', () => ({
+  captureWithFingerprint: captureWithFingerprintMock,
+}))
+
 let capturedMcpClientConfig: unknown
 
 vi.mock('@langchain/mcp-adapters', () => ({
@@ -784,6 +801,27 @@ describe('createStrategyAgentDeps', () => {
     return body
   }
 
+  const normalizeCaptureCalls = () =>
+    captureWithFingerprintMock.mock.calls.map(
+      ([error, fingerprint, context]) => ({
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        fingerprint:
+          typeof fingerprint === 'string' ? [fingerprint] : [...fingerprint],
+        level: context?.level ?? null,
+        extras: context?.extras ?? null,
+      }),
+    )
+
+  const getForcedSubmissionOutput = (
+    structuredResponse: unknown,
+    requestedToolCounts: readonly number[],
+  ) => ({
+    structuredResponse,
+    requestedToolCounts,
+    captures: normalizeCaptureCalls(),
+  })
+
   const chatCompletionsRequestSchema = z.object({
     messages: z.array(z.object({ role: z.string(), content: z.unknown() })),
   })
@@ -977,6 +1015,7 @@ describe('createStrategyAgentDeps', () => {
   }
 
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
+    captureWithFingerprintMock.mockClear()
     const requestedToolCounts: number[] = []
     let callCount = 0
     const model = buildStubModel((_url, init) => {
@@ -1010,14 +1049,25 @@ describe('createStrategyAgentDeps', () => {
     })
     const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
 
-    expect(result.structuredResponse).toEqual({
-      status: 'completed',
-      message: 'done',
+    expect(
+      getForcedSubmissionOutput(result.structuredResponse, requestedToolCounts),
+    ).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestedToolCounts: [
+        ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
+        1,
+      ],
+      captures: [
+        {
+          errorName: 'Error',
+          errorMessage:
+            'finalTurnMiddleware: forcing structured-output submission at model call 15',
+          fingerprint: ['final-turn-middleware.forced-submission'],
+          level: 'warning',
+          extras: null,
+        },
+      ],
     })
-    expect(requestedToolCounts).toEqual([
-      ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
-      1,
-    ])
   })
 
   it('logs immediately when the model ends without a structured-output tool call', async () => {
