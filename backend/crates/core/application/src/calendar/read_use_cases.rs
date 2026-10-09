@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate, Utc};
@@ -83,26 +86,13 @@ impl CalendarEventReadUseCases {
             return Err(CalendarEventReadUseCaseError::InvalidDateRange);
         }
 
-        let tracked_stock_ids = match strategy_scope {
-            Some(scope) => self
-                .target_source
-                .list_stock_ids(scope)
-                .await?
-                .into_iter()
-                .collect::<std::collections::HashSet<_>>(),
-            None => std::collections::HashSet::new(),
-        };
+        let tracked_stock_ids = self.tracked_stock_ids(strategy_scope).await?;
 
         let events = self.repository.list_events(&date_range).await?;
         let mut items = Vec::with_capacity(events.len());
         let mut summary_indices = HashMap::new();
         for event in events {
-            if event.category != CalendarEventCategory::Earnings
-                || event
-                    .stock_id
-                    .as_ref()
-                    .is_some_and(|stock_id| tracked_stock_ids.contains(stock_id))
-            {
+            if !is_other_earnings(&event, &tracked_stock_ids) {
                 items.push(CalendarEventReadItem::Event(event));
                 continue;
             }
@@ -128,6 +118,52 @@ impl CalendarEventReadUseCases {
             events: items,
         })
     }
+
+    pub async fn list_other_earnings(
+        &self,
+        event_date: NaiveDate,
+        country: &str,
+        strategy_scope: Option<StrategyScope>,
+    ) -> Result<Vec<CalendarEvent>, CalendarEventReadUseCaseError> {
+        let tracked_stock_ids = self.tracked_stock_ids(strategy_scope).await?;
+        let date_range = DateRange {
+            from: event_date,
+            to: event_date,
+        };
+
+        Ok(self
+            .repository
+            .list_events(&date_range)
+            .await?
+            .into_iter()
+            .filter(|event| {
+                event.country == country && is_other_earnings(event, &tracked_stock_ids)
+            })
+            .collect())
+    }
+
+    async fn tracked_stock_ids(
+        &self,
+        strategy_scope: Option<StrategyScope>,
+    ) -> Result<HashSet<String>, CalendarEventReadUseCaseError> {
+        Ok(match strategy_scope {
+            Some(scope) => self
+                .target_source
+                .list_stock_ids(scope)
+                .await?
+                .into_iter()
+                .collect::<HashSet<_>>(),
+            None => HashSet::new(),
+        })
+    }
+}
+
+fn is_other_earnings(event: &CalendarEvent, tracked_stock_ids: &HashSet<String>) -> bool {
+    event.category == CalendarEventCategory::Earnings
+        && !event
+            .stock_id
+            .as_ref()
+            .is_some_and(|stock_id| tracked_stock_ids.contains(stock_id))
 }
 
 fn resolve_date_range(
@@ -466,6 +502,125 @@ mod tests {
                     }],
                 },
                 0
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn list_other_earnings_returns_untracked_earnings_for_the_requested_country_and_date() {
+        let target_date = date(2031, 2, 11);
+        let events = vec![
+            event(
+                "tracked",
+                CalendarEventCategory::Earnings,
+                "JP",
+                "サンプル銘柄 A",
+                Some("0001"),
+                target_date,
+            ),
+            event(
+                "other-jp",
+                CalendarEventCategory::Earnings,
+                "JP",
+                "サンプル銘柄 B",
+                Some("0002"),
+                target_date,
+            ),
+            event(
+                "other-us",
+                CalendarEventCategory::Earnings,
+                "US",
+                "サンプル銘柄 C",
+                Some("US:SAMPLE-C"),
+                target_date,
+            ),
+            event(
+                "other-date",
+                CalendarEventCategory::Earnings,
+                "JP",
+                "別日の銘柄",
+                Some("0003"),
+                date(2031, 2, 12),
+            ),
+            event(
+                "indicator",
+                CalendarEventCategory::Indicator,
+                "JP",
+                "サンプル指標",
+                None,
+                target_date,
+            ),
+        ];
+        let (use_cases, _) = use_cases(events, vec!["0001".into()]);
+
+        let result = use_cases
+            .list_other_earnings(target_date, "JP", Some(strategy_scope().await))
+            .await
+            .expect("list other earnings");
+
+        assert_eq!(
+            result,
+            vec![event(
+                "other-jp",
+                CalendarEventCategory::Earnings,
+                "JP",
+                "サンプル銘柄 B",
+                Some("0002"),
+                target_date,
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn list_other_earnings_returns_all_matching_earnings_when_strategy_is_omitted() {
+        let target_date = date(2031, 2, 11);
+        let events = vec![
+            event(
+                "first",
+                CalendarEventCategory::Earnings,
+                "JP",
+                "サンプル銘柄 A",
+                Some("0001"),
+                target_date,
+            ),
+            event(
+                "second",
+                CalendarEventCategory::Earnings,
+                "JP",
+                "サンプル銘柄 B",
+                Some("0002"),
+                target_date,
+            ),
+        ];
+        let (use_cases, target_source) = use_cases(events, vec!["0001".into()]);
+
+        let result = use_cases
+            .list_other_earnings(target_date, "JP", None)
+            .await
+            .expect("list other earnings");
+
+        assert_eq!(
+            (result, *target_source.calls.lock().expect("calls lock")),
+            (
+                vec![
+                    event(
+                        "first",
+                        CalendarEventCategory::Earnings,
+                        "JP",
+                        "サンプル銘柄 A",
+                        Some("0001"),
+                        target_date,
+                    ),
+                    event(
+                        "second",
+                        CalendarEventCategory::Earnings,
+                        "JP",
+                        "サンプル銘柄 B",
+                        Some("0002"),
+                        target_date,
+                    ),
+                ],
+                0,
             )
         );
     }

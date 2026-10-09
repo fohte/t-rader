@@ -35,7 +35,7 @@ pub use agent_config::{
 pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 pub use annotation::{AnnotationResponse, CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar_response::BarResponse;
-pub use calendar::CalendarEventsResponse;
+pub use calendar::{CalendarEventsResponse, CalendarOtherEarningsResponse};
 pub use change_history::ChangeHistoryResponse;
 pub use comment::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
 pub use config::ConfigResponse;

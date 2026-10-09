@@ -1,4 +1,3 @@
-import { Link } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import {
@@ -7,13 +6,18 @@ import {
   formatCalendarWeekRange,
   isCalendarCountryFilter,
 } from '#components/calendar/calendar-date'
-import { buildCalendarDays } from '#components/calendar/calendar-model'
+import { CalendarEventRow } from '#components/calendar/calendar-event-row'
+import {
+  buildCalendarDays,
+  isSameOtherEarningsSelection,
+  type OtherEarningsSelection,
+} from '#components/calendar/calendar-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 
 type CalendarEventsResponse = components['schemas']['CalendarEventsResponse']
+type CalendarEvent = components['schemas']['CalendarEventResponse']
 type Strategy = components['schemas']['Strategy']
-
 export function CalendarPageView({
   calendar,
   weekRange,
@@ -23,10 +27,15 @@ export function CalendarPageView({
   isPending,
   errorMessage,
   strategyErrorMessage,
+  expandedOtherEarnings,
+  otherEarningsEvents,
+  isOtherEarningsPending,
+  otherEarningsErrorMessage,
   onPreviousWeek,
   onNextWeek,
   onStrategyChange,
   onCountryChange,
+  onOtherEarningsToggle,
 }: {
   calendar: CalendarEventsResponse | undefined
   weekRange: CalendarWeekRange
@@ -36,16 +45,26 @@ export function CalendarPageView({
   isPending: boolean
   errorMessage: string | undefined
   strategyErrorMessage: string | undefined
+  expandedOtherEarnings: OtherEarningsSelection | undefined
+  otherEarningsEvents: CalendarEvent[] | undefined
+  isOtherEarningsPending: boolean
+  otherEarningsErrorMessage: string | undefined
   onPreviousWeek: () => void
   onNextWeek: () => void
   onStrategyChange: (value: string | undefined) => void
   onCountryChange: (value: CalendarCountryFilter) => void
+  onOtherEarningsToggle: (selection: OtherEarningsSelection) => void
 }) {
   const days = buildCalendarDays(
     calendar?.events ?? [],
     countryFilter,
     selectedStrategyId,
   )
+  const otherEarningsRows = buildCalendarDays(
+    otherEarningsEvents ?? [],
+    countryFilter,
+    undefined,
+  ).flatMap((day) => day.rows)
 
   return (
     <section className="overflow-hidden border border-border bg-background font-mono text-xs text-foreground">
@@ -157,39 +176,78 @@ export function CalendarPageView({
                   {day.label}
                 </h2>
                 {day.rows.map((row) => {
-                  const titleTone = row.emphasized
-                    ? 'text-destructive'
-                    : row.target
-                      ? 'font-semibold text-foreground'
-                      : row.muted
-                        ? 'text-muted-foreground'
-                        : 'text-foreground'
-                  const titleClassName = `min-w-0 flex-1 break-words ${titleTone}`
+                  const otherEarnings = row.otherEarnings
+                  const isExpanded =
+                    otherEarnings != null &&
+                    isSameOtherEarningsSelection(
+                      expandedOtherEarnings,
+                      otherEarnings,
+                    )
+                  const detailsId =
+                    otherEarnings == null
+                      ? undefined
+                      : `calendar-other-earnings-${otherEarnings.country}-${otherEarnings.eventDate}`
 
                   return (
-                    <div
-                      key={row.key}
-                      className="flex items-start gap-1.5 px-3 py-1 sm:gap-2 sm:px-4"
-                    >
-                      <span className="w-18 shrink-0 pt-0.5 text-right tabular-nums text-muted-foreground">
-                        {row.time}
-                      </span>
-                      <span className="w-10 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
-                        {row.country}
-                      </span>
-                      <span className="w-12 shrink-0 border border-border px-1 py-0.5 text-center text-2xs text-muted-foreground-strong">
-                        {row.category}
-                      </span>
-                      {row.stockId != null ? (
-                        <Link
-                          to="/charts/$instrumentId"
-                          params={{ instrumentId: row.stockId }}
-                          className={`${titleClassName} hover:underline`}
-                        >
-                          {row.title}
-                        </Link>
-                      ) : (
-                        <span className={titleClassName}>{row.title}</span>
+                    <div key={row.key}>
+                      <CalendarEventRow
+                        time={row.time}
+                        country={row.country}
+                        category={row.category}
+                        title={row.title}
+                        stockId={row.stockId}
+                        emphasized={row.emphasized}
+                        target={row.target}
+                        muted={row.muted}
+                        titleAction={
+                          otherEarnings == null
+                            ? undefined
+                            : {
+                                expanded: isExpanded,
+                                controlsId: isExpanded ? detailsId : undefined,
+                                onClick: () => {
+                                  onOtherEarningsToggle(otherEarnings)
+                                },
+                              }
+                        }
+                      />
+                      {isExpanded && (
+                        <div id={detailsId} aria-live="polite">
+                          {isOtherEarningsPending ? (
+                            <div
+                              className="space-y-1 px-3 py-2 sm:px-4"
+                              aria-label="他の決算を読み込み中"
+                            >
+                              <Skeleton className="h-5 w-full rounded-none" />
+                              <Skeleton className="h-5 w-full rounded-none" />
+                            </div>
+                          ) : otherEarningsErrorMessage != null ? (
+                            <p
+                              role="alert"
+                              className="px-4 py-2 text-destructive"
+                            >
+                              {otherEarningsErrorMessage}
+                            </p>
+                          ) : otherEarningsRows.length === 0 ? (
+                            <p className="px-4 py-2 text-muted-foreground-strong">
+                              該当する決算はありません。
+                            </p>
+                          ) : (
+                            otherEarningsRows.map((earning) => (
+                              <CalendarEventRow
+                                key={earning.key}
+                                time={earning.time}
+                                country={earning.country}
+                                category={earning.category}
+                                title={earning.title}
+                                stockId={earning.stockId}
+                                emphasized={earning.emphasized}
+                                target={earning.target}
+                                muted={earning.muted}
+                              />
+                            ))
+                          )}
+                        </div>
                       )}
                     </div>
                   )

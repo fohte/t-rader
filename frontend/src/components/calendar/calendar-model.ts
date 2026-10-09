@@ -11,6 +11,21 @@ type OtherEarningsSummary = Extract<
   { kind: 'other_earnings_summary' }
 >
 
+export type OtherEarningsSelection = {
+  country: string
+  eventDate: string
+}
+
+export function isSameOtherEarningsSelection(
+  current: OtherEarningsSelection | undefined,
+  selection: OtherEarningsSelection,
+): boolean {
+  return (
+    current?.country === selection.country &&
+    current.eventDate === selection.eventDate
+  )
+}
+
 type CalendarRowView = {
   key: string
   time: string
@@ -21,6 +36,7 @@ type CalendarRowView = {
   emphasized: boolean
   target: boolean
   muted: boolean
+  otherEarnings: OtherEarningsSelection | undefined
 }
 
 type CalendarDayView = {
@@ -114,6 +130,7 @@ function buildEventRow(
       emphasized: isEmphasized(event),
       target: selectedStrategyId != null && event.category === 'earnings',
       muted: false,
+      otherEarnings: undefined,
     },
     sortOrder: time.sortOrder,
   }
@@ -133,6 +150,7 @@ function buildOtherEarningsRow(event: OtherEarningsSummary): {
       emphasized: false,
       target: false,
       muted: true,
+      otherEarnings: { country: event.country, eventDate: event.event_date },
     },
     sortOrder: 2881,
   }
