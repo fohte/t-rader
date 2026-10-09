@@ -154,6 +154,24 @@ const buildDeps = (
   return { deps, calls }
 }
 
+const createDeferred = <T>() => {
+  let resolvePromise: (value: T) => void = () => undefined
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve
+  })
+  return { promise, resolve: resolvePromise }
+}
+
+const findAssignedItem = (
+  messageText: string,
+  items: readonly string[],
+): string | undefined =>
+  items.find((item) =>
+    messageText.includes(
+      `割り当てられた対象:\n\`\`\`json\n${JSON.stringify(item, null, 2)}\n\`\`\``,
+    ),
+  )
+
 describe('runAgentGraph', () => {
   it('runs once-phases in order, threading each phase output into later phase messages', async () => {
     const { deps, calls } = buildDeps((call) =>
@@ -256,12 +274,12 @@ describe('runAgentGraph', () => {
     expect(calls).toEqual([])
   })
 
-  it('stops issuing further for_each chunks once the deadline is exceeded mid-loop', async () => {
+  it('does not start pending for_each items after the deadline is exceeded', async () => {
     const controller = new AbortController()
     const { deps, calls } = buildDeps((call) => {
       if (call.messageText.includes('do plan')) {
         return Promise.resolve({
-          structuredResponse: { items: ['a', 'b', 'c'] },
+          structuredResponse: { items: ['a', 'b', 'c', 'd'] },
         })
       }
       controller.abort()
@@ -284,7 +302,7 @@ describe('runAgentGraph', () => {
           model: 'm',
           prompt: 'do work',
           forEach: 'plan.items',
-          maxParallel: 1,
+          maxParallel: 2,
           skills: [],
           tools: [],
           output: {},
@@ -300,33 +318,46 @@ describe('runAgentGraph', () => {
       deadlineSignal: controller.signal,
     })
 
-    expect(result).toEqual({
-      status: 'failed',
-      message:
-        'フェーズ「Work」(work) の実行に失敗しました: deadline を超過したため実行を中断しました',
-      errorKind: 'agent_error',
-    })
-    expect(normalizeExecutionStepIds(calls)).toEqual([
+    const actual = Array.of(result, normalizeExecutionStepIds(calls))
+    expect(actual).toEqual([
       {
-        systemPrompt: 'AGENTS',
-        messageText: buildPhaseMessageText({
-          originalPromptText: 'req',
-          phasePrompt: 'do plan',
-          item: undefined,
-          priorResults: {},
-        }),
-        executionStepId: '<execution-step-id-1>',
+        status: 'failed',
+        message:
+          'フェーズ「Work」(work) の実行に失敗しました: deadline を超過したため実行を中断しました',
+        errorKind: 'agent_error',
       },
-      {
-        systemPrompt: 'AGENTS',
-        messageText: buildPhaseMessageText({
-          originalPromptText: 'req',
-          phasePrompt: 'do work',
-          item: 'a',
-          priorResults: { plan: { items: ['a', 'b', 'c'] } },
-        }),
-        executionStepId: '<execution-step-id-2>',
-      },
+      [
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do plan',
+            item: undefined,
+            priorResults: {},
+          }),
+          executionStepId: '<execution-step-id-1>',
+        },
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do work',
+            item: 'a',
+            priorResults: { plan: { items: ['a', 'b', 'c', 'd'] } },
+          }),
+          executionStepId: '<execution-step-id-2>',
+        },
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do work',
+            item: 'b',
+            priorResults: { plan: { items: ['a', 'b', 'c', 'd'] } },
+          }),
+          executionStepId: '<execution-step-id-3>',
+        },
+      ],
     ])
   })
 
@@ -526,6 +557,193 @@ describe('runAgentGraph', () => {
       message: '2フェーズの実行が完了しました (Plan → Work)',
     })
     expect(maxActive).toBe(2)
+  })
+
+  it('starts the next for_each item when a worker becomes available', async () => {
+    const items = ['item-one', 'item-two', 'item-three', 'item-four']
+    const completions = new Map(
+      items.map(
+        (item) =>
+          [
+            item,
+            createDeferred<{ structuredResponse: Record<string, unknown> }>(),
+          ] as const,
+      ),
+    )
+    const started: string[] = []
+    const twoStarted = createDeferred<undefined>()
+    const threeStarted = createDeferred<undefined>()
+    const { deps } = buildDeps((call) => {
+      if (call.messageText.includes('do plan')) {
+        return Promise.resolve({ structuredResponse: { items } })
+      }
+      const item = findAssignedItem(call.messageText, items)
+      if (item === undefined) {
+        return Promise.resolve({ structuredResponse: {} })
+      }
+      started.push(item)
+      if (started.length === 2) twoStarted.resolve(undefined)
+      if (started.length === 3) threeStarted.resolve(undefined)
+      return (
+        completions.get(item)?.promise ??
+        Promise.resolve({ structuredResponse: { value: item } })
+      )
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          maxParallel: 2,
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+      ],
+    }
+
+    const runPromise = runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+    })
+    await twoStarted.promise
+    completions
+      .get(items[1])
+      ?.resolve({ structuredResponse: { value: items[1] } })
+    const nextItemStartedBeforeFirstCompleted = await Promise.race([
+      threeStarted.promise.then(() => true),
+      new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          resolve(false)
+        }, 0)
+      }),
+    ])
+    for (const item of items) {
+      completions.get(item)?.resolve({ structuredResponse: { value: item } })
+    }
+    const result = await runPromise
+
+    const actual = Array.of(
+      started,
+      nextItemStartedBeforeFirstCompleted,
+      result,
+    )
+    expect(actual).toEqual([
+      items,
+      true,
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Plan → Work)',
+      },
+    ])
+  })
+
+  it('passes for_each outputs in item order when workers complete out of order', async () => {
+    const items = ['item-one', 'item-two', 'item-three']
+    const completions = new Map(
+      items.map(
+        (item) =>
+          [
+            item,
+            createDeferred<{ structuredResponse: Record<string, unknown> }>(),
+          ] as const,
+      ),
+    )
+    const allStarted = createDeferred<undefined>()
+    let startedCount = 0
+    const { deps, calls } = buildDeps((call) => {
+      if (call.messageText.includes('make plan')) {
+        return Promise.resolve({ structuredResponse: { items } })
+      }
+      if (call.messageText.includes('do work')) {
+        const item = findAssignedItem(call.messageText, items)
+        if (item === undefined) {
+          return Promise.resolve({ structuredResponse: {} })
+        }
+        startedCount++
+        if (startedCount === items.length) allStarted.resolve(undefined)
+        return (
+          completions.get(item)?.promise ??
+          Promise.resolve({ structuredResponse: { value: item } })
+        )
+      }
+      return Promise.resolve({ structuredResponse: {} })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'make plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          maxParallel: items.length,
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+        {
+          key: 'summary',
+          label: 'Summary',
+          model: 'm',
+          prompt: 'summarize',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const runPromise = runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+    })
+    await allStarted.promise
+    for (const item of [...items].reverse()) {
+      completions.get(item)?.resolve({ structuredResponse: { value: item } })
+    }
+    await runPromise
+
+    expect(normalizeExecutionStepIds(calls.slice(-1))).toEqual([
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'summarize',
+          item: undefined,
+          priorResults: {
+            plan: { items },
+            work: items.map((item) => ({ value: item })),
+          },
+        }),
+        executionStepId: '<execution-step-id-1>',
+      },
+    ])
   })
 
   it('retries a phase up to 2 times after a missing structured response, then succeeds, reusing one executionStepId across attempts', async () => {

@@ -56,6 +56,10 @@ const extractItemLabel = (
   return typeof value === 'string' ? value : undefined
 }
 
+type ForEachItemOutcome =
+  | { readonly kind: 'success'; readonly value: unknown }
+  | { readonly kind: 'error'; readonly error: unknown }
+
 // あえてセマンティックな語彙は含めない: モデルに渡すのは元のリクエスト、
 // このフェーズの指示、現在の for_each 対象、手前のフェーズの出力という
 // 汎用的なパイプライン構造のみ。
@@ -120,63 +124,88 @@ const runForEachItems = async (
   previousStepsForPhase: readonly StrategyTaskStep[],
   reuseCompleted: boolean,
 ): Promise<Result<unknown[], unknown>> => {
-  // 固定サイズのチャンク分割による並列数制御。セマフォより単純だが、フェーズあたりの
-  // レイテンシ差が大きい場合は待ち時間が偏る。偏りが問題になれば worker pool 方式に置き換える。
-  const chunkSize = Math.max(phase.maxParallel ?? items.length, 1)
+  const concurrency = Math.max(phase.maxParallel ?? items.length, 1)
+  const workerCount = Math.min(concurrency, items.length)
+  const results: (ForEachItemOutcome | undefined)[] = []
+  let nextIndex = 0
   const outputs: unknown[] = []
   let firstError: unknown
   const previousStepMatcher = createPreviousStepMatcher(previousStepsForPhase)
 
-  for (let start = 0; start < items.length; start += chunkSize) {
-    if (isDeadlineExceeded(context)) {
-      return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+  if (isDeadlineExceeded(context)) {
+    return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+  }
+
+  const runItem = (index: number): Promise<Result<unknown, unknown>> => {
+    const item = items[index]
+    const itemLabel = extractItemLabel(item, phase.labelField)
+    const matched = previousStepMatcher.take(item)
+    if (reuseCompleted && matched?.status === 'completed') {
+      recorder.recordExisting(matched)
+      return Promise.resolve(ok(matched.output))
     }
-    const chunk = items.slice(start, start + chunkSize)
-    const chunkResults = await Promise.all(
-      chunk.map((item, offset) => {
-        const index = start + offset
-        const itemLabel = extractItemLabel(item, phase.labelField)
-        const matched = previousStepMatcher.take(item)
-        if (reuseCompleted && matched?.status === 'completed') {
-          recorder.recordExisting(matched)
-          return Promise.resolve(ok(matched.output))
-        }
-        const messageText = buildPhaseMessageText({
-          originalPromptText: context.originalPromptText,
-          phasePrompt: phase.prompt,
-          item,
-          priorResults,
-        })
-        return invokeAndRecordStep(
-          deps,
-          phase,
-          context,
-          [new HumanMessage(messageText)],
-          requiredArrayFields,
-          recorder,
-          {
-            phaseKey: phase.key,
-            label: phase.label,
-            model: phase.model,
-            item,
-            ...(itemLabel !== undefined ? { itemLabel } : {}),
-          },
-          `${phase.label} (${String(index + 1)}/${String(items.length)})`,
-          {
-            'phase.key': phase.key,
-            'phase.model': phase.model,
-            'phase.item_index': index,
-          },
-          matched?.executionStepId,
-        )
-      }),
+    const messageText = buildPhaseMessageText({
+      originalPromptText: context.originalPromptText,
+      phasePrompt: phase.prompt,
+      item,
+      priorResults,
+    })
+    return invokeAndRecordStep(
+      deps,
+      phase,
+      context,
+      [new HumanMessage(messageText)],
+      requiredArrayFields,
+      recorder,
+      {
+        phaseKey: phase.key,
+        label: phase.label,
+        model: phase.model,
+        item,
+        ...(itemLabel !== undefined ? { itemLabel } : {}),
+      },
+      `${phase.label} (${String(index + 1)}/${String(items.length)})`,
+      {
+        'phase.key': phase.key,
+        'phase.model': phase.model,
+        'phase.item_index': index,
+      },
+      matched?.executionStepId,
     )
-    for (const chunkResult of chunkResults) {
-      if (chunkResult.isErr()) {
-        firstError ??= chunkResult.error
-      } else {
-        outputs.push(chunkResult.value)
+  }
+
+  const runWorker = async (): Promise<boolean> => {
+    let isFirstItem = true
+    while (nextIndex < items.length) {
+      if (!isFirstItem && isDeadlineExceeded(context)) {
+        return true
       }
+      const index = nextIndex
+      nextIndex++
+      isFirstItem = false
+      const itemResult = await runItem(index)
+      results[index] = itemResult.match(
+        (value): ForEachItemOutcome => ({ kind: 'success', value }),
+        (error): ForEachItemOutcome => ({ kind: 'error', error }),
+      )
+    }
+    return false
+  }
+
+  const workerDeadlines = await Promise.all(
+    Array.from({ length: workerCount }, () => runWorker()),
+  )
+
+  if (workerDeadlines.includes(true)) {
+    return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+  }
+
+  for (const itemResult of results) {
+    if (itemResult === undefined) continue
+    if (itemResult.kind === 'error') {
+      firstError ??= itemResult.error
+    } else {
+      outputs.push(itemResult.value)
     }
   }
 
