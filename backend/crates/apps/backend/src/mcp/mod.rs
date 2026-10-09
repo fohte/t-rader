@@ -19,12 +19,10 @@ pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 
-/// MCP ルータを構築する。
-///
-/// session はプロセス内メモリ (`LocalSessionManager`) でのみ管理する。バックエンド再起動を
-/// 跨いだ `mcp-session-id` は未知の session として扱われ、クライアントは initialize からやり直す。
+/// MCP ルータを構築する。mgmt はプロセス内 session、strategy は stateless で処理する。
 pub fn router(
     use_cases: UseCases,
     agent_client: SharedAgentTaskClient,
@@ -36,7 +34,7 @@ pub fn router(
     let mgmt_dependencies = mgmt_dependencies(&use_cases, agent_client);
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_dependencies.clone())),
-        session_manager().into(),
+        mgmt_session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
@@ -48,8 +46,8 @@ pub fn router(
                 litellm_client.clone(),
             )))
         },
-        session_manager().into(),
-        build_config(&extra_allowed_hosts),
+        NeverSessionManager::default().into(),
+        strategy_config(&extra_allowed_hosts),
     );
 
     Router::new()
@@ -144,15 +142,15 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// デフォルトの idle timeout (5 分) でタスク実行中に session が破棄されないよう、
+/// デフォルトの idle timeout (5 分) で mgmt MCP のタスク実行中に session が破棄されないよう、
 /// deadline を超える keep_alive を設定する。
-fn session_manager() -> LocalSessionManager {
+fn mgmt_session_manager() -> LocalSessionManager {
     let mut manager = LocalSessionManager::default();
-    manager.session_config.keep_alive = Some(session_keep_alive());
+    manager.session_config.keep_alive = Some(mgmt_session_keep_alive());
     manager
 }
 
-fn session_keep_alive() -> Duration {
+fn mgmt_session_keep_alive() -> Duration {
     // to_std() は負の Duration でのみ失敗する (起こらない想定)。フォールバックは
     // deadline を下回らない安全側 (Duration::MAX) にする。
     DEADLINE_DURATION
@@ -169,6 +167,10 @@ fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
         }
     }
     config
+}
+
+fn strategy_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
+    build_config(extra_allowed_hosts).with_legacy_session_mode(false)
 }
 
 #[cfg(test)]
@@ -231,12 +233,12 @@ mod tests {
     /// (`mcp-session-id` が発行されない)。それ以前のバージョンとの挙動差を固定する。
     #[rstest]
     #[case::mgmt_legacy("/mcp/mgmt", "t-rader-mgmt", initialize_body(), "2025-06-18", true)]
-    #[case::strategy_legacy(
+    #[case::strategy_legacy_stateless(
         "/mcp/strategy",
         "t-rader-strategy",
         initialize_body(),
         "2025-06-18",
-        true
+        false
     )]
     #[case::mgmt_2026_07_28(
         "/mcp/mgmt",
@@ -426,14 +428,14 @@ mod tests {
 
     /// keep_alive が deadline を下回ると、deadline 内でも session が破棄されうる。
     #[test]
-    fn session_keep_alive_exceeds_task_deadline() {
+    fn mgmt_session_keep_alive_exceeds_task_deadline() {
         let deadline = DEADLINE_DURATION
             .to_std()
             .expect("DEADLINE_DURATION should be a positive duration");
         assert!(
-            session_keep_alive() > deadline,
+            mgmt_session_keep_alive() > deadline,
             "session keep_alive ({:?}) must exceed the task deadline ({deadline:?})",
-            session_keep_alive(),
+            mgmt_session_keep_alive(),
         );
     }
 
@@ -465,6 +467,21 @@ mod tests {
         expected.push(extra_host);
         assert_eq!(config.allowed_hosts, expected);
         assert!(config.session_store.is_none());
+    }
+
+    #[test]
+    fn strategy_config_disables_legacy_sessions_and_keeps_host_policy() {
+        let default_hosts = StreamableHttpServerConfig::default().allowed_hosts;
+        let config = strategy_config(&[]);
+
+        assert_eq!(
+            (
+                config.legacy_session_mode,
+                config.allowed_hosts,
+                config.session_store.is_some(),
+            ),
+            (false, default_hosts, false),
+        );
     }
 
     /// rmcp の DNS rebinding 保護が in-cluster Service DNS を弾く挙動の回帰テスト。
