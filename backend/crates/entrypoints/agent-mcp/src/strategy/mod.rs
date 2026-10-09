@@ -20,6 +20,7 @@ pub(super) mod macro_indicator;
 pub(super) mod margin;
 pub(super) mod news;
 pub(super) mod notes;
+pub(super) mod paper_trade;
 pub(super) mod portfolio;
 pub(super) mod prediction_stats;
 pub(super) mod predictions;

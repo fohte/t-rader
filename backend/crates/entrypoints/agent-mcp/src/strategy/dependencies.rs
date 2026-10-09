@@ -16,6 +16,7 @@ use core_application::mcp_tool_call_count::McpToolCallCountUseCases;
 use core_application::news::NewsUseCases;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
 use core_application::note_kind::NoteKindUseCases;
+use core_application::paper_trade::PaperTradeUseCases;
 use core_application::prediction::PredictionUseCases;
 use core_application::refs::RefUseCases;
 use core_application::shareholding_structure::ShareholdingStructureUseCases;
@@ -26,6 +27,7 @@ use core_application::stock_registration::StockRegistrationUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
+use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
 use core_application::trade::TradeUseCases;
 use core_application::valuation::ValuationUseCases;
@@ -51,6 +53,7 @@ pub struct StrategyServerDependencies {
     pub note_kinds: NoteKindUseCases,
     pub note_reads: NoteReadUseCases,
     pub notes: NoteUseCases,
+    pub paper_trades: PaperTradeUseCases,
     pub predictions: PredictionUseCases,
     pub refs: RefUseCases,
     pub shareholding_structures: ShareholdingStructureUseCases,
@@ -61,6 +64,7 @@ pub struct StrategyServerDependencies {
     pub strategy_earnings_targets: StrategyEarningsTargetUseCases,
     pub strategies: StrategyUseCases,
     pub strategy_scope: Arc<StrategyScopeUseCases>,
+    pub strategy_tasks: StrategyTaskUseCases,
     pub strategy_task_step_evidence: StrategyTaskStepEvidenceUseCases,
     pub trades: TradeUseCases,
     pub valuations: ValuationUseCases,

@@ -21,6 +21,7 @@ mod macro_indicator;
 mod news;
 mod note_frontmatter;
 mod notes_tests;
+mod paper_trade;
 mod portfolio;
 mod prediction_stats;
 mod predictions;
