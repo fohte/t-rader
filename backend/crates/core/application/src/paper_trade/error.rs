@@ -11,6 +11,8 @@ pub enum PaperTradeUseCaseError {
     Validation(String),
     #[error("paper account {0} not found")]
     AccountNotFound(Uuid),
+    #[error("latest daily bar for stock {0} is unavailable")]
+    LatestDailyBarUnavailable(String),
     #[error(transparent)]
     Repository(#[from] PaperTradeRepositoryError),
     #[error(transparent)]

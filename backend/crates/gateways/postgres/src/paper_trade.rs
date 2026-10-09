@@ -7,7 +7,7 @@ use core_application::paper_trade::{
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::LockType;
-use sea_orm::{EntityTrait, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 use uuid::Uuid;
 
 use crate::entities::{paper_account, paper_order, paper_order_result};
@@ -25,6 +25,90 @@ impl PostgresPaperTradeRepository {
 
 #[async_trait]
 impl PaperTradeRepository for PostgresPaperTradeRepository {
+    async fn account_for_strategy_purpose(
+        &self,
+        unit_of_work_transaction: &UnitOfWorkTransaction,
+        strategy_id: Uuid,
+        purpose: &str,
+    ) -> Result<Option<PaperAccount>, PaperTradeRepositoryError> {
+        let transaction = transaction_ref(unit_of_work_transaction)
+            .ok_or(PaperTradeRepositoryError::InvalidTransaction)?;
+        paper_account::Entity::find()
+            .filter(paper_account::Column::StrategyId.eq(strategy_id))
+            .filter(paper_account::Column::Purpose.eq(purpose))
+            .one(transaction)
+            .await
+            .map(|row| row.map(to_account))
+            .map_err(repository_error)
+    }
+
+    async fn find_account(
+        &self,
+        unit_of_work_transaction: &UnitOfWorkTransaction,
+        account_id: Uuid,
+    ) -> Result<Option<PaperAccount>, PaperTradeRepositoryError> {
+        let transaction = transaction_ref(unit_of_work_transaction)
+            .ok_or(PaperTradeRepositoryError::InvalidTransaction)?;
+        paper_account::Entity::find_by_id(account_id)
+            .one(transaction)
+            .await
+            .map(|row| row.map(to_account))
+            .map_err(repository_error)
+    }
+
+    async fn list_accounts(
+        &self,
+        unit_of_work_transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<PaperAccount>, PaperTradeRepositoryError> {
+        let transaction = transaction_ref(unit_of_work_transaction)
+            .ok_or(PaperTradeRepositoryError::InvalidTransaction)?;
+        paper_account::Entity::find()
+            .all(transaction)
+            .await
+            .map(|rows| rows.into_iter().map(to_account).collect())
+            .map_err(repository_error)
+    }
+
+    async fn list_orders_with_results(
+        &self,
+        unit_of_work_transaction: &UnitOfWorkTransaction,
+        account_id: Option<Uuid>,
+    ) -> Result<Vec<PaperOrderWithResult>, PaperTradeRepositoryError> {
+        let transaction = transaction_ref(unit_of_work_transaction)
+            .ok_or(PaperTradeRepositoryError::InvalidTransaction)?;
+        let mut query = paper_order::Entity::find();
+        if let Some(account_id) = account_id {
+            query = query.filter(paper_order::Column::AccountId.eq(account_id));
+        }
+        let orders = query.all(transaction).await.map_err(repository_error)?;
+        if orders.is_empty() {
+            return Ok(Vec::new());
+        }
+        let order_ids = orders.iter().map(|order| order.id).collect::<Vec<_>>();
+        let results = paper_order_result::Entity::find()
+            .filter(paper_order_result::Column::OrderId.is_in(order_ids))
+            .all(transaction)
+            .await
+            .map_err(repository_error)?;
+        let results = results
+            .into_iter()
+            .map(|row| {
+                let result = to_result(row)?;
+                Ok((result.order_id(), result))
+            })
+            .collect::<Result<std::collections::HashMap<_, _>, PaperTradeRepositoryError>>()?;
+        orders
+            .into_iter()
+            .map(|row| {
+                let order = to_order(row)?;
+                Ok(PaperOrderWithResult {
+                    result: results.get(&order.id).cloned(),
+                    order,
+                })
+            })
+            .collect()
+    }
+
     async fn insert_account(
         &self,
         transaction: &UnitOfWorkTransaction,

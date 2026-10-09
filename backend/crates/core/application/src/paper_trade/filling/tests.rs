@@ -87,6 +87,57 @@ impl FakePaperTradeRepository {
 
 #[async_trait]
 impl PaperTradeRepository for FakePaperTradeRepository {
+    async fn account_for_strategy_purpose(
+        &self,
+        _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+        strategy_id: Uuid,
+        purpose: &str,
+    ) -> Result<Option<PaperAccount>, PaperTradeRepositoryError> {
+        Ok(self
+            .accounts
+            .lock()
+            .await
+            .iter()
+            .find(|account| account.strategy_id == strategy_id && account.purpose == purpose)
+            .cloned())
+    }
+
+    async fn find_account(
+        &self,
+        _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+        account_id: Uuid,
+    ) -> Result<Option<PaperAccount>, PaperTradeRepositoryError> {
+        Ok(self
+            .accounts
+            .lock()
+            .await
+            .iter()
+            .find(|account| account.id == account_id)
+            .cloned())
+    }
+
+    async fn list_accounts(
+        &self,
+        _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+    ) -> Result<Vec<PaperAccount>, PaperTradeRepositoryError> {
+        Ok(self.accounts.lock().await.clone())
+    }
+
+    async fn list_orders_with_results(
+        &self,
+        _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+        account_id: Option<Uuid>,
+    ) -> Result<Vec<PaperOrderWithResult>, PaperTradeRepositoryError> {
+        Ok(self
+            .orders
+            .lock()
+            .await
+            .iter()
+            .filter(|item| account_id.is_none_or(|id| item.order.account_id == id))
+            .cloned()
+            .collect())
+    }
+
     async fn insert_account(
         &self,
         _transaction: &crate::unit_of_work::UnitOfWorkTransaction,
