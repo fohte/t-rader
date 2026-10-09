@@ -29,6 +29,7 @@ mod refs;
 mod risk_check;
 mod short_ratio;
 mod short_sale_report;
+mod stateless_transport;
 mod stock_group_tests;
 mod strategy_earnings_target_tests;
 mod test_server;

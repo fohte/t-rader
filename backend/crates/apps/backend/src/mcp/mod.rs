@@ -19,12 +19,10 @@ pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 
-/// MCP ルータを構築する。
-///
-/// session はプロセス内メモリ (`LocalSessionManager`) でのみ管理する。バックエンド再起動を
-/// 跨いだ `mcp-session-id` は未知の session として扱われ、クライアントは initialize からやり直す。
+/// MCP ルータを構築する。mgmt はプロセス内 session、strategy は stateless で処理する。
 pub fn router(
     use_cases: UseCases,
     agent_client: SharedAgentTaskClient,
@@ -36,7 +34,7 @@ pub fn router(
     let mgmt_dependencies = mgmt_dependencies(&use_cases, agent_client);
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_dependencies.clone())),
-        session_manager().into(),
+        mgmt_session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
@@ -48,8 +46,8 @@ pub fn router(
                 litellm_client.clone(),
             )))
         },
-        session_manager().into(),
-        build_config(&extra_allowed_hosts),
+        NeverSessionManager::default().into(),
+        strategy_config(&extra_allowed_hosts),
     );
 
     Router::new()
@@ -144,15 +142,15 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// デフォルトの idle timeout (5 分) でタスク実行中に session が破棄されないよう、
+/// デフォルトの idle timeout (5 分) で mgmt MCP のタスク実行中に session が破棄されないよう、
 /// deadline を超える keep_alive を設定する。
-fn session_manager() -> LocalSessionManager {
+fn mgmt_session_manager() -> LocalSessionManager {
     let mut manager = LocalSessionManager::default();
-    manager.session_config.keep_alive = Some(session_keep_alive());
+    manager.session_config.keep_alive = Some(mgmt_session_keep_alive());
     manager
 }
 
-fn session_keep_alive() -> Duration {
+fn mgmt_session_keep_alive() -> Duration {
     // to_std() は負の Duration でのみ失敗する (起こらない想定)。フォールバックは
     // deadline を下回らない安全側 (Duration::MAX) にする。
     DEADLINE_DURATION
@@ -171,6 +169,10 @@ fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
     config
 }
 
+fn strategy_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
+    build_config(extra_allowed_hosts).with_legacy_session_mode(false)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -179,20 +181,9 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
 
-    use super::*;
+    use crate::testing::mcp::{legacy_initialize_body, parse_sse_response};
 
-    fn initialize_body() -> serde_json::Value {
-        json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": { "name": "test-client", "version": "0.0.0" },
-            },
-        })
-    }
+    use super::*;
 
     fn initialize_body_v2026_07_28() -> serde_json::Value {
         json!({
@@ -205,16 +196,6 @@ mod tests {
                 "clientInfo": { "name": "test-client-2026", "version": "0.0.0" },
             },
         })
-    }
-
-    /// MCP Streamable HTTP は Accept に `text/event-stream` を含むと
-    /// `data: <json>` 形式の SSE で返す。先頭 keep-alive 行は空 payload なので、
-    /// JSON としてパース可能な最初の `data:` 行を返す。
-    fn parse_initialize_response(body: &str) -> serde_json::Value {
-        body.lines()
-            .filter_map(|line| line.strip_prefix("data:").map(str::trim))
-            .find_map(|payload| serde_json::from_str(payload).ok())
-            .expect("no JSON data line in MCP initialize response")
     }
 
     async fn maybe_db() -> Option<sea_orm::DatabaseConnection> {
@@ -230,13 +211,19 @@ mod tests {
     /// このバージョンを negotiate したリクエストは stateless に処理される
     /// (`mcp-session-id` が発行されない)。それ以前のバージョンとの挙動差を固定する。
     #[rstest]
-    #[case::mgmt_legacy("/mcp/mgmt", "t-rader-mgmt", initialize_body(), "2025-06-18", true)]
-    #[case::strategy_legacy(
-        "/mcp/strategy",
-        "t-rader-strategy",
-        initialize_body(),
+    #[case::mgmt_legacy(
+        "/mcp/mgmt",
+        "t-rader-mgmt",
+        legacy_initialize_body(),
         "2025-06-18",
         true
+    )]
+    #[case::strategy_legacy_stateless(
+        "/mcp/strategy",
+        "t-rader-strategy",
+        legacy_initialize_body(),
+        "2025-06-18",
+        false
     )]
     #[case::mgmt_2026_07_28(
         "/mcp/mgmt",
@@ -283,7 +270,7 @@ mod tests {
         response.assert_status_ok();
 
         assert_eq!(
-            parse_initialize_response(&response.text()),
+            parse_sse_response(&response.text()),
             json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -343,7 +330,7 @@ mod tests {
 
         response.assert_status_ok();
 
-        let body = parse_initialize_response(&response.text());
+        let body = parse_sse_response(&response.text());
         let mut tool_names: Vec<&str> = body["result"]["tools"]
             .as_array()
             .expect("tools/list result.tools should be an array")
@@ -390,7 +377,7 @@ mod tests {
             let resp = server_a
                 .post("/mcp/mgmt")
                 .add_header("accept", "application/json, text/event-stream")
-                .json(&initialize_body())
+                .json(&legacy_initialize_body())
                 .await;
             resp.assert_status_ok();
             resp.headers()
@@ -426,14 +413,14 @@ mod tests {
 
     /// keep_alive が deadline を下回ると、deadline 内でも session が破棄されうる。
     #[test]
-    fn session_keep_alive_exceeds_task_deadline() {
+    fn mgmt_session_keep_alive_exceeds_task_deadline() {
         let deadline = DEADLINE_DURATION
             .to_std()
             .expect("DEADLINE_DURATION should be a positive duration");
         assert!(
-            session_keep_alive() > deadline,
+            mgmt_session_keep_alive() > deadline,
             "session keep_alive ({:?}) must exceed the task deadline ({deadline:?})",
-            session_keep_alive(),
+            mgmt_session_keep_alive(),
         );
     }
 
@@ -467,6 +454,21 @@ mod tests {
         assert!(config.session_store.is_none());
     }
 
+    #[test]
+    fn strategy_config_disables_legacy_sessions_and_keeps_host_policy() {
+        let default_hosts = StreamableHttpServerConfig::default().allowed_hosts;
+        let config = strategy_config(&[]);
+
+        assert_eq!(
+            (
+                config.legacy_session_mode,
+                config.allowed_hosts,
+                config.session_store.is_some(),
+            ),
+            (false, default_hosts, false),
+        );
+    }
+
     /// rmcp の DNS rebinding 保護が in-cluster Service DNS を弾く挙動の回帰テスト。
     #[tokio::test]
     async fn rejects_in_cluster_host_header_without_extra_allowed_hosts() {
@@ -488,7 +490,7 @@ mod tests {
             .post("/mcp/mgmt")
             .add_header("accept", "application/json, text/event-stream")
             .add_header("host", "t-rader-backend.t-rader.svc.cluster.local:3000")
-            .json(&initialize_body())
+            .json(&legacy_initialize_body())
             .await;
 
         assert_eq!(response.status_code(), axum::http::StatusCode::FORBIDDEN);
@@ -515,7 +517,7 @@ mod tests {
             .post("/mcp/mgmt")
             .add_header("accept", "application/json, text/event-stream")
             .add_header("host", "t-rader-backend.t-rader.svc.cluster.local:3000")
-            .json(&initialize_body())
+            .json(&legacy_initialize_body())
             .await;
 
         response.assert_status_ok();
