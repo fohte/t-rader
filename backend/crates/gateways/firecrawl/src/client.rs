@@ -18,7 +18,8 @@ const FIRECRAWL_RATE_LIMIT: u32 = 5;
 const FIRECRAWL_RATE_PERIOD: Duration = Duration::from_secs(60);
 const RATE_LIMIT_MAX_WAIT: Duration = Duration::from_secs(60);
 const HOST_PENALTY: Duration = Duration::from_secs(60 * 60);
-const HTTP_TIMEOUT: Duration = Duration::from_secs(65);
+const FIRECRAWL_TIMEOUT: Duration = Duration::from_secs(60);
+const HTTP_TIMEOUT: Duration = Duration::from_secs(FIRECRAWL_TIMEOUT.as_secs() + 5);
 
 #[derive(Debug, Error)]
 pub enum FirecrawlClientError {
@@ -32,9 +33,10 @@ pub enum FirecrawlClientError {
 enum FirecrawlRateLimiter {
     Shared(RateLimiter),
     #[cfg(test)]
-    Disabled,
-    #[cfg(test)]
-    Counting(std::sync::Arc<std::sync::atomic::AtomicUsize>),
+    TestDouble {
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        deny_on: Option<usize>,
+    },
 }
 
 pub struct FirecrawlClient {
@@ -81,7 +83,13 @@ impl FirecrawlClient {
         api_key: String,
         timeout: Duration,
     ) -> Result<Self, FirecrawlClientError> {
-        Self::with_components(endpoint, api_key, FirecrawlRateLimiter::Disabled, timeout)
+        Self::with_counting_rate_limiter(
+            endpoint,
+            api_key,
+            timeout,
+            std::sync::Arc::default(),
+            None,
+        )
     }
 
     #[cfg(test)]
@@ -90,11 +98,12 @@ impl FirecrawlClient {
         api_key: String,
         timeout: Duration,
         calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        deny_on: Option<usize>,
     ) -> Result<Self, FirecrawlClientError> {
         Self::with_components(
             endpoint,
             api_key,
-            FirecrawlRateLimiter::Counting(calls),
+            FirecrawlRateLimiter::TestDouble { calls, deny_on },
             timeout,
         )
     }
@@ -113,11 +122,9 @@ impl FirecrawlClient {
                 }
             }
             #[cfg(test)]
-            FirecrawlRateLimiter::Disabled => Ok(true),
-            #[cfg(test)]
-            FirecrawlRateLimiter::Counting(calls) => {
-                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                Ok(true)
+            FirecrawlRateLimiter::TestDouble { calls, deny_on } => {
+                let call = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                Ok(*deny_on != Some(call))
             }
         }
     }
@@ -129,9 +136,7 @@ impl FirecrawlClient {
                 .await
                 .map_err(|_| NewsContentFetchError::RateLimiter),
             #[cfg(test)]
-            FirecrawlRateLimiter::Disabled => Ok(()),
-            #[cfg(test)]
-            FirecrawlRateLimiter::Counting(_) => Ok(()),
+            FirecrawlRateLimiter::TestDouble { .. } => Ok(()),
         }
     }
 
@@ -194,7 +199,7 @@ impl FirecrawlClient {
             "url": article_url.as_str(),
             "formats": ["markdown"],
             "onlyMainContent": true,
-            "timeout": 60_000,
+            "timeout": FIRECRAWL_TIMEOUT.as_secs() * 1_000,
             "maxAge": 0,
             "storeInCache": false,
             "parsers": [{ "type": "pdf", "mode": "fast", "maxPages": 10 }],
@@ -380,13 +385,18 @@ mod tests {
     #[rstest]
     #[case::fallback_success(
         200,
-        NewsContentFetchOutcome::Fetched("fallback article".to_owned())
+        NewsContentFetchOutcome::Fetched("fallback article".to_owned()),
+        None,
+        1
     )]
-    #[case::fallback_timeout(408, NewsContentFetchOutcome::Retry)]
+    #[case::fallback_timeout(408, NewsContentFetchOutcome::Retry, None, 1)]
+    #[case::fallback_rate_limited(200, NewsContentFetchOutcome::Retry, Some(2), 0)]
     #[tokio::test]
     async fn fetch_retries_without_clean_content_after_firecrawl_timeout(
         #[case] fallback_status: u16,
         #[case] expected: NewsContentFetchOutcome,
+        #[case] deny_on: Option<usize>,
+        #[case] expected_fallback_requests: u64,
     ) {
         let server = MockServer::start().await;
         let common_body = json!({
@@ -414,7 +424,7 @@ mod tests {
                 "success": true,
                 "data": { "markdown": "fallback article", "metadata": { "statusCode": 200 } },
             })))
-            .expect(1)
+            .expect(expected_fallback_requests)
             .mount(&server)
             .await;
         let rate_limit_calls = Arc::new(AtomicUsize::new(0));
@@ -423,6 +433,7 @@ mod tests {
             "fake-firecrawl-key".to_owned(),
             Duration::from_secs(1),
             rate_limit_calls.clone(),
+            deny_on,
         )
         .expect("test client builds");
 
