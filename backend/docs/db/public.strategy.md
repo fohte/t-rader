@@ -6,14 +6,14 @@
 
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children                                                                                                                                                                                                                                                                                                                                                                                                      | Parents | Comment            |
-| ----------- | ------------------------ | ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------ |
-| id          | uuid                     |                   | false    | [public.trade](public.trade.md) [public.strategy_task](public.strategy_task.md) [public.trigger](public.trigger.md) [public.custom_indicator](public.custom_indicator.md) [public.strategy_investable_amount](public.strategy_investable_amount.md) [public.checkpoint](public.checkpoint.md) [public.prediction](public.prediction.md) [public.strategy_earnings_target](public.strategy_earnings_target.md) |         |                    |
-| name        | varchar                  |                   | false    |                                                                                                                                                                                                                                                                                                                                                                                                               |         | 戦略の名称。       |
-| description | text                     |                   | true     |                                                                                                                                                                                                                                                                                                                                                                                                               |         | 戦略の説明。       |
-| sort_order  | integer                  | 0                 | false    |                                                                                                                                                                                                                                                                                                                                                                                                               |         | 戦略一覧の表示順。 |
-| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                                                                                                                                                                               |         |                    |
-| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                                                                                                                                                                               |         |                    |
+| Name        | Type                     | Default           | Nullable | Children                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Parents | Comment            |
+| ----------- | ------------------------ | ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------ |
+| id          | uuid                     |                   | false    | [public.trade](public.trade.md) [public.strategy_task](public.strategy_task.md) [public.trigger](public.trigger.md) [public.custom_indicator](public.custom_indicator.md) [public.strategy_investable_amount](public.strategy_investable_amount.md) [public.checkpoint](public.checkpoint.md) [public.prediction](public.prediction.md) [public.strategy_earnings_target](public.strategy_earnings_target.md) [public.paper_account](public.paper_account.md) |         |                    |
+| name        | varchar                  |                   | false    |                                                                                                                                                                                                                                                                                                                                                                                                                                                               |         | 戦略の名称。       |
+| description | text                     |                   | true     |                                                                                                                                                                                                                                                                                                                                                                                                                                                               |         | 戦略の説明。       |
+| sort_order  | integer                  | 0                 | false    |                                                                                                                                                                                                                                                                                                                                                                                                                                                               |         | 戦略一覧の表示順。 |
+| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                                                                                                                                                                                                                               |         |                    |
+| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                                                                                                                                                                                                                                                                                                                                                                               |         |                    |
 
 ## Constraints
 
@@ -40,6 +40,7 @@ erDiagram
 "public.checkpoint" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.prediction" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.strategy_earnings_target" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
+"public.paper_account" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 
 "public.strategy" {
   uuid id
@@ -140,6 +141,17 @@ erDiagram
   text ref_kind
   text ref_id
   timestamp_with_time_zone created_at
+}
+"public.paper_account" {
+  uuid id
+  text name
+  uuid strategy_id FK
+  text purpose FK
+  numeric initial_cash_jpy
+  varchar benchmark_stock_id FK
+  date started_on
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 

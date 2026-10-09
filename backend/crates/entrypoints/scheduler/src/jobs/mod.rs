@@ -26,6 +26,7 @@ pub mod ingest_run_recovery;
 pub mod jquants;
 pub mod news;
 pub mod news_content;
+pub mod paper_order_filling;
 pub mod prediction;
 pub mod strategy_task_reconcile;
 pub mod trigger_evaluation;

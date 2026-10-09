@@ -420,6 +420,14 @@ mod tests {
                             "latest_data_date": null,
                             "expected_data_date": null,
                             "worker_jobs": []
+                        },
+                        {
+                            "job": "paper_order_filling",
+                            "last_run": null,
+                            "last_succeeded_at": null,
+                            "latest_data_date": null,
+                            "expected_data_date": null,
+                            "worker_jobs": []
                         }
                     ]
                 }),

@@ -126,6 +126,33 @@ comments:
       created_by_kind: 'バージョンを作成した主体の種別。'
       execution_id: 'バージョンを作成したタスク実行の識別子。'
       reviewed_at: 'このバージョンをレビューした時刻。'
+  - table: paper_account
+    tableComment: '戦略と agent 設定ごとの仮想取引口座を保持する。'
+    columnComments:
+      name: '口座を識別する一意な名前。'
+      strategy_id: '口座が属する戦略。'
+      purpose: '口座を紐づける agent 設定の目的キー。'
+      initial_cash_jpy: '口座の開始時点の現金。単位は円。'
+      benchmark_stock_id: '成績比較に使う銘柄。'
+      started_on: '口座の運用開始日。'
+  - table: paper_order
+    tableComment: '仮想口座に対して記録した不変の売買注文を保持する。'
+    columnComments:
+      account_id: '注文を記録した仮想口座。'
+      stock_id: '注文対象の日本株。'
+      side: '買い注文または売り注文。'
+      qty: '注文数量。'
+      note_version_id: '注文の根拠として記録したノートバージョン。'
+      ordered_at: '注文を記録した時刻。'
+  - table: paper_order_result
+    tableComment: '仮想注文を約定または却下した結果を保持する。'
+    columnComments:
+      order_id: '判定した注文。'
+      outcome: '注文が約定したか却下されたかを表す。'
+      fill_date: '注文が約定した日。'
+      fill_price: '日足の始値を使った約定単価。'
+      reject_reason: '注文を却下した理由。'
+      decided_at: '注文結果を確定した時刻。'
   - table: prediction
     tableComment: '戦略に記録した、対象銘柄と比較銘柄の将来リターンに関する予測。'
     columnComments:

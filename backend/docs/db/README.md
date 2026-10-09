@@ -55,6 +55,9 @@
 | [public.news_item_content](public.news_item_content.md)                                     | 6       | ニュース記事の本文と取得状態を保持する。                                                               | BASE TABLE |
 | [public.minute_bars](public.minute_bars.md)                                                 | 7       | 銘柄ごとの 1 分足価格と出来高を保持する。                                                              | BASE TABLE |
 | [public.strategy_earnings_target](public.strategy_earnings_target.md)                       | 4       | 戦略ごとに決算を追う銘柄とグループを保持する。                                                         | BASE TABLE |
+| [public.paper_account](public.paper_account.md)                                             | 9       | 戦略と agent 設定ごとの仮想取引口座を保持する。                                                        | BASE TABLE |
+| [public.paper_order](public.paper_order.md)                                                 | 7       | 仮想口座に対して記録した不変の売買注文を保持する。                                                     | BASE TABLE |
+| [public.paper_order_result](public.paper_order_result.md)                                   | 6       | 仮想注文を約定または却下した結果を保持する。                                                           | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -209,6 +212,13 @@ erDiagram
 "public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
 "public.minute_bars" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 "public.strategy_earnings_target" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
+"public.paper_account" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
+"public.paper_account" }o--o| "public.stock" : "FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)"
+"public.paper_account" }o--|| "public.agent_config" : "FOREIGN KEY (purpose) REFERENCES agent_config(purpose) ON DELETE RESTRICT"
+"public.paper_order" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id)"
+"public.paper_order" }o--|| "public.note_version" : "FOREIGN KEY (note_version_id) REFERENCES note_version(id)"
+"public.paper_order" }o--|| "public.paper_account" : "FOREIGN KEY (account_id) REFERENCES paper_account(id) ON DELETE CASCADE"
+"public.paper_order_result" |o--|| "public.paper_order" : "FOREIGN KEY (order_id) REFERENCES paper_order(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -726,6 +736,34 @@ erDiagram
   text ref_kind
   text ref_id
   timestamp_with_time_zone created_at
+}
+"public.paper_account" {
+  uuid id
+  text name
+  uuid strategy_id FK
+  text purpose FK
+  numeric initial_cash_jpy
+  varchar benchmark_stock_id FK
+  date started_on
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.paper_order" {
+  uuid id
+  uuid account_id FK
+  varchar stock_id FK
+  text side
+  bigint qty
+  uuid note_version_id FK
+  timestamp_with_time_zone ordered_at
+}
+"public.paper_order_result" {
+  uuid order_id FK
+  text outcome
+  date fill_date
+  numeric fill_price
+  text reject_reason
+  timestamp_with_time_zone decided_at
 }
 ```
 
