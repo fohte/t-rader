@@ -119,6 +119,15 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn list_returns_empty_without_paper_accounts(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+
+        let response = server.get("/api/paper-accounts").await;
+
+        assert_response_eq(&response, StatusCode::OK, Some(json!([])));
+    }
+
+    #[backend_test_macros::database_test]
     async fn create_rejects_missing_strategy_purpose_and_benchmark(
         db: gateway_postgres::DatabaseHandle,
     ) {
@@ -160,6 +169,22 @@ mod tests {
                 );
                 3
             ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_rejects_zero_initial_cash(db: gateway_postgres::DatabaseHandle) {
+        let (server, strategy_id) = server_with_account_references(db).await;
+        let mut request =
+            account_request(&strategy_id, "example-purpose", "zero-cash-account", None);
+        request["initial_cash_jpy"] = json!(0);
+
+        let response = create_account(&server, request).await;
+
+        assert_response_eq(
+            &response,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "initial_cash_jpy must be greater than zero" })),
         );
     }
 
