@@ -181,20 +181,9 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
 
-    use super::*;
+    use crate::testing::mcp::{legacy_initialize_body, parse_sse_response};
 
-    fn initialize_body() -> serde_json::Value {
-        json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": { "name": "test-client", "version": "0.0.0" },
-            },
-        })
-    }
+    use super::*;
 
     fn initialize_body_v2026_07_28() -> serde_json::Value {
         json!({
@@ -207,16 +196,6 @@ mod tests {
                 "clientInfo": { "name": "test-client-2026", "version": "0.0.0" },
             },
         })
-    }
-
-    /// MCP Streamable HTTP は Accept に `text/event-stream` を含むと
-    /// `data: <json>` 形式の SSE で返す。先頭 keep-alive 行は空 payload なので、
-    /// JSON としてパース可能な最初の `data:` 行を返す。
-    fn parse_initialize_response(body: &str) -> serde_json::Value {
-        body.lines()
-            .filter_map(|line| line.strip_prefix("data:").map(str::trim))
-            .find_map(|payload| serde_json::from_str(payload).ok())
-            .expect("no JSON data line in MCP initialize response")
     }
 
     async fn maybe_db() -> Option<sea_orm::DatabaseConnection> {
@@ -232,11 +211,17 @@ mod tests {
     /// このバージョンを negotiate したリクエストは stateless に処理される
     /// (`mcp-session-id` が発行されない)。それ以前のバージョンとの挙動差を固定する。
     #[rstest]
-    #[case::mgmt_legacy("/mcp/mgmt", "t-rader-mgmt", initialize_body(), "2025-06-18", true)]
+    #[case::mgmt_legacy(
+        "/mcp/mgmt",
+        "t-rader-mgmt",
+        legacy_initialize_body(),
+        "2025-06-18",
+        true
+    )]
     #[case::strategy_legacy_stateless(
         "/mcp/strategy",
         "t-rader-strategy",
-        initialize_body(),
+        legacy_initialize_body(),
         "2025-06-18",
         false
     )]
@@ -285,7 +270,7 @@ mod tests {
         response.assert_status_ok();
 
         assert_eq!(
-            parse_initialize_response(&response.text()),
+            parse_sse_response(&response.text()),
             json!({
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -345,7 +330,7 @@ mod tests {
 
         response.assert_status_ok();
 
-        let body = parse_initialize_response(&response.text());
+        let body = parse_sse_response(&response.text());
         let mut tool_names: Vec<&str> = body["result"]["tools"]
             .as_array()
             .expect("tools/list result.tools should be an array")
@@ -392,7 +377,7 @@ mod tests {
             let resp = server_a
                 .post("/mcp/mgmt")
                 .add_header("accept", "application/json, text/event-stream")
-                .json(&initialize_body())
+                .json(&legacy_initialize_body())
                 .await;
             resp.assert_status_ok();
             resp.headers()
@@ -505,7 +490,7 @@ mod tests {
             .post("/mcp/mgmt")
             .add_header("accept", "application/json, text/event-stream")
             .add_header("host", "t-rader-backend.t-rader.svc.cluster.local:3000")
-            .json(&initialize_body())
+            .json(&legacy_initialize_body())
             .await;
 
         assert_eq!(response.status_code(), axum::http::StatusCode::FORBIDDEN);
@@ -532,7 +517,7 @@ mod tests {
             .post("/mcp/mgmt")
             .add_header("accept", "application/json, text/event-stream")
             .add_header("host", "t-rader-backend.t-rader.svc.cluster.local:3000")
-            .json(&initialize_body())
+            .json(&legacy_initialize_body())
             .await;
 
         response.assert_status_ok();
