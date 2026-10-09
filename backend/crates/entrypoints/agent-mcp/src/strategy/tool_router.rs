@@ -5,6 +5,7 @@
 
 mod calendar;
 mod news;
+mod paper_trade;
 mod predictions;
 mod stock_groups;
 mod stock_registration;
@@ -474,6 +475,7 @@ impl StrategyServer {
             + Self::calendar_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
+            + Self::paper_trade_tool_router()
             + Self::news_tool_router()
     }
 
@@ -571,6 +573,7 @@ mod tests {
                 ("list_stock_group_members", Some(true)),
                 ("query_data", Some(true)),
                 ("query_youtube", Some(true)),
+                ("place_paper_order", None),
                 ("read_annotations", Some(true)),
                 ("read_calendar", Some(true)),
                 ("read_comments", Some(true)),
@@ -579,6 +582,8 @@ mod tests {
                 ("read_margin", Some(true)),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
+                ("read_paper_portfolio", Some(true)),
+                ("read_paper_stats", Some(true)),
                 ("read_prediction_stats", Some(true)),
                 ("read_sector_short_ratio", Some(true)),
                 ("read_shareholding_structure", Some(true)),

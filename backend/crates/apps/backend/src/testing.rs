@@ -24,6 +24,7 @@ use gateway_postgres::entities::{
 };
 
 mod annotation;
+pub mod mcp;
 mod note;
 pub use annotation::set_test_annotation_execution_step_id;
 pub use note::{

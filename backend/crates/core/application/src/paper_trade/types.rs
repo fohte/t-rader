@@ -151,6 +151,39 @@ pub struct PaperOrderWithResult {
     pub result: Option<PaperOrderResult>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaperTradePosition {
+    pub stock_id: String,
+    pub qty: i64,
+    pub avg_cost_jpy: Decimal,
+    pub current_price_jpy: Decimal,
+    pub market_value_jpy: Decimal,
+    pub unrealized_pnl_jpy: Decimal,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaperTradePortfolio {
+    pub account: PaperAccount,
+    pub as_of: NaiveDate,
+    pub cash_jpy: Decimal,
+    pub positions: Vec<PaperTradePosition>,
+    pub orders: Vec<PaperOrderWithResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaperTradeAccountStats {
+    pub account: PaperAccount,
+    pub as_of: NaiveDate,
+    pub total_assets_jpy: Decimal,
+    pub return_since_start: Decimal,
+    pub benchmark_return: Option<Decimal>,
+    pub closed_trade_count: usize,
+    pub win_rate: Option<Decimal>,
+    pub average_win_excess_return: Option<Decimal>,
+    pub average_loss_excess_return: Option<Decimal>,
+    pub unrealized_pnl_jpy: Decimal,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
 pub struct PaperTradeFillStats {
     pub filled: usize,
