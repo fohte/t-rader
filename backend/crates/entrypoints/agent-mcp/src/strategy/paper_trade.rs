@@ -1,20 +1,17 @@
 use core_application::paper_trade::{
-    NewPaperOrder, PaperAccount, PaperOrderResult, PaperOrderSide, PaperTradeUseCaseError,
+    NewPaperOrder, PaperAccount, PaperOrderResult, PaperOrderSide, PaperTradeRepositoryError,
+    PaperTradeUseCaseError,
 };
 use core_application::strategy_scope::StrategyScope;
 use core_application::strategy_task::GetTaskError;
 use rmcp::ErrorData as McpError;
-use rmcp::service::{RequestContext, RoleServer};
-use rust_decimal::Decimal;
 use uuid::Uuid;
 
 use super::dto::{
     PaperTradeAccountStatsDto, PaperTradeOrderDto, PaperTradePositionDto, PlacePaperOrderParams,
     PlacePaperOrderResult, ReadPaperPortfolioResult, ReadPaperStatsResult,
 };
-use super::{
-    StrategyServer, decimal_to_f64, execution_task_id_from_ctx, internal_error, invalid_params,
-};
+use super::{StrategyServer, decimal_to_f64, internal_error, invalid_params};
 
 impl StrategyServer {
     pub(crate) async fn place_paper_order_inner(
@@ -84,9 +81,6 @@ impl StrategyServer {
                     stock_id: position.stock_id,
                     qty: position.qty,
                     avg_cost_jpy: decimal_to_f64(position.avg_cost_jpy),
-                    cost_basis_jpy: decimal_to_f64(
-                        Decimal::from(position.qty) * position.avg_cost_jpy,
-                    ),
                     current_price_jpy: decimal_to_f64(position.current_price_jpy),
                     market_value_jpy: decimal_to_f64(position.market_value_jpy),
                     unrealized_pnl_jpy: decimal_to_f64(position.unrealized_pnl_jpy),
@@ -212,6 +206,9 @@ fn paper_trade_error_to_mcp(error: PaperTradeUseCaseError) -> McpError {
         PaperTradeUseCaseError::AccountNotFound(_) => {
             invalid_params("paper account does not exist")
         }
+        PaperTradeUseCaseError::Repository(PaperTradeRepositoryError::Database(error)) => {
+            super::persistence_error_to_mcp(error)
+        }
         error => {
             tracing::error!(error = %error, "strategy mcp paper trade failed");
             internal_error(format!("paper trade error: {error}"))
@@ -222,8 +219,4 @@ fn paper_trade_error_to_mcp(error: PaperTradeUseCaseError) -> McpError {
 fn strategy_task_error_to_mcp(error: GetTaskError) -> McpError {
     tracing::error!(error = %error, "strategy mcp paper trade task lookup failed");
     internal_error(format!("strategy task lookup failed: {error}"))
-}
-
-pub(super) fn execution_task_id(ctx: &RequestContext<RoleServer>) -> Option<String> {
-    execution_task_id_from_ctx(ctx)
 }

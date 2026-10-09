@@ -21,7 +21,7 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<PlacePaperOrderResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let task_id = super::super::paper_trade::execution_task_id(&ctx);
+        let task_id = super::super::execution_task_id_from_ctx(&ctx);
         self.place_paper_order_inner(scope, task_id, params)
             .await
             .map(Json)
@@ -30,7 +30,7 @@ impl StrategyServer {
     /// 接続元 task の戦略と purpose に対応するペーパートレード口座を返す
     #[tool(
         name = "read_paper_portfolio",
-        description = "Read the paper account selected by the current x-strategy-id and x-execution-id task purpose. Returns cash, open positions with latest daily-close valuation, the order history and fill/rejection results, and each order's note_version_id. Pass a note_version_id to read_note to inspect the decision version. A strategy task execution context is required.",
+        description = "Read the paper account selected by the current x-strategy-id and x-execution-id task purpose. Returns cash, open positions with latest daily-close valuation, the order history and fill/rejection results, and each order's note_version_id. read_note requires the parent note_id and this value as version_id to inspect the decision version. A strategy task execution context is required.",
         annotations(read_only_hint = true)
     )]
     async fn read_paper_portfolio(
@@ -38,7 +38,7 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadPaperPortfolioResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let task_id = super::super::paper_trade::execution_task_id(&ctx);
+        let task_id = super::super::execution_task_id_from_ctx(&ctx);
         self.read_paper_portfolio_inner(scope, task_id)
             .await
             .map(Json)
@@ -47,7 +47,7 @@ impl StrategyServer {
     /// 全ペーパートレード口座の成績を返す
     #[tool(
         name = "read_paper_stats",
-        description = "Compare every paper account. Returns total assets, return since account start and the same-period benchmark return, closed FIFO trade count, benchmark-relative win rate and average winning/losing excess returns, plus unrealized P&L. Returns are decimal ratios (0.05 means 5%). Missing benchmark price history makes the related benchmark-relative fields null.",
+        description = "Compare every paper account. Returns total assets, return since account start and the same-period benchmark return, closed FIFO trade count, benchmark-relative win rate and average winning/losing excess returns, plus unrealized P&L. Returns are decimal ratios (0.05 means 5%). Benchmark return is null if the start or end price is unavailable. Trades without benchmark prices on both fill dates are omitted from trade metrics; win rate is null when no trade can be evaluated, and average returns are null when that outcome group is empty.",
         annotations(read_only_hint = true)
     )]
     async fn read_paper_stats(

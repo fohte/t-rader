@@ -33,7 +33,6 @@ pub struct PaperTradePositionDto {
     pub stock_id: String,
     pub qty: i64,
     pub avg_cost_jpy: f64,
-    pub cost_basis_jpy: f64,
     pub current_price_jpy: f64,
     pub market_value_jpy: f64,
     pub unrealized_pnl_jpy: f64,

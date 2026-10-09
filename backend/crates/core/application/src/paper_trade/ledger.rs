@@ -36,6 +36,20 @@ pub(super) struct PaperTradeLedger {
     pub closed_trades: Vec<ClosedTrade>,
 }
 
+impl PaperTradeLedger {
+    pub fn open_holdings(&self) -> impl Iterator<Item = (&str, i64, Decimal)> + '_ {
+        self.lots_by_stock.iter().filter_map(|(stock_id, lots)| {
+            let qty = lots.iter().map(|lot| lot.qty).sum::<i64>();
+            (qty > 0).then(|| {
+                let cost_basis = lots.iter().fold(Decimal::ZERO, |total, lot| {
+                    total + Decimal::from(lot.qty) * lot.fill_price
+                });
+                (stock_id.as_str(), qty, cost_basis)
+            })
+        })
+    }
+}
+
 pub(super) fn replay_fills(
     account: &PaperAccount,
     orders: &[PaperOrderWithResult],

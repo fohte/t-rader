@@ -40,9 +40,11 @@ impl PaperTradeUseCases {
 
         let held_stock_ids = ledgers
             .values()
-            .flat_map(|ledger| ledger.lots_by_stock.iter())
-            .filter(|(_, lots)| lots.iter().map(|lot| lot.qty).sum::<i64>() > 0)
-            .map(|(stock_id, _)| stock_id.clone())
+            .flat_map(|ledger| {
+                ledger
+                    .open_holdings()
+                    .map(|(stock_id, _, _)| stock_id.to_string())
+            })
             .collect::<HashSet<_>>();
         let mut latest_bars = HashMap::<String, Bar>::new();
         for stock_id in held_stock_ids {
@@ -115,18 +117,11 @@ fn summarize_account(
     let mut market_value_jpy = Decimal::ZERO;
     let mut unrealized_pnl_jpy = Decimal::ZERO;
     let mut as_of = account.started_on;
-    for (stock_id, lots) in &ledger.lots_by_stock {
-        let qty = lots.iter().map(|lot| lot.qty).sum::<i64>();
-        if qty == 0 {
-            continue;
-        }
-        let cost_basis = lots.iter().fold(Decimal::ZERO, |total, lot| {
-            total + Decimal::from(lot.qty) * lot.fill_price
-        });
-        let latest_bar = latest_bars
-            .get(stock_id)
-            .ok_or_else(|| PaperTradeUseCaseError::LatestDailyBarUnavailable(stock_id.clone()))?;
-        let position = position(stock_id.clone(), qty, cost_basis, latest_bar);
+    for (stock_id, qty, cost_basis) in ledger.open_holdings() {
+        let latest_bar = latest_bars.get(stock_id).ok_or_else(|| {
+            PaperTradeUseCaseError::LatestDailyBarUnavailable(stock_id.to_string())
+        })?;
+        let position = position(stock_id.to_string(), qty, cost_basis, latest_bar);
         market_value_jpy += position.market_value_jpy;
         unrealized_pnl_jpy += position.unrealized_pnl_jpy;
         as_of = as_of.max(latest_bar.timestamp.date_naive());

@@ -52,14 +52,8 @@ impl PaperTradeUseCases {
         let mut latest_bar_dates = HashMap::<String, chrono::NaiveDate>::new();
         let mut positions = Vec::new();
 
-        for (stock_id, lots) in ledger.lots_by_stock {
-            let qty = lots.iter().map(|lot| lot.qty).sum::<i64>();
-            if qty == 0 {
-                continue;
-            }
-            let cost_basis = lots.iter().fold(Decimal::ZERO, |total, lot| {
-                total + Decimal::from(lot.qty) * lot.fill_price
-            });
+        for (stock_id, qty, cost_basis) in ledger.open_holdings() {
+            let stock_id = stock_id.to_string();
             let bar = self
                 .bars
                 .find_latest_bar(&stock_id, "1d")
