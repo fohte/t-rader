@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use core_application::web_search::{
@@ -15,20 +14,31 @@ use super::tests_common::{build_server, insert_strategy};
 
 #[derive(Clone)]
 struct FakeWebSearchClient {
-    calls: Arc<AtomicUsize>,
+    calls: Arc<Mutex<Vec<SearchCall>>>,
     results: Vec<WebSearchResult>,
     fails: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SearchCall {
+    query: String,
+    topic: Option<WebSearchTopic>,
+    time_range: Option<WebSearchTimeRange>,
 }
 
 #[async_trait]
 impl WebSearchClient for FakeWebSearchClient {
     async fn search(
         &self,
-        _query: &str,
-        _topic: Option<WebSearchTopic>,
-        _time_range: Option<WebSearchTimeRange>,
+        query: &str,
+        topic: Option<WebSearchTopic>,
+        time_range: Option<WebSearchTimeRange>,
     ) -> Result<Vec<WebSearchResult>, WebSearchError> {
-        self.calls.fetch_add(1, Ordering::Relaxed);
+        self.calls.lock().expect("record calls").push(SearchCall {
+            query: query.to_owned(),
+            topic,
+            time_range,
+        });
         if self.fails {
             return Err(WebSearchError::Api {
                 status: 500,
@@ -39,8 +49,11 @@ impl WebSearchClient for FakeWebSearchClient {
     }
 }
 
-fn client(results: Vec<WebSearchResult>, fails: bool) -> (SharedWebSearchClient, Arc<AtomicUsize>) {
-    let calls = Arc::new(AtomicUsize::new(0));
+fn client(
+    results: Vec<WebSearchResult>,
+    fails: bool,
+) -> (SharedWebSearchClient, Arc<Mutex<Vec<SearchCall>>>) {
+    let calls = Arc::new(Mutex::new(Vec::new()));
     (
         Arc::new(FakeWebSearchClient {
             calls: calls.clone(),
@@ -115,7 +128,10 @@ async fn search_web_returns_article_results_without_tool_model_header(
         .expect("search web");
 
     assert_eq!(
-        (result.as_json().clone(), calls.load(Ordering::Relaxed)),
+        (
+            result.as_json().clone(),
+            calls.lock().expect("record calls").clone()
+        ),
         (
             json!({
                 "results": [{
@@ -127,7 +143,11 @@ async fn search_web_returns_article_results_without_tool_model_header(
                     "body_truncated": false,
                 }],
             }),
-            1,
+            vec![SearchCall {
+                query: "example query".into(),
+                topic: Some(WebSearchTopic::News),
+                time_range: Some(WebSearchTimeRange::Month),
+            }],
         ),
     );
 }
@@ -159,7 +179,7 @@ async fn search_web_enforces_per_task_call_limit(db: gateway_postgres::DatabaseH
         .await
         .expect_err("call beyond limit should fail");
     assert_eq!(
-        (err, calls.load(Ordering::Relaxed)),
+        (err, calls.lock().expect("record calls").len()),
         (
             rmcp::ErrorData::invalid_params(
                 format!(
@@ -199,7 +219,7 @@ async fn search_web_releases_call_count_reservation_when_request_fails(
         );
     }
     assert_eq!(
-        calls.load(Ordering::Relaxed),
+        calls.lock().expect("record calls").len(),
         (SEARCH_WEB_MAX_CALLS_PER_TASK * 2) as usize,
     );
 }

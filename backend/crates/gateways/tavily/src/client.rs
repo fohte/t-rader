@@ -40,10 +40,6 @@ impl TavilyClient {
         }
     }
 
-    pub fn new(api_key: &str) -> Result<Self, WebSearchError> {
-        Self::with_endpoint(SEARCH_ENDPOINT.to_owned(), api_key)
-    }
-
     fn with_endpoint(endpoint: String, api_key: &str) -> Result<Self, WebSearchError> {
         let mut headers = HeaderMap::new();
         let authorization = HeaderValue::from_str(&format!("Bearer {api_key}"))
@@ -226,6 +222,30 @@ mod tests {
                     body_truncated: false,
                 }],
             ),
+        );
+    }
+
+    #[tokio::test]
+    async fn search_maps_http_errors() {
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .respond_with(
+                ResponseTemplate::new(StatusCode::SERVICE_UNAVAILABLE)
+                    .set_body_string("upstream is temporarily unavailable"),
+            )
+            .mount(&mock)
+            .await;
+
+        let client =
+            TavilyClient::with_endpoint(format!("{}/search", mock.uri()), "fake-tavily-key")
+                .expect("build client");
+        assert_eq!(
+            client.search("example query", None, None).await,
+            Err(WebSearchError::Api {
+                status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                message: "upstream is temporarily unavailable".into(),
+            }),
         );
     }
 

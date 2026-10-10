@@ -46,7 +46,7 @@ pub struct WebSearchResult {
     pub body_truncated: bool,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum WebSearchError {
     #[error("network error: {0}")]
     Network(String),

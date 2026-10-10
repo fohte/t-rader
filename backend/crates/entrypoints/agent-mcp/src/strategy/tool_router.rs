@@ -249,7 +249,7 @@ impl StrategyServer {
     /// Tavily で web 検索し、記事の出典と本文を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query. Optionally set topic to general or news and time_range to day, week, month, or year. Returns up to five source articles with their original URLs, publication dates, snippets, and bodies; bodies are capped at 5,000 characters each. Use this to look into stocks, terms, or themes beyond the available reference data and RSS feeds, or to retrieve a search_news item whose content_status is not fetched by searching its title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped at 20 per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query. Optionally set topic to general or news and time_range to day, week, month, or year. Returns source articles with their original URLs, publication dates, snippets, and bodies when available. Check body_truncated to see whether a body was cut. Use this to look into stocks, terms, or themes beyond the available reference data and RSS feeds, or to retrieve a search_news item whose content_status is not fetched by searching its title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; further calls after the cap return an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
