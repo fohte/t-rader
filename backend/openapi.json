@@ -4609,6 +4609,93 @@
         }
       }
     },
+    "/api/paper-accounts/stats": {
+      "get": {
+        "tags": [
+          "paper_accounts"
+        ],
+        "summary": "全ペーパートレード口座の成績",
+        "operationId": "get_paper_account_stats",
+        "responses": {
+          "200": {
+            "description": "全口座の成績",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaperAccountStats"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/paper-accounts/{id}/portfolio": {
+      "get": {
+        "tags": [
+          "paper_accounts"
+        ],
+        "summary": "ペーパートレード口座のポートフォリオ",
+        "operationId": "get_paper_account_portfolio",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ペーパートレード口座 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "口座の現金、保有、注文",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperAccountPortfolio"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "口座が見つからない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/refs/indicators": {
       "get": {
         "tags": [
@@ -9480,6 +9567,263 @@
           "strategy_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "PaperAccountPortfolio": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "account_name",
+          "strategy_id",
+          "purpose",
+          "started_on",
+          "as_of",
+          "initial_cash_jpy",
+          "cash_jpy",
+          "positions",
+          "orders"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date"
+          },
+          "cash_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "initial_cash_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaperTradeOrderResponse"
+            }
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaperTradePositionResponse"
+            }
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "started_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PaperAccountStats": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "account_name",
+          "strategy_id",
+          "purpose",
+          "started_on",
+          "initial_cash_jpy",
+          "as_of",
+          "total_assets_jpy",
+          "return_since_start",
+          "closed_trade_count",
+          "unrealized_pnl_jpy"
+        ],
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date"
+          },
+          "average_loss_excess_return": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "average_win_excess_return": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "benchmark_return": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "benchmark_stock_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "closed_trade_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "initial_cash_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "return_since_start": {
+            "type": "number",
+            "format": "double"
+          },
+          "started_on": {
+            "type": "string",
+            "format": "date"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total_assets_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "unrealized_pnl_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "win_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "PaperTradeOrderResponse": {
+        "type": "object",
+        "required": [
+          "order_id",
+          "stock_id",
+          "side",
+          "qty",
+          "note_id",
+          "note_version_id",
+          "ordered_at"
+        ],
+        "properties": {
+          "fill_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "fill_price_jpy": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "note_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "注文の根拠となったノート ID。"
+          },
+          "note_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "注文の根拠となったノートバージョン ID。"
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ordered_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "qty": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reject_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "side": {
+            "type": "string"
+          },
+          "stock_id": {
+            "type": "string"
+          }
+        }
+      },
+      "PaperTradePositionResponse": {
+        "type": "object",
+        "required": [
+          "stock_id",
+          "qty",
+          "avg_cost_jpy",
+          "current_price_jpy",
+          "market_value_jpy",
+          "unrealized_pnl_jpy"
+        ],
+        "properties": {
+          "avg_cost_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "current_price_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "market_value_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "qty": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "stock_id": {
+            "type": "string"
+          },
+          "unrealized_pnl_jpy": {
+            "type": "number",
+            "format": "double"
           }
         }
       },

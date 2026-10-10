@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -25,6 +26,10 @@ pub trait NoteReadQuery: Send + Sync {
         &self,
         version_id: Uuid,
     ) -> Result<Option<Note>, NoteReadQueryError>;
+    async fn find_note_ids_for_versions(
+        &self,
+        version_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Uuid>, NoteReadQueryError>;
     async fn find_note_version(
         &self,
         note_id: Uuid,

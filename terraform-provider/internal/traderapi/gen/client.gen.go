@@ -341,6 +341,69 @@ type PaperAccount struct {
 	StrategyId       openapi_types.UUID        `json:"strategy_id"`
 }
 
+// PaperAccountPortfolio defines model for PaperAccountPortfolio.
+type PaperAccountPortfolio struct {
+	AccountId      openapi_types.UUID           `json:"account_id"`
+	AccountName    string                       `json:"account_name"`
+	AsOf           openapi_types.Date           `json:"as_of"`
+	CashJpy        float64                      `json:"cash_jpy"`
+	InitialCashJpy float64                      `json:"initial_cash_jpy"`
+	Orders         []PaperTradeOrderResponse    `json:"orders"`
+	Positions      []PaperTradePositionResponse `json:"positions"`
+	Purpose        string                       `json:"purpose"`
+	StartedOn      openapi_types.Date           `json:"started_on"`
+	StrategyId     openapi_types.UUID           `json:"strategy_id"`
+}
+
+// PaperAccountStats defines model for PaperAccountStats.
+type PaperAccountStats struct {
+	AccountId               openapi_types.UUID         `json:"account_id"`
+	AccountName             string                     `json:"account_name"`
+	AsOf                    openapi_types.Date         `json:"as_of"`
+	AverageLossExcessReturn nullable.Nullable[float64] `json:"average_loss_excess_return,omitempty"`
+	AverageWinExcessReturn  nullable.Nullable[float64] `json:"average_win_excess_return,omitempty"`
+	BenchmarkReturn         nullable.Nullable[float64] `json:"benchmark_return,omitempty"`
+	BenchmarkStockId        nullable.Nullable[string]  `json:"benchmark_stock_id,omitempty"`
+	ClosedTradeCount        int                        `json:"closed_trade_count"`
+	InitialCashJpy          float64                    `json:"initial_cash_jpy"`
+	Purpose                 string                     `json:"purpose"`
+	ReturnSinceStart        float64                    `json:"return_since_start"`
+	StartedOn               openapi_types.Date         `json:"started_on"`
+	StrategyId              openapi_types.UUID         `json:"strategy_id"`
+	TotalAssetsJpy          float64                    `json:"total_assets_jpy"`
+	UnrealizedPnlJpy        float64                    `json:"unrealized_pnl_jpy"`
+	WinRate                 nullable.Nullable[float64] `json:"win_rate,omitempty"`
+}
+
+// PaperTradeOrderResponse defines model for PaperTradeOrderResponse.
+type PaperTradeOrderResponse struct {
+	FillDate     nullable.Nullable[openapi_types.Date] `json:"fill_date,omitempty"`
+	FillPriceJpy nullable.Nullable[float64]            `json:"fill_price_jpy,omitempty"`
+
+	// NoteId 注文の根拠となったノート ID。
+	NoteId openapi_types.UUID `json:"note_id"`
+
+	// NoteVersionId 注文の根拠となったノートバージョン ID。
+	NoteVersionId openapi_types.UUID        `json:"note_version_id"`
+	OrderId       openapi_types.UUID        `json:"order_id"`
+	OrderedAt     time.Time                 `json:"ordered_at"`
+	Outcome       nullable.Nullable[string] `json:"outcome,omitempty"`
+	Qty           int64                     `json:"qty"`
+	RejectReason  nullable.Nullable[string] `json:"reject_reason,omitempty"`
+	Side          string                    `json:"side"`
+	StockId       string                    `json:"stock_id"`
+}
+
+// PaperTradePositionResponse defines model for PaperTradePositionResponse.
+type PaperTradePositionResponse struct {
+	AvgCostJpy       float64 `json:"avg_cost_jpy"`
+	CurrentPriceJpy  float64 `json:"current_price_jpy"`
+	MarketValueJpy   float64 `json:"market_value_jpy"`
+	Qty              int64   `json:"qty"`
+	StockId          string  `json:"stock_id"`
+	UnrealizedPnlJpy float64 `json:"unrealized_pnl_jpy"`
+}
+
 // PreviewIndicatorRequest defines model for PreviewIndicatorRequest.
 type PreviewIndicatorRequest struct {
 	Args           interface{}              `json:"args"`
@@ -1111,6 +1174,16 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/paper-accounts (the `CreatePaperAccount` operationId).
 	CreatePaperAccount(ctx context.Context, body CreatePaperAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPaperAccountStats 全ペーパートレード口座の成績
+	//
+	// Corresponds with GET /api/paper-accounts/stats (the `GetPaperAccountStats` operationId).
+	GetPaperAccountStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPaperAccountPortfolio ペーパートレード口座のポートフォリオ
+	//
+	// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
+	GetPaperAccountPortfolio(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIndicators indicator 検索
 	//
@@ -2184,6 +2257,36 @@ func (c *OpenAPIClient) CreatePaperAccountWithBody(ctx context.Context, contentT
 // Corresponds with POST /api/paper-accounts (the `CreatePaperAccount` operationId).
 func (c *OpenAPIClient) CreatePaperAccount(ctx context.Context, body CreatePaperAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreatePaperAccountRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPaperAccountStats 全ペーパートレード口座の成績
+//
+// Corresponds with GET /api/paper-accounts/stats (the `GetPaperAccountStats` operationId).
+func (c *OpenAPIClient) GetPaperAccountStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPaperAccountStatsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPaperAccountPortfolio ペーパートレード口座のポートフォリオ
+//
+// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
+func (c *OpenAPIClient) GetPaperAccountPortfolio(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPaperAccountPortfolioRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -4150,6 +4253,67 @@ func NewCreatePaperAccountRequestWithBody(server string, contentType string, bod
 	return req, nil
 }
 
+// NewGetPaperAccountStatsRequest constructs an http.Request for the GetPaperAccountStats method
+func NewGetPaperAccountStatsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/paper-accounts/stats")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetPaperAccountPortfolioRequest constructs an http.Request for the GetPaperAccountPortfolio method
+func NewGetPaperAccountPortfolioRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/paper-accounts/%s/portfolio", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListIndicatorsRequest constructs an http.Request for the ListIndicators method
 func NewListIndicatorsRequest(server string, params *ListIndicatorsParams) (*http.Request, error) {
 	var err error
@@ -5906,6 +6070,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/paper-accounts (the `CreatePaperAccount` operationId).
 	CreatePaperAccountWithResponse(ctx context.Context, body CreatePaperAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePaperAccountResult, error)
+
+	// GetPaperAccountStatsWithResponse 全ペーパートレード口座の成績
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/paper-accounts/stats (the `GetPaperAccountStats` operationId).
+	GetPaperAccountStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPaperAccountStatsResult, error)
+
+	// GetPaperAccountPortfolioWithResponse ペーパートレード口座のポートフォリオ
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
+	GetPaperAccountPortfolioWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetPaperAccountPortfolioResult, error)
 
 	// ListIndicatorsWithResponse indicator 検索
 	//
@@ -8338,6 +8516,109 @@ func (r CreatePaperAccountResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreatePaperAccountResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetPaperAccountStatsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]PaperAccountStats
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPaperAccountStatsResult) GetJSON200() *[]PaperAccountStats {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetPaperAccountStatsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPaperAccountStatsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPaperAccountStatsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPaperAccountStatsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPaperAccountStatsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetPaperAccountPortfolioResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PaperAccountPortfolio
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPaperAccountPortfolioResult) GetJSON200() *PaperAccountPortfolio {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetPaperAccountPortfolioResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetPaperAccountPortfolioResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPaperAccountPortfolioResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPaperAccountPortfolioResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPaperAccountPortfolioResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPaperAccountPortfolioResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11059,6 +11340,32 @@ func (c *ClientWithResponses) CreatePaperAccountWithResponse(ctx context.Context
 	return ParseCreatePaperAccountResult(rsp)
 }
 
+// GetPaperAccountStatsWithResponse 全ペーパートレード口座の成績
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/paper-accounts/stats (the `GetPaperAccountStats` operationId).
+func (c *ClientWithResponses) GetPaperAccountStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPaperAccountStatsResult, error) {
+	rsp, err := c.GetPaperAccountStats(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPaperAccountStatsResult(rsp)
+}
+
+// GetPaperAccountPortfolioWithResponse ペーパートレード口座のポートフォリオ
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
+func (c *ClientWithResponses) GetPaperAccountPortfolioWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetPaperAccountPortfolioResult, error) {
+	rsp, err := c.GetPaperAccountPortfolio(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPaperAccountPortfolioResult(rsp)
+}
+
 // ListIndicatorsWithResponse indicator 検索
 //
 // Returns a wrapper object for the known response body format(s).
@@ -13242,6 +13549,79 @@ func ParseCreatePaperAccountResult(rsp *http.Response) (*CreatePaperAccountResul
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPaperAccountStatsResult parses an HTTP response from a GetPaperAccountStatsWithResponse call
+func ParseGetPaperAccountStatsResult(rsp *http.Response) (*GetPaperAccountStatsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPaperAccountStatsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []PaperAccountStats
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPaperAccountPortfolioResult parses an HTTP response from a GetPaperAccountPortfolioWithResponse call
+func ParseGetPaperAccountPortfolioResult(rsp *http.Response) (*GetPaperAccountPortfolioResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPaperAccountPortfolioResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PaperAccountPortfolio
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ErrorResponse

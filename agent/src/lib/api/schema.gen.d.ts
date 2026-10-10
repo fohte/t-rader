@@ -828,6 +828,40 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/paper-accounts/stats': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 全ペーパートレード口座の成績 */
+    get: operations['get_paper_account_stats']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/paper-accounts/{id}/portfolio': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ペーパートレード口座のポートフォリオ */
+    get: operations['get_paper_account_portfolio']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/refs/indicators': {
     parameters: {
       query?: never
@@ -1867,6 +1901,93 @@ export interface components {
       started_on: string
       /** Format: uuid */
       strategy_id: string
+    }
+    PaperAccountPortfolio: {
+      /** Format: uuid */
+      account_id: string
+      account_name: string
+      /** Format: date */
+      as_of: string
+      /** Format: double */
+      cash_jpy: number
+      /** Format: double */
+      initial_cash_jpy: number
+      orders: components['schemas']['PaperTradeOrderResponse'][]
+      positions: components['schemas']['PaperTradePositionResponse'][]
+      purpose: string
+      /** Format: date */
+      started_on: string
+      /** Format: uuid */
+      strategy_id: string
+    }
+    PaperAccountStats: {
+      /** Format: uuid */
+      account_id: string
+      account_name: string
+      /** Format: date */
+      as_of: string
+      /** Format: double */
+      average_loss_excess_return?: number | null
+      /** Format: double */
+      average_win_excess_return?: number | null
+      /** Format: double */
+      benchmark_return?: number | null
+      benchmark_stock_id?: string | null
+      closed_trade_count: number
+      /** Format: double */
+      initial_cash_jpy: number
+      purpose: string
+      /** Format: double */
+      return_since_start: number
+      /** Format: date */
+      started_on: string
+      /** Format: uuid */
+      strategy_id: string
+      /** Format: double */
+      total_assets_jpy: number
+      /** Format: double */
+      unrealized_pnl_jpy: number
+      /** Format: double */
+      win_rate?: number | null
+    }
+    PaperTradeOrderResponse: {
+      /** Format: date */
+      fill_date?: string | null
+      /** Format: double */
+      fill_price_jpy?: number | null
+      /**
+       * Format: uuid
+       * @description 注文の根拠となったノート ID。
+       */
+      note_id: string
+      /**
+       * Format: uuid
+       * @description 注文の根拠となったノートバージョン ID。
+       */
+      note_version_id: string
+      /** Format: uuid */
+      order_id: string
+      /** Format: date-time */
+      ordered_at: string
+      outcome?: string | null
+      /** Format: int64 */
+      qty: number
+      reject_reason?: string | null
+      side: string
+      stock_id: string
+    }
+    PaperTradePositionResponse: {
+      /** Format: double */
+      avg_cost_jpy: number
+      /** Format: double */
+      current_price_jpy: number
+      /** Format: double */
+      market_value_jpy: number
+      /** Format: int64 */
+      qty: number
+      stock_id: string
+      /** Format: double */
+      unrealized_pnl_jpy: number
     }
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
@@ -5773,6 +5894,74 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_paper_account_stats: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 全口座の成績 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PaperAccountStats'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_paper_account_portfolio: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ペーパートレード口座 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 口座の現金、保有、注文 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PaperAccountPortfolio']
+        }
+      }
+      /** @description 口座が見つからない */
+      404: {
         headers: {
           [name: string]: unknown
         }
