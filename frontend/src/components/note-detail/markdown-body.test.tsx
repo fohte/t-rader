@@ -121,7 +121,35 @@ describe('MarkdownBody', () => {
       },
     )
     await user.click(screen.getByRole('button', { name: /demo-code/ }))
-    expect(onRef.mock.calls).toEqual([['stock:demo-code']])
+    expect(onRef.mock.calls).toEqual([
+      ['stock:demo-code', { kind: 'stock', id: 'demo-code', name: null }],
+    ])
+  })
+
+  it('navigates a stock alias with its resolved id', async () => {
+    const user = userEvent.setup()
+    const navigate = vi.fn()
+    const handlers = createNoteBodyNavigationHandlers(navigate)
+    useBarsQuery.mockReturnValueOnce({
+      data: [{ kind: 'stock', id: 'demo-code', name: '架空商事' }],
+      isPending: false,
+      isError: false,
+    })
+    render(
+      <MarkdownBody source="[[stock:demo-alias]]" onRef={handlers.onRef} />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    await user.click(screen.getByRole('button', { name: /架空商事/ }))
+
+    expect(navigate.mock.calls).toEqual([
+      [
+        {
+          to: '/charts/$instrumentId',
+          params: { instrumentId: 'demo-code' },
+        },
+      ],
+    ])
   })
 
   it.each([

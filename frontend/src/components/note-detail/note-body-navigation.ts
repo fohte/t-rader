@@ -1,3 +1,5 @@
+import type { ResolvedRef } from '#hooks/use-resolve-ref'
+
 type NoteBodyNavigationTarget =
   | {
       to: '/charts/$instrumentId'
@@ -10,19 +12,12 @@ type NoteBodyNavigationTarget =
 
 type Navigate = (target: NoteBodyNavigationTarget) => unknown
 
-const STOCK_REF_PREFIX = 'stock:'
-
 export function createNoteBodyNavigationHandlers(navigate: Navigate) {
   return {
-    onRef: (token: string) => {
-      if (!token.startsWith(STOCK_REF_PREFIX)) return
-
-      const instrumentId = token.slice(STOCK_REF_PREFIX.length)
-      if (instrumentId === '') return
-
+    onRef: (_token: string, resolved: ResolvedRef) => {
       void navigate({
         to: '/charts/$instrumentId',
-        params: { instrumentId },
+        params: { instrumentId: resolved.id },
       })
     },
     onAnno: (annoId: string) => {
