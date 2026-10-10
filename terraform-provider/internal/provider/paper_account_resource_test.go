@@ -7,15 +7,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 const (
 	testPaperAccountID         = "00000000-0000-4000-8000-000000000302"
-	testPaperAccountStrategyID = "00000000-0000-4000-8000-000000000301"
+	testPaperAccountStrategyID = "00000000-0000-4000-8000-000000000abc"
 	testPaperAccountPurpose    = "sample"
 	testPaperAccountName       = "sample-paper-account"
 	testPaperAccountStartedOn  = "2026-01-02"
@@ -28,7 +30,7 @@ func TestPaperAccountResourceCreateUsesAPIResponseAsState(t *testing.T) {
 	requests := make(chan apiRequestObservation, 1)
 	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		recordAPIResourceRequest(t, requests, r)
-		writePaperAccountResponse(t, w, http.StatusCreated, `{"id":"`+testPaperAccountID+`","strategy_id":"`+testPaperAccountStrategyID+`","purpose":"sample","name":"sample-paper-account","initial_cash_jpy":1000000,"benchmark_stock_id":"synthetic-stock-id","started_on":"2026-01-02"}`)
+		writeAPIResourceResponse(t, w, http.StatusCreated, `{"id":"`+testPaperAccountID+`","strategy_id":"`+testPaperAccountStrategyID+`","purpose":"sample","name":"sample-paper-account","initial_cash_jpy":1000000,"benchmark_stock_id":"synthetic-stock-id","started_on":"2026-01-02"}`)
 	})
 	resourceSchema := paperAccountTestSchema(t)
 	plan := tfsdk.Plan{Schema: resourceSchema}
@@ -82,7 +84,7 @@ func TestPaperAccountResourceReadRefreshesStateFromAPI(t *testing.T) {
 	requests := make(chan apiRequestObservation, 1)
 	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		recordAPIResourceRequest(t, requests, r)
-		writePaperAccountResponse(t, w, http.StatusOK, `[{"id":"00000000-0000-4000-8000-000000000303","strategy_id":"`+testPaperAccountStrategyID+`","purpose":"other","name":"other-account","initial_cash_jpy":2000000,"benchmark_stock_id":null,"started_on":"2026-01-03"},{"id":"`+testPaperAccountID+`","strategy_id":"`+testPaperAccountStrategyID+`","purpose":"sample","name":"sample-paper-account","initial_cash_jpy":1000000,"benchmark_stock_id":null,"started_on":"2026-01-02"}]`)
+		writeAPIResourceResponse(t, w, http.StatusOK, `[{"id":"00000000-0000-4000-8000-000000000303","strategy_id":"`+testPaperAccountStrategyID+`","purpose":"other","name":"other-account","initial_cash_jpy":2000000,"benchmark_stock_id":null,"started_on":"2026-01-03"},{"id":"`+testPaperAccountID+`","strategy_id":"`+testPaperAccountStrategyID+`","purpose":"sample","name":"sample-paper-account","initial_cash_jpy":1000000,"benchmark_stock_id":null,"started_on":"2026-01-02"}]`)
 	})
 	resourceSchema := paperAccountTestSchema(t)
 	state := tfsdk.State{Schema: resourceSchema}
@@ -118,7 +120,7 @@ func TestPaperAccountResourceReadDropsMissingAccountFromState(t *testing.T) {
 	requests := make(chan apiRequestObservation, 1)
 	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		recordAPIResourceRequest(t, requests, r)
-		writePaperAccountResponse(t, w, http.StatusOK, `[]`)
+		writeAPIResourceResponse(t, w, http.StatusOK, `[]`)
 	})
 	resourceSchema := paperAccountTestSchema(t)
 	state := tfsdk.State{Schema: resourceSchema}
@@ -236,6 +238,120 @@ func TestPaperAccountResourceImportRejectsInvalidID(t *testing.T) {
 	}
 }
 
+func TestPaperAccountResourceCreateRejectsInvalidInputBeforeRequest(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		field    string
+		value    string
+		wantDiag apiDiagnosticObservation
+	}{
+		{
+			name:  "invalid strategy UUID",
+			field: "strategy_id",
+			value: "synthetic-strategy-id",
+			wantDiag: apiDiagnosticObservation{
+				Severity: "Error",
+				Summary:  "Invalid strategy_id",
+				Detail:   "strategy_id は UUID にしてください。",
+				Path:     "strategy_id",
+			},
+		},
+		{
+			name:  "non-canonical strategy UUID",
+			field: "strategy_id",
+			value: strings.ToUpper(testPaperAccountStrategyID),
+			wantDiag: apiDiagnosticObservation{
+				Severity: "Error",
+				Summary:  "Non-canonical strategy_id",
+				Detail:   "strategy_id は小文字の正規 UUID にしてください。",
+				Path:     "strategy_id",
+			},
+		},
+		{
+			name:  "invalid start date",
+			field: "started_on",
+			value: "2026-02-30",
+			wantDiag: apiDiagnosticObservation{
+				Severity: "Error",
+				Summary:  "Invalid started_on",
+				Detail:   "started_on は YYYY-MM-DD 形式にしてください。",
+				Path:     "started_on",
+			},
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			requests := make(chan apiRequestObservation, 1)
+			client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				recordAPIResourceRequest(t, requests, r)
+				writeAPIResourceResponse(t, w, http.StatusCreated, `{}`)
+			})
+			resourceSchema := paperAccountTestSchema(t)
+			plan := tfsdk.Plan{Schema: resourceSchema}
+			model := paperAccountTestModel()
+			if testCase.field == "strategy_id" {
+				model.StrategyID = types.StringValue(testCase.value)
+			} else {
+				model.StartedOn = types.StringValue(testCase.value)
+			}
+			if diagnostics := plan.Set(ctx, model); diagnostics.HasError() {
+				t.Fatalf("build invalid create plan: %v", diagnostics)
+			}
+			response := resource.CreateResponse{State: tfsdk.State{Schema: resourceSchema}}
+			(&paperAccountResource{client: client}).Create(ctx, resource.CreateRequest{Plan: plan}, &response)
+
+			type output struct {
+				Requests    int
+				Diagnostics []apiDiagnosticObservation
+			}
+			got := output{Requests: len(requests), Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
+			want := output{Diagnostics: []apiDiagnosticObservation{testCase.wantDiag}}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("invalid create output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
+	}
+}
+
+func TestPaperAccountResourceValidatorsRejectNormalizedValues(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		attribute string
+		value     string
+		want      []apiDiagnosticObservation
+	}{
+		{name: "canonical strategy UUID is accepted", attribute: "strategy_id", value: testPaperAccountStrategyID},
+		{name: "uppercase strategy UUID is rejected", attribute: "strategy_id", value: strings.ToUpper(testPaperAccountStrategyID), want: []apiDiagnosticObservation{{Severity: "Error", Summary: "Non-canonical strategy_id", Detail: "strategy_id は小文字の正規 UUID にしてください。", Path: "strategy_id"}}},
+		{name: "non-empty account name is accepted", attribute: "name", value: testPaperAccountName},
+		{name: "whitespace-only account name is rejected", attribute: "name", value: "   ", want: []apiDiagnosticObservation{{Severity: "Error", Summary: "Invalid paper account name", Detail: "name は空にできません。", Path: "name"}}},
+		{name: "padded account name is rejected", attribute: "name", value: " sample-account ", want: []apiDiagnosticObservation{{Severity: "Error", Summary: "Invalid paper account name", Detail: "name の前後に空白を指定できません。", Path: "name"}}},
+		{name: "non-empty purpose is accepted", attribute: "purpose", value: testPaperAccountPurpose},
+		{name: "padded purpose is rejected", attribute: "purpose", value: " sample ", want: []apiDiagnosticObservation{{Severity: "Error", Summary: "Invalid paper account purpose", Detail: "purpose の前後に空白を指定できません。", Path: "purpose"}}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			attribute := paperAccountTestSchema(t).Attributes[testCase.attribute].(schema.StringAttribute)
+			var response validator.StringResponse
+			attribute.Validators[0].ValidateString(context.Background(), validator.StringRequest{
+				Path:        path.Root(testCase.attribute),
+				ConfigValue: types.StringValue(testCase.value),
+			}, &response)
+			got := apiResourceDiagnosticsOutput(response.Diagnostics)
+			if !reflect.DeepEqual(got, testCase.want) {
+				t.Fatalf("validator output mismatch: got=%#v want=%#v", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestProviderRegistersPaperAccountResource(t *testing.T) {
 	t.Parallel()
 
@@ -274,14 +390,5 @@ func paperAccountTestModel() paperAccountModel {
 		InitialCashJpy:   types.Float64Value(1000000),
 		BenchmarkStockID: types.StringNull(),
 		StartedOn:        types.StringValue(testPaperAccountStartedOn),
-	}
-}
-
-func writePaperAccountResponse(t *testing.T, writer http.ResponseWriter, status int, body string) {
-	t.Helper()
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(status)
-	if _, err := writer.Write([]byte(body)); err != nil {
-		t.Errorf("write paper account response: %v", err)
 	}
 }

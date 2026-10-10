@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -68,14 +70,17 @@ func (r *paperAccountResource) Schema(_ context.Context, _ resource.SchemaReques
 			},
 			"strategy_id": schema.StringAttribute{
 				Required:            true,
+				Validators:          []validator.String{paperAccountStrategyIDValidator{}},
 				MarkdownDescription: "口座を作成する戦略 UUID。作成後は変更できません。",
 			},
 			"purpose": schema.StringAttribute{
 				Required:            true,
+				Validators:          []validator.String{paperAccountTrimmedStringValidator{attribute: "purpose"}},
 				MarkdownDescription: "口座に紐づける agent 設定の purpose。作成後は変更できません。",
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
+				Validators:          []validator.String{paperAccountTrimmedStringValidator{attribute: "name"}},
 				MarkdownDescription: "口座名。作成後は変更できません。",
 			},
 			"initial_cash_jpy": schema.Float64Attribute{
@@ -120,6 +125,10 @@ func (r *paperAccountResource) Create(ctx context.Context, req resource.CreateRe
 	strategyID, err := uuid.Parse(plan.StrategyID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddAttributeError(path.Root("strategy_id"), "Invalid strategy_id", "strategy_id は UUID にしてください。")
+		return
+	}
+	if strategyID.String() != plan.StrategyID.ValueString() {
+		resp.Diagnostics.AddAttributeError(path.Root("strategy_id"), "Non-canonical strategy_id", "strategy_id は小文字の正規 UUID にしてください。")
 		return
 	}
 	startedOn, err := time.Parse("2006-01-02", plan.StartedOn.ValueString())
@@ -210,5 +219,56 @@ func modelFromPaperAccount(account traderapigen.PaperAccount) paperAccountModel 
 		InitialCashJpy:   types.Float64Value(account.InitialCashJpy),
 		BenchmarkStockID: stringNullableAttribute(account.BenchmarkStockId),
 		StartedOn:        types.StringValue(account.StartedOn.String()),
+	}
+}
+
+type paperAccountStrategyIDValidator struct{}
+
+func (paperAccountStrategyIDValidator) Description(context.Context) string {
+	return "strategy_id は小文字の正規 UUID にしてください。"
+}
+
+func (v paperAccountStrategyIDValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (paperAccountStrategyIDValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	value := req.ConfigValue.ValueString()
+	parsedID, err := uuid.Parse(value)
+	if err != nil {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid strategy_id", "strategy_id は UUID にしてください。")
+		return
+	}
+	if parsedID.String() != value {
+		resp.Diagnostics.AddAttributeError(req.Path, "Non-canonical strategy_id", "strategy_id は小文字の正規 UUID にしてください。")
+	}
+}
+
+type paperAccountTrimmedStringValidator struct {
+	attribute string
+}
+
+func (v paperAccountTrimmedStringValidator) Description(context.Context) string {
+	return fmt.Sprintf("%s は空白のみ、または前後に空白を含む値にできません。", v.attribute)
+}
+
+func (v paperAccountTrimmedStringValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v paperAccountTrimmedStringValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	value := req.ConfigValue.ValueString()
+	if strings.TrimSpace(value) == "" {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid paper account "+v.attribute, v.attribute+" は空にできません。")
+		return
+	}
+	if strings.TrimSpace(value) != value {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid paper account "+v.attribute, v.attribute+" の前後に空白を指定できません。")
 	}
 }
