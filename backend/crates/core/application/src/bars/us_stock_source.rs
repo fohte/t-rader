@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use core_domain::bar::{Bar, Timeframe};
+use rust_decimal::Decimal;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UsStockBarQuery {
@@ -19,6 +20,21 @@ pub struct UsStockBarPage {
     pub next_page_token: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsStockSplitQuery {
+    pub instrument_ids: Vec<String>,
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsStockSplit {
+    pub instrument_id: String,
+    pub ex_date: NaiveDate,
+    pub old_rate: Decimal,
+    pub new_rate: Decimal,
+}
+
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum UsStockBarSourceError {
     #[error("US stock bar source error: {0}")]
@@ -31,6 +47,11 @@ pub trait UsStockBarSource: Send + Sync {
         &self,
         query: &UsStockBarQuery,
     ) -> Result<UsStockBarPage, UsStockBarSourceError>;
+
+    async fn fetch_splits(
+        &self,
+        query: &UsStockSplitQuery,
+    ) -> Result<Vec<UsStockSplit>, UsStockBarSourceError>;
 }
 
 pub type SharedUsStockBarSource = Arc<dyn UsStockBarSource>;
