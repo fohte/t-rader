@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use super::{
     PaperTradePortfolio, PaperTradePosition, PaperTradeUseCaseError, PaperTradeUseCases,
-    ledger::replay_fills,
+    adjustment::load_split_bars_for_orders, ledger::replay_fills,
 };
 
 impl PaperTradeUseCases {
@@ -48,7 +48,8 @@ impl PaperTradeUseCases {
                 .cmp(&right.order.ordered_at)
                 .then_with(|| left.order.id.cmp(&right.order.id))
         });
-        let ledger = replay_fills(&account, &orders)?;
+        let split_bars = load_split_bars_for_orders(&self.bars, &orders).await?;
+        let ledger = replay_fills(&account, &orders, &split_bars)?;
         let mut latest_bar_dates = HashMap::<String, chrono::NaiveDate>::new();
         let mut positions = Vec::new();
 

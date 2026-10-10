@@ -76,6 +76,62 @@ async fn portfolio_replays_fills_and_keeps_pending_orders_in_history() {
 }
 
 #[tokio::test]
+async fn portfolio_keeps_split_adjusted_cost_basis_for_the_remaining_shares() {
+    let account = account(12, "Demo portfolio", 100_000, date(1), None);
+    let buy = order(1, account.id, "DEMO-A1", PaperOrderSide::Buy, 100, date(1));
+    let sell = order(2, account.id, "DEMO-A1", PaperOrderSide::Sell, 100, date(3));
+    let orders = vec![
+        filled(buy.clone(), date(2), 1_000),
+        filled(sell.clone(), date(4), 600),
+    ];
+    let mut split_bar = bar("DEMO-A1", 3, 500, 500);
+    split_bar.adjustment_factor = Decimal::new(5, 1);
+    let bars = Arc::new(FakeBarsRepository::new());
+    bars.seed_bars(vec![split_bar, bar("DEMO-A1", 5, 600, 600)])
+        .await;
+    let use_cases = use_cases(vec![account.clone()], orders, bars);
+
+    let actual = use_cases.portfolio(account.id).await;
+
+    assert_eq!(
+        actual.expect("portfolio is available"),
+        PaperTradePortfolio {
+            account,
+            as_of: date(5),
+            cash_jpy: Decimal::from(60_000),
+            positions: vec![PaperTradePosition {
+                stock_id: "DEMO-A1".to_string(),
+                qty: 100,
+                avg_cost_jpy: Decimal::from(500),
+                current_price_jpy: Decimal::from(600),
+                market_value_jpy: Decimal::from(60_000),
+                unrealized_pnl_jpy: Decimal::from(10_000),
+            }],
+            orders: vec![
+                PaperOrderWithResult {
+                    order: buy.clone(),
+                    result: Some(crate::paper_trade::PaperOrderResult::Filled {
+                        order_id: buy.id,
+                        fill_date: date(2),
+                        fill_price: Decimal::from(1_000),
+                        decided_at: at(date(2)),
+                    }),
+                },
+                PaperOrderWithResult {
+                    order: sell.clone(),
+                    result: Some(crate::paper_trade::PaperOrderResult::Filled {
+                        order_id: sell.id,
+                        fill_date: date(4),
+                        fill_price: Decimal::from(600),
+                        decided_at: at(date(4)),
+                    }),
+                },
+            ],
+        },
+    );
+}
+
+#[tokio::test]
 async fn account_lookup_uses_both_strategy_and_purpose() {
     let account = account(12, "Demo account", 20_000, date(1), None);
     let use_cases = use_cases(

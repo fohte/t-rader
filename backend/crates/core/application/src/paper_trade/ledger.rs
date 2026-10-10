@@ -1,10 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 
 use chrono::NaiveDate;
+use core_domain::bar::Bar;
 use rust_decimal::Decimal;
 
 use super::{
     PaperAccount, PaperOrderSide, PaperOrderWithResult, PaperTradeUseCaseError,
+    adjustment::{SplitCursor, adjusted_quantity},
     types::PaperOrderResult,
 };
 
@@ -48,11 +50,29 @@ impl PaperTradeLedger {
             })
         })
     }
+
+    fn apply_split(&mut self, split_bar: &Bar) -> Result<(), PaperTradeUseCaseError> {
+        let Some(lots) = self.lots_by_stock.get_mut(&split_bar.instrument_id) else {
+            return Ok(());
+        };
+        for lot in lots.iter_mut() {
+            lot.qty = adjusted_quantity(lot.qty, split_bar.adjustment_factor)?;
+            lot.fill_price = lot
+                .fill_price
+                .checked_mul(split_bar.adjustment_factor)
+                .ok_or_else(|| {
+                    PaperTradeUseCaseError::Validation("paper fill price overflowed".into())
+                })?;
+        }
+        lots.retain(|lot| lot.qty > 0);
+        Ok(())
+    }
 }
 
 pub(super) fn replay_fills(
     account: &PaperAccount,
     orders: &[PaperOrderWithResult],
+    split_bars: &[Bar],
 ) -> Result<PaperTradeLedger, PaperTradeUseCaseError> {
     let mut events = orders
         .iter()
@@ -71,6 +91,7 @@ pub(super) fn replay_fills(
             .then_with(|| left.order.ordered_at.cmp(&right.order.ordered_at))
             .then_with(|| left.order.id.cmp(&right.order.id))
     });
+    let mut split_cursor = SplitCursor::new(split_bars.iter())?;
 
     let mut ledger = PaperTradeLedger {
         cash_jpy: account.initial_cash_jpy,
@@ -79,6 +100,7 @@ pub(super) fn replay_fills(
     };
 
     for (item, fill_date, fill_price) in events {
+        split_cursor.apply_through(fill_date, |bar| ledger.apply_split(bar))?;
         let quantity = Decimal::from(item.order.qty);
         let amount = fill_price.checked_mul(quantity).ok_or_else(|| {
             PaperTradeUseCaseError::Validation("paper order value overflowed".into())
@@ -136,6 +158,8 @@ pub(super) fn replay_fills(
             }
         }
     }
+
+    split_cursor.apply_remaining(|bar| ledger.apply_split(bar))?;
 
     Ok(ledger)
 }

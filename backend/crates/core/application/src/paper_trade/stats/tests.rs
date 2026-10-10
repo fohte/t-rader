@@ -115,3 +115,45 @@ async fn stats_uses_fifo_pairs_benchmark_open_prices_and_latest_close_values() {
         ],
     );
 }
+
+#[tokio::test]
+async fn stats_keeps_stock_and_benchmark_returns_consistent_across_splits() {
+    let account = account(103, "Demo account", 100_000, date(1), Some("DEMO-B1"));
+    let buy = order(1, account.id, "DEMO-A1", PaperOrderSide::Buy, 100, date(1));
+    let sell = order(2, account.id, "DEMO-A1", PaperOrderSide::Sell, 100, date(3));
+    let orders = vec![filled(buy, date(2), 1_000), filled(sell, date(4), 600)];
+    let mut stock_split = bar("DEMO-A1", 3, 500, 500);
+    stock_split.adjustment_factor = Decimal::new(5, 1);
+    let mut benchmark_split = bar("DEMO-B1", 3, 50, 50);
+    benchmark_split.adjustment_factor = Decimal::new(5, 1);
+    let bars = Arc::new(FakeBarsRepository::new());
+    bars.seed_bars(vec![
+        stock_split,
+        bar("DEMO-A1", 6, 600, 600),
+        bar("DEMO-B1", 1, 50, 50),
+        bar("DEMO-B1", 2, 50, 50),
+        benchmark_split,
+        bar("DEMO-B1", 4, 55, 55),
+        bar("DEMO-B1", 6, 55, 55),
+    ])
+    .await;
+    let use_cases = use_cases(vec![account.clone()], orders, bars);
+
+    let actual = use_cases.stats().await;
+
+    assert_eq!(
+        actual.expect("account statistics are available"),
+        vec![PaperTradeAccountStats {
+            account,
+            as_of: date(6),
+            total_assets_jpy: Decimal::from(120_000),
+            return_since_start: Decimal::new(2, 1),
+            benchmark_return: Some(Decimal::new(1, 1)),
+            closed_trade_count: 1,
+            win_rate: Some(Decimal::ONE),
+            average_win_excess_return: Some(Decimal::new(1, 1)),
+            average_loss_excess_return: None,
+            unrealized_pnl_jpy: Decimal::from(10_000),
+        }],
+    );
+}

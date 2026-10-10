@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
+use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -10,6 +10,7 @@ use crate::bars::BarsQuery;
 use super::{
     PaperOrder, PaperOrderRejectReason, PaperOrderResult, PaperOrderSide, PaperTradeFillStats,
     PaperTradeUseCaseError, PaperTradeUseCases,
+    adjustment::{SplitCursor, adjusted_quantity, utc_midnight},
 };
 
 #[derive(Clone)]
@@ -81,6 +82,17 @@ impl Position {
                 self.cash = checked_add(self.cash, cost)?;
                 self.add_shares(&order.stock_id, -order.qty)?;
             }
+        }
+        Ok(())
+    }
+
+    fn apply_split(
+        &mut self,
+        stock_id: &str,
+        adjustment_factor: Decimal,
+    ) -> Result<(), PaperTradeUseCaseError> {
+        if let Some(shares) = self.shares.get_mut(stock_id) {
+            *shares = adjusted_quantity(*shares, adjustment_factor)?;
         }
         Ok(())
     }
@@ -170,7 +182,7 @@ impl PaperTradeUseCases {
             .filter(|date| *date <= as_of_date)
             .collect::<Vec<_>>();
         let bars_by_stock = self
-            .load_bars_by_stock(&pending, &order_dates, as_of_date)
+            .load_bars_by_stock(&pending, &orders, as_of_date)
             .await?;
 
         let mut decisions = HashMap::<Uuid, Result<FillCandidate, PaperOrderRejectReason>>::new();
@@ -188,7 +200,8 @@ impl PaperTradeUseCases {
             }
         }
 
-        let results_to_insert = plan_results(&accounts, &orders, &decisions, decided_at)?;
+        let results_to_insert =
+            plan_results(&accounts, &orders, &decisions, &bars_by_stock, decided_at)?;
 
         let mut stats = PaperTradeFillStats::default();
         for result in results_to_insert {
@@ -205,11 +218,19 @@ impl PaperTradeUseCases {
     async fn load_bars_by_stock(
         &self,
         pending: &[&super::PaperOrderWithResult],
-        order_dates: &[NaiveDate],
+        orders: &[super::PaperOrderWithResult],
         as_of_date: NaiveDate,
     ) -> Result<HashMap<String, Vec<Bar>>, PaperTradeUseCaseError> {
+        let pending_stock_ids = pending
+            .iter()
+            .map(|item| item.order.stock_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
         let mut earliest_order_date_by_stock = HashMap::<String, NaiveDate>::new();
-        for (item, date) in pending.iter().zip(order_dates.iter().copied()) {
+        for item in orders
+            .iter()
+            .filter(|item| pending_stock_ids.contains(item.order.stock_id.as_str()))
+        {
+            let date = japan_date(item.order.ordered_at)?;
             earliest_order_date_by_stock
                 .entry(item.order.stock_id.clone())
                 .and_modify(|earliest| *earliest = (*earliest).min(date))
@@ -277,6 +298,7 @@ fn plan_results(
     accounts: &[super::PaperAccount],
     orders: &[super::PaperOrderWithResult],
     decisions: &HashMap<Uuid, Result<FillCandidate, PaperOrderRejectReason>>,
+    bars_by_stock: &HashMap<String, Vec<Bar>>,
     decided_at: DateTime<FixedOffset>,
 ) -> Result<Vec<PaperOrderResult>, PaperTradeUseCaseError> {
     let accounts_by_id = accounts
@@ -320,7 +342,7 @@ fn plan_results(
             .get(account_id)
             .copied()
             .ok_or(PaperTradeUseCaseError::AccountNotFound(*account_id))?;
-        results.extend(replay_account(account, events, decided_at)?);
+        results.extend(replay_account(account, events, bars_by_stock, decided_at)?);
     }
     Ok(results)
 }
@@ -328,6 +350,7 @@ fn plan_results(
 fn replay_account(
     account: &super::PaperAccount,
     events: &mut [FillEvent],
+    bars_by_stock: &HashMap<String, Vec<Bar>>,
     decided_at: DateTime<FixedOffset>,
 ) -> Result<Vec<PaperOrderResult>, PaperTradeUseCaseError> {
     events.sort_by(|left, right| {
@@ -336,9 +359,14 @@ fn replay_account(
             .then_with(|| left.order().ordered_at.cmp(&right.order().ordered_at))
             .then_with(|| left.order().id.cmp(&right.order().id))
     });
+    let mut split_cursor = SplitCursor::new(bars_by_stock.values().flatten())?;
     let mut position = Position::new(account.initial_cash_jpy);
     let mut results = Vec::new();
     for event in events {
+        let fill_date = event.fill_date();
+        split_cursor.apply_through(fill_date, |bar| {
+            position.apply_split(&bar.instrument_id, bar.adjustment_factor)
+        })?;
         match event {
             FillEvent::Recorded {
                 order, fill_price, ..
@@ -356,10 +384,6 @@ fn japan_date(datetime: DateTime<FixedOffset>) -> Result<NaiveDate, PaperTradeUs
         PaperTradeUseCaseError::Validation("Japan timezone offset is invalid".into())
     })?;
     Ok(datetime.with_timezone(&offset).date_naive())
-}
-
-fn utc_midnight(date: NaiveDate) -> DateTime<FixedOffset> {
-    date.and_time(NaiveTime::MIN).and_utc().fixed_offset()
 }
 
 fn order_cost(order: &PaperOrder, fill_price: Decimal) -> Result<Decimal, PaperTradeUseCaseError> {

@@ -387,6 +387,59 @@ async fn fills_at_the_first_bar_after_the_japan_order_date_using_its_open() {
 }
 
 #[tokio::test]
+async fn split_adjusted_shares_allow_a_later_sale_without_rewriting_the_buy_fill() {
+    let account = account(100_000);
+    let buy = order(FIRST_ORDER_ID, PaperOrderSide::Buy, 1, 16);
+    let mut sell = order(SECOND_ORDER_ID, PaperOrderSide::Sell, 4, 12);
+    sell.qty = 200;
+    let previous_result = PaperOrderResult::Filled {
+        order_id: buy.id,
+        fill_date: date(2),
+        fill_price: Decimal::from(1_000),
+        decided_at: decided_at(2),
+    };
+    let repository = Arc::new(FakePaperTradeRepository::with_results(
+        account,
+        vec![
+            PaperOrderWithResult {
+                order: buy,
+                result: Some(previous_result.clone()),
+            },
+            PaperOrderWithResult {
+                order: sell.clone(),
+                result: None,
+            },
+        ],
+    ));
+    let mut split_bar = bar(5, 500);
+    split_bar.adjustment_factor = Decimal::new(5, 1);
+    let bars = Arc::new(FakeBarsRepository::new());
+    bars.seed_bars(vec![split_bar, bar(6, 500)]).await;
+    let use_cases = use_cases(repository.clone(), bars);
+
+    let actual = fill_and_snapshot(&use_cases, &repository, decided_at(6)).await;
+
+    assert_eq!(
+        actual,
+        (
+            PaperTradeFillStats {
+                filled: 1,
+                rejected: 0,
+            },
+            vec![
+                Some(previous_result),
+                Some(PaperOrderResult::Filled {
+                    order_id: sell.id,
+                    fill_date: date(5),
+                    fill_price: Decimal::from(500),
+                    decided_at: decided_at(6),
+                }),
+            ],
+        ),
+    );
+}
+
+#[tokio::test]
 async fn create_account_trims_fields_before_persisting() {
     let repository = Arc::new(FakePaperTradeRepository::empty());
     let (use_cases, unit_of_work) =

@@ -535,8 +535,7 @@ mod tests {
         split_date_bar.adjustment_factor = Decimal::new(5, 1);
         source.set_bars(to, vec![split_date_bar.clone()]).await;
 
-        let mut adjusted_old_bar = make_bar("SAMPLE-SPLIT", old_date, 100);
-        adjusted_old_bar.adjustment_factor = Decimal::new(5, 1);
+        let adjusted_old_bar = make_bar("SAMPLE-SPLIT", old_date, 100);
         let instrument_source = FakeDailyBarSource::new();
         instrument_source
             .set_bars(
