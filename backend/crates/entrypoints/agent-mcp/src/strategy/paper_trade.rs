@@ -9,7 +9,8 @@ use uuid::Uuid;
 
 use super::dto::{
     PaperTradeAccountStatsDto, PaperTradeOrderDto, PaperTradePositionDto, PlacePaperOrderParams,
-    PlacePaperOrderResult, ReadPaperPortfolioResult, ReadPaperStatsResult,
+    PlacePaperOrderResult, ReadPaperPortfolioParams, ReadPaperPortfolioResult,
+    ReadPaperStatsResult,
 };
 use super::{StrategyServer, decimal_to_f64, internal_error, invalid_params};
 
@@ -53,15 +54,21 @@ impl StrategyServer {
         &self,
         scope: impl Into<StrategyScope>,
         task_id: Option<String>,
+        params: ReadPaperPortfolioParams,
     ) -> Result<ReadPaperPortfolioResult, McpError> {
         let scope = scope.into();
-        let account = self
-            .paper_account_for_execution(scope.id(), task_id.as_deref())
-            .await?;
+        let account_id = match params.account_id {
+            Some(account_id) => account_id,
+            None => {
+                self.paper_account_for_execution(scope.id(), task_id.as_deref())
+                    .await?
+                    .id
+            }
+        };
         let portfolio = self
             .dependencies
             .paper_trades
-            .portfolio(account.id)
+            .portfolio(account_id)
             .await
             .map_err(paper_trade_error_to_mcp)?;
 
