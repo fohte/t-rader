@@ -310,6 +310,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, Utc};
+    use indoc::indoc;
     use rstest::rstest;
     use serde_json::json;
     use tokio::sync::Mutex;
@@ -337,9 +338,11 @@ mod tests {
         source_note: Note,
         source_version: NoteVersion,
         latest_version: NoteVersion,
+        requires_approval: bool,
         target: NoteLinkTarget,
         inserted_links: Mutex<Vec<NewNoteLink>>,
         inserted_versions: Mutex<Vec<NewNoteVersion>>,
+        reference_replacements: Mutex<Vec<Vec<(String, String)>>>,
     }
 
     #[async_trait]
@@ -365,7 +368,7 @@ mod tests {
             _transaction: &UnitOfWorkTransaction,
             _kind: &str,
         ) -> Result<Option<bool>, NoteRepositoryError> {
-            Ok(Some(false))
+            Ok(Some(self.requires_approval))
         }
 
         async fn find_current_version(
@@ -501,8 +504,9 @@ mod tests {
             &self,
             _transaction: &UnitOfWorkTransaction,
             _note_id: Uuid,
-            _references: Vec<(String, String)>,
+            references: Vec<(String, String)>,
         ) -> Result<(), NoteRepositoryError> {
+            self.reference_replacements.lock().await.push(references);
             Ok(())
         }
 
@@ -538,9 +542,13 @@ mod tests {
     }
 
     fn source_note() -> Note {
+        source_note_with_kind(None)
+    }
+
+    fn source_note_with_kind(kind: Option<String>) -> Note {
         Note {
             id: SOURCE_NOTE_ID,
-            kind: None,
+            kind,
             trigger: None,
             trigger_label: None,
             created_at: timestamp(),
@@ -585,16 +593,33 @@ mod tests {
         latest_version: NoteVersion,
         evidence: Vec<StrategyTaskStepEvidence>,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
+        make_note_use_cases_with_options(source_version, latest_version, evidence, false)
+    }
+
+    fn make_approval_note_use_cases(
+        source_version: NoteVersion,
+    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
+        make_note_use_cases_with_options(source_version.clone(), source_version, vec![], true)
+    }
+
+    fn make_note_use_cases_with_options(
+        source_version: NoteVersion,
+        latest_version: NoteVersion,
+        evidence: Vec<StrategyTaskStepEvidence>,
+        requires_approval: bool,
+    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
         let repository = Arc::new(LinkNoteRepository {
-            source_note: source_note(),
+            source_note: source_note_with_kind(requires_approval.then(|| "sample-kind".into())),
             source_version,
             latest_version,
+            requires_approval,
             target: NoteLinkTarget {
                 id: TARGET_NOTE_ID,
                 current_version_id: Some(TARGET_VERSION_ID),
             },
             inserted_links: Mutex::new(Vec::new()),
             inserted_versions: Mutex::new(Vec::new()),
+            reference_replacements: Mutex::new(Vec::new()),
         });
         let evidence_repository = FakeStrategyTaskStepEvidenceRepository::new(evidence);
         let use_cases = NoteUseCases::new(
@@ -1049,6 +1074,183 @@ mod tests {
                 inserted_version_count,
             ),
             (Some(expected_error.into()), 0),
+        );
+    }
+
+    #[tokio::test]
+    async fn write_rejects_missing_graph_references_for_approval_required_notes() {
+        let (use_cases, repository) = make_approval_note_use_cases(source_version());
+        let result = use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: Some("[[graph:missing-chart]]".into()),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: Some("Update graph reference".into()),
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await
+            .map(|_| ());
+        let inserted_versions = repository.inserted_versions.lock().await.len();
+        let replacements = repository.reference_replacements.lock().await.clone();
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                inserted_versions,
+                replacements,
+            ),
+            (
+                Some(indoc! {"
+                    ノートのトークンに問題があります:
+                    - 本文のトークン \"[[graph:missing-chart]]\": 対応する graphs[].id がありません
+                    許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。
+                "}
+                .trim_end()
+                .to_string()),
+                0,
+                vec![],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn write_keeps_pending_graph_references_out_of_the_reference_table() {
+        let (use_cases, repository) = make_approval_note_use_cases(source_version());
+        let result = use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: Some("[[graph:sample-chart]]".into()),
+                frontmatter_json: None,
+                graphs_json: Some(json!([{
+                    "id": "sample-chart",
+                    "layout": "flow",
+                    "nodes": [],
+                    "edges": [],
+                }])),
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: Some("Update graph reference".into()),
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await
+            .map(|result| result.snapshot.version);
+        let mut inserted_versions = repository.inserted_versions.lock().await.clone();
+        for version in &mut inserted_versions {
+            version.id = Uuid::nil();
+        }
+        let replacements = repository.reference_replacements.lock().await.clone();
+
+        assert_eq!(
+            (
+                result
+                    .map(|mut version| {
+                        version.id = Uuid::nil();
+                        version
+                    })
+                    .map_err(|error| error.to_string()),
+                inserted_versions,
+                replacements,
+            ),
+            (
+                Ok(NoteVersion {
+                    id: Uuid::nil(),
+                    note_id: SOURCE_NOTE_ID,
+                    version_no: 2,
+                    title: "Updated title".into(),
+                    body_md: "[[graph:sample-chart]]".into(),
+                    frontmatter_json: json!({}),
+                    graphs_json: json!([{
+                        "id": "sample-chart",
+                        "layout": "flow",
+                        "nodes": [],
+                        "edges": [],
+                    }]),
+                    resolved_price_references_json: json!({}),
+                    status: INITIAL_NOTE_STATUS.into(),
+                    is_current: false,
+                    change_reason: Some("Update graph reference".into()),
+                    created_by_kind: "llm".into(),
+                    execution_id: None,
+                    created_at: timestamp(),
+                    reviewed_at: None,
+                }),
+                vec![NewNoteVersion {
+                    id: Uuid::nil(),
+                    note_id: SOURCE_NOTE_ID,
+                    version_no: 2,
+                    title: "Updated title".into(),
+                    body_md: "[[graph:sample-chart]]".into(),
+                    frontmatter_json: json!({}),
+                    graphs_json: json!([{
+                        "id": "sample-chart",
+                        "layout": "flow",
+                        "nodes": [],
+                        "edges": [],
+                    }]),
+                    resolved_price_references_json: json!({}),
+                    status: INITIAL_NOTE_STATUS.into(),
+                    is_current: false,
+                    change_reason: Some("Update graph reference".into()),
+                    created_by_kind: "llm".into(),
+                    execution_id: None,
+                }],
+                vec![],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn write_rejects_graphs_only_updates_that_remove_a_referenced_graph() {
+        let mut source_version = source_version();
+        source_version.body_md = "[[graph:sample-chart]]".into();
+        source_version.graphs_json = json!([{
+            "id": "sample-chart",
+            "layout": "flow",
+            "nodes": [],
+            "edges": [],
+        }]);
+        let (use_cases, repository) = make_approval_note_use_cases(source_version);
+        let result = use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: None,
+                frontmatter_json: None,
+                graphs_json: Some(json!([])),
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: Some("Update graph definition".into()),
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await
+            .map(|_| ())
+            .map_err(|error| matches!(error, NoteUseCaseError::Validation(_)));
+        let inserted_versions = repository.inserted_versions.lock().await.len();
+        let replacements = repository.reference_replacements.lock().await.clone();
+
+        assert_eq!(
+            (result, inserted_versions, replacements),
+            (Err(true), 0, vec![])
         );
     }
 }

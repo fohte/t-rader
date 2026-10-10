@@ -1117,30 +1117,31 @@ mod tests {
     async fn list_notes_skips_pending_versions_with_unparsable_refs(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        let strategy_id = insert_strategy(&db, "a").await;
-        insert_note_kind(&db, "sample-kind", true).await;
-        let server = build_server(db);
-        let mut graph = sample_graph("g1");
-        graph.nodes[0].r#ref = Some("unknown-kind:demo-id".into());
-        server
-            .write_note(
-                strategy_id,
-                None,
-                WriteNoteParams {
-                    note_id: None,
-                    title: Some("pending with invalid reference".into()),
-                    body_md: Some("[[stock:demo-code]]".into()),
-                    kind: Some(Some("sample-kind".into())),
-                    frontmatter_json: None,
-                    change_reason: None,
-                    graphs: Some(vec![graph]),
-                },
-            )
+        let server = build_server(db.clone());
+        let fixture = create_pending_note_fixture(&db, &server).await;
+        let latest_version = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(fixture.pending_note_id))
+            .order_by_desc(note_version::Column::VersionNo)
+            .one(&db)
             .await
-            .expect("write pending note with invalid reference");
+            .expect("find latest pending note version")
+            .expect("latest pending note version exists");
+
+        // 保存済みの旧データを再現するため、検証済みの保留版を DB 上で不正化する。
+        let mut graph = fixture.pending_graph;
+        graph.nodes[0].r#ref = Some("unknown-kind:demo-id".into());
+        note_version::ActiveModel {
+            id: Set(latest_version.id),
+            graphs_json: Set(serde_json::to_value(vec![graph]).expect("serialize invalid graph")),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("save invalid legacy graph reference");
+
         let result = server
             .list_notes(
-                strategy_id,
+                fixture.strategy_id,
                 ListNotesParams {
                     r#ref: Some("stock:demo-code".into()),
                     include_pending: Some(true),
