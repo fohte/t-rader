@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { CandlestickChart } from '#components/candlestick-chart'
+import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
@@ -31,7 +32,7 @@ function generateSampleBars(count: number): Bar[] {
     const volume = Math.floor(100000 + random() * 500000)
 
     bars.push({
-      instrument_id: '7203',
+      instrument_id: 'DEMO-JP-ALPHA',
       timeframe: '1d',
       timestamp: date.toISOString(),
       open: Number(open.toFixed(1)),
@@ -90,6 +91,33 @@ const meta = {
   ],
 } satisfies Meta<typeof CandlestickChart>
 
+const sampleAnnotations: ChartAnnotation[] = [
+  {
+    id: 'annotation-a',
+    target_kind: 'sample-kind',
+    status: 'unread',
+    timestamp: '2025-01-03T00:00:00.000Z',
+    price: 1512,
+    text: '価格線を表示するサンプル注釈です。',
+  },
+  {
+    id: 'annotation-b',
+    target_kind: 'sample-kind',
+    status: 'unread',
+    timestamp: '2025-01-03T09:00:00.000Z',
+    price: null,
+    text: '同じバーに置くサンプル注釈です。',
+  },
+  {
+    id: 'annotation-c',
+    target_kind: 'sample-kind',
+    status: 'approved',
+    timestamp: '2025-01-10T00:00:00.000Z',
+    price: null,
+    text: '別の日に置くサンプル注釈です。',
+  },
+]
+
 export default meta
 type Story = StoryObj<typeof meta>
 
@@ -135,6 +163,28 @@ export const Intraday: Story = {
     bars: generateSampleIntradayBars(30),
     currency: 'USD',
     intraday: true,
+    className: 'h-full w-full',
+  },
+}
+
+export const WithSelectedAnnotation: Story = {
+  name: 'shows a selected annotation price line and grouped band marker.',
+  args: {
+    bars: generateSampleBars(30),
+    annotations: sampleAnnotations,
+    selectedAnnotationId: 'annotation-a',
+    onSelectAnnotation: () => undefined,
+    className: 'h-full w-full',
+  },
+}
+
+export const SelectedAnnotationWithoutPrice: Story = {
+  name: 'highlights a selected annotation without a price line.',
+  args: {
+    bars: generateSampleBars(30),
+    annotations: sampleAnnotations,
+    selectedAnnotationId: 'annotation-b',
+    onSelectAnnotation: () => undefined,
     className: 'h-full w-full',
   },
 }
