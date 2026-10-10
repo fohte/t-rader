@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
 import { HistoryPanel } from '#components/note-detail/history-panel'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
+import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
 import { NoteLinksPanelView } from '#components/note-detail/note-links-panel'
 import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
 import { NoteVersionDiffPanel } from '#components/note-detail/note-version-diff-panel'
@@ -43,6 +44,7 @@ function NoteDetailPage() {
   const { version: requestedVersionNo, version_id: requestedVersionId } =
     Route.useSearch()
   const navigate = Route.useNavigate()
+  const noteBodyNavigation = createNoteBodyNavigationHandlers(navigate)
   const {
     data: versions,
     isPending: areVersionsPending,
@@ -108,6 +110,8 @@ function NoteDetailPage() {
             resolvedPriceReferences={
               selectedVersion.resolved_price_references_json
             }
+            onRef={noteBodyNavigation.onRef}
+            onAnno={noteBodyNavigation.onAnno}
           />
           <NoteVersionDiffPanel
             key={selectedVersion.id}

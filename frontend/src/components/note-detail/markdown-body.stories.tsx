@@ -157,3 +157,14 @@ export const WithGraph: Story = {
   name: 'renders a markdown note alongside an embedded graph.',
   args: { source: GRAPH_SAMPLE, graphs: [GRAPH_DEF] },
 }
+
+export const WithInteractiveReferences: Story = {
+  name: 'makes stock and annotation chips clickable while other refs stay plain.',
+  args: {
+    source:
+      '[[stock:demo-code]] [[indicator:demo-indicator]] [[group:demo-axis/demo-group]] [[anno:00000000-0000-0000-0000-000000000301]]\n\n[[graph:g1]]',
+    graphs: [GRAPH_DEF],
+    onRef: () => undefined,
+    onAnno: () => undefined,
+  },
+}

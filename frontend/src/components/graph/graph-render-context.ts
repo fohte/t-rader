@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 
 import type { Layout } from '#components/graph/types'
+import type { ResolvedRef } from '#hooks/use-resolve-ref'
 
 // React Flow の Node<T> の data は GraphNode そのものに固定する設計 (GraphNode 以外を
 // 入れたら型エラーにしたい)。hover 状態や cite 番号など描画専用の情報を data に混ぜず、
@@ -9,7 +10,7 @@ export interface GraphRenderContextValue {
   layout: Layout
   maxNodeValue: number
   citeNumbers: Map<string, number>
-  onOpenRef?: (token: string) => void
+  onOpenStockRef?: (token: string, resolved: ResolvedRef) => void
 }
 
 const GraphRenderContext = createContext<GraphRenderContextValue | null>(null)
