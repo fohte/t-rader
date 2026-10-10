@@ -18,6 +18,7 @@ mod graph_dto;
 pub(super) mod holdings;
 pub(super) mod macro_indicator;
 pub(super) mod margin;
+pub(super) mod movers;
 pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod paper_trade;

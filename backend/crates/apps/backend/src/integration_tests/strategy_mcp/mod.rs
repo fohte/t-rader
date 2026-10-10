@@ -16,6 +16,7 @@ mod eval;
 mod eval_indicator;
 mod holdings;
 mod japanese_stock_only;
+mod list_movers;
 mod list_notes_group_refs;
 mod macro_indicator;
 mod news;

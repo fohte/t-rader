@@ -12,6 +12,7 @@ use core_application::indicator_observation::IndicatorObservationUseCases;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::margin::MarginUseCases;
+use core_application::market_movers::MarketMoversUseCases;
 use core_application::mcp_tool_call_count::McpToolCallCountUseCases;
 use core_application::news::NewsUseCases;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
@@ -48,6 +49,7 @@ pub struct StrategyServerDependencies {
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_client: Option<SharedLlmClient>,
     pub margins: MarginUseCases,
+    pub market_movers: MarketMoversUseCases,
     pub mcp_tool_call_counts: McpToolCallCountUseCases,
     pub news: NewsUseCases,
     pub note_kinds: NoteKindUseCases,
