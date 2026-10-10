@@ -31,6 +31,8 @@ pub struct UsStockBarTarget {
     pub instrument_id: String,
     pub latest_daily_bar: Option<DateTime<Utc>>,
     pub latest_minute_bar: Option<DateTime<Utc>>,
+    pub earliest_daily_bar: Option<DateTime<Utc>>,
+    pub earliest_minute_bar: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]

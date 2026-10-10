@@ -6,17 +6,17 @@
 
 ## Columns
 
-| Name              | Type                     | Default | Nullable | Children | Parents                                     | Comment                                            |
-| ----------------- | ------------------------ | ------- | -------- | -------- | ------------------------------------------- | -------------------------------------------------- |
-| instrument_id     | varchar                  |         | false    |          | [public.instruments](public.instruments.md) | バーの銘柄コード。                                 |
-| timeframe         | varchar                  |         | false    |          |                                             | バーの時間足。現行スキーマは日足のみ。             |
-| timestamp         | timestamp with time zone |         | false    |          |                                             | バーの時刻。                                       |
-| open              | numeric                  |         | false    |          |                                             | 調整後の始値。                                     |
-| high              | numeric                  |         | false    |          |                                             | 調整後の高値。                                     |
-| low               | numeric                  |         | false    |          |                                             | 調整後の安値。                                     |
-| close             | numeric                  |         | false    |          |                                             | 調整後の終値。                                     |
-| volume            | bigint                   |         | false    |          |                                             | 調整後の出来高。                                   |
-| adjustment_factor | numeric                  | 1       | false    |          |                                             | 価格調整の発生日に J-Quants が返す日足の調整係数。 |
+| Name              | Type                     | Default | Nullable | Children | Parents                                     | Comment                                                                                               |
+| ----------------- | ------------------------ | ------- | -------- | -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| instrument_id     | varchar                  |         | false    |          | [public.instruments](public.instruments.md) | バーの銘柄コード。                                                                                    |
+| timeframe         | varchar                  |         | false    |          |                                             | バーの時間足。現行スキーマは日足のみ。                                                                |
+| timestamp         | timestamp with time zone |         | false    |          |                                             | バーの時刻。                                                                                          |
+| open              | numeric                  |         | false    |          |                                             | 調整後の始値。                                                                                        |
+| high              | numeric                  |         | false    |          |                                             | 調整後の高値。                                                                                        |
+| low               | numeric                  |         | false    |          |                                             | 調整後の安値。                                                                                        |
+| close             | numeric                  |         | false    |          |                                             | 調整後の終値。                                                                                        |
+| volume            | bigint                   |         | false    |          |                                             | 調整後の出来高。                                                                                      |
+| adjustment_factor | numeric                  | 1       | false    |          |                                             | 価格調整の発生日の日足に付与する係数。国内株は J-Quants、米国株は Alpaca の株式分割比率から設定する。 |
 
 ## Constraints
 

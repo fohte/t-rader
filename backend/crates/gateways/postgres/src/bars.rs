@@ -133,6 +133,8 @@ impl BarsRepository for PostgresBarsRepository {
             instrument_id: String,
             latest_daily_bar: Option<DateTime<FixedOffset>>,
             latest_minute_bar: Option<DateTime<FixedOffset>>,
+            earliest_daily_bar: Option<DateTime<FixedOffset>>,
+            earliest_minute_bar: Option<DateTime<FixedOffset>>,
         }
 
         let rows = self
@@ -142,7 +144,9 @@ impl BarsRepository for PostgresBarsRepository {
                 r#"SELECT
                     instruments.id AS instrument_id,
                     daily_bar.timestamp AS latest_daily_bar,
-                    minute_bar.timestamp AS latest_minute_bar
+                    minute_bar.timestamp AS latest_minute_bar,
+                    earliest_daily_bar.timestamp AS earliest_daily_bar,
+                    earliest_minute_bar.timestamp AS earliest_minute_bar
                 FROM instruments
                 LEFT JOIN LATERAL (
                     SELECT timestamp
@@ -153,11 +157,25 @@ impl BarsRepository for PostgresBarsRepository {
                 ) AS daily_bar ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT timestamp
+                    FROM bars
+                    WHERE instrument_id = instruments.id AND timeframe = '1d'
+                    ORDER BY timestamp ASC
+                    LIMIT 1
+                ) AS earliest_daily_bar ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT timestamp
                     FROM minute_bars
                     WHERE instrument_id = instruments.id
                     ORDER BY timestamp DESC
                     LIMIT 1
                 ) AS minute_bar ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT timestamp
+                    FROM minute_bars
+                    WHERE instrument_id = instruments.id
+                    ORDER BY timestamp ASC
+                    LIMIT 1
+                ) AS earliest_minute_bar ON TRUE
                 WHERE instruments.market = 'US'
                   AND (
                     EXISTS (
@@ -182,6 +200,10 @@ impl BarsRepository for PostgresBarsRepository {
                     instrument_id: row.instrument_id,
                     latest_daily_bar: row.latest_daily_bar.map(|timestamp| timestamp.to_utc()),
                     latest_minute_bar: row.latest_minute_bar.map(|timestamp| timestamp.to_utc()),
+                    earliest_daily_bar: row.earliest_daily_bar.map(|timestamp| timestamp.to_utc()),
+                    earliest_minute_bar: row
+                        .earliest_minute_bar
+                        .map(|timestamp| timestamp.to_utc()),
                 })
             })
             .collect()
@@ -527,11 +549,23 @@ mod tests {
                     instrument_id: group_stock_id,
                     latest_daily_bar: Some(daily_latest),
                     latest_minute_bar: Some(minute_latest),
+                    earliest_daily_bar: Some(
+                        Utc.with_ymd_and_hms(2040, 1, 1, 0, 0, 0)
+                            .single()
+                            .expect("earliest daily timestamp"),
+                    ),
+                    earliest_minute_bar: Some(
+                        Utc.with_ymd_and_hms(2040, 1, 2, 15, 3, 0)
+                            .single()
+                            .expect("earliest minute timestamp"),
+                    ),
                 },
                 UsStockBarTarget {
                     instrument_id: note_stock_id,
                     latest_daily_bar: Some(note_daily_latest),
                     latest_minute_bar: None,
+                    earliest_daily_bar: Some(note_daily_latest),
+                    earliest_minute_bar: None,
                 },
             ],
         );

@@ -126,6 +126,20 @@ impl BarsRepository for FakeBarsRepository {
                     })
                     .max_by_key(|bar| bar.timestamp)
                     .map(|bar| bar.timestamp),
+                earliest_daily_bar: daily_bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Daily
+                    })
+                    .min_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                earliest_minute_bar: minute_bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
+                    })
+                    .min_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
                 instrument_id,
             })
             .collect::<Vec<_>>();

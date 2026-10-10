@@ -294,7 +294,7 @@ comments:
       low: '調整後の安値。'
       close: '調整後の終値。'
       volume: '調整後の出来高。'
-      adjustment_factor: '価格調整の発生日に J-Quants が返す日足の調整係数。'
+      adjustment_factor: '価格調整の発生日の日足に付与する係数。国内株は J-Quants、米国株は Alpaca の株式分割比率から設定する。'
   - table: minute_bars
     tableComment: '銘柄ごとの 1 分足価格と出来高を保持する。'
     columnComments:
