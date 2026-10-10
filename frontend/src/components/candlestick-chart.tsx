@@ -114,9 +114,6 @@ export function CandlestickChart({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
     })
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
-    })
     volumeSeriesRef.current = volumeSeries
 
     isInitialDataRef.current = true
