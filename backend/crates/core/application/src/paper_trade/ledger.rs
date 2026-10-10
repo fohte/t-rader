@@ -1,11 +1,12 @@
 use std::collections::{HashMap, VecDeque};
 
 use chrono::NaiveDate;
+use core_domain::bar::Bar;
 use rust_decimal::Decimal;
 
 use super::{
     PaperAccount, PaperOrderSide, PaperOrderWithResult, PaperTradeUseCaseError,
-    types::PaperOrderResult,
+    adjustment::adjusted_quantity, types::PaperOrderResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,11 +49,34 @@ impl PaperTradeLedger {
             })
         })
     }
+
+    fn apply_split(&mut self, split_bar: &Bar) -> Result<(), PaperTradeUseCaseError> {
+        if split_bar.adjustment_factor <= Decimal::ZERO {
+            return Err(PaperTradeUseCaseError::Validation(
+                "split adjustment factor must be positive".into(),
+            ));
+        }
+        let Some(lots) = self.lots_by_stock.get_mut(&split_bar.instrument_id) else {
+            return Ok(());
+        };
+        for lot in lots.iter_mut() {
+            lot.qty = adjusted_quantity(lot.qty, split_bar.adjustment_factor)?;
+            lot.fill_price = lot
+                .fill_price
+                .checked_mul(split_bar.adjustment_factor)
+                .ok_or_else(|| {
+                    PaperTradeUseCaseError::Validation("paper fill price overflowed".into())
+                })?;
+        }
+        lots.retain(|lot| lot.qty > 0);
+        Ok(())
+    }
 }
 
 pub(super) fn replay_fills(
     account: &PaperAccount,
     orders: &[PaperOrderWithResult],
+    split_bars: &[Bar],
 ) -> Result<PaperTradeLedger, PaperTradeUseCaseError> {
     let mut events = orders
         .iter()
@@ -71,6 +95,15 @@ pub(super) fn replay_fills(
             .then_with(|| left.order.ordered_at.cmp(&right.order.ordered_at))
             .then_with(|| left.order.id.cmp(&right.order.id))
     });
+    let mut split_bars = split_bars
+        .iter()
+        .filter(|bar| bar.adjustment_factor != Decimal::ONE)
+        .collect::<Vec<_>>();
+    split_bars.sort_by(|left, right| {
+        left.timestamp
+            .cmp(&right.timestamp)
+            .then_with(|| left.instrument_id.cmp(&right.instrument_id))
+    });
 
     let mut ledger = PaperTradeLedger {
         cash_jpy: account.initial_cash_jpy,
@@ -78,7 +111,16 @@ pub(super) fn replay_fills(
         closed_trades: Vec::new(),
     };
 
+    let mut next_split = 0;
     for (item, fill_date, fill_price) in events {
+        // 権利落ち日の始値は分割後基準なので、同日の約定より先に既存保有分を調整する。
+        while split_bars
+            .get(next_split)
+            .is_some_and(|bar| bar.timestamp.date_naive() <= fill_date)
+        {
+            ledger.apply_split(split_bars[next_split])?;
+            next_split += 1;
+        }
         let quantity = Decimal::from(item.order.qty);
         let amount = fill_price.checked_mul(quantity).ok_or_else(|| {
             PaperTradeUseCaseError::Validation("paper order value overflowed".into())
@@ -135,6 +177,10 @@ pub(super) fn replay_fills(
                 ledger.closed_trades.push(ClosedTrade { matches });
             }
         }
+    }
+
+    for split_bar in split_bars.into_iter().skip(next_split) {
+        ledger.apply_split(split_bar)?;
     }
 
     Ok(ledger)
