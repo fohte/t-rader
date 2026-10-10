@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{NaiveDate, NaiveTime};
+use chrono::NaiveDate;
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -10,7 +10,7 @@ use crate::bars::BarsByInstrumentsQuery;
 use super::{
     PaperAccount, PaperOrderWithResult, PaperTradeAccountStats, PaperTradeUseCaseError,
     PaperTradeUseCases,
-    adjustment::load_split_bars_for_orders,
+    adjustment::{load_split_bars_for_orders, utc_midnight},
     ledger::{ClosedTrade, PaperTradeLedger, replay_fills},
     portfolio::position,
 };
@@ -230,10 +230,6 @@ fn index_bars_by_instrument_and_date(bars: Vec<Bar>) -> HashMap<String, HashMap<
             .insert(bar.timestamp.date_naive(), bar);
     }
     indexed
-}
-
-fn utc_midnight(date: NaiveDate) -> chrono::DateTime<chrono::FixedOffset> {
-    date.and_time(NaiveTime::MIN).and_utc().fixed_offset()
 }
 
 #[cfg(all(test, feature = "test-support"))]

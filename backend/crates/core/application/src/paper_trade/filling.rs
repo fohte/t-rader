@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime};
+use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -9,7 +9,8 @@ use crate::bars::BarsQuery;
 
 use super::{
     PaperOrder, PaperOrderRejectReason, PaperOrderResult, PaperOrderSide, PaperTradeFillStats,
-    PaperTradeUseCaseError, PaperTradeUseCases, adjustment::adjusted_quantity,
+    PaperTradeUseCaseError, PaperTradeUseCases,
+    adjustment::{SplitCursor, adjusted_quantity, utc_midnight},
 };
 
 #[derive(Clone)]
@@ -90,11 +91,6 @@ impl Position {
         stock_id: &str,
         adjustment_factor: Decimal,
     ) -> Result<(), PaperTradeUseCaseError> {
-        if adjustment_factor <= Decimal::ZERO {
-            return Err(PaperTradeUseCaseError::Validation(
-                "split adjustment factor must be positive".into(),
-            ));
-        }
         if let Some(shares) = self.shares.get_mut(stock_id) {
             *shares = adjusted_quantity(*shares, adjustment_factor)?;
         }
@@ -363,30 +359,14 @@ fn replay_account(
             .then_with(|| left.order().ordered_at.cmp(&right.order().ordered_at))
             .then_with(|| left.order().id.cmp(&right.order().id))
     });
-    let mut split_bars = bars_by_stock
-        .values()
-        .flatten()
-        .filter(|bar| bar.adjustment_factor != Decimal::ONE)
-        .collect::<Vec<_>>();
-    split_bars.sort_by(|left, right| {
-        left.timestamp
-            .cmp(&right.timestamp)
-            .then_with(|| left.instrument_id.cmp(&right.instrument_id))
-    });
+    let mut split_cursor = SplitCursor::new(bars_by_stock.values().flatten())?;
     let mut position = Position::new(account.initial_cash_jpy);
     let mut results = Vec::new();
-    let mut next_split = 0;
     for event in events {
         let fill_date = event.fill_date();
-        // 権利落ち日の始値は分割後基準なので、同日の約定より先に既存保有分を調整する。
-        while split_bars
-            .get(next_split)
-            .is_some_and(|bar| bar.timestamp.date_naive() <= fill_date)
-        {
-            let split_bar = split_bars[next_split];
-            position.apply_split(&split_bar.instrument_id, split_bar.adjustment_factor)?;
-            next_split += 1;
-        }
+        split_cursor.apply_through(fill_date, |bar| {
+            position.apply_split(&bar.instrument_id, bar.adjustment_factor)
+        })?;
         match event {
             FillEvent::Recorded {
                 order, fill_price, ..
@@ -404,10 +384,6 @@ fn japan_date(datetime: DateTime<FixedOffset>) -> Result<NaiveDate, PaperTradeUs
         PaperTradeUseCaseError::Validation("Japan timezone offset is invalid".into())
     })?;
     Ok(datetime.with_timezone(&offset).date_naive())
-}
-
-fn utc_midnight(date: NaiveDate) -> DateTime<FixedOffset> {
-    date.and_time(NaiveTime::MIN).and_utc().fixed_offset()
 }
 
 fn order_cost(order: &PaperOrder, fill_price: Decimal) -> Result<Decimal, PaperTradeUseCaseError> {

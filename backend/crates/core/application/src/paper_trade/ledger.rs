@@ -6,7 +6,8 @@ use rust_decimal::Decimal;
 
 use super::{
     PaperAccount, PaperOrderSide, PaperOrderWithResult, PaperTradeUseCaseError,
-    adjustment::adjusted_quantity, types::PaperOrderResult,
+    adjustment::{SplitCursor, adjusted_quantity},
+    types::PaperOrderResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,11 +52,6 @@ impl PaperTradeLedger {
     }
 
     fn apply_split(&mut self, split_bar: &Bar) -> Result<(), PaperTradeUseCaseError> {
-        if split_bar.adjustment_factor <= Decimal::ZERO {
-            return Err(PaperTradeUseCaseError::Validation(
-                "split adjustment factor must be positive".into(),
-            ));
-        }
         let Some(lots) = self.lots_by_stock.get_mut(&split_bar.instrument_id) else {
             return Ok(());
         };
@@ -95,15 +91,7 @@ pub(super) fn replay_fills(
             .then_with(|| left.order.ordered_at.cmp(&right.order.ordered_at))
             .then_with(|| left.order.id.cmp(&right.order.id))
     });
-    let mut split_bars = split_bars
-        .iter()
-        .filter(|bar| bar.adjustment_factor != Decimal::ONE)
-        .collect::<Vec<_>>();
-    split_bars.sort_by(|left, right| {
-        left.timestamp
-            .cmp(&right.timestamp)
-            .then_with(|| left.instrument_id.cmp(&right.instrument_id))
-    });
+    let mut split_cursor = SplitCursor::new(split_bars.iter())?;
 
     let mut ledger = PaperTradeLedger {
         cash_jpy: account.initial_cash_jpy,
@@ -111,16 +99,8 @@ pub(super) fn replay_fills(
         closed_trades: Vec::new(),
     };
 
-    let mut next_split = 0;
     for (item, fill_date, fill_price) in events {
-        // 権利落ち日の始値は分割後基準なので、同日の約定より先に既存保有分を調整する。
-        while split_bars
-            .get(next_split)
-            .is_some_and(|bar| bar.timestamp.date_naive() <= fill_date)
-        {
-            ledger.apply_split(split_bars[next_split])?;
-            next_split += 1;
-        }
+        split_cursor.apply_through(fill_date, |bar| ledger.apply_split(bar))?;
         let quantity = Decimal::from(item.order.qty);
         let amount = fill_price.checked_mul(quantity).ok_or_else(|| {
             PaperTradeUseCaseError::Validation("paper order value overflowed".into())
@@ -179,9 +159,7 @@ pub(super) fn replay_fills(
         }
     }
 
-    for split_bar in split_bars.into_iter().skip(next_split) {
-        ledger.apply_split(split_bar)?;
-    }
+    split_cursor.apply_remaining(|bar| ledger.apply_split(bar))?;
 
     Ok(ledger)
 }
