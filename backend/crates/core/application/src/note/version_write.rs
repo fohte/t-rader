@@ -76,6 +76,16 @@ impl NoteUseCases {
         let body_changed = previous_content
             .as_ref()
             .is_none_or(|previous| previous.body_md != content.body_md);
+        let graphs_changed = previous_content
+            .as_ref()
+            .is_none_or(|previous| previous.graphs_json != content.graphs_json);
+        if requires_approval && (body_changed || graphs_changed) {
+            let _ = collect_note_references(
+                &content.body_md,
+                &content.graphs_json,
+                core_domain::note_reference::BodyTokenPolicy::Validate,
+            )?;
+        }
         let resolved_price_references_json = if references.is_empty() {
             Value::Object(Map::new())
         } else if content.execution_id.is_none()
@@ -157,9 +167,6 @@ impl NoteUseCases {
             .update_note_timestamp(transaction, note.id, Utc::now().fixed_offset())
             .await?;
 
-        let graphs_changed = previous_content
-            .as_ref()
-            .is_none_or(|previous| previous.graphs_json != version.graphs_json);
         if body_changed {
             if becomes_current {
                 self.sync_note_references(
@@ -299,22 +306,7 @@ impl NoteUseCases {
         graphs_json: &Value,
         body_token_policy: core_domain::note_reference::BodyTokenPolicy,
     ) -> Result<(), NoteUseCaseError> {
-        let graphs: Vec<core_domain::note_graph::GraphDef> =
-            serde_json::from_value(graphs_json.clone()).map_err(|error| {
-                NoteUseCaseError::Validation(format!("invalid graphs_json: {error}"))
-            })?;
-        let mut references = core_domain::note_reference::collect_note_refs_with_policy(
-            body_md,
-            &graphs,
-            body_token_policy,
-        )
-        .map_err(|errors| {
-            NoteUseCaseError::Validation(core_domain::note_reference::format_note_token_errors(
-                &errors,
-            ))
-        })?;
-        references.sort();
-        references.dedup();
+        let references = collect_note_references(body_md, graphs_json, body_token_policy)?;
         self.repository
             .replace_references(transaction, note_id, references)
             .await?;
@@ -388,6 +380,30 @@ impl NoteUseCases {
             .await?;
         Ok(())
     }
+}
+
+fn collect_note_references(
+    body_md: &str,
+    graphs_json: &Value,
+    body_token_policy: core_domain::note_reference::BodyTokenPolicy,
+) -> Result<Vec<(String, String)>, NoteUseCaseError> {
+    let graphs: Vec<core_domain::note_graph::GraphDef> =
+        serde_json::from_value(graphs_json.clone()).map_err(|error| {
+            NoteUseCaseError::Validation(format!("invalid graphs_json: {error}"))
+        })?;
+    let mut references = core_domain::note_reference::collect_note_refs_with_policy(
+        body_md,
+        &graphs,
+        body_token_policy,
+    )
+    .map_err(|errors| {
+        NoteUseCaseError::Validation(core_domain::note_reference::format_note_token_errors(
+            &errors,
+        ))
+    })?;
+    references.sort();
+    references.dedup();
+    Ok(references)
 }
 
 fn has_resolutions(
