@@ -10,6 +10,7 @@ output-options:
     - agent_config
     - custom_indicators
     - note_kinds
+    - paper_accounts
     - group_axes
     - rss_feeds
     - strategies
