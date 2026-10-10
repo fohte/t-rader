@@ -4,6 +4,12 @@ use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DailyBarAdjustmentFactor {
+    pub date: NaiveDate,
+    pub factor: Decimal,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BarsQuery {
     pub instrument_id: String,

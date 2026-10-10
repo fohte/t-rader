@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{BarsByInstrumentsQuery, BarsQuery, UsStockBarTarget};
+use super::types::{BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget};
 
 #[derive(Debug, Error)]
 pub enum BarsRepositoryError {
@@ -32,6 +32,12 @@ pub trait BarsRepository: Send + Sync {
         instrument_id: &str,
         timeframe: &str,
     ) -> Result<Option<Bar>, BarsRepositoryError>;
+
+    async fn find_daily_adjustment_factors_from(
+        &self,
+        instrument_id: &str,
+        from: NaiveDate,
+    ) -> Result<Vec<DailyBarAdjustmentFactor>, BarsRepositoryError>;
 
     async fn find_us_stock_bar_targets(&self)
     -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;

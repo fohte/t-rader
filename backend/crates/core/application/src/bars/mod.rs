@@ -13,8 +13,8 @@ mod fake;
 pub use error::BarsUseCaseError;
 pub use repository::{BarsRepository, BarsRepositoryError, SharedBarsRepository};
 pub use types::{
-    BarsByInstrumentsQuery, BarsQuery, IngestStats, LatestPrices, UsStockBarTarget,
-    UsStockBarsIngestStats,
+    BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, IngestStats, LatestPrices,
+    UsStockBarTarget, UsStockBarsIngestStats,
 };
 pub use us_stock_source::{
     SharedUsStockBarSource, UsStockBarPage, UsStockBarQuery, UsStockBarSource,

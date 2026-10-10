@@ -1,3 +1,7 @@
+mod daily_adjustment_factors;
+
+pub use daily_adjustment_factors::find_daily_adjustment_factors_from;
+
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;

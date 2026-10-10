@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{BarsRepository, BarsRepositoryError};
-use super::types::{BarsByInstrumentsQuery, BarsQuery, UsStockBarTarget};
+use super::types::{BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget};
 
 #[derive(Default)]
 pub struct FakeBarsRepository {
@@ -19,6 +19,8 @@ pub struct FakeBarsRepository {
     pub instruments: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
+    pub daily_adjustment_factors: Mutex<Vec<DailyBarAdjustmentFactor>>,
+    pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
 }
 
 impl FakeBarsRepository {
@@ -40,6 +42,10 @@ impl FakeBarsRepository {
 
     pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
         self.us_stock_targets.lock().await.extend(instrument_ids);
+    }
+
+    pub async fn seed_daily_adjustment_factors(&self, factors: Vec<DailyBarAdjustmentFactor>) {
+        self.daily_adjustment_factors.lock().await.extend(factors);
     }
 
     async fn all_bars(&self) -> Vec<Bar> {
@@ -101,6 +107,25 @@ impl BarsRepository for FakeBarsRepository {
             })
             .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
             .cloned())
+    }
+
+    async fn find_daily_adjustment_factors_from(
+        &self,
+        instrument_id: &str,
+        from: NaiveDate,
+    ) -> Result<Vec<DailyBarAdjustmentFactor>, BarsRepositoryError> {
+        self.daily_adjustment_factor_queries
+            .lock()
+            .await
+            .push((instrument_id.to_owned(), from));
+        Ok(self
+            .daily_adjustment_factors
+            .lock()
+            .await
+            .iter()
+            .filter(|factor| factor.date >= from)
+            .copied()
+            .collect())
     }
 
     async fn find_us_stock_bar_targets(

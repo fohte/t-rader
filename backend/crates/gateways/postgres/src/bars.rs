@@ -125,6 +125,16 @@ impl BarsRepository for PostgresBarsRepository {
             .map_err(repository_error)
     }
 
+    async fn find_daily_adjustment_factors_from(
+        &self,
+        instrument_id: &str,
+        from: NaiveDate,
+    ) -> Result<Vec<core_application::bars::DailyBarAdjustmentFactor>, BarsRepositoryError> {
+        bar_queries::find_daily_adjustment_factors_from(&self.db, instrument_id, from)
+            .await
+            .map_err(repository_error)
+    }
+
     async fn find_us_stock_bar_targets(
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
@@ -315,8 +325,10 @@ fn repository_error(error: sea_orm::DbErr) -> BarsRepositoryError {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-    use core_application::bars::{BarsQuery, BarsRepository, UsStockBarTarget};
+    use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
+    use core_application::bars::{
+        BarsQuery, BarsRepository, DailyBarAdjustmentFactor, UsStockBarTarget,
+    };
     use core_application::unit_of_work::UnitOfWork;
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
@@ -325,11 +337,15 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::entities::{
-        group_axis, instruments, note, note_ref, stock, stock_group, stock_group_member,
+        bars, group_axis, instruments, note, note_ref, stock, stock_group, stock_group_member,
     };
     use crate::{DatabaseHandle, PostgresUnitOfWork};
 
     use super::PostgresBarsRepository;
+
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
+    }
 
     #[backend_test_macros::database_test]
     async fn writes_bars_and_ingest_dates_through_the_same_transaction(db: DatabaseHandle) {
@@ -382,6 +398,66 @@ mod tests {
             .expect("find ingested dates");
 
         assert_eq!((bars, ingested_dates), (vec![bar], HashSet::from([date])),);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn finds_daily_adjustment_factors_from_the_requested_date(db: DatabaseHandle) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
+        let instrument_id = suffix[..4].to_string();
+        let other_instrument_id = suffix[4..8].to_string();
+        for id in [&instrument_id, &other_instrument_id] {
+            instruments::Entity::insert(instruments::ActiveModel {
+                id: Set(id.to_string()),
+                name: Set(id.to_string()),
+                market: Set("TSE".to_string()),
+                sector: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert instrument");
+        }
+
+        let bar = |instrument_id: &str, date: NaiveDate, factor: Decimal| bars::ActiveModel {
+            instrument_id: Set(instrument_id.to_string()),
+            timeframe: Set("1d".to_string()),
+            timestamp: Set(date.and_time(NaiveTime::MIN).and_utc().fixed_offset()),
+            open: Set(Decimal::new(100, 0)),
+            high: Set(Decimal::new(100, 0)),
+            low: Set(Decimal::new(100, 0)),
+            close: Set(Decimal::new(100, 0)),
+            volume: Set(1),
+            adjustment_factor: Set(factor),
+        };
+        bars::Entity::insert_many(vec![
+            bar(&instrument_id, date(2099, 1, 1), Decimal::new(5, 1)),
+            bar(&instrument_id, date(2099, 1, 2), Decimal::ONE),
+            bar(&instrument_id, date(2099, 1, 5), Decimal::new(5, 1)),
+            bar(&instrument_id, date(2099, 2, 3), Decimal::new(25, 2)),
+            bar(&other_instrument_id, date(2099, 1, 7), Decimal::new(2, 1)),
+        ])
+        .exec_without_returning(&db)
+        .await
+        .expect("insert daily bars");
+
+        let repository = PostgresBarsRepository::new(db);
+        let factors = repository
+            .find_daily_adjustment_factors_from(&instrument_id, date(2099, 1, 2))
+            .await
+            .expect("find adjustment factors");
+
+        assert_eq!(
+            factors,
+            vec![
+                DailyBarAdjustmentFactor {
+                    date: date(2099, 1, 5),
+                    factor: Decimal::new(5, 1),
+                },
+                DailyBarAdjustmentFactor {
+                    date: date(2099, 2, 3),
+                    factor: Decimal::new(25, 2),
+                },
+            ],
+        );
     }
 
     #[backend_test_macros::database_test]
