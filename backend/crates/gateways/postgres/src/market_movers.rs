@@ -29,11 +29,17 @@ const LIST_MOVERS_SQL: &str = r#"
         ORDER BY instrument_id, timestamp DESC
     ),
     start_prices AS (
-        SELECT DISTINCT ON (instrument_id) instrument_id, close
-        FROM bars
-        WHERE timeframe = '1d'
-          AND timestamp < ($2::date::timestamp AT TIME ZONE 'UTC')
-        ORDER BY instrument_id, timestamp DESC
+        SELECT candidates.instrument_id, previous_bar.close
+        FROM avg_turnover AS candidates
+        CROSS JOIN LATERAL (
+            SELECT bars.close
+            FROM bars
+            WHERE bars.instrument_id = candidates.instrument_id
+              AND bars.timeframe = '1d'
+              AND bars.timestamp < ($2::date::timestamp AT TIME ZONE 'UTC')
+            ORDER BY bars.timestamp DESC
+            LIMIT 1
+        ) AS previous_bar
     ),
     activity AS (
         SELECT evidence.source_ref AS instrument_id, evidence.observed_at AS seen_at,
@@ -153,6 +159,7 @@ impl PostgresMarketMoversQuerySource {
 impl MarketMoversQuerySource for PostgresMarketMoversQuerySource {
     async fn list_movers(
         &self,
+        strategy_id: uuid::Uuid,
         query: MarketMoversQuery,
     ) -> Result<Vec<MarketMover>, MarketMoversQueryError> {
         let rows = self
@@ -161,12 +168,12 @@ impl MarketMoversQuerySource for PostgresMarketMoversQuerySource {
                 DatabaseBackend::Postgres,
                 LIST_MOVERS_SQL,
                 [
-                    query.strategy_id.into(),
+                    strategy_id.into(),
                     query.from.into(),
                     query.to.into(),
                     query.min_avg_turnover.into(),
                     query.direction.as_str().into(),
-                    (query.limit.min(i64::MAX as u64) as i64).into(),
+                    i64::from(query.limit).into(),
                 ],
             ))
             .await

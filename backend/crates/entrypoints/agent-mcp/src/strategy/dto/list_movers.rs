@@ -29,7 +29,7 @@ pub struct ListMoversParams {
     pub to: NaiveDate,
     /// 値上がり / 値下がり / 騰落率の絶対値で並べる。
     pub direction: ListMoversDirection,
-    /// 期間内の平均売買代金の下限 (円)。省略時は下限なし。
+    /// 期間内の平均売買代金の下限 (銘柄ごとの通貨単位)。省略時は下限なし。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_avg_turnover: Option<f64>,
     /// 返却行数 (1〜100)。省略時は 50。
@@ -44,7 +44,7 @@ pub struct ListMoverDto {
     pub name: String,
     /// 小数比率。0.05 は 5% を表す。
     pub change_rate: f64,
-    /// 期間内の 1 営業日あたり平均売買代金 (円)。
+    /// 期間内の 1 営業日あたり平均売買代金 (銘柄ごとの通貨単位)。
     pub avg_turnover: f64,
     pub first_seen_at: Option<DateTime<FixedOffset>>,
     pub seen_via: Option<String>,

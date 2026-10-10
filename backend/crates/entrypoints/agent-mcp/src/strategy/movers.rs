@@ -10,7 +10,6 @@ use super::dto::{ListMoverDto, ListMoversParams, ListMoversResult};
 use super::{StrategyServer, internal_error, invalid_params};
 
 const DEFAULT_LIST_MOVERS_LIMIT: u32 = 50;
-const MAX_LIST_MOVERS_LIMIT: u32 = 100;
 
 impl StrategyServer {
     pub(crate) async fn list_movers_inner(
@@ -18,15 +17,9 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ListMoversParams,
     ) -> Result<ListMoversResult, McpError> {
-        if params.from > params.to {
-            return Err(invalid_params("from must be on or before to"));
-        }
-
         let min_avg_turnover = match params.min_avg_turnover {
-            Some(value) if !value.is_finite() || value < 0.0 => {
-                return Err(invalid_params(
-                    "min_avg_turnover must be a non-negative number",
-                ));
+            Some(value) if !value.is_finite() => {
+                return Err(invalid_params("min_avg_turnover must be a finite number"));
             }
             Some(value) => Decimal::from_f64(value)
                 .ok_or_else(|| invalid_params("min_avg_turnover is out of range"))?,
@@ -34,29 +27,22 @@ impl StrategyServer {
         };
 
         let limit = params.limit.unwrap_or(DEFAULT_LIST_MOVERS_LIMIT);
-        if limit == 0 || limit > MAX_LIST_MOVERS_LIMIT {
-            return Err(invalid_params(format!(
-                "limit must be between 1 and {MAX_LIST_MOVERS_LIMIT}"
-            )));
-        }
-
         let scope = scope.into();
         let rows = self
             .dependencies
             .market_movers
-            .list_movers(MarketMoversQuery {
-                strategy_id: scope.id(),
-                from: params.from,
-                to: params.to,
-                direction: MarketMoverDirection::from(params.direction),
-                min_avg_turnover,
-                limit: u64::from(limit),
-            })
+            .list_movers(
+                scope,
+                MarketMoversQuery {
+                    from: params.from,
+                    to: params.to,
+                    direction: MarketMoverDirection::from(params.direction),
+                    min_avg_turnover,
+                    limit,
+                },
+            )
             .await
-            .map_err(|error: MarketMoversUseCaseError| {
-                tracing::error!(error = %error, "strategy mcp market movers query failed");
-                internal_error(format!("database error: {error}"))
-            })?;
+            .map_err(market_movers_use_case_error)?;
 
         Ok(ListMoversResult {
             movers: rows
@@ -71,5 +57,21 @@ impl StrategyServer {
                 })
                 .collect(),
         })
+    }
+}
+
+fn market_movers_use_case_error(error: MarketMoversUseCaseError) -> McpError {
+    match error {
+        MarketMoversUseCaseError::InvalidDateRange => {
+            invalid_params("from must be on or before to")
+        }
+        MarketMoversUseCaseError::InvalidLimit => invalid_params("limit must be between 1 and 100"),
+        MarketMoversUseCaseError::InvalidMinAvgTurnover => {
+            invalid_params("min_avg_turnover must be a non-negative number")
+        }
+        other => {
+            tracing::error!(error = %other, "strategy mcp market movers query failed");
+            internal_error(format!("database error: {other}"))
+        }
     }
 }

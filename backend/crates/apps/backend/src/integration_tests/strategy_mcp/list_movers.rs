@@ -260,6 +260,13 @@ async fn seed_movers(db: &gateway_postgres::DatabaseHandle, strategy_id: Uuid) -
         instant("2025-02-04T12:30:00Z"),
     )
     .await;
+    let _later_query_contact = insert_note_contact(
+        db,
+        strategy_id,
+        "fictional-query",
+        instant("2025-02-04T13:30:00Z"),
+    )
+    .await;
     let note_version_id = insert_note_contact(
         db,
         strategy_id,
