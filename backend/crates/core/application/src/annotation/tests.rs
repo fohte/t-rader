@@ -396,6 +396,31 @@ async fn create_rejects_price_field_without_execution_step_before_opening_transa
     );
 }
 
+#[tokio::test]
+async fn create_rejects_timestamp_start_after_timestamp_before_opening_transaction() {
+    let (use_cases, unit_of_work, repository, _) = build_use_cases();
+    let mut command = create_command();
+    command.timestamp_start = Some("1970-01-02T00:00:00Z".parse().expect("timestamp parses"));
+
+    let result = use_cases.create(command).await;
+
+    assert_eq!(
+        (
+            result.map(|_| ()).map_err(|error| match error {
+                AnnotationUseCaseError::Validation(message) => message,
+                _ => "unexpected error".into(),
+            }),
+            unit_of_work.begun.lock().await.len(),
+            repository.annotations.lock().await.len(),
+        ),
+        (
+            Err("timestamp_start must not be after timestamp".into()),
+            0,
+            0,
+        ),
+    );
+}
+
 #[rstest]
 #[case::matches_query_data_range_start(Some("1970-01-01"), true, true)]
 #[case::different_from_query_data_range_start(Some("1970-01-02"), true, false)]
@@ -574,6 +599,50 @@ async fn update_changes_an_existing_annotation() {
             unit_of_work.committed.lock().await.len(),
         ),
         (id, "updated text".into(), 1, 1, 1),
+    );
+}
+
+#[tokio::test]
+async fn update_rejects_timestamp_before_existing_timestamp_start() {
+    let (use_cases, unit_of_work, repository, change_history) = build_use_cases();
+    let id = Uuid::from_u128(31);
+    let mut existing = annotation(id, Uuid::from_u128(33), "task");
+    existing.timestamp = "1970-01-03T00:00:00Z".parse().expect("timestamp parses");
+    existing.timestamp_start = Some("1970-01-02T00:00:00Z".parse().expect("timestamp parses"));
+    repository.insert_annotation(existing.clone()).await;
+
+    let result = use_cases
+        .update(UpdateAnnotationCommand {
+            actor: Actor::Llm { label: "analyst" },
+            id,
+            target_symbol: None,
+            target_kind: None,
+            timestamp: Some(fixed_timestamp()),
+            price: None,
+            text: None,
+            linked_note_id: None,
+        })
+        .await;
+    let stored = repository.annotations.lock().await.get(&id).cloned();
+
+    assert_eq!(
+        (
+            result.map(|_| ()).map_err(|error| match error {
+                AnnotationUseCaseError::Validation(message) => message,
+                _ => "unexpected error".into(),
+            }),
+            stored,
+            *repository.update_calls.lock().await,
+            change_history.entries.lock().await.len(),
+            unit_of_work.committed.lock().await.len(),
+        ),
+        (
+            Err("timestamp_start must not be after timestamp".into()),
+            Some(existing),
+            0,
+            0,
+            0,
+        ),
     );
 }
 

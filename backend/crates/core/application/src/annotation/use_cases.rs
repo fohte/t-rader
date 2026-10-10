@@ -11,7 +11,9 @@ use super::ports::{
     UpdateAnnotationCommand,
 };
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
-use crate::strategy_task_step_evidence::SharedStrategyTaskStepEvidenceRepository;
+use crate::strategy_task_step_evidence::{
+    SharedStrategyTaskStepEvidenceRepository, StrategyTaskStepEvidence,
+};
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -54,6 +56,7 @@ impl AnnotationUseCases {
         &self,
         command: CreateAnnotationCommand,
     ) -> Result<AnnotationCreateResult, AnnotationUseCaseError> {
+        validate_timestamp_range(command.timestamp_start, command.timestamp)?;
         let price_input = validate_price_input(command.price, command.execution_step_id)?;
         let target_symbol = non_empty_trimmed(command.target_symbol, "target_symbol")?;
         let target_kind = non_empty_trimmed(command.target_kind, "target_kind")?;
@@ -61,14 +64,17 @@ impl AnnotationUseCases {
         validate_status(&command.status)?;
         validate_created_by_kind(&command.created_by_kind)?;
         let transaction = self.unit_of_work.begin().await?;
-        let warnings = self
-            .timestamp_start_warnings(
-                &transaction,
-                command.execution_step_id,
-                &target_symbol,
-                command.timestamp_start,
-            )
-            .await?;
+        let needs_query_data = command.timestamp_start.is_some()
+            || matches!(&price_input, ValidatedAnnotationPriceInput::Field(_));
+        let query_data = match command.execution_step_id {
+            Some(execution_step_id) if needs_query_data => {
+                self.strategy_task_step_evidence
+                    .find_query_data(&transaction, execution_step_id, &target_symbol)
+                    .await?
+            }
+            _ => Vec::new(),
+        };
+        let warnings = Self::timestamp_start_warnings(&query_data, command.timestamp_start);
         if let Some(note_id) = command.linked_note_id {
             self.ensure_linked_note_exists(&transaction, note_id)
                 .await?;
@@ -77,19 +83,11 @@ impl AnnotationUseCases {
         let price = match price_input {
             ValidatedAnnotationPriceInput::None => None,
             ValidatedAnnotationPriceInput::Value(value) => Some(value),
-            ValidatedAnnotationPriceInput::Field {
-                execution_step_id,
+            ValidatedAnnotationPriceInput::Field(field) => Some(Self::resolve_price_field(
+                &query_data,
+                command.timestamp.with_timezone(&Utc).date_naive(),
                 field,
-            } => Some(
-                self.resolve_price_field(
-                    &transaction,
-                    execution_step_id,
-                    &target_symbol,
-                    command.timestamp.with_timezone(&Utc).date_naive(),
-                    field,
-                )
-                .await?,
-            ),
+            )?),
         };
 
         if let (Some(step_id), Some(task_id)) = (
@@ -139,47 +137,30 @@ impl AnnotationUseCases {
         })
     }
 
-    async fn timestamp_start_warnings(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        execution_step_id: Option<Uuid>,
-        target_symbol: &str,
+    fn timestamp_start_warnings(
+        evidence: &[StrategyTaskStepEvidence],
         timestamp_start: Option<chrono::DateTime<chrono::FixedOffset>>,
-    ) -> Result<Vec<String>, AnnotationUseCaseError> {
-        let Some(execution_step_id) = execution_step_id else {
-            return Ok(Vec::new());
-        };
+    ) -> Vec<String> {
         let Some(timestamp_start) = timestamp_start else {
-            return Ok(Vec::new());
+            return Vec::new();
         };
         let timestamp_start_date = timestamp_start.with_timezone(&Utc).date_naive();
-        let evidence = self
-            .strategy_task_step_evidence
-            .find_query_data(transaction, execution_step_id, target_symbol)
-            .await?;
 
         if evidence
             .iter()
             .any(|snapshot| snapshot.query_data_range_start() == Some(timestamp_start_date))
         {
-            Ok(vec![QUERY_DATA_RANGE_START_WARNING.into()])
+            vec![QUERY_DATA_RANGE_START_WARNING.into()]
         } else {
-            Ok(Vec::new())
+            Vec::new()
         }
     }
 
-    async fn resolve_price_field(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        execution_step_id: Uuid,
-        target_symbol: &str,
+    fn resolve_price_field(
+        evidence: &[StrategyTaskStepEvidence],
         date: chrono::NaiveDate,
         field: PriceReferenceField,
     ) -> Result<Decimal, AnnotationUseCaseError> {
-        let evidence = self
-            .strategy_task_step_evidence
-            .find_query_data(transaction, execution_step_id, target_symbol)
-            .await?;
         let value = evidence
             .iter()
             .rev()
@@ -253,6 +234,7 @@ impl AnnotationUseCases {
             );
             next.linked_note_id = Some(value);
         }
+        validate_timestamp_range(next.timestamp_start, next.timestamp)?;
         next.updated_at = Utc::now().fixed_offset();
 
         let updated = self.repository.update(&transaction, next).await?;
@@ -437,10 +419,19 @@ fn validate_non_empty(value: &str, name: &str) -> Result<(), AnnotationUseCaseEr
 enum ValidatedAnnotationPriceInput {
     None,
     Value(Decimal),
-    Field {
-        execution_step_id: Uuid,
-        field: PriceReferenceField,
-    },
+    Field(PriceReferenceField),
+}
+
+fn validate_timestamp_range(
+    timestamp_start: Option<chrono::DateTime<chrono::FixedOffset>>,
+    timestamp: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<(), AnnotationUseCaseError> {
+    if timestamp_start.is_some_and(|start| start > timestamp) {
+        return Err(AnnotationUseCaseError::Validation(
+            "timestamp_start must not be after timestamp".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_price_input(
@@ -456,10 +447,7 @@ fn validate_price_input(
             ))
         }
         Some(AnnotationPriceInput::Field(field)) => execution_step_id
-            .map(|execution_step_id| ValidatedAnnotationPriceInput::Field {
-                execution_step_id,
-                field,
-            })
+            .map(|_| ValidatedAnnotationPriceInput::Field(field))
             .ok_or_else(|| {
                 AnnotationUseCaseError::Validation(
                     "価格項目の解決には実行ステップの query_data が必要です".into(),
