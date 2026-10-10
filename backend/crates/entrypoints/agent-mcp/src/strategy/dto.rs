@@ -13,12 +13,14 @@ use super::serde_helpers::deserialize_nullable_option;
 
 mod annotations;
 mod financials;
+mod list_movers;
 mod news;
 mod paper_trade;
 mod portfolio;
 mod query_data;
 pub use annotations::*;
 pub use financials::*;
+pub use list_movers::*;
 pub use news::*;
 pub use paper_trade::*;
 pub use portfolio::*;

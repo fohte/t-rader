@@ -4,6 +4,7 @@
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。
 
 mod calendar;
+mod movers;
 mod news;
 mod paper_trade;
 mod predictions;
@@ -473,6 +474,7 @@ impl StrategyServer {
             + Self::stock_groups_tool_router()
             + Self::strategy_earnings_targets_tool_router()
             + Self::calendar_tool_router()
+            + Self::movers_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::paper_trade_tool_router()
@@ -568,6 +570,7 @@ mod tests {
                 ("get_news_content", Some(true)),
                 ("list_earnings_targets", Some(true)),
                 ("list_note_kinds", Some(true)),
+                ("list_movers", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
                 ("list_stock_group_members", Some(true)),

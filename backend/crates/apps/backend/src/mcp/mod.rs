@@ -98,6 +98,7 @@ pub(crate) fn strategy_server_dependencies(
         kata_executor,
         llm_client,
         margins: use_cases.margins(),
+        market_movers: use_cases.market_movers(),
         mcp_tool_call_counts: use_cases.mcp_tool_call_counts(),
         news: use_cases.news(),
         note_kinds: use_cases.note_kinds(),
