@@ -71,6 +71,7 @@ impl AnnotationRepository for FakeAnnotationRepository {
             target_symbol: annotation.target_symbol,
             target_kind: annotation.target_kind,
             timestamp: annotation.timestamp,
+            timestamp_start: annotation.timestamp_start,
             price: annotation.price,
             text: annotation.text,
             status: annotation.status,

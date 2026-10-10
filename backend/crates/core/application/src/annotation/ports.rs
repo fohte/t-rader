@@ -18,6 +18,7 @@ pub struct Annotation {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<Decimal>,
     pub text: String,
     pub status: String,
@@ -35,6 +36,7 @@ pub struct NewAnnotation {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<Decimal>,
     pub text: String,
     pub status: String,
@@ -50,6 +52,7 @@ pub struct CreateAnnotationCommand {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<AnnotationPriceInput>,
     pub text: String,
     pub status: String,
@@ -57,6 +60,12 @@ pub struct CreateAnnotationCommand {
     pub created_by_kind: String,
     pub execution_step_id: Option<Uuid>,
     pub execution_task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnnotationCreateResult {
+    pub annotation: Annotation,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

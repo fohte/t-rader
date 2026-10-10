@@ -240,6 +240,7 @@ mod tests {
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
+                    "timestamp_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),

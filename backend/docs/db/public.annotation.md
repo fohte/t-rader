@@ -6,21 +6,22 @@
 
 ## Columns
 
-| Name              | Type                     | Default                     | Nullable | Children | Parents                       | Comment                                   |
-| ----------------- | ------------------------ | --------------------------- | -------- | -------- | ----------------------------- | ----------------------------------------- |
-| id                | uuid                     |                             | false    |          |                               |                                           |
-| target_symbol     | varchar                  |                             | false    |          |                               | 注釈対象を識別する銘柄・参照の ID。       |
-| target_kind       | varchar                  |                             | false    |          |                               | 注釈対象の種類。                          |
-| timestamp         | timestamp with time zone |                             | false    |          |                               | 注釈を紐づける時刻。                      |
-| price             | numeric                  |                             | true     |          |                               | 注釈を紐づける価格。                      |
-| text              | text                     |                             | false    |          |                               | 注釈本文。                                |
-| status            | varchar                  | 'unread'::character varying | false    |          |                               | 注釈のレビュー状態。                      |
-| linked_note_id    | uuid                     |                             | true     |          | [public.note](public.note.md) | 注釈に関連付けたノート。                  |
-| created_by_kind   | varchar                  |                             | false    |          |                               | 注釈を作成した主体の種別。                |
-| created_at        | timestamp with time zone | CURRENT_TIMESTAMP           | false    |          |                               |                                           |
-| updated_at        | timestamp with time zone | CURRENT_TIMESTAMP           | false    |          |                               |                                           |
-| execution_step_id | uuid                     |                             | true     |          |                               | 注釈を作成したタスク実行ステップの UUID。 |
-| execution_task_id | text                     |                             | true     |          |                               | 注釈を作成したタスク実行の識別子。        |
+| Name              | Type                     | Default                     | Nullable | Children | Parents                       | Comment                                             |
+| ----------------- | ------------------------ | --------------------------- | -------- | -------- | ----------------------------- | --------------------------------------------------- |
+| id                | uuid                     |                             | false    |          |                               |                                                     |
+| target_symbol     | varchar                  |                             | false    |          |                               | 注釈対象を識別する銘柄・参照の ID。                 |
+| target_kind       | varchar                  |                             | false    |          |                               | 注釈対象の種類。                                    |
+| timestamp         | timestamp with time zone |                             | false    |          |                               | 注釈を紐づける時刻。                                |
+| price             | numeric                  |                             | true     |          |                               | 注釈を紐づける価格。                                |
+| text              | text                     |                             | false    |          |                               | 注釈本文。                                          |
+| status            | varchar                  | 'unread'::character varying | false    |          |                               | 注釈のレビュー状態。                                |
+| linked_note_id    | uuid                     |                             | true     |          | [public.note](public.note.md) | 注釈に関連付けたノート。                            |
+| created_by_kind   | varchar                  |                             | false    |          |                               | 注釈を作成した主体の種別。                          |
+| created_at        | timestamp with time zone | CURRENT_TIMESTAMP           | false    |          |                               |                                                     |
+| updated_at        | timestamp with time zone | CURRENT_TIMESTAMP           | false    |          |                               |                                                     |
+| execution_step_id | uuid                     |                             | true     |          |                               | 注釈を作成したタスク実行ステップの UUID。           |
+| execution_task_id | text                     |                             | true     |          |                               | 注釈を作成したタスク実行の識別子。                  |
+| timestamp_start   | timestamp with time zone |                             | true     |          |                               | 注釈が語る期間の開始時刻。null は単日の注釈を表す。 |
 
 ## Constraints
 
@@ -61,6 +62,7 @@ erDiagram
   timestamp_with_time_zone updated_at
   uuid execution_step_id
   text execution_task_id
+  timestamp_with_time_zone timestamp_start
 }
 "public.note" {
   uuid id

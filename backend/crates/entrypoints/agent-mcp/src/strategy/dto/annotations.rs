@@ -9,6 +9,8 @@ pub struct CreateAnnotationParams {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    /// アノテーション自身が語る期間の開始時刻
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     /// この実行で取得した日足 (1d) の query_data から解決する価格項目
     pub price_field: Option<AnnotationPriceField>,
     pub text: String,
@@ -31,6 +33,7 @@ pub struct AnnotationDto {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<f64>,
     pub text: String,
     pub status: String,
@@ -44,6 +47,8 @@ pub struct AnnotationDto {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct CreateAnnotationResult {
     pub annotation: AnnotationDto,
+    /// 作成は成功したが、入力の確認が必要な場合の警告。
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]

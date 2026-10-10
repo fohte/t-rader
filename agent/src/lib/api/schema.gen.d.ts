@@ -1362,6 +1362,8 @@ export interface components {
       /** Format: date-time */
       timestamp: string
       /** Format: date-time */
+      timestamp_start?: string | null
+      /** Format: date-time */
       updated_at: string
     }
     Bar: {

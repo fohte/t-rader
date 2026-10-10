@@ -11,7 +11,7 @@
 | [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                                     | BASE TABLE |
 | [public.note](public.note.md)                                                               | 7       | ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。                             | BASE TABLE |
 | [public.note_ref](public.note_ref.md)                                                       | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                                           | BASE TABLE |
-| [public.annotation](public.annotation.md)                                                   | 13      | 銘柄などの対象へ付与したテキスト注釈を保持する。                                                       | BASE TABLE |
+| [public.annotation](public.annotation.md)                                                   | 14      | 銘柄などの対象へ付与したテキスト注釈を保持する。                                                       | BASE TABLE |
 | [public.comment](public.comment.md)                                                         | 13      | ノートやアノテーションに付けるコメントと返信を保持する。                                               | BASE TABLE |
 | [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                                     | BASE TABLE |
 | [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                                               | BASE TABLE |
@@ -286,6 +286,7 @@ erDiagram
   timestamp_with_time_zone updated_at
   uuid execution_step_id
   text execution_task_id
+  timestamp_with_time_zone timestamp_start
 }
 "public.comment" {
   uuid id

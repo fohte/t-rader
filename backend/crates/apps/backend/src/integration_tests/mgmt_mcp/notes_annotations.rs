@@ -35,6 +35,7 @@ mod tests {
             target_symbol: Set(target_symbol.into()),
             target_kind: Set(target_kind.into()),
             timestamp: Set(updated_at),
+            timestamp_start: Set(None),
             price: Set(None),
             text: Set("sample text".into()),
             status: Set(status.into()),

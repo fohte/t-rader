@@ -6,9 +6,9 @@ mod use_cases;
 
 pub use error::AnnotationUseCaseError;
 pub use ports::{
-    Annotation, AnnotationPriceInput, AnnotationRepository, AnnotationRepositoryError,
-    ChangeAnnotationStatusCommand, CreateAnnotationCommand, DeleteAnnotationCommand, NewAnnotation,
-    SharedAnnotationRepository, UpdateAnnotationCommand,
+    Annotation, AnnotationCreateResult, AnnotationPriceInput, AnnotationRepository,
+    AnnotationRepositoryError, ChangeAnnotationStatusCommand, CreateAnnotationCommand,
+    DeleteAnnotationCommand, NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
 };
 pub use query::{
     AnnotationListQuery, AnnotationReadQuery, AnnotationReadQueryError, RecentAnnotation,

@@ -7820,6 +7820,13 @@
             "type": "string",
             "format": "date-time"
           },
+          "timestamp_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
