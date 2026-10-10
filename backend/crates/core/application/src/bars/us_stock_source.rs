@@ -35,6 +35,12 @@ pub struct UsStockSplit {
     pub new_rate: Decimal,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct UsStockSplitBatch {
+    pub splits: Vec<UsStockSplit>,
+    pub requests_attempted: usize,
+}
+
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum UsStockBarSourceError {
     #[error("US stock bar source error: {0}")]
@@ -51,7 +57,7 @@ pub trait UsStockBarSource: Send + Sync {
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
-    ) -> Result<Vec<UsStockSplit>, UsStockBarSourceError>;
+    ) -> Result<UsStockSplitBatch, UsStockBarSourceError>;
 }
 
 pub type SharedUsStockBarSource = Arc<dyn UsStockBarSource>;

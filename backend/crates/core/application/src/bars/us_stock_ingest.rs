@@ -115,14 +115,15 @@ impl BarsUseCases {
         let target_ids = instrument_ids.iter().cloned().collect::<HashSet<_>>();
         let mut splits_by_instrument: HashMap<String, Vec<UsStockSplit>> = HashMap::new();
         for instrument_ids in instrument_ids.chunks(SYMBOLS_PER_REQUEST) {
-            let splits = source
+            let batch = source
                 .fetch_splits(&UsStockSplitQuery {
                     instrument_ids: instrument_ids.to_vec(),
                     from,
                     to: to.date_naive(),
                 })
                 .await?;
-            for split in splits {
+            stats.requests_attempted += batch.requests_attempted;
+            for split in batch.splits {
                 if target_ids.contains(&split.instrument_id) && split.ex_date <= to.date_naive() {
                     splits_by_instrument
                         .entry(split.instrument_id.clone())
@@ -140,28 +141,47 @@ impl BarsUseCases {
             let Some(splits) = splits_by_instrument.remove(&target.instrument_id) else {
                 continue;
             };
-            let pending_splits = self
+            let pending_splits = match self
                 .find_pending_splits(&target.instrument_id, splits)
-                .await?;
+                .await
+            {
+                Ok(pending_splits) => pending_splits,
+                Err(error) => {
+                    tracing::error!(
+                        instrument_id = %target.instrument_id,
+                        error = %error,
+                        "米国株の分割履歴を確認できませんでした"
+                    );
+                    continue;
+                }
+            };
             if pending_splits.is_empty() {
                 continue;
             }
-            self.refetch_split_history(
-                source,
-                target,
-                &pending_splits,
-                UsStockSplitHistoryRange {
-                    daily_from: UsStockBarTimeframe::Daily
-                        .earliest_bar(target)
-                        .unwrap_or(daily_history_start),
-                    minute_from: UsStockBarTimeframe::Minute
-                        .earliest_bar(target)
-                        .unwrap_or(minute_history_start),
-                    to,
-                },
-                stats,
-            )
-            .await?;
+            if let Err(error) = self
+                .refetch_split_history(
+                    source,
+                    target,
+                    &pending_splits,
+                    UsStockSplitHistoryRange {
+                        daily_from: UsStockBarTimeframe::Daily
+                            .earliest_bar(target)
+                            .unwrap_or(daily_history_start),
+                        minute_from: UsStockBarTimeframe::Minute
+                            .earliest_bar(target)
+                            .unwrap_or(minute_history_start),
+                        to,
+                    },
+                    stats,
+                )
+                .await
+            {
+                tracing::error!(
+                    instrument_id = %target.instrument_id,
+                    error = %error,
+                    "米国株の分割後履歴を再取得できませんでした"
+                );
+            }
         }
 
         Ok(())
@@ -181,14 +201,33 @@ impl BarsUseCases {
                 to: None,
             })
             .await?;
+        let stored_daily_range = stored_bars
+            .iter()
+            .map(|bar| bar.timestamp.date_naive())
+            .min()
+            .zip(
+                stored_bars
+                    .iter()
+                    .map(|bar| bar.timestamp.date_naive())
+                    .max(),
+            );
         let stored_factors: HashMap<NaiveDate, Decimal> = stored_bars
             .into_iter()
             .map(|bar| (bar.timestamp.date_naive(), bar.adjustment_factor))
             .collect();
         let mut pending = BTreeMap::new();
         for split in splits {
+            let Some((earliest_date, latest_date)) = stored_daily_range else {
+                continue;
+            };
+            if split.ex_date < earliest_date || split.ex_date > latest_date {
+                continue;
+            }
             let factor = split_adjustment_factor(&split)?;
-            if stored_factors.get(&split.ex_date) == Some(&factor) {
+            if stored_factors
+                .get(&split.ex_date)
+                .is_some_and(|stored_factor| stored_factor == &factor)
+            {
                 continue;
             }
             if let Some(previous_factor) = pending.insert(split.ex_date, factor)
@@ -213,16 +252,6 @@ impl BarsUseCases {
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<(), BarsUseCaseError> {
         let instrument_ids = std::slice::from_ref(&target.instrument_id);
-        self.ingest_batch(
-            source,
-            instrument_ids,
-            UsStockBarTimeframe::Minute,
-            range.minute_from,
-            range.to,
-            stats,
-        )
-        .await?;
-
         let mut daily_pages = self
             .fetch_batch_pages(
                 source,
@@ -234,7 +263,6 @@ impl BarsUseCases {
             )
             .await?;
         let mut split_bars = Vec::new();
-        let mut found_split_dates = HashSet::new();
         for page in &mut daily_pages {
             self.preserve_adjustment_factors(page).await?;
             let mut regular_bars = Vec::with_capacity(page.len());
@@ -243,29 +271,22 @@ impl BarsUseCases {
                 if let Some(factor) = split_factors.get(&date) {
                     bar.adjustment_factor = *factor;
                     split_bars.push(bar);
-                    found_split_dates.insert(date);
                 } else {
                     regular_bars.push(bar);
                 }
             }
             *page = regular_bars;
         }
-        let missing_split_dates: Vec<_> = split_factors
-            .keys()
-            .filter(|date| !found_split_dates.contains(*date))
-            .collect();
-        if !missing_split_dates.is_empty() {
-            return Err(UsStockBarSourceError::Failed(format!(
-                "daily bars are missing split dates for {}: {}",
-                target.instrument_id,
-                missing_split_dates
-                    .iter()
-                    .map(|date| date.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ))
-            .into());
-        }
+
+        self.ingest_batch(
+            source,
+            instrument_ids,
+            UsStockBarTimeframe::Minute,
+            range.minute_from,
+            range.to,
+            stats,
+        )
+        .await?;
 
         self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
             .await?;
@@ -504,7 +525,8 @@ mod tests {
 
     use crate::bars::{
         BarsUseCases, FakeBarsRepository, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
-        UsStockBarSourceError, UsStockBarsIngestStats, UsStockSplit, UsStockSplitQuery,
+        UsStockBarSourceError, UsStockBarsIngestStats, UsStockSplit, UsStockSplitBatch,
+        UsStockSplitQuery,
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
@@ -591,20 +613,23 @@ mod tests {
         async fn fetch_splits(
             &self,
             query: &UsStockSplitQuery,
-        ) -> Result<Vec<UsStockSplit>, UsStockBarSourceError> {
+        ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
             self.split_calls.lock().await.push(query.clone());
-            Ok(self
-                .splits
-                .lock()
-                .await
-                .iter()
-                .filter(|split| {
-                    query.instrument_ids.contains(&split.instrument_id)
-                        && split.ex_date >= query.from
-                        && split.ex_date <= query.to
-                })
-                .cloned()
-                .collect())
+            Ok(UsStockSplitBatch {
+                splits: self
+                    .splits
+                    .lock()
+                    .await
+                    .iter()
+                    .filter(|split| {
+                        query.instrument_ids.contains(&split.instrument_id)
+                            && split.ex_date >= query.from
+                            && split.ex_date <= query.to
+                    })
+                    .cloned()
+                    .collect(),
+                requests_attempted: 1,
+            })
         }
     }
 
@@ -674,7 +699,7 @@ mod tests {
         let expected = (
             UsStockBarsIngestStats {
                 symbols_attempted: 2,
-                requests_attempted: 5,
+                requests_attempted: 6,
                 daily_bars_upserted: 2,
                 minute_bars_upserted: 2,
             },
@@ -857,7 +882,7 @@ mod tests {
             (
                 UsStockBarsIngestStats {
                     symbols_attempted: 1,
-                    requests_attempted: 4,
+                    requests_attempted: 5,
                     daily_bars_upserted: 4,
                     minute_bars_upserted: 3,
                 },
@@ -878,15 +903,15 @@ mod tests {
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
-                        timeframe: Timeframe::Minute,
-                        from: earliest_minute,
+                        timeframe: Timeframe::Daily,
+                        from: earliest_daily,
                         to: now,
                         page_token: None,
                     },
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
-                        timeframe: Timeframe::Daily,
-                        from: earliest_daily,
+                        timeframe: Timeframe::Minute,
+                        from: earliest_minute,
                         to: now,
                         page_token: None,
                     },
@@ -899,6 +924,179 @@ mod tests {
                 vec![
                     priced_bar(instrument_id, Timeframe::Daily, earliest_daily, 100),
                     adjusted_ex_date,
+                    priced_bar(instrument_id, Timeframe::Daily, latest_daily, 100),
+                ],
+                vec![
+                    priced_bar(instrument_id, Timeframe::Minute, earliest_minute, 100),
+                    priced_bar(instrument_id, Timeframe::Minute, latest_minute, 100),
+                ],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn defers_split_without_a_saved_ex_date_bar(harness: Harness) {
+        let instrument_id = "US:QZ-7";
+        let latest_daily = date("2040-01-01T00:00:00Z");
+        let latest_minute = date("2040-01-01T14:30:00Z");
+        let now = date("2040-01-03T12:00:00Z");
+        let saved_bars = vec![
+            bar(instrument_id, Timeframe::Daily, latest_daily),
+            bar(instrument_id, Timeframe::Minute, latest_minute),
+        ];
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.repository.seed_bars(saved_bars.clone()).await;
+        harness.source.bars.lock().await.extend(saved_bars.clone());
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_bars(&harness.source, now)
+            .await
+            .expect("US stock bars ingestion succeeds");
+        let calls = harness.source.calls.lock().await.clone();
+        let split_calls = harness.source.split_calls.lock().await.clone();
+        let daily_bars = harness.repository.bars.lock().await.clone();
+        let minute_bars = harness.repository.minute_bars.lock().await.clone();
+
+        assert_eq!(
+            (stats, calls, split_calls, daily_bars, minute_bars),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 3,
+                    daily_bars_upserted: 1,
+                    minute_bars_upserted: 1,
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: latest_daily,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: latest_minute,
+                        to: now,
+                        page_token: None,
+                    },
+                ],
+                vec![UsStockSplitQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                    to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
+                }],
+                vec![bar(instrument_id, Timeframe::Daily, latest_daily)],
+                vec![bar(instrument_id, Timeframe::Minute, latest_minute)],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn refetches_history_when_split_ex_date_has_no_daily_bar(harness: Harness) {
+        let instrument_id = "US:QZ-7";
+        let earliest_daily = date("2040-01-01T00:00:00Z");
+        let latest_daily = date("2040-01-03T00:00:00Z");
+        let earliest_minute = date("2040-01-01T14:30:00Z");
+        let latest_minute = date("2040-01-03T20:59:00Z");
+        let now = date("2040-01-04T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![
+                priced_bar(instrument_id, Timeframe::Daily, earliest_daily, 200),
+                priced_bar(instrument_id, Timeframe::Daily, latest_daily, 200),
+                priced_bar(instrument_id, Timeframe::Minute, earliest_minute, 200),
+                priced_bar(instrument_id, Timeframe::Minute, latest_minute, 200),
+            ])
+            .await;
+        harness.source.bars.lock().await.extend([
+            priced_bar(instrument_id, Timeframe::Daily, earliest_daily, 100),
+            priced_bar(instrument_id, Timeframe::Daily, latest_daily, 100),
+            priced_bar(instrument_id, Timeframe::Minute, earliest_minute, 100),
+            priced_bar(instrument_id, Timeframe::Minute, latest_minute, 100),
+        ]);
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_bars(&harness.source, now)
+            .await
+            .expect("US stock split refetch succeeds without an ex-date bar");
+        let calls = harness.source.calls.lock().await.clone();
+        let split_calls = harness.source.split_calls.lock().await.clone();
+        let mut daily_bars = harness.repository.bars.lock().await.clone();
+        let mut minute_bars = harness.repository.minute_bars.lock().await.clone();
+        daily_bars.sort_by_key(|bar| bar.timestamp);
+        minute_bars.sort_by_key(|bar| bar.timestamp);
+
+        assert_eq!(
+            (stats, calls, split_calls, daily_bars, minute_bars),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 5,
+                    daily_bars_upserted: 3,
+                    minute_bars_upserted: 3,
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: latest_daily,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: latest_minute,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: earliest_daily,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: earliest_minute,
+                        to: now,
+                        page_token: None,
+                    },
+                ],
+                vec![UsStockSplitQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                    to: NaiveDate::from_ymd_opt(2040, 1, 4).expect("end date is valid"),
+                }],
+                vec![
+                    priced_bar(instrument_id, Timeframe::Daily, earliest_daily, 100),
                     priced_bar(instrument_id, Timeframe::Daily, latest_daily, 100),
                 ],
                 vec![
@@ -946,7 +1144,7 @@ mod tests {
             (
                 UsStockBarsIngestStats {
                     symbols_attempted: 1,
-                    requests_attempted: 2,
+                    requests_attempted: 3,
                     daily_bars_upserted: 1,
                     minute_bars_upserted: 1,
                 },

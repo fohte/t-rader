@@ -18,7 +18,7 @@ pub use types::{
 };
 pub use us_stock_source::{
     SharedUsStockBarSource, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
-    UsStockBarSourceError, UsStockSplit, UsStockSplitQuery,
+    UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
 };
 pub use use_cases::BarsUseCases;
 

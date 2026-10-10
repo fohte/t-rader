@@ -4,14 +4,14 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate};
 use core_application::bars::{
     UsStockBarPage, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit,
-    UsStockSplitQuery,
+    UsStockSplitBatch, UsStockSplitQuery,
 };
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::stock_id::ForeignStockId;
 use rate_limit::{Quota, RateLimitError, RateLimiter};
 use reqwest::{Url, header::HeaderValue};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 
 const API_URL: &str = "https://data.alpaca.markets/v2/stocks/bars";
 const CORPORATE_ACTIONS_RESPONSE_LIMIT: u32 = 1_000;
@@ -170,6 +170,30 @@ impl AlpacaClient {
 
         Ok(response)
     }
+
+    async fn fetch_json<T: DeserializeOwned>(
+        &self,
+        url: &Url,
+        params: &[(&'static str, String)],
+    ) -> Result<T, AlpacaError> {
+        let response = self.fetch_response(url, params).await?;
+        let status = response.status();
+        if !status.is_success() {
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|error| error.to_string());
+            return Err(AlpacaError::Api {
+                status: status.as_u16(),
+                message,
+            });
+        }
+
+        response
+            .json::<T>()
+            .await
+            .map_err(|error| AlpacaError::Parse(error.to_string()))
+    }
 }
 
 #[async_trait]
@@ -186,7 +210,7 @@ impl UsStockBarSource for AlpacaClient {
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
-    ) -> Result<Vec<UsStockSplit>, UsStockBarSourceError> {
+    ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
         self.fetch_splits_inner(query)
             .await
             .map_err(|error| UsStockBarSourceError::Failed(error.to_string()))
@@ -203,24 +227,8 @@ impl AlpacaClient {
         }
 
         let response = self
-            .fetch_response(&self.url, &request_params(query)?)
+            .fetch_json::<BarsResponse>(&self.url, &request_params(query)?)
             .await?;
-        let status = response.status();
-        if !status.is_success() {
-            let message = response
-                .text()
-                .await
-                .unwrap_or_else(|error| error.to_string());
-            return Err(AlpacaError::Api {
-                status: status.as_u16(),
-                message,
-            });
-        }
-
-        let response = response
-            .json::<BarsResponse>()
-            .await
-            .map_err(|error| AlpacaError::Parse(error.to_string()))?;
         let mut instrument_ids = HashMap::new();
         for instrument_id in &query.instrument_ids {
             instrument_ids.insert(alpaca_symbol(instrument_id)?, instrument_id.clone());
@@ -247,9 +255,9 @@ impl AlpacaClient {
     async fn fetch_splits_inner(
         &self,
         query: &UsStockSplitQuery,
-    ) -> Result<Vec<UsStockSplit>, AlpacaError> {
+    ) -> Result<UsStockSplitBatch, AlpacaError> {
         if query.instrument_ids.is_empty() {
-            return Ok(Vec::new());
+            return Ok(UsStockSplitBatch::default());
         }
 
         let mut instrument_ids = HashMap::new();
@@ -259,6 +267,7 @@ impl AlpacaClient {
         let params = split_request_params(query)?;
         let mut page_token: Option<String> = None;
         let mut splits = Vec::new();
+        let mut requests_attempted = 0;
 
         loop {
             let mut page_params = params.clone();
@@ -266,24 +275,9 @@ impl AlpacaClient {
                 page_params.push(("page_token", page_token.clone()));
             }
             let response = self
-                .fetch_response(&self.corporate_actions_url, &page_params)
+                .fetch_json::<CorporateActionsResponse>(&self.corporate_actions_url, &page_params)
                 .await?;
-            let status = response.status();
-            if !status.is_success() {
-                let message = response
-                    .text()
-                    .await
-                    .unwrap_or_else(|error| error.to_string());
-                return Err(AlpacaError::Api {
-                    status: status.as_u16(),
-                    message,
-                });
-            }
-
-            let response = response
-                .json::<CorporateActionsResponse>()
-                .await
-                .map_err(|error| AlpacaError::Parse(error.to_string()))?;
+            requests_attempted += 1;
             for split in response
                 .forward_splits
                 .into_iter()
@@ -299,7 +293,10 @@ impl AlpacaClient {
             }
 
             let Some(next_page_token) = response.next_page_token else {
-                return Ok(splits);
+                return Ok(UsStockSplitBatch {
+                    splits,
+                    requests_attempted,
+                });
             };
             if page_token.as_ref() == Some(&next_page_token) {
                 return Err(AlpacaError::Parse(
@@ -476,13 +473,14 @@ fn decimal_from_number(value: serde_json::Number) -> Result<Decimal, AlpacaError
 mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
     use core_application::bars::{
-        UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitQuery,
+        UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitBatch,
+        UsStockSplitQuery,
     };
     use core_domain::bar::{Bar, Timeframe};
     use rstest::rstest;
     use rust_decimal::Decimal;
     use serde_json::json;
-    use wiremock::matchers::{header, method, path, query_param};
+    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::AlpacaClient;
@@ -602,20 +600,97 @@ mod tests {
 
         assert_eq!(
             actual,
-            vec![
-                UsStockSplit {
-                    instrument_id: "US:QZ-7".to_owned(),
-                    ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
-                    old_rate: Decimal::ONE,
-                    new_rate: Decimal::new(2, 0),
-                },
-                UsStockSplit {
-                    instrument_id: "US:QZ-7".to_owned(),
-                    ex_date: NaiveDate::from_ymd_opt(2039, 1, 2).expect("split date is valid"),
-                    old_rate: Decimal::new(10, 0),
-                    new_rate: Decimal::ONE,
-                },
-            ],
+            UsStockSplitBatch {
+                splits: vec![
+                    UsStockSplit {
+                        instrument_id: "US:QZ-7".to_owned(),
+                        ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
+                        old_rate: Decimal::ONE,
+                        new_rate: Decimal::new(2, 0),
+                    },
+                    UsStockSplit {
+                        instrument_id: "US:QZ-7".to_owned(),
+                        ex_date: NaiveDate::from_ymd_opt(2039, 1, 2).expect("split date is valid"),
+                        old_rate: Decimal::new(10, 0),
+                        new_rate: Decimal::ONE,
+                    },
+                ],
+                requests_attempted: 1,
+            },
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn fetches_all_pages_of_corporate_actions() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/corporate-actions"))
+            .and(query_param_is_missing("page_token"))
+            .and(query_param("symbols", "QZ.7"))
+            .and(query_param("types", "forward_split,reverse_split"))
+            .and(query_param("start", "1970-01-01"))
+            .and(query_param("end", "2040-01-03"))
+            .and(query_param("limit", "1000"))
+            .and(query_param("sort", "asc"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "forward_splits": [{
+                    "symbol": "QZ.7",
+                    "ex_date": "2040-01-02",
+                    "old_rate": "1",
+                    "new_rate": "2"
+                }],
+                "reverse_splits": [],
+                "next_page_token": "synthetic-split-page"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v1/corporate-actions"))
+            .and(query_param("page_token", "synthetic-split-page"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "forward_splits": [],
+                "reverse_splits": [{
+                    "symbol": "QZ.7",
+                    "ex_date": "2039-01-02",
+                    "old_rate": 10,
+                    "new_rate": 1
+                }],
+                "next_page_token": null
+            })))
+            .mount(&server)
+            .await;
+        let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
+            .expect("test client is configured");
+
+        let actual = client
+            .fetch_splits(&UsStockSplitQuery {
+                instrument_ids: vec!["US:QZ-7".to_owned()],
+                from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
+            })
+            .await
+            .expect("corporate actions pages are valid");
+
+        assert_eq!(
+            actual,
+            UsStockSplitBatch {
+                splits: vec![
+                    UsStockSplit {
+                        instrument_id: "US:QZ-7".to_owned(),
+                        ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
+                        old_rate: Decimal::ONE,
+                        new_rate: Decimal::new(2, 0),
+                    },
+                    UsStockSplit {
+                        instrument_id: "US:QZ-7".to_owned(),
+                        ex_date: NaiveDate::from_ymd_opt(2039, 1, 2).expect("split date is valid"),
+                        old_rate: Decimal::new(10, 0),
+                        new_rate: Decimal::ONE,
+                    },
+                ],
+                requests_attempted: 2,
+            },
         );
     }
 
