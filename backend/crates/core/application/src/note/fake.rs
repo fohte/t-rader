@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use serde_json::json;
@@ -71,6 +73,17 @@ impl NoteReadQuery for FakeNoteReadQuery {
         version_id: Uuid,
     ) -> Result<Option<Note>, NoteReadQueryError> {
         Ok((self.version.id == version_id).then(|| self.note.clone()))
+    }
+
+    async fn find_note_ids_for_versions(
+        &self,
+        version_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Uuid>, NoteReadQueryError> {
+        Ok(version_ids
+            .iter()
+            .filter(|version_id| **version_id == self.version.id)
+            .map(|version_id| (*version_id, self.note.id))
+            .collect())
     }
 
     async fn find_note_version(

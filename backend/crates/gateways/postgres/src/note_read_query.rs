@@ -83,6 +83,23 @@ impl NoteReadQuery for PostgresNoteReadQuery {
         self.find_note(version.note_id).await
     }
 
+    async fn find_note_ids_for_versions(
+        &self,
+        version_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Uuid>, NoteReadQueryError> {
+        if version_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        Ok(note_version::Entity::find()
+            .filter(note_version::Column::Id.is_in(version_ids.to_vec()))
+            .all(&self.db)
+            .await
+            .map_err(query_error)?
+            .into_iter()
+            .map(|version| (version.id, version.note_id))
+            .collect())
+    }
+
     async fn find_note_version(
         &self,
         note_id: Uuid,
