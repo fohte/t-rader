@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.3...terraform-provider-v0.1.4) (2026-10-10)
+
+
+### Features
+
+* **terraform-provider:** ペーパートレード口座リソースを追加する ([#784](https://github.com/fohte/t-rader/issues/784)) ([68e67f5](https://github.com/fohte/t-rader/commit/68e67f5444dc657851ba8019096b18226be3e49a))
+* **trigger:** cron の東証営業日限定オプションを追加する ([#769](https://github.com/fohte/t-rader/issues/769)) ([d0af444](https://github.com/fohte/t-rader/commit/d0af44449e9b399674656870b68ad37cb255804e))
+
 ## [0.1.3](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.2...terraform-provider-v0.1.3) (2026-10-07)
 
 
