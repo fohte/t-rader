@@ -3,7 +3,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_domain::valuation::Valuation;
-use rust_decimal::Decimal;
 use thiserror::Error;
 
 use crate::persistence::PersistenceError;
@@ -12,12 +11,6 @@ use crate::persistence::PersistenceError;
 pub enum ValuationRepositoryError {
     #[error(transparent)]
     Database(#[from] PersistenceError),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DailyBarAdjustmentFactor {
-    pub date: NaiveDate,
-    pub factor: Decimal,
 }
 
 #[async_trait]
@@ -37,12 +30,6 @@ pub trait ValuationRepository: Send + Sync {
         from: NaiveDate,
         to: NaiveDate,
     ) -> Result<Vec<Valuation>, ValuationRepositoryError>;
-
-    async fn find_daily_bar_adjustment_factors_from(
-        &self,
-        symbol: &str,
-        from: NaiveDate,
-    ) -> Result<Vec<DailyBarAdjustmentFactor>, ValuationRepositoryError>;
 }
 
 pub type SharedValuationRepository = Arc<dyn ValuationRepository>;

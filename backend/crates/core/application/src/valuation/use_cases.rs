@@ -5,12 +5,13 @@ use core_domain::business_day::latest_business_day;
 use core_domain::valuation::Valuation;
 use serde::Serialize;
 
+use crate::bars::{DailyBarAdjustmentFactor, SharedBarsRepository};
 use crate::daily_bar_source::DateRange;
 use crate::strategy_scope::StrategyScope;
 use crate::valuation_source::ValuationSource;
 
 use super::error::ValuationUseCaseError;
-use super::repository::{DailyBarAdjustmentFactor, SharedValuationRepository};
+use super::repository::SharedValuationRepository;
 
 const TARGET_BUSINESS_DAYS: usize = 400;
 const REFETCH_WINDOW_BUSINESS_DAYS: usize = 7;
@@ -24,11 +25,18 @@ pub struct IngestStats {
 #[derive(Clone)]
 pub struct ValuationUseCases {
     repository: SharedValuationRepository,
+    bars_repository: SharedBarsRepository,
 }
 
 impl ValuationUseCases {
-    pub fn new(repository: SharedValuationRepository) -> Self {
-        Self { repository }
+    pub fn new(
+        repository: SharedValuationRepository,
+        bars_repository: SharedBarsRepository,
+    ) -> Self {
+        Self {
+            repository,
+            bars_repository,
+        }
     }
 
     pub async fn run_ingest_cycle(
@@ -94,8 +102,8 @@ impl ValuationUseCases {
             .await
             .map_err(ValuationUseCaseError::from)?;
         let adjustment_factors = self
-            .repository
-            .find_daily_bar_adjustment_factors_from(symbol, from)
+            .bars_repository
+            .find_daily_adjustment_factors_from(symbol, from)
             .await?;
 
         apply_daily_bar_adjustment_factors(&mut valuations, &adjustment_factors);
@@ -170,7 +178,8 @@ mod tests {
     use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
     use crate::valuation_source::{ValuationSource, ValuationSourceError};
 
-    use super::{DailyBarAdjustmentFactor, IngestStats, ValuationUseCases};
+    use super::{IngestStats, ValuationUseCases};
+    use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository};
     use crate::valuation::{ValuationRepository, ValuationRepositoryError};
 
     #[derive(Default)]
@@ -179,7 +188,6 @@ mod tests {
         valuations: Mutex<Vec<Valuation>>,
         ingested_date_queries: Mutex<Vec<NaiveDate>>,
         read_query: Mutex<Option<(String, NaiveDate, NaiveDate)>>,
-        adjustment_factors: Mutex<Vec<DailyBarAdjustmentFactor>>,
     }
 
     use std::collections::HashSet;
@@ -223,14 +231,6 @@ mod tests {
             *self.read_query.lock().expect("lock") = Some((symbol.to_string(), from, to));
             Ok(self.valuations.lock().expect("lock").clone())
         }
-
-        async fn find_daily_bar_adjustment_factors_from(
-            &self,
-            _symbol: &str,
-            _from: NaiveDate,
-        ) -> Result<Vec<DailyBarAdjustmentFactor>, ValuationRepositoryError> {
-            Ok(self.adjustment_factors.lock().expect("lock").clone())
-        }
     }
 
     struct FakeValuationSource {
@@ -265,6 +265,11 @@ mod tests {
     #[fixture]
     fn repository() -> Arc<FakeValuationRepository> {
         Arc::new(FakeValuationRepository::default())
+    }
+
+    #[fixture]
+    fn bars_repository() -> Arc<FakeBarsRepository> {
+        Arc::new(FakeBarsRepository::new())
     }
 
     #[fixture]
@@ -311,6 +316,7 @@ mod tests {
     async fn ingests_missing_dates_and_refetches_recent_dates(
         repository: Arc<FakeValuationRepository>,
         business_days: Vec<NaiveDate>,
+        bars_repository: Arc<FakeBarsRepository>,
     ) {
         let today = *business_days.last().expect("business days exist");
         let targets = vec![
@@ -333,7 +339,7 @@ mod tests {
             valuations: vec![sample_valuation(today)],
             requested_dates: Mutex::new(Vec::new()),
         });
-        let use_cases = ValuationUseCases::new(repository.clone());
+        let use_cases = ValuationUseCases::new(repository.clone(), bars_repository);
 
         let stats = use_cases
             .run_ingest_cycle(source.as_ref(), today)
@@ -370,13 +376,14 @@ mod tests {
     #[tokio::test]
     async fn skips_ingestion_when_source_has_no_fetchable_range(
         repository: Arc<FakeValuationRepository>,
+        bars_repository: Arc<FakeBarsRepository>,
     ) {
         let source = FakeValuationSource {
             range: None,
             valuations: Vec::new(),
             requested_dates: Mutex::new(Vec::new()),
         };
-        let use_cases = ValuationUseCases::new(repository.clone());
+        let use_cases = ValuationUseCases::new(repository.clone(), bars_repository);
 
         let result = use_cases
             .run_ingest_cycle(&source, date(2099, 1, 9))
@@ -409,6 +416,7 @@ mod tests {
     #[tokio::test]
     async fn does_not_mark_dates_when_source_returns_no_valuations(
         repository: Arc<FakeValuationRepository>,
+        bars_repository: Arc<FakeBarsRepository>,
     ) {
         let today = date(2099, 1, 9);
         let expected_date = core_domain::business_day::latest_business_day(today);
@@ -420,7 +428,7 @@ mod tests {
             valuations: Vec::new(),
             requested_dates: Mutex::new(Vec::new()),
         };
-        let use_cases = ValuationUseCases::new(repository.clone());
+        let use_cases = ValuationUseCases::new(repository.clone(), bars_repository);
 
         let result = use_cases
             .run_ingest_cycle(&source, today)
@@ -448,28 +456,43 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn find_for_symbol_passes_query_to_repository(repository: Arc<FakeValuationRepository>) {
+    async fn find_for_symbol_passes_query_to_repositories(
+        repository: Arc<FakeValuationRepository>,
+        bars_repository: Arc<FakeBarsRepository>,
+    ) {
         let from = date(2099, 1, 2);
         let to = date(2099, 1, 10);
         let expected = vec![sample_valuation(date(2099, 1, 3))];
         *repository.valuations.lock().expect("lock") = expected.clone();
-        let use_cases = ValuationUseCases::new(repository.clone());
+        let use_cases = ValuationUseCases::new(repository.clone(), bars_repository.clone());
 
         let result = use_cases
             .find_for_symbol(strategy_scope().await, "ZZZZ", from, to)
             .await
             .expect("read succeeds");
-        let query = repository.read_query.lock().expect("lock").clone();
+        let valuation_query = repository.read_query.lock().expect("lock").clone();
+        let adjustment_factor_queries = bars_repository
+            .daily_adjustment_factor_queries
+            .lock()
+            .await
+            .clone();
 
         assert_eq!(
-            (result, query),
-            (expected, Some(("ZZZZ".to_string(), from, to))),
+            (result, (valuation_query, adjustment_factor_queries)),
+            (
+                expected,
+                (
+                    Some(("ZZZZ".to_string(), from, to)),
+                    vec![("ZZZZ".to_string(), from)],
+                ),
+            ),
         );
     }
 
     #[tokio::test]
     async fn adjusts_per_share_indicators_to_the_latest_split_basis() {
         let repository = Arc::new(FakeValuationRepository::default());
+        let bars_repository = Arc::new(FakeBarsRepository::new());
         let first_date = date(2099, 1, 2);
         let split_date = date(2099, 1, 5);
         let after_split_date = date(2099, 1, 6);
@@ -514,21 +537,23 @@ mod tests {
                 mkt_cap: Some(Decimal::new(250_000, 0)),
             },
         ];
-        *repository.adjustment_factors.lock().expect("lock") = vec![
-            DailyBarAdjustmentFactor {
-                date: first_date,
-                factor: Decimal::new(4, 1),
-            },
-            DailyBarAdjustmentFactor {
-                date: split_date,
-                factor: Decimal::new(5, 1),
-            },
-            DailyBarAdjustmentFactor {
-                date: date(2099, 2, 3),
-                factor: Decimal::new(25, 2),
-            },
-        ];
-        let use_cases = ValuationUseCases::new(repository);
+        bars_repository
+            .seed_daily_adjustment_factors(vec![
+                DailyBarAdjustmentFactor {
+                    date: first_date,
+                    factor: Decimal::new(4, 1),
+                },
+                DailyBarAdjustmentFactor {
+                    date: split_date,
+                    factor: Decimal::new(5, 1),
+                },
+                DailyBarAdjustmentFactor {
+                    date: date(2099, 2, 3),
+                    factor: Decimal::new(25, 2),
+                },
+            ])
+            .await;
+        let use_cases = ValuationUseCases::new(repository, bars_repository);
 
         let result = use_cases
             .find_for_symbol(strategy_scope().await, "ZZZZ", first_date, after_split_date)
