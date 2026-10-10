@@ -39,6 +39,17 @@ pub struct StrategyTaskStepEvidence {
 }
 
 impl StrategyTaskStepEvidence {
+    pub fn query_data_range_start(&self) -> Option<NaiveDate> {
+        #[derive(Deserialize)]
+        struct QueryDataSnapshotRange {
+            from: NaiveDate,
+        }
+
+        let snapshot: QueryDataSnapshotRange =
+            serde_json::from_value(self.snapshot.clone()).ok()?;
+        Some(snapshot.from)
+    }
+
     pub fn query_data_bar_value(
         &self,
         date: NaiveDate,

@@ -12,6 +12,8 @@ pub struct AnnotationResponse {
     pub target_kind: String,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub timestamp: DateTime<FixedOffset>,
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<Decimal>,
     pub text: String,
     pub status: String,
@@ -32,6 +34,7 @@ impl From<core_application::annotation::Annotation> for AnnotationResponse {
             target_symbol: model.target_symbol,
             target_kind: model.target_kind,
             timestamp: model.timestamp,
+            timestamp_start: model.timestamp_start,
             price: model.price,
             text: model.text,
             status: model.status,
@@ -42,6 +45,59 @@ impl From<core_application::annotation::Annotation> for AnnotationResponse {
             execution_step_id: model.execution_step_id,
             execution_task_id: model.execution_task_id,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::DateTime;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::AnnotationResponse;
+
+    #[test]
+    fn annotation_response_serializes_timestamp_start() {
+        let timestamp =
+            DateTime::parse_from_rfc3339("2030-01-02T00:00:00Z").expect("valid timestamp");
+        let timestamp_start =
+            DateTime::parse_from_rfc3339("2030-01-01T00:00:00Z").expect("valid timestamp");
+        let response = AnnotationResponse::from(core_application::annotation::Annotation {
+            id: Uuid::nil(),
+            target_symbol: "FICTIONAL-ASSET".into(),
+            target_kind: "test-kind".into(),
+            timestamp,
+            timestamp_start: Some(timestamp_start),
+            price: None,
+            text: "sample annotation".into(),
+            status: "unread".into(),
+            linked_note_id: None,
+            created_by_kind: "llm".into(),
+            created_at: timestamp,
+            updated_at: timestamp,
+            execution_step_id: None,
+            execution_task_id: None,
+        });
+
+        assert_eq!(
+            serde_json::to_value(response).expect("response serializes"),
+            json!({
+                "id": Uuid::nil(),
+                "target_symbol": "FICTIONAL-ASSET",
+                "target_kind": "test-kind",
+                "timestamp": timestamp,
+                "timestamp_start": timestamp_start,
+                "price": null,
+                "text": "sample annotation",
+                "status": "unread",
+                "linked_note_id": null,
+                "created_by_kind": "llm",
+                "created_at": timestamp,
+                "updated_at": timestamp,
+                "execution_step_id": null,
+                "execution_task_id": null,
+            }),
+        );
     }
 }
 

@@ -55,6 +55,7 @@ fn annotation(id: Uuid, step_id: Uuid, task_id: &str) -> Annotation {
         target_symbol: "FICTIONAL-ASSET".into(),
         target_kind: "test-kind".into(),
         timestamp: fixed_timestamp(),
+        timestamp_start: None,
         price: None,
         text: "sample text".into(),
         status: "unread".into(),
@@ -96,6 +97,7 @@ fn create_command() -> CreateAnnotationCommand {
         target_symbol: " FICTIONAL-ASSET ".into(),
         target_kind: " test-kind ".into(),
         timestamp: fixed_timestamp(),
+        timestamp_start: None,
         price: None,
         text: "sample text".into(),
         status: "unread".into(),
@@ -394,6 +396,55 @@ async fn create_rejects_price_field_without_execution_step_before_opening_transa
     );
 }
 
+#[rstest]
+#[case::matches_query_data_range_start(Some("1970-01-01"), true, true)]
+#[case::different_from_query_data_range_start(Some("1970-01-02"), true, false)]
+#[case::missing_query_data_range_start(None, true, false)]
+#[case::omitted_timestamp_start(Some("1970-01-01"), false, false)]
+#[tokio::test]
+async fn create_with_warnings_reports_when_timestamp_start_matches_the_requested_range(
+    #[case] range_start: Option<&str>,
+    #[case] include_timestamp_start: bool,
+    #[case] should_warn: bool,
+) {
+    let step_id = Uuid::from_u128(84);
+    let timestamp = fixed_timestamp();
+    let mut evidence = query_data_evidence(step_id, "FICTIONAL-ASSET");
+    if let Some(range_start) = range_start {
+        evidence.snapshot["from"] = json!(range_start);
+    }
+    let evidence = Arc::new(FakeStrategyTaskStepEvidenceRepository::new(vec![evidence]));
+    let (use_cases, unit_of_work, repository, _) = build_use_cases_with_evidence(evidence);
+    let mut command = create_command();
+    command.execution_step_id = Some(step_id);
+    command.timestamp_start = include_timestamp_start.then_some(timestamp);
+
+    let result = use_cases
+        .create_with_warnings(command)
+        .await
+        .expect("annotation creation succeeds");
+    let expected_warnings = if should_warn {
+        vec!["timestamp_start がこの実行の query_data の取得開始日と一致しています。観測期間ではなく、アノテーション自身が語る期間の開始日か確認してください。".to_string()]
+    } else {
+        Vec::new()
+    };
+
+    assert_eq!(
+        (
+            result.annotation.timestamp_start,
+            result.warnings,
+            repository.annotations.lock().await.len(),
+            unit_of_work.committed.lock().await.len(),
+        ),
+        (
+            include_timestamp_start.then_some(timestamp),
+            expected_warnings,
+            1,
+            1,
+        ),
+    );
+}
+
 #[tokio::test]
 async fn create_resolves_price_using_the_utc_date_of_the_annotation_timestamp() {
     let step_id = Uuid::from_u128(83);
@@ -535,6 +586,7 @@ async fn change_status_does_not_update_or_record_history_when_status_is_unchange
         target_symbol: "FICTIONAL-ASSET".into(),
         target_kind: "test-kind".into(),
         timestamp: fixed_timestamp(),
+        timestamp_start: None,
         price: None,
         text: "sample text".into(),
         status: "approved".into(),

@@ -31,6 +31,7 @@ comments:
       target_symbol: '注釈対象を識別する銘柄・参照の ID。'
       target_kind: '注釈対象の種類。'
       timestamp: '注釈を紐づける時刻。'
+      timestamp_start: '注釈が語る期間の開始時刻。null は単日の注釈を表す。'
       price: '注釈を紐づける価格。'
       text: '注釈本文。'
       status: '注釈のレビュー状態。'

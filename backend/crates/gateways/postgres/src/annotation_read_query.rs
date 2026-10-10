@@ -126,6 +126,7 @@ mod tests {
             target_symbol: Set("sample-symbol".to_string()),
             target_kind: Set("sample-kind".to_string()),
             timestamp: Set(Utc::now().fixed_offset()),
+            timestamp_start: Set(None),
             price: Set(None),
             text: Set("sample annotation".to_string()),
             status: Set("approved".to_string()),

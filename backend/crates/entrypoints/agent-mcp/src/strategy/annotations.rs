@@ -38,6 +38,7 @@ fn annotation_use_case_to_dto(m: core_application::annotation::Annotation) -> An
         target_symbol: m.target_symbol,
         target_kind: m.target_kind,
         timestamp: m.timestamp,
+        timestamp_start: m.timestamp_start,
         price: m.price.map(decimal_to_f64),
         text: m.text,
         status: m.status,
@@ -55,14 +56,15 @@ impl StrategyServer {
         execution_task_id: Option<String>,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
-        let created = self
+        let result = self
             .dependencies
             .annotations
-            .create(CreateAnnotationCommand {
+            .create_with_warnings(CreateAnnotationCommand {
                 actor: Actor::Llm { label: "analyst" },
                 target_symbol: params.target_symbol,
                 target_kind: params.target_kind,
                 timestamp: params.timestamp,
+                timestamp_start: params.timestamp_start,
                 price: params
                     .price_field
                     .map(to_price_reference_field)
@@ -77,7 +79,8 @@ impl StrategyServer {
             .await
             .map_err(annotation_use_case_error)?;
         Ok(CreateAnnotationResult {
-            annotation: annotation_use_case_to_dto(created),
+            annotation: annotation_use_case_to_dto(result.annotation),
+            warnings: result.warnings,
         })
     }
 
@@ -155,6 +158,7 @@ mod tests {
             target_symbol: "demo-code".into(),
             target_kind: "stock".into(),
             timestamp,
+            timestamp_start: Some(timestamp),
             price: None,
             text: "Example annotation".into(),
             status: "unread".into(),
@@ -173,6 +177,7 @@ mod tests {
                 target_symbol: "demo-code".into(),
                 target_kind: "stock".into(),
                 timestamp,
+                timestamp_start: Some(timestamp),
                 price: None,
                 text: "Example annotation".into(),
                 status: "unread".into(),
@@ -202,6 +207,20 @@ mod tests {
             .and_then(|params| params.price_field);
 
         assert_eq!(accepted_field, Some(AnnotationPriceField::High));
+    }
+
+    #[test]
+    fn create_annotation_params_accepts_timestamp_start() {
+        let mut params = required_create_annotation_params();
+        params["timestamp_start"] = serde_json::json!("2030-01-01T00:00:00Z");
+        let accepted_timestamp_start = serde_json::from_value::<CreateAnnotationParams>(params)
+            .ok()
+            .and_then(|params| params.timestamp_start);
+
+        assert_eq!(
+            accepted_timestamp_start,
+            Some(DateTime::parse_from_rfc3339("2030-01-01T00:00:00Z").expect("valid timestamp")),
+        );
     }
 
     #[test]

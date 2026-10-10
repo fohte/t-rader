@@ -22,6 +22,7 @@ pub struct Model {
     pub execution_step_id: Option<Uuid>,
     #[sea_orm(column_type = "Text", nullable)]
     pub execution_task_id: Option<String>,
+    pub timestamp_start: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

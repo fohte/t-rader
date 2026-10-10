@@ -201,6 +201,7 @@ pub struct CreateAnnotationParams {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price_field: Option<AnnotationPriceField>,
     pub text: String,
     pub linked_note_id: Option<Uuid>,
@@ -221,6 +222,7 @@ pub struct AnnotationDto {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<f64>,
     pub text: String,
     pub status: String,
@@ -233,6 +235,7 @@ pub struct AnnotationDto {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct CreateAnnotationResult {
     pub annotation: AnnotationDto,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

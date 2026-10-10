@@ -36,6 +36,7 @@ mod tests {
             published_at: Set(Some(evidence_timestamp)),
             effective_at: Set(Some(evidence_timestamp)),
             snapshot: Set(serde_json::json!({
+                "from": "2030-01-01",
                 "bars": [
                     {
                         "timestamp": evidence_timestamp,
@@ -69,6 +70,7 @@ mod tests {
                     target_symbol: "FICTIONAL-ASSET".into(),
                     target_kind: "custom-tag".into(),
                     timestamp: ts,
+                    timestamp_start: Some(evidence_timestamp),
                     price_field: Some(AnnotationPriceField::Close),
                     text: "breakout".into(),
                     linked_note_id: None,
@@ -82,6 +84,11 @@ mod tests {
             target_symbol: "FICTIONAL-ASSET".into(),
             target_kind: "custom-tag".into(),
             timestamp: ts.with_timezone(&chrono::Utc).fixed_offset(),
+            timestamp_start: Some(
+                evidence_timestamp
+                    .with_timezone(&chrono::Utc)
+                    .fixed_offset(),
+            ),
             price: Some(12.5),
             text: "breakout".into(),
             status: DEFAULT_ANNOTATION_STATUS.into(),
@@ -94,6 +101,7 @@ mod tests {
             normalize_create_annotation(created),
             CreateAnnotationResult {
                 annotation: expected.clone(),
+                warnings: vec!["timestamp_start がこの実行の query_data の取得開始日と一致しています。観測期間ではなく、アノテーション自身が語る期間の開始日か確認してください。".into()],
             },
         );
 
@@ -181,6 +189,7 @@ mod tests {
                         target_symbol: "FICTIONAL-ASSET".into(),
                         target_kind: "sample-tag".into(),
                         timestamp: evidence_timestamp,
+                        timestamp_start: None,
                         price_field: Some(field),
                         text: "sample annotation".into(),
                         linked_note_id: None,
@@ -222,6 +231,7 @@ mod tests {
                     target_symbol: "demo-code".into(),
                     target_kind: "sample-tag".into(),
                     timestamp: timestamp.with_timezone(&chrono::Utc).fixed_offset(),
+                    timestamp_start: None,
                     price: None,
                     text: "breakout".into(),
                     status: DEFAULT_ANNOTATION_STATUS.into(),
@@ -247,6 +257,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "  ".into(),
                     timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
+                    timestamp_start: None,
                     price_field: None,
                     text: "x".into(),
                     linked_note_id: None,
@@ -278,6 +289,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "custom-tag".into(),
                     timestamp,
+                    timestamp_start: None,
                     price_field: None,
                     text: "x".into(),
                     linked_note_id: Some(foreign_note),
@@ -294,6 +306,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "custom-tag".into(),
                     timestamp: timestamp.with_timezone(&chrono::Utc).fixed_offset(),
+                    timestamp_start: None,
                     price: None,
                     text: "x".into(),
                     status: DEFAULT_ANNOTATION_STATUS.into(),
@@ -302,6 +315,7 @@ mod tests {
                     created_at: ts_sentinel(),
                     updated_at: ts_sentinel(),
                 },
+                warnings: Vec::new(),
             },
         );
     }
@@ -327,6 +341,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
+                    timestamp_start: None,
                     price_field: None,
                     text: "first attempt".into(),
                     linked_note_id: None,
@@ -344,6 +359,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
+                    timestamp_start: None,
                     price_field: None,
                     text: "second attempt".into(),
                     linked_note_id: None,
@@ -390,6 +406,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
+                    timestamp_start: None,
                     price_field: None,
                     text: "already reviewed".into(),
                     linked_note_id: None,
@@ -415,6 +432,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
+                    timestamp_start: None,
                     price_field: None,
                     text: "second attempt".into(),
                     linked_note_id: None,
@@ -468,6 +486,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
+                    timestamp_start: None,
                     price_field: None,
                     text: "commented but unread".into(),
                     linked_note_id: None,
@@ -493,6 +512,7 @@ mod tests {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
+                    timestamp_start: None,
                     price_field: None,
                     text: "second attempt".into(),
                     linked_note_id: None,
@@ -546,6 +566,7 @@ mod tests {
                         target_symbol: "7203".into(),
                         target_kind: "signal".into(),
                         timestamp: ts,
+                        timestamp_start: None,
                         price_field: None,
                         text: text.into(),
                         linked_note_id: None,

@@ -6,8 +6,9 @@ use uuid::Uuid;
 
 use super::error::AnnotationUseCaseError;
 use super::ports::{
-    Annotation, AnnotationPriceInput, ChangeAnnotationStatusCommand, CreateAnnotationCommand,
-    DeleteAnnotationCommand, NewAnnotation, SharedAnnotationRepository, UpdateAnnotationCommand,
+    Annotation, AnnotationCreateResult, AnnotationPriceInput, ChangeAnnotationStatusCommand,
+    CreateAnnotationCommand, DeleteAnnotationCommand, NewAnnotation, SharedAnnotationRepository,
+    UpdateAnnotationCommand,
 };
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
 use crate::strategy_task_step_evidence::SharedStrategyTaskStepEvidenceRepository;
@@ -15,6 +16,7 @@ use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY_KIND: [&str; 2] = ["human", "llm"];
+const QUERY_DATA_RANGE_START_WARNING: &str = "timestamp_start がこの実行の query_data の取得開始日と一致しています。観測期間ではなく、アノテーション自身が語る期間の開始日か確認してください。";
 
 #[derive(Clone)]
 pub struct AnnotationUseCases {
@@ -43,6 +45,15 @@ impl AnnotationUseCases {
         &self,
         command: CreateAnnotationCommand,
     ) -> Result<Annotation, AnnotationUseCaseError> {
+        self.create_with_warnings(command)
+            .await
+            .map(|result| result.annotation)
+    }
+
+    pub async fn create_with_warnings(
+        &self,
+        command: CreateAnnotationCommand,
+    ) -> Result<AnnotationCreateResult, AnnotationUseCaseError> {
         let price_input = validate_price_input(command.price, command.execution_step_id)?;
         let target_symbol = non_empty_trimmed(command.target_symbol, "target_symbol")?;
         let target_kind = non_empty_trimmed(command.target_kind, "target_kind")?;
@@ -50,6 +61,14 @@ impl AnnotationUseCases {
         validate_status(&command.status)?;
         validate_created_by_kind(&command.created_by_kind)?;
         let transaction = self.unit_of_work.begin().await?;
+        let warnings = self
+            .timestamp_start_warnings(
+                &transaction,
+                command.execution_step_id,
+                &target_symbol,
+                command.timestamp_start,
+            )
+            .await?;
         if let Some(note_id) = command.linked_note_id {
             self.ensure_linked_note_exists(&transaction, note_id)
                 .await?;
@@ -91,6 +110,7 @@ impl AnnotationUseCases {
                     target_symbol: target_symbol.clone(),
                     target_kind,
                     timestamp: command.timestamp,
+                    timestamp_start: command.timestamp_start,
                     price,
                     text: command.text,
                     status: command.status,
@@ -113,7 +133,39 @@ impl AnnotationUseCases {
         )
         .await?;
         self.unit_of_work.commit(transaction).await?;
-        Ok(created)
+        Ok(AnnotationCreateResult {
+            annotation: created,
+            warnings,
+        })
+    }
+
+    async fn timestamp_start_warnings(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        execution_step_id: Option<Uuid>,
+        target_symbol: &str,
+        timestamp_start: Option<chrono::DateTime<chrono::FixedOffset>>,
+    ) -> Result<Vec<String>, AnnotationUseCaseError> {
+        let Some(execution_step_id) = execution_step_id else {
+            return Ok(Vec::new());
+        };
+        let Some(timestamp_start) = timestamp_start else {
+            return Ok(Vec::new());
+        };
+        let timestamp_start_date = timestamp_start.with_timezone(&Utc).date_naive();
+        let evidence = self
+            .strategy_task_step_evidence
+            .find_query_data(transaction, execution_step_id, target_symbol)
+            .await?;
+
+        if evidence
+            .iter()
+            .any(|snapshot| snapshot.query_data_range_start() == Some(timestamp_start_date))
+        {
+            Ok(vec![QUERY_DATA_RANGE_START_WARNING.into()])
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     async fn resolve_price_field(

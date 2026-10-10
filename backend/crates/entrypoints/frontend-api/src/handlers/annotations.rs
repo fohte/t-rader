@@ -112,6 +112,7 @@ pub async fn create_annotation(
             target_symbol: p.target_symbol,
             target_kind: p.target_kind,
             timestamp: p.timestamp,
+            timestamp_start: None,
             price: p.price.map(AnnotationPriceInput::Value),
             text: p.text,
             status,
