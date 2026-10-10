@@ -2,36 +2,33 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
-  createSeriesMarkers,
   HistogramSeries,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
-  type ISeriesMarkersPluginApi,
-  type SeriesMarker,
+  LineStyle,
   type SeriesType,
-  type Time,
-  type UTCTimestamp,
 } from 'lightweight-charts'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
+import {
+  bucketAnnotationTimestamp,
+  type ChartAnnotation,
+} from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
   type ChartCurrency,
   toCandlestickData,
   toVolumeData,
 } from '#lib/chart-utils'
+import { cn } from '#lib/utils'
 
 type Bar = components['schemas']['Bar']
 
-export interface ChartAnnotation {
-  id: string
-  /** ピン番号 (A1, A2, ...) */
-  label: string
-  /** ISO 8601 timestamp */
-  timestamp: string
-  target_kind: string
-  status: string
-  text: string
+interface BandLayout {
+  width: number
+  bottom: number
 }
 
 interface CandlestickChartProps {
@@ -66,23 +63,13 @@ export function CandlestickChart({
   const chartRef = useRef<IChartApi | null>(null)
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
-  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
+  const priceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
-  // クリックハンドラが annotations を見るたびに timestamp を parse すると毎クリック O(n) の Date 構築が走るので、
-  // annotations 変更時に 1 度だけ秒に換算して保持する。
-  const parsedAnnotationsRef = useRef<
-    (ChartAnnotation & { timeSec: number })[]
-  >([])
-  const onSelectRef = useRef(onSelectAnnotation)
-  useEffect(() => {
-    parsedAnnotationsRef.current = (annotations ?? []).map((a) => ({
-      ...a,
-      timeSec: Math.floor(new Date(a.timestamp).getTime() / 1000),
-    }))
-  }, [annotations])
-  useEffect(() => {
-    onSelectRef.current = onSelectAnnotation
-  }, [onSelectAnnotation])
+  const [bandLayout, setBandLayout] = useState<BandLayout | null>(null)
+  const [bandMarkers, setBandMarkers] = useState<{ id: string; x: number }[]>(
+    [],
+  )
+  const hasAnnotations = (annotations?.length ?? 0) > 0
 
   // チャートの初期化 (マウント時のみ)
   useEffect(() => {
@@ -127,38 +114,7 @@ export function CandlestickChart({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
     })
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
-    })
     volumeSeriesRef.current = volumeSeries
-
-    markersPluginRef.current = createSeriesMarkers(candlestickSeries)
-
-    chart.subscribeClick((param) => {
-      const handler = onSelectRef.current
-      const list = parsedAnnotationsRef.current
-      if (handler == null || list.length === 0 || param.time == null) {
-        return
-      }
-      // Lightweight Charts の Time は UTC 秒の number または BusinessDay/string。
-      // ここでは number 形式 (UTCTimestamp) のみ扱う。
-      if (typeof param.time !== 'number') return
-      const t = param.time
-      let best: (ChartAnnotation & { timeSec: number }) | null = null
-      let bestDiff = Infinity
-      for (const a of list) {
-        const diff = Math.abs(a.timeSec - t)
-        if (diff < bestDiff) {
-          bestDiff = diff
-          best = a
-        }
-      }
-      // 日足前提のヒューリスティクス: 隣接ローソク 1 本 (1 日) では誤検出が多く、
-      // 週末や祝日を跨いだクリックも拾いたいので 3 日まで広げる。
-      if (best != null && bestDiff <= 60 * 60 * 24 * 3) {
-        handler(best.id)
-      }
-    })
 
     isInitialDataRef.current = true
 
@@ -200,7 +156,7 @@ export function CandlestickChart({
       chartRef.current = null
       candlestickSeriesRef.current = null
       volumeSeriesRef.current = null
-      markersPluginRef.current = null
+      priceLineRef.current = null
     }
   }, [])
 
@@ -209,6 +165,15 @@ export function CandlestickChart({
       timeScale: { timeVisible: intraday, secondsVisible: false },
     })
   }, [intraday])
+
+  useEffect(() => {
+    const series = volumeSeriesRef.current
+    if (series == null) return
+
+    series.priceScale().applyOptions({
+      scaleMargins: { top: 0.8, bottom: hasAnnotations ? 0.06 : 0 },
+    })
+  }, [hasAnnotations])
 
   useEffect(() => {
     const series = candlestickSeriesRef.current
@@ -250,39 +215,87 @@ export function CandlestickChart({
   }, [bars])
 
   useEffect(() => {
-    const plugin = markersPluginRef.current
-    if (plugin == null) return
-    const list = annotations ?? []
-    const markers: SeriesMarker<Time>[] = list
-      .map((a) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- UTCTimestamp はブランド型
-        const time = Math.floor(
-          new Date(a.timestamp).getTime() / 1000,
-        ) as UTCTimestamp
-        const isSelected = a.id === selectedAnnotationId
-        const color = isSelected
-          ? '#ef4444'
-          : a.status === 'approved'
-            ? '#71717a'
-            : '#ef4444'
-        return {
-          id: a.id,
-          time,
-          position:
-            a.target_kind === 'signal'
-              ? ('belowBar' as const)
-              : ('aboveBar' as const),
-          color,
-          shape:
-            a.target_kind === 'signal'
-              ? ('arrowUp' as const)
-              : ('circle' as const),
-          text: a.label,
-        }
-      })
-      .sort((x, y) => (x.time as number) - (y.time as number))
-    plugin.setMarkers(markers)
+    const chart = chartRef.current
+    if (chart == null || !hasAnnotations) {
+      setBandLayout(null)
+      setBandMarkers([])
+      return
+    }
+
+    const timeScale = chart.timeScale()
+    const bucketedAnnotations = (annotations ?? []).flatMap((annotation) => {
+      const time = bucketAnnotationTimestamp(annotation.timestamp, bars)
+      return time == null ? [] : [{ id: annotation.id, time }]
+    })
+    const updateBand = () => {
+      const width = timeScale.width()
+      setBandLayout({ width, bottom: timeScale.height() })
+      setBandMarkers(
+        bucketedAnnotations.flatMap((annotation) => {
+          const x = timeScale.timeToCoordinate(annotation.time)
+          return x == null || x < 0 || x > width
+            ? []
+            : [{ id: annotation.id, x }]
+        }),
+      )
+    }
+
+    updateBand()
+    timeScale.subscribeVisibleTimeRangeChange(updateBand)
+    timeScale.subscribeSizeChange(updateBand)
+
+    return () => {
+      timeScale.unsubscribeVisibleTimeRangeChange(updateBand)
+      timeScale.unsubscribeSizeChange(updateBand)
+    }
+  }, [annotations, bars, hasAnnotations])
+
+  useEffect(() => {
+    const series = candlestickSeriesRef.current
+    if (series == null) return
+
+    if (priceLineRef.current != null) {
+      series.removePriceLine(priceLineRef.current)
+      priceLineRef.current = null
+    }
+
+    const selectedAnnotation = annotations?.find(
+      (annotation) => annotation.id === selectedAnnotationId,
+    )
+    if (selectedAnnotation?.price == null) return
+
+    priceLineRef.current = series.createPriceLine({
+      price: selectedAnnotation.price,
+      color: '#ef4444',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      lineVisible: true,
+      axisLabelVisible: true,
+      title: selectedAnnotation.target_kind,
+      axisLabelColor: '#ef4444',
+      axisLabelTextColor: '#ffffff',
+    })
+
+    return () => {
+      if (priceLineRef.current != null) {
+        series.removePriceLine(priceLineRef.current)
+        priceLineRef.current = null
+      }
+    }
   }, [annotations, selectedAnnotationId])
 
-  return <div ref={containerRef} className={className} />
+  return (
+    <div className={cn('relative min-w-0', className)}>
+      <div ref={containerRef} className="absolute inset-0" />
+      {bandLayout != null && (
+        <AnnotationChartBand
+          markers={bandMarkers}
+          width={bandLayout.width}
+          bottom={bandLayout.bottom}
+          selectedAnnotationId={selectedAnnotationId ?? null}
+          onSelectAnnotation={onSelectAnnotation}
+        />
+      )}
+    </div>
+  )
 }

@@ -9,6 +9,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Columns2Icon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { ChartAnnotationList } from '#components/annotations/chart-annotation-list'
 import { CandlestickChart } from '#components/candlestick-chart'
 import { ChartMarketDepthPanel } from '#components/chart-market-depth-panel'
 import {
@@ -16,6 +17,7 @@ import {
   TimeframeSelector,
 } from '#components/timeframe-selector'
 import { Skeleton } from '#components/ui/skeleton'
+import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import { $api } from '#lib/api/client'
 import { getBarsRange } from '#lib/chart-range'
 import { getChartCurrency } from '#lib/chart-utils'
@@ -24,10 +26,15 @@ export const Route = createFileRoute('/charts/$instrumentId')({
   component: ChartPage,
 })
 
+const emptyAnnotations: ChartAnnotation[] = []
+
 function ChartPage() {
   const { instrumentId } = Route.useParams()
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
   const [isMarketDepthOpen, setIsMarketDepthOpen] = useState(false)
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<
+    string | null
+  >(null)
   const { from, to } = useMemo(() => getBarsRange(timeframe), [timeframe])
 
   const { data, isLoading, error } = $api.useQuery('get', '/api/bars', {
@@ -43,7 +50,15 @@ function ChartPage() {
   const { data: instrument } = $api.useQuery('get', '/api/refs/stocks/{id}', {
     params: { path: { id: instrumentId } },
   })
+  const { data: annotations, isPending: isAnnotationsPending } = $api.useQuery(
+    'get',
+    '/api/annotations',
+    {
+      params: { query: { target_symbol: instrumentId } },
+    },
+  )
   const currency = getChartCurrency(instrument?.market)
+  const chartAnnotations = annotations ?? emptyAnnotations
 
   const toggleMarketDepth = () => {
     setIsMarketDepthOpen((prev) => !prev)
@@ -120,9 +135,19 @@ function ChartPage() {
       <div className="flex min-h-0 flex-1 gap-4">
         <CandlestickChart
           bars={data ?? []}
+          annotations={chartAnnotations}
+          onSelectAnnotation={setSelectedAnnotationId}
+          selectedAnnotationId={selectedAnnotationId}
           currency={currency}
           intraday={timeframe !== '1d' && timeframe !== '1w'}
-          className="h-150 w-full"
+          className="h-150 min-w-0 flex-1"
+        />
+        <ChartAnnotationList
+          annotations={chartAnnotations}
+          selectedAnnotationId={selectedAnnotationId}
+          isLoading={isAnnotationsPending}
+          className="h-150"
+          onSelectAnnotation={setSelectedAnnotationId}
         />
         <ChartMarketDepthPanel
           instrumentId={instrumentId}
