@@ -35,6 +35,7 @@ gateway-litellm = { workspace = true }
 gateway-kata-exec = { workspace = true }
 gateway-rss = { workspace = true }
 gateway-t-rader-agent = { workspace = true }
+gateway-tavily = { workspace = true }
 gateway-postgres = { workspace = true }
 entrypoint-scheduler = { workspace = true }
 rate-limit = { workspace = true }

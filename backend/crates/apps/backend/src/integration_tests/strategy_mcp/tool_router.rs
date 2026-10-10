@@ -1,5 +1,4 @@
 use axum::http::{HeaderMap, HeaderValue};
-use indoc::indoc;
 use rmcp::ErrorData as McpError;
 use rstest::rstest;
 use serde_json::{Value, json};
@@ -19,7 +18,7 @@ fn server(
 ) -> StrategyServer {
     let use_cases = build_use_cases(db);
     StrategyServer::new(crate::mcp::strategy_server_dependencies(
-        &use_cases, None, None, llm_client,
+        &use_cases, None, None, llm_client, None,
     ))
 }
 
@@ -31,9 +30,7 @@ fn headers(strategy_id: Uuid) -> HeaderMap {
     );
     headers.insert(
         "x-tool-models",
-        HeaderValue::from_static(
-            r#"{"search_web":"example-model-search","query_youtube":"example-model-youtube"}"#,
-        ),
+        HeaderValue::from_static(r#"{"query_youtube":"example-model-youtube"}"#),
     );
     headers
 }
@@ -93,62 +90,6 @@ async fn query_youtube_uses_model_from_tool_models_header(#[case] youtube_url: &
                     ],
                 }],
             })],
-        ),
-    );
-}
-
-#[tokio::test]
-async fn search_web_uses_model_from_tool_models_header() {
-    let strategy_id = Uuid::new_v4();
-    let litellm = MockServer::start().await;
-    let mut response_body = format!(
-        indoc! {"
-            data: {}
-
-            data: [DONE]
-        "},
-        json!({"choices": [{"delta": {"content": "mock search result"}}]})
-    );
-    response_body.push('\n');
-    response_body.push('\n');
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(response_body))
-        .mount(&litellm)
-        .await;
-
-    let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-    let server = server(
-        mock_db_with_strategy(strategy_id),
-        Some(std::sync::Arc::new(client)),
-    );
-    let result = call_tool_output_with_headers::<_, Value>(
-        &server,
-        "search_web",
-        json!({"query": "example query"}),
-        headers(strategy_id),
-    )
-    .await;
-    let requests = litellm
-        .received_requests()
-        .await
-        .expect("recorded requests");
-    let body: Value = requests[0].body_json().expect("parse request body");
-
-    assert_eq!(
-        (result, body),
-        (
-            Ok(json!({"text": "mock search result", "citations": []})),
-            json!({
-                "model": "example-model-search",
-                "messages": [{
-                    "role": "user",
-                    "content": [{"type": "text", "text": "example query"}],
-                }],
-                "stream": true,
-                "web_search_options": {},
-                "allowed_openai_params": ["web_search_options"],
-            }),
         ),
     );
 }

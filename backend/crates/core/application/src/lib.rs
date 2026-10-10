@@ -57,3 +57,4 @@ pub mod us_stock_master;
 pub mod us_stock_master_source;
 pub mod valuation;
 pub mod valuation_source;
+pub mod web_search;

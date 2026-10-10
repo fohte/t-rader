@@ -42,9 +42,10 @@ pub(super) mod youtube;
 use std::collections::BTreeMap;
 
 use core_application::kata_exec::{KataExecError, SharedKataExecutor};
-use core_application::llm_client::{LlmClientError as LiteLlmError, SharedLlmClient};
+use core_application::llm_client::LlmClientError as LiteLlmError;
 use core_application::persistence::PersistenceError;
 use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
+use core_application::web_search::SharedWebSearchClient;
 use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
@@ -146,8 +147,11 @@ impl StrategyServer {
         self
     }
 
-    pub fn with_litellm_client(mut self, litellm_client: Option<SharedLlmClient>) -> Self {
-        self.dependencies.llm_client = litellm_client;
+    pub fn with_web_search_client(
+        mut self,
+        web_search_client: Option<SharedWebSearchClient>,
+    ) -> Self {
+        self.dependencies.web_search_client = web_search_client;
         self
     }
 
@@ -436,46 +440,33 @@ mod tests {
         header_map_with(TOOL_MODELS_HEADER, value)
     }
 
-    #[rstest]
-    #[case::search_web("search_web", "example-model-search")]
-    #[case::query_youtube("query_youtube", "example-model-youtube")]
-    fn tool_model_from_headers_returns_the_value_for_the_requested_tool(
-        #[case] tool_name: &str,
-        #[case] expected: &str,
-    ) {
+    #[test]
+    fn tool_model_from_headers_returns_the_value_for_the_requested_tool() {
         assert_eq!(
             tool_model_from_headers(
-                &tool_models_headers_with(Some(
-                    br#"{"search_web":"example-model-search","query_youtube":"example-model-youtube"}"#,
-                )),
-                tool_name,
+                &tool_models_headers_with(Some(br#"{"query_youtube":"example-model-youtube"}"#,)),
+                "query_youtube",
             ),
-            Ok(expected.to_string()),
+            Ok("example-model-youtube".to_string()),
         );
     }
 
     #[rstest]
     #[case::missing_header(
         None,
-        "search_web",
+        "query_youtube",
         rmcp::model::ErrorCode::INTERNAL_ERROR,
         "missing x-tool-models header"
     )]
-    #[case::missing_search_web(
-        Some(br#"{"query_youtube":"example-model-youtube"}"#.as_slice()),
-        "search_web",
-        rmcp::model::ErrorCode::INTERNAL_ERROR,
-        "tool model for search_web is not configured"
-    )]
     #[case::missing_query_youtube(
-        Some(br#"{"search_web":"example-model-search"}"#.as_slice()),
+        Some(br#"{}"#.as_slice()),
         "query_youtube",
         rmcp::model::ErrorCode::INTERNAL_ERROR,
         "tool model for query_youtube is not configured"
     )]
     #[case::invalid_json(
         Some(b"not-json".as_slice()),
-        "search_web",
+        "query_youtube",
         rmcp::model::ErrorCode::INVALID_PARAMS,
         "x-tool-models header is not valid JSON"
     )]

@@ -31,6 +31,7 @@ use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
 use core_application::trade::TradeUseCases;
 use core_application::valuation::ValuationUseCases;
+use core_application::web_search::SharedWebSearchClient;
 
 #[derive(Clone)]
 pub struct StrategyServerDependencies {
@@ -68,4 +69,5 @@ pub struct StrategyServerDependencies {
     pub strategy_task_step_evidence: StrategyTaskStepEvidenceUseCases,
     pub trades: TradeUseCases,
     pub valuations: ValuationUseCases,
+    pub web_search_client: Option<SharedWebSearchClient>,
 }

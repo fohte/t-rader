@@ -38,7 +38,6 @@ use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
-use super::web_search::TOOL_NAME as SEARCH_WEB_TOOL_NAME;
 use super::youtube::TOOL_NAME as QUERY_YOUTUBE_TOOL_NAME;
 use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
@@ -247,10 +246,10 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
+    /// Tavily で web 検索し、記事の出典と本文を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to retrieve search_news items whose content_status is not fetched by searching the item's title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query. Optionally set topic to general or news and time_range to day, week, month, or year. Returns up to five source articles with their original URLs, publication dates, snippets, and bodies; bodies are capped at 5,000 characters each. Use this to look into stocks, terms, or themes beyond the available reference data and RSS feeds, or to retrieve a search_news item whose content_status is not fetched by searching its title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped at 20 per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -259,9 +258,8 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let model = tool_model_from_ctx(&ctx, SEARCH_WEB_TOOL_NAME)?;
         let task_execution_id = execution_task_id_from_ctx(&ctx);
-        self.search_web_inner(scope, task_execution_id, model, params)
+        self.search_web_inner(scope, task_execution_id, params)
             .await
             .map(Json)
     }

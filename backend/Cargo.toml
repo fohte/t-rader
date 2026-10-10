@@ -39,6 +39,7 @@ gateway-litellm = { path = "crates/gateways/litellm" }
 gateway-postgres = { path = "crates/gateways/postgres" }
 gateway-rss = { path = "crates/gateways/rss" }
 gateway-t-rader-agent = { path = "crates/gateways/t-rader-agent" }
+gateway-tavily = { path = "crates/gateways/tavily" }
 rate-limit = { path = "crates/libs/rate-limit" }
 graphile_worker = "=0.13.5"
 graphile_worker_admin_ui = "=0.2.3"

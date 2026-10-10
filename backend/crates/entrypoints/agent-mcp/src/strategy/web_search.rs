@@ -1,16 +1,16 @@
 //! `search_web` tool の inner method 実装。
 //!
-//! 問い合わせ文を web 検索対応モデルに渡し、テキストと出典 URL を返す。discover フェーズが
-//! まだ追跡していない銘柄・用語・テーマを深掘りするための tool。1 回の戦略タスク実行
-//! (agent 視点の 1 task = 複数 step からなる) あたりの呼び出し回数に上限を設け、
-//! 超えたら LiteLLM を呼ばずにエラーを返す。
+//! Tavily の検索結果と記事本文を返す。discover フェーズがまだ追跡していない銘柄・用語・
+//! テーマを深掘りするための tool。1 回の戦略タスク実行 (agent 視点の 1 task = 複数 step
+//! からなる) あたりの呼び出し回数に上限を設ける。
 
 use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
 use core_application::strategy_scope::StrategyScope;
+use core_application::web_search::{WebSearchError, WebSearchTimeRange, WebSearchTopic};
 use rmcp::ErrorData as McpError;
 
-use super::dto::{SearchWebParams, SearchWebResult};
-use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
+use super::dto::{SearchWebArticle, SearchWebParams, SearchWebResult};
+use super::{StrategyServer, internal_error, invalid_params};
 
 pub(super) const TOOL_NAME: &str = "search_web";
 
@@ -23,7 +23,6 @@ impl StrategyServer {
         &self,
         scope: impl Into<StrategyScope>,
         task_execution_id: Option<String>,
-        model: String,
         params: SearchWebParams,
     ) -> Result<SearchWebResult, McpError> {
         let session_strategy_id = scope.into().id();
@@ -34,9 +33,9 @@ impl StrategyServer {
 
         let client = self
             .dependencies
-            .llm_client
+            .web_search_client
             .as_ref()
-            .ok_or_else(|| internal_error("litellm client is not configured"))?;
+            .ok_or_else(|| internal_error("TAVILY_API_KEY is not configured"))?;
         let tool_call_counts = &self.dependencies.mcp_tool_call_counts;
 
         // task_execution_id はヘッダ欠落時 (手動呼び出し等) に None になる。その場合は
@@ -50,19 +49,24 @@ impl StrategyServer {
 
         tracing::info!(
             strategy_id = %session_strategy_id,
-            model,
             query,
             "search_web: dispatching web search request"
         );
 
-        let outcome = match client.web_search(&model, &query).await {
+        let outcome = match client
+            .search(
+                &query,
+                params.topic.map(Into::<WebSearchTopic>::into),
+                params.time_range.map(Into::<WebSearchTimeRange>::into),
+            )
+            .await
+        {
             Ok(outcome) => outcome,
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
                     strategy_id = %session_strategy_id,
-                    model,
                     query,
-                    error = %e,
+                    error = %error,
                     "search_web: web search request failed"
                 );
                 // 検索が実際には行われなかったので、予約した呼び出し回数を戻す。
@@ -76,14 +80,47 @@ impl StrategyServer {
                         "search_web: failed to release call count reservation after a failed request"
                     );
                 }
-                return Err(litellm_error_to_mcp(e));
+                return Err(web_search_error_to_mcp(error));
             }
         };
 
         Ok(SearchWebResult {
-            text: outcome.text,
-            citations: outcome.citations,
+            results: outcome
+                .into_iter()
+                .map(|result| SearchWebArticle {
+                    title: result.title,
+                    url: result.url,
+                    published_date: result.published_date,
+                    snippet: result.snippet,
+                    body: result.body,
+                    body_truncated: result.body_truncated,
+                })
+                .collect(),
         })
+    }
+}
+
+fn web_search_error_to_mcp(error: WebSearchError) -> McpError {
+    internal_error(format!("web search failed: {error}"))
+}
+
+impl From<super::dto::SearchWebTopic> for WebSearchTopic {
+    fn from(topic: super::dto::SearchWebTopic) -> Self {
+        match topic {
+            super::dto::SearchWebTopic::General => Self::General,
+            super::dto::SearchWebTopic::News => Self::News,
+        }
+    }
+}
+
+impl From<super::dto::SearchWebTimeRange> for WebSearchTimeRange {
+    fn from(range: super::dto::SearchWebTimeRange) -> Self {
+        match range {
+            super::dto::SearchWebTimeRange::Day => Self::Day,
+            super::dto::SearchWebTimeRange::Week => Self::Week,
+            super::dto::SearchWebTimeRange::Month => Self::Month,
+            super::dto::SearchWebTimeRange::Year => Self::Year,
+        }
     }
 }
 

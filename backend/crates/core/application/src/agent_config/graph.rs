@@ -151,7 +151,6 @@ mod tests {
     fn parse_valid_graph() {
         let yaml = indoc! {"
             tool_models:
-              search_web: example-model-search
               query_youtube: example-model-youtube
             phases:
               - key: plan
@@ -178,13 +177,10 @@ mod tests {
         assert_eq!(
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
-                tool_models: BTreeMap::from([
-                    ("search_web".to_string(), "example-model-search".to_string()),
-                    (
-                        "query_youtube".to_string(),
-                        "example-model-youtube".to_string()
-                    ),
-                ]),
+                tool_models: BTreeMap::from([(
+                    "query_youtube".to_string(),
+                    "example-model-youtube".to_string()
+                ),]),
                 phases: vec![
                     AgentGraphPhase {
                         key: "plan".to_string(),

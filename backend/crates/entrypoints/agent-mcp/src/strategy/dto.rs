@@ -263,14 +263,45 @@ pub struct QueryYoutubeResult {
 pub struct SearchWebParams {
     /// 検索したい内容を表す自然文の問い合わせ
     pub query: String,
+    /// 検索対象。省略時は general
+    #[serde(default)]
+    pub topic: Option<SearchWebTopic>,
+    /// 検索対象の記事公開時期
+    #[serde(default)]
+    pub time_range: Option<SearchWebTimeRange>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchWebTopic {
+    General,
+    News,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchWebTimeRange {
+    Day,
+    Week,
+    Month,
+    Year,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct SearchWebResult {
-    pub text: String,
-    /// 出典 URL。重複除去済み
-    pub citations: Vec<String>,
+    pub results: Vec<SearchWebArticle>,
+}
+
+#[cfg_attr(test, derive(serde::Deserialize))]
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct SearchWebArticle {
+    pub title: String,
+    pub url: String,
+    pub published_date: Option<String>,
+    pub snippet: String,
+    pub body: Option<String>,
+    pub body_truncated: bool,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]

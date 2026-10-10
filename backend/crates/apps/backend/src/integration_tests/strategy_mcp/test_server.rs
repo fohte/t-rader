@@ -32,11 +32,11 @@ impl StrategyServer {
         self
     }
 
-    pub(super) fn with_litellm_client(
+    pub(super) fn with_web_search_client(
         mut self,
-        llm_client: Option<core_application::llm_client::SharedLlmClient>,
+        web_search_client: Option<core_application::web_search::SharedWebSearchClient>,
     ) -> Self {
-        self.server = self.server.with_litellm_client(llm_client);
+        self.server = self.server.with_web_search_client(web_search_client);
         self
     }
 
@@ -68,7 +68,6 @@ impl StrategyServer {
         if let Some(model) = model {
             let models = match name {
                 "query_youtube" => serde_json::json!({"query_youtube": model}),
-                "search_web" => serde_json::json!({"search_web": model}),
                 _ => serde_json::json!({}),
             };
             headers.insert(
@@ -228,18 +227,11 @@ impl StrategyServer {
         &self,
         scope: impl Into<StrategyScope>,
         task_execution_id: Option<String>,
-        model: String,
         params: strategy_dto::SearchWebParams,
     ) -> Result<ToolOutput<strategy_dto::SearchWebResult>, McpError> {
         let execution_id = task_execution_id.map(|task_id| format!("{task_id}:{}", Uuid::new_v4()));
-        self.invoke(
-            "search_web",
-            scope.into().id(),
-            params,
-            execution_id,
-            Some(model),
-        )
-        .await
+        self.invoke("search_web", scope.into().id(), params, execution_id, None)
+            .await
     }
 
     pub(super) async fn read_portfolio(

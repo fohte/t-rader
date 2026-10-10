@@ -629,6 +629,7 @@ dependencies = [
  "gateway-rss",
  "gateway-sec",
  "gateway-t-rader-agent",
+ "gateway-tavily",
  "gateway-twse",
  "graphile_worker",
  "graphile_worker_admin_ui",
@@ -2352,6 +2353,20 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "uuid",
+ "wiremock",
+]
+
+[[package]]
+name = "gateway-tavily"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "core-application",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
  "wiremock",
 ]
 

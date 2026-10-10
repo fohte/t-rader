@@ -12,7 +12,7 @@ use super::super::dto::{
 impl StrategyServer {
     #[tool(
         name = "get_news_content",
-        description = "Read a news item's stored article body and content retrieval state by id. Use this after search_news when content_status is fetched. If content_status is anything other than fetched, use search_web with the item's title and/or URL to retrieve its content.",
+        description = "Read a news item's stored article body and content retrieval state by id. Use this after search_news when content_status is fetched. If content_status is anything other than fetched, use search_web with the item's title and/or URL; the returned search result includes the article body when available.",
         annotations(read_only_hint = true)
     )]
     async fn get_news_content(
@@ -27,7 +27,7 @@ impl StrategyServer {
     /// news_item を title/body_snippet/保存済み本文のキーワードと published_at の期間で直接検索する
     #[tool(
         name = "search_news",
-        description = "Search news_item by case-insensitive substring match against title, body_snippet, or stored article body, and/or by published_at date range, newest first. Returns content_status (null when no content record exists). Use get_news_content for items with content_status=fetched; otherwise use search_web with the item's title and/or URL.",
+        description = "Search news_item by case-insensitive substring match against title, body_snippet, or stored article body, and/or by published_at date range, newest first. Returns content_status (null when no content record exists). Use get_news_content for items with content_status=fetched; otherwise search_web can search the item's title and/or URL and return its body when available.",
         annotations(read_only_hint = true)
     )]
     async fn search_news(
