@@ -27,9 +27,10 @@ export function RefChip({
   const underline = 'border-b border-dotted border-muted-foreground pb-px'
   const pillCls = 'border border-border px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
-  const interactive = onOpen
-    ? 'cursor-pointer hover:text-primary hover:border-primary'
-    : ''
+  const interactive =
+    ref.kind === 'stock' && onOpen != null
+      ? 'cursor-pointer hover:text-primary hover:border-primary'
+      : ''
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
   const title = resolved ? `[[${token}]]` : `[[${token}]] (未解決)`
 
@@ -49,7 +50,7 @@ export function RefChip({
     </>
   )
 
-  if (onOpen) {
+  if (ref.kind === 'stock' && onOpen != null) {
     return (
       <button
         type="button"
