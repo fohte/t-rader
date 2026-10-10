@@ -42,8 +42,6 @@ pub struct WebSearchResult {
     pub url: String,
     pub published_date: Option<String>,
     pub snippet: String,
-    pub body: Option<String>,
-    pub body_truncated: bool,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -57,6 +55,9 @@ pub enum WebSearchError {
     #[error("failed to parse web search response: {0}")]
     Parse(String),
 
+    #[error("failed to extract page {url}: {message}")]
+    ExtractionFailed { url: String, message: String },
+
     #[error("web search client initialization error: {0}")]
     Init(String),
 }
@@ -69,6 +70,8 @@ pub trait WebSearchClient: Send + Sync {
         topic: Option<WebSearchTopic>,
         time_range: Option<WebSearchTimeRange>,
     ) -> Result<Vec<WebSearchResult>, WebSearchError>;
+
+    async fn extract_page(&self, url: &str) -> Result<String, WebSearchError>;
 }
 
 pub type SharedWebSearchClient = Arc<dyn WebSearchClient + Send + Sync>;

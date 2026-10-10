@@ -25,6 +25,7 @@ pub(super) mod paper_trade;
 pub(super) mod portfolio;
 pub(super) mod prediction_stats;
 pub(super) mod predictions;
+pub(super) mod read_page;
 pub(super) mod ref_terms;
 pub(super) mod refs;
 pub(super) mod risk_check;

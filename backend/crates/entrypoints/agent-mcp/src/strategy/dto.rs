@@ -262,6 +262,21 @@ pub struct QueryYoutubeResult {
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct ReadPageParams {
+    /// 読み取るページの HTTP または HTTPS URL
+    pub url: String,
+    /// ページ本文について知りたいこと
+    pub prompt: String,
+}
+
+#[cfg_attr(test, derive(serde::Deserialize))]
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ReadPageResult {
+    pub url: String,
+    pub text: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SearchWebParams {
     /// 検索したい内容を表す自然文の問い合わせ
     pub query: String,
@@ -302,8 +317,6 @@ pub struct SearchWebArticle {
     pub url: String,
     pub published_date: Option<String>,
     pub snippet: String,
-    pub body: Option<String>,
-    pub body_truncated: bool,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]

@@ -26,6 +26,7 @@ mod paper_trade;
 mod portfolio;
 mod prediction_stats;
 mod predictions;
+mod read_page;
 mod ref_terms;
 mod refs;
 mod risk_check;

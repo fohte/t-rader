@@ -28,13 +28,15 @@ use super::dto::{
     QueryDataResult, QueryYoutubeParams, QueryYoutubeResult, ReadAnnotationsParams,
     ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams,
     ReadFinSummaryResult, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams,
-    ReadPortfolioResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
-    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
-    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, ReadValuationParams,
-    ReadValuationResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
-    ResolveCommentResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ReadPageParams, ReadPageResult, ReadPortfolioResult, ReadSectorShortRatioParams,
+    ReadSectorShortRatioResult, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
+    ReadShortSaleReportsParams, ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult,
+    ReadValuationParams, ReadValuationResult, ReplyCommentParams, ReplyCommentResult,
+    ResolveCommentParams, ResolveCommentResult, SearchWebParams, SearchWebResult, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
+use super::read_page::TOOL_NAME as READ_PAGE_TOOL_NAME;
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
@@ -247,10 +249,29 @@ impl StrategyServer {
             .map(Json)
     }
 
-    /// Tavily で web 検索し、記事の出典と本文を返す
+    /// URL のページ本文をモデルに読ませ、質問への回答を返す
+    #[tool(
+        name = "read_page",
+        description = "Read a web page by URL and answer a prompt using the model configured for this tool in agent_graph.tool_models. Use search_web to find URLs, then use read_page to read an article. The answer must use only information in the page, preserve original numbers, dates, names, and quotes, and say when the answer is absent or the content is inaccessible. Calls are limited to 20 per strategy task execution.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_page(
+        &self,
+        Parameters(params): Parameters<ReadPageParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadPageResult>, McpError> {
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        let model = tool_model_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
+        let task_execution_id = execution_task_id_from_ctx(&ctx);
+        self.read_page_inner(scope, task_execution_id, model, params)
+            .await
+            .map(Json)
+    }
+
+    /// Tavily で web 検索し、記事の出典とスニペットを返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query. Optionally set topic to general or news and time_range to day, week, month, or year. Returns source articles with their original URLs, publication dates, snippets, and bodies when available. Check body_truncated to see whether a body was cut. Use this to look into stocks, terms, or themes beyond the available reference data and RSS feeds, or to retrieve a search_news item whose content_status is not fetched by searching its title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; further calls after the cap return an error.",
+        description = "Search the web for a free-form query. Optionally set topic to general or news and time_range to day, week, month, or year. Returns source articles with their original URLs, publication dates, and snippets. Use search_web to find URLs, then use read_page to read an article. Use this to look into stocks, terms, or themes beyond the available reference data and RSS feeds, or to retrieve a search_news item whose content_status is not fetched by searching its title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; further calls after the cap return an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -582,6 +603,7 @@ mod tests {
                 ("read_macro_indicator", Some(true)),
                 ("read_margin", Some(true)),
                 ("read_note", Some(true)),
+                ("read_page", Some(true)),
                 ("read_portfolio", Some(true)),
                 ("read_paper_portfolio", Some(true)),
                 ("read_paper_stats", Some(true)),

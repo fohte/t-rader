@@ -1,6 +1,6 @@
 //! `search_web` tool の inner method 実装。
 //!
-//! Tavily の検索結果と記事本文を返す。discover フェーズがまだ追跡していない銘柄・用語・
+//! Tavily の検索結果を返す。discover フェーズがまだ追跡していない銘柄・用語・
 //! テーマを深掘りするための tool。1 回の戦略タスク実行 (agent 視点の 1 task = 複数 step
 //! からなる) あたりの呼び出し回数に上限を設ける。
 
@@ -92,8 +92,6 @@ impl StrategyServer {
                     url: result.url,
                     published_date: result.published_date,
                     snippet: result.snippet,
-                    body: result.body,
-                    body_truncated: result.body_truncated,
                 })
                 .collect(),
         })

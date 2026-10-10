@@ -334,6 +334,18 @@ pub struct QueryYoutubeResult {
     pub text: String,
 }
 
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ReadPageParams {
+    pub url: String,
+    pub prompt: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ReadPageResult {
+    pub url: String,
+    pub text: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SearchWebParams {
     pub query: String,
@@ -354,8 +366,6 @@ pub struct SearchWebArticle {
     pub url: String,
     pub published_date: Option<String>,
     pub snippet: String,
-    pub body: Option<String>,
-    pub body_truncated: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
