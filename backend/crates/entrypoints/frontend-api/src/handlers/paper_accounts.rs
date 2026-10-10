@@ -42,6 +42,7 @@ pub async fn get_paper_account_stats(
     params(("id" = Uuid, Path, description = "ペーパートレード口座 ID")),
     responses(
         (status = 200, description = "口座の現金、保有、注文", body = PaperAccountPortfolioResponse),
+        (status = 400, description = "口座 ID の形式が不正", body = ErrorResponse),
         (status = 404, description = "口座が見つからない", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

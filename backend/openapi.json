@@ -4673,6 +4673,16 @@
               }
             }
           },
+          "400": {
+            "description": "口座 ID の形式が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "口座が見つからない",
             "content": {

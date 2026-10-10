@@ -5960,6 +5960,15 @@ export interface operations {
           'application/json': components['schemas']['PaperAccountPortfolio']
         }
       }
+      /** @description 口座 ID の形式が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       /** @description 口座が見つからない */
       404: {
         headers: {
