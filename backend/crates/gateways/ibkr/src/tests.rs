@@ -151,6 +151,7 @@ mod fetch_daily_bars {
                 low: dec(95.0),
                 close: dec(105.0),
                 volume: 1000,
+                adjustment_factor: Decimal::ONE,
             },
             Bar {
                 instrument_id: "7203".to_string(),
@@ -162,6 +163,7 @@ mod fetch_daily_bars {
                 low: dec(100.0),
                 close: dec(112.0),
                 volume: 1500,
+                adjustment_factor: Decimal::ONE,
             },
         ];
         assert_eq!(bars, expected);
@@ -224,6 +226,7 @@ mod fetch_daily_bars {
             low: dec(95.0),
             close: dec(105.0),
             volume: 1000,
+            adjustment_factor: Decimal::ONE,
         }];
         assert_eq!(bars, expected);
         Ok(())

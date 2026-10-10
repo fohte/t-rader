@@ -203,6 +203,7 @@ pub(super) fn bar(stock_id: &str, day: u32, open: i64, close: i64) -> Bar {
         low: Decimal::from(open.min(close)),
         close: Decimal::from(close),
         volume: 1_000,
+        adjustment_factor: Decimal::ONE,
     }
 }
 

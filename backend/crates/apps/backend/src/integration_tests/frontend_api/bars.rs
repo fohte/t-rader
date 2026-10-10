@@ -144,6 +144,7 @@ mod tests {
             low: Decimal::new(close - 10, 0),
             close: Decimal::new(close, 0),
             volume: 1000,
+            adjustment_factor: Decimal::ONE,
         }
     }
 

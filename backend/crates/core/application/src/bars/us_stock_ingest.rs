@@ -260,6 +260,7 @@ mod tests {
             low: Decimal::new(91, 1),
             close: Decimal::new(105, 1),
             volume: 25,
+            adjustment_factor: Decimal::ONE,
         }
     }
 

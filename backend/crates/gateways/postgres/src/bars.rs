@@ -322,6 +322,7 @@ mod tests {
             low: Decimal::new(130, 0),
             close: Decimal::new(145, 0),
             volume: 1000,
+            adjustment_factor: Decimal::ONE,
         };
         let repository = PostgresBarsRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
@@ -546,6 +547,7 @@ mod tests {
             low: Decimal::new(91, 1),
             close: Decimal::new(105, 1),
             volume: 25,
+            adjustment_factor: Decimal::ONE,
         }
     }
 }

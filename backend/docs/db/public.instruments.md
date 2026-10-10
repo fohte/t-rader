@@ -49,6 +49,7 @@ erDiagram
   numeric low
   numeric close
   bigint volume
+  numeric adjustment_factor
 }
 "public.minute_bars" {
   varchar instrument_id FK

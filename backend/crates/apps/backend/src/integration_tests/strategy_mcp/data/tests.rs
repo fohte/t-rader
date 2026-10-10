@@ -136,6 +136,7 @@ fn make_test_bar(instrument_id: &str, date: NaiveDate, close: i64) -> Bar {
         low: Decimal::new(close - 10, 0),
         close: Decimal::new(close, 0),
         volume: 1_000,
+        adjustment_factor: Decimal::ONE,
     }
 }
 

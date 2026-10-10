@@ -67,6 +67,7 @@ mod tests {
                 low: Decimal::from(close),
                 close: Decimal::from(close),
                 volume: 1000,
+                adjustment_factor: Decimal::ONE,
             }],
         )
         .await

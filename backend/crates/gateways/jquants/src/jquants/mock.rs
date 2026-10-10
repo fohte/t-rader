@@ -169,6 +169,7 @@ pub struct MockBar {
     pub adj_low: Option<f64>,
     pub adj_close: Option<f64>,
     pub adj_volume: Option<f64>,
+    pub adj_factor: Option<f64>,
 }
 
 pub struct MockDailyBarsBuilder<'a> {
@@ -224,6 +225,7 @@ impl<'a> MockDailyBarsBuilder<'a> {
                     "AdjL": b.adj_low,
                     "AdjC": b.adj_close,
                     "AdjVo": b.adj_volume,
+                    "AdjFactor": b.adj_factor,
                 })
             })
             .collect();
@@ -280,6 +282,7 @@ impl<'a> MockDailyBarsByDateBuilder<'a> {
                     "AdjL": b.adj_low,
                     "AdjC": b.adj_close,
                     "AdjVo": b.adj_volume,
+                    "AdjFactor": b.adj_factor,
                 })
             })
             .collect();

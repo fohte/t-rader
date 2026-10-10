@@ -65,6 +65,7 @@ impl From<Bar> for bars::ActiveModel {
             low: Set(bar.low),
             close: Set(bar.close),
             volume: Set(bar.volume),
+            adjustment_factor: Set(bar.adjustment_factor),
         }
     }
 }
@@ -82,6 +83,7 @@ impl From<bars::Model> for Bar {
             low: model.low,
             close: model.close,
             volume: model.volume,
+            adjustment_factor: model.adjustment_factor,
         }
     }
 }
@@ -113,6 +115,7 @@ pub async fn upsert_bars(
                 bars::Column::Low,
                 bars::Column::Close,
                 bars::Column::Volume,
+                bars::Column::AdjustmentFactor,
             ])
             .to_owned(),
         )
@@ -262,6 +265,7 @@ pub async fn find_intraday_bars_by_instruments(
                 low: row.low,
                 close: row.close,
                 volume: row.volume,
+                adjustment_factor: Decimal::ONE,
             })
         })
         .collect()
@@ -380,6 +384,7 @@ mod tests {
             low: Decimal::new(close - 10, 0),
             close: Decimal::new(close, 0),
             volume: 1000,
+            adjustment_factor: Decimal::ONE,
         }
     }
 
@@ -397,6 +402,7 @@ mod tests {
             low: Decimal::new(close - 10, 0),
             close: Decimal::new(close, 0),
             volume: 1000,
+            adjustment_factor: Decimal::ONE,
         }
     }
 
@@ -435,13 +441,15 @@ mod tests {
 
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date");
 
-        // 初回挿入
-        upsert_bars(&db, vec![make_test_bar("7203", date, 100)])
+        let initial = make_test_bar("7203", date, 100);
+        upsert_bars(&db, vec![initial])
             .await
             .expect("upsert v1 failed");
 
         // 同じ PK で値を更新
-        upsert_bars(&db, vec![make_test_bar("7203", date, 200)])
+        let mut adjusted = make_test_bar("7203", date, 200);
+        adjusted.adjustment_factor = Decimal::new(5, 1);
+        upsert_bars(&db, vec![adjusted.clone()])
             .await
             .expect("upsert v2 failed");
 
@@ -451,9 +459,13 @@ mod tests {
             from: None,
             to: None,
         };
-        let result = find_bars(&db, query).await.expect("find failed");
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].close, Decimal::new(200, 0));
+        let result: Vec<Bar> = find_bars(&db, query)
+            .await
+            .expect("find failed")
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        assert_eq!(result, vec![adjusted]);
     }
 
     #[backend_test_macros::database_test]

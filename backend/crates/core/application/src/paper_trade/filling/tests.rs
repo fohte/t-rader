@@ -327,6 +327,7 @@ fn bar(day: u32, open: i64) -> Bar {
         low: open,
         close: open,
         volume: 100,
+        adjustment_factor: Decimal::ONE,
     }
 }
 

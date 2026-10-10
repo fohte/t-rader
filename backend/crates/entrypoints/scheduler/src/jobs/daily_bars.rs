@@ -1,5 +1,6 @@
 use core_application::{
     bars::{BarsUseCaseError, BarsUseCases, IngestStats},
+    daily_bar_source::DailyBarSource,
     market_daily_bar_source::MarketDailyBarSource,
 };
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
@@ -23,7 +24,16 @@ impl TaskHandler for DailyBarsIngest {
                     state.dependencies.market_daily_bar_source,
                     "J-Quants market daily bar source",
                 )?;
-                ingest_daily_bars(&state.dependencies.bars, source.as_ref()).await
+                let instrument_source = require_source(
+                    state.dependencies.daily_bar_source,
+                    "J-Quants daily bar source",
+                )?;
+                ingest_daily_bars(
+                    &state.dependencies.bars,
+                    source.as_ref(),
+                    instrument_source.as_ref(),
+                )
+                .await
             },
         )
         .await
@@ -32,10 +42,11 @@ impl TaskHandler for DailyBarsIngest {
 
 async fn ingest_daily_bars(
     use_cases: &BarsUseCases,
-    source: &dyn MarketDailyBarSource,
+    market_source: &dyn MarketDailyBarSource,
+    instrument_source: &dyn DailyBarSource,
 ) -> Result<IngestStats, String> {
     let stats = use_cases
-        .run_ingest_cycle(source)
+        .run_ingest_cycle(market_source, instrument_source)
         .await
         .map_err(|error: BarsUseCaseError| error.to_string())?;
     tracing::debug!(

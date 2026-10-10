@@ -5,7 +5,7 @@
 | Name                                                                                        | Columns | Comment                                                                                                | Type       |
 | ------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------ | ---------- |
 | [public.instruments](public.instruments.md)                                                 | 4       | 価格データの取得対象となる金融商品を管理する。                                                         | BASE TABLE |
-| [public.bars](public.bars.md)                                                               | 8       | 銘柄ごとの日足価格と出来高を保持する。                                                                 | BASE TABLE |
+| [public.bars](public.bars.md)                                                               | 9       | 銘柄ごとの日足価格と出来高を保持する。                                                                 | BASE TABLE |
 | [public.strategy](public.strategy.md)                                                       | 6       | 投資判断と関連データを分けて管理する永続的な戦略ワークスペース。                                       | BASE TABLE |
 | [public.stock](public.stock.md)                                                             | 6       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。 | BASE TABLE |
 | [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                                     | BASE TABLE |
@@ -235,6 +235,7 @@ erDiagram
   numeric low
   numeric close
   bigint volume
+  numeric adjustment_factor
 }
 "public.strategy" {
   uuid id

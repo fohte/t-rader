@@ -35,6 +35,7 @@ mod tests {
             low: Decimal::from(close - 10),
             close: Decimal::from(close),
             volume: 1000,
+            adjustment_factor: Decimal::ONE,
         }
     }
 
@@ -283,6 +284,7 @@ mod tests {
                     low: Decimal::from(1100),
                     close: Decimal::from(1200),
                     volume: 10_000,
+                    adjustment_factor: Decimal::ONE,
                 }]),
         );
 

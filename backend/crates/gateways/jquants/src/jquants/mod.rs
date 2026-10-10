@@ -409,5 +409,10 @@ fn parse_daily_bar(
         low: JQuantsClient::to_decimal(adj_low)?,
         close: JQuantsClient::to_decimal(adj_close)?,
         volume: d.adj_volume.map(|v| v.round() as i64).unwrap_or(0),
+        adjustment_factor: d
+            .adj_factor
+            .map(JQuantsClient::to_decimal)
+            .transpose()?
+            .unwrap_or(Decimal::ONE),
     }))
 }
