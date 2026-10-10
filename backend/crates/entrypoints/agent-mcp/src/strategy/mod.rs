@@ -45,6 +45,7 @@ use std::collections::BTreeMap;
 
 use core_application::kata_exec::{KataExecError, SharedKataExecutor};
 use core_application::llm_client::LlmClientError as LiteLlmError;
+use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
 use core_application::persistence::PersistenceError;
 use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
 use core_application::web_search::SharedWebSearchClient;
@@ -134,6 +135,18 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
     }
 }
 
+pub(super) fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
+    match error {
+        error @ McpToolCallCountUseCaseError::CallLimitExceeded { .. } => {
+            invalid_params(error.to_string())
+        }
+        error => {
+            tracing::error!(error = %error, "strategy mcp db error");
+            internal_error(format!("database error: {error}"))
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct StrategyServer {
     pub(super) dependencies: StrategyServerDependencies,
@@ -155,6 +168,29 @@ impl StrategyServer {
     ) -> Self {
         self.dependencies.web_search_client = web_search_client;
         self
+    }
+
+    pub(super) async fn release_tool_call_count_reservation(
+        &self,
+        task_execution_id: Option<&str>,
+        tool_name: &'static str,
+    ) {
+        let Some(task_execution_id) = task_execution_id else {
+            return;
+        };
+        if let Err(error) = self
+            .dependencies
+            .mcp_tool_call_counts
+            .release(task_execution_id, tool_name)
+            .await
+        {
+            tracing::warn!(
+                task_execution_id,
+                tool_name,
+                error = %error,
+                "failed to release tool call count reservation"
+            );
+        }
     }
 
     /// `KATA_EXEC_API_URL` が未設定だと executor は `None` のまま起動する。

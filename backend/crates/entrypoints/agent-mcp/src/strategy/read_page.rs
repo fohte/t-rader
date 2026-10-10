@@ -2,13 +2,15 @@
 
 use axum::http::Uri;
 use core_application::llm_client::{ChatMessage, ContentPart};
-use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
 use core_application::strategy_scope::StrategyScope;
 use core_application::web_search::WebSearchError;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{ReadPageParams, ReadPageResult};
-use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
+use super::{
+    StrategyServer, internal_error, invalid_params, litellm_error_to_mcp,
+    tool_call_count_error_to_mcp,
+};
 
 pub(super) const TOOL_NAME: &str = "read_page";
 pub(super) const READ_PAGE_MAX_CALLS_PER_TASK: u32 = 20;
@@ -66,7 +68,7 @@ impl StrategyServer {
                     error = %error,
                     "read_page: page extraction failed"
                 );
-                self.release_call_count_reservation(task_execution_id.as_deref())
+                self.release_tool_call_count_reservation(task_execution_id.as_deref(), TOOL_NAME)
                     .await;
                 return Err(page_extraction_error_to_mcp(error));
             }
@@ -105,32 +107,12 @@ impl StrategyServer {
                     error = %error,
                     "read_page: chat completion failed"
                 );
-                self.release_call_count_reservation(task_execution_id.as_deref())
-                    .await;
+                // Tavily 抽出は成功しているため、LLM の失敗では呼び出し枠を戻さない。
                 return Err(litellm_error_to_mcp(error));
             }
         };
 
         Ok(ReadPageResult { url, text })
-    }
-
-    async fn release_call_count_reservation(&self, task_execution_id: Option<&str>) {
-        let Some(task_execution_id) = task_execution_id else {
-            return;
-        };
-        if let Err(error) = self
-            .dependencies
-            .mcp_tool_call_counts
-            .release(task_execution_id, TOOL_NAME)
-            .await
-        {
-            tracing::warn!(
-                task_execution_id,
-                tool_name = TOOL_NAME,
-                error = %error,
-                "read_page: failed to release call count reservation"
-            );
-        }
     }
 }
 
@@ -150,16 +132,4 @@ fn validate_page_url(url: &str) -> Result<(), McpError> {
 
 fn page_extraction_error_to_mcp(error: WebSearchError) -> McpError {
     internal_error(format!("page extraction failed: {error}"))
-}
-
-fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
-    match error {
-        error @ McpToolCallCountUseCaseError::CallLimitExceeded { .. } => {
-            invalid_params(error.to_string())
-        }
-        error => {
-            tracing::error!(error = %error, "strategy mcp db error");
-            internal_error(format!("database error: {error}"))
-        }
-    }
 }

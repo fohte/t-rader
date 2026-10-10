@@ -445,7 +445,7 @@ async fn read_page_releases_call_count_reservation_after_extraction_failure(
 }
 
 #[backend_test_macros::database_test]
-async fn read_page_releases_call_count_reservation_after_completion_failure(
+async fn read_page_keeps_call_count_reservation_after_completion_failure(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
@@ -453,10 +453,10 @@ async fn read_page_releases_call_count_reservation_after_completion_failure(
     let (llm_client, llm) = failing_llm_client();
     let server = server(db, Some(llm_client), Some(web_search_client));
     let task_id = format!("task-{}", Uuid::new_v4());
-    let call_count = READ_PAGE_TEST_CALL_LIMIT + 1;
+    let calls_after_limit = READ_PAGE_TEST_CALL_LIMIT + 1;
     let mut errors = Vec::new();
 
-    for _ in 0..call_count {
+    for _ in 0..calls_after_limit {
         errors.push(
             call_tool_output_with_headers::<_, Value>(
                 &server,
@@ -475,16 +475,20 @@ async fn read_page_releases_call_count_reservation_after_completion_failure(
             llm.calls.lock().expect("read completion calls").len(),
         ),
         (
-            (0..call_count)
+            (0..READ_PAGE_TEST_CALL_LIMIT)
                 .map(|_| {
                     Err(McpError::internal_error(
                         "litellm api error (status 503): upstream unavailable",
                         None,
                     ))
                 })
+                .chain(std::iter::once(Err(McpError::invalid_params(
+                    "read_page call limit (20) exceeded for this task execution",
+                    None,
+                ))))
                 .collect::<Vec<_>>(),
-            call_count as usize,
-            call_count as usize,
+            READ_PAGE_TEST_CALL_LIMIT as usize,
+            READ_PAGE_TEST_CALL_LIMIT as usize,
         ),
     );
 }

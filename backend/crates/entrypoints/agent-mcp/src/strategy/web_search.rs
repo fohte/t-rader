@@ -4,13 +4,12 @@
 //! テーマを深掘りするための tool。1 回の戦略タスク実行 (agent 視点の 1 task = 複数 step
 //! からなる) あたりの呼び出し回数に上限を設ける。
 
-use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
 use core_application::strategy_scope::StrategyScope;
 use core_application::web_search::{WebSearchError, WebSearchTimeRange, WebSearchTopic};
 use rmcp::ErrorData as McpError;
 
 use super::dto::{SearchWebArticle, SearchWebParams, SearchWebResult};
-use super::{StrategyServer, internal_error, invalid_params};
+use super::{StrategyServer, internal_error, invalid_params, tool_call_count_error_to_mcp};
 
 pub(super) const TOOL_NAME: &str = "search_web";
 
@@ -70,16 +69,8 @@ impl StrategyServer {
                     "search_web: web search request failed"
                 );
                 // 検索が実際には行われなかったので、予約した呼び出し回数を戻す。
-                if let Some(task_execution_id) = task_execution_id.as_deref()
-                    && let Err(err) = tool_call_counts.release(task_execution_id, TOOL_NAME).await
-                {
-                    tracing::warn!(
-                        task_execution_id,
-                        tool_name = TOOL_NAME,
-                        error = %err,
-                        "search_web: failed to release call count reservation after a failed request"
-                    );
-                }
+                self.release_tool_call_count_reservation(task_execution_id.as_deref(), TOOL_NAME)
+                    .await;
                 return Err(web_search_error_to_mcp(error));
             }
         };
@@ -118,18 +109,6 @@ impl From<super::dto::SearchWebTimeRange> for WebSearchTimeRange {
             super::dto::SearchWebTimeRange::Week => Self::Week,
             super::dto::SearchWebTimeRange::Month => Self::Month,
             super::dto::SearchWebTimeRange::Year => Self::Year,
-        }
-    }
-}
-
-fn tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
-    match error {
-        error @ McpToolCallCountUseCaseError::CallLimitExceeded { .. } => {
-            invalid_params(error.to_string())
-        }
-        error => {
-            tracing::error!(error = %error, "strategy mcp db error");
-            internal_error(format!("database error: {error}"))
         }
     }
 }

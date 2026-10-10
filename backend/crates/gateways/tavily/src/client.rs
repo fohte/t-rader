@@ -317,6 +317,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn extract_page_maps_http_errors() {
+        let mock = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/extract"))
+            .respond_with(
+                ResponseTemplate::new(StatusCode::SERVICE_UNAVAILABLE)
+                    .set_body_string("upstream is temporarily unavailable"),
+            )
+            .mount(&mock)
+            .await;
+
+        let client = TavilyClient::with_endpoints(
+            format!("{}/search", mock.uri()),
+            format!("{}/extract", mock.uri()),
+            "fake-tavily-key",
+        )
+        .expect("build client");
+        assert_eq!(
+            client.extract_page("https://example.invalid/article").await,
+            Err(WebSearchError::Api {
+                status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                message: "upstream is temporarily unavailable".into(),
+            }),
+        );
+    }
+
+    #[tokio::test]
     async fn extract_page_sends_basic_markdown_request_and_returns_full_content() {
         let mock = MockServer::start().await;
         let raw_content = "あ".repeat(100_001);
