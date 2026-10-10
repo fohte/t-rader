@@ -51,6 +51,17 @@ func receiveAPIResourceRequest(requests <-chan apiRequestObservation) *apiReques
 	return &observed
 }
 
+func writeAPIResourceResponse(t *testing.T, writer http.ResponseWriter, status int, body string) {
+	t.Helper()
+	if body != "" {
+		writer.Header().Set("Content-Type", "application/json")
+	}
+	writer.WriteHeader(status)
+	if _, err := io.WriteString(writer, body); err != nil {
+		t.Errorf("write API resource response: %v", err)
+	}
+}
+
 func apiResourceDiagnosticsOutput(diagnostics diag.Diagnostics) []apiDiagnosticObservation {
 	var result []apiDiagnosticObservation
 	for _, diagnostic := range diagnostics {
