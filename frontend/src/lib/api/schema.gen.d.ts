@@ -1912,8 +1912,8 @@ export interface components {
       cash_jpy: number
       /** Format: double */
       initial_cash_jpy: number
-      orders: components['schemas']['PaperTradeOrderResponse'][]
-      positions: components['schemas']['PaperTradePositionResponse'][]
+      orders: components['schemas']['PaperTradeOrder'][]
+      positions: components['schemas']['PaperTradePosition'][]
       purpose: string
       /** Format: date */
       started_on: string
@@ -1950,7 +1950,7 @@ export interface components {
       /** Format: double */
       win_rate?: number | null
     }
-    PaperTradeOrderResponse: {
+    PaperTradeOrder: {
       /** Format: date */
       fill_date?: string | null
       /** Format: double */
@@ -1976,7 +1976,7 @@ export interface components {
       side: string
       stock_id: string
     }
-    PaperTradePositionResponse: {
+    PaperTradePosition: {
       /** Format: double */
       avg_cost_jpy: number
       /** Format: double */

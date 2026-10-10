@@ -9607,13 +9607,13 @@
           "orders": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PaperTradeOrderResponse"
+              "$ref": "#/components/schemas/PaperTradeOrder"
             }
           },
           "positions": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PaperTradePositionResponse"
+              "$ref": "#/components/schemas/PaperTradePosition"
             }
           },
           "purpose": {
@@ -9723,7 +9723,7 @@
           }
         }
       },
-      "PaperTradeOrderResponse": {
+      "PaperTradeOrder": {
         "type": "object",
         "required": [
           "order_id",
@@ -9791,7 +9791,7 @@
           }
         }
       },
-      "PaperTradePositionResponse": {
+      "PaperTradePosition": {
         "type": "object",
         "required": [
           "stock_id",

@@ -196,6 +196,13 @@ mod tests {
             .expect("find note version")
             .expect("note has a current version")
             .id;
+        let second_note_id =
+            insert_test_note(&db, "sample decision two", "sample rationale two").await;
+        let second_note_version_id = find_current_note_version(&db, second_note_id)
+            .await
+            .expect("find second note version")
+            .expect("second note has a current version")
+            .id;
         let stock_id = "DEMO-STOCK";
         insert_test_stock(&db, stock_id, "Demo stock").await;
         instruments::Entity::insert(instruments::ActiveModel {
@@ -246,7 +253,7 @@ mod tests {
             stock_id: Set(stock_id.to_string()),
             side: Set("buy".into()),
             qty: Set(500),
-            note_version_id: Set(note_version_id),
+            note_version_id: Set(second_note_version_id),
             ordered_at: Set(rejected_ordered_at),
         })
         .exec_without_returning(&db)
@@ -336,8 +343,8 @@ mod tests {
                     "stock_id": stock_id,
                     "side": "buy",
                     "qty": 500,
-                    "note_id": note_id,
-                    "note_version_id": note_version_id,
+                    "note_id": second_note_id,
+                    "note_version_id": second_note_version_id,
                     "ordered_at": "2026-01-07T01:00:00Z",
                     "outcome": "rejected",
                     "fill_date": null,
@@ -356,6 +363,43 @@ mod tests {
                     "fill_price_jpy": null,
                     "reject_reason": null,
                 }],
+            })),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn portfolio_returns_empty_positions_and_orders_for_a_new_account(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (server, strategy_id) = server_with_account_references(db).await;
+        let account = create_account(
+            &server,
+            account_request(&strategy_id, "example-purpose", "sample-account", None),
+        )
+        .await;
+        let account_id =
+            Uuid::parse_str(account.json::<Value>()["id"].as_str().expect("account id"))
+                .expect("account id is a UUID");
+        account.assert_status(StatusCode::CREATED);
+
+        let response = server
+            .get(&format!("/api/paper-accounts/{account_id}/portfolio"))
+            .await;
+
+        assert_response_eq(
+            &response,
+            StatusCode::OK,
+            Some(json!({
+                "account_id": account_id,
+                "account_name": "sample-account",
+                "strategy_id": strategy_id,
+                "purpose": "example-purpose",
+                "started_on": "2026-01-02",
+                "as_of": "2026-01-02",
+                "initial_cash_jpy": 1500000,
+                "cash_jpy": 1500000,
+                "positions": [],
+                "orders": [],
             })),
         );
     }

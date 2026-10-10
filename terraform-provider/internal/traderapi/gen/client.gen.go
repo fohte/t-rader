@@ -343,16 +343,16 @@ type PaperAccount struct {
 
 // PaperAccountPortfolio defines model for PaperAccountPortfolio.
 type PaperAccountPortfolio struct {
-	AccountId      openapi_types.UUID           `json:"account_id"`
-	AccountName    string                       `json:"account_name"`
-	AsOf           openapi_types.Date           `json:"as_of"`
-	CashJpy        float64                      `json:"cash_jpy"`
-	InitialCashJpy float64                      `json:"initial_cash_jpy"`
-	Orders         []PaperTradeOrderResponse    `json:"orders"`
-	Positions      []PaperTradePositionResponse `json:"positions"`
-	Purpose        string                       `json:"purpose"`
-	StartedOn      openapi_types.Date           `json:"started_on"`
-	StrategyId     openapi_types.UUID           `json:"strategy_id"`
+	AccountId      openapi_types.UUID   `json:"account_id"`
+	AccountName    string               `json:"account_name"`
+	AsOf           openapi_types.Date   `json:"as_of"`
+	CashJpy        float64              `json:"cash_jpy"`
+	InitialCashJpy float64              `json:"initial_cash_jpy"`
+	Orders         []PaperTradeOrder    `json:"orders"`
+	Positions      []PaperTradePosition `json:"positions"`
+	Purpose        string               `json:"purpose"`
+	StartedOn      openapi_types.Date   `json:"started_on"`
+	StrategyId     openapi_types.UUID   `json:"strategy_id"`
 }
 
 // PaperAccountStats defines model for PaperAccountStats.
@@ -375,8 +375,8 @@ type PaperAccountStats struct {
 	WinRate                 nullable.Nullable[float64] `json:"win_rate,omitempty"`
 }
 
-// PaperTradeOrderResponse defines model for PaperTradeOrderResponse.
-type PaperTradeOrderResponse struct {
+// PaperTradeOrder defines model for PaperTradeOrder.
+type PaperTradeOrder struct {
 	FillDate     nullable.Nullable[openapi_types.Date] `json:"fill_date,omitempty"`
 	FillPriceJpy nullable.Nullable[float64]            `json:"fill_price_jpy,omitempty"`
 
@@ -394,8 +394,8 @@ type PaperTradeOrderResponse struct {
 	StockId       string                    `json:"stock_id"`
 }
 
-// PaperTradePositionResponse defines model for PaperTradePositionResponse.
-type PaperTradePositionResponse struct {
+// PaperTradePosition defines model for PaperTradePosition.
+type PaperTradePosition struct {
 	AvgCostJpy       float64 `json:"avg_cost_jpy"`
 	CurrentPriceJpy  float64 `json:"current_price_jpy"`
 	MarketValueJpy   float64 `json:"market_value_jpy"`

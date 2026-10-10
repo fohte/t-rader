@@ -96,6 +96,7 @@ pub struct PaperAccountPortfolioResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = PaperTradePosition)]
 pub struct PaperTradePositionResponse {
     pub stock_id: String,
     pub qty: i64,
@@ -119,6 +120,7 @@ impl From<PaperTradePosition> for PaperTradePositionResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = PaperTradeOrder)]
 pub struct PaperTradeOrderResponse {
     pub order_id: Uuid,
     pub stock_id: String,
@@ -135,8 +137,8 @@ pub struct PaperTradeOrderResponse {
     pub reject_reason: Option<String>,
 }
 
-impl From<(PaperOrderWithResult, Uuid)> for PaperTradeOrderResponse {
-    fn from((item, note_id): (PaperOrderWithResult, Uuid)) -> Self {
+impl PaperTradeOrderResponse {
+    fn new(item: PaperOrderWithResult, note_id: Uuid) -> Self {
         let (outcome, fill_date, fill_price_jpy, reject_reason) = match item.result {
             Some(PaperOrderResult::Filled {
                 fill_date,
@@ -185,7 +187,7 @@ impl PaperAccountPortfolioResponse {
                 note_ids_by_version
                     .get(&version_id)
                     .copied()
-                    .map(|note_id| (item, note_id).into())
+                    .map(|note_id| PaperTradeOrderResponse::new(item, note_id))
                     .ok_or(version_id)
             })
             .collect::<Result<Vec<_>, _>>()?;
