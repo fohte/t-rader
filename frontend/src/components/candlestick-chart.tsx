@@ -69,6 +69,7 @@ export function CandlestickChart({
   const [bandMarkers, setBandMarkers] = useState<{ id: string; x: number }[]>(
     [],
   )
+  const hasAnnotations = (annotations?.length ?? 0) > 0
 
   // チャートの初期化 (マウント時のみ)
   useEffect(() => {
@@ -113,9 +114,8 @@ export function CandlestickChart({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
     })
-    // チャート下端のアノテーション帯と出来高を重ねない。
     volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0.06 },
+      scaleMargins: { top: 0.8, bottom: 0 },
     })
     volumeSeriesRef.current = volumeSeries
 
@@ -170,6 +170,15 @@ export function CandlestickChart({
   }, [intraday])
 
   useEffect(() => {
+    const series = volumeSeriesRef.current
+    if (series == null) return
+
+    series.priceScale().applyOptions({
+      scaleMargins: { top: 0.8, bottom: hasAnnotations ? 0.06 : 0 },
+    })
+  }, [hasAnnotations])
+
+  useEffect(() => {
     const series = candlestickSeriesRef.current
     if (series == null) return
 
@@ -210,7 +219,11 @@ export function CandlestickChart({
 
   useEffect(() => {
     const chart = chartRef.current
-    if (chart == null) return
+    if (chart == null || !hasAnnotations) {
+      setBandLayout(null)
+      setBandMarkers([])
+      return
+    }
 
     const timeScale = chart.timeScale()
     const bucketedAnnotations = (annotations ?? []).flatMap((annotation) => {
@@ -238,7 +251,7 @@ export function CandlestickChart({
       timeScale.unsubscribeVisibleTimeRangeChange(updateBand)
       timeScale.unsubscribeSizeChange(updateBand)
     }
-  }, [annotations, bars])
+  }, [annotations, bars, hasAnnotations])
 
   useEffect(() => {
     const series = candlestickSeriesRef.current
