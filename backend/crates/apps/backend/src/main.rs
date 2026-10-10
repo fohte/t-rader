@@ -21,6 +21,7 @@ use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
 use core_application::valuation_source::SharedValuationSource;
+use core_application::web_search::SharedWebSearchClient;
 use entrypoint_frontend_api::FrontendApiState;
 use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use futures_util::future::BoxFuture;
@@ -36,6 +37,7 @@ use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
 };
+use gateway_tavily::TavilyClient;
 use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
@@ -415,6 +417,8 @@ async fn main() -> Result<(), StartupError> {
 
         let llm_gateway_client =
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
+        let web_search_client =
+            TavilyClient::from_env().map(|client| Arc::new(client) as SharedWebSearchClient);
         let agent_webhook_state = build_agent_webhook_state(&use_cases, agent_webhook_token);
         let external_webhook_state =
             build_external_webhook_state(&use_cases, agent_task_client.clone());
@@ -430,6 +434,7 @@ async fn main() -> Result<(), StartupError> {
             external_webhook_state,
             use_cases,
             daily_bar_source,
+            web_search_client,
             app_db,
         ))
     } else {

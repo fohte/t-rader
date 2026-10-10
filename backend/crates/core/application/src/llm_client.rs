@@ -49,13 +49,6 @@ pub struct FilePart {
     pub mime_type: Option<String>,
 }
 
-/// Web 検索の回答と重複を除いた出典 URL。
-#[derive(Debug, Clone, PartialEq)]
-pub struct WebSearchOutcome {
-    pub text: String,
-    pub citations: Vec<String>,
-}
-
 #[async_trait]
 pub trait LlmClient: Send + Sync {
     async fn list_models(&self) -> Result<Vec<LlmModel>, LlmClientError>;
@@ -65,12 +58,6 @@ pub trait LlmClient: Send + Sync {
         model: &str,
         messages: Vec<ChatMessage>,
     ) -> Result<String, LlmClientError>;
-
-    async fn web_search(
-        &self,
-        model: &str,
-        query: &str,
-    ) -> Result<WebSearchOutcome, LlmClientError>;
 }
 
 pub type SharedLlmClient = Arc<dyn LlmClient + Send + Sync>;

@@ -337,12 +337,25 @@ pub struct QueryYoutubeResult {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SearchWebParams {
     pub query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_range: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SearchWebResult {
-    pub text: String,
-    pub citations: Vec<String>,
+    pub results: Vec<SearchWebArticle>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SearchWebArticle {
+    pub title: String,
+    pub url: String,
+    pub published_date: Option<String>,
+    pub snippet: String,
+    pub body: Option<String>,
+    pub body_truncated: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]

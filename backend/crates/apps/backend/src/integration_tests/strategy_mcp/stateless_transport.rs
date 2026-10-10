@@ -18,6 +18,7 @@ async fn strategy_tool_call_uses_request_headers_without_a_session(
         None,
         None,
         None,
+        None,
         Vec::new(),
     ))
     .expect("failed to build MCP test server");

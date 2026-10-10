@@ -81,7 +81,7 @@ pub(super) fn build_server_with_source(
 ) -> StrategyServer {
     let use_cases = crate::services::use_cases::build_use_cases(db);
     StrategyServer::new(crate::mcp::StrategyServer::new(
-        crate::mcp::strategy_server_dependencies(&use_cases, daily_bar_source, None, None),
+        crate::mcp::strategy_server_dependencies(&use_cases, daily_bar_source, None, None, None),
     ))
 }
 

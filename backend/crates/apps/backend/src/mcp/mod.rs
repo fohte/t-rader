@@ -15,6 +15,7 @@ use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
 use core_application::strategy_task::DEADLINE_DURATION;
+use core_application::web_search::SharedWebSearchClient;
 pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
@@ -29,6 +30,7 @@ pub fn router(
     daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
     litellm_client: Option<SharedLlmClient>,
+    web_search_client: Option<SharedWebSearchClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let mgmt_dependencies = mgmt_dependencies(&use_cases, agent_client);
@@ -44,6 +46,7 @@ pub fn router(
                 daily_bar_source.clone(),
                 kata_executor.clone(),
                 litellm_client.clone(),
+                web_search_client.clone(),
             )))
         },
         NeverSessionManager::default().into(),
@@ -82,6 +85,7 @@ pub(crate) fn strategy_server_dependencies(
     daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
     llm_client: Option<SharedLlmClient>,
+    web_search_client: Option<SharedWebSearchClient>,
 ) -> StrategyServerDependencies {
     StrategyServerDependencies {
         account_risk_policies: use_cases.account_risk_policies(),
@@ -119,6 +123,7 @@ pub(crate) fn strategy_server_dependencies(
         strategy_task_step_evidence: use_cases.strategy_task_step_evidence(),
         trades: use_cases.trades(),
         valuations: use_cases.valuations(),
+        web_search_client,
     }
 }
 
@@ -260,6 +265,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Vec::new(),
         ))
         .expect("failed to build test server");
@@ -306,6 +312,7 @@ mod tests {
         let server = TestServer::new(router(
             crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
+            None,
             None,
             None,
             None,
@@ -374,6 +381,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
                 Vec::new(),
             ))
             .expect("failed to build server A");
@@ -395,6 +403,7 @@ mod tests {
         let server_b = TestServer::new(router(
             crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
+            None,
             None,
             None,
             None,
@@ -485,6 +494,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Vec::new(),
         ))
         .expect("failed to build test server");
@@ -509,6 +519,7 @@ mod tests {
         let server = TestServer::new(router(
             crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
+            None,
             None,
             None,
             None,

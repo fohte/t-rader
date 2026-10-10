@@ -61,6 +61,7 @@ fn create_test_router(states: TestRouterState, db: DatabaseHandle) -> axum::Rout
         states.external_webhook_state,
         states.use_cases,
         None,
+        None,
         db,
     )
 }
