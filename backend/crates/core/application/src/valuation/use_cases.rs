@@ -10,7 +10,7 @@ use crate::strategy_scope::StrategyScope;
 use crate::valuation_source::ValuationSource;
 
 use super::error::ValuationUseCaseError;
-use super::repository::SharedValuationRepository;
+use super::repository::{DailyBarAdjustmentFactor, SharedValuationRepository};
 
 const TARGET_BUSINESS_DAYS: usize = 400;
 const REFETCH_WINDOW_BUSINESS_DAYS: usize = 7;
@@ -88,10 +88,35 @@ impl ValuationUseCases {
         from: NaiveDate,
         to: NaiveDate,
     ) -> Result<Vec<Valuation>, ValuationUseCaseError> {
-        self.repository
+        let mut valuations = self
+            .repository
             .find_by_symbol_date_range(symbol, from, to)
             .await
-            .map_err(Into::into)
+            .map_err(ValuationUseCaseError::from)?;
+        let adjustment_factors = self
+            .repository
+            .find_daily_bar_adjustment_factors_from(symbol, from)
+            .await?;
+
+        apply_daily_bar_adjustment_factors(&mut valuations, &adjustment_factors);
+        Ok(valuations)
+    }
+}
+
+fn apply_daily_bar_adjustment_factors(
+    valuations: &mut [Valuation],
+    adjustment_factors: &[DailyBarAdjustmentFactor],
+) {
+    for valuation in valuations {
+        let factor = adjustment_factors
+            .iter()
+            .filter(|adjustment| adjustment.date > valuation.date)
+            .map(|adjustment| adjustment.factor)
+            .product::<rust_decimal::Decimal>();
+
+        valuation.eps = valuation.eps.map(|value| value * factor);
+        valuation.fwd_eps = valuation.fwd_eps.map(|value| value * factor);
+        valuation.bps = valuation.bps.map(|value| value * factor);
     }
 }
 
@@ -145,7 +170,7 @@ mod tests {
     use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
     use crate::valuation_source::{ValuationSource, ValuationSourceError};
 
-    use super::{IngestStats, ValuationUseCases};
+    use super::{DailyBarAdjustmentFactor, IngestStats, ValuationUseCases};
     use crate::valuation::{ValuationRepository, ValuationRepositoryError};
 
     #[derive(Default)]
@@ -154,6 +179,7 @@ mod tests {
         valuations: Mutex<Vec<Valuation>>,
         ingested_date_queries: Mutex<Vec<NaiveDate>>,
         read_query: Mutex<Option<(String, NaiveDate, NaiveDate)>>,
+        adjustment_factors: Mutex<Vec<DailyBarAdjustmentFactor>>,
     }
 
     use std::collections::HashSet;
@@ -196,6 +222,14 @@ mod tests {
         ) -> Result<Vec<Valuation>, ValuationRepositoryError> {
             *self.read_query.lock().expect("lock") = Some((symbol.to_string(), from, to));
             Ok(self.valuations.lock().expect("lock").clone())
+        }
+
+        async fn find_daily_bar_adjustment_factors_from(
+            &self,
+            _symbol: &str,
+            _from: NaiveDate,
+        ) -> Result<Vec<DailyBarAdjustmentFactor>, ValuationRepositoryError> {
+            Ok(self.adjustment_factors.lock().expect("lock").clone())
         }
     }
 
@@ -430,6 +464,120 @@ mod tests {
         assert_eq!(
             (result, query),
             (expected, Some(("ZZZZ".to_string(), from, to))),
+        );
+    }
+
+    #[tokio::test]
+    async fn adjusts_per_share_indicators_to_the_latest_split_basis() {
+        let repository = Arc::new(FakeValuationRepository::default());
+        let first_date = date(2099, 1, 2);
+        let split_date = date(2099, 1, 5);
+        let after_split_date = date(2099, 1, 6);
+        *repository.valuations.lock().expect("lock") = vec![
+            Valuation {
+                code: "ZZZZ0".to_string(),
+                date: first_date,
+                eps: Some(Decimal::new(400, 0)),
+                fwd_eps: Some(Decimal::new(500, 0)),
+                bps: Some(Decimal::new(800, 0)),
+                roe: Some(Decimal::new(8, 2)),
+                fwd_roe: Some(Decimal::new(10, 2)),
+                per: Some(Decimal::new(152, 1)),
+                fwd_per: Some(Decimal::new(123, 1)),
+                pbr: Some(Decimal::new(11, 1)),
+                mkt_cap: Some(Decimal::new(250_000, 0)),
+            },
+            Valuation {
+                code: "ZZZZ0".to_string(),
+                date: split_date,
+                eps: Some(Decimal::new(200, 0)),
+                fwd_eps: Some(Decimal::new(250, 0)),
+                bps: Some(Decimal::new(400, 0)),
+                roe: Some(Decimal::new(8, 2)),
+                fwd_roe: Some(Decimal::new(10, 2)),
+                per: Some(Decimal::new(152, 1)),
+                fwd_per: Some(Decimal::new(123, 1)),
+                pbr: Some(Decimal::new(11, 1)),
+                mkt_cap: Some(Decimal::new(250_000, 0)),
+            },
+            Valuation {
+                code: "ZZZZ0".to_string(),
+                date: after_split_date,
+                eps: Some(Decimal::new(200, 0)),
+                fwd_eps: Some(Decimal::new(250, 0)),
+                bps: Some(Decimal::new(400, 0)),
+                roe: Some(Decimal::new(8, 2)),
+                fwd_roe: Some(Decimal::new(10, 2)),
+                per: Some(Decimal::new(152, 1)),
+                fwd_per: Some(Decimal::new(123, 1)),
+                pbr: Some(Decimal::new(11, 1)),
+                mkt_cap: Some(Decimal::new(250_000, 0)),
+            },
+        ];
+        *repository.adjustment_factors.lock().expect("lock") = vec![
+            DailyBarAdjustmentFactor {
+                date: first_date,
+                factor: Decimal::new(4, 1),
+            },
+            DailyBarAdjustmentFactor {
+                date: split_date,
+                factor: Decimal::new(5, 1),
+            },
+            DailyBarAdjustmentFactor {
+                date: date(2099, 2, 3),
+                factor: Decimal::new(25, 2),
+            },
+        ];
+        let use_cases = ValuationUseCases::new(repository);
+
+        let result = use_cases
+            .find_for_symbol(strategy_scope().await, "ZZZZ", first_date, after_split_date)
+            .await
+            .expect("read succeeds");
+
+        assert_eq!(
+            result,
+            vec![
+                Valuation {
+                    code: "ZZZZ0".to_string(),
+                    date: first_date,
+                    eps: Some(Decimal::new(50, 0)),
+                    fwd_eps: Some(Decimal::new(625, 1)),
+                    bps: Some(Decimal::new(100, 0)),
+                    roe: Some(Decimal::new(8, 2)),
+                    fwd_roe: Some(Decimal::new(10, 2)),
+                    per: Some(Decimal::new(152, 1)),
+                    fwd_per: Some(Decimal::new(123, 1)),
+                    pbr: Some(Decimal::new(11, 1)),
+                    mkt_cap: Some(Decimal::new(250_000, 0)),
+                },
+                Valuation {
+                    code: "ZZZZ0".to_string(),
+                    date: split_date,
+                    eps: Some(Decimal::new(50, 0)),
+                    fwd_eps: Some(Decimal::new(625, 1)),
+                    bps: Some(Decimal::new(100, 0)),
+                    roe: Some(Decimal::new(8, 2)),
+                    fwd_roe: Some(Decimal::new(10, 2)),
+                    per: Some(Decimal::new(152, 1)),
+                    fwd_per: Some(Decimal::new(123, 1)),
+                    pbr: Some(Decimal::new(11, 1)),
+                    mkt_cap: Some(Decimal::new(250_000, 0)),
+                },
+                Valuation {
+                    code: "ZZZZ0".to_string(),
+                    date: after_split_date,
+                    eps: Some(Decimal::new(50, 0)),
+                    fwd_eps: Some(Decimal::new(625, 1)),
+                    bps: Some(Decimal::new(100, 0)),
+                    roe: Some(Decimal::new(8, 2)),
+                    fwd_roe: Some(Decimal::new(10, 2)),
+                    per: Some(Decimal::new(152, 1)),
+                    fwd_per: Some(Decimal::new(123, 1)),
+                    pbr: Some(Decimal::new(11, 1)),
+                    mkt_cap: Some(Decimal::new(250_000, 0)),
+                },
+            ],
         );
     }
 }

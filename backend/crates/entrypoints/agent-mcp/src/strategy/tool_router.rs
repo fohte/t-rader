@@ -439,7 +439,7 @@ impl StrategyServer {
     /// 銘柄の日次バリュエーション指標を新しい順に返す
     #[tool(
         name = "read_valuation",
-        description = "Read daily J-Quants valuation indicators for a stock, newest first. symbol is the 4-digit code and matches the leading 4 characters of the 5-digit J-Quants code; from/to are inclusive. roe and fwd_roe are decimal ratios, not percentages. mkt_cap is in millions of yen. Indicators J-Quants cannot calculate are null.",
+        description = "Read daily J-Quants valuation indicators for a stock, newest first. symbol is the 4-digit code and matches the leading 4 characters of the 5-digit J-Quants code; from/to are inclusive. eps, fwd_eps, and bps are adjusted to the latest daily-bar share basis using later daily-bar adjustment factors. roe, fwd_roe, per, fwd_per, pbr, and mkt_cap are unchanged. roe and fwd_roe are decimal ratios, not percentages. mkt_cap is in millions of yen. Indicators J-Quants cannot calculate are null.",
         annotations(read_only_hint = true)
     )]
     async fn read_valuation(

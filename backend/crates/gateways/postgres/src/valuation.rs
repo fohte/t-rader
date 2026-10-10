@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_application::valuation::{ValuationRepository, ValuationRepositoryError};
+use core_application::valuation::{
+    DailyBarAdjustmentFactor, ValuationRepository, ValuationRepositoryError,
+};
 use core_domain::valuation::Valuation;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
@@ -13,6 +15,7 @@ use crate::entities::{valuation, valuation_ingested_date};
 use crate::persistence::persistence_error;
 
 const FIND_BY_SYMBOL_DATE_RANGE_SQL: &str = "SELECT code, date, eps, fwd_eps, bps, roe, fwd_roe, per, fwd_per, pbr, mkt_cap FROM valuation WHERE LEFT(code, 4) = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC";
+const FIND_DAILY_BAR_ADJUSTMENT_FACTORS_FROM_SQL: &str = "SELECT (timestamp AT TIME ZONE 'UTC')::date AS date, adjustment_factor AS factor FROM bars WHERE instrument_id = $1 AND timeframe = '1d' AND timestamp >= ($2::date::timestamp AT TIME ZONE 'UTC') AND adjustment_factor <> 1 ORDER BY timestamp ASC";
 
 #[derive(Clone)]
 pub struct PostgresValuationRepository {
@@ -54,6 +57,21 @@ impl From<ValuationRow> for Valuation {
             fwd_per: row.fwd_per,
             pbr: row.pbr,
             mkt_cap: row.mkt_cap,
+        }
+    }
+}
+
+#[derive(Debug, FromQueryResult)]
+struct DailyBarAdjustmentFactorRow {
+    date: NaiveDate,
+    factor: Decimal,
+}
+
+impl From<DailyBarAdjustmentFactorRow> for DailyBarAdjustmentFactor {
+    fn from(row: DailyBarAdjustmentFactorRow) -> Self {
+        Self {
+            date: row.date,
+            factor: row.factor,
         }
     }
 }
@@ -154,6 +172,27 @@ impl ValuationRepository for PostgresValuationRepository {
             .collect::<Result<Vec<_>, _>>()
             .map_err(repository_error)
     }
+
+    async fn find_daily_bar_adjustment_factors_from(
+        &self,
+        symbol: &str,
+        from: NaiveDate,
+    ) -> Result<Vec<DailyBarAdjustmentFactor>, ValuationRepositoryError> {
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                FIND_DAILY_BAR_ADJUSTMENT_FACTORS_FROM_SQL,
+                [symbol.to_owned().into(), from.into()],
+            ))
+            .await
+            .map_err(repository_error)?;
+
+        rows.into_iter()
+            .map(|row| DailyBarAdjustmentFactorRow::from_query_result(&row, "").map(Into::into))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(repository_error)
+    }
 }
 
 fn repository_error(error: sea_orm::DbErr) -> ValuationRepositoryError {
@@ -162,11 +201,16 @@ fn repository_error(error: sea_orm::DbErr) -> ValuationRepositoryError {
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
-    use core_application::valuation::ValuationRepository;
+    use chrono::{NaiveDate, NaiveTime};
+    use core_application::valuation::{DailyBarAdjustmentFactor, ValuationRepository};
     use core_domain::valuation::Valuation;
     use rust_decimal::Decimal;
+    use sea_orm::ActiveValue::Set;
+    use sea_orm::EntityTrait;
     use uuid::Uuid;
+
+    use crate::DatabaseHandle;
+    use crate::entities::{bars, instruments};
 
     use super::PostgresValuationRepository;
 
@@ -229,6 +273,68 @@ mod tests {
         assert_eq!(
             (upserted, rows),
             (5, vec![in_range_latest, in_range_earlier])
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn finds_daily_bar_adjustment_factors_from_the_requested_date(db: DatabaseHandle) {
+        let suffix = Uuid::new_v4().simple().to_string().to_uppercase();
+        let symbol = suffix[..4].to_string();
+        let other_symbol = suffix[4..8].to_string();
+        for instrument_id in [&symbol, &other_symbol] {
+            instruments::Entity::insert(instruments::ActiveModel {
+                id: Set(instrument_id.to_string()),
+                name: Set(instrument_id.to_string()),
+                market: Set("TSE".to_string()),
+                sector: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert instrument");
+        }
+
+        let bar = |instrument_id: &str, date: NaiveDate, timeframe: &str, factor: Decimal| {
+            bars::ActiveModel {
+                instrument_id: Set(instrument_id.to_string()),
+                timeframe: Set(timeframe.to_string()),
+                timestamp: Set(date.and_time(NaiveTime::MIN).and_utc().fixed_offset()),
+                open: Set(Decimal::new(100, 0)),
+                high: Set(Decimal::new(100, 0)),
+                low: Set(Decimal::new(100, 0)),
+                close: Set(Decimal::new(100, 0)),
+                volume: Set(1),
+                adjustment_factor: Set(factor),
+            }
+        };
+        bars::Entity::insert_many(vec![
+            bar(&symbol, date(2099, 1, 1), "1d", Decimal::new(5, 1)),
+            bar(&symbol, date(2099, 1, 2), "1d", Decimal::ONE),
+            bar(&symbol, date(2099, 1, 5), "1d", Decimal::new(5, 1)),
+            bar(&symbol, date(2099, 2, 3), "1d", Decimal::new(25, 2)),
+            bar(&other_symbol, date(2099, 1, 7), "1d", Decimal::new(2, 1)),
+        ])
+        .exec_without_returning(&db)
+        .await
+        .expect("insert daily bars");
+
+        let repository = PostgresValuationRepository::new(db);
+        let factors = repository
+            .find_daily_bar_adjustment_factors_from(&symbol, date(2099, 1, 2))
+            .await
+            .expect("find adjustment factors");
+
+        assert_eq!(
+            factors,
+            vec![
+                DailyBarAdjustmentFactor {
+                    date: date(2099, 1, 5),
+                    factor: Decimal::new(5, 1),
+                },
+                DailyBarAdjustmentFactor {
+                    date: date(2099, 2, 3),
+                    factor: Decimal::new(25, 2),
+                },
+            ],
         );
     }
 
