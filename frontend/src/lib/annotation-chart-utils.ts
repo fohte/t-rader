@@ -7,7 +7,13 @@ type Annotation = components['schemas']['Annotation']
 
 export type ChartAnnotation = Pick<
   Annotation,
-  'id' | 'price' | 'status' | 'target_kind' | 'text' | 'timestamp'
+  | 'id'
+  | 'price'
+  | 'status'
+  | 'target_kind'
+  | 'text'
+  | 'timestamp'
+  | 'timestamp_start'
 >
 
 export interface AnnotationBandMarker {
@@ -18,6 +24,22 @@ export interface AnnotationBandMarker {
 export interface AnnotationBandCluster {
   markers: AnnotationBandMarker[]
   x: number
+}
+
+export interface AnnotationBandPeriod {
+  id: string
+  startX: number
+  endX: number
+}
+
+export interface AnnotationBandSegment {
+  startX: number
+  endX: number
+}
+
+interface BarTimePoint {
+  time: UTCTimestamp
+  date: string
 }
 
 const tokyoDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -60,50 +82,156 @@ function getIntradayIntervalSeconds(timeframe: string): number | null {
   return value * 60 * 60
 }
 
-/** 保存時刻を変更せず、表示中のバーの時刻へ割り当てる。 */
-export function bucketAnnotationTimestamp(
-  timestamp: string,
-  bars: Bar[],
-): UTCTimestamp | null {
-  const annotationTime = toUTCTimestamp(timestamp)
-  if (annotationTime == null || bars.length === 0) return null
-
-  const points = bars
+function getBarTimePoints(bars: Bar[]): BarTimePoint[] {
+  return bars
     .map((bar) => ({
       time: toUTCTimestamp(bar.timestamp),
       date: getTokyoDate(bar.timestamp),
     }))
     .filter(
-      (point): point is { time: UTCTimestamp; date: string } =>
+      (point): point is BarTimePoint =>
         point.time != null && point.date != null,
     )
     .sort((left, right) => left.time - right.time)
+}
+
+function bucketTimestamp(
+  timestamp: string,
+  points: BarTimePoint[],
+  timeframe: string | undefined,
+  clampToBars: boolean,
+): UTCTimestamp | null {
+  const annotationTime = toUTCTimestamp(timestamp)
   const first = points[0]
   const last = points.at(-1)
-  if (first == null || last == null) return null
+  if (annotationTime == null || first == null || last == null) return null
 
-  const timeframe = bars[0]?.timeframe
   const intradayInterval =
     timeframe == null ? null : getIntradayIntervalSeconds(timeframe)
 
   if (intradayInterval != null) {
     if (
-      annotationTime < first.time ||
-      annotationTime > last.time + intradayInterval
+      !clampToBars &&
+      (annotationTime < first.time ||
+        annotationTime > last.time + intradayInterval)
     ) {
       return null
     }
 
     return (
-      points.findLast((point) => point.time <= annotationTime)?.time ?? null
+      points.findLast((point) => point.time <= annotationTime)?.time ??
+      (clampToBars ? first.time : null)
     )
   }
 
   const annotationDate = getTokyoDate(timestamp)
   if (annotationDate == null) return null
-  if (annotationDate < first.date || annotationDate > last.date) return null
+  if (
+    !clampToBars &&
+    (annotationDate < first.date || annotationDate > last.date)
+  ) {
+    return null
+  }
 
-  return points.findLast((point) => point.date <= annotationDate)?.time ?? null
+  return (
+    points.findLast((point) => point.date <= annotationDate)?.time ??
+    (clampToBars ? first.time : null)
+  )
+}
+
+/** 保存時刻を変更せず、表示中のバーの時刻へ割り当てる。 */
+export function bucketAnnotationTimestamp(
+  timestamp: string,
+  bars: Bar[],
+): UTCTimestamp | null {
+  if (bars.length === 0) return null
+
+  return bucketTimestamp(
+    timestamp,
+    getBarTimePoints(bars),
+    bars[0]?.timeframe,
+    false,
+  )
+}
+
+/** 期間の両端を同じ足へ割り当て、バー範囲と重なる部分を返す。 */
+export function bucketAnnotationPeriod(
+  timestampStart: string,
+  timestampEnd: string,
+  bars: Bar[],
+): { start: UTCTimestamp; end: UTCTimestamp } | null {
+  if (bars.length === 0) return null
+
+  const points = getBarTimePoints(bars)
+  const first = points[0]
+  const last = points.at(-1)
+  const startTime = toUTCTimestamp(timestampStart)
+  const endTime = toUTCTimestamp(timestampEnd)
+  const startDate = getTokyoDate(timestampStart)
+  const endDate = getTokyoDate(timestampEnd)
+  if (
+    first == null ||
+    last == null ||
+    startTime == null ||
+    endTime == null ||
+    startDate == null ||
+    endDate == null ||
+    startTime > endTime
+  ) {
+    return null
+  }
+
+  const timeframe = bars[0]?.timeframe
+  const intradayInterval =
+    timeframe == null ? null : getIntradayIntervalSeconds(timeframe)
+  if (intradayInterval != null) {
+    if (endTime < first.time || startTime > last.time + intradayInterval) {
+      return null
+    }
+  } else if (endDate < first.date || startDate > last.date) {
+    return null
+  }
+
+  const start = bucketTimestamp(timestampStart, points, timeframe, true)
+  const end = bucketTimestamp(timestampEnd, points, timeframe, true)
+  if (start == null || end == null || start > end) return null
+
+  return { start, end }
+}
+
+/** 表示範囲外を切り落とした期間座標を返す。 */
+export function clipAnnotationBandSegment(
+  startX: number,
+  endX: number,
+  width: number,
+  minimumWidth = 6,
+): AnnotationBandSegment | null {
+  if (
+    !Number.isFinite(startX) ||
+    !Number.isFinite(endX) ||
+    !Number.isFinite(width) ||
+    startX > endX ||
+    width <= 0 ||
+    endX < 0 ||
+    startX > width
+  ) {
+    return null
+  }
+
+  const visibleStart = Math.max(0, startX)
+  const visibleEnd = Math.min(width, endX)
+  if (visibleEnd - visibleStart >= minimumWidth) {
+    return { startX: visibleStart, endX: visibleEnd }
+  }
+
+  const segmentWidth = Math.min(minimumWidth, width)
+  const center = (visibleStart + visibleEnd) / 2
+  const clippedStart = Math.max(
+    0,
+    Math.min(center - segmentWidth / 2, width - segmentWidth),
+  )
+
+  return { startX: clippedStart, endX: clippedStart + segmentWidth }
 }
 
 /** 近接する印をまとめ、帯に表示する座標と件数を返す。 */

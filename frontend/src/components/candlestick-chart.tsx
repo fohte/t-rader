@@ -6,6 +6,7 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  LineSeries,
   LineStyle,
   type SeriesType,
 } from 'lightweight-charts'
@@ -13,8 +14,11 @@ import { useEffect, useRef, useState } from 'react'
 
 import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
 import {
+  type AnnotationBandPeriod,
+  bucketAnnotationPeriod,
   bucketAnnotationTimestamp,
   type ChartAnnotation,
+  clipAnnotationBandSegment,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -25,6 +29,15 @@ import {
 import { cn } from '#lib/utils'
 
 type Bar = components['schemas']['Bar']
+type BucketedAnnotation =
+  | {
+      id: string
+      time: Exclude<ReturnType<typeof bucketAnnotationTimestamp>, null>
+    }
+  | {
+      id: string
+      period: NonNullable<ReturnType<typeof bucketAnnotationPeriod>>
+    }
 
 interface BandLayout {
   width: number
@@ -62,6 +75,7 @@ export function CandlestickChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
+  const annotationPriceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const priceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
@@ -69,6 +83,7 @@ export function CandlestickChart({
   const [bandMarkers, setBandMarkers] = useState<{ id: string; x: number }[]>(
     [],
   )
+  const [bandPeriods, setBandPeriods] = useState<AnnotationBandPeriod[]>([])
   const hasAnnotations = (annotations?.length ?? 0) > 0
 
   // チャートの初期化 (マウント時のみ)
@@ -108,6 +123,19 @@ export function CandlestickChart({
       scaleMargins: { top: 0.05, bottom: 0.25 },
     })
     candlestickSeriesRef.current = candlestickSeries
+
+    const annotationPriceSeries = chart.addSeries(LineSeries, {
+      color: '#ef4444',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      priceScaleId: 'right',
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      pointMarkersVisible: false,
+      autoscaleInfoProvider: () => null,
+    })
+    annotationPriceSeriesRef.current = annotationPriceSeries
 
     // 出来高ヒストグラム
     const volumeSeries = chart.addSeries(HistogramSeries, {
@@ -155,6 +183,7 @@ export function CandlestickChart({
       chart.remove()
       chartRef.current = null
       candlestickSeriesRef.current = null
+      annotationPriceSeriesRef.current = null
       volumeSeriesRef.current = null
       priceLineRef.current = null
     }
@@ -219,25 +248,52 @@ export function CandlestickChart({
     if (chart == null || !hasAnnotations) {
       setBandLayout(null)
       setBandMarkers([])
+      setBandPeriods([])
       return
     }
 
     const timeScale = chart.timeScale()
-    const bucketedAnnotations = (annotations ?? []).flatMap((annotation) => {
-      const time = bucketAnnotationTimestamp(annotation.timestamp, bars)
-      return time == null ? [] : [{ id: annotation.id, time }]
-    })
+    const bucketedAnnotations = (annotations ?? []).flatMap<BucketedAnnotation>(
+      (annotation): BucketedAnnotation[] => {
+        if (annotation.timestamp_start != null) {
+          const period = bucketAnnotationPeriod(
+            annotation.timestamp_start,
+            annotation.timestamp,
+            bars,
+          )
+          return period == null ? [] : [{ id: annotation.id, period }]
+        }
+
+        const time = bucketAnnotationTimestamp(annotation.timestamp, bars)
+        return time == null ? [] : [{ id: annotation.id, time }]
+      },
+    )
     const updateBand = () => {
       const width = timeScale.width()
       setBandLayout({ width, bottom: timeScale.height() })
-      setBandMarkers(
-        bucketedAnnotations.flatMap((annotation) => {
-          const x = timeScale.timeToCoordinate(annotation.time)
-          return x == null || x < 0 || x > width
-            ? []
-            : [{ id: annotation.id, x }]
-        }),
-      )
+      const markers: { id: string; x: number }[] = []
+      const periods: AnnotationBandPeriod[] = []
+
+      for (const annotation of bucketedAnnotations) {
+        if ('period' in annotation) {
+          const startX = timeScale.timeToCoordinate(annotation.period.start)
+          const endX = timeScale.timeToCoordinate(annotation.period.end)
+          if (startX == null || endX == null) continue
+
+          const segment = clipAnnotationBandSegment(startX, endX, width)
+          if (segment != null) {
+            periods.push({ id: annotation.id, ...segment })
+          }
+          continue
+        }
+
+        const x = timeScale.timeToCoordinate(annotation.time)
+        if (x != null && x >= 0 && x <= width)
+          markers.push({ id: annotation.id, x })
+      }
+
+      setBandMarkers(markers)
+      setBandPeriods(periods)
     }
 
     updateBand()
@@ -248,7 +304,67 @@ export function CandlestickChart({
       timeScale.unsubscribeVisibleTimeRangeChange(updateBand)
       timeScale.unsubscribeSizeChange(updateBand)
     }
-  }, [annotations, bars, hasAnnotations])
+  }, [annotations, bars, hasAnnotations, selectedAnnotationId])
+
+  useEffect(() => {
+    const lineSeries = annotationPriceSeriesRef.current
+    if (lineSeries == null) return
+
+    const selectedAnnotation = annotations?.find(
+      (annotation) => annotation.id === selectedAnnotationId,
+    )
+    if (
+      selectedAnnotation?.price == null ||
+      selectedAnnotation.timestamp_start == null
+    ) {
+      lineSeries.setData([])
+      return
+    }
+
+    const period = bucketAnnotationPeriod(
+      selectedAnnotation.timestamp_start,
+      selectedAnnotation.timestamp,
+      bars,
+    )
+    if (period == null) {
+      lineSeries.setData([])
+      return
+    }
+
+    let start = period.start
+    let end = period.end
+    if (start === end) {
+      const sortedBars = bars
+        .map((bar) => ({
+          bar,
+          timestamp: new Date(bar.timestamp).getTime() / 1000,
+        }))
+        .filter(({ timestamp }) => Number.isFinite(timestamp))
+        .sort((left, right) => left.timestamp - right.timestamp)
+      const candidateBar =
+        sortedBars.find(({ timestamp }) => timestamp > start) ??
+        sortedBars.findLast(({ timestamp }) => timestamp < start)
+      const adjacentTime =
+        candidateBar == null
+          ? null
+          : bucketAnnotationTimestamp(candidateBar.bar.timestamp, bars)
+      if (adjacentTime == null) {
+        lineSeries.setData([])
+        return
+      }
+
+      if (adjacentTime < start) {
+        start = adjacentTime
+      } else {
+        end = adjacentTime
+      }
+    }
+
+    lineSeries.setData([
+      { time: start, value: selectedAnnotation.price },
+      { time: end, value: selectedAnnotation.price },
+    ])
+  }, [annotations, bars, selectedAnnotationId])
 
   useEffect(() => {
     const series = candlestickSeriesRef.current
@@ -264,12 +380,24 @@ export function CandlestickChart({
     )
     if (selectedAnnotation?.price == null) return
 
+    const selectedPeriod =
+      selectedAnnotation.timestamp_start == null
+        ? null
+        : bucketAnnotationPeriod(
+            selectedAnnotation.timestamp_start,
+            selectedAnnotation.timestamp,
+            bars,
+          )
+    if (selectedAnnotation.timestamp_start != null && selectedPeriod == null) {
+      return
+    }
+
     priceLineRef.current = series.createPriceLine({
       price: selectedAnnotation.price,
       color: '#ef4444',
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
-      lineVisible: true,
+      lineVisible: selectedPeriod == null,
       axisLabelVisible: true,
       title: selectedAnnotation.target_kind,
       axisLabelColor: '#ef4444',
@@ -282,7 +410,7 @@ export function CandlestickChart({
         priceLineRef.current = null
       }
     }
-  }, [annotations, selectedAnnotationId])
+  }, [annotations, bars, selectedAnnotationId])
 
   return (
     <div className={cn('relative min-w-0', className)}>
@@ -290,6 +418,7 @@ export function CandlestickChart({
       {bandLayout != null && (
         <AnnotationChartBand
           markers={bandMarkers}
+          periods={bandPeriods}
           width={bandLayout.width}
           bottom={bandLayout.bottom}
           selectedAnnotationId={selectedAnnotationId ?? null}

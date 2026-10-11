@@ -1,8 +1,9 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import type { ComponentProps } from 'react'
+import type { CreatePriceLineOptions } from 'lightweight-charts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CandlestickChart } from '#components/candlestick-chart'
+import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 
 const chartMocks = vi.hoisted(() => {
@@ -15,11 +16,12 @@ const chartMocks = vi.hoisted(() => {
   }
   const candlestickSeries = {
     applyOptions: vi.fn(),
-    createPriceLine: vi.fn(),
+    createPriceLine: vi.fn<(options: CreatePriceLineOptions) => void>(),
     priceScale: vi.fn(() => candlePriceScale),
     removePriceLine: vi.fn(),
     setData: vi.fn(),
   }
+  const annotationPriceSeries = { setData: vi.fn() }
   const volumeSeries = {
     priceScale: vi.fn(() => volumePriceScale),
     setData: vi.fn(),
@@ -40,11 +42,19 @@ const chartMocks = vi.hoisted(() => {
     remove: vi.fn(),
     timeScale: vi.fn(() => timeScale),
   }
-  chart.addSeries.mockImplementation(() =>
-    chart.addSeries.mock.calls.length === 1 ? candlestickSeries : volumeSeries,
-  )
+  chart.addSeries.mockImplementation(() => {
+    const index = chart.addSeries.mock.calls.length
+    if (index === 1) return candlestickSeries
+    if (index === 2) return annotationPriceSeries
+    return volumeSeries
+  })
 
-  return { chart, volumePriceScale }
+  return {
+    chart,
+    candlestickSeries,
+    annotationPriceSeries,
+    volumePriceScale,
+  }
 })
 
 vi.mock('lightweight-charts', () => ({
@@ -52,34 +62,33 @@ vi.mock('lightweight-charts', () => ({
   ColorType: { Solid: 'solid' },
   createChart: vi.fn(() => chartMocks.chart),
   HistogramSeries: {},
+  LineSeries: {},
   LineStyle: { Dashed: 2 },
 }))
 
-const bars: components['schemas']['Bar'][] = [
-  {
-    close: 101,
-    high: 102,
-    instrument_id: 'demo-code',
-    low: 99,
-    open: 100,
-    timeframe: '1d',
-    timestamp: '2025-04-10T00:00:00.000Z',
-    volume: 42,
-  },
-]
+const firstBar: components['schemas']['Bar'] = {
+  close: 101,
+  high: 102,
+  instrument_id: 'demo-code',
+  low: 99,
+  open: 100,
+  timeframe: '1d',
+  timestamp: '2025-04-10T00:00:00.000Z',
+  volume: 42,
+}
 
-const annotations: NonNullable<
-  ComponentProps<typeof CandlestickChart>['annotations']
-> = [
-  {
-    id: 'annotation-a',
-    price: 100,
-    status: 'unread',
-    target_kind: '架空分類',
-    text: '架空の注釈',
-    timestamp: '2025-04-10T00:00:00.000Z',
-  },
-]
+const bars: components['schemas']['Bar'][] = [firstBar]
+
+const pointAnnotation: ChartAnnotation = {
+  id: 'annotation-a',
+  price: 100,
+  status: 'unread',
+  target_kind: '架空分類',
+  text: '架空の注釈',
+  timestamp: '2025-04-10T00:00:00.000Z',
+}
+
+const annotations: ChartAnnotation[] = [pointAnnotation]
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -117,6 +126,57 @@ describe('CandlestickChart', () => {
       volumeScaleMargins: [
         { top: 0.8, bottom: 0 },
         { top: 0.8, bottom: 0.06 },
+      ],
+    })
+  })
+
+  it('shows a selected period price only across its interval and keeps its axis label', () => {
+    const periodAnnotation = {
+      ...pointAnnotation,
+      timestamp_start: '2025-04-10T00:00:00.000Z',
+      timestamp: '2025-04-11T00:00:00.000Z',
+    }
+    const periodBars = [
+      firstBar,
+      { ...firstBar, timestamp: '2025-04-11T00:00:00.000Z' },
+    ]
+
+    render(
+      <CandlestickChart
+        bars={periodBars}
+        annotations={[periodAnnotation]}
+        selectedAnnotationId={periodAnnotation.id}
+      />,
+    )
+
+    const readRenderedState = () => ({
+      priceLines: chartMocks.candlestickSeries.createPriceLine.mock.calls.map(
+        ([options]) => options,
+      ),
+      periodLineData: chartMocks.annotationPriceSeries.setData.mock.calls,
+    })
+
+    expect(readRenderedState()).toEqual({
+      priceLines: [
+        {
+          price: 100,
+          color: '#ef4444',
+          lineWidth: 2,
+          lineStyle: 2,
+          lineVisible: false,
+          axisLabelVisible: true,
+          title: '架空分類',
+          axisLabelColor: '#ef4444',
+          axisLabelTextColor: '#ffffff',
+        },
+      ],
+      periodLineData: [
+        [
+          [
+            { time: 1744243200, value: 100 },
+            { time: 1744329600, value: 100 },
+          ],
+        ],
       ],
     })
   })
