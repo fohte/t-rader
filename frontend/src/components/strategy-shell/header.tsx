@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Settings as SettingsIcon } from 'lucide-react'
 
+import { StockSearch } from '#components/stocks/stock-search'
 import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 
@@ -57,6 +58,8 @@ export function Header() {
           </Link>
           <NavLink to="/strategies" label="戦略" />
         </div>
+
+        <StockSearch />
 
         <Link
           to="/settings"
