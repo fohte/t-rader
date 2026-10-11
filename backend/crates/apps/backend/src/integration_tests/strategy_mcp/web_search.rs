@@ -47,6 +47,16 @@ impl WebSearchClient for FakeWebSearchClient {
         }
         Ok(self.results.clone())
     }
+
+    async fn extract_page(&self, _url: &str) -> Result<String, WebSearchError> {
+        if self.fails {
+            return Err(WebSearchError::ExtractionFailed {
+                url: "https://example.invalid/article".into(),
+                message: "page is unavailable".into(),
+            });
+        }
+        Ok("# Example page".into())
+    }
 }
 
 fn client(
@@ -78,8 +88,6 @@ fn example_result() -> WebSearchResult {
         url: "https://example.invalid/article".into(),
         published_date: Some("2026-04-05".into()),
         snippet: "Example snippet".into(),
-        body: Some("# Example article body".into()),
-        body_truncated: false,
     }
 }
 
@@ -139,8 +147,6 @@ async fn search_web_returns_article_results_without_tool_model_header(
                     "url": "https://example.invalid/article",
                     "published_date": "2026-04-05",
                     "snippet": "Example snippet",
-                    "body": "# Example article body",
-                    "body_truncated": false,
                 }],
             }),
             vec![SearchCall {
