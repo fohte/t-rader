@@ -98,6 +98,8 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
             paper_accounts::list_paper_accounts,
             paper_accounts::create_paper_account
         ))
+        .routes(routes!(paper_accounts::get_paper_account_stats))
+        .routes(routes!(paper_accounts::get_paper_account_portfolio))
         .routes(routes!(trades::list_trades, trades::create_trade))
         .routes(routes!(
             trades::get_trade,

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -150,6 +152,13 @@ impl NoteReadUseCases {
             .find_note_for_version(version_id)
             .await?
             .is_some())
+    }
+
+    pub async fn note_ids_for_versions(
+        &self,
+        version_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Uuid>, NoteReadUseCaseError> {
+        Ok(self.query.find_note_ids_for_versions(version_ids).await?)
     }
 
     async fn require_note(&self, note_id: Uuid) -> Result<Note, NoteReadUseCaseError> {
