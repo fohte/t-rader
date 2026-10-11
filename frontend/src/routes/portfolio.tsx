@@ -1,7 +1,8 @@
 import { useQueries } from '@tanstack/react-query'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
+import { AssetTabs } from '#components/assets/asset-tabs'
 import {
   AllocationBar,
   type AllocationSegment,
@@ -88,14 +89,7 @@ function PortfolioPage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      <div>
-        <Link
-          to="/strategies"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 戦略一覧に戻る
-        </Link>
-      </div>
+      <AssetTabs activeTab="holdings" />
 
       <header>
         <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
@@ -151,15 +145,6 @@ function PortfolioPage() {
         # 現在値の取得は未対応のため、評価額・アロケーションは取得簿価
         (cost_basis) で計算しています。
       </p>
-
-      <div>
-        <Link
-          to="/trades"
-          className="font-mono text-sm text-primary hover:underline"
-        >
-          取引履歴をすべて見る →
-        </Link>
-      </div>
     </div>
   )
 }
