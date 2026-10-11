@@ -1,15 +1,20 @@
 import { Link } from '@tanstack/react-router'
 
-export function AnnotationStockReference({
+export function StockNameLink({
   name,
   symbol,
+  missingName,
 }: {
   name: string | null
   symbol: string
+  missingName: 'link-symbol' | 'unresolved'
 }) {
+  const linkText = name ?? (missingName === 'link-symbol' ? symbol : null)
+  const showSymbol = name != null || missingName === 'unresolved'
+
   return (
     <>
-      {name == null ? (
+      {linkText == null ? (
         <span className="italic text-muted-foreground">未解決</span>
       ) : (
         <Link
@@ -17,10 +22,12 @@ export function AnnotationStockReference({
           params={{ instrumentId: symbol }}
           className="text-foreground hover:underline"
         >
-          {name}
+          {linkText}
         </Link>
       )}
-      <span className="ml-2 text-muted-foreground">{symbol}</span>
+      {showSymbol && (
+        <span className="ml-2 text-muted-foreground">{symbol}</span>
+      )}
     </>
   )
 }

@@ -1,6 +1,6 @@
-import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
+import { StockNameLink } from '#components/stocks/stock-name-link'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 
@@ -53,18 +53,11 @@ export function PositionsTable({
               >
                 <td className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
-                    <Link
-                      to="/charts/$instrumentId"
-                      params={{ instrumentId: p.symbol }}
-                      className="text-foreground hover:underline"
-                    >
-                      {stockName ?? p.symbol}
-                    </Link>
-                    {stockName != null && (
-                      <span className="text-2xs text-muted-foreground">
-                        {p.symbol}
-                      </span>
-                    )}
+                    <StockNameLink
+                      name={stockName ?? null}
+                      symbol={p.symbol}
+                      missingName="link-symbol"
+                    />
                   </div>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
