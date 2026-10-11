@@ -14,6 +14,7 @@ const meta = {
   component: AnnotationChartBand,
   args: {
     markers,
+    periods: [],
     width: 640,
     bottom: 28,
     selectedAnnotationId: 'annotation-b',
@@ -38,4 +39,25 @@ export const WithNearbyAnnotations: Story = {
 export const WithoutSelection: Story = {
   name: 'shows the annotation band before an annotation is selected.',
   args: { selectedAnnotationId: null },
+}
+
+export const WithPeriodAnnotation: Story = {
+  name: 'shows a selectable bar for one annotation period.',
+  args: {
+    markers: [],
+    periods: [{ id: 'annotation-period', startX: 120, endX: 310 }],
+    selectedAnnotationId: null,
+  },
+}
+
+export const OverlappingTargets: Story = {
+  name: 'groups overlapping periods and keeps a point independently selectable.',
+  args: {
+    markers: [{ id: 'annotation-point', x: 220 }],
+    periods: [
+      { id: 'annotation-period-a', startX: 120, endX: 310 },
+      { id: 'annotation-period-b', startX: 250, endX: 420 },
+    ],
+    selectedAnnotationId: 'annotation-point',
+  },
 }
