@@ -37,6 +37,21 @@ export interface AnnotationBandSegment {
   endX: number
 }
 
+export interface AnnotationBandTargetGroup {
+  kind: 'marker' | 'period'
+  ids: string[]
+  startX: number
+  endX: number
+  centerX: number
+  markers: AnnotationBandMarker[]
+  periods: AnnotationBandPeriod[]
+}
+
+export interface AnnotationBandTargetGroups {
+  markers: AnnotationBandTargetGroup[]
+  periods: AnnotationBandTargetGroup[]
+}
+
 interface BarTimePoint {
   time: UTCTimestamp
   date: string
@@ -199,6 +214,26 @@ export function bucketAnnotationPeriod(
   return { start, end }
 }
 
+/** 価格線が描けるよう、同じ足に丸められた期間を隣の足まで広げる。 */
+export function getAnnotationPeriodLineRange(
+  timestampStart: string,
+  timestampEnd: string,
+  bars: Bar[],
+): { start: UTCTimestamp; end: UTCTimestamp } | null {
+  const period = bucketAnnotationPeriod(timestampStart, timestampEnd, bars)
+  if (period == null || period.start !== period.end) return period
+
+  const points = getBarTimePoints(bars)
+  const adjacentPoint =
+    points.find((point) => point.time > period.start) ??
+    points.findLast((point) => point.time < period.start)
+  if (adjacentPoint == null) return null
+
+  return adjacentPoint.time < period.start
+    ? { start: adjacentPoint.time, end: period.end }
+    : { start: period.start, end: adjacentPoint.time }
+}
+
 /** 表示範囲外を切り落とした期間座標を返す。 */
 export function clipAnnotationBandSegment(
   startX: number,
@@ -260,4 +295,50 @@ export function clusterAnnotationBandMarkers(
     markers: group,
     x: group.reduce((sum, marker) => sum + marker.x, 0) / group.length,
   }))
+}
+
+/** 点印は近接する点同士で、期間印は重なる期間同士で選択対象をまとめる。 */
+export function groupAnnotationBandTargets(
+  markers: AnnotationBandMarker[],
+  periods: AnnotationBandPeriod[],
+  minimumDistance = 16,
+): AnnotationBandTargetGroups {
+  const markerGroups = clusterAnnotationBandMarkers(
+    markers,
+    minimumDistance,
+  ).map(({ markers: group, x }) => ({
+    kind: 'marker' as const,
+    ids: group.map((marker) => marker.id),
+    startX: group[0]?.x ?? x,
+    endX: group.at(-1)?.x ?? x,
+    centerX: x,
+    markers: group,
+    periods: [],
+  }))
+
+  const periodGroups: AnnotationBandTargetGroup[] = []
+  const sortedPeriods = [...periods].sort(
+    (left, right) => left.startX - right.startX,
+  )
+  for (const period of sortedPeriods) {
+    const current = periodGroups.at(-1)
+    if (current != null && period.startX - current.endX < minimumDistance) {
+      current.ids.push(period.id)
+      current.endX = Math.max(current.endX, period.endX)
+      current.centerX = (current.startX + current.endX) / 2
+      current.periods.push(period)
+    } else {
+      periodGroups.push({
+        kind: 'period',
+        ids: [period.id],
+        startX: period.startX,
+        endX: period.endX,
+        centerX: (period.startX + period.endX) / 2,
+        markers: [],
+        periods: [period],
+      })
+    }
+  }
+
+  return { markers: markerGroups, periods: periodGroups }
 }

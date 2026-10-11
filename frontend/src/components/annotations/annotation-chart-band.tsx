@@ -1,7 +1,7 @@
 import {
   type AnnotationBandMarker,
   type AnnotationBandPeriod,
-  clusterAnnotationBandMarkers,
+  groupAnnotationBandTargets,
 } from '#lib/annotation-chart-utils'
 import { cn } from '#lib/utils'
 
@@ -14,51 +14,6 @@ interface AnnotationChartBandProps {
   onSelectAnnotation?: (id: string) => void
 }
 
-interface BandTargetGroup {
-  ids: string[]
-  startX: number
-  endX: number
-  markers: AnnotationBandMarker[]
-  periods: AnnotationBandPeriod[]
-}
-
-function groupBandTargets(
-  markers: AnnotationBandMarker[],
-  periods: AnnotationBandPeriod[],
-): BandTargetGroup[] {
-  const targets: BandTargetGroup[] = [
-    ...clusterAnnotationBandMarkers(markers).map((cluster) => ({
-      ids: cluster.markers.map((marker) => marker.id),
-      startX: cluster.markers[0]?.x ?? cluster.x,
-      endX: cluster.markers.at(-1)?.x ?? cluster.x,
-      markers: cluster.markers,
-      periods: [],
-    })),
-    ...periods.map((period) => ({
-      ids: [period.id],
-      startX: period.startX,
-      endX: period.endX,
-      markers: [],
-      periods: [period],
-    })),
-  ].sort((left, right) => left.startX - right.startX)
-  const groups: BandTargetGroup[] = []
-
-  for (const target of targets) {
-    const current = groups.at(-1)
-    if (current != null && target.startX - current.endX < 16) {
-      current.ids.push(...target.ids)
-      current.endX = Math.max(current.endX, target.endX)
-      current.markers.push(...target.markers)
-      current.periods.push(...target.periods)
-    } else {
-      groups.push({ ...target })
-    }
-  }
-
-  return groups
-}
-
 export function AnnotationChartBand({
   markers,
   periods,
@@ -67,7 +22,8 @@ export function AnnotationChartBand({
   selectedAnnotationId,
   onSelectAnnotation,
 }: AnnotationChartBandProps) {
-  const groups = groupBandTargets(markers, periods)
+  const targetGroups = groupAnnotationBandTargets(markers, periods)
+  const groups = [...targetGroups.periods, ...targetGroups.markers]
 
   return (
     <div
@@ -86,8 +42,8 @@ export function AnnotationChartBand({
         if (nextId == null) return null
 
         const hasMultipleTargets = group.ids.length > 1
-        const onlyPeriod = group.periods.length === 1 && !hasMultipleTargets
-        const centerX = (group.startX + group.endX) / 2
+        const onlyPeriod = group.kind === 'period' && !hasMultipleTargets
+        const centerX = group.centerX
 
         return (
           <div key={group.ids.join(':')} className="contents">
@@ -96,7 +52,7 @@ export function AnnotationChartBand({
                 key={period.id}
                 aria-hidden="true"
                 className={cn(
-                  'pointer-events-none absolute top-1/2 h-1 -translate-y-1/2 rounded-full',
+                  'pointer-events-none absolute z-0 top-1/2 h-1 -translate-y-1/2 rounded-full',
                   period.id === selectedAnnotationId
                     ? 'bg-primary'
                     : 'bg-primary/55',
@@ -112,7 +68,7 @@ export function AnnotationChartBand({
                 key={marker.id}
                 aria-hidden="true"
                 className={cn(
-                  'pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary',
+                  'pointer-events-none absolute z-20 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary',
                   marker.id === selectedAnnotationId
                     ? 'bg-primary'
                     : 'bg-background',
@@ -132,6 +88,7 @@ export function AnnotationChartBand({
               aria-pressed={isSelected}
               className={cn(
                 'pointer-events-auto absolute top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center border border-primary transition-colors',
+                onlyPeriod ? 'z-10' : 'z-20',
                 hasMultipleTargets
                   ? 'h-5 min-w-5 rounded-full px-1 font-mono text-2xs'
                   : onlyPeriod

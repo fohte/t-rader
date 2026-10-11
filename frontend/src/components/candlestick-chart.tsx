@@ -19,6 +19,7 @@ import {
   bucketAnnotationTimestamp,
   type ChartAnnotation,
   clipAnnotationBandSegment,
+  getAnnotationPeriodLineRange,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -304,92 +305,41 @@ export function CandlestickChart({
       timeScale.unsubscribeVisibleTimeRangeChange(updateBand)
       timeScale.unsubscribeSizeChange(updateBand)
     }
-  }, [annotations, bars, hasAnnotations, selectedAnnotationId])
+  }, [annotations, bars, hasAnnotations])
 
   useEffect(() => {
     const lineSeries = annotationPriceSeriesRef.current
-    if (lineSeries == null) return
+    const series = candlestickSeriesRef.current
+    if (lineSeries == null || series == null) return
+
+    lineSeries.setData([])
 
     const selectedAnnotation = annotations?.find(
       (annotation) => annotation.id === selectedAnnotationId,
     )
-    if (
-      selectedAnnotation?.price == null ||
-      selectedAnnotation.timestamp_start == null
-    ) {
-      lineSeries.setData([])
-      return
-    }
-
-    const period = bucketAnnotationPeriod(
-      selectedAnnotation.timestamp_start,
-      selectedAnnotation.timestamp,
-      bars,
-    )
-    if (period == null) {
-      lineSeries.setData([])
-      return
-    }
-
-    let start = period.start
-    let end = period.end
-    if (start === end) {
-      const sortedBars = bars
-        .map((bar) => ({
-          bar,
-          timestamp: new Date(bar.timestamp).getTime() / 1000,
-        }))
-        .filter(({ timestamp }) => Number.isFinite(timestamp))
-        .sort((left, right) => left.timestamp - right.timestamp)
-      const candidateBar =
-        sortedBars.find(({ timestamp }) => timestamp > start) ??
-        sortedBars.findLast(({ timestamp }) => timestamp < start)
-      const adjacentTime =
-        candidateBar == null
-          ? null
-          : bucketAnnotationTimestamp(candidateBar.bar.timestamp, bars)
-      if (adjacentTime == null) {
-        lineSeries.setData([])
-        return
-      }
-
-      if (adjacentTime < start) {
-        start = adjacentTime
-      } else {
-        end = adjacentTime
-      }
-    }
-
-    lineSeries.setData([
-      { time: start, value: selectedAnnotation.price },
-      { time: end, value: selectedAnnotation.price },
-    ])
-  }, [annotations, bars, selectedAnnotationId])
-
-  useEffect(() => {
-    const series = candlestickSeriesRef.current
-    if (series == null) return
-
     if (priceLineRef.current != null) {
       series.removePriceLine(priceLineRef.current)
       priceLineRef.current = null
     }
 
-    const selectedAnnotation = annotations?.find(
-      (annotation) => annotation.id === selectedAnnotationId,
-    )
     if (selectedAnnotation?.price == null) return
 
-    const selectedPeriod =
-      selectedAnnotation.timestamp_start == null
-        ? null
-        : bucketAnnotationPeriod(
-            selectedAnnotation.timestamp_start,
-            selectedAnnotation.timestamp,
-            bars,
-          )
-    if (selectedAnnotation.timestamp_start != null && selectedPeriod == null) {
-      return
+    const timestampStart = selectedAnnotation.timestamp_start
+    const isPeriod = timestampStart != null
+    const periodLineRange = isPeriod
+      ? getAnnotationPeriodLineRange(
+          timestampStart,
+          selectedAnnotation.timestamp,
+          bars,
+        )
+      : null
+    if (isPeriod && periodLineRange == null) return
+
+    if (periodLineRange != null) {
+      lineSeries.setData([
+        { time: periodLineRange.start, value: selectedAnnotation.price },
+        { time: periodLineRange.end, value: selectedAnnotation.price },
+      ])
     }
 
     priceLineRef.current = series.createPriceLine({
@@ -397,7 +347,7 @@ export function CandlestickChart({
       color: '#ef4444',
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
-      lineVisible: selectedPeriod == null,
+      lineVisible: !isPeriod,
       axisLabelVisible: true,
       title: selectedAnnotation.target_kind,
       axisLabelColor: '#ef4444',

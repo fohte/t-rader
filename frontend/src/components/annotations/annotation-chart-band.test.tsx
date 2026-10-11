@@ -1,8 +1,12 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
+
+afterEach(() => {
+  cleanup()
+})
 
 describe('AnnotationChartBand', () => {
   it('selects the next annotation when a grouped marker is clicked', async () => {
@@ -54,7 +58,7 @@ describe('AnnotationChartBand', () => {
     expect(onSelectAnnotation.mock.calls).toEqual([['annotation-period']])
   })
 
-  it('cycles through overlapping periods and points', async () => {
+  it('cycles overlapping periods while keeping a point inside them selectable', async () => {
     const onSelectAnnotation = vi.fn()
     const user = userEvent.setup()
     const props = {
@@ -74,20 +78,24 @@ describe('AnnotationChartBand', () => {
       />,
     )
     const overlapButton = () =>
-      screen.getByRole('button', { name: 'アノテーション 3 件を順に選択' })
+      screen.getByRole('button', { name: 'アノテーション 2 件を順に選択' })
 
     await user.click(overlapButton())
     rerender(
       <AnnotationChartBand
         {...props}
-        selectedAnnotationId="annotation-point"
+        selectedAnnotationId="annotation-period-b"
       />,
     )
     await user.click(overlapButton())
+    await user.click(
+      screen.getByRole('button', { name: 'アノテーションを選択' }),
+    )
 
     expect(onSelectAnnotation.mock.calls).toEqual([
-      ['annotation-point'],
       ['annotation-period-b'],
+      ['annotation-period-a'],
+      ['annotation-point'],
     ])
   })
 })

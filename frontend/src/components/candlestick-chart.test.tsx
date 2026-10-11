@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import type { CreatePriceLineOptions } from 'lightweight-charts'
+import type { CreatePriceLineOptions, UTCTimestamp } from 'lightweight-charts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CandlestickChart } from '#components/candlestick-chart'
@@ -16,12 +16,16 @@ const chartMocks = vi.hoisted(() => {
   }
   const candlestickSeries = {
     applyOptions: vi.fn(),
-    createPriceLine: vi.fn<(options: CreatePriceLineOptions) => void>(),
+    createPriceLine: vi.fn<(options: CreatePriceLineOptions) => object>(
+      () => ({}),
+    ),
     priceScale: vi.fn(() => candlePriceScale),
     removePriceLine: vi.fn(),
     setData: vi.fn(),
   }
-  const annotationPriceSeries = { setData: vi.fn() }
+  const annotationPriceSeries = {
+    setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
+  }
   const volumeSeries = {
     priceScale: vi.fn(() => volumePriceScale),
     setData: vi.fn(),
@@ -171,6 +175,7 @@ describe('CandlestickChart', () => {
         },
       ],
       periodLineData: [
+        [[]],
         [
           [
             { time: 1744243200, value: 100 },
@@ -178,6 +183,80 @@ describe('CandlestickChart', () => {
           ],
         ],
       ],
+    })
+  })
+
+  it('extends a same-bucket period and clears its line after selection changes', () => {
+    const periodAnnotation = {
+      ...pointAnnotation,
+      timestamp_start: '2025-04-10T00:00:00.000Z',
+      timestamp: '2025-04-10T12:00:00.000Z',
+    }
+    const periodBars = [
+      firstBar,
+      { ...firstBar, timestamp: '2025-04-11T00:00:00.000Z' },
+    ]
+    const { rerender } = render(
+      <CandlestickChart
+        bars={periodBars}
+        annotations={[periodAnnotation]}
+        selectedAnnotationId={periodAnnotation.id}
+      />,
+    )
+
+    rerender(
+      <CandlestickChart
+        bars={periodBars}
+        annotations={[pointAnnotation]}
+        selectedAnnotationId={pointAnnotation.id}
+      />,
+    )
+
+    const readSelectedState = () => ({
+      periodLineData: chartMocks.annotationPriceSeries.setData.mock.calls.map(
+        ([data]) => data,
+      ),
+      priceLines: chartMocks.candlestickSeries.createPriceLine.mock.calls.map(
+        ([options]) => options,
+      ),
+      removedPriceLines:
+        chartMocks.candlestickSeries.removePriceLine.mock.calls.length,
+    })
+
+    expect(readSelectedState()).toEqual({
+      periodLineData: [
+        [],
+        [
+          { time: 1744243200, value: 100 },
+          { time: 1744329600, value: 100 },
+        ],
+        [],
+      ],
+      priceLines: [
+        {
+          price: 100,
+          color: '#ef4444',
+          lineWidth: 2,
+          lineStyle: 2,
+          lineVisible: false,
+          axisLabelVisible: true,
+          title: '架空分類',
+          axisLabelColor: '#ef4444',
+          axisLabelTextColor: '#ffffff',
+        },
+        {
+          price: 100,
+          color: '#ef4444',
+          lineWidth: 2,
+          lineStyle: 2,
+          lineVisible: true,
+          axisLabelVisible: true,
+          title: '架空分類',
+          axisLabelColor: '#ef4444',
+          axisLabelTextColor: '#ffffff',
+        },
+      ],
+      removedPriceLines: 1,
     })
   })
 })
