@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+import { DetailBackLink } from '#components/detail-back-link'
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
 import { HistoryPanel } from '#components/note-detail/history-panel'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
@@ -82,15 +83,30 @@ function NoteDetailPage() {
   )
 
   if (areVersionsPending) {
-    return <NoteVersionFallback state="loading" />
+    return (
+      <div className="space-y-4 font-sans text-foreground">
+        <DetailBackLink to="/notes" label="ノート一覧に戻る" />
+        <NoteVersionFallback state="loading" />
+      </div>
+    )
   }
 
   if (hasVersionsError) {
-    return <NoteVersionFallback state="error" />
+    return (
+      <div className="space-y-4 font-sans text-foreground">
+        <DetailBackLink to="/notes" label="ノート一覧に戻る" />
+        <NoteVersionFallback state="error" />
+      </div>
+    )
   }
 
   if (selectedVersion == null) {
-    return <NoteVersionFallback state="missing" />
+    return (
+      <div className="space-y-4 font-sans text-foreground">
+        <DetailBackLink to="/notes" label="ノート一覧に戻る" />
+        <NoteVersionFallback state="missing" />
+      </div>
+    )
   }
 
   const previousVersion =
@@ -100,6 +116,7 @@ function NoteDetailPage() {
 
   return (
     <div className="space-y-4 font-sans text-foreground">
+      <DetailBackLink to="/notes" label="ノート一覧に戻る" />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="space-y-4 border border-border bg-card px-5 py-5">
           <NoteVersionHeader version={selectedVersion} />

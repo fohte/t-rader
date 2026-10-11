@@ -73,7 +73,10 @@ export function Header() {
       {strategyId != null && (
         <div className="flex items-center gap-2 border-t border-border bg-surface-strong px-3 py-1.5 md:gap-3 md:px-5">
           <StrategySwitcher />
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <nav
+            aria-label="戦略ページ"
+            className="flex flex-shrink-0 items-center gap-2"
+          >
             <Link
               to="/strategies/$id/performance"
               params={{ id: strategyId }}
@@ -84,6 +87,24 @@ export function Header() {
               成績
             </Link>
             <Link
+              to="/strategies/$id/runs"
+              params={{ id: strategyId }}
+              activeOptions={{ exact: false }}
+              className={NAV_INACTIVE}
+              activeProps={{ className: NAV_ACTIVE }}
+            >
+              実行履歴
+            </Link>
+            <Link
+              to="/strategies/$id/indicators"
+              params={{ id: strategyId }}
+              activeOptions={{ exact: false }}
+              className={NAV_INACTIVE}
+              activeProps={{ className: NAV_ACTIVE }}
+            >
+              indicators
+            </Link>
+            <Link
               to="/strategies/$id/settings"
               params={{ id: strategyId }}
               activeOptions={{ exact: false }}
@@ -92,7 +113,7 @@ export function Header() {
             >
               設定
             </Link>
-          </div>
+          </nav>
         </div>
       )}
     </header>

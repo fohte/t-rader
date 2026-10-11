@@ -10,6 +10,8 @@ function createHeaderRouter(initialPath: string) {
     paths: [
       '/strategies',
       '/strategies/$id/performance',
+      '/strategies/$id/runs',
+      '/strategies/$id/indicators',
       '/strategies/$id/settings',
       '/portfolio',
       '/trades',
@@ -48,6 +50,24 @@ export const StrategyHome: Story = {
   render: () => (
     <RouterProvider
       router={createHeaderRouter('/strategies/semi-swing/performance')}
+    />
+  ),
+}
+
+export const StrategyRuns: Story = {
+  name: 'shows the strategy run history tab as active.',
+  render: () => (
+    <RouterProvider
+      router={createHeaderRouter('/strategies/sample-alpha/runs')}
+    />
+  ),
+}
+
+export const StrategyIndicators: Story = {
+  name: 'shows the strategy indicators tab as active.',
+  render: () => (
+    <RouterProvider
+      router={createHeaderRouter('/strategies/sample-alpha/indicators')}
     />
   ),
 }
