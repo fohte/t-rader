@@ -15,7 +15,7 @@ export function parseStrategyListTab(value: unknown) {
 export function getLegacyStrategyListTabRedirectOptions(
   tab: LegacyStrategyListTab,
 ) {
-  return { to: '/strategies' as const, search: { tab } }
+  return { to: '/strategies' as const, search: { strategyTab: tab } }
 }
 
 const TAB_LABELS: Record<StrategyListTab, string> = {
@@ -52,7 +52,7 @@ export function StrategyListTabs({
           <Link
             key={tab.id}
             to="/strategies"
-            search={{ tab: tab.id }}
+            search={{ strategyTab: tab.id }}
             activeOptions={{ exact: true }}
             className={activeTab === tab.id ? TAB_ACTIVE : TAB_INACTIVE}
             aria-current={activeTab === tab.id ? 'page' : undefined}

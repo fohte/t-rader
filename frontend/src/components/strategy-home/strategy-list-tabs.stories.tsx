@@ -20,7 +20,7 @@ function renderTabs(activeTab: StrategyListTab) {
     () => <StrategyListTabs activeTab={activeTab} />,
     {
       paths: ['/strategies'],
-      initialPath: `/strategies?tab=${activeTab}`,
+      initialPath: `/strategies?strategyTab=${activeTab}`,
     },
   )
   return <RouterProvider router={router} />

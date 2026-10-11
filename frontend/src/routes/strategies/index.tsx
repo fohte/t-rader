@@ -19,9 +19,9 @@ import { $api } from '#lib/api/client'
 export const Route = createFileRoute('/strategies/')({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: StrategyListTab } => {
-    const tab = parseStrategyListTab(search.tab)
-    return tab ? { tab } : {}
+  ): { strategyTab?: StrategyListTab } => {
+    const strategyTab = parseStrategyListTab(search.strategyTab)
+    return strategyTab ? { strategyTab } : {}
   },
   component: StrategyListPage,
 })
@@ -29,7 +29,7 @@ export const Route = createFileRoute('/strategies/')({
 const UNSPECIFIED_PURPOSE = '__unspecified__'
 
 function StrategyListPage() {
-  const { tab: requestedTab } = Route.useSearch()
+  const { strategyTab: requestedTab } = Route.useSearch()
   const tab = requestedTab ?? 'list'
   return (
     <div className="font-sans text-foreground">

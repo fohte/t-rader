@@ -30,7 +30,7 @@ describe('StrategyListTabs', () => {
       () => <StrategyListTabs activeTab={activeTab} />,
       {
         paths: ['/strategies'],
-        initialPath: `/strategies?tab=${activeTab}`,
+        initialPath: `/strategies?strategyTab=${activeTab}`,
       },
     )
     render(<RouterProvider router={router} />)
@@ -42,17 +42,17 @@ describe('StrategyListTabs', () => {
     expect(getTabsOutput(navigation)).toEqual([
       {
         label: '一覧',
-        href: '/strategies?tab=list',
+        href: '/strategies?strategyTab=list',
         current: activeTab === 'list',
       },
       {
         label: '実行履歴',
-        href: '/strategies?tab=runs',
+        href: '/strategies?strategyTab=runs',
         current: activeTab === 'runs',
       },
       {
         label: 'indicators',
-        href: '/strategies?tab=indicators',
+        href: '/strategies?strategyTab=indicators',
         current: activeTab === 'indicators',
       },
     ])

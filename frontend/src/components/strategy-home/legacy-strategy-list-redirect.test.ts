@@ -1,31 +1,41 @@
-import { createMemoryHistory, createRouter } from '@tanstack/react-router'
+import { isRedirect } from '@tanstack/react-router'
 import { describe, expect, it } from 'vitest'
 
-import { routeTree } from '#routeTree.gen'
+import { Route as IndicatorsRoute } from '#routes/indicators'
+import { Route as RunsRoute } from '#routes/runs'
 
-async function getResolvedLocation(initialPath: string) {
-  const router = createRouter({
-    routeTree,
-    history: createMemoryHistory({ initialEntries: [initialPath] }),
-  })
-  await router.load()
-  return router.state.location.href
+type LegacyRoute = typeof RunsRoute | typeof IndicatorsRoute
+
+function getRedirectOptions(route: LegacyRoute) {
+  const beforeLoad = route.options.beforeLoad
+  if (!beforeLoad) return null
+
+  try {
+    Reflect.apply(beforeLoad, undefined, [])
+  } catch (error) {
+    if (isRedirect(error)) {
+      return { to: error.options.to, search: error.options.search }
+    }
+  }
+  return null
 }
 
 describe('legacy strategy list routes', () => {
   it.each([
     {
       legacyPath: '/runs',
-      expected: '/strategies?tab=runs',
+      route: RunsRoute,
+      expected: { to: '/strategies', search: { strategyTab: 'runs' } },
     },
     {
       legacyPath: '/indicators',
-      expected: '/strategies?tab=indicators',
+      route: IndicatorsRoute,
+      expected: { to: '/strategies', search: { strategyTab: 'indicators' } },
     },
   ] as const)(
     '$legacyPath を対応する戦略タブへ redirect する',
-    async ({ legacyPath, expected }) => {
-      expect(await getResolvedLocation(legacyPath)).toEqual(expected)
+    ({ route, expected }) => {
+      expect(getRedirectOptions(route)).toEqual(expected)
     },
   )
 })
