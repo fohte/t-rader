@@ -30,4 +30,28 @@ describe('ChartAnnotationList', () => {
 
     expect(onSelectAnnotation.mock.calls).toEqual([['annotation-row']])
   })
+
+  it('shows the start and end date for period annotations', () => {
+    render(
+      <ChartAnnotationList
+        annotations={[
+          {
+            id: 'annotation-period',
+            target_kind: 'sample-kind',
+            timestamp_start: '2025-01-02T00:00:00.000Z',
+            timestamp: '2025-01-04T00:00:00.000Z',
+            price: null,
+            status: 'unread',
+            text: '期間表示を確認するサンプルです。',
+          },
+        ]}
+        selectedAnnotationId={null}
+        onSelectAnnotation={() => undefined}
+      />,
+    )
+
+    expect(screen.getByText('1月2日 ～ 1月4日').textContent).toBe(
+      '1月2日 ～ 1月4日',
+    )
+  })
 })
