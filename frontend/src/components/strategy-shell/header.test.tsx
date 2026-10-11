@@ -44,7 +44,7 @@ function getHeaderOutput(pathname: string, navigation: HTMLElement) {
       .map((link) => ({
         label: link.textContent,
         href: link.getAttribute('href'),
-        active: link.classList.contains('bg-surface-strong'),
+        active: link.getAttribute('aria-current') === 'page',
       })),
   }
 }

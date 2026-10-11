@@ -82,26 +82,21 @@ function AnnotationDetailPage() {
 
   const [commentDraft, setCommentDraft] = useState('')
 
-  if (annoPending) {
+  if (annoPending || annotation == null) {
     return (
-      <div className="space-y-5">
+      <div className="space-y-5 font-sans text-foreground">
         <DetailBackLink to="/annotations" label="アノテーション一覧に戻る" />
-        <div className="space-y-4">
-          <Skeleton className="h-8 w-72" />
-          <Skeleton className="h-5 w-full max-w-120" />
-          <Skeleton className="h-50 w-full" />
-        </div>
-      </div>
-    )
-  }
-
-  if (annotation == null) {
-    return (
-      <div className="space-y-5">
-        <DetailBackLink to="/annotations" label="アノテーション一覧に戻る" />
-        <div className="font-mono text-sm text-muted-foreground">
-          アノテーションが見つかりませんでした。
-        </div>
+        {annoPending ? (
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-72" />
+            <Skeleton className="h-5 w-full max-w-120" />
+            <Skeleton className="h-50 w-full" />
+          </div>
+        ) : (
+          <div className="font-mono text-sm text-muted-foreground">
+            アノテーションが見つかりませんでした。
+          </div>
+        )}
       </div>
     )
   }

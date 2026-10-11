@@ -82,29 +82,17 @@ function NoteDetailPage() {
     { enabled: selectedVersion != null },
   )
 
-  if (areVersionsPending) {
-    return (
-      <div className="space-y-4 font-sans text-foreground">
-        <DetailBackLink to="/notes" label="ノート一覧に戻る" />
-        <NoteVersionFallback state="loading" />
-      </div>
-    )
-  }
+  if (areVersionsPending || hasVersionsError || selectedVersion == null) {
+    const fallbackState = areVersionsPending
+      ? 'loading'
+      : hasVersionsError
+        ? 'error'
+        : 'missing'
 
-  if (hasVersionsError) {
     return (
       <div className="space-y-4 font-sans text-foreground">
         <DetailBackLink to="/notes" label="ノート一覧に戻る" />
-        <NoteVersionFallback state="error" />
-      </div>
-    )
-  }
-
-  if (selectedVersion == null) {
-    return (
-      <div className="space-y-4 font-sans text-foreground">
-        <DetailBackLink to="/notes" label="ノート一覧に戻る" />
-        <NoteVersionFallback state="missing" />
+        <NoteVersionFallback state={fallbackState} />
       </div>
     )
   }
