@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react'
+
 export interface StatItem {
   label: string
-  value: string
+  value: ReactNode
   sub?: string
   cls?: string
 }

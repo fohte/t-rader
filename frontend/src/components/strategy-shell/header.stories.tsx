@@ -13,6 +13,8 @@ function createHeaderRouter(initialPath: string) {
       '/strategies/$id/settings',
       '/portfolio',
       '/trades',
+      '/paper-trading',
+      '/paper-trading/$accountId',
       '/notes',
       '/annotations',
       '/runs',
@@ -55,6 +57,13 @@ export const StrategyHome: Story = {
 export const Portfolio: Story = {
   name: 'shows the header with portfolio navigation active.',
   render: () => <RouterProvider router={createHeaderRouter('/portfolio')} />,
+}
+
+export const PaperTrading: Story = {
+  name: 'ペーパートレードのナビを選択状態で表示する。',
+  render: () => (
+    <RouterProvider router={createHeaderRouter('/paper-trading')} />
+  ),
 }
 
 export const Calendar: Story = {

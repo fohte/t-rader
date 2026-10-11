@@ -42,6 +42,7 @@ export function Header() {
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <NavLink to="/portfolio" label="ポートフォリオ" />
           <NavLink to="/trades" label="取引履歴" />
+          <NavLink to="/paper-trading" label="ペーパートレード" />
           <NavLink to="/notes" label="ノート" />
           <NavLink to="/annotations" label="アノテーション" />
           <NavLink to="/runs" label="実行履歴" />
