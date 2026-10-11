@@ -6,6 +6,7 @@ import {
   parseStrategyListTab,
   StrategyListTabs,
 } from '#components/strategy-home/strategy-list-tabs'
+import { Route as StrategiesRoute } from '#routes/strategies/index'
 import { createStoryRouter } from '#storybook/story-router'
 
 afterEach(cleanup)
@@ -66,4 +67,18 @@ describe('StrategyListTabs', () => {
   ] as const)('$value search 値を検証する', ({ value, expected }) => {
     expect(parseStrategyListTab(value)).toEqual(expected)
   })
+
+  it.each([
+    { value: 'runs', expected: { strategyTab: 'runs' } },
+    { value: 'indicators', expected: { strategyTab: 'indicators' } },
+  ] as const)(
+    '戦略一覧ルートで $value タブを URL から復元する',
+    ({ value, expected }) => {
+      const actual =
+        typeof StrategiesRoute.options.validateSearch === 'function'
+          ? StrategiesRoute.options.validateSearch({ strategyTab: value })
+          : null
+      expect(actual).toEqual(expected)
+    },
+  )
 })
