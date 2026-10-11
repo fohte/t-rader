@@ -83,7 +83,7 @@ function getStockSearchSnapshot(
   selectedHref: string | null,
 ) {
   return {
-    lastSearchQuery: active?.queries.at(-1) ?? null,
+    searchQueries: active?.queries ?? [],
     pathname: router.state.location.pathname,
     selectedHref,
     searchInputVisible:
@@ -100,6 +100,17 @@ afterEach(() => {
 })
 
 describe('StockSearch', () => {
+  it('閉じている間は検索 API を呼び出しません', () => {
+    const router = renderStockSearch()
+
+    expect(getStockSearchSnapshot(router, null)).toEqual({
+      searchQueries: [],
+      pathname: '/portfolio',
+      selectedHref: null,
+      searchInputVisible: false,
+    })
+  })
+
   it.each(['デモ商事', 'demo-code'])(
     '銘柄名またはコードの検索からチャートへ遷移する (%s)',
     async (searchTerm) => {
@@ -112,14 +123,15 @@ describe('StockSearch', () => {
       const input = screen.getByRole('textbox', {
         name: '銘柄名またはコードで検索',
       })
-      await user.type(input, searchTerm)
+      await user.click(input)
+      await user.paste(searchTerm)
       const stockName = await screen.findByText('デモ商事')
       const selectedHref = stockName.closest('a')?.getAttribute('href') ?? null
       await user.click(stockName)
       await screen.findByText('チャート画面')
 
       expect(getStockSearchSnapshot(router, selectedHref)).toEqual({
-        lastSearchQuery: searchTerm,
+        searchQueries: [searchTerm],
         pathname: '/charts/demo-code',
         selectedHref: '/charts/demo-code',
         searchInputVisible: false,
