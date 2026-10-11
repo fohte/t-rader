@@ -21,7 +21,7 @@ export interface AnnotationBandMarker {
   x: number
 }
 
-export interface AnnotationBandCluster {
+interface AnnotationBandCluster {
   markers: AnnotationBandMarker[]
   x: number
 }
@@ -271,7 +271,7 @@ export function clipAnnotationBandSegment(
 }
 
 /** 近接する印をまとめ、帯に表示する座標と件数を返す。 */
-export function clusterAnnotationBandMarkers(
+function clusterAnnotationBandMarkers(
   markers: AnnotationBandMarker[],
   minimumDistance = 16,
 ): AnnotationBandCluster[] {

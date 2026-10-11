@@ -4,7 +4,6 @@ import {
   bucketAnnotationPeriod,
   bucketAnnotationTimestamp,
   clipAnnotationBandSegment,
-  clusterAnnotationBandMarkers,
   getAnnotationPeriodLineRange,
   groupAnnotationBandTargets,
 } from '#lib/annotation-chart-utils'
@@ -246,30 +245,6 @@ describe('clipAnnotationBandSegment', () => {
   })
 })
 
-describe('clusterAnnotationBandMarkers', () => {
-  it('groups nearby markers and keeps separated markers distinct', () => {
-    expect(
-      clusterAnnotationBandMarkers([
-        { id: 'annotation-a', x: 10 },
-        { id: 'annotation-b', x: 18 },
-        { id: 'annotation-c', x: 48 },
-      ]),
-    ).toEqual([
-      {
-        markers: [
-          { id: 'annotation-a', x: 10 },
-          { id: 'annotation-b', x: 18 },
-        ],
-        x: 14,
-      },
-      {
-        markers: [{ id: 'annotation-c', x: 48 }],
-        x: 48,
-      },
-    ])
-  })
-})
-
 describe('groupAnnotationBandTargets', () => {
   it('keeps a point inside a period as an independent target', () => {
     expect(
@@ -291,6 +266,35 @@ describe('groupAnnotationBandTargets', () => {
         ids: ['annotation-point'],
         centerX: 120,
         markers: [{ id: 'annotation-point', x: 120 }],
+      },
+    ])
+  })
+
+  it('groups nearby points and keeps separated points distinct', () => {
+    expect(
+      groupAnnotationBandTargets(
+        [
+          { id: 'annotation-a', x: 10 },
+          { id: 'annotation-b', x: 18 },
+          { id: 'annotation-c', x: 48 },
+        ],
+        [],
+      ),
+    ).toEqual([
+      {
+        kind: 'marker',
+        ids: ['annotation-a', 'annotation-b'],
+        centerX: 14,
+        markers: [
+          { id: 'annotation-a', x: 10 },
+          { id: 'annotation-b', x: 18 },
+        ],
+      },
+      {
+        kind: 'marker',
+        ids: ['annotation-c'],
+        centerX: 48,
+        markers: [{ id: 'annotation-c', x: 48 }],
       },
     ])
   })
