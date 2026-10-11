@@ -86,7 +86,7 @@ function AnnotationDetailPage() {
   if (annoPending || annotation == null) {
     return (
       <div className="space-y-5 font-sans text-foreground">
-        <DetailBackLink to="/annotations" label="アノテーション一覧に戻る" />
+        <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
         {annoPending ? (
           <div className="space-y-4">
             <Skeleton className="h-8 w-72" />
@@ -134,7 +134,7 @@ function AnnotationDetailPage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      <DetailBackLink to="/annotations" label="アノテーション一覧に戻る" />
+      <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
       <header className="border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="inline-grid h-6 min-w-8 place-items-center border border-primary px-1 font-mono text-2xs text-primary">

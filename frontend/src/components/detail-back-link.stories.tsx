@@ -24,9 +24,9 @@ const meta = {
         () => (
           <DetailBackLink {...args} />
         ),
-        args.to === '/notes'
-          ? '/notes/sample-note-id'
-          : '/annotations/sample-annotation-id',
+        args.tab === 'annotations'
+          ? '/annotations/sample-annotation-id'
+          : '/notes/sample-note-id',
       )}
     />
   ),
@@ -37,10 +37,10 @@ type Story = StoryObj<typeof meta>
 
 export const NoteDetail: Story = {
   name: 'returns from a note detail page to the note list.',
-  args: { to: '/notes', label: 'ノート一覧に戻る' },
+  args: { label: 'ノート一覧に戻る' },
 }
 
 export const AnnotationDetail: Story = {
-  name: 'returns from an annotation detail page to the annotation list.',
-  args: { to: '/annotations', label: 'アノテーション一覧に戻る' },
+  name: 'returns from an annotation detail page to the annotations tab.',
+  args: { tab: 'annotations', label: 'アノテーション一覧に戻る' },
 }

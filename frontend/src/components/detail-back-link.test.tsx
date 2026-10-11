@@ -8,32 +8,43 @@ import { createStoryRouter } from '#storybook/story-router'
 
 afterEach(cleanup)
 
-function getBackLinkOutput(pathname: string, linkText: string | null) {
-  return { pathname, linkText }
+function getBackLinkOutput(
+  pathname: string,
+  search: Record<string, unknown>,
+  linkText: string | null,
+) {
+  return { pathname, search, linkText }
 }
 
-function getExpectedBackLinkOutput(to: string, label: string) {
-  return { pathname: to, linkText: `< ${label}` }
+function getExpectedBackLinkOutput(
+  tab: 'annotations' | undefined,
+  label: string,
+) {
+  return {
+    pathname: '/notes',
+    search: tab == null ? {} : { tab },
+    linkText: `< ${label}`,
+  }
 }
 
 describe('DetailBackLink', () => {
   it.each([
     {
-      to: '/notes',
+      tab: undefined,
       label: 'ノート一覧に戻る',
       initialPath: '/notes/sample-note-id',
     },
     {
-      to: '/annotations',
+      tab: 'annotations',
       label: 'アノテーション一覧に戻る',
       initialPath: '/annotations/sample-annotation-id',
     },
   ] as const)(
     'リンク先の一覧へ移動する ($label)',
-    async ({ to, label, initialPath }) => {
+    async ({ tab, label, initialPath }) => {
       const user = userEvent.setup()
       const router = createStoryRouter(
-        () => <DetailBackLink to={to} label={label} />,
+        () => <DetailBackLink tab={tab} label={label} />,
         {
           paths: [
             '/notes',
@@ -51,9 +62,10 @@ describe('DetailBackLink', () => {
       expect(
         getBackLinkOutput(
           router.state.location.pathname,
+          router.state.location.search,
           screen.getByRole('link').textContent,
         ),
-      ).toEqual(getExpectedBackLinkOutput(to, label))
+      ).toEqual(getExpectedBackLinkOutput(tab, label))
     },
   )
 })
