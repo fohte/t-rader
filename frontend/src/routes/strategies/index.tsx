@@ -4,9 +4,11 @@ import { useMemo, useState } from 'react'
 
 import { IndicatorsPage } from '#components/indicators/indicators-page'
 import { FilterBar, type FilterOption } from '#components/runs/filter-bar'
+import { RunsTabHeader } from '#components/runs/runs-tab-header'
 import { CreateStrategyDialog } from '#components/strategy-home/create-strategy-dialog'
 import { StrategyCard } from '#components/strategy-home/strategy-card'
 import {
+  parseStrategyListTab,
   type StrategyListTab,
   StrategyListTabs,
 } from '#components/strategy-home/strategy-list-tabs'
@@ -17,14 +19,10 @@ import { $api } from '#lib/api/client'
 export const Route = createFileRoute('/strategies/')({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: StrategyListTab } => ({
-    tab:
-      search.tab === 'list' ||
-      search.tab === 'runs' ||
-      search.tab === 'indicators'
-        ? search.tab
-        : undefined,
-  }),
+  ): { tab?: StrategyListTab } => {
+    const tab = parseStrategyListTab(search.tab)
+    return tab ? { tab } : {}
+  },
   component: StrategyListPage,
 })
 
@@ -181,14 +179,7 @@ function RunsTab() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      <header>
-        <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-          実行履歴
-        </h1>
-        <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
-          全戦略横断のエージェント実行履歴。戦略・目的で絞り込めます。
-        </p>
-      </header>
+      <RunsTabHeader />
 
       <FilterBar
         options={strategyOptions}

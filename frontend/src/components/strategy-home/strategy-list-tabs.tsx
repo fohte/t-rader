@@ -1,10 +1,16 @@
 import { Link } from '@tanstack/react-router'
 
-export type StrategyListTab = 'list' | 'runs' | 'indicators'
+const STRATEGY_LIST_TAB_IDS = ['list', 'runs', 'indicators'] as const
+
+export type StrategyListTab = (typeof STRATEGY_LIST_TAB_IDS)[number]
 export type LegacyStrategyListTab = Extract<
   StrategyListTab,
   'runs' | 'indicators'
 >
+
+export function parseStrategyListTab(value: unknown) {
+  return STRATEGY_LIST_TAB_IDS.find((tab) => tab === value)
+}
 
 export function getLegacyStrategyListTabRedirectOptions(
   tab: LegacyStrategyListTab,
@@ -12,11 +18,15 @@ export function getLegacyStrategyListTabRedirectOptions(
   return { to: '/strategies' as const, search: { tab } }
 }
 
-const TABS: { id: StrategyListTab; label: string }[] = [
-  { id: 'list', label: '一覧' },
-  { id: 'runs', label: '実行履歴' },
-  { id: 'indicators', label: 'indicators' },
-]
+const TAB_LABELS: Record<StrategyListTab, string> = {
+  list: '一覧',
+  runs: '実行履歴',
+  indicators: 'indicators',
+}
+const TABS = STRATEGY_LIST_TAB_IDS.map((id) => ({
+  id,
+  label: TAB_LABELS[id],
+}))
 
 const TAB_BASE =
   'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-xs'

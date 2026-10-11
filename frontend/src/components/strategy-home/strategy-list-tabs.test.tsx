@@ -3,7 +3,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
-  getLegacyStrategyListTabRedirectOptions,
+  parseStrategyListTab,
   StrategyListTabs,
 } from '#components/strategy-home/strategy-list-tabs'
 import { createStoryRouter } from '#storybook/story-router'
@@ -59,12 +59,11 @@ describe('StrategyListTabs', () => {
   })
 
   it.each([
-    { legacyPath: '/runs', tab: 'runs' },
-    { legacyPath: '/indicators', tab: 'indicators' },
-  ] as const)('$legacyPath を該当するタブへ redirect する', ({ tab }) => {
-    expect(getLegacyStrategyListTabRedirectOptions(tab)).toEqual({
-      to: '/strategies',
-      search: { tab },
-    })
+    { value: 'list', expected: 'list' },
+    { value: 'runs', expected: 'runs' },
+    { value: 'indicators', expected: 'indicators' },
+    { value: 'unknown', expected: undefined },
+  ] as const)('$value search 値を検証する', ({ value, expected }) => {
+    expect(parseStrategyListTab(value)).toEqual(expected)
   })
 })
