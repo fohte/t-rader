@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
+import { StockNameLink } from '#components/stocks/stock-name-link'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
 import { useResolveRef } from '#hooks/use-resolve-ref'
@@ -150,12 +151,11 @@ function AnnotationDetailPage() {
         <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-(--grid-cols-annotation-fields)">
           <dt>銘柄</dt>
           <dd>
-            {stockRef.name ?? (
-              <span className="italic text-muted-foreground">未解決</span>
-            )}
-            <span className="ml-2 text-muted-foreground">
-              {annotation.target_symbol}
-            </span>
+            <StockNameLink
+              name={stockRef.name}
+              symbol={annotation.target_symbol}
+              missingName="unresolved"
+            />
           </dd>
           <dt>timestamp</dt>
           <dd>{formatDateTime(annotation.timestamp)}</dd>

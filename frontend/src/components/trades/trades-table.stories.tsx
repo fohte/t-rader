@@ -1,7 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
 
 import { TradesTable } from '#components/trades/trades-table'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type Trade = components['schemas']['TradeListItem']
 type Strategy = components['schemas']['Strategy']
@@ -93,10 +96,26 @@ const trades: Trade[] = [
   },
 ]
 
+function withChartRouter(Story: ComponentType) {
+  return (
+    <RouterProvider
+      router={createStoryRouter(
+        () => (
+          <Story />
+        ),
+        {
+          paths: ['/charts/$instrumentId'],
+        },
+      )}
+    />
+  )
+}
+
 const meta = {
   title: 'Trades/TradesTable',
   component: TradesTable,
   parameters: { layout: 'padded' },
+  decorators: [(Story) => withChartRouter(Story)],
   args: {
     onEdit: () => undefined,
     onDelete: () => undefined,
