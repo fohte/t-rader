@@ -6,7 +6,13 @@ import { formatRelative } from '#lib/note-utils'
 
 type Note = components['schemas']['Note']
 
-export function DashboardRecentNotes({ notes }: { notes: Note[] | null }) {
+export function DashboardRecentNotes({
+  notes,
+  isError,
+}: {
+  notes: Note[] | null
+  isError: boolean
+}) {
   const recentNotes =
     notes == null
       ? []
@@ -34,7 +40,11 @@ export function DashboardRecentNotes({ notes }: { notes: Note[] | null }) {
         </Link>
       </div>
       <div className="divide-y divide-border border border-border bg-card">
-        {notes == null ? (
+        {isError ? (
+          <p className="px-4 py-5 font-mono text-xs text-muted-foreground">
+            ノートを読み込めませんでした。
+          </p>
+        ) : notes == null ? (
           <div className="space-y-2 p-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />

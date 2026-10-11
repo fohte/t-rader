@@ -26,7 +26,7 @@ const events: CalendarEvent[] = [
     event_at: null,
     time_of_day: '引け後',
     country: 'JP',
-    category: '決算',
+    category: 'earnings',
     title: '四半期決算',
     source: 'fixture',
     external_id: 'fake-event-a',
@@ -54,7 +54,7 @@ const meta = {
   title: 'Dashboard/DashboardWeeklyEvents',
   component: DashboardWeeklyEvents,
   decorators: [withRouter],
-  args: { events, stocks },
+  args: { events, stocks, isError: false },
 } satisfies Meta<typeof DashboardWeeklyEvents>
 
 export default meta
@@ -72,4 +72,9 @@ export const Empty: Story = {
 export const Loading: Story = {
   name: 'shows placeholders while events are loading.',
   args: { events: null },
+}
+
+export const Error: Story = {
+  name: 'shows an error message when events cannot be loaded.',
+  args: { events: null, isError: true },
 }

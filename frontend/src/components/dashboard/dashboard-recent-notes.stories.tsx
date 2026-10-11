@@ -68,7 +68,7 @@ const meta = {
   title: 'Dashboard/DashboardRecentNotes',
   component: DashboardRecentNotes,
   decorators: [withRouter],
-  args: { notes },
+  args: { notes, isError: false },
 } satisfies Meta<typeof DashboardRecentNotes>
 
 export default meta
@@ -86,4 +86,9 @@ export const Empty: Story = {
 export const Loading: Story = {
   name: 'shows placeholders while notes are loading.',
   args: { notes: null },
+}
+
+export const Error: Story = {
+  name: 'shows an error message when notes cannot be loaded.',
+  args: { notes: null, isError: true },
 }

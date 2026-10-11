@@ -111,10 +111,14 @@ function DashboardRoute() {
         isReviewPending={reviewQueue.isPending}
         isReviewError={reviewQueue.isError}
         trades={tradesQuery.isPending ? null : (tradesQuery.data ?? [])}
+        isTradesError={tradesQuery.isError}
         onReflectTrade={setSelectedTrade}
         events={eventsQuery.isPending ? null : events}
+        isEventsError={eventsQuery.isError}
         notes={notesQuery.isPending ? null : (notesQuery.data ?? [])}
+        isNotesError={notesQuery.isError}
         tasks={taskQuery.isPending ? null : (taskQuery.data ?? [])}
+        isTasksError={taskQuery.isError}
         strategies={strategies}
       />
       <TradeNotesDialog

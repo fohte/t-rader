@@ -53,7 +53,7 @@ const meta = {
   title: 'Dashboard/DashboardRecentRuns',
   component: DashboardRecentRuns,
   decorators: [withRouter],
-  args: { tasks, strategies },
+  args: { tasks, strategies, isError: false },
 } satisfies Meta<typeof DashboardRecentRuns>
 
 export default meta
@@ -71,4 +71,9 @@ export const Empty: Story = {
 export const Loading: Story = {
   name: 'shows placeholders while task runs are loading.',
   args: { tasks: null },
+}
+
+export const Error: Story = {
+  name: 'shows an error message when task runs cannot be loaded.',
+  args: { tasks: null, isError: true },
 }

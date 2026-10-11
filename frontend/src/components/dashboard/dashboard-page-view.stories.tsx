@@ -91,6 +91,7 @@ const args: DashboardPageViewProps = {
       updated_at: '2026-10-08T02:00:00Z',
     },
   ],
+  isTradesError: false,
   onReflectTrade: () => {},
   events: [
     {
@@ -99,7 +100,7 @@ const args: DashboardPageViewProps = {
       event_at: null,
       time_of_day: '引け後',
       country: 'JP',
-      category: '決算',
+      category: 'earnings',
       title: '四半期決算',
       source: 'fixture',
       external_id: 'fake-event-a',
@@ -107,6 +108,7 @@ const args: DashboardPageViewProps = {
       fiscal_period: null,
     },
   ],
+  isEventsError: false,
   notes: [
     {
       id: 'fake-note-a',
@@ -147,6 +149,7 @@ const args: DashboardPageViewProps = {
       updated_at: '2026-10-09T03:00:00Z',
     },
   ],
+  isNotesError: false,
   tasks: [
     {
       task_id: 'fake-task-a',
@@ -161,6 +164,7 @@ const args: DashboardPageViewProps = {
       updated_at: '2026-10-10T03:00:00Z',
     },
   ],
+  isTasksError: false,
   strategies: [
     {
       id: 'fake-strategy-a',
@@ -260,5 +264,19 @@ export const PortfolioError: Story = {
     isStatsError: true,
     positions: null,
     isPositionsError: true,
+  },
+}
+
+export const DataErrors: Story = {
+  name: 'shows errors for sections whose data cannot be loaded.',
+  args: {
+    ...args,
+    isStatsError: true,
+    isPositionsError: true,
+    isReviewError: true,
+    isTradesError: true,
+    isEventsError: true,
+    isNotesError: true,
+    isTasksError: true,
   },
 }

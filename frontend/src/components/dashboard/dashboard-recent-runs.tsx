@@ -17,9 +17,11 @@ const PHASE_LABEL: Record<string, string> = {
 export function DashboardRecentRuns({
   tasks,
   strategies,
+  isError,
 }: {
   tasks: Task[] | null
   strategies: Strategy[]
+  isError: boolean
 }) {
   const recentTasks =
     tasks == null
@@ -51,7 +53,11 @@ export function DashboardRecentRuns({
         </Link>
       </div>
       <div className="divide-y divide-border border border-border bg-card">
-        {tasks == null ? (
+        {isError ? (
+          <p className="px-4 py-5 font-mono text-xs text-muted-foreground">
+            実行履歴を読み込めませんでした。
+          </p>
+        ) : tasks == null ? (
           <div className="space-y-2 p-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />

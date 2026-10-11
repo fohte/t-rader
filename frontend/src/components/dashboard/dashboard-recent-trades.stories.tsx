@@ -56,7 +56,7 @@ const meta = {
   title: 'Dashboard/DashboardRecentTrades',
   component: DashboardRecentTrades,
   decorators: [withRouter],
-  args: { trades, stocks, onReflect: () => {} },
+  args: { trades, stocks, onReflect: () => {}, isError: false },
 } satisfies Meta<typeof DashboardRecentTrades>
 
 export default meta
@@ -74,4 +74,9 @@ export const Empty: Story = {
 export const Loading: Story = {
   name: 'shows placeholders while trades are loading.',
   args: { trades: null },
+}
+
+export const Error: Story = {
+  name: 'shows an error message when trades cannot be loaded.',
+  args: { trades: null, isError: true },
 }

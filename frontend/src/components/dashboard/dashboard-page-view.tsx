@@ -28,10 +28,14 @@ interface DashboardPageViewProps {
   isReviewPending: boolean
   isReviewError: boolean
   trades: Trade[] | null
+  isTradesError: boolean
   onReflectTrade: (trade: Trade) => void
   events: CalendarEvent[] | null
+  isEventsError: boolean
   notes: Note[] | null
+  isNotesError: boolean
   tasks: Task[] | null
+  isTasksError: boolean
   strategies: Strategy[]
 }
 
@@ -45,10 +49,14 @@ export function DashboardPageView({
   isReviewPending,
   isReviewError,
   trades,
+  isTradesError,
   onReflectTrade,
   events,
+  isEventsError,
   notes,
+  isNotesError,
   tasks,
+  isTasksError,
   strategies,
 }: DashboardPageViewProps) {
   return (
@@ -105,8 +113,13 @@ export function DashboardPageView({
             trades={trades}
             stocks={stocks}
             onReflect={onReflectTrade}
+            isError={isTradesError}
           />
-          <DashboardWeeklyEvents events={events} stocks={stocks} />
+          <DashboardWeeklyEvents
+            events={events}
+            stocks={stocks}
+            isError={isEventsError}
+          />
         </div>
 
         <aside className="min-w-0 space-y-5">
@@ -118,8 +131,12 @@ export function DashboardPageView({
               variant="panel"
             />
           </div>
-          <DashboardRecentNotes notes={notes} />
-          <DashboardRecentRuns tasks={tasks} strategies={strategies} />
+          <DashboardRecentNotes notes={notes} isError={isNotesError} />
+          <DashboardRecentRuns
+            tasks={tasks}
+            strategies={strategies}
+            isError={isTasksError}
+          />
         </aside>
       </div>
     </div>

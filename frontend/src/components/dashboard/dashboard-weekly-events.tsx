@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import { formatCalendarDayLabel } from '#components/calendar/calendar-date'
+import { formatCalendarCategory } from '#components/calendar/calendar-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 
@@ -10,9 +11,11 @@ type Stock = components['schemas']['Stock']
 export function DashboardWeeklyEvents({
   events,
   stocks,
+  isError,
 }: {
   events: CalendarEvent[] | null
   stocks: Stock[]
+  isError: boolean
 }) {
   const upcomingEvents =
     events == null
@@ -47,7 +50,11 @@ export function DashboardWeeklyEvents({
         </Link>
       </div>
       <div className="divide-y divide-border border border-border bg-card">
-        {events == null ? (
+        {isError ? (
+          <p className="px-4 py-5 font-mono text-xs text-muted-foreground">
+            今週の予定を読み込めませんでした。
+          </p>
+        ) : events == null ? (
           <div className="space-y-2 p-3">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
@@ -62,7 +69,10 @@ export function DashboardWeeklyEvents({
               event.kind === 'event'
                 ? event.title
                 : `その他 ${String(event.count)} 社の決算`
-            const category = event.kind === 'event' ? event.category : '決算'
+            const category =
+              event.kind === 'event'
+                ? formatCalendarCategory(event.category)
+                : formatCalendarCategory('earnings')
             const stockName =
               event.kind === 'event' && event.stock_id != null
                 ? stockById.get(event.stock_id)

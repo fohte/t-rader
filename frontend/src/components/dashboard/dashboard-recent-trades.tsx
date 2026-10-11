@@ -25,10 +25,12 @@ export function DashboardRecentTrades({
   trades,
   stocks,
   onReflect,
+  isError,
 }: {
   trades: Trade[] | null
   stocks: Stock[]
   onReflect: (trade: Trade) => void
+  isError: boolean
 }) {
   const recentTrades =
     trades == null
@@ -60,7 +62,11 @@ export function DashboardRecentTrades({
         </Link>
       </div>
       <div className="border border-border bg-card">
-        {trades == null ? (
+        {isError ? (
+          <p className="px-4 py-5 font-mono text-xs text-muted-foreground">
+            取引を読み込めませんでした。
+          </p>
+        ) : trades == null ? (
           <div className="space-y-2 p-3">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />

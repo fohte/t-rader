@@ -79,3 +79,18 @@ export const Loading: Story = {
   name: 'shows placeholders while review items are loading.',
   args: { data: null, isPending: true },
 }
+
+export const Error: Story = {
+  name: 'shows an error message when review items cannot be loaded.',
+  args: { data: null, isPending: false, isError: true },
+}
+
+export const CompactError: Story = {
+  name: 'shows an unavailable count when compact review data cannot be loaded.',
+  args: {
+    data: null,
+    isPending: false,
+    isError: true,
+    variant: 'compact',
+  },
+}
