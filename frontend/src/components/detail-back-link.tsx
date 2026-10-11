@@ -1,14 +1,15 @@
 import { Link } from '@tanstack/react-router'
 
 type DetailBackLinkProps = {
-  to: '/notes' | '/annotations'
   label: string
+  tab?: 'annotations'
 }
 
-export function DetailBackLink({ to, label }: DetailBackLinkProps) {
+export function DetailBackLink({ label, tab }: DetailBackLinkProps) {
   return (
     <Link
-      to={to}
+      to="/notes"
+      search={{ tab }}
       className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
     >
       &lt; {label}
