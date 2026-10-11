@@ -51,6 +51,10 @@ const CATEGORY_LABELS: Readonly<Record<string, string>> = {
   indicator: '指標',
 }
 
+export function formatCalendarCategory(category: string): string {
+  return CATEGORY_LABELS[category] ?? category
+}
+
 const EMPHASIZED_FRED_RELEASE_IDS: ReadonlySet<string> = new Set(['10', '50'])
 const MARKET_TIME_SORT_ORDER: Readonly<
   Record<string, Readonly<Record<'pre_market' | 'post_market', number>>>
@@ -124,7 +128,7 @@ function buildEventRow(
       key: event.external_id,
       time: time.label,
       country: event.country,
-      category: CATEGORY_LABELS[event.category] ?? event.category,
+      category: formatCalendarCategory(event.category),
       title,
       stockId: isDomesticEarnings ? stockId : undefined,
       emphasized: isEmphasized(event),
@@ -145,7 +149,7 @@ function buildOtherEarningsRow(event: OtherEarningsSummary): {
       key: `${event.country}:${event.event_date}:other-earnings`,
       time: '',
       country: event.country,
-      category: CATEGORY_LABELS.earnings ?? '決算',
+      category: formatCalendarCategory('earnings'),
       title: `他 ${event.count.toString()} 社`,
       emphasized: false,
       target: false,
