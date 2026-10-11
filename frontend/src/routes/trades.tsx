@@ -1,8 +1,9 @@
 import { Button } from '@fohte/ui/button'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Plus, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { AssetTabs } from '#components/assets/asset-tabs'
 import { ImportSbiDialog } from '#components/trades/import-sbi-dialog'
 import {
   type StrategyFilter,
@@ -93,14 +94,7 @@ function TradesPage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      <div>
-        <Link
-          to="/strategies"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 戦略一覧に戻る
-        </Link>
-      </div>
+      <AssetTabs activeTab="trades" />
 
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
