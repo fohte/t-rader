@@ -37,20 +37,21 @@ export interface AnnotationBandSegment {
   endX: number
 }
 
-interface AnnotationBandTargetGroup {
-  kind: 'marker' | 'period'
-  ids: string[]
-  startX: number
-  endX: number
-  centerX: number
-  markers: AnnotationBandMarker[]
-  periods: AnnotationBandPeriod[]
-}
-
-export interface AnnotationBandTargetGroups {
-  markers: AnnotationBandTargetGroup[]
-  periods: AnnotationBandTargetGroup[]
-}
+type AnnotationBandTargetGroup =
+  | {
+      kind: 'marker'
+      ids: string[]
+      centerX: number
+      markers: AnnotationBandMarker[]
+    }
+  | {
+      kind: 'period'
+      ids: string[]
+      startX: number
+      endX: number
+      centerX: number
+      periods: AnnotationBandPeriod[]
+    }
 
 interface BarTimePoint {
   time: UTCTimestamp
@@ -297,26 +298,24 @@ export function clusterAnnotationBandMarkers(
   }))
 }
 
-/** 点印は近接する点同士で、期間印は重なる期間同士で選択対象をまとめる。 */
+/** 点印は近接する点同士で、期間印は重なるか minimumDistance 未満に近接する期間同士でまとめる。 */
 export function groupAnnotationBandTargets(
   markers: AnnotationBandMarker[],
   periods: AnnotationBandPeriod[],
   minimumDistance = 16,
-): AnnotationBandTargetGroups {
+): AnnotationBandTargetGroup[] {
   const markerGroups = clusterAnnotationBandMarkers(
     markers,
     minimumDistance,
   ).map(({ markers: group, x }) => ({
     kind: 'marker' as const,
     ids: group.map((marker) => marker.id),
-    startX: group[0]?.x ?? x,
-    endX: group.at(-1)?.x ?? x,
     centerX: x,
     markers: group,
-    periods: [],
   }))
 
-  const periodGroups: AnnotationBandTargetGroup[] = []
+  const periodGroups: Extract<AnnotationBandTargetGroup, { kind: 'period' }>[] =
+    []
   const sortedPeriods = [...periods].sort(
     (left, right) => left.startX - right.startX,
   )
@@ -334,11 +333,10 @@ export function groupAnnotationBandTargets(
         startX: period.startX,
         endX: period.endX,
         centerX: (period.startX + period.endX) / 2,
-        markers: [],
         periods: [period],
       })
     }
   }
 
-  return { markers: markerGroups, periods: periodGroups }
+  return [...periodGroups, ...markerGroups]
 }

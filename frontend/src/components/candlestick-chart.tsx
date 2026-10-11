@@ -326,6 +326,13 @@ export function CandlestickChart({
 
     const timestampStart = selectedAnnotation.timestamp_start
     const isPeriod = timestampStart != null
+    const bucketedPeriod = isPeriod
+      ? bucketAnnotationPeriod(
+          timestampStart,
+          selectedAnnotation.timestamp,
+          bars,
+        )
+      : null
     const periodLineRange = isPeriod
       ? getAnnotationPeriodLineRange(
           timestampStart,
@@ -333,7 +340,7 @@ export function CandlestickChart({
           bars,
         )
       : null
-    if (isPeriod && periodLineRange == null) return
+    if (isPeriod && bucketedPeriod == null) return
 
     if (periodLineRange != null) {
       lineSeries.setData([

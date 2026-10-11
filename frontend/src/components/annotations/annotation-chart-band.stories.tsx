@@ -51,7 +51,7 @@ export const WithPeriodAnnotation: Story = {
 }
 
 export const OverlappingTargets: Story = {
-  name: 'groups overlapping points and periods into one selectable target.',
+  name: 'groups overlapping periods and keeps a point independently selectable.',
   args: {
     markers: [{ id: 'annotation-point', x: 220 }],
     periods: [

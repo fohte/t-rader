@@ -22,8 +22,7 @@ export function AnnotationChartBand({
   selectedAnnotationId,
   onSelectAnnotation,
 }: AnnotationChartBandProps) {
-  const targetGroups = groupAnnotationBandTargets(markers, periods)
-  const groups = [...targetGroups.periods, ...targetGroups.markers]
+  const groups = groupAnnotationBandTargets(markers, periods)
 
   return (
     <div
@@ -47,35 +46,37 @@ export function AnnotationChartBand({
 
         return (
           <div key={group.ids.join(':')} className="contents">
-            {group.periods.map((period) => (
-              <span
-                key={period.id}
-                aria-hidden="true"
-                className={cn(
-                  'pointer-events-none absolute z-0 top-1/2 h-1 -translate-y-1/2 rounded-full',
-                  period.id === selectedAnnotationId
-                    ? 'bg-primary'
-                    : 'bg-primary/55',
-                )}
-                style={{
-                  left: period.startX,
-                  width: Math.max(period.endX - period.startX, 1),
-                }}
-              />
-            ))}
-            {group.markers.map((marker) => (
-              <span
-                key={marker.id}
-                aria-hidden="true"
-                className={cn(
-                  'pointer-events-none absolute z-20 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary',
-                  marker.id === selectedAnnotationId
-                    ? 'bg-primary'
-                    : 'bg-background',
-                )}
-                style={{ left: marker.x }}
-              />
-            ))}
+            {group.kind === 'period' &&
+              group.periods.map((period) => (
+                <span
+                  key={period.id}
+                  aria-hidden="true"
+                  className={cn(
+                    'pointer-events-none absolute z-0 top-1/2 h-1 -translate-y-1/2 rounded-full',
+                    period.id === selectedAnnotationId
+                      ? 'bg-primary'
+                      : 'bg-primary/55',
+                  )}
+                  style={{
+                    left: period.startX,
+                    width: Math.max(period.endX - period.startX, 1),
+                  }}
+                />
+              ))}
+            {group.kind === 'marker' &&
+              group.markers.map((marker) => (
+                <span
+                  key={marker.id}
+                  aria-hidden="true"
+                  className={cn(
+                    'pointer-events-none absolute z-20 top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary',
+                    marker.id === selectedAnnotationId
+                      ? 'bg-primary'
+                      : 'bg-background',
+                  )}
+                  style={{ left: marker.x }}
+                />
+              ))}
             <button
               type="button"
               aria-label={
@@ -99,7 +100,7 @@ export function AnnotationChartBand({
                   : 'bg-background text-primary hover:bg-primary/15',
               )}
               style={
-                onlyPeriod
+                group.kind === 'period' && !hasMultipleTargets
                   ? {
                       left: centerX,
                       width: Math.max(group.endX - group.startX, 8),

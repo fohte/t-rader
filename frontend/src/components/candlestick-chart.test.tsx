@@ -186,11 +186,87 @@ describe('CandlestickChart', () => {
     })
   })
 
-  it('extends a same-bucket period and clears its line after selection changes', () => {
+  it('keeps the price axis label for a same-bucket period on a one-bar chart', () => {
+    const periodAnnotation = {
+      ...pointAnnotation,
+      timestamp_start: '2025-04-10T03:00:00.000Z',
+      timestamp: '2025-04-10T12:00:00.000Z',
+    }
+
+    render(
+      <CandlestickChart
+        bars={bars}
+        annotations={[periodAnnotation]}
+        selectedAnnotationId={periodAnnotation.id}
+      />,
+    )
+
+    const readRenderedState = () => ({
+      priceLines: chartMocks.candlestickSeries.createPriceLine.mock.calls.map(
+        ([options]) => options,
+      ),
+      periodLineData: chartMocks.annotationPriceSeries.setData.mock.calls,
+    })
+
+    expect(readRenderedState()).toEqual({
+      priceLines: [
+        {
+          price: 100,
+          color: '#ef4444',
+          lineWidth: 2,
+          lineStyle: 2,
+          lineVisible: false,
+          axisLabelVisible: true,
+          title: '架空分類',
+          axisLabelColor: '#ef4444',
+          axisLabelTextColor: '#ffffff',
+        },
+      ],
+      periodLineData: [[[]]],
+    })
+  })
+
+  it('extends a same-bucket period to an adjacent bar', () => {
     const periodAnnotation = {
       ...pointAnnotation,
       timestamp_start: '2025-04-10T00:00:00.000Z',
       timestamp: '2025-04-10T12:00:00.000Z',
+    }
+    const periodBars = [
+      firstBar,
+      { ...firstBar, timestamp: '2025-04-11T00:00:00.000Z' },
+    ]
+
+    render(
+      <CandlestickChart
+        bars={periodBars}
+        annotations={[periodAnnotation]}
+        selectedAnnotationId={periodAnnotation.id}
+      />,
+    )
+
+    const readRenderedState = () => ({
+      periodLineData: chartMocks.annotationPriceSeries.setData.mock.calls,
+    })
+
+    expect(readRenderedState()).toEqual({
+      periodLineData: [
+        [[]],
+        [
+          [
+            { time: 1744243200, value: 100 },
+            { time: 1744329600, value: 100 },
+          ],
+        ],
+      ],
+    })
+  })
+
+  it('clears the selected period price when selection changes', () => {
+    const periodAnnotation = {
+      ...pointAnnotation,
+      timestamp_start: '2025-04-10T00:00:00.000Z',
+      timestamp: '2025-04-11T00:00:00.000Z',
     }
     const periodBars = [
       firstBar,

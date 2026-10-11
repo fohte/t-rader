@@ -193,6 +193,39 @@ describe('getAnnotationPeriodLineRange', () => {
       ),
     ).toEqual({ start: 1744243200, end: 1744329600 })
   })
+
+  it('extends a same-bucket period on the last visible bar to the previous bar', () => {
+    const bars: Bar[] = [
+      {
+        instrument_id: 'demo-code',
+        timeframe: '1d',
+        timestamp: '2025-04-10T00:00:00.000Z',
+        open: 100,
+        high: 110,
+        low: 90,
+        close: 105,
+        volume: 1000,
+      },
+      {
+        instrument_id: 'demo-code',
+        timeframe: '1d',
+        timestamp: '2025-04-11T00:00:00.000Z',
+        open: 105,
+        high: 115,
+        low: 95,
+        close: 110,
+        volume: 1200,
+      },
+    ]
+
+    expect(
+      getAnnotationPeriodLineRange(
+        '2025-04-11T03:00:00.000Z',
+        '2025-04-11T12:00:00.000Z',
+        bars,
+      ),
+    ).toEqual({ start: 1744243200, end: 1744329600 })
+  })
 })
 
 describe('clipAnnotationBandSegment', () => {
@@ -244,29 +277,21 @@ describe('groupAnnotationBandTargets', () => {
         [{ id: 'annotation-point', x: 120 }],
         [{ id: 'annotation-period', startX: 20, endX: 300 }],
       ),
-    ).toEqual({
-      markers: [
-        {
-          kind: 'marker',
-          ids: ['annotation-point'],
-          startX: 120,
-          endX: 120,
-          centerX: 120,
-          markers: [{ id: 'annotation-point', x: 120 }],
-          periods: [],
-        },
-      ],
-      periods: [
-        {
-          kind: 'period',
-          ids: ['annotation-period'],
-          startX: 20,
-          endX: 300,
-          centerX: 160,
-          markers: [],
-          periods: [{ id: 'annotation-period', startX: 20, endX: 300 }],
-        },
-      ],
-    })
+    ).toEqual([
+      {
+        kind: 'period',
+        ids: ['annotation-period'],
+        startX: 20,
+        endX: 300,
+        centerX: 160,
+        periods: [{ id: 'annotation-period', startX: 20, endX: 300 }],
+      },
+      {
+        kind: 'marker',
+        ids: ['annotation-point'],
+        centerX: 120,
+        markers: [{ id: 'annotation-point', x: 120 }],
+      },
+    ])
   })
 })
