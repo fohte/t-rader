@@ -37,7 +37,7 @@ export interface AnnotationBandSegment {
   endX: number
 }
 
-export interface AnnotationBandTargetGroup {
+interface AnnotationBandTargetGroup {
   kind: 'marker' | 'period'
   ids: string[]
   startX: number
