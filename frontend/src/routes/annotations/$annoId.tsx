@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { DetailBackLink } from '#components/detail-back-link'
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
@@ -82,23 +83,21 @@ function AnnotationDetailPage() {
 
   const [commentDraft, setCommentDraft] = useState('')
 
-  if (annoPending) {
+  if (annoPending || annotation == null) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-5 w-full max-w-120" />
-        <Skeleton className="h-50 w-full" />
-      </div>
-    )
-  }
-
-  if (annotation == null) {
-    return (
-      <div className="font-mono text-sm text-muted-foreground">
-        アノテーションが見つかりませんでした。{' '}
-        <Link to="/annotations" className="text-primary hover:underline">
-          アノテーション一覧に戻る
-        </Link>
+      <div className="space-y-5 font-sans text-foreground">
+        <DetailBackLink to="/annotations" label="アノテーション一覧に戻る" />
+        {annoPending ? (
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-72" />
+            <Skeleton className="h-5 w-full max-w-120" />
+            <Skeleton className="h-50 w-full" />
+          </div>
+        ) : (
+          <div className="font-mono text-sm text-muted-foreground">
+            アノテーションが見つかりませんでした。
+          </div>
+        )}
       </div>
     )
   }
@@ -135,6 +134,7 @@ function AnnotationDetailPage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
+      <DetailBackLink to="/annotations" label="アノテーション一覧に戻る" />
       <header className="border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="inline-grid h-6 min-w-8 place-items-center border border-primary px-1 font-mono text-2xs text-primary">
