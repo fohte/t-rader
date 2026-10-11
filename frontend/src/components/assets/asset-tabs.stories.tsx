@@ -1,13 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 
-import { type AssetTab, AssetTabs } from '#components/assets/asset-tabs'
+import { AssetTabs } from '#components/assets/asset-tabs'
 import { createStoryRouter } from '#storybook/story-router'
 
-function createAssetTabsRouter(activeTab: AssetTab) {
+function createAssetTabsRouter(
+  activeTab: Parameters<typeof AssetTabs>[0]['activeTab'],
+) {
   return createStoryRouter(() => <AssetTabs activeTab={activeTab} />, {
     paths: ['/portfolio', '/trades'],
-    initialPath: activeTab === 'holdings' ? '/portfolio' : '/trades',
+    initialPath: '/portfolio',
   })
 }
 
