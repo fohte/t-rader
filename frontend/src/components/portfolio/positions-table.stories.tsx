@@ -1,22 +1,25 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
 
 import { PositionsTable } from '#components/portfolio/positions-table'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type Stock = components['schemas']['Stock']
 
 const stocks: Stock[] = [
   {
-    id: '3436',
-    name: 'SUMCO',
+    id: 'demo-code',
+    name: '架空商事 A',
     market: null,
     sector_id: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: '7203',
-    name: 'トヨタ自動車',
+    id: 'demo-code-2',
+    name: '架空商事 B',
     market: null,
     sector_id: null,
     created_at: '2026-01-01T00:00:00Z',
@@ -24,10 +27,26 @@ const stocks: Stock[] = [
   },
 ]
 
+function withChartRouter(Story: ComponentType) {
+  return (
+    <RouterProvider
+      router={createStoryRouter(
+        () => (
+          <Story />
+        ),
+        {
+          paths: ['/charts/$instrumentId'],
+        },
+      )}
+    />
+  )
+}
+
 const meta = {
   title: 'Portfolio/PositionsTable',
   component: PositionsTable,
   parameters: { layout: 'padded' },
+  decorators: [(Story) => withChartRouter(Story)],
 } satisfies Meta<typeof PositionsTable>
 
 export default meta
@@ -39,14 +58,14 @@ export const Default: Story = {
     stocks,
     positions: [
       {
-        symbol: '3436',
+        symbol: 'demo-code',
         qty: 200,
         avg_cost: 1480,
         cost_basis: 296000,
         realized_pnl: 13000,
       },
       {
-        symbol: '7203',
+        symbol: 'demo-code-2',
         qty: 100,
         avg_cost: 2810,
         cost_basis: 281000,

@@ -2,6 +2,7 @@ import { Button } from '@fohte/ui/button'
 import { Link2, Pencil, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 
+import { StockNameLink } from '#components/stocks/stock-name-link'
 import { formatYen, SOURCE_LABEL } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 
@@ -82,14 +83,11 @@ export function TradesTable({
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-foreground">
-                      {stockName ?? t.symbol}
-                    </span>
-                    {stockName != null && (
-                      <span className="text-2xs text-muted-foreground">
-                        {t.symbol}
-                      </span>
-                    )}
+                    <StockNameLink
+                      name={stockName ?? null}
+                      symbol={t.symbol}
+                      missingName="link-symbol"
+                    />
                   </div>
                 </td>
                 <td className="px-3 py-2 text-center">
