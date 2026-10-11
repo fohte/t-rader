@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
 import { formatYen, pnlColorClass } from '#components/trades/format'
@@ -52,9 +53,13 @@ export function PositionsTable({
               >
                 <td className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-foreground">
+                    <Link
+                      to="/charts/$instrumentId"
+                      params={{ instrumentId: p.symbol }}
+                      className="text-foreground hover:underline"
+                    >
                       {stockName ?? p.symbol}
-                    </span>
+                    </Link>
                     {stockName != null && (
                       <span className="text-2xs text-muted-foreground">
                         {p.symbol}

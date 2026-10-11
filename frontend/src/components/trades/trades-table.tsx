@@ -1,4 +1,5 @@
 import { Button } from '@fohte/ui/button'
+import { Link } from '@tanstack/react-router'
 import { Link2, Pencil, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 
@@ -82,9 +83,13 @@ export function TradesTable({
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-foreground">
+                    <Link
+                      to="/charts/$instrumentId"
+                      params={{ instrumentId: t.symbol }}
+                      className="text-foreground hover:underline"
+                    >
                       {stockName ?? t.symbol}
-                    </span>
+                    </Link>
                     {stockName != null && (
                       <span className="text-2xs text-muted-foreground">
                         {t.symbol}
