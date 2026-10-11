@@ -1,15 +1,17 @@
 import { Link } from '@tanstack/react-router'
 
+import { type NotesTab, notesTabSearch } from '#components/notes/notes-tabs'
+
 type DetailBackLinkProps = {
   label: string
-  tab?: 'annotations'
+  tab?: NotesTab
 }
 
 export function DetailBackLink({ label, tab }: DetailBackLinkProps) {
   return (
     <Link
       to="/notes"
-      search={{ tab }}
+      search={notesTabSearch(tab ?? 'notes')}
       className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
     >
       &lt; {label}

@@ -2,6 +2,10 @@ import { Link } from '@tanstack/react-router'
 
 export type NotesTab = 'notes' | 'annotations'
 
+export function notesTabSearch(tab: NotesTab): { tab?: 'annotations' } {
+  return { tab: tab === 'annotations' ? 'annotations' : undefined }
+}
+
 const TABS: { key: NotesTab; label: string }[] = [
   { key: 'notes', label: 'ノート' },
   { key: 'annotations', label: 'アノテーション' },
@@ -24,7 +28,7 @@ export function NotesTabs({ activeTab }: { activeTab: NotesTab }) {
             to="/notes"
             search={(prev) => ({
               ...prev,
-              tab: key === 'annotations' ? 'annotations' : undefined,
+              ...notesTabSearch(key),
             })}
             role="tab"
             aria-selected={active}

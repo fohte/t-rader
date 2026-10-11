@@ -1,8 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 import { AnnotationsList } from '#components/annotations/annotations-list'
+import { AnnotationsListSkeleton } from '#components/annotations/annotations-list-skeleton'
 import { PendingNoteVersionsLink } from '#components/note-detail/pending-note-versions-link'
-import { type NotesTab, NotesTabs } from '#components/notes/notes-tabs'
+import {
+  type NotesTab,
+  NotesTabs,
+  notesTabSearch,
+} from '#components/notes/notes-tabs'
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
 import { NoteTagFilterSelect } from '#components/strategy-home/note-tag-filter-select'
 import { NotesList } from '#components/strategy-home/notes-list'
@@ -17,7 +22,7 @@ export const Route = createFileRoute('/notes/')({
       typeof search.tag === 'string' && search.tag.length > 0
         ? search.tag
         : undefined,
-    tab: search.tab === 'annotations' ? 'annotations' : undefined,
+    ...notesTabSearch(search.tab === 'annotations' ? 'annotations' : 'notes'),
   }),
   component: NotesPage,
 })
@@ -86,11 +91,7 @@ function NotesPage() {
             <NotesList notes={notes ?? []} />
           )
         ) : annotationsPending ? (
-          <div className="space-y-2">
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-            <Skeleton className="h-14 w-full" />
-          </div>
+          <AnnotationsListSkeleton />
         ) : (
           <AnnotationsList annotations={annotations ?? []} />
         )}
