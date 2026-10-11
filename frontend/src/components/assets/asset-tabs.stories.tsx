@@ -39,7 +39,7 @@ export const NarrowViewport: Story = {
   args: { activeTab: 'holdings' },
   decorators: [
     (Story) => (
-      <div style={{ width: 375 }}>
+      <div className="border border-border p-3" style={{ width: 375 }}>
         <Story />
       </div>
     ),
