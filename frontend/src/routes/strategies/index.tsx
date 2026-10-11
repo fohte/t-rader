@@ -1,17 +1,53 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
+import { IndicatorsPage } from '#components/indicators/indicators-page'
+import { FilterBar, type FilterOption } from '#components/runs/filter-bar'
 import { CreateStrategyDialog } from '#components/strategy-home/create-strategy-dialog'
 import { StrategyCard } from '#components/strategy-home/strategy-card'
+import {
+  type StrategyListTab,
+  StrategyListTabs,
+} from '#components/strategy-home/strategy-list-tabs'
+import { TaskRunListView } from '#components/strategy-shell/task-run-list-view'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/strategies/')({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: StrategyListTab } => ({
+    tab:
+      search.tab === 'list' ||
+      search.tab === 'runs' ||
+      search.tab === 'indicators'
+        ? search.tab
+        : undefined,
+  }),
   component: StrategyListPage,
 })
 
+const UNSPECIFIED_PURPOSE = '__unspecified__'
+
 function StrategyListPage() {
+  const { tab: requestedTab } = Route.useSearch()
+  const tab = requestedTab ?? 'list'
+  return (
+    <div className="font-sans text-foreground">
+      <StrategyListTabs activeTab={tab} />
+      {tab === 'list' ? (
+        <StrategyListContent />
+      ) : tab === 'runs' ? (
+        <RunsTab />
+      ) : (
+        <IndicatorsPage scope="global" />
+      )}
+    </div>
+  )
+}
+
+function StrategyListContent() {
   const [creating, setCreating] = useState(false)
   const { data: strategies, isPending } = $api.useQuery(
     'get',
@@ -63,6 +99,128 @@ function StrategyListPage() {
       )}
 
       <CreateStrategyDialog open={creating} onOpenChange={setCreating} />
+    </div>
+  )
+}
+
+function RunsTab() {
+  const [strategyFilter, setStrategyFilter] = useState('all')
+  const [purposeFilter, setPurposeFilter] = useState('all')
+
+  // フィルタ選択肢の件数が切り替えで変動しないよう、常に全件クエリを見る。
+  // /api/tasks は直近 50 件までのため、件数は正確な総数ではない。
+  const { data: allTasks = [] } = $api.useQuery('get', '/api/tasks')
+  const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
+  const { data: agentConfigs = [] } = $api.useQuery('get', '/api/agent-configs')
+
+  const { data: filteredTasksRaw, isPending } = $api.useQuery(
+    'get',
+    '/api/tasks',
+    {
+      params: {
+        query: {
+          strategy_id: strategyFilter !== 'all' ? strategyFilter : undefined,
+          purpose:
+            purposeFilter !== 'all' && purposeFilter !== UNSPECIFIED_PURPOSE
+              ? purposeFilter
+              : undefined,
+        },
+      },
+    },
+  )
+
+  const strategyNameById = useMemo(
+    () =>
+      new Map(
+        strategies.map((strategy) => [strategy.id, strategy.name] as const),
+      ),
+    [strategies],
+  )
+
+  const strategyOptions = useMemo<FilterOption[]>(() => {
+    const counts = new Map<string, number>()
+    for (const task of allTasks) {
+      counts.set(task.strategy_id, (counts.get(task.strategy_id) ?? 0) + 1)
+    }
+    return strategies.map((strategy) => ({
+      id: strategy.id,
+      label: strategy.name,
+      count: counts.get(strategy.id) ?? 0,
+    }))
+  }, [allTasks, strategies])
+
+  const purposeOptions = useMemo<FilterOption[]>(() => {
+    const counts = new Map<string, number>()
+    for (const task of allTasks) {
+      const purpose = task.purpose ?? UNSPECIFIED_PURPOSE
+      counts.set(purpose, (counts.get(purpose) ?? 0) + 1)
+    }
+    const options = agentConfigs.map((config) => ({
+      id: config.purpose,
+      label: config.purpose,
+      count: counts.get(config.purpose) ?? 0,
+    }))
+    const unspecifiedCount = counts.get(UNSPECIFIED_PURPOSE) ?? 0
+    if (unspecifiedCount > 0) {
+      options.push({
+        id: UNSPECIFIED_PURPOSE,
+        label: '未設定',
+        count: unspecifiedCount,
+      })
+    }
+    return options
+  }, [allTasks, agentConfigs])
+
+  const shown = useMemo(
+    () =>
+      purposeFilter === UNSPECIFIED_PURPOSE
+        ? (filteredTasksRaw ?? []).filter((task) => task.purpose == null)
+        : (filteredTasksRaw ?? []),
+    [filteredTasksRaw, purposeFilter],
+  )
+
+  return (
+    <div className="space-y-5 font-sans text-foreground">
+      <header>
+        <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
+          実行履歴
+        </h1>
+        <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
+          全戦略横断のエージェント実行履歴。戦略・目的で絞り込めます。
+        </p>
+      </header>
+
+      <FilterBar
+        options={strategyOptions}
+        value={strategyFilter}
+        onChange={setStrategyFilter}
+        allLabel="すべての戦略"
+        allCount={allTasks.length}
+      />
+      <FilterBar
+        options={purposeOptions}
+        value={purposeFilter}
+        onChange={setPurposeFilter}
+        allLabel="すべての目的"
+        allCount={allTasks.length}
+      />
+
+      <TaskRunListView
+        tasks={
+          isPending
+            ? null
+            : shown.map((task) => ({
+                taskId: task.task_id,
+                strategyId: task.strategy_id,
+                strategyName: strategyNameById.get(task.strategy_id),
+                prompt: task.prompt,
+                source: task.source,
+                phase: task.phase,
+                purpose: task.purpose ?? null,
+                createdAt: task.created_at,
+              }))
+        }
+      />
     </div>
   )
 }
