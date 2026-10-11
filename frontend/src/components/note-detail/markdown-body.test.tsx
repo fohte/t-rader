@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
+import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
 import type { components } from '#lib/api/schema.gen'
 
 const { useBarsQuery } = vi.hoisted(() => ({ useBarsQuery: vi.fn() }))
@@ -44,6 +45,28 @@ const GRAPH_DEF: components['schemas']['GraphDef'] = {
     { id: 'b', label: '架空物産' },
   ],
   edges: [{ source: 'a', target: 'b' }],
+}
+
+const GRAPH_WITH_REFS: components['schemas']['GraphDef'] = {
+  id: 'g-ref-links',
+  layout: 'flow',
+  nodes: [
+    { id: 'stock-node', label: '架空銘柄', ref: 'stock:demo-code' },
+    {
+      id: 'indicator-node',
+      label: '架空指標',
+      ref: 'indicator:demo-indicator',
+    },
+    {
+      id: 'group-node',
+      label: '架空グループ',
+      ref: 'group:demo-axis/demo-group',
+    },
+  ],
+  edges: [
+    { source: 'stock-node', target: 'indicator-node' },
+    { source: 'indicator-node', target: 'group-node' },
+  ],
 }
 
 describe('MarkdownBody', () => {
@@ -98,24 +121,53 @@ describe('MarkdownBody', () => {
       },
     )
     await user.click(screen.getByRole('button', { name: /demo-code/ }))
-    expect(onRef.mock.calls).toEqual([['stock:demo-code']])
+    expect(onRef.mock.calls).toEqual([
+      ['stock:demo-code', { kind: 'stock', id: 'demo-code', name: null }],
+    ])
   })
 
-  it('replaces a group ref with a clickable ref chip', async () => {
+  it('navigates a stock alias with its resolved id', async () => {
     const user = userEvent.setup()
-    const onRef = vi.fn()
+    const navigate = vi.fn()
+    const handlers = createNoteBodyNavigationHandlers(navigate)
+    useBarsQuery.mockReturnValueOnce({
+      data: [{ kind: 'stock', id: 'demo-code', name: '架空商事' }],
+      isPending: false,
+      isError: false,
+    })
     render(
-      <MarkdownBody
-        source="グループ [[group:demo-axis/demo-group]] を参照"
-        onRef={onRef}
-      />,
+      <MarkdownBody source="[[stock:demo-alias]]" onRef={handlers.onRef} />,
       { wrapper: QueryClientWrapper },
     )
-    await user.click(
-      screen.getByRole('button', { name: /demo-axis\/demo-group/ }),
-    )
-    expect(onRef.mock.calls).toEqual([['group:demo-axis/demo-group']])
+
+    await user.click(screen.getByRole('button', { name: /架空商事/ }))
+
+    expect(navigate.mock.calls).toEqual([
+      [
+        {
+          to: '/charts/$instrumentId',
+          params: { instrumentId: 'demo-code' },
+        },
+      ],
+    ])
   })
+
+  it.each([
+    { kind: 'indicator', token: 'indicator:demo-indicator' },
+    { kind: 'group', token: 'group:demo-axis/demo-group' },
+  ])(
+    'keeps a $kind ref non-interactive when onRef is provided',
+    ({ token }) => {
+      const onRef = vi.fn()
+      const { container } = render(
+        <MarkdownBody source={`[[${token}]]`} onRef={onRef} />,
+        { wrapper: QueryClientWrapper },
+      )
+
+      const chip = container.querySelector('[data-kind]')
+      expect(chip?.tagName).toBe('SPAN')
+    },
+  )
 
   it('replaces [[anno:xxx]] with a clickable annotation button', async () => {
     const user = userEvent.setup()
@@ -123,6 +175,72 @@ describe('MarkdownBody', () => {
     render(<MarkdownBody source="シグナル [[anno:A2]] 参照" onAnno={onAnno} />)
     await user.click(screen.getByRole('button', { name: /A2/ }))
     expect(onAnno).toHaveBeenCalledWith('A2')
+  })
+
+  it('navigates from note and graph chips to stocks and annotations', async () => {
+    const user = userEvent.setup()
+    const navigate = vi.fn()
+    const handlers = createNoteBodyNavigationHandlers(navigate)
+    const annotationId = '00000000-0000-0000-0000-000000000301'
+    render(
+      <MarkdownBody
+        source={`本文 [[stock:demo-code]] と [[anno:${annotationId}]]\n\n[[graph:g-ref-links]]`}
+        graphs={[GRAPH_WITH_REFS]}
+        onRef={handlers.onRef}
+        onAnno={handlers.onAnno}
+      />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    const stockChips = screen.getAllByTitle(/^\[\[stock:demo-code\]\]/)
+    for (const chip of stockChips) {
+      if (chip.closest('.react-flow') != null) fireEvent.click(chip)
+      else await user.click(chip)
+    }
+    await user.click(screen.getByTitle(`annotation ${annotationId}`))
+
+    expect(navigate.mock.calls).toEqual([
+      [
+        {
+          to: '/charts/$instrumentId',
+          params: { instrumentId: 'demo-code' },
+        },
+      ],
+      [
+        {
+          to: '/charts/$instrumentId',
+          params: { instrumentId: 'demo-code' },
+        },
+      ],
+      [
+        {
+          to: '/annotations/$annoId',
+          params: { annoId: annotationId },
+        },
+      ],
+    ])
+  })
+
+  it('keeps indicator and group refs in a graph non-interactive', () => {
+    const onRef = vi.fn()
+    const { container } = render(
+      <MarkdownBody
+        source="[[graph:g-ref-links]]"
+        graphs={[GRAPH_WITH_REFS]}
+        onRef={onRef}
+      />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    const nonStockChips = Array.from(
+      container.querySelectorAll(
+        '[data-kind="indicator"], [data-kind="group"]',
+      ),
+    ).map((chip) => [chip.getAttribute('data-kind'), chip.tagName])
+    expect(nonStockChips).toEqual([
+      ['indicator', 'SPAN'],
+      ['group', 'SPAN'],
+    ])
   })
 
   it('leaves an unknown ref prefix as literal text', () => {

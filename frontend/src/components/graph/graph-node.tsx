@@ -11,7 +11,7 @@ const CHAIN_BAR_MIN_HEIGHT = 4
 
 /** nodeTypes.graphNode として登録する共通カスタムノード。layout の種類によらずこれ 1 つで描画を賄う */
 export function GraphNodeView({ data }: NodeProps<GraphFlowNode>) {
-  const { layout, maxNodeValue, citeNumbers, onOpenRef } =
+  const { layout, maxNodeValue, citeNumbers, onOpenStockRef } =
     useGraphRenderContext()
 
   const handlePosition = handlePositions(layout)
@@ -42,7 +42,9 @@ export function GraphNodeView({ data }: NodeProps<GraphFlowNode>) {
       )}
 
       <div className="font-medium">{data.label}</div>
-      {data.ref != null && <RefChip token={data.ref} pill onOpen={onOpenRef} />}
+      {data.ref != null && (
+        <RefChip token={data.ref} pill onOpenStockRef={onOpenStockRef} />
+      )}
       {showBar && typeof data.value === 'number' && (
         <div
           className="bg-primary"

@@ -1,3 +1,4 @@
+import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { REF_KIND_JP } from '#lib/strategy-mock'
 
@@ -6,14 +7,15 @@ interface RefChipProps {
   token: string
   pill?: boolean
   showKind?: boolean
-  onOpen?: (token: string) => void
+  // 画面遷移先がある stock 参照に限って呼び出す。
+  onOpenStockRef?: (token: string, resolved: ResolvedRef) => void
 }
 
 export function RefChip({
   token,
   pill = false,
   showKind = true,
-  onOpen,
+  onOpenStockRef,
 }: RefChipProps) {
   const ref = useResolveRef(token)
   const kindJP = REF_KIND_JP[ref.kind]
@@ -27,9 +29,10 @@ export function RefChip({
   const underline = 'border-b border-dotted border-muted-foreground pb-px'
   const pillCls = 'border border-border px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
-  const interactive = onOpen
-    ? 'cursor-pointer hover:text-primary hover:border-primary'
-    : ''
+  const interactive =
+    ref.kind === 'stock' && onOpenStockRef != null
+      ? 'cursor-pointer hover:text-primary hover:border-primary'
+      : ''
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
   const title = resolved ? `[[${token}]]` : `[[${token}]] (未解決)`
 
@@ -49,7 +52,7 @@ export function RefChip({
     </>
   )
 
-  if (onOpen) {
+  if (ref.kind === 'stock' && onOpenStockRef != null) {
     return (
       <button
         type="button"
@@ -57,7 +60,7 @@ export function RefChip({
         title={title}
         onClick={(e) => {
           e.stopPropagation()
-          onOpen(token)
+          onOpenStockRef(token, ref)
         }}
         className={`${className} bg-transparent p-0`}
       >

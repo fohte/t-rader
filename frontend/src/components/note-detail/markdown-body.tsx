@@ -9,6 +9,7 @@ import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
 import { ChangeReferenceFigure } from '#components/note-detail/change-reference-figure'
 import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { RefChip } from '#components/strategy-shell/ref-chip'
+import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import type { components } from '#lib/api/schema.gen'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
 
@@ -21,7 +22,7 @@ interface MarkdownBodyProps {
   noteLinks?: NoteLinkItem[]
   resolvedPriceReferences?: components['schemas']['Value']
   onAnno?: (id: string) => void
-  onRef?: (token: string) => void
+  onRef?: (token: string, resolved: ResolvedRef) => void
 }
 
 // remarkNoteTokens が data.hName で生成するタグ名に対応する。
@@ -220,7 +221,7 @@ export function MarkdownBody({
         {children}
       </td>
     ),
-    'note-ref': ({ token }) => <RefChip token={token} onOpen={onRef} />,
+    'note-ref': ({ token }) => <RefChip token={token} onOpenStockRef={onRef} />,
     'note-link': ({ noteId, token }) => {
       const noteLink = noteLinks.find((link) => link.note_id === noteId)
       if (!noteLink) return <>{`[[${token}]]`}</>
@@ -284,7 +285,7 @@ export function MarkdownBody({
           >
             <GraphRenderer
               def={def}
-              onOpenRef={onRef}
+              onOpenStockRef={onRef}
               className="h-note-graph border border-border"
             />
           </ErrorBoundary>
