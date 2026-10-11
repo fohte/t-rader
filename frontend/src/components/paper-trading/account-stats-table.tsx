@@ -1,6 +1,11 @@
 import { Link } from '@tanstack/react-router'
 
-import { formatPercent } from '#components/paper-trading/format'
+import {
+  formatOptionalPercent,
+  formatPercent,
+  formatWinRate,
+  optionalPnlColorClass,
+} from '#components/paper-trading/format'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 
@@ -45,10 +50,10 @@ export function PaperAccountStatsTable({
               account.benchmark_return == null
                 ? null
                 : account.return_since_start - account.benchmark_return
-            const winRate =
-              account.closed_trade_count === 0 || account.win_rate == null
-                ? '—'
-                : formatPercent(account.win_rate)
+            const winRate = formatWinRate(
+              account.closed_trade_count,
+              account.win_rate,
+            )
 
             return (
               <tr
@@ -86,28 +91,18 @@ export function PaperAccountStatsTable({
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   <div
-                    className={
-                      account.benchmark_return == null
-                        ? 'text-muted-foreground-strong'
-                        : pnlColorClass(account.benchmark_return)
-                    }
+                    className={optionalPnlColorClass(account.benchmark_return)}
                   >
-                    {account.benchmark_return == null
-                      ? '—'
-                      : formatPercent(account.benchmark_return, true)}
+                    {formatOptionalPercent(account.benchmark_return, true)}
                   </div>
                 </td>
                 <td
                   className={
                     'px-3 py-2 text-right tabular-nums ' +
-                    (excessReturn == null
-                      ? 'text-muted-foreground-strong'
-                      : pnlColorClass(excessReturn))
+                    optionalPnlColorClass(excessReturn)
                   }
                 >
-                  {excessReturn == null
-                    ? '—'
-                    : formatPercent(excessReturn, true)}
+                  {formatOptionalPercent(excessReturn, true)}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{winRate}</td>
                 <td className="px-3 py-2 text-right tabular-nums">

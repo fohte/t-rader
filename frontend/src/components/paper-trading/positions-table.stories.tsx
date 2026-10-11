@@ -7,6 +7,14 @@ type PaperTradePosition = components['schemas']['PaperTradePosition']
 
 const positions: PaperTradePosition[] = [
   {
+    stock_id: 'SIM-002',
+    qty: 50,
+    avg_cost_jpy: 8_900,
+    current_price_jpy: 8_800,
+    market_value_jpy: 440_000,
+    unrealized_pnl_jpy: -5_000,
+  },
+  {
     stock_id: 'SIM-001',
     qty: 100,
     avg_cost_jpy: 8_500,
@@ -16,7 +24,10 @@ const positions: PaperTradePosition[] = [
   },
 ]
 
-const stockNames: Record<string, string> = { 'SIM-001': '架空銘柄A' }
+const stockNames: Record<string, string> = {
+  'SIM-001': '架空銘柄A',
+  'SIM-002': '架空銘柄B',
+}
 
 const meta = {
   title: 'PaperTrading/PositionsTable',

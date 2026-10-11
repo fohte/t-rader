@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatPercent } from '#components/paper-trading/format'
+import {
+  formatOptionalPercent,
+  formatPercent,
+  formatWinRate,
+  optionalPnlColorClass,
+} from '#components/paper-trading/format'
 
 describe('formatPercent', () => {
   it.each([
@@ -10,5 +15,37 @@ describe('formatPercent', () => {
     ['win rate', 0.625, false, '62.5%'],
   ] as const)('formats a %s as %s', (_caseName, value, signed, expected) => {
     expect(formatPercent(value, signed)).toBe(expected)
+  })
+})
+
+describe('formatOptionalPercent', () => {
+  it.each([
+    ['missing percent', null, true, '—'],
+    ['unsigned win rate', 0.625, false, '62.5%'],
+  ] as const)('formats a %s as %s', (_caseName, value, signed, expected) => {
+    expect(formatOptionalPercent(value, signed)).toBe(expected)
+  })
+})
+
+describe('formatWinRate', () => {
+  it.each([
+    ['account without closed trades', 0, 1, '—'],
+    ['missing win rate', 2, null, '—'],
+    ['account with closed trades', 8, 0.625, '62.5%'],
+  ] as const)(
+    'formats a %s as %s',
+    (_caseName, closedTradeCount, winRate, expected) => {
+      expect(formatWinRate(closedTradeCount, winRate)).toBe(expected)
+    },
+  )
+})
+
+describe('optionalPnlColorClass', () => {
+  it.each([
+    ['missing value', null, 'text-muted-foreground-strong'],
+    ['positive value', 0.1, 'text-up'],
+    ['negative value', -0.1, 'text-down'],
+  ] as const)('formats a %s as %s', (_caseName, value, expected) => {
+    expect(optionalPnlColorClass(value)).toBe(expected)
   })
 })

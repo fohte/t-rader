@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { PaperTradingAccountDetailView } from '#components/paper-trading/account-detail-view'
 import { PaperTradingPageStateView } from '#components/paper-trading/page-state'
 import { $api } from '#lib/api/client'
+import { resolvePaperTradingAccountState } from '#lib/paper-trading-account-state'
 
 export const Route = createFileRoute('/paper-trading/$accountId')({
   component: PaperTradingAccountPage,
@@ -32,27 +33,32 @@ function PaperTradingAccountPage() {
     [stocks],
   )
 
-  if (portfolioQuery.isPending || statsQuery.isPending) {
+  if (statsQuery.isPending) {
     return <PaperTradingPageStateView state="loading" />
   }
-  if (portfolioQuery.isError || statsQuery.isError) {
+  if (statsQuery.isError) {
     return <PaperTradingPageStateView state="error" />
   }
 
-  const stats = statsQuery.data.find(
-    (account) => account.account_id === accountId,
+  const accountState = resolvePaperTradingAccountState(
+    statsQuery.data,
+    accountId,
+    portfolioQuery,
   )
-  if (stats == null) {
-    return <PaperTradingPageStateView state="not-found" />
+  if (accountState.state !== 'ready') {
+    return <PaperTradingPageStateView state={accountState.state} />
+  }
+  const portfolio = portfolioQuery.data
+  if (portfolio == null) {
+    return <PaperTradingPageStateView state="error" />
   }
 
   return (
     <PaperTradingAccountDetailView
-      stats={stats}
-      portfolio={portfolioQuery.data}
+      stats={accountState.stats}
+      portfolio={portfolio}
       strategyName={
-        strategyNames[portfolioQuery.data.strategy_id] ??
-        portfolioQuery.data.strategy_id
+        strategyNames[portfolio.strategy_id] ?? portfolio.strategy_id
       }
       stockNames={stockNames}
     />

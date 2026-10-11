@@ -7,6 +7,25 @@ import { createStoryRouter } from '#storybook/story-router'
 
 type PaperAccountStats = components['schemas']['PaperAccountStats']
 
+const noClosedTradeStats: PaperAccountStats = {
+  account_id: '00000000-0000-4000-8000-000000000102',
+  account_name: '検証口座B',
+  strategy_id: '00000000-0000-4000-8000-000000000202',
+  purpose: '設定B',
+  started_on: '2026-02-20',
+  initial_cash_jpy: 1_500_000,
+  benchmark_stock_id: null,
+  as_of: '2026-06-30',
+  total_assets_jpy: 1_470_000,
+  return_since_start: -0.02,
+  benchmark_return: null,
+  closed_trade_count: 0,
+  win_rate: null,
+  average_win_excess_return: null,
+  average_loss_excess_return: null,
+  unrealized_pnl_jpy: -30_000,
+}
+
 const stats: PaperAccountStats[] = [
   {
     account_id: '00000000-0000-4000-8000-000000000101',
@@ -26,48 +45,12 @@ const stats: PaperAccountStats[] = [
     average_loss_excess_return: -0.035,
     unrealized_pnl_jpy: 25_000,
   },
-  {
-    account_id: '00000000-0000-4000-8000-000000000102',
-    account_name: '検証口座B',
-    strategy_id: '00000000-0000-4000-8000-000000000202',
-    purpose: '設定B',
-    started_on: '2026-02-20',
-    initial_cash_jpy: 1_500_000,
-    benchmark_stock_id: null,
-    as_of: '2026-06-30',
-    total_assets_jpy: 1_470_000,
-    return_since_start: -0.02,
-    benchmark_return: null,
-    closed_trade_count: 0,
-    win_rate: null,
-    average_win_excess_return: null,
-    average_loss_excess_return: null,
-    unrealized_pnl_jpy: -30_000,
-  },
+  noClosedTradeStats,
 ]
 
 const strategyNames: Record<string, string> = {
   '00000000-0000-4000-8000-000000000201': '架空戦略A',
   '00000000-0000-4000-8000-000000000202': '架空戦略B',
-}
-
-const noClosedTradeStats: PaperAccountStats = {
-  account_id: '00000000-0000-4000-8000-000000000102',
-  account_name: '検証口座B',
-  strategy_id: '00000000-0000-4000-8000-000000000202',
-  purpose: '設定B',
-  started_on: '2026-02-20',
-  initial_cash_jpy: 1_500_000,
-  benchmark_stock_id: null,
-  as_of: '2026-06-30',
-  total_assets_jpy: 1_470_000,
-  return_since_start: -0.02,
-  benchmark_return: null,
-  closed_trade_count: 0,
-  win_rate: null,
-  average_win_excess_return: null,
-  average_loss_excess_return: null,
-  unrealized_pnl_jpy: -30_000,
 }
 
 const meta = {

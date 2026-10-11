@@ -1,6 +1,11 @@
 import { Link } from '@tanstack/react-router'
 
-import { formatPercent } from '#components/paper-trading/format'
+import {
+  formatOptionalPercent,
+  formatPercent,
+  formatWinRate,
+  optionalPnlColorClass,
+} from '#components/paper-trading/format'
 import { PaperTradeOrdersTable } from '#components/paper-trading/orders-table'
 import { PaperTradePositionsTable } from '#components/paper-trading/positions-table'
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
@@ -22,18 +27,7 @@ export function PaperTradingAccountDetailView({
   stockNames: Record<string, string>
 }) {
   const benchmarkReturn = stats.benchmark_return
-  const winRate =
-    stats.closed_trade_count === 0 || stats.win_rate == null
-      ? '—'
-      : formatPercent(stats.win_rate)
-  const averageWin =
-    stats.average_win_excess_return == null
-      ? '—'
-      : formatPercent(stats.average_win_excess_return, true)
-  const averageLoss =
-    stats.average_loss_excess_return == null
-      ? '—'
-      : formatPercent(stats.average_loss_excess_return, true)
+  const winRate = formatWinRate(stats.closed_trade_count, stats.win_rate)
 
   const summaryStats: StatItem[] = [
     {
@@ -52,16 +46,8 @@ export function PaperTradingAccountDetailView({
             {formatPercent(stats.return_since_start, true)}
           </span>
           <span className="text-muted-foreground-strong"> / </span>
-          <span
-            className={
-              benchmarkReturn == null
-                ? 'text-muted-foreground-strong'
-                : pnlColorClass(benchmarkReturn)
-            }
-          >
-            {benchmarkReturn == null
-              ? '—'
-              : formatPercent(benchmarkReturn, true)}
+          <span className={optionalPnlColorClass(benchmarkReturn)}>
+            {formatOptionalPercent(benchmarkReturn, true)}
           </span>
         </>
       ),
@@ -72,19 +58,13 @@ export function PaperTradingAccountDetailView({
     },
     {
       label: '勝ち平均超過',
-      value: averageWin,
-      cls:
-        stats.average_win_excess_return == null
-          ? undefined
-          : pnlColorClass(stats.average_win_excess_return),
+      value: formatOptionalPercent(stats.average_win_excess_return, true),
+      cls: optionalPnlColorClass(stats.average_win_excess_return),
     },
     {
       label: '負け平均超過',
-      value: averageLoss,
-      cls:
-        stats.average_loss_excess_return == null
-          ? undefined
-          : pnlColorClass(stats.average_loss_excess_return),
+      value: formatOptionalPercent(stats.average_loss_excess_return, true),
+      cls: optionalPnlColorClass(stats.average_loss_excess_return),
     },
     {
       label: '含み損益',

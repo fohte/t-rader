@@ -9,19 +9,6 @@ type PaperTradeOrder = components['schemas']['PaperTradeOrder']
 
 const orders: PaperTradeOrder[] = [
   {
-    order_id: '00000000-0000-4000-8000-000000000301',
-    stock_id: 'SIM-001',
-    side: 'buy',
-    qty: 100,
-    note_id: '00000000-0000-4000-8000-000000000401',
-    note_version_id: '00000000-0000-4000-8000-000000000501',
-    ordered_at: '2026-06-20T01:30:00Z',
-    outcome: 'filled',
-    fill_date: '2026-06-20',
-    fill_price_jpy: 8_500,
-    reject_reason: null,
-  },
-  {
     order_id: '00000000-0000-4000-8000-000000000302',
     stock_id: 'SIM-002',
     side: 'sell',
@@ -33,6 +20,19 @@ const orders: PaperTradeOrder[] = [
     fill_date: null,
     fill_price_jpy: null,
     reject_reason: '保有数量を超えています',
+  },
+  {
+    order_id: '00000000-0000-4000-8000-000000000301',
+    stock_id: 'SIM-001',
+    side: 'buy',
+    qty: 100,
+    note_id: '00000000-0000-4000-8000-000000000401',
+    note_version_id: '00000000-0000-4000-8000-000000000501',
+    ordered_at: '2026-06-20T01:30:00Z',
+    outcome: 'filled',
+    fill_date: '2026-06-20',
+    fill_price_jpy: 8_500,
+    reject_reason: null,
   },
   {
     order_id: '00000000-0000-4000-8000-000000000303',
