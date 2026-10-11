@@ -25,6 +25,7 @@ function renderHeader() {
       '/strategies/$id/runs',
       '/strategies/$id/indicators',
       '/strategies/$id/settings',
+      '/',
     ],
     initialPath: PERFORMANCE_PATH,
   })
@@ -78,6 +79,18 @@ function getExpectedHeaderOutput(pathname: string, activeTab: string) {
 }
 
 describe('Header', () => {
+  it('ロゴからダッシュボードへ戻る', async () => {
+    const user = userEvent.setup()
+    const router = renderHeader()
+
+    await user.click(
+      await screen.findByRole('link', { name: 'ダッシュボードへ' }),
+    )
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/')
+    })
+  })
+
   it.each([
     {
       label: '実行履歴',

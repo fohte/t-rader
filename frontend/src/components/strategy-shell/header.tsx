@@ -29,9 +29,10 @@ export function Header() {
     <header className="sticky top-0 z-20 border-b border-border bg-background">
       <div className="flex items-center gap-3 px-3 py-2 md:gap-4 md:px-5 md:py-3">
         <Link
-          to="/portfolio"
+          to="/"
           className="inline-flex flex-shrink-0 items-baseline gap-2 font-mono"
-          title="ポートフォリオへ"
+          title="ダッシュボードへ"
+          aria-label="ダッシュボードへ"
         >
           <span className="text-xl font-bold text-primary">&gt;</span>
           <span className="hidden text-lg font-medium tracking-tight text-foreground md:inline">

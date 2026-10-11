@@ -13,6 +13,7 @@ function createHeaderRouter(initialPath: string) {
       '/strategies/$id/runs',
       '/strategies/$id/indicators',
       '/strategies/$id/settings',
+      '/',
       '/portfolio',
       '/trades',
       '/notes',
