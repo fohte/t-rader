@@ -20,11 +20,11 @@ mod tests {
     async fn stock_search_context() -> (gateway_postgres::DatabaseHandle, axum_test::TestServer) {
         let db = gateway_postgres::test_support::create_test_transaction().await;
         let (db, server) = create_test_server_with_db(db).await;
-        insert_test_stock(&db, "MOCK_001", "Mock Alpha").await;
-        insert_test_stock(&db, "MOCK_002", "Mock Beta").await;
+        insert_test_stock(&db, "MOCK-001", "Mock Alpha").await;
+        insert_test_stock(&db, "MOCK-002", "Mock Beta").await;
         insert_test_group_membership(
             &db,
-            "MOCK_001",
+            "MOCK-001",
             "synthetic-derived-axis",
             "synthetic-industry",
             "Sample Industry",
@@ -35,8 +35,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case::uppercase_stock_id("MOCK_001")]
-    #[case::lowercase_stock_id("mock_001")]
+    #[case::uppercase_stock_id("MOCK-001")]
+    #[case::lowercase_stock_id("mock-001")]
     #[case::uppercase_name("Alpha")]
     #[case::lowercase_name("alpha")]
     #[tokio::test]
@@ -55,7 +55,7 @@ mod tests {
             (
                 axum::http::StatusCode::OK,
                 json!([{
-                    "id": "MOCK_001",
+                    "id": "MOCK-001",
                     "name": "Mock Alpha",
                     "market": null,
                     "sector_id": "synthetic-industry",
