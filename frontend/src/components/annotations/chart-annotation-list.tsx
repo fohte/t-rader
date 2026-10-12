@@ -71,7 +71,9 @@ export function ChartAnnotationList({
                     {annotation.target_kind}
                   </span>
                   <span className="text-muted-foreground">
-                    {dateFormatter.format(new Date(annotation.timestamp))}
+                    {annotation.timestamp_start == null
+                      ? dateFormatter.format(new Date(annotation.timestamp))
+                      : `${dateFormatter.format(new Date(annotation.timestamp_start))} ～ ${dateFormatter.format(new Date(annotation.timestamp))}`}
                   </span>
                   {annotation.price != null && (
                     <span className="ml-auto text-muted-foreground">

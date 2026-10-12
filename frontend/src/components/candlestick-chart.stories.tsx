@@ -118,6 +118,23 @@ const sampleAnnotations: ChartAnnotation[] = [
   },
 ]
 
+const periodAnnotation: ChartAnnotation = {
+  id: 'annotation-period',
+  target_kind: 'sample-kind',
+  status: 'unread',
+  timestamp_start: '2025-01-04T00:00:00.000Z',
+  timestamp: '2025-01-10T00:00:00.000Z',
+  price: 1512,
+  text: '期間を持つサンプル注釈です。',
+}
+
+const periodAnnotationWithoutPrice: ChartAnnotation = {
+  ...periodAnnotation,
+  id: 'annotation-period-without-price',
+  price: null,
+  text: '価格を持たない期間注釈です。',
+}
+
 export default meta
 type Story = StoryObj<typeof meta>
 
@@ -184,6 +201,60 @@ export const SelectedAnnotationWithoutPrice: Story = {
     bars: generateSampleBars(30),
     annotations: sampleAnnotations,
     selectedAnnotationId: 'annotation-b',
+    onSelectAnnotation: () => undefined,
+    className: 'h-full w-full',
+  },
+}
+
+export const PeriodAnnotation: Story = {
+  name: 'shows an unselected annotation period in the band.',
+  args: {
+    bars: generateSampleBars(30),
+    annotations: [periodAnnotation],
+    selectedAnnotationId: null,
+    onSelectAnnotation: () => undefined,
+    className: 'h-full w-full',
+  },
+}
+
+export const SelectedPeriodWithPrice: Story = {
+  name: 'shows a selected period price line across its interval.',
+  args: {
+    bars: generateSampleBars(30),
+    annotations: [periodAnnotation],
+    selectedAnnotationId: periodAnnotation.id,
+    onSelectAnnotation: () => undefined,
+    className: 'h-full w-full',
+  },
+}
+
+export const SelectedPeriodWithoutPrice: Story = {
+  name: 'highlights a selected period without a price line.',
+  args: {
+    bars: generateSampleBars(30),
+    annotations: [periodAnnotationWithoutPrice],
+    selectedAnnotationId: periodAnnotationWithoutPrice.id,
+    onSelectAnnotation: () => undefined,
+    className: 'h-full w-full',
+  },
+}
+
+export const PeriodAndPointAnnotations: Story = {
+  name: 'shows a point overlapping a selectable annotation period.',
+  args: {
+    bars: generateSampleBars(30),
+    annotations: [
+      periodAnnotation,
+      {
+        id: 'annotation-point-in-period',
+        target_kind: 'sample-kind',
+        status: 'approved',
+        timestamp: '2025-01-07T00:00:00.000Z',
+        price: null,
+        text: '期間内の点注釈です。',
+      },
+    ],
+    selectedAnnotationId: 'annotation-point-in-period',
     onSelectAnnotation: () => undefined,
     className: 'h-full w-full',
   },

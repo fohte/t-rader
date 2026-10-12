@@ -1,22 +1,21 @@
 import { Link } from '@tanstack/react-router'
 import { Settings as SettingsIcon } from 'lucide-react'
 
+import {
+  NAV_PILL_ACTIVE,
+  NAV_PILL_INACTIVE,
+} from '#components/nav-pill-classes'
 import { StockSearch } from '#components/stocks/stock-search'
 import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
-
-const NAV_BASE =
-  'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-xs'
-const NAV_INACTIVE = `${NAV_BASE} border-border text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground`
-const NAV_ACTIVE = `${NAV_BASE} border-muted-foreground bg-surface-strong text-foreground`
 
 function NavLink({ to, label }: { to: string; label: string }) {
   return (
     <Link
       to={to}
       activeOptions={{ exact: false }}
-      className={NAV_INACTIVE}
-      activeProps={{ className: NAV_ACTIVE }}
+      className={NAV_PILL_INACTIVE}
+      activeProps={{ className: NAV_PILL_ACTIVE }}
     >
       {label}
     </Link>
@@ -30,9 +29,10 @@ export function Header() {
     <header className="sticky top-0 z-20 border-b border-border bg-background">
       <div className="flex items-center gap-3 px-3 py-2 md:gap-4 md:px-5 md:py-3">
         <Link
-          to="/portfolio"
+          to="/"
           className="inline-flex flex-shrink-0 items-baseline gap-2 font-mono"
-          title="ポートフォリオへ"
+          title="ダッシュボードへ"
+          aria-label="ダッシュボードへ"
         >
           <span className="text-xl font-bold text-primary">&gt;</span>
           <span className="hidden text-lg font-medium tracking-tight text-foreground md:inline">
@@ -51,8 +51,8 @@ export function Header() {
             to="/calendar"
             search={{ strategy: strategyId }}
             activeOptions={{ exact: false }}
-            className={NAV_INACTIVE}
-            activeProps={{ className: NAV_ACTIVE }}
+            className={NAV_PILL_INACTIVE}
+            activeProps={{ className: NAV_PILL_ACTIVE }}
           >
             カレンダー
           </Link>
@@ -64,8 +64,8 @@ export function Header() {
         <Link
           to="/settings"
           activeOptions={{ exact: false }}
-          className={NAV_INACTIVE}
-          activeProps={{ className: NAV_ACTIVE }}
+          className={NAV_PILL_INACTIVE}
+          activeProps={{ className: NAV_PILL_ACTIVE }}
           title="設定"
           aria-label="設定"
         >
@@ -84,8 +84,8 @@ export function Header() {
               to="/strategies/$id/performance"
               params={{ id: strategyId }}
               activeOptions={{ exact: false }}
-              className={NAV_INACTIVE}
-              activeProps={{ className: NAV_ACTIVE }}
+              className={NAV_PILL_INACTIVE}
+              activeProps={{ className: NAV_PILL_ACTIVE }}
             >
               成績
             </Link>
@@ -93,8 +93,8 @@ export function Header() {
               to="/strategies/$id/runs"
               params={{ id: strategyId }}
               activeOptions={{ exact: false }}
-              className={NAV_INACTIVE}
-              activeProps={{ className: NAV_ACTIVE }}
+              className={NAV_PILL_INACTIVE}
+              activeProps={{ className: NAV_PILL_ACTIVE }}
             >
               実行履歴
             </Link>
@@ -102,8 +102,8 @@ export function Header() {
               to="/strategies/$id/indicators"
               params={{ id: strategyId }}
               activeOptions={{ exact: false }}
-              className={NAV_INACTIVE}
-              activeProps={{ className: NAV_ACTIVE }}
+              className={NAV_PILL_INACTIVE}
+              activeProps={{ className: NAV_PILL_ACTIVE }}
             >
               indicators
             </Link>
@@ -111,8 +111,8 @@ export function Header() {
               to="/strategies/$id/settings"
               params={{ id: strategyId }}
               activeOptions={{ exact: false }}
-              className={NAV_INACTIVE}
-              activeProps={{ className: NAV_ACTIVE }}
+              className={NAV_PILL_INACTIVE}
+              activeProps={{ className: NAV_PILL_ACTIVE }}
             >
               設定
             </Link>
