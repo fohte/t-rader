@@ -7,6 +7,7 @@ mod tests {
         create_test_server_with_db, insert_test_group, insert_test_group_membership,
         insert_test_stock,
     };
+    use rstest::{fixture, rstest};
 
     fn normalize_stock_timestamps(stocks: &mut Value) {
         for stock in stocks.as_array_mut().expect("stock list") {
@@ -15,22 +16,37 @@ mod tests {
         }
     }
 
-    #[backend_test_macros::database_test]
-    async fn list_stocks_filters_by_query(db: gateway_postgres::DatabaseHandle) {
+    #[fixture]
+    async fn stock_search_context() -> (gateway_postgres::DatabaseHandle, axum_test::TestServer) {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
         let (db, server) = create_test_server_with_db(db).await;
-        insert_test_stock(&db, "MOCK_001", "Mock Alpha").await;
-        insert_test_stock(&db, "MOCK_002", "Mock Beta").await;
+        insert_test_stock(&db, "MOCK-001", "Mock Alpha").await;
+        insert_test_stock(&db, "MOCK-002", "Mock Beta").await;
         insert_test_group_membership(
             &db,
-            "MOCK_001",
+            "MOCK-001",
             "synthetic-derived-axis",
             "synthetic-industry",
             "Sample Industry",
             Some("tse_sector33"),
         )
         .await;
+        (db, server)
+    }
 
-        let response = server.get("/api/refs/stocks?q=Alpha").await;
+    #[rstest]
+    #[case::uppercase_stock_id("MOCK-001")]
+    #[case::lowercase_stock_id("mock-001")]
+    #[case::uppercase_name("Alpha")]
+    #[case::lowercase_name("alpha")]
+    #[tokio::test]
+    async fn list_stocks_filters_by_query(
+        #[future] stock_search_context: (gateway_postgres::DatabaseHandle, axum_test::TestServer),
+        #[case] query: &str,
+    ) {
+        let (_, server) = stock_search_context.await;
+
+        let response = server.get(&format!("/api/refs/stocks?q={query}")).await;
         let mut actual = response.json::<Value>();
         normalize_stock_timestamps(&mut actual);
 
@@ -39,7 +55,7 @@ mod tests {
             (
                 axum::http::StatusCode::OK,
                 json!([{
-                    "id": "MOCK_001",
+                    "id": "MOCK-001",
                     "name": "Mock Alpha",
                     "market": null,
                     "sector_id": "synthetic-industry",

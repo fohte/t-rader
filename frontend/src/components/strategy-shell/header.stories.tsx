@@ -23,6 +23,7 @@ function createHeaderRouter(initialPath: string) {
       '/runs',
       '/indicators',
       '/calendar',
+      '/charts/$instrumentId',
     ],
     initialPath,
   })

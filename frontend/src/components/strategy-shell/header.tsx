@@ -5,6 +5,7 @@ import {
   NAV_PILL_ACTIVE,
   NAV_PILL_INACTIVE,
 } from '#components/nav-pill-classes'
+import { StockSearch } from '#components/stocks/stock-search'
 import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 
@@ -58,6 +59,8 @@ export function Header() {
           </Link>
           <NavLink to="/strategies" label="戦略" />
         </div>
+
+        <StockSearch />
 
         <Link
           to="/settings"

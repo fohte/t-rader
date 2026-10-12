@@ -85,8 +85,8 @@ impl RefRepository for PostgresRefRepository {
             let pattern = format!("%{query}%");
             find = find.filter(
                 Condition::any()
-                    .add(stock::Column::Id.like(&pattern))
-                    .add(stock::Column::Name.like(&pattern)),
+                    .add(stock::Column::Id.ilike(&pattern))
+                    .add(stock::Column::Name.ilike(&pattern)),
             );
         }
         let stocks = find
