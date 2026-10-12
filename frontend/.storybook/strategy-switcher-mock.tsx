@@ -6,6 +6,7 @@ import { fetchClient } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
+type Note = components['schemas']['Note']
 
 function strategyStub(id: string, name: string, sortOrder: number): Strategy {
   return {
@@ -23,14 +24,48 @@ const STRATEGIES: Strategy[] = [
   strategyStub('sample-beta', '架空戦略 B', 1),
 ]
 
-// Storybook にはグローバルな QueryClientProvider が無いため、StrategySwitcher が
-// 使う $api.useQuery('/api/strategies') 用にモックを用意する
-function installMiddleware() {
+function unreadNote(index: number): Note {
+  const id = `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+  return {
+    body_md: '',
+    created_at: '2026-01-01T00:00:00Z',
+    created_by_kind: 'agent',
+    frontmatter_json: {},
+    graphs_json: [],
+    id,
+    is_current: true,
+    resolved_price_references_json: {},
+    status: 'unread',
+    tags: [],
+    title: `デモ戦略のノート ${String(index)}`,
+    updated_at: '2026-01-01T00:00:00Z',
+    version_id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    version_no: 1,
+  }
+}
+
+// Storybook にはグローバルな QueryClientProvider が無いため、ヘッダーの query をモックする
+function installMiddleware(unreadCount: number) {
+  const unreadNotes = Array.from({ length: unreadCount }, (_, index) =>
+    unreadNote(index + 1),
+  )
   const middleware: Middleware = {
     onRequest({ request }) {
       const { url } = request
       if (/\/api\/strategies(\?|$)/.test(url)) {
         return new Response(JSON.stringify(STRATEGIES), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (/\/api\/notes(\?|$)/.test(url)) {
+        return new Response(JSON.stringify(unreadNotes), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (/\/api\/(note-versions\/pending|annotations)(\?|$)/.test(url)) {
+        return new Response(JSON.stringify([]), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         })
@@ -46,19 +81,20 @@ function installMiddleware() {
   }
 }
 
-// StrategySwitcher (Header 経由) を描画する story に QueryClientProvider と
-// 上記モックをまとめて与える decorator。
+// StrategySwitcher と Header を描画する story に QueryClientProvider と上記モックを与える。
 export function StrategySwitcherQueryDecorator({
   children,
+  unreadCount = 2,
 }: {
   children: React.ReactNode
+  unreadCount?: number
 }) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   )
   // 子の useQuery が初回マウント時に fetch する前にモックを登録し切る必要があるため、
   // useEffect ではなく render 中に同期実行される lazy initializer で install する
-  const [eject] = useState(() => installMiddleware())
+  const [eject] = useState(() => installMiddleware(unreadCount))
   useEffect(() => eject, [eject])
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }

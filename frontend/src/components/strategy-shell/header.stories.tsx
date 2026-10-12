@@ -5,8 +5,8 @@ import { Header } from '#components/strategy-shell/header'
 import { createStoryRouter } from '#storybook/story-router'
 import { StrategySwitcherQueryDecorator } from '#storybook/strategy-switcher-mock'
 
-function createHeaderRouter(initialPath: string) {
-  return createStoryRouter(() => <Header />, {
+function createHeaderRouter(initialPath: string, menuOpen = false) {
+  return createStoryRouter(() => <Header menuOpen={menuOpen} />, {
     paths: [
       '/strategies',
       '/strategies/$id/performance',
@@ -20,9 +20,13 @@ function createHeaderRouter(initialPath: string) {
       '/paper-trading/$accountId',
       '/notes',
       '/annotations',
+      '/annotations/$annoId',
       '/runs',
       '/indicators',
+      '/note-versions/pending',
       '/calendar',
+      '/settings',
+      '/settings/rss-feeds',
       '/charts/$instrumentId',
     ],
     initialPath,
@@ -53,7 +57,7 @@ export const StrategyHome: Story = {
   name: 'shows the header on a strategy performance page.',
   render: () => (
     <RouterProvider
-      router={createHeaderRouter('/strategies/semi-swing/performance')}
+      router={createHeaderRouter('/strategies/demo-strategy/performance')}
     />
   ),
 }
@@ -62,7 +66,7 @@ export const StrategyRuns: Story = {
   name: 'shows the strategy run history tab as active.',
   render: () => (
     <RouterProvider
-      router={createHeaderRouter('/strategies/sample-alpha/runs')}
+      router={createHeaderRouter('/strategies/demo-strategy/runs')}
     />
   ),
 }
@@ -71,7 +75,7 @@ export const StrategyIndicators: Story = {
   name: 'shows the strategy indicators tab as active.',
   render: () => (
     <RouterProvider
-      router={createHeaderRouter('/strategies/sample-alpha/indicators')}
+      router={createHeaderRouter('/strategies/demo-strategy/indicators')}
     />
   ),
 }
@@ -79,6 +83,11 @@ export const StrategyIndicators: Story = {
 export const Portfolio: Story = {
   name: 'shows the header with portfolio navigation active.',
   render: () => <RouterProvider router={createHeaderRouter('/portfolio')} />,
+}
+
+export const Trades: Story = {
+  name: 'shows assets navigation active on the trade history page.',
+  render: () => <RouterProvider router={createHeaderRouter('/trades')} />,
 }
 
 export const PaperTrading: Story = {
@@ -91,4 +100,11 @@ export const PaperTrading: Story = {
 export const Calendar: Story = {
   name: 'shows the header with calendar navigation active.',
   render: () => <RouterProvider router={createHeaderRouter('/calendar')} />,
+}
+
+export const MenuOpen: Story = {
+  name: 'shows the menu open on a global settings page.',
+  render: () => (
+    <RouterProvider router={createHeaderRouter('/settings/rss-feeds', true)} />
+  ),
 }
