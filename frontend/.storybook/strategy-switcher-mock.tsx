@@ -45,13 +45,22 @@ function unreadNote(index: number): Note {
 }
 
 // Storybook にはグローバルな QueryClientProvider が無いため、ヘッダーの query をモックする
-function installMiddleware(unreadCount: number) {
+function installMiddleware(unreadCount: number, reviewQueueError: boolean) {
   const unreadNotes = Array.from({ length: unreadCount }, (_, index) =>
     unreadNote(index + 1),
   )
   const middleware: Middleware = {
     onRequest({ request }) {
       const { url } = request
+      if (
+        reviewQueueError &&
+        /\/api\/(notes|note-versions\/pending|annotations)(\?|$)/.test(url)
+      ) {
+        return new Response(JSON.stringify({ message: 'fixture error' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
       if (/\/api\/strategies(\?|$)/.test(url)) {
         return new Response(JSON.stringify(STRATEGIES), {
           status: 200,
@@ -85,16 +94,20 @@ function installMiddleware(unreadCount: number) {
 export function StrategySwitcherQueryDecorator({
   children,
   unreadCount = 2,
+  reviewQueueError = false,
 }: {
   children: React.ReactNode
   unreadCount?: number
+  reviewQueueError?: boolean
 }) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   )
   // 子の useQuery が初回マウント時に fetch する前にモックを登録し切る必要があるため、
   // useEffect ではなく render 中に同期実行される lazy initializer で install する
-  const [eject] = useState(() => installMiddleware(unreadCount))
+  const [eject] = useState(() =>
+    installMiddleware(unreadCount, reviewQueueError),
+  )
   useEffect(() => eject, [eject])
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }

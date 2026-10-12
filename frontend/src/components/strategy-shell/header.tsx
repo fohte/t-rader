@@ -1,6 +1,6 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Menu as MenuIcon } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { useReviewQueue } from '#components/dashboard/use-review-queue'
 import {
@@ -18,6 +18,18 @@ const MENU_LINK_INACTIVE =
 const MENU_LINK_ACTIVE =
   'flex items-center border border-muted-foreground bg-surface-strong px-2.5 py-1.5 font-mono text-xs text-foreground'
 
+const MENU_ITEMS = [
+  { to: '/notes', label: 'ノート', matches: ['/notes', '/annotations'] },
+  { to: '/strategies', label: '戦略', matches: ['/strategies'] },
+  {
+    to: '/paper-trading',
+    label: 'ペーパートレード',
+    matches: ['/paper-trading'],
+  },
+  { to: '/calendar', label: 'カレンダー', matches: ['/calendar'] },
+  { to: '/settings', label: '全体の設定', matches: ['/settings'] },
+] as const
+
 function isPathWithin(pathname: string, path: string): boolean {
   return pathname === path || pathname.startsWith(`${path}/`)
 }
@@ -26,10 +38,12 @@ function NavLink({
   to,
   label,
   active,
+  children,
 }: {
   to: string
-  label: string
+  label?: string
   active: boolean
+  children?: ReactNode
 }) {
   return (
     <Link
@@ -38,6 +52,7 @@ function NavLink({
       aria-current={active ? 'page' : undefined}
     >
       {label}
+      {children}
     </Link>
   )
 }
@@ -46,20 +61,33 @@ function MenuLink({
   to,
   label,
   active,
-  onClick,
+  strategyId,
+  onOpenChange,
 }: {
   to: string
   label: string
   active: boolean
-  onClick: () => void
+  strategyId: string | undefined
+  onOpenChange: (open: boolean) => void
 }) {
+  const linkProps = {
+    className: active ? MENU_LINK_ACTIVE : MENU_LINK_INACTIVE,
+    'aria-current': active ? ('page' as const) : undefined,
+    onClick: () => {
+      onOpenChange(false)
+    },
+  }
+
+  if (to === '/calendar') {
+    return (
+      <Link to="/calendar" search={{ strategy: strategyId }} {...linkProps}>
+        {label}
+      </Link>
+    )
+  }
+
   return (
-    <Link
-      to={to}
-      className={active ? MENU_LINK_ACTIVE : MENU_LINK_INACTIVE}
-      aria-current={active ? 'page' : undefined}
-      onClick={onClick}
-    >
+    <Link to={to} {...linkProps}>
       {label}
     </Link>
   )
@@ -108,58 +136,16 @@ function HeaderMenu({
           ページ
         </h2>
         <nav aria-label="その他のページ" className="flex flex-col gap-1">
-          <MenuLink
-            to="/notes"
-            label="ノート"
-            active={
-              isPathWithin(pathname, '/notes') ||
-              isPathWithin(pathname, '/annotations')
-            }
-            onClick={() => {
-              onOpenChange(false)
-            }}
-          />
-          <MenuLink
-            to="/strategies"
-            label="戦略"
-            active={isPathWithin(pathname, '/strategies')}
-            onClick={() => {
-              onOpenChange(false)
-            }}
-          />
-          <MenuLink
-            to="/paper-trading"
-            label="ペーパートレード"
-            active={isPathWithin(pathname, '/paper-trading')}
-            onClick={() => {
-              onOpenChange(false)
-            }}
-          />
-          <Link
-            to="/calendar"
-            search={{ strategy: strategyId }}
-            className={
-              isPathWithin(pathname, '/calendar')
-                ? MENU_LINK_ACTIVE
-                : MENU_LINK_INACTIVE
-            }
-            aria-current={
-              isPathWithin(pathname, '/calendar') ? 'page' : undefined
-            }
-            onClick={() => {
-              onOpenChange(false)
-            }}
-          >
-            カレンダー
-          </Link>
-          <MenuLink
-            to="/settings"
-            label="全体の設定"
-            active={isPathWithin(pathname, '/settings')}
-            onClick={() => {
-              onOpenChange(false)
-            }}
-          />
+          {MENU_ITEMS.map((item) => (
+            <MenuLink
+              key={item.to}
+              to={item.to}
+              label={item.label}
+              active={item.matches.some((path) => isPathWithin(pathname, path))}
+              strategyId={strategyId}
+              onOpenChange={onOpenChange}
+            />
+          ))}
         </nav>
       </PopoverContent>
     </Popover>
@@ -168,31 +154,30 @@ function HeaderMenu({
 
 export function Header({
   menuOpen: controlledMenuOpen,
-  onMenuOpenChange,
 }: {
   menuOpen?: boolean
-  onMenuOpenChange?: (open: boolean) => void
 } = {}) {
   const strategyId = useCurrentStrategyId()
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
-  const { data: reviewQueue } = useReviewQueue()
+  const { data: reviewQueue, isError, isPending } = useReviewQueue()
   const [uncontrolledMenuOpen, setUncontrolledMenuOpen] = useState(false)
   const menuOpen = controlledMenuOpen ?? uncontrolledMenuOpen
   const reviewCount = reviewQueue?.counts.total ?? 0
-  const isMenuActive = [
-    '/notes',
-    '/annotations',
-    '/strategies',
-    '/paper-trading',
-    '/calendar',
-    '/settings',
-  ].some((path) => isPathWithin(pathname, path))
+  const reviewBadge = isPending
+    ? '…'
+    : isError
+      ? '—'
+      : reviewCount > 0
+        ? String(reviewCount)
+        : null
+  const isMenuActive = MENU_ITEMS.some((item) =>
+    item.matches.some((path) => isPathWithin(pathname, path)),
+  )
 
   function handleMenuOpenChange(open: boolean) {
     if (controlledMenuOpen == null) setUncontrolledMenuOpen(open)
-    onMenuOpenChange?.(open)
   }
 
   return (
@@ -222,27 +207,17 @@ export function Header({
               isPathWithin(pathname, '/trades')
             }
           />
-          <Link
+          <NavLink
             to="/note-versions/pending"
-            activeOptions={{ exact: false }}
-            className={
-              isPathWithin(pathname, '/note-versions/pending')
-                ? NAV_PILL_ACTIVE
-                : NAV_PILL_INACTIVE
-            }
-            aria-current={
-              isPathWithin(pathname, '/note-versions/pending')
-                ? 'page'
-                : undefined
-            }
+            label="レビュー"
+            active={isPathWithin(pathname, '/note-versions/pending')}
           >
-            レビュー
-            {reviewCount > 0 && (
+            {reviewBadge != null && (
               <span className="border border-primary px-1 text-2xs leading-4 tabular-nums text-primary">
-                {reviewCount}
+                {reviewBadge}
               </span>
             )}
-          </Link>
+          </NavLink>
         </nav>
 
         <div className="ml-auto flex flex-shrink-0 items-center gap-2">

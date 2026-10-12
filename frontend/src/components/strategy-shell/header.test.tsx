@@ -18,7 +18,11 @@ afterEach(cleanup)
 const STRATEGY_ID = 'demo-strategy'
 const PERFORMANCE_PATH = `/strategies/${STRATEGY_ID}/performance`
 
-function renderHeader(initialPath = PERFORMANCE_PATH, unreadCount = 2) {
+function renderHeader(
+  initialPath = PERFORMANCE_PATH,
+  unreadCount = 2,
+  reviewQueueError = false,
+) {
   const router = createStoryRouter(() => <Header />, {
     paths: [
       '/strategies',
@@ -40,7 +44,10 @@ function renderHeader(initialPath = PERFORMANCE_PATH, unreadCount = 2) {
     initialPath,
   })
   render(
-    <StrategySwitcherQueryDecorator unreadCount={unreadCount}>
+    <StrategySwitcherQueryDecorator
+      unreadCount={unreadCount}
+      reviewQueueError={reviewQueueError}
+    >
       <RouterProvider router={router} />
     </StrategySwitcherQueryDecorator>,
   )
@@ -61,6 +68,13 @@ function getMenuOutput(menuButton: HTMLElement, navigation: HTMLElement) {
   return {
     menuActive: menuButton.getAttribute('aria-current') === 'page',
     links: getNavigationOutput(navigation),
+  }
+}
+
+function getMenuTransitionOutput(pathname: string, menuButton: HTMLElement) {
+  return {
+    pathname,
+    menuOpen: menuButton.getAttribute('aria-expanded') === 'true',
   }
 }
 
@@ -123,7 +137,7 @@ describe('Header', () => {
       const navigation = await screen.findByRole('navigation', {
         name: 'メインナビゲーション',
       })
-      await screen.findByRole('link', { name: /レビュー/ })
+      await screen.findByRole('link', { name: 'レビュー2' })
 
       expect(getNavigationOutput(navigation)).toEqual([
         { label: '資産', href: '/portfolio', active: true },
@@ -141,7 +155,7 @@ describe('Header', () => {
     const navigation = await screen.findByRole('navigation', {
       name: 'メインナビゲーション',
     })
-    await screen.findByRole('link', { name: /レビュー/ })
+    await screen.findByRole('link', { name: 'レビュー2' })
 
     expect(getNavigationOutput(navigation)).toEqual([
       { label: '資産', href: '/portfolio', active: false },
@@ -158,14 +172,29 @@ describe('Header', () => {
     const navigation = await screen.findByRole('navigation', {
       name: 'メインナビゲーション',
     })
-    const menuButton = await screen.findByRole('button', { name: 'メニュー' })
-    await userEvent.setup().click(menuButton)
-    await screen.findByRole('navigation', { name: 'その他のページ' })
+    await screen.findByRole('link', { name: 'レビュー' })
 
     expect(getNavigationOutput(navigation)).toEqual([
       { label: '資産', href: '/portfolio', active: true },
       {
         label: 'レビュー',
+        href: '/note-versions/pending',
+        active: false,
+      },
+    ])
+  })
+
+  it('未読数の取得に失敗した場合はダッシュを表示する', async () => {
+    renderHeader('/portfolio', 2, true)
+    const navigation = await screen.findByRole('navigation', {
+      name: 'メインナビゲーション',
+    })
+    await screen.findByRole('link', { name: 'レビュー—' })
+
+    expect(getNavigationOutput(navigation)).toEqual([
+      { label: '資産', href: '/portfolio', active: true },
+      {
+        label: 'レビュー—',
         href: '/note-versions/pending',
         active: false,
       },
@@ -201,6 +230,26 @@ describe('Header', () => {
 
     await waitFor(() => {
       expect(menuButton.getAttribute('aria-expanded')).toEqual('false')
+    })
+  })
+
+  it('メニュー項目を選ぶと遷移してメニューを閉じる', async () => {
+    const user = userEvent.setup()
+    const router = renderHeader('/portfolio')
+    const menuButton = await screen.findByRole('button', { name: 'メニュー' })
+
+    await user.click(menuButton)
+    const menuNavigation = await screen.findByRole('navigation', {
+      name: 'その他のページ',
+    })
+    await user.click(
+      within(menuNavigation).getByRole('link', { name: '全体の設定' }),
+    )
+
+    await waitFor(() => {
+      expect(
+        getMenuTransitionOutput(router.state.location.pathname, menuButton),
+      ).toEqual({ pathname: '/settings', menuOpen: false })
     })
   })
 
