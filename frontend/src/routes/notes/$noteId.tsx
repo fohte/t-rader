@@ -52,13 +52,13 @@ function NoteDetailPage() {
   } = $api.useQuery('get', '/api/notes/{id}/versions', {
     params: { path: { id: noteId } },
   })
-  const { data: noteHistory, isPending: isNoteHistoryPending } = $api.useQuery(
-    'get',
-    '/api/history',
-    {
-      params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
-    },
-  )
+  const {
+    data: noteHistory,
+    isPending: isNoteHistoryPending,
+    isError: hasNoteHistoryError,
+  } = $api.useQuery('get', '/api/history', {
+    params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
+  })
 
   const orderedVersions = [...(versions ?? [])].sort(
     (left, right) => left.version_no - right.version_no,
@@ -141,6 +141,7 @@ function NoteDetailPage() {
             versions={orderedVersions}
             history={noteHistory ?? []}
             isHistoryPending={isNoteHistoryPending}
+            isHistoryError={hasNoteHistoryError}
             selectedVersionNo={selectedVersion.version_no}
             onSelectVersion={(versionNo) => {
               void navigate({

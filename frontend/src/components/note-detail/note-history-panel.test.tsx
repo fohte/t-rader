@@ -45,31 +45,34 @@ const fixtureVersions: NoteVersion[] = [
   },
 ]
 
-const fixtureHistory: ChangeHistory[] = [
-  {
-    id: 'fixture-history-approval',
-    target_kind: 'note',
-    target_id: 'fixture-note',
-    actor_kind: 'human',
-    actor_label: '自分',
-    op: 'status_change',
-    diff_json: {
-      from: 'unread',
-      to: 'approved',
-      version_id: 'fixture-version-old',
-    },
-    summary: '記載内容を確認しました。',
-    created_at: '2026-10-11T14:00:00Z',
+const approvalHistory: ChangeHistory = {
+  id: 'fixture-history-approval',
+  target_kind: 'note',
+  target_id: 'fixture-note',
+  actor_kind: 'human',
+  actor_label: '自分',
+  op: 'status_change',
+  diff_json: {
+    from: 'unread',
+    to: 'approved',
+    version_id: 'fixture-version-old',
   },
-]
+  summary: '記載内容を確認しました。',
+  created_at: '2026-10-11T14:00:00Z',
+}
+
+const fixtureHistory: ChangeHistory[] = [approvalHistory]
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
 })
 
 describe('NoteHistoryPanel', () => {
   it('shows versions in reverse order with their status change events', () => {
-    const now = Date.now()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const now = new Date('2026-10-13T15:00:00.000Z').getTime()
+    vi.setSystemTime(now)
     const day = 24 * 60 * 60 * 1000
     const versions = fixtureVersions.map((version) => ({
       ...version,
@@ -77,15 +80,38 @@ describe('NoteHistoryPanel', () => {
         now - (version.version_no === 3 ? 0 : 3 * day),
       ).toISOString(),
     }))
-    const history = fixtureHistory.map((entry) => ({
-      ...entry,
-      created_at: new Date(now - 2 * day).toISOString(),
-    }))
+    const history: ChangeHistory[] = [
+      ...fixtureHistory.map((entry) => ({
+        ...entry,
+        created_at: new Date(now - 2 * day).toISOString(),
+      })),
+      {
+        ...approvalHistory,
+        id: 'fixture-history-current-change',
+        op: 'update',
+        diff_json: {
+          from_version_id: 'fixture-version-new',
+          to_version_id: 'fixture-version-old',
+          version_no: 2,
+        },
+        summary: null,
+        created_at: new Date(now - day).toISOString(),
+      },
+      {
+        ...approvalHistory,
+        id: 'fixture-history-metadata-update',
+        op: 'update',
+        diff_json: { title: { from: '以前の題名', to: '新しい題名' } },
+        summary: 'タイトルを更新しました。',
+        created_at: new Date(now - 5 * 60 * 60 * 1000).toISOString(),
+      },
+    ]
     render(
       <NoteHistoryPanel
         versions={versions}
         history={history}
         isHistoryPending={false}
+        isHistoryError={false}
         selectedVersionNo={3}
         onSelectVersion={() => {}}
       />,
@@ -98,13 +124,15 @@ describe('NoteHistoryPanel', () => {
     ).map((row) => {
       const button = row.querySelector('button')
       const events = row.querySelector(':scope > ul')
-      return {
-        version: button?.textContent.replace(/\s+/g, ' ').trim() ?? null,
-        isSelected: button?.getAttribute('aria-current') === 'true',
-        statusChanges: Array.from(events?.querySelectorAll('li') ?? []).map(
-          (event) => event.textContent.replace(/\s+/g, ' ').trim(),
-        ),
-      }
+      return button == null
+        ? { event: row.textContent.replace(/\s+/g, ' ').trim() }
+        : {
+            version: button.textContent.replace(/\s+/g, ' ').trim(),
+            isSelected: button.getAttribute('aria-current') === 'true',
+            statusChanges: Array.from(events?.querySelectorAll('li') ?? []).map(
+              (event) => event.textContent.replace(/\s+/g, ' ').trim(),
+            ),
+          }
     })
 
     expect(versionRows).toEqual([
@@ -116,8 +144,12 @@ describe('NoteHistoryPanel', () => {
       {
         version: 'v2現行以前の架空ノート承認済み自分 · 3 日前',
         isSelected: false,
-        statusChanges: ['2 日前自分が承認記載内容を確認しました。'],
+        statusChanges: [
+          '昨日自分が現行に変更',
+          '2 日前自分が承認記載内容を確認しました。',
+        ],
       },
+      { event: '5 時間前自分が更新タイトルを更新しました。' },
     ])
   })
 
@@ -129,6 +161,7 @@ describe('NoteHistoryPanel', () => {
         versions={fixtureVersions}
         history={fixtureHistory}
         isHistoryPending={false}
+        isHistoryError={false}
         selectedVersionNo={3}
         onSelectVersion={onSelectVersion}
       />,
@@ -137,5 +170,22 @@ describe('NoteHistoryPanel', () => {
     await user.click(screen.getByRole('button', { name: /v2/ }))
 
     expect(onSelectVersion.mock.calls).toEqual([[2]])
+  })
+
+  it('shows an error when history could not be loaded', () => {
+    render(
+      <NoteHistoryPanel
+        versions={[]}
+        history={[]}
+        isHistoryPending={false}
+        isHistoryError
+        selectedVersionNo={3}
+        onSelectVersion={() => {}}
+      />,
+    )
+
+    expect(screen.getByRole('region', { name: '履歴' }).textContent).toBe(
+      '履歴バージョンがありません。履歴を読み込めませんでした。',
+    )
   })
 })
