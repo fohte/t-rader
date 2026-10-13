@@ -25,7 +25,7 @@ const notes: Note[] = [
     trigger: null,
     trigger_label: null,
     created_by_kind: 'human',
-    created_at: '2026-10-01T00:00:00Z',
+    created_at: '2026-10-02T00:00:00Z',
     updated_at: '2026-10-01T00:00:00Z',
   },
   {
@@ -44,7 +44,7 @@ const notes: Note[] = [
     trigger: null,
     trigger_label: null,
     created_by_kind: 'llm',
-    created_at: '2026-10-02T00:00:00Z',
+    created_at: '2026-10-01T00:00:00Z',
     updated_at: '2026-10-02T00:00:00Z',
   },
 ]

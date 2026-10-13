@@ -42,4 +42,18 @@ describe('getIndicatorObservationSummary', () => {
       changePercent: 5,
     })
   })
+
+  it('omits the percentage change when the preceding value is zero', () => {
+    expect(
+      getIndicatorObservationSummary([
+        { date: '2026-10-13', value: 0 },
+        { date: '2026-10-14', value: 5 },
+      ]),
+    ).toEqual({
+      latest: { date: '2026-10-14', value: 5 },
+      previous: { date: '2026-10-13', value: 0 },
+      change: 5,
+      changePercent: null,
+    })
+  })
 })
