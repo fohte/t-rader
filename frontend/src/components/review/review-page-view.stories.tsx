@@ -46,6 +46,11 @@ const data: ReviewQueueData = {
   ],
 }
 
+const notesOnlyData: ReviewQueueData = {
+  counts: { notes: 2, annotations: 0, total: 2 },
+  items: data.items.filter((item) => item.kind === 'note'),
+}
+
 function withRouter(Story: ComponentType) {
   return (
     <RouterProvider
@@ -95,6 +100,39 @@ type Story = StoryObj<typeof meta>
 
 export const Populated: Story = {
   name: 'shows mixed unread notes and annotations with selected items.',
+}
+
+export const AnnotationTab: Story = {
+  name: 'the annotation tab shows annotations and disables the note-kind filter.',
+  args: { typeFilter: 'annotation', selectedItemIds: [] },
+}
+
+export const NoteKindFilter: Story = {
+  name: 'the note tab shows only notes with the selected kind.',
+  args: {
+    typeFilter: 'note',
+    noteKindFilter: '架空の種別',
+    selectedItemIds: [],
+  },
+}
+
+export const FilteredEmpty: Story = {
+  name: 'the annotation tab shows an empty result when no annotations match.',
+  args: {
+    data: notesOnlyData,
+    typeFilter: 'annotation',
+    selectedItemIds: [],
+  },
+}
+
+export const NoSelection: Story = {
+  name: 'the approval action is disabled when no item is selected.',
+  args: { selectedItemIds: [] },
+}
+
+export const Approving: Story = {
+  name: 'the approval action shows progress while the request is running.',
+  args: { isApproving: true, selectedItemIds: ['note:fake-version-a'] },
 }
 
 export const Loading: Story = {
