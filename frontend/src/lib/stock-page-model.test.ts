@@ -1,9 +1,62 @@
 import { describe, expect, it } from 'vitest'
 
 import type { components } from '#lib/api/schema.gen'
-import { buildStockQuote, sortTradesNewestFirst } from '#lib/stock-page-model'
+import {
+  buildStockQuote,
+  getStockPageListState,
+  resolveStockLookup,
+  sortAnnotationsNewestFirst,
+  sortTradesNewestFirst,
+} from '#lib/stock-page-model'
 
 type Bar = components['schemas']['Bar']
+type Annotation = components['schemas']['Annotation']
+type Stock = components['schemas']['Stock']
+
+const stock: Stock = {
+  id: 'demo-code',
+  name: 'デモ商事',
+  market: null,
+  sector_id: null,
+  product_category: null,
+  created_at: '2030-04-01T00:00:00Z',
+  updated_at: '2030-04-01T00:00:00Z',
+}
+
+const annotations: Annotation[] = [
+  {
+    id: 'demo-annotation-period',
+    target_kind: 'stock',
+    target_symbol: 'demo-code',
+    timestamp: '2030-04-03T06:00:00Z',
+    timestamp_start: '2030-04-01T06:00:00Z',
+    price: null,
+    text: '期間アノテーションのデモ用メモです。',
+    linked_note_id: null,
+    status: 'unread',
+    created_by_kind: 'llm',
+    execution_step_id: null,
+    execution_task_id: null,
+    created_at: '2030-04-03T06:00:00Z',
+    updated_at: '2030-04-03T06:00:00Z',
+  },
+  {
+    id: 'demo-annotation-point',
+    target_kind: 'stock',
+    target_symbol: 'demo-code',
+    timestamp: '2030-04-02T06:00:00Z',
+    timestamp_start: null,
+    price: null,
+    text: '単日のデモ用メモです。',
+    linked_note_id: null,
+    status: 'approved',
+    created_by_kind: 'human',
+    execution_step_id: null,
+    execution_task_id: null,
+    created_at: '2030-04-02T06:00:00Z',
+    updated_at: '2030-04-02T06:00:00Z',
+  },
+]
 
 const bars: Bar[] = [
   {
@@ -110,5 +163,55 @@ describe('sortTradesNewestFirst', () => {
         updated_at: '2030-04-01T06:00:00Z',
       },
     ])
+  })
+})
+
+describe('sortAnnotationsNewestFirst', () => {
+  it('orders period annotations by their start date and point annotations by date', () => {
+    expect(sortAnnotationsNewestFirst(annotations)).toEqual([
+      annotations[1],
+      annotations[0],
+    ])
+  })
+})
+
+describe('resolveStockLookup', () => {
+  it.each([
+    ['found', 200, stock, undefined, { kind: 'found', stock }],
+    [
+      'not found',
+      404,
+      undefined,
+      { error: 'not found' },
+      { kind: 'not-found' },
+    ],
+    [
+      'server error',
+      500,
+      undefined,
+      { error: 'unavailable' },
+      { kind: 'error' },
+    ],
+  ] as const)(
+    'classifies a %s stock response',
+    (_name, status, responseStock, error, expected) => {
+      expect(
+        resolveStockLookup({
+          status,
+          stock: responseStock,
+          error,
+        }),
+      ).toEqual(expected)
+    },
+  )
+})
+
+describe('getStockPageListState', () => {
+  it.each([
+    ['loading', { isPending: true, isError: false }, 'loading'],
+    ['error', { isPending: false, isError: true }, 'error'],
+    ['ready', { isPending: false, isError: false }, 'ready'],
+  ] as const)('maps a %s query to its list state', (_name, query, expected) => {
+    expect(getStockPageListState(query)).toEqual(expected)
   })
 })

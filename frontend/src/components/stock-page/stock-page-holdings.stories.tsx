@@ -27,3 +27,8 @@ export const Loading: Story = {
   name: '保有情報の読み込み中を表示する。',
   args: { position: null, isLoading: true },
 }
+
+export const Error: Story = {
+  name: '保有情報を取得できなかった状態を表示する。',
+  args: { position: null, hasError: true },
+}

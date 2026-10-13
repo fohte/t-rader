@@ -6,6 +6,7 @@ import { buildSnippet } from '#lib/note-utils'
 import {
   sortAnnotationsNewestFirst,
   sortTradesNewestFirst,
+  type StockPageListState,
 } from '#lib/stock-page-model'
 import { cn } from '#lib/utils'
 
@@ -19,7 +20,32 @@ const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
 })
 
 type ActivityTab = 'annotations' | 'trades'
-type ListState = 'ready' | 'loading' | 'error'
+type ListState = StockPageListState
+
+function ActivityMessage({
+  kind,
+  children,
+}: {
+  kind: 'loading' | 'error' | 'empty'
+  children: string
+}) {
+  return (
+    <p
+      className={cn(
+        'px-3.5 py-4 font-mono text-xs',
+        kind === 'error' ? 'text-destructive' : 'text-muted-foreground',
+      )}
+    >
+      {children}
+    </p>
+  )
+}
+
+function getCountLabel(state: ListState, count: number): string {
+  if (state === 'loading') return '…'
+  if (state === 'error') return '—'
+  return String(count)
+}
 
 function formatDate(date: string): string {
   return dateFormatter.format(new Date(date))
@@ -95,24 +121,18 @@ function AnnotationRows({
   state: ListState
 }) {
   if (state === 'loading') {
-    return (
-      <p className="px-3.5 py-4 font-mono text-xs text-muted-foreground">
-        読み込み中
-      </p>
-    )
+    return <ActivityMessage kind="loading">読み込み中</ActivityMessage>
   }
   if (state === 'error') {
     return (
-      <p className="px-3.5 py-4 font-mono text-xs text-destructive">
+      <ActivityMessage kind="error">
         アノテーションの取得に失敗しました
-      </p>
+      </ActivityMessage>
     )
   }
   if (annotations.length === 0) {
     return (
-      <p className="px-3.5 py-4 font-mono text-xs text-muted-foreground">
-        アノテーションはありません
-      </p>
+      <ActivityMessage kind="empty">アノテーションはありません</ActivityMessage>
     )
   }
 
@@ -168,25 +188,15 @@ function AnnotationRows({
 
 function TradeRows({ trades, state }: { trades: Trade[]; state: ListState }) {
   if (state === 'loading') {
-    return (
-      <p className="px-3.5 py-4 font-mono text-xs text-muted-foreground">
-        読み込み中
-      </p>
-    )
+    return <ActivityMessage kind="loading">読み込み中</ActivityMessage>
   }
   if (state === 'error') {
     return (
-      <p className="px-3.5 py-4 font-mono text-xs text-destructive">
-        取引の取得に失敗しました
-      </p>
+      <ActivityMessage kind="error">取引の取得に失敗しました</ActivityMessage>
     )
   }
   if (trades.length === 0) {
-    return (
-      <p className="px-3.5 py-4 font-mono text-xs text-muted-foreground">
-        取引はありません
-      </p>
-    )
+    return <ActivityMessage kind="empty">取引はありません</ActivityMessage>
   }
 
   const sortedTrades = sortTradesNewestFirst(trades)
@@ -289,18 +299,8 @@ export function StockPageActivity({
   annotationState?: ListState
   tradeState?: ListState
 }) {
-  const annotationCount =
-    annotationState === 'loading'
-      ? '…'
-      : annotationState === 'error'
-        ? '—'
-        : String(annotations.length)
-  const tradeCount =
-    tradeState === 'loading'
-      ? '…'
-      : tradeState === 'error'
-        ? '—'
-        : String(trades.length)
+  const annotationCount = getCountLabel(annotationState, annotations.length)
+  const tradeCount = getCountLabel(tradeState, trades.length)
 
   return (
     <section className="border border-border bg-card" aria-label="銘柄の一覧">

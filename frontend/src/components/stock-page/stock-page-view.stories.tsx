@@ -126,11 +126,13 @@ const meta = {
       timestamp: '2030-04-03T06:00:00Z',
     },
     quoteLoading: false,
+    quoteError: false,
     bars,
     annotations,
     trades,
     position,
     holdingsLoading: false,
+    holdingsError: false,
     timeframe: '1d',
     onTimeframeChange: () => undefined,
     selectedAnnotationId: 'demo-annotation',
@@ -155,4 +157,14 @@ export const DesktopPage: Story = {
 export const WithoutPosition: Story = {
   name: '保有していない銘柄のチャートを全幅で表示する。',
   args: { position: null },
+}
+
+export const DataErrors: Story = {
+  name: '終値と保有情報を取得できなかった状態を表示する。',
+  args: {
+    quote: null,
+    quoteError: true,
+    position: null,
+    holdingsError: true,
+  },
 }

@@ -19,11 +19,13 @@ export function StockPageView({
   stock,
   quote,
   quoteLoading,
+  quoteError,
   bars,
   annotations,
   trades,
   position,
   holdingsLoading,
+  holdingsError,
   timeframe,
   onTimeframeChange,
   selectedAnnotationId,
@@ -39,11 +41,13 @@ export function StockPageView({
   stock: Stock
   quote: StockQuote | null
   quoteLoading: boolean
+  quoteError: boolean
   bars: components['schemas']['Bar'][]
   annotations: Annotation[]
   trades: Trade[]
   position: Position | null
   holdingsLoading: boolean
+  holdingsError: boolean
   timeframe: Timeframe
   onTimeframeChange: (timeframe: Timeframe) => void
   selectedAnnotationId: string | null
@@ -56,7 +60,7 @@ export function StockPageView({
   annotationState: ActivityProps['annotationState']
   tradeState: ActivityProps['tradeState']
 }) {
-  const hasHoldingsColumn = position != null || holdingsLoading
+  const hasHoldingsColumn = position != null || holdingsLoading || holdingsError
 
   return (
     <main className="space-y-4 font-sans text-foreground sm:space-y-5">
@@ -65,6 +69,7 @@ export function StockPageView({
         quote={quote}
         isHolding={position != null}
         quoteLoading={quoteLoading}
+        quoteError={quoteError}
       />
 
       <div
@@ -87,7 +92,11 @@ export function StockPageView({
             hasError={chartError}
           />
         </div>
-        <StockPageHoldings position={position} isLoading={holdingsLoading} />
+        <StockPageHoldings
+          position={position}
+          isLoading={holdingsLoading}
+          hasError={holdingsError}
+        />
       </div>
 
       <StockPageActivity

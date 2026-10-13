@@ -32,8 +32,11 @@ function formatChange(
   value: number,
   market: string | null | undefined,
 ): string {
-  const sign = value > 0 ? '+' : value < 0 ? '−' : ''
-  return `${sign}${formatPrice(Math.abs(value), market)}`
+  return `${signOf(value)}${formatPrice(Math.abs(value), market)}`
+}
+
+function signOf(value: number): string {
+  return value > 0 ? '+' : value < 0 ? '−' : ''
 }
 
 export function StockPageHeader({
@@ -41,11 +44,13 @@ export function StockPageHeader({
   quote,
   isHolding,
   quoteLoading = false,
+  quoteError = false,
 }: {
   stock: Stock
   quote: StockQuote | null
   isHolding: boolean
   quoteLoading?: boolean
+  quoteError?: boolean
 }) {
   const change = quote?.change
   const changePercent = quote?.changePercent
@@ -76,6 +81,10 @@ export function StockPageHeader({
       <div className="shrink-0 sm:text-right">
         {quoteLoading ? (
           <p className="font-mono text-sm text-muted-foreground">読み込み中</p>
+        ) : quoteError ? (
+          <p className="font-mono text-sm text-destructive">
+            終値の取得に失敗しました
+          </p>
         ) : quote == null ? (
           <p className="font-mono text-sm text-muted-foreground">終値なし</p>
         ) : (
@@ -86,8 +95,7 @@ export function StockPageHeader({
             <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-xs sm:justify-end">
               {change != null && changePercent != null && (
                 <span className={pnlColorClass(change)}>
-                  {formatChange(change, stock.market)} (
-                  {change > 0 ? '+' : change < 0 ? '−' : ''}
+                  {formatChange(change, stock.market)} ({signOf(change)}
                   {Math.abs(changePercent).toFixed(2)}%)
                 </span>
               )}

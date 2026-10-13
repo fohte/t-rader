@@ -50,3 +50,8 @@ export const NoQuote: Story = {
   name: '日足の終値がない状態を表示する。',
   args: { quote: null },
 }
+
+export const QuoteError: Story = {
+  name: '日足の終値を取得できなかった状態を表示する。',
+  args: { quote: null, quoteError: true },
+}

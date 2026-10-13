@@ -2,7 +2,39 @@ import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 type Annotation = components['schemas']['Annotation']
+type Stock = components['schemas']['Stock']
 type Trade = components['schemas']['TradeListItem']
+
+export type StockPageListState = 'ready' | 'loading' | 'error'
+
+export type StockLookupResult =
+  { kind: 'found'; stock: Stock } | { kind: 'not-found' } | { kind: 'error' }
+
+export function resolveStockLookup({
+  status,
+  stock,
+  error,
+}: {
+  status: number
+  stock: Stock | undefined
+  error: unknown
+}): StockLookupResult {
+  if (status === 404) return { kind: 'not-found' }
+  if (error != null || stock == null) return { kind: 'error' }
+
+  return { kind: 'found', stock }
+}
+
+export function getStockPageListState({
+  isPending,
+  isError,
+}: {
+  isPending: boolean
+  isError: boolean
+}): StockPageListState {
+  if (isPending) return 'loading'
+  return isError ? 'error' : 'ready'
+}
 
 export interface StockQuote {
   close: number

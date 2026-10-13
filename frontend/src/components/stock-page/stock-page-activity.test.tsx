@@ -1,13 +1,15 @@
 import { RouterProvider } from '@tanstack/react-router'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { StockPageActivity } from '#components/stock-page/stock-page-activity'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Annotation = components['schemas']['Annotation']
+
+afterEach(cleanup)
 
 const annotations: Annotation[] = [
   {
@@ -52,5 +54,28 @@ describe('StockPageActivity', () => {
     )
 
     expect(onSelectAnnotation.mock.calls).toEqual([['demo-annotation']])
+  })
+
+  it('switches to the trade tab when it is clicked', async () => {
+    const onTabChange = vi.fn()
+    const user = userEvent.setup()
+    const router = createStoryRouter(
+      () => (
+        <StockPageActivity
+          annotations={annotations}
+          trades={[]}
+          activeTab="annotations"
+          onTabChange={onTabChange}
+          selectedAnnotationId={null}
+          onSelectAnnotation={() => undefined}
+        />
+      ),
+      { paths: ['/annotations/$annoId'] },
+    )
+
+    render(<RouterProvider router={router} />)
+    await user.click(await screen.findByRole('tab', { name: /取引/ }))
+
+    expect(onTabChange.mock.calls).toEqual([['trades']])
   })
 })
