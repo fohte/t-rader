@@ -6,7 +6,7 @@ export function StrategyListIntroduction() {
         戦略を選ぶ
       </h1>
       <p className="text-sm leading-relaxed text-muted-foreground-strong">
-        各戦略は取引と投資可能額の区分であり、トリガーと実行の単位です。
+        各戦略は取引と投資可能額の区分であり、トリガーと実行の単位です。分析は口座全体を対象に行います。
       </p>
     </div>
   )
