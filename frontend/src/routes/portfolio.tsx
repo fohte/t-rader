@@ -1,26 +1,63 @@
 import { useQueries } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { AssetTabs } from '#components/assets/asset-tabs'
+import { getTokyoDate } from '#components/calendar/calendar-date'
 import {
   AllocationBar,
   type AllocationSegment,
 } from '#components/portfolio/allocation-bar'
+import { PortfolioHistoryChart } from '#components/portfolio/portfolio-history-chart'
 import { PositionsTable } from '#components/portfolio/positions-table'
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
+import type { PortfolioHistoryPeriod } from '#lib/portfolio-history'
 
 export const Route = createFileRoute('/portfolio')({
   component: PortfolioPage,
 })
 
 function PortfolioPage() {
+  const [historyPeriod, setHistoryPeriod] =
+    useState<PortfolioHistoryPeriod>('month')
   const { data: summary, isPending: summaryPending } = $api.useQuery(
     'get',
     '/api/trades/summary',
+  )
+  const {
+    data: trades,
+    isPending: tradesPending,
+    isError: tradesError,
+  } = $api.useQuery('get', '/api/trades')
+  const firstTradeDate = useMemo(
+    () =>
+      trades?.reduce<string | undefined>(
+        (earliest, trade) =>
+          earliest == null || trade.date < earliest ? trade.date : earliest,
+        undefined,
+      ),
+    [trades],
+  )
+  const today = getTokyoDate()
+  const {
+    data: portfolioHistory = [],
+    isPending: historyPending,
+    isError: historyError,
+  } = $api.useQuery(
+    'get',
+    '/api/portfolio/history',
+    {
+      params: {
+        query: {
+          from: firstTradeDate ?? today,
+          to: today,
+        },
+      },
+    },
+    { enabled: firstTradeDate != null },
   )
   const { data: stocks = [] } = $api.useQuery('get', '/api/refs/stocks')
   const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
@@ -49,6 +86,22 @@ function PortfolioPage() {
   const cashRatio = totalAssets > 0 ? (cash / totalAssets) * 100 : 0
   const investedRatio = totalAssets > 0 ? 100 - cashRatio : 0
   const realizedPnl = summary?.realized_pnl ?? 0
+  const historyStatus = tradesPending
+    ? 'loading'
+    : tradesError
+      ? 'error'
+      : firstTradeDate == null
+        ? 'empty'
+        : historyPending
+          ? 'loading'
+          : historyError
+            ? 'error'
+            : 'ready'
+  const historyErrorMessage = tradesError
+    ? '取引履歴を読み込めませんでした'
+    : historyError
+      ? '資産推移を読み込めませんでした'
+      : undefined
 
   const stockNameById = useMemo(
     () => new Map(stocks.map((s) => [s.id, s.name])),
@@ -106,6 +159,14 @@ function PortfolioPage() {
       ) : (
         <StatRow stats={stats} />
       )}
+
+      <PortfolioHistoryChart
+        data={portfolioHistory}
+        period={historyPeriod}
+        status={historyStatus}
+        errorMessage={historyErrorMessage}
+        onPeriodChange={setHistoryPeriod}
+      />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-portfolio-layout)">
         <section className="space-y-2">
