@@ -209,27 +209,17 @@ async fn insert_prediction_contact(
 }
 
 async fn seed_movers(db: &gateway_postgres::DatabaseHandle, strategy_id: Uuid) -> Uuid {
-    let ids = [
-        "fictional-query",
-        "fictional-note",
-        "fictional-trade",
-        "fictional-paper",
-        "fictional-prediction",
-        "fictional-unseen",
-        "fictional-illiquid",
-    ];
-    for id in ids {
-        insert_instrument(db, id).await;
-    }
     for (id, market) in [
-        ("fictional-query", "Fictional Market A"),
-        ("fictional-note", "Fictional Market B"),
-        ("fictional-trade", "Fictional Market A"),
-        ("fictional-paper", "Fictional Market B"),
-        ("fictional-prediction", "Fictional Market C"),
-        ("fictional-illiquid", "Fictional Market A"),
+        ("fictional-query", Some("Fictional Market A")),
+        ("fictional-note", Some("Fictional Market B")),
+        ("fictional-trade", Some("Fictional Market A")),
+        ("fictional-paper", Some("Fictional Market B")),
+        ("fictional-prediction", Some("Fictional Market C")),
+        ("fictional-unseen", None),
+        ("fictional-illiquid", Some("Fictional Market A")),
     ] {
-        insert_stock(db, id, Some(market)).await;
+        insert_instrument(db, id).await;
+        insert_stock(db, id, market).await;
     }
     insert_stock(db, "fictional-benchmark", None).await;
 
