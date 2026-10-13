@@ -69,7 +69,7 @@ afterEach(() => {
 })
 
 describe('NoteHistoryPanel', () => {
-  it('shows events under the latest version at each event time', () => {
+  it('shows events under the newest version created before each event', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const now = new Date('2026-10-13T15:00:00.000Z').getTime()
     vi.setSystemTime(now)

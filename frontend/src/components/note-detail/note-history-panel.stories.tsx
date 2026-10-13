@@ -173,7 +173,7 @@ export const SupersededVersion: Story = {
 }
 
 export const UnversionedEvent: Story = {
-  name: 'attaches an update event to the version current at that time.',
+  name: 'attaches an update to the newest version created before it.',
   args: { history: [metadataUpdateHistory] },
 }
 
