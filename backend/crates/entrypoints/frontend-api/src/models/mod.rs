@@ -72,8 +72,8 @@ pub use strategy_earnings_target::{
     StrategyEarningsTargetChangeResponse, StrategyEarningsTargetResponse,
 };
 pub use trade::{
-    CreateTradeRequest, PerformanceSummary, PositionSummary, TradeListItem, TradeResponse,
-    UpdateTradeRequest,
+    CreateTradeRequest, PerformanceSummary, PositionSummary, TradeDetailResponse, TradeListItem,
+    TradeResponse, UpdateTradeRequest,
 };
 pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};
 pub use trigger::{

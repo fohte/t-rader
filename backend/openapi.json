@@ -7006,7 +7006,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Trade"
+                  "$ref": "#/components/schemas/TradeDetailResponse"
                 }
               }
             }
@@ -9270,6 +9270,28 @@
           "scatter"
         ]
       },
+      "MatchedBuyResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "qty",
+          "price"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "qty": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "Note": {
         "type": "object",
         "required": [
@@ -10694,6 +10716,41 @@
             "format": "date-time"
           }
         }
+      },
+      "TradeDetailResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Trade"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "matched_buys": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/MatchedBuyResponse"
+                }
+              },
+              "realized_pnl": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "remaining_qty": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              }
+            }
+          }
+        ]
       },
       "TradeListItem": {
         "allOf": [

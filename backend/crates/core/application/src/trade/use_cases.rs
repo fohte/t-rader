@@ -12,8 +12,8 @@ use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 use super::error::TradeUseCaseError;
 use super::repository::SharedTradeRepository;
 use super::types::{
-    CreateTradeCommand, NewTrade, PerformanceSummary, PositionSummary, Trade, TradeListItem,
-    TradeOrder, TradeQuery, TradeUpdate, TradeUpdateCommand,
+    CreateTradeCommand, MatchedBuy, NewTrade, PerformanceSummary, PositionSummary, Trade,
+    TradeDetail, TradeListItem, TradeOrder, TradeQuery, TradeUpdate, TradeUpdateCommand,
 };
 
 const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
@@ -51,6 +51,23 @@ impl TradeUseCases {
             .find_by_id(id)
             .await?
             .ok_or(TradeUseCaseError::NotFound(id))
+    }
+
+    pub async fn get_detail(&self, id: Uuid) -> Result<TradeDetail, TradeUseCaseError> {
+        let trade = self.get(id).await?;
+        let rows = self
+            .repository
+            .list(TradeQuery {
+                strategy_id: None,
+                symbol: Some(trade.symbol.clone()),
+                date_from: None,
+                limit: None,
+                order: TradeOrder::DateAscending,
+                include_note_count: false,
+                include_note_references: false,
+            })
+            .await?;
+        Ok(calculate_trade_detail(trade, &rows))
     }
 
     pub async fn create(&self, command: CreateTradeCommand) -> Result<Trade, TradeUseCaseError> {
@@ -294,13 +311,100 @@ fn validate_source(source: &str) -> Result<(), TradeUseCaseError> {
     }
 }
 
-fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> PerformanceSummary {
-    #[derive(Debug, Clone)]
-    struct Lot {
-        qty: Decimal,
-        price: Decimal,
+#[derive(Debug, Clone)]
+struct Lot {
+    trade_id: Uuid,
+    date: chrono::NaiveDate,
+    qty: Decimal,
+    price: Decimal,
+}
+
+fn push_buy_lot(lots: &mut VecDeque<Lot>, trade: &Trade) {
+    lots.push_back(Lot {
+        trade_id: trade.id,
+        date: trade.date,
+        qty: trade.qty,
+        price: trade.price,
+    });
+}
+
+fn consume_sell_lots(
+    lots: &mut VecDeque<Lot>,
+    trade: &Trade,
+    mut on_match: impl FnMut(&Lot, Decimal),
+) -> Decimal {
+    let mut remaining = trade.qty;
+    let mut realized_pnl = Decimal::ZERO;
+    while remaining > Decimal::ZERO {
+        let Some(front) = lots.front_mut() else {
+            realized_pnl += remaining * trade.price;
+            break;
+        };
+        let taken = remaining.min(front.qty);
+        on_match(front, taken);
+        realized_pnl += taken * (trade.price - front.price);
+        front.qty -= taken;
+        remaining -= taken;
+        if front.qty == Decimal::ZERO {
+            lots.pop_front();
+        }
+    }
+    realized_pnl - trade.fee
+}
+
+fn calculate_trade_detail(trade: Trade, rows: &[TradeListItem]) -> TradeDetail {
+    let mut lots = VecDeque::new();
+    let mut realized_pnl = None;
+    let mut matched_buys = None;
+    let mut target_buy_remaining = None;
+
+    for row in rows {
+        match row.trade.side.as_str() {
+            "buy" => {
+                push_buy_lot(&mut lots, &row.trade);
+                if row.trade.id == trade.id {
+                    target_buy_remaining = Some(row.trade.qty);
+                }
+            }
+            "sell" => {
+                let is_target = row.trade.id == trade.id;
+                let mut sale_matches = Vec::new();
+                let sale_pnl = consume_sell_lots(&mut lots, &row.trade, |lot, qty| {
+                    if lot.trade_id == trade.id {
+                        target_buy_remaining = Some(lot.qty - qty);
+                    }
+                    if is_target {
+                        sale_matches.push(MatchedBuy {
+                            date: lot.date,
+                            qty,
+                            price: lot.price,
+                        });
+                    }
+                });
+                if is_target {
+                    realized_pnl = Some(sale_pnl);
+                    matched_buys = Some(sale_matches);
+                }
+            }
+            _ => {}
+        }
     }
 
+    let remaining_qty = (trade.side == "buy").then(|| target_buy_remaining.unwrap_or(trade.qty));
+    if trade.side == "sell" && realized_pnl.is_none() {
+        realized_pnl = Some(-trade.fee);
+        matched_buys = Some(Vec::new());
+    }
+
+    TradeDetail {
+        trade,
+        realized_pnl,
+        matched_buys,
+        remaining_qty,
+    }
+}
+
+fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> PerformanceSummary {
     let mut lots_by_symbol: HashMap<String, VecDeque<Lot>> = HashMap::new();
     let mut realized_by_symbol: HashMap<String, Decimal> = HashMap::new();
 
@@ -310,28 +414,11 @@ fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> PerformanceSu
         let realized = realized_by_symbol.entry(trade.symbol.clone()).or_default();
         match trade.side.as_str() {
             "buy" => {
-                lots.push_back(Lot {
-                    qty: trade.qty,
-                    price: trade.price,
-                });
+                push_buy_lot(lots, trade);
                 *realized -= trade.fee;
             }
             "sell" => {
-                let mut remaining = trade.qty;
-                while remaining > Decimal::ZERO {
-                    let Some(front) = lots.front_mut() else {
-                        *realized += remaining * trade.price;
-                        break;
-                    };
-                    let taken = remaining.min(front.qty);
-                    *realized += taken * (trade.price - front.price);
-                    front.qty -= taken;
-                    remaining -= taken;
-                    if front.qty == Decimal::ZERO {
-                        lots.pop_front();
-                    }
-                }
-                *realized -= trade.fee;
+                *realized += consume_sell_lots(lots, trade, |_, _| {});
             }
             _ => tracing::warn!(
                 side = %trade.side,
