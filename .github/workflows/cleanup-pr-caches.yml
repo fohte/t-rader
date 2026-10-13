@@ -1,0 +1,20 @@
+name: Cleanup PR caches
+
+on:
+  # fork PR でも cache を削除できるようにし、PR のコードは取得しない。
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete pull request caches
+        env:
+          BRANCH: refs/pull/${{ github.event.pull_request.number }}/merge
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh cache delete --all --ref "$BRANCH" --succeed-on-no-caches

@@ -145,6 +145,46 @@ jobs:
           # ref: https://github.com/docker/build-push-action/issues/900
           provenance: false
 
+  cleanup-cargo-cache:
+    needs: [changes, build]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && contains(fromJson(needs.changes.outputs.components), 'backend') }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Delete outdated Cargo caches
+        env:
+          CURRENT_KEY: cargo-cache-${{ hashFiles('backend/Cargo.lock') }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          caches=$(gh cache list \
+            --key cargo-cache- \
+            --ref refs/heads/main \
+            --limit 1000 \
+            --json id,key)
+
+          if ! jq -e --arg current_key "$CURRENT_KEY" 'any(.[]; .key == $current_key)' <<< "$caches" > /dev/null; then
+            echo "Current Cargo cache was not saved; skipping cleanup"
+            exit 0
+          fi
+
+          cache_ids=$(jq -r --arg current_key "$CURRENT_KEY" '.[] | select(.key != $current_key) | .id' <<< "$caches")
+
+          if [[ -z "$cache_ids" ]]; then
+            echo "No outdated Cargo caches found"
+            exit 0
+          fi
+
+          while IFS= read -r cache_id; do
+            gh cache delete "$cache_id"
+          done <<< "$cache_ids"
+
 concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: false
