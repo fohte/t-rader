@@ -1,5 +1,10 @@
 import type { StatItem } from '#components/portfolio/stat-row'
-import { formatYen, pnlColorClass } from '#components/trades/format'
+import {
+  formatOptionalPercent,
+  formatYen,
+  optionalPnlColorClass,
+  pnlColorClass,
+} from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 
 type PositionSummary = components['schemas']['PositionSummary']
@@ -63,14 +68,11 @@ export function calculatePortfolioValuation(
     {
       label: '含み損益',
       value: unrealizedPnl == null ? '—' : formatYen(unrealizedPnl, true),
-      sub:
-        unrealizedPnlRate == null
-          ? '—'
-          : `${unrealizedPnlRate > 0 ? '+' : ''}${unrealizedPnlRate.toFixed(1)}%`,
-      cls:
-        unrealizedPnl == null
-          ? 'text-muted-foreground-strong'
-          : pnlColorClass(unrealizedPnl),
+      sub: formatOptionalPercent(
+        unrealizedPnlRate == null ? null : unrealizedPnlRate / 100,
+        true,
+      ),
+      cls: optionalPnlColorClass(unrealizedPnl),
     },
     {
       label: '現金',

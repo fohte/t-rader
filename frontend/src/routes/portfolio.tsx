@@ -7,7 +7,9 @@ import {
   AllocationBar,
   type AllocationSegment,
 } from '#components/portfolio/allocation-bar'
+import { AllocationRatios } from '#components/portfolio/allocation-ratios'
 import { calculatePortfolioValuation } from '#components/portfolio/portfolio-valuation'
+import { sortPositionsByMarketValue } from '#components/portfolio/position-sorting'
 import { PositionsTable } from '#components/portfolio/positions-table'
 import { StatRow } from '#components/portfolio/stat-row'
 import { Skeleton } from '#components/ui/skeleton'
@@ -54,18 +56,14 @@ function PortfolioPage() {
   )
 
   const allocation: AllocationSegment[] = useMemo(() => {
-    const segs: AllocationSegment[] = [...openPositions]
-      .sort((a, b) => {
-        if (a.market_value == null) return b.market_value == null ? 0 : 1
-        if (b.market_value == null) return -1
-        return b.market_value - a.market_value
-      })
-      .map((p) => ({
-        key: `pos:${p.symbol}`,
-        label: stockNameById.get(p.symbol) ?? p.symbol,
-        value: p.market_value ?? null,
-        kind: 'position' as const,
-      }))
+    const segs: AllocationSegment[] = sortPositionsByMarketValue(
+      openPositions,
+    ).map((p) => ({
+      key: `pos:${p.symbol}`,
+      label: stockNameById.get(p.symbol) ?? p.symbol,
+      value: p.market_value ?? null,
+      kind: 'position' as const,
+    }))
     segs.push({
       key: 'cash',
       label: '現金',
@@ -123,16 +121,10 @@ function PortfolioPage() {
               <span className="mr-2 text-primary">&gt;</span>
               アロケーション
             </h2>
-            <span className="font-mono text-2xs text-muted-foreground">
-              現金{' '}
-              {valuation.cashRatio == null
-                ? '—'
-                : `${valuation.cashRatio.toFixed(1)}%`}{' '}
-              / 投資{' '}
-              {valuation.investedRatio == null
-                ? '—'
-                : `${valuation.investedRatio.toFixed(1)}%`}
-            </span>
+            <AllocationRatios
+              cashRatio={valuation.cashRatio}
+              investedRatio={valuation.investedRatio}
+            />
           </div>
           <div className="border border-border bg-card p-4">
             <AllocationBar

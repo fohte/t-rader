@@ -1,7 +1,13 @@
 import { useMemo } from 'react'
 
+import { sortPositionsByMarketValue } from '#components/portfolio/position-sorting'
 import { StockNameLink } from '#components/stocks/stock-name-link'
-import { formatYen, pnlColorClass } from '#components/trades/format'
+import {
+  formatOptionalPercent,
+  formatYen,
+  optionalPnlColorClass,
+  pnlColorClass,
+} from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 
 type PositionSummary = components['schemas']['PositionSummary']
@@ -22,16 +28,9 @@ export function PositionsTable({
   )
   const sorted = useMemo(
     () =>
-      [...positions].sort((a, b) => {
-        if (!displayMarketValue) return b.cost_basis - a.cost_basis
-        if (a.market_value == null) {
-          return b.market_value == null ? a.symbol.localeCompare(b.symbol) : 1
-        }
-        if (b.market_value == null) return -1
-        return (
-          b.market_value - a.market_value || a.symbol.localeCompare(b.symbol)
-        )
-      }),
+      displayMarketValue
+        ? sortPositionsByMarketValue(positions)
+        : [...positions].sort((a, b) => b.cost_basis - a.cost_basis),
     [displayMarketValue, positions],
   )
 
@@ -91,7 +90,7 @@ export function PositionsTable({
                       {p.market_value == null ? '—' : formatYen(p.market_value)}
                     </td>
                     <td
-                      className={`px-3 py-2 text-right tabular-nums ${p.unrealized_pnl == null ? 'text-muted-foreground-strong' : pnlColorClass(p.unrealized_pnl)}`}
+                      className={`px-3 py-2 text-right tabular-nums ${optionalPnlColorClass(p.unrealized_pnl)}`}
                     >
                       {p.unrealized_pnl == null ? (
                         '—'
@@ -99,9 +98,12 @@ export function PositionsTable({
                         <>
                           <span>{formatYen(p.unrealized_pnl, true)}</span>{' '}
                           <span className="block text-2xs">
-                            {p.cost_basis <= 0
-                              ? '—'
-                              : `${p.unrealized_pnl > 0 ? '+' : ''}${((p.unrealized_pnl / p.cost_basis) * 100).toFixed(1)}%`}
+                            {formatOptionalPercent(
+                              p.cost_basis > 0
+                                ? p.unrealized_pnl / p.cost_basis
+                                : null,
+                              true,
+                            )}
                           </span>
                         </>
                       )}

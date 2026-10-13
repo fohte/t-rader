@@ -28,6 +28,35 @@ const pricedPositionB: Position = {
 const pricedPositions = [pricedPositionA, pricedPositionB]
 
 describe('calculatePortfolioValuation', () => {
+  it('calculates a cash-only portfolio with no positions', () => {
+    expect(calculatePortfolioValuation([], 5000, 200)).toEqual({
+      costBasis: 0,
+      marketValue: 0,
+      unrealizedPnl: 0,
+      unrealizedPnlRate: null,
+      cash: 5200,
+      totalAssets: 5200,
+      cashRatio: 100,
+      investedRatio: 0,
+      stats: [
+        { label: '総資産 (時価)', value: '¥5,200' },
+        {
+          label: '評価額 (株式・時価)',
+          value: '¥0',
+          sub: '簿価 ¥0',
+        },
+        {
+          label: '含み損益',
+          value: '¥0',
+          sub: '—',
+          cls: 'text-muted-foreground-strong',
+        },
+        { label: '現金', value: '¥5,200', sub: '100.0% 比率' },
+        { label: '実現損益 (累計)', value: '+¥200', cls: 'text-up' },
+      ],
+    })
+  })
+
   it('calculates market value, cash, total assets, and unrealized return', () => {
     expect(calculatePortfolioValuation(pricedPositions, 5000, 200)).toEqual({
       costBasis: 2000,
