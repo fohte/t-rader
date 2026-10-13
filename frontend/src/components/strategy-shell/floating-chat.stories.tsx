@@ -85,6 +85,30 @@ export const Idle: Story = {
   ),
 }
 
+export const MobileViewport: Story = {
+  name: 'fills the phone viewport when the chat is open.',
+  globals: { viewport: { value: 'mobileChat' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileChat: {
+          name: 'Mobile chat',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(makeProps({ kind: 'idle' }))}
+    />
+  ),
+}
+
 export const SelectedPurpose: Story = {
   name: 'shows a selected purpose in the chat composer.',
   render: () => (
@@ -105,6 +129,17 @@ export const NoStrategySelected: Story = {
           { kind: 'idle' },
           { strategyId: null, submittedPrompt: null },
         ),
+      )}
+    />
+  ),
+}
+
+export const CurrentStrategyNotInList: Story = {
+  name: 'shows the current-strategy option for an unlisted selection.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(
+        makeProps({ kind: 'idle' }, { strategyId: 'example-current-strategy' }),
       )}
     />
   ),
@@ -188,6 +223,24 @@ export const CompletedWithoutNotes: Story = {
             taskStrategyId: 'example-strategy-a',
             submittedPrompt: '架空銘柄の見立てを教えて',
             resultText: '分析結果の本文です。',
+          },
+        ),
+      )}
+    />
+  ),
+}
+
+export const CompletedWithoutReply: Story = {
+  name: 'shows the empty reply fallback after a task completes.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(
+        makeProps(
+          { kind: 'completed' },
+          {
+            taskStrategyId: 'example-strategy-a',
+            submittedPrompt: '架空銘柄の見立てを教えて',
+            resultText: '',
           },
         ),
       )}
