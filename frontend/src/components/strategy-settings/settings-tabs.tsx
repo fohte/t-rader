@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
-export const STRATEGY_SETTINGS_TABS = [
+const STRATEGY_SETTINGS_TABS = [
   { key: 'general', label: '全般' },
   { key: 'triggers', label: 'トリガー' },
   { key: 'indicators', label: '自作指標' },
