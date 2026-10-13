@@ -28,9 +28,19 @@ const stocks: DashboardPageViewProps['stocks'] = [
 
 const args: DashboardPageViewProps = {
   stats: [
-    { label: '総資産', value: '¥1,234,000' },
-    { label: '評価額 (株式・簿価)', value: '¥834,000' },
-    { label: '現金', value: '¥400,000' },
+    { label: '総資産 (時価)', value: '¥1,255,300' },
+    {
+      label: '評価額 (株式・時価)',
+      value: '¥629,000',
+      sub: '簿価 ¥620,000',
+    },
+    {
+      label: '含み損益',
+      value: '+¥9,000',
+      sub: '+1.5%',
+      cls: 'text-up',
+    },
+    { label: '現金', value: '¥626,300', sub: '49.9% 比率' },
     { label: '実現損益 (累計)', value: '+¥12,300', cls: 'text-up' },
   ],
   isStatsError: false,
@@ -40,6 +50,9 @@ const args: DashboardPageViewProps = {
       qty: 100,
       avg_cost: 3200,
       cost_basis: 320000,
+      current_price: 3350,
+      market_value: 335000,
+      unrealized_pnl: 15000,
       realized_pnl: 0,
     },
     {
@@ -47,6 +60,9 @@ const args: DashboardPageViewProps = {
       qty: 200,
       avg_cost: 1500,
       cost_basis: 300000,
+      current_price: 1470,
+      market_value: 294000,
+      unrealized_pnl: -6000,
       realized_pnl: -2500,
     },
   ],
@@ -178,6 +194,7 @@ const args: DashboardPageViewProps = {
 }
 
 const paths = [
+  '/portfolio',
   '/charts/$instrumentId',
   '/trades',
   '/calendar',
@@ -224,9 +241,15 @@ export const Empty: Story = {
   args: {
     ...args,
     stats: [
-      { label: '総資産', value: '¥0' },
-      { label: '評価額 (株式・簿価)', value: '¥0' },
-      { label: '現金', value: '¥0' },
+      { label: '総資産 (時価)', value: '¥0' },
+      { label: '評価額 (株式・時価)', value: '¥0', sub: '簿価 ¥0' },
+      {
+        label: '含み損益',
+        value: '¥0',
+        sub: '—',
+        cls: 'text-muted-foreground-strong',
+      },
+      { label: '現金', value: '¥0', sub: '— 比率' },
       { label: '実現損益 (累計)', value: '¥0' },
     ],
     positions: [],
@@ -238,6 +261,51 @@ export const Empty: Story = {
     events: [],
     notes: [],
     tasks: [],
+  },
+}
+
+export const MissingMarketValue: Story = {
+  name: 'shows unavailable portfolio totals and holdings without observed prices.',
+  args: {
+    ...args,
+    stats: [
+      { label: '総資産 (時価)', value: '—' },
+      {
+        label: '評価額 (株式・時価)',
+        value: '—',
+        sub: '簿価 ¥620,000',
+      },
+      {
+        label: '含み損益',
+        value: '—',
+        sub: '—',
+        cls: 'text-muted-foreground-strong',
+      },
+      { label: '現金', value: '¥626,300', sub: '— 比率' },
+      { label: '実現損益 (累計)', value: '+¥12,300', cls: 'text-up' },
+    ],
+    positions: [
+      {
+        symbol: '0000',
+        qty: 100,
+        avg_cost: 3200,
+        cost_basis: 320000,
+        current_price: null,
+        market_value: null,
+        unrealized_pnl: null,
+        realized_pnl: 0,
+      },
+      {
+        symbol: '0001',
+        qty: 200,
+        avg_cost: 1500,
+        cost_basis: 300000,
+        current_price: 1470,
+        market_value: 294000,
+        unrealized_pnl: -6000,
+        realized_pnl: -2500,
+      },
+    ],
   },
 }
 

@@ -8,8 +8,8 @@ import {
 } from '#components/calendar/calendar-date'
 import { DashboardPageView } from '#components/dashboard/dashboard-page-view'
 import { useReviewQueue } from '#components/dashboard/use-review-queue'
+import { calculatePortfolioValuation } from '#components/portfolio/portfolio-valuation'
 import type { StatItem } from '#components/portfolio/stat-row'
-import { formatYen, pnlColorClass } from '#components/trades/format'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
@@ -61,27 +61,17 @@ function DashboardRoute() {
       return null
     }
 
-    const equity = (positions ?? []).reduce(
-      (sum, position) => sum + position.cost_basis,
-      0,
-    )
-    const totalAssets = investableAmountQueries.reduce(
+    const investableAmount = investableAmountQueries.reduce(
       (sum, query) => sum + (query.data?.amount_jpy ?? 0),
       0,
     )
-    const cash = totalAssets - equity
     const realizedPnl = summaryQuery.data.realized_pnl
 
-    return [
-      { label: '総資産', value: formatYen(totalAssets) },
-      { label: '評価額 (株式・簿価)', value: formatYen(equity) },
-      { label: '現金', value: formatYen(cash) },
-      {
-        label: '実現損益 (累計)',
-        value: formatYen(realizedPnl, true),
-        cls: pnlColorClass(realizedPnl),
-      },
-    ]
+    return calculatePortfolioValuation(
+      positions ?? [],
+      investableAmount,
+      realizedPnl,
+    ).stats
   }, [
     investableAmountQueries,
     positions,

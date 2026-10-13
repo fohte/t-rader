@@ -13,12 +13,44 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Portfolio: Story = {
-  name: 'shows the four portfolio totals.',
+  name: 'shows the five market value and cash summary metrics.',
   args: {
     stats: [
-      { label: '総資産', value: '¥1,234,000' },
-      { label: '評価額 (株式・簿価)', value: '¥834,000' },
-      { label: '現金', value: '¥400,000' },
+      { label: '総資産 (時価)', value: '¥1,120,000' },
+      {
+        label: '評価額 (株式・時価)',
+        value: '¥710,000',
+        sub: '簿価 ¥680,000',
+      },
+      {
+        label: '含み損益',
+        value: '+¥30,000',
+        sub: '+4.4%',
+        cls: 'text-up',
+      },
+      { label: '現金', value: '¥410,000', sub: '36.6% 比率' },
+      { label: '実現損益 (累計)', value: '+¥12,300', cls: 'text-up' },
+    ],
+  },
+}
+
+export const MissingMarketValue: Story = {
+  name: 'shows unavailable totals when a holding has no observed price.',
+  args: {
+    stats: [
+      { label: '総資産 (時価)', value: '—' },
+      {
+        label: '評価額 (株式・時価)',
+        value: '—',
+        sub: '簿価 ¥680,000',
+      },
+      {
+        label: '含み損益',
+        value: '—',
+        sub: '—',
+        cls: 'text-muted-foreground-strong',
+      },
+      { label: '現金', value: '¥410,000', sub: '— 比率' },
       { label: '実現損益 (累計)', value: '+¥12,300', cls: 'text-up' },
     ],
   },
