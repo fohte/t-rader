@@ -7,7 +7,8 @@ mod tests {
     use crate::testing::find_current_note_version;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
-        insert_test_strategy, insert_test_strategy_task_step, set_test_note_version_execution_id,
+        insert_test_group_membership, insert_test_stock, insert_test_strategy,
+        insert_test_strategy_task_step, set_test_note_version_execution_id,
     };
     use axum::http::StatusCode;
     use axum_test::TestServer;
@@ -694,6 +695,16 @@ mod tests {
         db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
+        insert_test_stock(&db, "US:DEMO-A", "Demo issuer").await;
+        insert_test_group_membership(
+            &db,
+            "US:DEMO-A",
+            "demo-axis",
+            "demo-group",
+            "Demo group",
+            None,
+        )
+        .await;
         note_kind::ActiveModel {
             key: Set("demo-kind".into()),
             display_name: Set("demo-kind".into()),
@@ -746,6 +757,15 @@ mod tests {
             "llm",
         )
         .await;
+        create_test_note_for_ref_filter(
+            &server,
+            "group-only reference",
+            "[[group:demo-axis/demo-group]]",
+            None,
+            &[],
+            "human",
+        )
+        .await;
 
         let expected_note =
             |title: &str, body: &str, kind: Option<&str>, tags: &[&str], created_by_kind: &str| {
@@ -783,6 +803,13 @@ mod tests {
             &["demo-focus"],
             "llm",
         );
+        let group_only = expected_note(
+            "group-only reference",
+            "[[group:demo-axis/demo-group]]",
+            None,
+            &[],
+            "human",
+        );
         let cases = vec![
             ("/api/notes?ref=stock:US:DEMO-A", vec![matching.clone()]),
             (
@@ -791,7 +818,7 @@ mod tests {
             ),
             (
                 "/api/notes?ref=group:demo-axis/demo-group",
-                vec![matching.clone()],
+                vec![matching.clone(), group_only],
             ),
             (
                 "/api/notes?ref=indicator:DEMO_FX&status=approved&kind=demo-kind&tag=demo-focus",
@@ -816,6 +843,58 @@ mod tests {
         }
 
         assert_eq!(actual_cases, expected_cases);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_ignores_empty_ref(db: gateway_postgres::DatabaseHandle) {
+        let (_, server) = create_test_server_with_db(db).await;
+        create_test_note_for_ref_filter(
+            &server,
+            "referenced note",
+            "[[stock:DEMO-A]]",
+            None,
+            &[],
+            "human",
+        )
+        .await;
+        create_test_note_for_ref_filter(
+            &server,
+            "unreferenced note",
+            "plain text",
+            None,
+            &[],
+            "human",
+        )
+        .await;
+
+        let response = server.get("/api/notes?ref=").await;
+        let mut actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_note_response)
+            .collect::<Vec<_>>();
+        let mut expected = vec![
+            expected_note_for_ref_filter(
+                "referenced note",
+                "[[stock:DEMO-A]]",
+                json!({}),
+                None,
+                &[],
+                "human",
+            ),
+            expected_note_for_ref_filter(
+                "unreferenced note",
+                "plain text",
+                json!({}),
+                None,
+                &[],
+                "human",
+            ),
+        ];
+        actual.sort_by(|left, right| left["title"].as_str().cmp(&right["title"].as_str()));
+        expected.sort_by(|left, right| left["title"].as_str().cmp(&right["title"].as_str()));
+
+        assert_eq!((response.status_code(), actual), (StatusCode::OK, expected));
     }
 
     #[fixture]

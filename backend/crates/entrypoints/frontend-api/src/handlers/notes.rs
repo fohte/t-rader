@@ -60,6 +60,7 @@ pub async fn list_notes(
     let references = params
         .reference
         .as_deref()
+        .filter(|reference| !reference.is_empty())
         .map(parse_note_reference)
         .transpose()
         .map_err(|error| AppError::Validation(note_reference_error_message(error)))?
