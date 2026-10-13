@@ -114,3 +114,8 @@ export const Error: Story = {
   name: 'shows an error when review items cannot be loaded.',
   args: { data: null, isError: true, selectedItemIds: [] },
 }
+
+export const ApprovalError: Story = {
+  name: 'shows the items that remain after an approval fails.',
+  args: { hasApprovalError: true },
+}

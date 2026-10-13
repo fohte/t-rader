@@ -45,7 +45,7 @@ const items: ReviewQueueItem[] = [
 ]
 
 describe('useReviewApproval', () => {
-  function runSecondApprovalFailure() {
+  function startApprovalOfEveryItem() {
     const approvals: Array<{
       item: ReviewQueueItem
       callbacks: ReviewApprovalCallbacks
@@ -74,14 +74,28 @@ describe('useReviewApproval', () => {
     act(() => {
       result.current.actions.approveSelected()
     })
-    act(() => {
-      approvals[0]?.callbacks.onSuccess()
-    })
-    act(() => {
-      approvals[1]?.callbacks.onError()
-    })
-
     return { approvals, approveItem, invalidate, result }
+  }
+
+  function runSecondApprovalFailure() {
+    const attempt = startApprovalOfEveryItem()
+    act(() => {
+      attempt.approvals[0]?.callbacks.onSuccess()
+    })
+    act(() => {
+      attempt.approvals[1]?.callbacks.onError()
+    })
+    return attempt
+  }
+
+  function runAllApprovalsSuccessfully() {
+    const attempt = startApprovalOfEveryItem()
+    for (let index = 0; index < items.length; index += 1) {
+      act(() => {
+        attempt.approvals[index]?.callbacks.onSuccess()
+      })
+    }
+    return attempt
   }
 
   it('stops after the first failed approval', () => {
@@ -104,6 +118,34 @@ describe('useReviewApproval', () => {
 
   it('invalidates the review queue after a failed approval', () => {
     const { invalidate } = runSecondApprovalFailure()
+
+    expect(invalidate.mock.calls).toEqual([[]])
+  })
+
+  it('attempts every selected item after successful approvals', () => {
+    const { approveItem } = runAllApprovalsSuccessfully()
+
+    expect(
+      approveItem.mock.calls.map(([item]) => reviewQueueItemKey(item)),
+    ).toEqual([
+      'note:fake-version-a',
+      'annotation:fake-annotation-b',
+      'note:fake-version-c',
+    ])
+  })
+
+  it('clears selection and resets the approval state after all approvals succeed', () => {
+    const { result } = runAllApprovalsSuccessfully()
+
+    expect(result.current.state).toEqual({
+      selectedItemIds: [],
+      isApproving: false,
+      hasApprovalError: false,
+    })
+  })
+
+  it('invalidates the review queue once after all approvals succeed', () => {
+    const { invalidate } = runAllApprovalsSuccessfully()
 
     expect(invalidate.mock.calls).toEqual([[]])
   })
