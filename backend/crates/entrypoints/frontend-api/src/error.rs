@@ -275,6 +275,36 @@ mod tests {
     }
 
     #[rstest]
+    #[case::reversed(
+        PortfolioHistoryUseCaseError::ReversedDateRange,
+        "from must be on or before to"
+    )]
+    #[case::too_long(
+        PortfolioHistoryUseCaseError::DateRangeTooLong { max_days: 3_660 },
+        "date range must not exceed 3660 days",
+    )]
+    #[tokio::test]
+    async fn portfolio_history_range_errors_map_to_http_validation_responses(
+        #[case] error: PortfolioHistoryUseCaseError,
+        #[case] expected_message: &str,
+    ) {
+        let response = AppError::from(error).into_response();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse response body");
+
+        assert_eq!(
+            (status, body),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": expected_message }),
+            ),
+        );
+    }
+
+    #[rstest]
     fn test_service_unavailable_returns_503() {
         let error = AppError::ServiceUnavailable("data provider is not configured".into());
         let response = error.into_response();
