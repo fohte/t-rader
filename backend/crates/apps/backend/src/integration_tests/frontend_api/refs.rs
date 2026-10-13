@@ -121,33 +121,18 @@ mod tests {
     }
 
     #[rstest]
-    #[tokio::test]
-    async fn get_indicator_observations_returns_all_rows_when_dates_are_omitted(
-        #[future] indicator_observations_context: (
-            gateway_postgres::DatabaseHandle,
-            axum_test::TestServer,
-        ),
-    ) {
-        let (_, server) = indicator_observations_context.await;
-
-        let response = server
-            .get("/api/refs/indicators/DEMO_INDICATOR/observations")
-            .await;
-
-        assert_response_eq(
-            &response,
-            axum::http::StatusCode::OK,
-            Some(json!([
-                { "date": "2040-01-01", "value": 10 },
-                { "date": "2040-01-02", "value": 20 },
-                { "date": "2040-01-03", "value": 30 },
-            ])),
-        );
-    }
-
-    #[rstest]
+    #[case::no_bounds(
+        "",
+        axum::http::StatusCode::OK,
+        json!([
+            { "date": "2040-01-01", "value": 10 },
+            { "date": "2040-01-02", "value": 20 },
+            { "date": "2040-01-03", "value": 30 },
+        ]),
+    )]
     #[case::from_only(
         "?from=2040-01-02",
+        axum::http::StatusCode::OK,
         json!([
             { "date": "2040-01-02", "value": 20 },
             { "date": "2040-01-03", "value": 30 },
@@ -155,18 +140,33 @@ mod tests {
     )]
     #[case::to_only(
         "?to=2040-01-02",
+        axum::http::StatusCode::OK,
         json!([
             { "date": "2040-01-01", "value": 10 },
             { "date": "2040-01-02", "value": 20 },
         ]),
     )]
+    #[case::both_bounds(
+        "?from=2040-01-02&to=2040-01-03",
+        axum::http::StatusCode::OK,
+        json!([
+            { "date": "2040-01-02", "value": 20 },
+            { "date": "2040-01-03", "value": 30 },
+        ]),
+    )]
+    #[case::reversed_range(
+        "?from=2040-01-03&to=2040-01-02",
+        axum::http::StatusCode::BAD_REQUEST,
+        json!({ "error": "from must be on or before to" }),
+    )]
     #[tokio::test]
-    async fn get_indicator_observations_applies_each_optional_bound(
+    async fn get_indicator_observations_handles_optional_bounds_and_invalid_ranges(
         #[future] indicator_observations_context: (
             gateway_postgres::DatabaseHandle,
             axum_test::TestServer,
         ),
         #[case] query: &str,
+        #[case] expected_status: axum::http::StatusCode,
         #[case] expected: Value,
     ) {
         let (_, server) = indicator_observations_context.await;
@@ -177,31 +177,7 @@ mod tests {
             ))
             .await;
 
-        assert_response_eq(&response, axum::http::StatusCode::OK, Some(expected));
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn get_indicator_observations_filters_to_an_inclusive_date_range(
-        #[future] indicator_observations_context: (
-            gateway_postgres::DatabaseHandle,
-            axum_test::TestServer,
-        ),
-    ) {
-        let (_, server) = indicator_observations_context.await;
-
-        let response = server
-            .get("/api/refs/indicators/DEMO_INDICATOR/observations?from=2040-01-02&to=2040-01-03")
-            .await;
-
-        assert_response_eq(
-            &response,
-            axum::http::StatusCode::OK,
-            Some(json!([
-                { "date": "2040-01-02", "value": 20 },
-                { "date": "2040-01-03", "value": 30 },
-            ])),
-        );
+        assert_response_eq(&response, expected_status, Some(expected));
     }
 
     #[backend_test_macros::database_test]
