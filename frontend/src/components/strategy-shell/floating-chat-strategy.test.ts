@@ -10,6 +10,31 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
+function readStorageFailureOutput() {
+  const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    get() {
+      throw new Error('storage unavailable')
+    },
+  })
+
+  let storedStrategyId: string | null = 'unexpected'
+  let writeCompleted = false
+  try {
+    storedStrategyId = readLastUsedStrategyId()
+    saveLastUsedStrategyId('strategy-previous')
+    writeCompleted = true
+  } finally {
+    if (descriptor == null) {
+      Reflect.deleteProperty(window, 'localStorage')
+    } else {
+      Object.defineProperty(window, 'localStorage', descriptor)
+    }
+  }
+  return { storedStrategyId, writeCompleted }
+}
+
 describe('floating chat strategy selection', () => {
   it('uses the current strategy before the last sent strategy', () => {
     expect(
@@ -45,5 +70,12 @@ describe('floating chat strategy selection', () => {
     saveLastUsedStrategyId('strategy-previous')
 
     expect(readLastUsedStrategyId()).toBe('strategy-previous')
+  })
+
+  it('keeps storage failures from interrupting chat use', () => {
+    expect(readStorageFailureOutput()).toEqual({
+      storedStrategyId: null,
+      writeCompleted: true,
+    })
   })
 })

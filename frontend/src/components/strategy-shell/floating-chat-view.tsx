@@ -145,7 +145,6 @@ export function FloatingChatView({
         <FloatingChatStatusBlock
           status={status}
           notes={notes}
-          strategyId={taskStrategyId}
           resultText={resultText}
         />
         {taskStrategyId != null && currentTaskId != null && (
@@ -201,12 +200,10 @@ export function FloatingChatView({
 function FloatingChatStatusBlock({
   status,
   notes,
-  strategyId,
   resultText,
 }: {
   status: FloatingChatStatus
   notes: FloatingChatNote[]
-  strategyId: string | null
   resultText: string | null
 }): React.ReactElement {
   switch (status.kind) {
@@ -242,7 +239,7 @@ function FloatingChatStatusBlock({
               <MarkdownBody source={resultText} />
             </div>
           )}
-          <FloatingChatNoteList notes={notes} strategyId={strategyId} />
+          <FloatingChatNoteList notes={notes} />
         </div>
       )
     case 'failed':
@@ -278,12 +275,10 @@ function StatusLine({
 
 function FloatingChatNoteList({
   notes,
-  strategyId,
 }: {
   notes: FloatingChatNote[]
-  strategyId: string | null
 }): React.ReactElement {
-  if (strategyId == null || notes.length === 0) {
+  if (notes.length === 0) {
     return (
       <p className="font-mono text-2xs text-muted-foreground">
         生成ノートはまだ取得できていません。

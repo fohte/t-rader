@@ -110,7 +110,10 @@ function readCompletedOutput(container: HTMLElement) {
       ...container.querySelectorAll<HTMLElement>('[data-message-role]'),
     ].map((message) => ({
       role: message.dataset.messageRole,
-      text: message.dataset.messageRole === 'user' ? message.textContent : null,
+      text:
+        message.dataset.messageRole === 'user' || message.matches('p')
+          ? message.textContent
+          : null,
       paragraphs: [...message.querySelectorAll('p')].map(
         (paragraph) => paragraph.textContent,
       ),
@@ -124,6 +127,10 @@ function readCompletedOutput(container: HTMLElement) {
       href: link.getAttribute('href'),
       label: link.firstElementChild?.textContent,
     })),
+    noteFallbackVisible: [...container.querySelectorAll('p')].some(
+      (paragraph) =>
+        paragraph.textContent === '生成ノートはまだ取得できていません。',
+    ),
   }
 }
 
@@ -285,19 +292,33 @@ describe('FloatingChatView', () => {
           label: '架空銘柄の分析メモ',
         },
       ],
+      noteFallbackVisible: false,
     })
   })
 
-  it('completed でもノートが空ならフォールバック文言を出す', async () => {
-    await renderInRouter(
+  it('completed で返信とノートが空なら両方のフォールバックを表示する', async () => {
+    const container = await renderInRouter(
       <FloatingChatView
-        {...makeProps({ status: { kind: 'completed' }, notes: [] })}
+        {...makeProps({
+          status: { kind: 'completed' },
+          resultText: null,
+          notes: [],
+        })}
       />,
     )
 
-    expect(
-      screen.getByText('生成ノートはまだ取得できていません。'),
-    ).toBeInTheDocument()
+    expect(readCompletedOutput(container)).toEqual({
+      messages: [
+        {
+          role: 'assistant',
+          text: '返信本文はありません。',
+          paragraphs: [],
+          strong: [],
+        },
+      ],
+      noteLinks: [],
+      noteFallbackVisible: true,
+    })
   })
 
   it('failed では error_summary を表示する', async () => {
