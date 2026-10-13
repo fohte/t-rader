@@ -16,7 +16,8 @@ use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
-    CreateTradeRequest, PerformanceSummary, TradeListItem, TradeResponse, UpdateTradeRequest,
+    CreateTradeRequest, PerformanceSummary, TradeDetailResponse, TradeListItem, TradeResponse,
+    UpdateTradeRequest,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -72,7 +73,7 @@ pub async fn list_trades(
     tag = "trades",
     params(("id" = Uuid, Path, description = "取引 ID")),
     responses(
-        (status = 200, body = TradeResponse),
+        (status = 200, body = TradeDetailResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -81,10 +82,10 @@ pub async fn list_trades(
 pub async fn get_trade(
     State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
-) -> Result<Json<TradeResponse>, AppError> {
+) -> Result<Json<TradeDetailResponse>, AppError> {
     let trade = state
         .trade_use_cases
-        .get(id)
+        .get_detail(id)
         .await
         .map_err(map_trade_error)?;
     Ok(Json(trade.into()))

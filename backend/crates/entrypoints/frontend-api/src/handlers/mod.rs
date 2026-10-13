@@ -20,6 +20,7 @@ pub mod portfolio_history;
 pub mod refs;
 pub mod risk_policy;
 pub mod rss_feeds;
+pub mod stock_info;
 pub mod strategies;
 pub mod tasks;
 pub mod trade_notes;
