@@ -251,12 +251,27 @@ type GraphNode struct {
 	Y nullable.Nullable[float64] `json:"y,omitempty"`
 }
 
+// Group defines model for Group.
+type Group struct {
+	Axis        GroupAxisReference        `json:"axis"`
+	Description nullable.Nullable[string] `json:"description,omitempty"`
+	Key         string                    `json:"key"`
+	Name        string                    `json:"name"`
+	Stocks      []GroupStockReference     `json:"stocks"`
+}
+
 // GroupAxis defines model for GroupAxis.
 type GroupAxis struct {
 	DeriveFrom  nullable.Nullable[string] `json:"derive_from,omitempty"`
 	Description string                    `json:"description"`
 	Key         string                    `json:"key"`
 	Name        string                    `json:"name"`
+}
+
+// GroupAxisReference defines model for GroupAxisReference.
+type GroupAxisReference struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // GroupRatio defines model for GroupRatio.
@@ -266,6 +281,12 @@ type GroupRatio struct {
 
 	// Ratio 分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。
 	Ratio float64 `json:"ratio"`
+}
+
+// GroupStockReference defines model for GroupStockReference.
+type GroupStockReference struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // HookResponse hook 受信レスポンス。
@@ -1184,6 +1205,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
 	GetPaperAccountPortfolio(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRefGroup group 詳細
+	//
+	// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+	GetRefGroup(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListIndicators indicator 検索
 	//
@@ -2287,6 +2313,21 @@ func (c *OpenAPIClient) GetPaperAccountStats(ctx context.Context, reqEditors ...
 // Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
 func (c *OpenAPIClient) GetPaperAccountPortfolio(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPaperAccountPortfolioRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRefGroup group 詳細
+//
+// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+func (c *OpenAPIClient) GetRefGroup(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRefGroupRequest(c.Server, axisKey, groupKey)
 	if err != nil {
 		return nil, err
 	}
@@ -4314,6 +4355,47 @@ func NewGetPaperAccountPortfolioRequest(server string, id openapi_types.UUID) (*
 	return req, nil
 }
 
+// NewGetRefGroupRequest constructs an http.Request for the GetRefGroup method
+func NewGetRefGroupRequest(server string, axisKey string, groupKey string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "axis_key", axisKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "group_key", groupKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/groups/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListIndicatorsRequest constructs an http.Request for the ListIndicators method
 func NewListIndicatorsRequest(server string, params *ListIndicatorsParams) (*http.Request, error) {
 	var err error
@@ -6084,6 +6166,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
 	GetPaperAccountPortfolioWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetPaperAccountPortfolioResult, error)
+
+	// GetRefGroupWithResponse group 詳細
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+	GetRefGroupWithResponse(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*GetRefGroupResult, error)
 
 	// ListIndicatorsWithResponse indicator 検索
 	//
@@ -8626,6 +8715,68 @@ func (r GetPaperAccountPortfolioResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetPaperAccountPortfolioResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRefGroupResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Group
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRefGroupResult) GetJSON200() *Group {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetRefGroupResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetRefGroupResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetRefGroupResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRefGroupResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRefGroupResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRefGroupResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRefGroupResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11373,6 +11524,19 @@ func (c *ClientWithResponses) GetPaperAccountPortfolioWithResponse(ctx context.C
 	return ParseGetPaperAccountPortfolioResult(rsp)
 }
 
+// GetRefGroupWithResponse group 詳細
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+func (c *ClientWithResponses) GetRefGroupWithResponse(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*GetRefGroupResult, error) {
+	rsp, err := c.GetRefGroup(ctx, axisKey, groupKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRefGroupResult(rsp)
+}
+
 // ListIndicatorsWithResponse indicator 検索
 //
 // Returns a wrapper object for the known response body format(s).
@@ -13618,6 +13782,53 @@ func ParseGetPaperAccountPortfolioResult(rsp *http.Response) (*GetPaperAccountPo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest PaperAccountPortfolio
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRefGroupResult parses an HTTP response from a GetRefGroupWithResponse call
+func ParseGetRefGroupResult(rsp *http.Response) (*GetRefGroupResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRefGroupResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Group
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
