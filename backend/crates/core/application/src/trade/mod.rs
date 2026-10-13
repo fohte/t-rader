@@ -1,4 +1,5 @@
 mod error;
+mod fifo;
 mod import;
 mod repository;
 mod trade_notes;
