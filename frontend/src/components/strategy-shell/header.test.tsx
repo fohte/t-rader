@@ -71,6 +71,34 @@ function getMenuOutput(menuButton: HTMLElement, navigation: HTMLElement) {
   }
 }
 
+function getExpectedMenuOutput(
+  activeLabel: string,
+  calendarHref = '/calendar',
+) {
+  return {
+    menuActive: true,
+    links: [
+      { label: 'ノート', href: '/notes', active: activeLabel === 'ノート' },
+      { label: '戦略', href: '/strategies', active: activeLabel === '戦略' },
+      {
+        label: 'ペーパートレード',
+        href: '/paper-trading',
+        active: activeLabel === 'ペーパートレード',
+      },
+      {
+        label: 'カレンダー',
+        href: calendarHref,
+        active: activeLabel === 'カレンダー',
+      },
+      {
+        label: '全体の設定',
+        href: '/settings',
+        active: activeLabel === '全体の設定',
+      },
+    ],
+  }
+}
+
 function getMenuTransitionOutput(pathname: string, menuButton: HTMLElement) {
   return {
     pathname,
@@ -253,47 +281,46 @@ describe('Header', () => {
     })
   })
 
-  it('メニュー内の画面ではメニューボタンと該当項目を active にする', async () => {
-    renderHeader('/settings/rss-feeds')
-    const menuButton = await screen.findByRole('button', { name: 'メニュー' })
-    const user = userEvent.setup()
-    await user.click(menuButton)
-    const navigation = await screen.findByRole('navigation', {
-      name: 'その他のページ',
-    })
+  it.each([
+    { pageName: '戦略一覧', path: '/strategies', activeLabel: '戦略' },
+    {
+      pageName: '戦略ページ',
+      path: PERFORMANCE_PATH,
+      activeLabel: '戦略',
+      calendarHref: `/calendar?strategy=${STRATEGY_ID}`,
+    },
+    {
+      pageName: 'ペーパートレード',
+      path: '/paper-trading',
+      activeLabel: 'ペーパートレード',
+    },
+    { pageName: 'カレンダー', path: '/calendar', activeLabel: 'カレンダー' },
+    {
+      pageName: '全体の設定',
+      path: '/settings/rss-feeds',
+      activeLabel: '全体の設定',
+    },
+    {
+      pageName: 'アノテーション詳細',
+      path: '/annotations/demo-annotation',
+      activeLabel: 'ノート',
+    },
+  ])(
+    '$pageName ではメニューと該当項目を active にする',
+    async ({ path, activeLabel, calendarHref }) => {
+      renderHeader(path)
+      const menuButton = await screen.findByRole('button', { name: 'メニュー' })
+      const user = userEvent.setup()
+      await user.click(menuButton)
+      const navigation = await screen.findByRole('navigation', {
+        name: 'その他のページ',
+      })
 
-    expect(getMenuOutput(menuButton, navigation)).toEqual({
-      menuActive: true,
-      links: [
-        { label: 'ノート', href: '/notes', active: false },
-        { label: '戦略', href: '/strategies', active: false },
-        { label: 'ペーパートレード', href: '/paper-trading', active: false },
-        { label: 'カレンダー', href: '/calendar', active: false },
-        { label: '全体の設定', href: '/settings', active: true },
-      ],
-    })
-  })
-
-  it('アノテーション詳細ではメニューとノートを active にする', async () => {
-    renderHeader('/annotations/demo-annotation')
-    const menuButton = await screen.findByRole('button', { name: 'メニュー' })
-    const user = userEvent.setup()
-    await user.click(menuButton)
-    const navigation = await screen.findByRole('navigation', {
-      name: 'その他のページ',
-    })
-
-    expect(getMenuOutput(menuButton, navigation)).toEqual({
-      menuActive: true,
-      links: [
-        { label: 'ノート', href: '/notes', active: true },
-        { label: '戦略', href: '/strategies', active: false },
-        { label: 'ペーパートレード', href: '/paper-trading', active: false },
-        { label: 'カレンダー', href: '/calendar', active: false },
-        { label: '全体の設定', href: '/settings', active: false },
-      ],
-    })
-  })
+      expect(getMenuOutput(menuButton, navigation)).toEqual(
+        getExpectedMenuOutput(activeLabel, calendarHref),
+      )
+    },
+  )
 
   it.each([
     {
