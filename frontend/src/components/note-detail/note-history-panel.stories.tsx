@@ -69,6 +69,13 @@ const metadataUpdateHistory: ChangeHistory = {
   created_at: '2026-10-13T12:00:00Z',
 }
 
+const eventBeforeFirstVersionHistory: ChangeHistory = {
+  ...metadataUpdateHistory,
+  id: 'fixture-history-before-first-version',
+  summary: 'ノート情報を更新しました。',
+  created_at: '2026-10-09T12:00:00Z',
+}
+
 const currentVersionChangeHistory: ChangeHistory = {
   ...approvalHistory,
   id: 'fixture-history-current-version-change',
@@ -175,6 +182,11 @@ export const SupersededVersion: Story = {
 export const UnversionedEvent: Story = {
   name: 'attaches an update to the newest version created before it.',
   args: { history: [metadataUpdateHistory] },
+}
+
+export const EventBeforeFirstVersion: Story = {
+  name: 'shows an event older than every listed version at the end.',
+  args: { history: [eventBeforeFirstVersionHistory] },
 }
 
 export const MultipleEventsOnVersion: Story = {
