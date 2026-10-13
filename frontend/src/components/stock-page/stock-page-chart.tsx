@@ -33,12 +33,22 @@ export function StockPageChart({
 }) {
   return (
     <section className="min-w-0 space-y-2" aria-label="銘柄チャート">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           <span className="mr-2 text-primary">&gt;</span>
           チャート
         </h2>
-        <TimeframeSelector value={timeframe} onChange={onTimeframeChange} />
+        <TimeframeSelector
+          value={timeframe}
+          onChange={onTimeframeChange}
+          className="hidden sm:inline-flex"
+        />
+        <TimeframeSelector
+          value={timeframe}
+          onChange={onTimeframeChange}
+          variant="compact"
+          className="sm:hidden"
+        />
       </div>
       {isLoading ? (
         <Skeleton className="h-55 w-full sm:h-110 lg:h-120" />
