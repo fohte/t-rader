@@ -1047,6 +1047,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "created_by_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3522,7 +3538,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/NoteVersion"
+                    "$ref": "#/components/schemas/PendingNoteVersion"
                   }
                 }
               }
@@ -9977,6 +9993,33 @@
             "format": "double"
           }
         }
+      },
+      "PendingNoteVersion": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NoteVersion"
+          },
+          {
+            "type": "object",
+            "required": [
+              "tags"
+            ],
+            "properties": {
+              "kind": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
       },
       "PerformanceSummary": {
         "type": "object",

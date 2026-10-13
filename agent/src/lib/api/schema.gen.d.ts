@@ -2024,6 +2024,10 @@ export interface components {
       /** Format: double */
       unrealized_pnl_jpy: number
     }
+    PendingNoteVersion: components['schemas']['NoteVersion'] & {
+      kind?: string | null
+      tags: string[]
+    }
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
       positions: components['schemas']['PositionSummary'][]
@@ -3267,6 +3271,8 @@ export interface operations {
     parameters: {
       query?: {
         target_symbol?: string
+        status?: string
+        created_by_kind?: string
       }
       header?: never
       path?: never
@@ -5157,7 +5163,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['NoteVersion'][]
+          'application/json': components['schemas']['PendingNoteVersion'][]
         }
       }
       500: {

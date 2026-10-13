@@ -51,7 +51,7 @@ pub use import::{
 pub use ingest_status::IngestStatusResponse;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use note_kind::NoteKindResponse;
-pub use note_version::NoteVersionResponse;
+pub use note_version::{NoteVersionResponse, PendingNoteVersionResponse};
 pub use paper_account::{
     CreatePaperAccountRequest, PaperAccountPortfolioResponse, PaperAccountResponse,
     PaperAccountStatsResponse,

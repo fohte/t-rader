@@ -95,6 +95,8 @@ impl StrategyServer {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
+            status: None,
+            created_by_kind: None,
             limit: Some(clamp_limit(params.limit)),
         };
         let annotations = self
