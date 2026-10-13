@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Plus, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { AssetTabs } from '#components/assets/asset-tabs'
 import { ImportSbiDialog } from '#components/trades/import-sbi-dialog'
 import {
   type StrategyFilter,
@@ -93,6 +94,8 @@ function TradesPage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
+      <AssetTabs activeTab="trades" />
+
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
           <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
