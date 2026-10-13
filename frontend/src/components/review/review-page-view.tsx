@@ -93,7 +93,6 @@ export function ReviewPageView({
     visibleKeys,
     allVisibleSelected,
     selectedCount,
-    noteKindFilter: effectiveNoteKindFilter,
   } = reviewQueueModel.buildPage({
     items: data?.items ?? [],
     typeFilter,
@@ -159,7 +158,7 @@ export function ReviewPageView({
           ノート種別
           <select
             aria-label="ノート種別で絞り込む"
-            value={effectiveNoteKindFilter}
+            value={noteKindFilter}
             disabled={typeFilter === 'annotation'}
             onChange={(event) => {
               onNoteKindFilterChange(event.currentTarget.value)

@@ -183,11 +183,10 @@ describe('reviewQueueModel.buildPage', () => {
       visibleKeys: ['note:fake-version-b'],
       allVisibleSelected: true,
       selectedCount: 2,
-      noteKindFilter: 'none',
     })
   })
 
-  it('falls back to all note kinds when the selected kind disappears', () => {
+  it('normalizes the filter when its note kind disappears', () => {
     const items: ReviewQueueItem[] = [
       {
         kind: 'note',
@@ -204,20 +203,8 @@ describe('reviewQueueModel.buildPage', () => {
     ]
 
     expect(
-      reviewQueueModel.buildPage({
-        items,
-        typeFilter: 'all',
-        noteKindFilter: 'value:以前の種別',
-        selectedItemIds: [],
-      }),
-    ).toEqual({
-      visibleItems: items,
-      noteKinds: ['別の架空種別'],
-      visibleKeys: ['note:fake-version-a', 'annotation:fake-annotation-a'],
-      allVisibleSelected: false,
-      selectedCount: 0,
-      noteKindFilter: 'all',
-    })
+      reviewQueueModel.normalizeNoteKindFilter(items, 'value:以前の種別'),
+    ).toEqual('all')
   })
 })
 

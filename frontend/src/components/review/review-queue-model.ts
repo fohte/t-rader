@@ -231,7 +231,6 @@ function buildReviewPageModel({
   visibleKeys: string[]
   allVisibleSelected: boolean
   selectedCount: number
-  noteKindFilter: string
 } {
   const noteKinds = [
     ...new Set(
@@ -243,16 +242,12 @@ function buildReviewPageModel({
         .map((item) => item.noteKind),
     ),
   ]
-  const effectiveNoteKindFilter = normalizeReviewNoteKindFilter(
-    items,
-    noteKindFilter,
-  )
   const visibleItems = items.filter((item) => {
     const matchesType = typeFilter === 'all' || item.kind === typeFilter
     const matchesNoteKind =
       item.kind !== 'note' ||
-      effectiveNoteKindFilter === 'all' ||
-      reviewNoteKindFilterKey(item.noteKind) === effectiveNoteKindFilter
+      noteKindFilter === 'all' ||
+      reviewNoteKindFilterKey(item.noteKind) === noteKindFilter
     return matchesType && matchesNoteKind
   })
   const selectedKeys = new Set(selectedItemIds)
@@ -268,7 +263,6 @@ function buildReviewPageModel({
     selectedCount: items.filter((item) =>
       selectedKeys.has(reviewQueueItemKey(item)),
     ).length,
-    noteKindFilter: effectiveNoteKindFilter,
   }
 }
 
