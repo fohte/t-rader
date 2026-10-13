@@ -6,7 +6,10 @@ import {
   ReviewPageView,
   type ReviewPageViewProps,
 } from '#components/review/review-page-view'
-import type { ReviewQueueData } from '#components/review/review-queue-model'
+import {
+  type ReviewQueueData,
+  reviewQueueModel,
+} from '#components/review/review-queue-model'
 import { createStoryRouter } from '#storybook/story-router'
 
 const data: ReviewQueueData = {
@@ -111,7 +114,7 @@ export const NoteKindFilter: Story = {
   name: 'the note tab shows only notes with the selected kind.',
   args: {
     typeFilter: 'note',
-    noteKindFilter: '架空の種別',
+    noteKindFilter: reviewQueueModel.noteKindFilterKey('架空の種別'),
     selectedItemIds: [],
   },
 }
