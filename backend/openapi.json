@@ -8313,7 +8313,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "省略時は `created_by_kind` が \"human\" なら \"approved\"、\"llm\" なら \"unread\"。"
           },
           "target_kind": {
             "type": "string"

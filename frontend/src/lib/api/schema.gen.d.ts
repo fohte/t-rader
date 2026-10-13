@@ -1513,6 +1513,7 @@ export interface components {
       linked_note_id?: string | null
       /** Format: double */
       price?: number | null
+      /** @description 省略時は `created_by_kind` が "human" なら "approved"、"llm" なら "unread"。 */
       status?: string | null
       target_kind: string
       target_symbol: string
