@@ -236,6 +236,18 @@ mod tests {
 
     use super::*;
 
+    async fn response_parts(error: impl Into<AppError>) -> (StatusCode, serde_json::Value) {
+        let response = error.into().into_response();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        (
+            status,
+            serde_json::from_slice(&body).expect("parse response body"),
+        )
+    }
+
     #[rstest]
     #[case::not_found(
         DailyBarSourceError::NotFound("sample instrument not found".to_string()),
@@ -258,15 +270,8 @@ mod tests {
         #[case] expected_status: StatusCode,
         #[case] expected_message: &str,
     ) {
-        let response = AppError::from(error).into_response();
-        let status = response.status();
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read response body");
-        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse response body");
-
         assert_eq!(
-            (status, body),
+            response_parts(error).await,
             (
                 expected_status,
                 serde_json::json!({ "error": expected_message }),
@@ -288,15 +293,8 @@ mod tests {
         #[case] error: PortfolioHistoryUseCaseError,
         #[case] expected_message: &str,
     ) {
-        let response = AppError::from(error).into_response();
-        let status = response.status();
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read response body");
-        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse response body");
-
         assert_eq!(
-            (status, body),
+            response_parts(error).await,
             (
                 StatusCode::BAD_REQUEST,
                 json!({ "error": expected_message }),
@@ -313,15 +311,8 @@ mod tests {
 
     #[tokio::test]
     async fn internal_error_maps_to_http_internal_response() {
-        let response = AppError::Internal("database unavailable".into()).into_response();
-        let status = response.status();
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read body");
-        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
-
         assert_eq!(
-            (status, body),
+            response_parts(AppError::Internal("database unavailable".into())).await,
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": "internal server error" }),
@@ -334,15 +325,8 @@ mod tests {
         let error =
             parse_risk_policy::<AccountRiskPolicyData>(json!({ "max_group_ratios": "invalid" }))
                 .expect_err("malformed policy must fail to parse");
-        let response = AppError::from(error).into_response();
-        let status = response.status();
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read body");
-        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse json body");
-
         assert_eq!(
-            (status, body),
+            response_parts(error).await,
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": "internal server error" }),
