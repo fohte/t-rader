@@ -116,7 +116,7 @@ const buildCompiledAgent = (
       // 通常の ToolMessage に戻しつつ MCP の通信障害を記録する。
       createStrategyToolErrorMiddleware(),
       finalTurnMiddleware,
-      // finalTurnMiddleware より内側 (モデル呼び出しに最も近い位置) に置き、
+      // finalTurnMiddleware より内側に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
       stripMessageNameMiddleware,
