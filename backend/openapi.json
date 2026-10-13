@@ -4706,6 +4706,77 @@
         }
       }
     },
+    "/api/refs/groups/{axis_key}/{group_key}": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "group 詳細",
+        "operationId": "get_ref_group",
+        "parameters": [
+          {
+            "name": "axis_key",
+            "in": "path",
+            "description": "グループ軸の key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group_key",
+            "in": "path",
+            "description": "グループの key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/refs/indicators": {
       "get": {
         "tags": [
@@ -9000,6 +9071,38 @@
         },
         "additionalProperties": false
       },
+      "Group": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "axis",
+          "stocks"
+        ],
+        "properties": {
+          "axis": {
+            "$ref": "#/components/schemas/GroupAxisReference"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupStockReference"
+            }
+          }
+        }
+      },
       "GroupAxis": {
         "type": "object",
         "required": [
@@ -9025,6 +9128,21 @@
           }
         }
       },
+      "GroupAxisReference": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "GroupRatio": {
         "type": "object",
         "required": [
@@ -9040,6 +9158,21 @@
             "type": "number",
             "format": "double",
             "description": "分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。"
+          }
+        }
+      },
+      "GroupStockReference": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },

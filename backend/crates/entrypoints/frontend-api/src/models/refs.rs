@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset};
 use core_application::refs::{IndicatorRef, ResolvedRef, StockRef};
+use core_application::stock_group::StockGroupDetail;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -45,6 +46,50 @@ impl From<IndicatorRef> for IndicatorResponse {
             id: model.id,
             name: model.name,
             kind: model.kind,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = Group)]
+pub struct GroupResponse {
+    pub key: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub axis: GroupAxisReference,
+    pub stocks: Vec<GroupStockReference>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GroupAxisReference {
+    pub key: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GroupStockReference {
+    pub id: String,
+    pub name: String,
+}
+
+impl From<StockGroupDetail> for GroupResponse {
+    fn from(detail: StockGroupDetail) -> Self {
+        Self {
+            key: detail.group.key,
+            name: detail.group.name,
+            description: detail.group.description,
+            axis: GroupAxisReference {
+                key: detail.group.axis_key,
+                name: detail.axis_name,
+            },
+            stocks: detail
+                .stocks
+                .into_iter()
+                .map(|stock| GroupStockReference {
+                    id: stock.id,
+                    name: stock.name,
+                })
+                .collect(),
         }
     }
 }

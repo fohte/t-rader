@@ -1,7 +1,11 @@
 #[cfg(test)]
 mod tests {
     use super::super::assert_response_eq;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
+
+    use gateway_postgres::entities::{stock_group, stock_group_member};
 
     use crate::testing::{
         create_test_server_with_db, insert_test_group, insert_test_group_membership,
@@ -97,6 +101,100 @@ mod tests {
                 "id": "demo-axis/demo-group",
                 "name": "Sample Group",
             }])),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_group_returns_axis_group_and_stock_details(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        insert_test_stock(&db, "DEMO-001", "Demo Alpha").await;
+        insert_test_stock(&db, "DEMO-002", "Demo Beta").await;
+        insert_test_group_membership(
+            &db,
+            "DEMO-002",
+            "demo-axis",
+            "demo-group",
+            "Sample Group",
+            None,
+        )
+        .await;
+        let group = stock_group::Entity::find()
+            .filter(stock_group::Column::Key.eq("demo-group"))
+            .one(&db)
+            .await
+            .expect("find test group")
+            .expect("test group exists");
+        let group_id = group.id;
+        let mut group: stock_group::ActiveModel = group.into();
+        group.description = Set(Some("A synthetic group description".into()));
+        group.update(&db).await.expect("update test group");
+        stock_group_member::ActiveModel {
+            stock_id: Set("DEMO-001".into()),
+            group_id: Set(group_id),
+            created_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test group membership");
+
+        let response = server.get("/api/refs/groups/demo-axis/demo-group").await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(json!({
+                "key": "demo-group",
+                "name": "Sample Group",
+                "description": "A synthetic group description",
+                "axis": {
+                    "key": "demo-axis",
+                    "name": "Sample Axis",
+                },
+                "stocks": [
+                    { "id": "DEMO-001", "name": "Demo Alpha" },
+                    { "id": "DEMO-002", "name": "Demo Beta" },
+                ],
+            })),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_group_returns_404_for_missing_axis_or_group(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        insert_test_group(&db, "demo-axis", "existing-group", "Existing Group").await;
+        insert_test_group(&db, "other-axis", "missing-group", "Group On Other Axis").await;
+
+        let missing_axis = server.get("/api/refs/groups/missing-axis/demo-group").await;
+        let missing_group = server.get("/api/refs/groups/demo-axis/missing-group").await;
+
+        assert_eq!(
+            vec![
+                (missing_axis.status_code(), missing_axis.json::<Value>()),
+                (missing_group.status_code(), missing_group.json::<Value>()),
+            ],
+            vec![
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    json!({ "error": "group axis missing-axis not found" }),
+                ),
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    json!({ "error": "stock group demo-axis/missing-group not found" }),
+                ),
+            ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_group_returns_400_for_invalid_path_keys(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
+
+        let response = server.get("/api/refs/groups/%20/demo-group").await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "axis_key must not be empty" })),
         );
     }
 
