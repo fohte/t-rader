@@ -110,6 +110,7 @@ pub struct CreateAnnotationRequest {
     pub timestamp: DateTime<FixedOffset>,
     pub price: Option<Decimal>,
     pub text: String,
+    /// 省略時は `created_by_kind` が "human" なら "approved"、"llm" なら "unread"。
     pub status: Option<String>,
     pub linked_note_id: Option<Uuid>,
     #[serde(default)]

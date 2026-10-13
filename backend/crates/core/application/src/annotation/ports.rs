@@ -55,7 +55,7 @@ pub struct CreateAnnotationCommand {
     pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<AnnotationPriceInput>,
     pub text: String,
-    pub status: String,
+    pub status: Option<String>,
     pub linked_note_id: Option<Uuid>,
     pub created_by_kind: String,
     pub execution_step_id: Option<Uuid>,

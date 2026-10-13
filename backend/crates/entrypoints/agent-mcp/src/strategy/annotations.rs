@@ -70,7 +70,7 @@ impl StrategyServer {
                     .map(to_price_reference_field)
                     .map(AnnotationPriceInput::Field),
                 text: params.text,
-                status: DEFAULT_ANNOTATION_STATUS.into(),
+                status: Some(DEFAULT_ANNOTATION_STATUS.into()),
                 linked_note_id: params.linked_note_id,
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 execution_step_id,

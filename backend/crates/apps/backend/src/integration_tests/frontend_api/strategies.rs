@@ -235,7 +235,7 @@ mod tests {
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "sample annotation",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
