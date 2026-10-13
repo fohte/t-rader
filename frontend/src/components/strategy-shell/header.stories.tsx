@@ -85,11 +85,6 @@ export const Portfolio: Story = {
   render: () => <RouterProvider router={createHeaderRouter('/portfolio')} />,
 }
 
-export const Trades: Story = {
-  name: 'shows assets navigation active on the trade history page.',
-  render: () => <RouterProvider router={createHeaderRouter('/trades')} />,
-}
-
 export const MenuOpen: Story = {
   name: 'shows the menu open on a global settings page.',
   render: () => (
