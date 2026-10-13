@@ -1,5 +1,7 @@
 use chrono::{DateTime, FixedOffset};
 use core_application::refs::{IndicatorRef, ResolvedRef, StockRef};
+use core_domain::IndicatorObservation;
+use rust_decimal::Decimal;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -45,6 +47,22 @@ impl From<IndicatorRef> for IndicatorResponse {
             id: model.id,
             name: model.name,
             kind: model.kind,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct IndicatorObservationResponse {
+    pub date: chrono::NaiveDate,
+    #[schema(value_type = f64)]
+    pub value: Decimal,
+}
+
+impl From<IndicatorObservation> for IndicatorObservationResponse {
+    fn from(observation: IndicatorObservation) -> Self {
+        Self {
+            date: observation.date,
+            value: observation.value,
         }
     }
 }

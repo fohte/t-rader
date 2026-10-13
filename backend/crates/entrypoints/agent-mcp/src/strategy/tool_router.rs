@@ -392,10 +392,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadMacroIndicatorParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadMacroIndicatorResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.read_macro_indicator_inner(scope, params)
-            .await
-            .map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_macro_indicator_inner(params).await.map(Json)
     }
 
     /// 参照型 (stock/indicator/group) を id/name/別名の部分一致で横断検索する

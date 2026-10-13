@@ -2,10 +2,6 @@ use chrono::Duration;
 use chrono::NaiveDate;
 use core_domain::IndicatorObservation;
 
-use crate::indicator_observation_batch_source::IndicatorObservationBatchSource;
-use crate::indicator_observation_source::IndicatorObservationSource;
-use crate::strategy_scope::StrategyScope;
-
 use super::error::IndicatorObservationUseCaseError;
 use super::repository::SharedIndicatorObservationRepository;
 use super::types::{
@@ -13,6 +9,8 @@ use super::types::{
     IndicatorObservationMetadata, IndicatorObservationQuery, IndicatorObservationReadResult,
     IndicatorObservationSeriesDefinition,
 };
+use crate::indicator_observation_batch_source::IndicatorObservationBatchSource;
+use crate::indicator_observation_source::IndicatorObservationSource;
 
 const LOOKBACK_DAYS: i64 = 10;
 
@@ -252,7 +250,6 @@ impl IndicatorObservationUseCases {
 
     pub async fn read(
         &self,
-        _scope: StrategyScope,
         query: IndicatorObservationQuery,
     ) -> Result<IndicatorObservationReadResult, IndicatorObservationUseCaseError> {
         let indicator_id = query.indicator_id.trim().to_string();
@@ -261,7 +258,9 @@ impl IndicatorObservationUseCases {
                 "indicator_id must not be empty".to_string(),
             ));
         }
-        if query.from > query.to {
+        if let (Some(from), Some(to)) = (query.from, query.to)
+            && from > to
+        {
             return Err(IndicatorObservationUseCaseError::Validation(
                 "from must be on or before to".to_string(),
             ));

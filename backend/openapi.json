@@ -4803,6 +4803,91 @@
         }
       }
     },
+    "/api/refs/indicators/{id}/observations": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "indicator の観測値",
+        "operationId": "get_ref_indicator_observations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "指標 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "取得開始日 (YYYY-MM-DD, inclusive)。省略時は最古の観測日から取得",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "取得終了日 (YYYY-MM-DD, inclusive)。省略時は最新の観測日まで取得",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IndicatorObservationResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/refs/resolve": {
       "get": {
         "tags": [
@@ -9093,6 +9178,23 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "IndicatorObservationResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "value"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
           }
         }
       },

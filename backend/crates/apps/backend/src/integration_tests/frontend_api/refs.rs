@@ -1,13 +1,53 @@
 #[cfg(test)]
 mod tests {
     use super::super::assert_response_eq;
+    use chrono::NaiveDate;
+    use core_application::indicator_observation::{
+        IndicatorObservationMetadata, IndicatorObservationRepository,
+    };
+    use core_domain::IndicatorObservation;
+    use rust_decimal::Decimal;
     use serde_json::{Value, json};
 
     use crate::testing::{
         create_test_server_with_db, insert_test_group, insert_test_group_membership,
         insert_test_stock,
     };
+    use gateway_postgres::PostgresIndicatorObservationRepository;
     use rstest::{fixture, rstest};
+
+    const DEMO_INDICATOR_ID: &str = "DEMO_INDICATOR";
+
+    fn observation(day: u32, value: i64) -> IndicatorObservation {
+        IndicatorObservation {
+            date: NaiveDate::from_ymd_opt(2040, 1, day).expect("valid date"),
+            value: Decimal::from(value),
+        }
+    }
+
+    #[fixture]
+    async fn indicator_observations_context()
+    -> (gateway_postgres::DatabaseHandle, axum_test::TestServer) {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
+        let (db, server) = create_test_server_with_db(db).await;
+        let repository = PostgresIndicatorObservationRepository::new(db.clone());
+        repository
+            .ensure_indicator(IndicatorObservationMetadata {
+                indicator_id: DEMO_INDICATOR_ID.to_string(),
+                name: "Demo Indicator".to_string(),
+                kind: "index".to_string(),
+            })
+            .await
+            .expect("insert demo indicator");
+        repository
+            .upsert_observations(
+                DEMO_INDICATOR_ID,
+                vec![observation(3, 30), observation(1, 10), observation(2, 20)],
+            )
+            .await
+            .expect("insert demo observations");
+        (db, server)
+    }
 
     fn normalize_stock_timestamps(stocks: &mut Value) {
         for stock in stocks.as_array_mut().expect("stock list") {
@@ -77,6 +117,107 @@ mod tests {
             &response,
             axum::http::StatusCode::NOT_FOUND,
             Some(json!({ "error": "stock UNKNOWN not found" })),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn get_indicator_observations_returns_all_rows_when_dates_are_omitted(
+        #[future] indicator_observations_context: (
+            gateway_postgres::DatabaseHandle,
+            axum_test::TestServer,
+        ),
+    ) {
+        let (_, server) = indicator_observations_context.await;
+
+        let response = server
+            .get("/api/refs/indicators/DEMO_INDICATOR/observations")
+            .await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(json!([
+                { "date": "2040-01-01", "value": 10 },
+                { "date": "2040-01-02", "value": 20 },
+                { "date": "2040-01-03", "value": 30 },
+            ])),
+        );
+    }
+
+    #[rstest]
+    #[case::from_only(
+        "?from=2040-01-02",
+        json!([
+            { "date": "2040-01-02", "value": 20 },
+            { "date": "2040-01-03", "value": 30 },
+        ]),
+    )]
+    #[case::to_only(
+        "?to=2040-01-02",
+        json!([
+            { "date": "2040-01-01", "value": 10 },
+            { "date": "2040-01-02", "value": 20 },
+        ]),
+    )]
+    #[tokio::test]
+    async fn get_indicator_observations_applies_each_optional_bound(
+        #[future] indicator_observations_context: (
+            gateway_postgres::DatabaseHandle,
+            axum_test::TestServer,
+        ),
+        #[case] query: &str,
+        #[case] expected: Value,
+    ) {
+        let (_, server) = indicator_observations_context.await;
+
+        let response = server
+            .get(&format!(
+                "/api/refs/indicators/DEMO_INDICATOR/observations{query}"
+            ))
+            .await;
+
+        assert_response_eq(&response, axum::http::StatusCode::OK, Some(expected));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn get_indicator_observations_filters_to_an_inclusive_date_range(
+        #[future] indicator_observations_context: (
+            gateway_postgres::DatabaseHandle,
+            axum_test::TestServer,
+        ),
+    ) {
+        let (_, server) = indicator_observations_context.await;
+
+        let response = server
+            .get("/api/refs/indicators/DEMO_INDICATOR/observations?from=2040-01-02&to=2040-01-03")
+            .await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(json!([
+                { "date": "2040-01-02", "value": 20 },
+                { "date": "2040-01-03", "value": 30 },
+            ])),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_indicator_observations_returns_404_for_an_unknown_indicator(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_db, server) = create_test_server_with_db(db).await;
+
+        let response = server
+            .get("/api/refs/indicators/DEMO_UNKNOWN/observations")
+            .await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({ "error": "indicator DEMO_UNKNOWN not found" })),
         );
     }
 

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -6,7 +6,6 @@ use chrono::NaiveDate;
 use core_domain::IndicatorObservation;
 use rstest::rstest;
 use rust_decimal::Decimal;
-use uuid::Uuid;
 
 use crate::indicator_observation_batch_source::{
     IndicatorObservationBatch, IndicatorObservationBatchSource,
@@ -15,7 +14,6 @@ use crate::indicator_observation_source::{
     IndicatorObservationSource, IndicatorObservationSourceError,
 };
 use crate::persistence::PersistenceError;
-use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
 
 use super::types::{
     IndicatorObservationIngestSeriesResult, IndicatorObservationMetadata,
@@ -149,28 +147,6 @@ impl IndicatorObservationSource for FakeSource {
     }
 }
 
-#[derive(Default)]
-struct FakeScopeSource {
-    existing_ids: HashSet<Uuid>,
-}
-
-#[async_trait]
-impl StrategyScopeSource for FakeScopeSource {
-    async fn existing_ids(&self, _ids: &[Uuid]) -> Result<HashSet<Uuid>, StrategyScopeSourceError> {
-        Ok(self.existing_ids.clone())
-    }
-}
-
-async fn existing_strategy_scope() -> StrategyScope {
-    let id = Uuid::new_v4();
-    let source = FakeScopeSource {
-        existing_ids: HashSet::from([id]),
-    };
-    StrategyScope::verify(id, &source)
-        .await
-        .expect("strategy exists")
-}
-
 fn date(day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 9, day).expect("valid date")
 }
@@ -203,7 +179,6 @@ fn use_cases(repository: Arc<dyn IndicatorObservationRepository>) -> IndicatorOb
 
 #[tokio::test]
 async fn read_returns_trimmed_identifier_and_inclusive_observations_in_date_order() {
-    let strategy_scope = existing_strategy_scope().await;
     let repository = Arc::new(FakeIndicatorObservationRepository::new());
     repository
         .seed_observation("INDICATOR_TEST", date(10), Decimal::from(10))
@@ -216,14 +191,11 @@ async fn read_returns_trimmed_identifier_and_inclusive_observations_in_date_orde
         .await;
 
     let result = use_cases(repository)
-        .read(
-            strategy_scope,
-            IndicatorObservationQuery {
-                indicator_id: "  INDICATOR_TEST ".to_string(),
-                from: date(3),
-                to: date(10),
-            },
-        )
+        .read(IndicatorObservationQuery {
+            indicator_id: "  INDICATOR_TEST ".to_string(),
+            from: Some(date(3)),
+            to: Some(date(10)),
+        })
         .await
         .expect("read succeeds");
 
@@ -240,16 +212,16 @@ async fn read_returns_trimmed_identifier_and_inclusive_observations_in_date_orde
 #[case::empty_identifier(
     IndicatorObservationQuery {
         indicator_id: "  ".to_string(),
-        from: date(1),
-        to: date(2),
+        from: Some(date(1)),
+        to: Some(date(2)),
     },
     "indicator_id must not be empty",
 )]
 #[case::reversed_range(
     IndicatorObservationQuery {
         indicator_id: "INDICATOR_TEST".to_string(),
-        from: date(2),
-        to: date(1),
+        from: Some(date(2)),
+        to: Some(date(1)),
     },
     "from must be on or before to",
 )]
@@ -258,9 +230,8 @@ async fn read_rejects_invalid_queries(
     #[case] query: IndicatorObservationQuery,
     #[case] message: &str,
 ) {
-    let strategy_scope = existing_strategy_scope().await;
     let result = use_cases(Arc::new(FakeIndicatorObservationRepository::new()))
-        .read(strategy_scope, query)
+        .read(query)
         .await;
 
     assert_eq!(
