@@ -60,6 +60,35 @@ const approvalHistory: ChangeHistory = {
   created_at: '2026-10-10T12:00:00Z',
 }
 
+const metadataUpdateHistory: ChangeHistory = {
+  ...approvalHistory,
+  id: 'fixture-history-metadata-update',
+  op: 'update',
+  diff_json: { title: { from: '確認前の題名', to: '確認後の題名' } },
+  summary: '確認後の題名に更新しました。',
+  created_at: '2026-10-13T12:00:00Z',
+}
+
+const currentVersionChangeHistory: ChangeHistory = {
+  ...approvalHistory,
+  id: 'fixture-history-current-version-change',
+  op: 'update',
+  diff_json: {
+    from_version_id: newVersion.id,
+    to_version_id: currentVersion.id,
+    version_no: currentVersion.version_no,
+  },
+  summary: null,
+  created_at: '2026-10-12T12:00:00Z',
+}
+
+const agentUpdateHistory: ChangeHistory = {
+  ...metadataUpdateHistory,
+  id: 'fixture-history-agent-update',
+  actor_kind: 'llm',
+  actor_label: 'エージェント',
+}
+
 const history: ChangeHistory[] = [approvalHistory]
 
 const meta = {
@@ -141,6 +170,24 @@ export const SupersededVersion: Story = {
       },
     ],
   },
+}
+
+export const UnversionedEvent: Story = {
+  name: 'attaches an update event to the version current at that time.',
+  args: { history: [metadataUpdateHistory] },
+}
+
+export const MultipleEventsOnVersion: Story = {
+  name: 'shows multiple events under the same version.',
+  args: {
+    selectedVersionNo: 2,
+    history: [approvalHistory, currentVersionChangeHistory],
+  },
+}
+
+export const AgentEvent: Story = {
+  name: 'shows an update event created by an agent.',
+  args: { history: [agentUpdateHistory] },
 }
 
 export const LoadingHistory: Story = {

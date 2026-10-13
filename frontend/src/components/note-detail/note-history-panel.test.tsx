@@ -69,7 +69,7 @@ afterEach(() => {
 })
 
 describe('NoteHistoryPanel', () => {
-  it('shows versions in reverse order with their status change events', () => {
+  it('shows events under the latest version at each event time', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     const now = new Date('2026-10-13T15:00:00.000Z').getTime()
     vi.setSystemTime(now)
@@ -77,7 +77,7 @@ describe('NoteHistoryPanel', () => {
     const versions = fixtureVersions.map((version) => ({
       ...version,
       created_at: new Date(
-        now - (version.version_no === 3 ? 0 : 3 * day),
+        now - (version.version_no === 3 ? 6 * 60 * 60 * 1000 : 3 * day),
       ).toISOString(),
     }))
     const history: ChangeHistory[] = [
@@ -99,10 +99,18 @@ describe('NoteHistoryPanel', () => {
       },
       {
         ...approvalHistory,
-        id: 'fixture-history-metadata-update',
+        id: 'fixture-history-update-before-new-version',
         op: 'update',
         diff_json: { title: { from: '以前の題名', to: '新しい題名' } },
-        summary: 'タイトルを更新しました。',
+        summary: '以前の題名を更新しました。',
+        created_at: new Date(now - 7 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        ...approvalHistory,
+        id: 'fixture-history-update-after-new-version',
+        op: 'update',
+        diff_json: { title: { from: '新しい題名', to: '最新の題名' } },
+        summary: '最新の題名を更新しました。',
         created_at: new Date(now - 5 * 60 * 60 * 1000).toISOString(),
       },
     ]
@@ -129,7 +137,7 @@ describe('NoteHistoryPanel', () => {
         : {
             version: button.textContent.replace(/\s+/g, ' ').trim(),
             isSelected: button.getAttribute('aria-current') === 'true',
-            statusChanges: Array.from(events?.querySelectorAll('li') ?? []).map(
+            events: Array.from(events?.querySelectorAll('li') ?? []).map(
               (event) => event.textContent.replace(/\s+/g, ' ').trim(),
             ),
           }
@@ -137,19 +145,19 @@ describe('NoteHistoryPanel', () => {
 
     expect(versionRows).toEqual([
       {
-        version: 'v3新しい架空ノート未レビューエージェント · たった今',
+        version: 'v3新しい架空ノート未レビューエージェント · 6 時間前',
         isSelected: true,
-        statusChanges: [],
+        events: ['5 時間前自分が更新最新の題名を更新しました。'],
       },
       {
         version: 'v2現行以前の架空ノート承認済み自分 · 3 日前',
         isSelected: false,
-        statusChanges: [
+        events: [
+          '7 時間前自分が更新以前の題名を更新しました。',
           '昨日自分が現行に変更',
           '2 日前自分が承認記載内容を確認しました。',
         ],
       },
-      { event: '5 時間前自分が更新タイトルを更新しました。' },
     ])
   })
 

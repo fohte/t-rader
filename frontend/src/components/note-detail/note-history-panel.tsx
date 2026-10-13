@@ -99,14 +99,40 @@ export function NoteHistoryPanel({
   const eventsByVersionId = new Map<string, HistoryEventData[]>()
   const unmatchedEvents: HistoryEventData[] = []
 
+  const latestVersionAt = (createdAt: string) => {
+    const eventTime = Date.parse(createdAt)
+    if (Number.isNaN(eventTime)) return undefined
+
+    return orderedVersions.reduce<NoteVersion | undefined>(
+      (latest, version) => {
+        const versionTime = Date.parse(version.created_at)
+        if (Number.isNaN(versionTime) || versionTime > eventTime) return latest
+
+        const latestTime =
+          latest == null
+            ? Number.NEGATIVE_INFINITY
+            : Date.parse(latest.created_at)
+        return versionTime > latestTime ||
+          (versionTime === latestTime &&
+            (latest == null || version.version_no > latest.version_no))
+          ? version
+          : latest
+      },
+      undefined,
+    )
+  }
+
   const addEvent = (versionId: string | null, event: HistoryEventData) => {
-    if (versionId == null || !versionsById.has(versionId)) {
+    const targetVersion =
+      (versionId == null ? undefined : versionsById.get(versionId)) ??
+      latestVersionAt(event.entry.created_at)
+    if (targetVersion == null) {
       unmatchedEvents.push(event)
       return
     }
-    const versionEvents = eventsByVersionId.get(versionId) ?? []
+    const versionEvents = eventsByVersionId.get(targetVersion.id) ?? []
     versionEvents.push(event)
-    eventsByVersionId.set(versionId, versionEvents)
+    eventsByVersionId.set(targetVersion.id, versionEvents)
   }
 
   for (const entry of history) {
@@ -137,12 +163,14 @@ export function NoteHistoryPanel({
   }
 
   for (const events of eventsByVersionId.values()) {
-    events.sort((left, right) =>
-      right.entry.created_at.localeCompare(left.entry.created_at),
+    events.sort(
+      (left, right) =>
+        Date.parse(right.entry.created_at) - Date.parse(left.entry.created_at),
     )
   }
-  unmatchedEvents.sort((left, right) =>
-    right.entry.created_at.localeCompare(left.entry.created_at),
+  unmatchedEvents.sort(
+    (left, right) =>
+      Date.parse(right.entry.created_at) - Date.parse(left.entry.created_at),
   )
 
   return (
