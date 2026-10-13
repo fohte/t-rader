@@ -16,6 +16,8 @@ struct Lot {
     date: chrono::NaiveDate,
     qty: Decimal,
     price: Decimal,
+    remaining_trade_qty: Decimal,
+    execution_price: Decimal,
 }
 
 fn push_buy_lot(lots: &mut VecDeque<Lot>, trade: &Trade) {
@@ -24,6 +26,8 @@ fn push_buy_lot(lots: &mut VecDeque<Lot>, trade: &Trade) {
         date: trade.date,
         qty: trade.qty,
         price: trade.price,
+        remaining_trade_qty: trade.qty,
+        execution_price: trade.price,
     });
 }
 
@@ -62,7 +66,7 @@ fn apply_split_adjustment(
 fn consume_sell_lots(
     lots: &mut VecDeque<Lot>,
     trade: &Trade,
-    mut on_match: impl FnMut(&Lot, Decimal),
+    mut on_match: impl FnMut(&mut Lot, Decimal),
 ) -> Decimal {
     let mut remaining = trade.qty;
     let mut realized_pnl = Decimal::ZERO;
@@ -108,11 +112,17 @@ pub(super) fn calculate_trade_detail(
                 let is_target = row.trade.id == trade.id;
                 let mut sale_matches = Vec::new();
                 let sale_pnl = consume_sell_lots(&mut lots, &row.trade, |lot, qty| {
+                    let trade_basis_qty = if qty == lot.qty {
+                        lot.remaining_trade_qty
+                    } else {
+                        lot.remaining_trade_qty * qty / lot.qty
+                    };
+                    lot.remaining_trade_qty -= trade_basis_qty;
                     if is_target {
                         sale_matches.push(MatchedBuy {
                             date: lot.date,
-                            qty,
-                            price: lot.price,
+                            qty: trade_basis_qty,
+                            price: lot.execution_price,
                         });
                     }
                 });
@@ -131,7 +141,7 @@ pub(super) fn calculate_trade_detail(
         if target_buy_seen {
             lots.iter()
                 .find(|lot| lot.trade_id == trade.id)
-                .map_or(Decimal::ZERO, |lot| lot.qty)
+                .map_or(Decimal::ZERO, |lot| lot.remaining_trade_qty)
         } else {
             trade.qty
         }

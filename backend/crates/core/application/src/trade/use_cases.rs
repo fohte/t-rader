@@ -581,7 +581,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn detail_matches_split_adjusted_summary_lots() {
+    async fn detail_keeps_buy_execution_units_across_splits_before_and_after_sale() {
         let buy_date = NaiveDate::from_ymd_opt(2026, 4, 1).expect("valid date");
         let split_date = NaiveDate::from_ymd_opt(2026, 4, 2).expect("valid date");
         let sell_date = NaiveDate::from_ymd_opt(2026, 4, 3).expect("valid date");
@@ -641,15 +641,15 @@ mod tests {
                     trade: buy,
                     realized_pnl: None,
                     matched_buys: None,
-                    remaining_qty: Some(rust_decimal::Decimal::from(200)),
+                    remaining_qty: Some(rust_decimal::Decimal::from(25)),
                 },
                 TradeDetail {
                     trade: sell,
                     realized_pnl: Some(rust_decimal::Decimal::from(15_000)),
                     matched_buys: Some(vec![MatchedBuy {
                         date: buy_date,
-                        qty: rust_decimal::Decimal::from(150),
-                        price: rust_decimal::Decimal::from(500),
+                        qty: rust_decimal::Decimal::from(75),
+                        price: rust_decimal::Decimal::from(1000),
                     }]),
                     remaining_qty: None,
                 },
