@@ -33,6 +33,7 @@ import {
 } from '#strategy-agent/final-turn-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
+import { nonAssistantModelResponseMiddleware } from '#strategy-agent/non-assistant-model-response-middleware'
 import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
 import {
   createToolCallCapMiddleware,
@@ -127,6 +128,8 @@ const buildCompiledAgent = (
       ...(options.deadlineSignal !== undefined
         ? [createDeadlineMiddleware(options.deadlineSignal)]
         : []),
+      // LangChain の戻り値検証前に assistant 以外の message を再試行可能なエラーへ変える。
+      nonAssistantModelResponseMiddleware,
     ],
   })
   return {
