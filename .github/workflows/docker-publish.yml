@@ -108,6 +108,7 @@ jobs:
         id: cargo-cache
         with:
           path: cargo-cache
+          # cleanup-cargo-cache の保持対象判定でも同じ key 式を使う。
           key: cargo-cache-${{ hashFiles('backend/Cargo.lock') }}
           restore-keys: |
             cargo-cache-
@@ -159,6 +160,7 @@ jobs:
 
       - name: Delete outdated Cargo caches
         env:
+          # Restore Cargo cache の key 式と一致させる。
           CURRENT_KEY: cargo-cache-${{ hashFiles('backend/Cargo.lock') }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
