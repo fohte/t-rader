@@ -27,14 +27,14 @@ export const OneMinute: Story = {
 }
 
 export const Compact: Story = {
-  name: 'shows 1h and 1D with the remaining intervals in a menu.',
+  name: 'the compact selector shows 1h and 1D while keeping the remaining intervals in a menu.',
   args: {
     variant: 'compact',
   },
 }
 
 export const CompactMenuOpen: Story = {
-  name: 'shows the remaining intervals in the open menu.',
+  name: 'the open compact menu shows the remaining intervals.',
   args: {
     variant: 'compact',
     value: '5m',
