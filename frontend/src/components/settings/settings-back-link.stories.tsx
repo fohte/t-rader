@@ -26,5 +26,5 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  name: '設定画面へ戻るリンクを表示します。',
+  name: 'shows a link back to the settings page.',
 }
