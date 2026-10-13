@@ -23,7 +23,7 @@ function createHeaderRouter(initialPath: string, menuOpen = false) {
       '/annotations/$annoId',
       '/runs',
       '/indicators',
-      '/note-versions/pending',
+      '/review',
       '/calendar',
       '/settings',
       '/settings/rss-feeds',

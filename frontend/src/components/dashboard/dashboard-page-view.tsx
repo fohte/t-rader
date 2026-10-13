@@ -1,4 +1,3 @@
-import type { ReviewQueueData } from '#components/dashboard/dashboard-model'
 import { DashboardRecentNotes } from '#components/dashboard/dashboard-recent-notes'
 import { DashboardRecentRuns } from '#components/dashboard/dashboard-recent-runs'
 import { DashboardRecentTrades } from '#components/dashboard/dashboard-recent-trades'
@@ -7,6 +6,7 @@ import { DashboardStats } from '#components/dashboard/dashboard-stats'
 import { DashboardWeeklyEvents } from '#components/dashboard/dashboard-weekly-events'
 import { PositionsTable } from '#components/portfolio/positions-table'
 import type { StatItem } from '#components/portfolio/stat-row'
+import type { ReviewQueueData } from '#components/review/review-queue-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 

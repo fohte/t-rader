@@ -6,7 +6,7 @@ import { fetchClient } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
-type Note = components['schemas']['Note']
+type PendingNoteVersion = components['schemas']['PendingNoteVersion']
 
 function strategyStub(id: string, name: string, sortOrder: number): Strategy {
   return {
@@ -24,30 +24,30 @@ const STRATEGIES: Strategy[] = [
   strategyStub('sample-beta', '架空戦略 B', 1),
 ]
 
-function unreadNote(index: number): Note {
-  const id = `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+function unreadNoteVersion(index: number): PendingNoteVersion {
+  const suffix = String(index).padStart(12, '0')
   return {
     body_md: '',
     created_at: '2026-01-01T00:00:00Z',
-    created_by_kind: 'agent',
+    created_by_kind: 'llm',
     frontmatter_json: {},
     graphs_json: [],
-    id,
+    id: `00000000-0000-4000-8000-${suffix}`,
     is_current: true,
+    kind: null,
     resolved_price_references_json: {},
     status: 'unread',
     tags: [],
     title: `デモ戦略のノート ${String(index)}`,
-    updated_at: '2026-01-01T00:00:00Z',
-    version_id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    note_id: `10000000-0000-4000-8000-${suffix}`,
     version_no: 1,
   }
 }
 
-// Storybook にはグローバルな QueryClientProvider が無いため、ヘッダーの query をモックする
+// Storybook にはグローバルな QueryClientProvider が無いため、レビュー件数をモックする
 function installMiddleware(unreadCount: number, reviewQueueError: boolean) {
-  const unreadNotes = Array.from({ length: unreadCount }, (_, index) =>
-    unreadNote(index + 1),
+  const unreadVersions = Array.from({ length: unreadCount }, (_, index) =>
+    unreadNoteVersion(index + 1),
   )
   const middleware: Middleware = {
     onRequest({ request }) {
@@ -67,13 +67,13 @@ function installMiddleware(unreadCount: number, reviewQueueError: boolean) {
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (/\/api\/notes(\?|$)/.test(url)) {
-        return new Response(JSON.stringify(unreadNotes), {
+      if (/\/api\/note-versions\/pending(\?|$)/.test(url)) {
+        return new Response(JSON.stringify(unreadVersions), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (/\/api\/(note-versions\/pending|annotations)(\?|$)/.test(url)) {
+      if (/\/api\/annotations(\?|$)/.test(url)) {
         return new Response(JSON.stringify([]), {
           status: 200,
           headers: { 'content-type': 'application/json' },

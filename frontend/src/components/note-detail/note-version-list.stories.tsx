@@ -51,7 +51,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/note-versions/pending'],
+          paths: ['/review'],
         },
       )}
     />

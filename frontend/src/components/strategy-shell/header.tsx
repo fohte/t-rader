@@ -208,9 +208,9 @@ export function Header({
             }
           />
           <NavLink
-            to="/note-versions/pending"
+            to="/review"
             label="レビュー"
-            active={isPathWithin(pathname, '/note-versions/pending')}
+            active={isPathWithin(pathname, '/review')}
           >
             {reviewBadge != null && (
               <span className="border border-primary px-1 text-2xs leading-4 tabular-nums text-primary">

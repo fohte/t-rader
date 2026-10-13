@@ -13,7 +13,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/note-versions/pending'],
+          paths: ['/review'],
         },
       )}
     />
@@ -21,7 +21,7 @@ function withRouter(Story: ComponentType) {
 }
 
 const meta = {
-  title: 'NoteDetail/PendingNoteVersionsLink',
+  title: 'NoteDetail/ReviewLink',
   component: PendingNoteVersionsLink,
   parameters: { layout: 'padded' },
   decorators: [
@@ -35,5 +35,5 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  name: 'shows a link to review pending note versions.',
+  name: 'links to the review screen from a note.',
 }
