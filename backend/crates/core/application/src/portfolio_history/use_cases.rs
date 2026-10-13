@@ -40,10 +40,13 @@ impl PortfolioHistoryUseCases {
         &self,
         query: PortfolioHistoryQuery,
     ) -> Result<Vec<PortfolioHistoryPoint>, PortfolioHistoryUseCaseError> {
-        if query.from > query.to
-            || query.to.signed_duration_since(query.from).num_days() >= MAX_HISTORY_DAYS
-        {
-            return Err(PortfolioHistoryUseCaseError::InvalidDateRange);
+        if query.from > query.to {
+            return Err(PortfolioHistoryUseCaseError::ReversedDateRange);
+        }
+        if query.to.signed_duration_since(query.from).num_days() >= MAX_HISTORY_DAYS {
+            return Err(PortfolioHistoryUseCaseError::DateRangeTooLong {
+                max_days: MAX_HISTORY_DAYS,
+            });
         }
 
         let trades = self
@@ -171,9 +174,9 @@ fn build_history(
         if date == query.to {
             break;
         }
-        date = date
-            .succ_opt()
-            .ok_or(PortfolioHistoryUseCaseError::InvalidDateRange)?;
+        date = date.succ_opt().ok_or_else(|| {
+            PortfolioHistoryUseCaseError::Calculation("date iteration overflowed".into())
+        })?;
     }
 
     Ok(points)

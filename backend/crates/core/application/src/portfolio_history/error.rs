@@ -6,8 +6,10 @@ use crate::trade::{TradeRepositoryError, TradeUseCaseError};
 
 #[derive(Debug, Error)]
 pub enum PortfolioHistoryUseCaseError {
-    #[error("date range is invalid or exceeds the maximum length")]
-    InvalidDateRange,
+    #[error("from must be on or before to")]
+    ReversedDateRange,
+    #[error("date range must not exceed {max_days} days")]
+    DateRangeTooLong { max_days: i64 },
     #[error(transparent)]
     TradeRepository(#[from] TradeRepositoryError),
     #[error(transparent)]

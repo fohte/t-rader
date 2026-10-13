@@ -91,8 +91,9 @@ impl From<BarsUseCaseError> for AppError {
 impl From<PortfolioHistoryUseCaseError> for AppError {
     fn from(error: PortfolioHistoryUseCaseError) -> Self {
         match error {
-            PortfolioHistoryUseCaseError::InvalidDateRange => {
-                Self::Validation("from must be on or before to".into())
+            error @ (PortfolioHistoryUseCaseError::ReversedDateRange
+            | PortfolioHistoryUseCaseError::DateRangeTooLong { .. }) => {
+                Self::Validation(error.to_string())
             }
             PortfolioHistoryUseCaseError::TradeRepository(TradeRepositoryError::Database(
                 error,

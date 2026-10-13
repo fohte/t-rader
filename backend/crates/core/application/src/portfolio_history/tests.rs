@@ -247,13 +247,18 @@ async fn investable_amount_histories_sum_and_backfill_first_settings() {
 }
 
 #[rstest]
-#[case::reversed(date(12), date(10))]
+#[case::reversed(date(12), date(10), "from must be on or before to")]
 #[case::too_long(
     date(10),
     date(10) + chrono::Duration::days(3_660),
+    "date range must not exceed 3660 days",
 )]
 #[tokio::test]
-async fn history_rejects_invalid_date_ranges(#[case] from: NaiveDate, #[case] to: NaiveDate) {
+async fn history_rejects_invalid_date_ranges(
+    #[case] from: NaiveDate,
+    #[case] to: NaiveDate,
+    #[case] expected_error: &str,
+) {
     let fixture = fixture();
 
     let actual = fixture
@@ -262,8 +267,29 @@ async fn history_rejects_invalid_date_ranges(#[case] from: NaiveDate, #[case] to
         .await
         .map_err(|error| error.to_string());
 
-    assert_eq!(
-        actual,
-        Err("date range is invalid or exceeds the maximum length".into()),
-    );
+    assert_eq!(actual, Err(expected_error.into()),);
+}
+
+#[tokio::test]
+async fn history_accepts_the_maximum_inclusive_date_range() {
+    let fixture = fixture();
+    let from = date(10);
+    let to = from + chrono::Duration::days(3_659);
+
+    let actual = fixture
+        .use_cases
+        .history(PortfolioHistoryQuery { from, to })
+        .await
+        .map_err(|error| error.to_string());
+    let expected = (0..3_660)
+        .map(|offset| super::PortfolioHistoryPoint {
+            date: from + chrono::Duration::days(offset),
+            total_assets: Decimal::ZERO,
+            stock_market_value: Decimal::ZERO,
+            cash: Decimal::ZERO,
+            investable_amount: Decimal::ZERO,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(actual, Ok(expected));
 }
