@@ -913,6 +913,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/refs/indicators/{id}/observations': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** indicator の観測値 */
+    get: operations['get_ref_indicator_observations']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/refs/resolve': {
     parameters: {
       query?: never
@@ -1790,6 +1807,12 @@ export interface components {
       id: string
       kind: string
       name: string
+    }
+    IndicatorObservationResponse: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      value: number
     }
     IngestJobStatusResponse: {
       /** Format: date */
@@ -6125,6 +6148,57 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['Indicator']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_ref_indicator_observations: {
+    parameters: {
+      query?: {
+        /** @description 取得開始日 (YYYY-MM-DD, inclusive)。省略時は最古の観測日から取得 */
+        from?: string
+        /** @description 取得終了日 (YYYY-MM-DD, inclusive)。省略時は最新の観測日まで取得 */
+        to?: string
+      }
+      header?: never
+      path: {
+        /** @description 指標 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['IndicatorObservationResponse'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       404: {
