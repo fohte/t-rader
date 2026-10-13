@@ -34,10 +34,18 @@ mod tests {
     }
 
     async fn seed_trade(db: &impl sea_orm::ConnectionTrait, seed: SeedTrade) {
+        seed_trade_for_symbol(db, "FICTIONAL-SYMBOL", seed).await;
+    }
+
+    async fn seed_trade_for_symbol(
+        db: &impl sea_orm::ConnectionTrait,
+        symbol: &str,
+        seed: SeedTrade,
+    ) {
         trade::ActiveModel {
             id: Set(seed.trade_id),
             strategy_id: Set(seed.strategy_id),
-            symbol: Set("FICTIONAL-SYMBOL".into()),
+            symbol: Set(symbol.into()),
             side: Set(seed.side.into()),
             qty: Set(Decimal::from(seed.qty)),
             price: Set(Decimal::from(seed.price)),
@@ -355,6 +363,79 @@ mod tests {
                         "current_price": 140,
                         "market_value": 7000,
                         "unrealized_pnl": 1000,
+                    }],
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn summary_uses_only_positions_at_the_common_latest_bar_date(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id: Uuid::new_v4(),
+                side: "buy",
+                qty: 2,
+                price: 50,
+                fee: 0,
+                day: 1,
+            },
+        )
+        .await;
+        seed_trade_for_symbol(
+            &db,
+            "FICTIONAL-BETA",
+            SeedTrade {
+                strategy_id,
+                trade_id: Uuid::new_v4(),
+                side: "buy",
+                qty: 3,
+                price: 20,
+                fee: 0,
+                day: 1,
+            },
+        )
+        .await;
+        seed_daily_bar(&db, "FICTIONAL-SYMBOL", 3, 70).await;
+        seed_daily_bar(&db, "FICTIONAL-BETA", 2, 30).await;
+
+        let response = server
+            .get(&format!("/api/trades/summary?strategy_id={strategy_id}"))
+            .await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
+                StatusCode::OK,
+                json!({
+                    "strategy_id": strategy_id,
+                    "trade_count": 2,
+                    "realized_pnl": 0,
+                    "price_observed_at": "2026-06-03",
+                    "positions": [{
+                        "symbol": "FICTIONAL-BETA",
+                        "qty": 3,
+                        "avg_cost": 20,
+                        "cost_basis": 60,
+                        "realized_pnl": 0,
+                        "current_price": null,
+                        "market_value": null,
+                        "unrealized_pnl": null,
+                    }, {
+                        "symbol": "FICTIONAL-SYMBOL",
+                        "qty": 2,
+                        "avg_cost": 50,
+                        "cost_basis": 100,
+                        "realized_pnl": 0,
+                        "current_price": 70,
+                        "market_value": 140,
+                        "unrealized_pnl": 40,
                     }],
                 }),
             ),
