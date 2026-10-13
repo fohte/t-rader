@@ -538,20 +538,23 @@ mod tests {
             },
         ];
         bars_repository
-            .seed_daily_adjustment_factors(vec![
-                DailyBarAdjustmentFactor {
-                    date: first_date,
-                    factor: Decimal::new(4, 1),
-                },
-                DailyBarAdjustmentFactor {
-                    date: split_date,
-                    factor: Decimal::new(5, 1),
-                },
-                DailyBarAdjustmentFactor {
-                    date: date(2099, 2, 3),
-                    factor: Decimal::new(25, 2),
-                },
-            ])
+            .seed_daily_adjustment_factors(
+                "ZZZZ",
+                vec![
+                    DailyBarAdjustmentFactor {
+                        date: first_date,
+                        factor: Decimal::new(4, 1),
+                    },
+                    DailyBarAdjustmentFactor {
+                        date: split_date,
+                        factor: Decimal::new(5, 1),
+                    },
+                    DailyBarAdjustmentFactor {
+                        date: date(2099, 2, 3),
+                        factor: Decimal::new(25, 2),
+                    },
+                ],
+            )
             .await;
         let use_cases = ValuationUseCases::new(repository, bars_repository);
 
