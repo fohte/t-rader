@@ -1,12 +1,11 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use core_application::bars::LatestPrices;
 use core_application::change_history::ChangeHistoryError;
 use core_application::note::NoteRepositoryError;
 use core_application::trade::{
-    CreateTradeCommand, PerformanceSummary as TradePerformanceSummary, TradeOrder, TradeQuery,
-    TradeRepositoryError, TradeUpdateCommand, TradeUseCaseError,
+    CreateTradeCommand, TradeOrder, TradeQuery, TradeRepositoryError, TradeSummaryUseCaseError,
+    TradeUpdateCommand, TradeUseCaseError,
 };
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
@@ -218,22 +217,12 @@ pub async fn trades_summary(
     JsonQuery(p): JsonQuery<SummaryQuery>,
 ) -> Result<Json<PerformanceSummary>, AppError> {
     let summary = state
-        .trade_use_cases
+        .trade_summary_use_cases
         .summary(p.strategy_id)
         .await
-        .map_err(map_trade_error)?;
+        .map_err(map_trade_summary_error)?;
 
-    let symbols = summary
-        .positions
-        .iter()
-        .map(|position| position.symbol.clone())
-        .collect::<Vec<_>>();
-    let latest_prices = state
-        .bars_use_cases
-        .fetch_latest_prices(None, &symbols)
-        .await;
-
-    Ok(Json(summary_response(summary, latest_prices)))
+    Ok(Json(summary.into()))
 }
 
 pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
@@ -254,35 +243,10 @@ pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
     }
 }
 
-fn summary_response(
-    summary: TradePerformanceSummary,
-    latest_prices: LatestPrices,
-) -> PerformanceSummary {
-    PerformanceSummary {
-        strategy_id: summary.strategy_id,
-        trade_count: summary.trade_count,
-        realized_pnl: summary.realized_pnl,
-        price_observed_at: latest_prices.priced_at,
-        positions: summary
-            .positions
-            .into_iter()
-            .map(|position| {
-                let current_price = latest_prices.prices.get(&position.symbol).copied();
-                let market_value = current_price.map(|price| position.qty * price);
-                let unrealized_pnl = market_value.map(|value| value - position.cost_basis);
-
-                crate::models::PositionSummary {
-                    symbol: position.symbol,
-                    qty: position.qty,
-                    avg_cost: position.avg_cost,
-                    cost_basis: position.cost_basis,
-                    realized_pnl: position.realized_pnl,
-                    current_price,
-                    market_value,
-                    unrealized_pnl,
-                }
-            })
-            .collect(),
+fn map_trade_summary_error(error: TradeSummaryUseCaseError) -> AppError {
+    match error {
+        TradeSummaryUseCaseError::Trade(error) => map_trade_error(error),
+        TradeSummaryUseCaseError::Bars(error) => error.into(),
     }
 }
 

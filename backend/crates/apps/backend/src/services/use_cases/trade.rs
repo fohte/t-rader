@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use core_application::trade::{TradeNoteUseCases, TradeUseCases};
+use core_application::trade::{TradeNoteUseCases, TradeSummaryUseCases, TradeUseCases};
 use gateway_postgres::PostgresTradeRepository;
 
 use super::UseCases;
@@ -13,6 +13,10 @@ impl UseCases {
             self.strategy_existence.clone(),
             self.change_history.clone(),
         )
+    }
+
+    pub fn trade_summaries(&self) -> TradeSummaryUseCases {
+        TradeSummaryUseCases::new(self.trades(), self.bars())
     }
 
     pub fn trade_notes(&self) -> TradeNoteUseCases {

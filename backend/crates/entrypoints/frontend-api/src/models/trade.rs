@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use core_application::trade::Trade;
+use core_application::trade::{Trade, ValuedPerformanceSummary, ValuedPositionSummary};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trade)]
@@ -112,4 +112,31 @@ pub struct PerformanceSummary {
     /// 使用した日足のうち最も新しい観測日。価格が無い場合は `null`。
     pub price_observed_at: Option<NaiveDate>,
     pub positions: Vec<PositionSummary>,
+}
+
+impl From<ValuedPositionSummary> for PositionSummary {
+    fn from(model: ValuedPositionSummary) -> Self {
+        Self {
+            symbol: model.symbol,
+            qty: model.qty,
+            avg_cost: model.avg_cost,
+            cost_basis: model.cost_basis,
+            realized_pnl: model.realized_pnl,
+            current_price: model.current_price,
+            market_value: model.market_value,
+            unrealized_pnl: model.unrealized_pnl,
+        }
+    }
+}
+
+impl From<ValuedPerformanceSummary> for PerformanceSummary {
+    fn from(model: ValuedPerformanceSummary) -> Self {
+        Self {
+            strategy_id: model.strategy_id,
+            trade_count: model.trade_count,
+            realized_pnl: model.realized_pnl,
+            price_observed_at: model.price_observed_at,
+            positions: model.positions.into_iter().map(Into::into).collect(),
+        }
+    }
 }

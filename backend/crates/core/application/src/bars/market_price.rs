@@ -18,8 +18,9 @@ impl BarsUseCases {
         instrument_ids: &[String],
     ) -> LatestPrices {
         let today = Utc::now().date_naive();
-        let known_range = source.and_then(|source| source.known_fetchable_range());
-        let fetchable_ceiling = latest_business_day(latest_fetchable_date(today, known_range));
+        let fetchable_ceiling = source.map(|source| {
+            latest_business_day(latest_fetchable_date(today, source.known_fetchable_range()))
+        });
         let mut bars: HashMap<String, (NaiveDate, Decimal)> = HashMap::new();
 
         for instrument_id in instrument_ids {
@@ -31,9 +32,10 @@ impl BarsUseCases {
                 }
             };
 
-            let is_stale = bar
-                .as_ref()
-                .is_none_or(|current| current.timestamp.date_naive() < fetchable_ceiling);
+            let is_stale = fetchable_ceiling.is_some_and(|ceiling| {
+                bar.as_ref()
+                    .is_none_or(|current| current.timestamp.date_naive() < ceiling)
+            });
             if is_stale && let Some(source) = source {
                 match self.ensure_instrument_exists(instrument_id).await {
                     Ok(()) => {
@@ -76,6 +78,26 @@ impl BarsUseCases {
 
         let (prices, priced_at) = select_common_priced_at(bars);
         LatestPrices { prices, priced_at }
+    }
+
+    /// DB に保存された日足から、共通観測日の終値を返す。
+    pub async fn find_latest_prices(
+        &self,
+        instrument_ids: &[String],
+    ) -> Result<LatestPrices, BarsUseCaseError> {
+        let mut bars: HashMap<String, (NaiveDate, Decimal)> = HashMap::new();
+
+        for instrument_id in instrument_ids {
+            if let Some(bar) = self.repository.find_latest_bar(instrument_id, "1d").await? {
+                bars.insert(
+                    instrument_id.clone(),
+                    (bar.timestamp.date_naive(), bar.close),
+                );
+            }
+        }
+
+        let (prices, priced_at) = select_common_priced_at(bars);
+        Ok(LatestPrices { prices, priced_at })
     }
 
     async fn ensure_instrument_exists(&self, instrument_id: &str) -> Result<(), BarsUseCaseError> {
@@ -141,9 +163,13 @@ mod tests {
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
-    use crate::bars::{BarsUseCases, FakeBarsRepository, LatestPrices};
+    use crate::bars::{
+        BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError, BarsUseCases,
+        DailyBarAdjustmentFactor, FakeBarsRepository, LatestPrices, UsStockBarTarget,
+    };
     use crate::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
-    use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
+    use crate::persistence::PersistenceError;
+    use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork, UnitOfWorkTransaction};
 
     use super::latest_fetchable_date;
 
@@ -256,6 +282,87 @@ mod tests {
             unit_of_work,
             repository,
         }
+    }
+
+    struct FailingBarsRepository;
+
+    #[async_trait]
+    impl BarsRepository for FailingBarsRepository {
+        async fn find_bars(&self, _: BarsQuery) -> Result<Vec<Bar>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_bars_by_instruments(
+            &self,
+            _: BarsByInstrumentsQuery,
+        ) -> Result<Vec<Bar>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_latest_bar(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<Bar>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_daily_adjustment_factors_from(
+            &self,
+            _: &str,
+            _: NaiveDate,
+        ) -> Result<Vec<DailyBarAdjustmentFactor>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_us_stock_bar_targets(
+            &self,
+        ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_ingested_dates(
+            &self,
+            _: NaiveDate,
+        ) -> Result<HashSet<NaiveDate>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn ensure_instruments_exist(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: &HashSet<String>,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn upsert_bars(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: Vec<Bar>,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn upsert_minute_bars(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: Vec<Bar>,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn mark_ingested(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: NaiveDate,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+    }
+
+    fn database_error() -> BarsRepositoryError {
+        PersistenceError::Database("synthetic database failure".into()).into()
     }
 
     #[rstest]
@@ -444,6 +551,20 @@ mod tests {
                 priced_at: None,
             },
         );
+    }
+
+    #[tokio::test]
+    async fn find_latest_prices_propagates_database_errors() {
+        let use_cases = BarsUseCases::new(
+            Arc::new(FakeUnitOfWork::new()),
+            Arc::new(FailingBarsRepository),
+        );
+        let result = use_cases
+            .find_latest_prices(&["SAMPLE-ALPHA".to_string()])
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(result, Err("synthetic database failure".to_string()));
     }
 
     #[rstest]
