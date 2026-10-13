@@ -10,6 +10,7 @@ use core_application::market_daily_bar_source::MarketDailyBarSourceError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
+use core_application::stock_group::{StockGroupRepositoryError, StockGroupUseCaseError};
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -109,6 +110,26 @@ impl From<GroupAxisUseCaseError> for AppError {
             GroupAxisUseCaseError::Repository(GroupAxisRepositoryError::Database(error))
             | GroupAxisUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
             | GroupAxisUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
+impl From<StockGroupUseCaseError> for AppError {
+    fn from(error: StockGroupUseCaseError) -> Self {
+        match error {
+            StockGroupUseCaseError::Validation(message) => Self::Validation(message),
+            StockGroupUseCaseError::AxisNotFound(axis_key) => {
+                Self::NotFound(format!("group axis {axis_key} not found"))
+            }
+            StockGroupUseCaseError::GroupNotFound {
+                axis_key,
+                group_key,
+            } => Self::NotFound(format!("stock group {axis_key}/{group_key} not found")),
+            StockGroupUseCaseError::Repository(StockGroupRepositoryError::Database(error))
+            | StockGroupUseCaseError::UnitOfWork(
+                UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
+            ) => error.into(),
             other => Self::Internal(other.to_string()),
         }
     }

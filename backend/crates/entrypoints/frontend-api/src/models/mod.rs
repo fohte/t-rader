@@ -57,7 +57,7 @@ pub use paper_account::{
     PaperAccountStatsResponse,
 };
 pub use prediction::PredictionResponse;
-pub use refs::{IndicatorResponse, RefResolution, StockResponse};
+pub use refs::{GroupResponse, IndicatorResponse, RefResolution, StockResponse};
 pub use risk_policy::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
