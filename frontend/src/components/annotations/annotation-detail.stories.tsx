@@ -131,6 +131,16 @@ export const UnreadWithoutRelatedItems: Story = {
   name: 'shows an unread annotation without comments or a linked note.',
 }
 
+export const ApprovalPending: Story = {
+  name: 'disables approval while it is being processed.',
+  args: { isApprovalPending: true },
+}
+
+export const RejectionPending: Story = {
+  name: 'disables rejection while it is being processed.',
+  args: { isRejectionPending: true },
+}
+
 export const ApprovedWithRelatedItems: Story = {
   name: 'shows an approved annotation with comments and a linked note.',
   args: {
@@ -156,4 +166,9 @@ export const ApprovalError: Story = {
 export const CommentError: Story = {
   name: 'shows a message when sending a comment fails.',
   args: { commentError: new Error('sample failure') },
+}
+
+export const CommentDraftEntered: Story = {
+  name: 'enables comment submission after text is entered.',
+  args: { commentDraft: 'サンプルコメント' },
 }
