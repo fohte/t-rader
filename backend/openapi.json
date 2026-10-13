@@ -3589,6 +3589,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "description": "本文で参照されている対象で絞り込む。形式は `kind:id`。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
