@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +99,16 @@ pub(crate) fn adjust_quantity(
     }
     quantity
         .checked_div(factor)
+        .map(|adjusted| adjusted.round_dp(quantity.scale()))
+        .ok_or(SplitAdjustmentError::QuantityOverflow)
+}
+
+pub(crate) fn adjust_whole_quantity(
+    quantity: i64,
+    factor: Decimal,
+) -> Result<i64, SplitAdjustmentError> {
+    adjust_quantity(Decimal::from(quantity), factor)?
+        .to_i64()
         .ok_or(SplitAdjustmentError::QuantityOverflow)
 }
 
@@ -107,6 +118,18 @@ pub(crate) fn adjust_lot(
     factor: Decimal,
 ) -> Result<(Decimal, Decimal), SplitAdjustmentError> {
     let quantity = adjust_quantity(quantity, factor)?;
+    let price = price
+        .checked_mul(factor)
+        .ok_or(SplitAdjustmentError::PriceOverflow)?;
+    Ok((quantity, price))
+}
+
+pub(crate) fn adjust_integer_lot(
+    quantity: i64,
+    price: Decimal,
+    factor: Decimal,
+) -> Result<(i64, Decimal), SplitAdjustmentError> {
+    let quantity = adjust_whole_quantity(quantity, factor)?;
     let price = price
         .checked_mul(factor)
         .ok_or(SplitAdjustmentError::PriceOverflow)?;

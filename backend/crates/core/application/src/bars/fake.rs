@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -19,7 +19,7 @@ pub struct FakeBarsRepository {
     pub instruments: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
-    pub daily_adjustment_factors: Mutex<Vec<DailyBarAdjustmentFactor>>,
+    pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
 }
 
@@ -44,8 +44,17 @@ impl FakeBarsRepository {
         self.us_stock_targets.lock().await.extend(instrument_ids);
     }
 
-    pub async fn seed_daily_adjustment_factors(&self, factors: Vec<DailyBarAdjustmentFactor>) {
-        self.daily_adjustment_factors.lock().await.extend(factors);
+    pub async fn seed_daily_adjustment_factors(
+        &self,
+        instrument_id: impl Into<String>,
+        factors: Vec<DailyBarAdjustmentFactor>,
+    ) {
+        self.daily_adjustment_factors
+            .lock()
+            .await
+            .entry(instrument_id.into())
+            .or_default()
+            .extend(factors);
     }
 
     async fn all_bars(&self) -> Vec<Bar> {
@@ -122,7 +131,9 @@ impl BarsRepository for FakeBarsRepository {
             .daily_adjustment_factors
             .lock()
             .await
-            .iter()
+            .get(instrument_id)
+            .into_iter()
+            .flatten()
             .filter(|factor| factor.date >= from)
             .copied()
             .collect())

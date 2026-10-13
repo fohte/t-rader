@@ -3,14 +3,13 @@ use std::collections::{HashMap, VecDeque};
 use chrono::NaiveDate;
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 
 use super::{
     PaperAccount, PaperOrderSide, PaperOrderWithResult, PaperTradeUseCaseError,
     adjustment::{map_split_adjustment_error, split_cursor_from_bars},
     types::PaperOrderResult,
 };
-use crate::split_adjustment::adjust_lot;
+use crate::split_adjustment::adjust_integer_lot;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct OpenLot {
@@ -62,11 +61,9 @@ impl PaperTradeLedger {
             return Ok(());
         };
         for lot in lots.iter_mut() {
-            let (quantity, price) = adjust_lot(Decimal::from(lot.qty), lot.fill_price, factor)
+            let (quantity, price) = adjust_integer_lot(lot.qty, lot.fill_price, factor)
                 .map_err(map_split_adjustment_error)?;
-            lot.qty = quantity.round_dp(0).to_i64().ok_or_else(|| {
-                PaperTradeUseCaseError::Validation("split-adjusted quantity overflowed".into())
-            })?;
+            lot.qty = quantity;
             lot.fill_price = price;
         }
         lots.retain(|lot| lot.qty > 0);

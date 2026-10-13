@@ -11,6 +11,8 @@ use uuid::Uuid;
 pub enum TradeUseCaseError {
     #[error("{0}")]
     Validation(String),
+    #[error("trade summary calculation failed: {0}")]
+    SummaryCalculation(String),
     #[error("trade {0} not found")]
     NotFound(Uuid),
     #[error("{0}")]

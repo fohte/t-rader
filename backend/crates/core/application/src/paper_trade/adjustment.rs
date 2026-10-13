@@ -3,11 +3,10 @@ use std::collections::HashMap;
 use chrono::{NaiveDate, NaiveTime};
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 
 use crate::bars::{BarsQuery, SharedBarsRepository};
 use crate::split_adjustment::{
-    SplitAdjustment, SplitAdjustmentError, SplitCursor, adjust_quantity,
+    SplitAdjustment, SplitAdjustmentError, SplitCursor, adjust_whole_quantity,
 };
 
 use super::{PaperOrderResult, PaperOrderWithResult, PaperTradeUseCaseError};
@@ -46,13 +45,7 @@ pub(super) fn adjusted_quantity(
     quantity: i64,
     adjustment_factor: Decimal,
 ) -> Result<i64, PaperTradeUseCaseError> {
-    adjust_quantity(Decimal::from(quantity), adjustment_factor)
-        .map_err(map_split_adjustment_error)?
-        .round_dp(0)
-        .to_i64()
-        .ok_or_else(|| {
-            PaperTradeUseCaseError::Validation("split-adjusted quantity overflowed".into())
-        })
+    adjust_whole_quantity(quantity, adjustment_factor).map_err(map_split_adjustment_error)
 }
 
 pub(super) fn split_cursor_from_bars<'a>(

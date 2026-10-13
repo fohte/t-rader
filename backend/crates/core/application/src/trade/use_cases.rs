@@ -279,7 +279,16 @@ impl TradeUseCases {
                     }),
             );
         }
-        let split_cursor = SplitCursor::new(adjustments).map_err(split_adjustment_error)?;
+        let split_cursor =
+            SplitCursor::new(adjustments.clone()).map_err(|error| {
+                match adjustments
+                    .iter()
+                    .find(|adjustment| adjustment.factor <= Decimal::ZERO)
+                {
+                    Some(adjustment) => split_adjustment_error(error, adjustment),
+                    None => TradeUseCaseError::SummaryCalculation(error.to_string()),
+                }
+            })?;
         summarize(strategy_id, &rows, split_cursor)
     }
 
@@ -327,14 +336,34 @@ struct Lot {
     price: Decimal,
 }
 
-fn split_adjustment_error(error: SplitAdjustmentError) -> TradeUseCaseError {
-    TradeUseCaseError::Validation(error.to_string())
+fn split_adjustment_error(
+    error: SplitAdjustmentError,
+    adjustment: &SplitAdjustment,
+) -> TradeUseCaseError {
+    TradeUseCaseError::SummaryCalculation(format!(
+        "split adjustment for {} on {} failed: {error}",
+        adjustment.instrument_id, adjustment.date
+    ))
 }
 
-fn adjust_lots(lots: &mut VecDeque<Lot>, factor: Decimal) -> Result<(), TradeUseCaseError> {
-    for lot in lots {
-        (lot.qty, lot.price) =
-            adjust_lot(lot.qty, lot.price, factor).map_err(split_adjustment_error)?;
+fn adjust_lots(
+    lots: &mut VecDeque<Lot>,
+    adjustment: &SplitAdjustment,
+) -> Result<(), TradeUseCaseError> {
+    for lot in lots.iter_mut() {
+        (lot.qty, lot.price) = adjust_lot(lot.qty, lot.price, adjustment.factor)
+            .map_err(|error| split_adjustment_error(error, adjustment))?;
+    }
+    lots.retain(|lot| lot.qty > Decimal::ZERO);
+    Ok(())
+}
+
+fn apply_split_adjustment(
+    lots_by_symbol: &mut HashMap<String, VecDeque<Lot>>,
+    adjustment: &SplitAdjustment,
+) -> Result<(), TradeUseCaseError> {
+    if let Some(lots) = lots_by_symbol.get_mut(&adjustment.instrument_id) {
+        adjust_lots(lots, adjustment)?;
     }
     Ok(())
 }
@@ -350,10 +379,7 @@ fn summarize(
     for row in rows {
         let trade = &row.trade;
         split_cursor.apply_through(trade.date, |adjustment| {
-            if let Some(lots) = lots_by_symbol.get_mut(&adjustment.instrument_id) {
-                adjust_lots(lots, adjustment.factor)?;
-            }
-            Ok::<(), TradeUseCaseError>(())
+            apply_split_adjustment(&mut lots_by_symbol, adjustment)
         })?;
         let lots = lots_by_symbol.entry(trade.symbol.clone()).or_default();
         let realized = realized_by_symbol.entry(trade.symbol.clone()).or_default();
@@ -390,12 +416,8 @@ fn summarize(
         }
     }
 
-    split_cursor.apply_remaining(|adjustment| {
-        if let Some(lots) = lots_by_symbol.get_mut(&adjustment.instrument_id) {
-            adjust_lots(lots, adjustment.factor)?;
-        }
-        Ok::<(), TradeUseCaseError>(())
-    })?;
+    split_cursor
+        .apply_remaining(|adjustment| apply_split_adjustment(&mut lots_by_symbol, adjustment))?;
 
     let mut positions: Vec<PositionSummary> = lots_by_symbol
         .into_iter()
@@ -431,7 +453,7 @@ fn summarize(
 mod tests {
     use std::sync::Arc;
 
-    use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository, SharedBarsRepository};
+    use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository};
     use chrono::NaiveDate;
     use rstest::rstest;
     use serde_json::json;
@@ -467,6 +489,17 @@ mod tests {
     }
 
     fn dated_trade(id: u128, date: NaiveDate, side: &str, qty: i64, price: i64) -> Trade {
+        dated_trade_for_symbol(id, date, "FICTIONAL-SYMBOL", side, qty, price)
+    }
+
+    fn dated_trade_for_symbol(
+        id: u128,
+        date: NaiveDate,
+        symbol: &str,
+        side: &str,
+        qty: i64,
+        price: i64,
+    ) -> Trade {
         let timestamp = date
             .and_time(chrono::NaiveTime::MIN)
             .and_utc()
@@ -474,7 +507,7 @@ mod tests {
         Trade {
             id: uuid::Uuid::from_u128(id),
             strategy_id: uuid::Uuid::nil(),
-            symbol: "FICTIONAL-SYMBOL".into(),
+            symbol: symbol.into(),
             side: side.into(),
             qty: rust_decimal::Decimal::from(qty),
             price: rust_decimal::Decimal::from(price),
@@ -485,6 +518,19 @@ mod tests {
             created_at: timestamp,
             updated_at: timestamp,
         }
+    }
+
+    fn trade_use_cases(
+        repository: Arc<FakeTradeRepository>,
+        bars_repository: Arc<FakeBarsRepository>,
+    ) -> TradeUseCases {
+        TradeUseCases::new(
+            Arc::new(FakeUnitOfWork::new()),
+            repository,
+            Arc::new(FakeStrategyExistence::new()),
+            Arc::new(FakeChangeHistory::new()),
+            bars_repository,
+        )
     }
 
     #[rstest]
@@ -563,24 +609,21 @@ mod tests {
         }
         let bars_repository = Arc::new(FakeBarsRepository::new());
         bars_repository
-            .seed_daily_adjustment_factors(vec![
-                DailyBarAdjustmentFactor {
-                    date: first_split_date,
-                    factor: rust_decimal::Decimal::new(5, 1),
-                },
-                DailyBarAdjustmentFactor {
-                    date: final_split_date,
-                    factor: rust_decimal::Decimal::new(25, 2),
-                },
-            ])
+            .seed_daily_adjustment_factors(
+                "FICTIONAL-SYMBOL",
+                vec![
+                    DailyBarAdjustmentFactor {
+                        date: first_split_date,
+                        factor: rust_decimal::Decimal::new(5, 1),
+                    },
+                    DailyBarAdjustmentFactor {
+                        date: final_split_date,
+                        factor: rust_decimal::Decimal::new(25, 2),
+                    },
+                ],
+            )
             .await;
-        let trade_use_cases = TradeUseCases::new(
-            Arc::new(FakeUnitOfWork::new()),
-            repository,
-            Arc::new(FakeStrategyExistence::new()),
-            Arc::new(FakeChangeHistory::new()),
-            bars_repository as SharedBarsRepository,
-        );
+        let trade_use_cases = trade_use_cases(repository, bars_repository);
 
         let summary = trade_use_cases
             .summary(None)
@@ -600,6 +643,112 @@ mod tests {
                     cost_basis: rust_decimal::Decimal::from(35_000),
                     realized_pnl: rust_decimal::Decimal::from(45_000),
                 }],
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn summary_applies_each_instruments_own_split_history() {
+        let first_trade_date = NaiveDate::from_ymd_opt(2026, 2, 2).expect("valid date");
+        let first_split_date = NaiveDate::from_ymd_opt(2026, 2, 3).expect("valid date");
+        let first_sale_date = NaiveDate::from_ymd_opt(2026, 2, 4).expect("valid date");
+        let second_split_date = NaiveDate::from_ymd_opt(2026, 2, 5).expect("valid date");
+        let second_sale_date = NaiveDate::from_ymd_opt(2026, 2, 6).expect("valid date");
+        let repository = Arc::new(FakeTradeRepository::new());
+        for trade in [
+            dated_trade_for_symbol(1, first_trade_date, "FICTIONAL-A", "buy", 100, 1000),
+            dated_trade_for_symbol(2, first_trade_date, "FICTIONAL-B", "buy", 40, 600),
+            dated_trade_for_symbol(3, first_sale_date, "FICTIONAL-A", "sell", 50, 600),
+            dated_trade_for_symbol(4, second_sale_date, "FICTIONAL-B", "sell", 80, 200),
+        ] {
+            repository.insert_trade(trade).await;
+        }
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository
+            .seed_daily_adjustment_factors(
+                "FICTIONAL-A",
+                vec![DailyBarAdjustmentFactor {
+                    date: first_split_date,
+                    factor: rust_decimal::Decimal::new(5, 1),
+                }],
+            )
+            .await;
+        bars_repository
+            .seed_daily_adjustment_factors(
+                "FICTIONAL-B",
+                vec![DailyBarAdjustmentFactor {
+                    date: second_split_date,
+                    factor: rust_decimal::Decimal::new(25, 2),
+                }],
+            )
+            .await;
+
+        let summary = trade_use_cases(repository, bars_repository)
+            .summary(None)
+            .await
+            .expect("summary succeeds");
+
+        assert_eq!(
+            summary,
+            PerformanceSummary {
+                strategy_id: None,
+                trade_count: 4,
+                realized_pnl: rust_decimal::Decimal::from(9000),
+                positions: vec![
+                    PositionSummary {
+                        symbol: "FICTIONAL-A".into(),
+                        qty: rust_decimal::Decimal::from(150),
+                        avg_cost: rust_decimal::Decimal::from(500),
+                        cost_basis: rust_decimal::Decimal::from(75_000),
+                        realized_pnl: rust_decimal::Decimal::from(5000),
+                    },
+                    PositionSummary {
+                        symbol: "FICTIONAL-B".into(),
+                        qty: rust_decimal::Decimal::from(80),
+                        avg_cost: rust_decimal::Decimal::from(150),
+                        cost_basis: rust_decimal::Decimal::from(12_000),
+                        realized_pnl: rust_decimal::Decimal::from(4000),
+                    },
+                ],
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn summary_closes_a_position_after_a_split_with_a_rounded_factor() {
+        let buy_date = NaiveDate::from_ymd_opt(2026, 3, 2).expect("valid date");
+        let split_date = NaiveDate::from_ymd_opt(2026, 3, 3).expect("valid date");
+        let sell_date = NaiveDate::from_ymd_opt(2026, 3, 4).expect("valid date");
+        let repository = Arc::new(FakeTradeRepository::new());
+        for trade in [
+            dated_trade(1, buy_date, "buy", 100, 90),
+            dated_trade(2, sell_date, "sell", 300, 30),
+        ] {
+            repository.insert_trade(trade).await;
+        }
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository
+            .seed_daily_adjustment_factors(
+                "FICTIONAL-SYMBOL",
+                vec![DailyBarAdjustmentFactor {
+                    date: split_date,
+                    factor: rust_decimal::Decimal::new(333_333, 6),
+                }],
+            )
+            .await;
+
+        let summary = trade_use_cases(repository, bars_repository)
+            .summary(None)
+            .await
+            .expect("summary succeeds");
+
+        assert_eq!(
+            summary,
+            PerformanceSummary {
+                strategy_id: None,
+                trade_count: 2,
+                realized_pnl: rust_decimal::Decimal::new(9, 3),
+                positions: vec![],
             },
         );
     }
