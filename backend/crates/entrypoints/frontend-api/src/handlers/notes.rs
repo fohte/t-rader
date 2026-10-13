@@ -19,6 +19,7 @@ use core_application::strategy_task_step_evidence::{
     StrategyTaskStepEvidenceRepositoryError, StrategyTaskStepEvidenceUseCaseError,
 };
 use core_application::unit_of_work::UnitOfWorkError;
+use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -27,6 +28,10 @@ pub struct ListNotesQuery {
     pub kind: Option<String>,
     /// `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。
     pub tag: Option<String>,
+    /// 本文で参照されている対象で絞り込む。形式は `kind:id`。
+    #[serde(rename = "ref")]
+    #[param(rename = "ref")]
+    pub reference: Option<String>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -52,12 +57,20 @@ pub async fn list_notes(
     State(state): State<FrontendApiState>,
     JsonQuery(params): JsonQuery<ListNotesQuery>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
+    let references = params
+        .reference
+        .as_deref()
+        .map(parse_note_reference)
+        .transpose()
+        .map_err(AppError::Validation)?
+        .map(|reference| vec![reference]);
     let page = state
         .note_read_use_cases
         .list_notes(NoteListQuery {
             status: params.status.filter(|status| !status.is_empty()),
             kind: params.kind.filter(|kind| !kind.is_empty()),
             tag: params.tag.filter(|tag| !tag.is_empty()),
+            references,
             limit: None,
             ..NoteListQuery::default()
         })
@@ -69,6 +82,23 @@ pub async fn list_notes(
         .map(NoteResponse::from_snapshot)
         .collect();
     Ok(Json(responses))
+}
+
+fn parse_note_reference(raw: &str) -> Result<(String, String), String> {
+    let Some((kind, id)) = raw.split_once(':') else {
+        return Err("ref must use kind:id format".into());
+    };
+    if !ALLOWED_REF_KINDS.contains(&kind) {
+        return Err(format!("unsupported ref kind: {kind}"));
+    }
+    let id = id.trim();
+    if id.is_empty() {
+        return Err("ref ID must not be empty".into());
+    }
+    if !is_valid_ref_id_format(kind, id) {
+        return Err("group ref ID must use axis-key/group-key format".into());
+    }
+    Ok((kind.to_string(), id.to_string()))
 }
 
 /// ノート取得

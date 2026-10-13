@@ -18,7 +18,7 @@ mod tests {
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
     use gateway_postgres::entities::{
-        change_history, comment, note, note_version, strategy_task_step_evidence,
+        change_history, comment, note, note_kind, note_version, strategy_task_step_evidence,
     };
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
@@ -137,6 +137,78 @@ mod tests {
         let body = response.json::<Value>();
         assert_eq!(response.status_code(), StatusCode::CREATED);
         Uuid::parse_str(body["id"].as_str().expect("note id")).expect("uuid")
+    }
+
+    async fn create_test_note_for_ref_filter(
+        server: &TestServer,
+        title: &str,
+        body_md: &str,
+        kind: Option<&str>,
+        tags: &[&str],
+        created_by_kind: &str,
+    ) -> Uuid {
+        let frontmatter_json = if tags.is_empty() {
+            json!({})
+        } else {
+            json!({ "tags": tags })
+        };
+        let response = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": title,
+                "body_md": body_md,
+                "frontmatter_json": frontmatter_json,
+                "kind": kind,
+                "created_by_kind": created_by_kind,
+            }))
+            .await;
+        let body = response.json::<Value>();
+        let note_id = Uuid::parse_str(body["id"].as_str().expect("note id")).expect("uuid");
+        assert_eq!(
+            (response.status_code(), normalize_note_response(body)),
+            (
+                StatusCode::CREATED,
+                expected_note_for_ref_filter(
+                    title,
+                    body_md,
+                    frontmatter_json,
+                    kind,
+                    tags,
+                    created_by_kind,
+                ),
+            ),
+        );
+        note_id
+    }
+
+    fn expected_note_for_ref_filter(
+        title: &str,
+        body_md: &str,
+        frontmatter_json: Value,
+        kind: Option<&str>,
+        tags: &[&str],
+        created_by_kind: &str,
+    ) -> Value {
+        json!({
+            "id": "<id>",
+            "version_id": "<version_id>",
+            "version_no": 1,
+            "is_current": true,
+            "title": title,
+            "body_md": body_md,
+            "frontmatter_json": frontmatter_json,
+            "resolved_price_references_json": {},
+            "tags": tags,
+            "kind": kind,
+            "status": if created_by_kind == "human" { "approved" } else { "unread" },
+            "trigger": null,
+            "trigger_label": null,
+            "created_by_kind": created_by_kind,
+            "created_at": "<created_at>",
+            "updated_at": "<updated_at>",
+            "graphs_json": [],
+            "execution_id": null,
+        })
     }
 
     async fn insert_test_version(
@@ -614,6 +686,163 @@ mod tests {
                 ],
             ),
         );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_exact_reference_and_combines_existing_filters(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        note_kind::ActiveModel {
+            key: Set("demo-kind".into()),
+            display_name: Set("demo-kind".into()),
+            requires_approval: Set(false),
+            description: Set(None),
+            sort_order: Set(0),
+        }
+        .insert(&db)
+        .await
+        .expect("insert demo note kind");
+
+        let ref_body = concat!(
+            "[[stock:US:DEMO-A]] ",
+            "[[indicator:DEMO_FX]] ",
+            "[[group:demo-axis/demo-group]]",
+        );
+        create_test_note_for_ref_filter(
+            &server,
+            "ref match",
+            ref_body,
+            Some("demo-kind"),
+            &["demo-focus"],
+            "human",
+        )
+        .await;
+        create_test_note_for_ref_filter(
+            &server,
+            "same indicator without metadata",
+            "[[indicator:DEMO_FX]]",
+            None,
+            &[],
+            "human",
+        )
+        .await;
+        create_test_note_for_ref_filter(
+            &server,
+            "same metadata different ref",
+            "[[stock:US:DEMO-B]]",
+            Some("demo-kind"),
+            &["demo-focus"],
+            "human",
+        )
+        .await;
+        create_test_note_for_ref_filter(
+            &server,
+            "unread matching ref",
+            "[[indicator:DEMO_FX]]",
+            Some("demo-kind"),
+            &["demo-focus"],
+            "llm",
+        )
+        .await;
+
+        let expected_note =
+            |title: &str, body: &str, kind: Option<&str>, tags: &[&str], created_by_kind: &str| {
+                expected_note_for_ref_filter(
+                    title,
+                    body,
+                    if tags.is_empty() {
+                        json!({})
+                    } else {
+                        json!({ "tags": tags })
+                    },
+                    kind,
+                    tags,
+                    created_by_kind,
+                )
+            };
+        let matching = expected_note(
+            "ref match",
+            ref_body,
+            Some("demo-kind"),
+            &["demo-focus"],
+            "human",
+        );
+        let indicator_only = expected_note(
+            "same indicator without metadata",
+            "[[indicator:DEMO_FX]]",
+            None,
+            &[],
+            "human",
+        );
+        let unread = expected_note(
+            "unread matching ref",
+            "[[indicator:DEMO_FX]]",
+            Some("demo-kind"),
+            &["demo-focus"],
+            "llm",
+        );
+        let cases = vec![
+            ("/api/notes?ref=stock:US:DEMO-A", vec![matching.clone()]),
+            (
+                "/api/notes?ref=indicator:DEMO_FX",
+                vec![matching.clone(), indicator_only, unread],
+            ),
+            (
+                "/api/notes?ref=group:demo-axis/demo-group",
+                vec![matching.clone()],
+            ),
+            (
+                "/api/notes?ref=indicator:DEMO_FX&status=approved&kind=demo-kind&tag=demo-focus",
+                vec![matching],
+            ),
+        ];
+        let mut actual_cases = Vec::new();
+        let mut expected_cases = Vec::new();
+        for (path, mut expected_rows) in cases {
+            let response = server.get(path).await;
+            let status = response.status_code();
+            let mut rows = response
+                .json::<Vec<Value>>()
+                .into_iter()
+                .map(normalize_note_response)
+                .collect::<Vec<_>>();
+            rows.sort_by(|left, right| left["title"].as_str().cmp(&right["title"].as_str()));
+            expected_rows
+                .sort_by(|left, right| left["title"].as_str().cmp(&right["title"].as_str()));
+            actual_cases.push((status, rows));
+            expected_cases.push((StatusCode::OK, expected_rows));
+        }
+
+        assert_eq!(actual_cases, expected_cases);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_rejects_invalid_ref_with_bad_request(db: gateway_postgres::DatabaseHandle) {
+        let (_, server) = create_test_server_with_db(db).await;
+        let cases = [
+            ("/api/notes?ref=demo-id", "ref must use kind:id format"),
+            (
+                "/api/notes?ref=unknown:demo-id",
+                "unsupported ref kind: unknown",
+            ),
+            ("/api/notes?ref=stock:", "ref ID must not be empty"),
+            (
+                "/api/notes?ref=group:demo-group",
+                "group ref ID must use axis-key/group-key format",
+            ),
+        ];
+        let mut actual = Vec::new();
+        for (path, _) in cases {
+            let response = server.get(path).await;
+            actual.push((response.status_code(), response.json::<Value>()));
+        }
+        let expected = cases
+            .iter()
+            .map(|(_, message)| (StatusCode::BAD_REQUEST, json!({ "error": message })))
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual, expected);
     }
 
     #[backend_test_macros::database_test]

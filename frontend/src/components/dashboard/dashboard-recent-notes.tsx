@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router'
 
+import { NoteLinkRow } from '#components/notes/note-link-row'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import { formatRelative } from '#lib/note-utils'
 
 type Note = components['schemas']['Note']
 
@@ -55,20 +55,16 @@ export function DashboardRecentNotes({
           </p>
         ) : (
           recentNotes.map((note) => (
-            <Link
+            <NoteLinkRow
               key={note.id}
-              to="/notes/$noteId"
-              params={{ noteId: note.id }}
-              className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5 hover:bg-surface-strong"
-            >
-              <span className="truncate text-sm text-foreground">
-                {note.title}
-              </span>
-              <span className="font-mono text-2xs text-muted-foreground">
-                {note.created_by_kind === 'human' ? '自分' : 'エージェント'} ·{' '}
-                {formatRelative(note.updated_at)}
-              </span>
-            </Link>
+              noteId={note.id}
+              title={note.title}
+              status={note.status}
+              author={
+                note.created_by_kind === 'human' ? '自分' : 'エージェント'
+              }
+              updatedAt={note.updated_at}
+            />
           ))
         )}
       </div>

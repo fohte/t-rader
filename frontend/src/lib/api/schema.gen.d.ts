@@ -5144,6 +5144,8 @@ export interface operations {
         kind?: string
         /** @description `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。 */
         tag?: string
+        /** @description 本文で参照されている対象で絞り込む。形式は `kind:id`。 */
+        ref?: string
       }
       header?: never
       path?: never
