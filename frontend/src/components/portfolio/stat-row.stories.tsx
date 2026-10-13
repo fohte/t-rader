@@ -57,7 +57,7 @@ export const MissingMarketValue: Story = {
         sub: '—',
         cls: 'text-muted-foreground-strong',
       },
-      { label: '現金', value: '¥410,000', sub: '— 比率' },
+      { label: '現金', value: '¥410,000', sub: '57.7% 既知額比' },
       { label: '実現損益 (累計)', value: '+¥12,300', cls: 'text-up' },
     ],
   },

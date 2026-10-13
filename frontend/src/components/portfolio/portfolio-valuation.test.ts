@@ -104,8 +104,8 @@ describe('calculatePortfolioValuation', () => {
       unrealizedPnlRate: null,
       cash: 3200,
       totalAssets: null,
-      cashRatio: null,
-      investedRatio: null,
+      cashRatio: 68.08510638297872,
+      investedRatio: 31.914893617021278,
       stats: [
         { label: '総資産 (時価)', value: '—' },
         {
@@ -119,7 +119,7 @@ describe('calculatePortfolioValuation', () => {
           sub: '—',
           cls: 'text-muted-foreground-strong',
         },
-        { label: '現金', value: '¥3,200', sub: '— 比率' },
+        { label: '現金', value: '¥3,200', sub: '68.1% 既知額比' },
         { label: '実現損益 (累計)', value: '+¥200', cls: 'text-up' },
       ],
     })

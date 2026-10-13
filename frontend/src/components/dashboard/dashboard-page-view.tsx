@@ -96,12 +96,17 @@ export function DashboardPageView({
                 <span className="mr-2 text-primary">&gt;</span>
                 保有銘柄
               </h2>
-              <Link
-                to="/portfolio"
-                className="shrink-0 font-mono text-2xs text-primary hover:underline"
-              >
-                保有をすべて見る →
-              </Link>
+              <div className="flex items-baseline gap-3">
+                <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                  {positions == null ? '…' : `${String(positions.length)} 銘柄`}
+                </span>
+                <Link
+                  to="/portfolio"
+                  className="shrink-0 font-mono text-2xs text-primary hover:underline"
+                >
+                  保有をすべて見る →
+                </Link>
+              </div>
             </div>
             {isPositionsError ? (
               <p className="border border-border bg-card px-4 py-5 font-mono text-xs text-muted-foreground">

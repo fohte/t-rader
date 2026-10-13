@@ -49,12 +49,15 @@ export function calculatePortfolioValuation(
       : null
   const cash = investableAmount + realizedPnl - costBasis
   const totalAssets = marketValue == null ? null : cash + marketValue
+  const knownMarketValue = positions.reduce(
+    (sum, position) => sum + Math.max(position.market_value ?? 0, 0),
+    0,
+  )
+  const allocationTotal = Math.max(cash, 0) + knownMarketValue
   const cashRatio =
-    totalAssets != null && totalAssets > 0 ? (cash / totalAssets) * 100 : null
+    allocationTotal > 0 ? (Math.max(cash, 0) / allocationTotal) * 100 : null
   const investedRatio =
-    totalAssets != null && totalAssets > 0 && marketValue != null
-      ? (marketValue / totalAssets) * 100
-      : null
+    allocationTotal > 0 ? (knownMarketValue / allocationTotal) * 100 : null
   const stats: StatItem[] = [
     {
       label: '総資産 (時価)',
@@ -77,7 +80,10 @@ export function calculatePortfolioValuation(
     {
       label: '現金',
       value: formatYen(cash),
-      sub: cashRatio == null ? '— 比率' : `${cashRatio.toFixed(1)}% 比率`,
+      sub:
+        cashRatio == null
+          ? '— 比率'
+          : `${cashRatio.toFixed(1)}% ${marketValue == null ? '既知額比' : '比率'}`,
     },
     {
       label: '実現損益 (累計)',

@@ -52,10 +52,10 @@ export function PositionsTable({
               <>
                 <th className="px-3 py-2 text-right font-normal">評価額</th>
                 <th className="px-3 py-2 text-right font-normal">含み損益</th>
+                <th className="px-3 py-2 text-right font-normal">現在値</th>
                 <th className="px-3 py-2 text-right font-normal">数量</th>
                 <th className="px-3 py-2 text-right font-normal">平均取得</th>
                 <th className="px-3 py-2 text-right font-normal">取得簿価</th>
-                <th className="px-3 py-2 text-right font-normal">現在値</th>
               </>
             ) : (
               <>
@@ -109,6 +109,11 @@ export function PositionsTable({
                       )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
+                      {p.current_price == null
+                        ? '—'
+                        : formatYen(p.current_price)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
                       {p.qty.toLocaleString()}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
@@ -116,11 +121,6 @@ export function PositionsTable({
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatYen(p.cost_basis)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {p.current_price == null
-                        ? '—'
-                        : formatYen(p.current_price)}
                     </td>
                   </>
                 ) : (
