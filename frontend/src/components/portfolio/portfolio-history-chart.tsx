@@ -206,19 +206,13 @@ function PortfolioHistoryPlot({
   const [hoveredDate, setHoveredDate] = useState<string | null>(
     initialHoveredDate ?? null,
   )
-  const previousPeriodRef = useRef(period)
-  const activeHoveredDate =
-    previousPeriodRef.current === period ? hoveredDate : null
-  const hoveredPoint =
-    activeHoveredDate == null
-      ? null
-      : (pointsByDate.get(activeHoveredDate) ?? null)
-
-  useEffect(() => {
-    if (previousPeriodRef.current === period) return
-    previousPeriodRef.current = period
+  const [hoveredPeriod, setHoveredPeriod] = useState(period)
+  if (hoveredPeriod !== period) {
+    setHoveredPeriod(period)
     setHoveredDate(null)
-  }, [period])
+  }
+  const hoveredPoint =
+    hoveredDate == null ? null : (pointsByDate.get(hoveredDate) ?? null)
 
   useEffect(() => {
     const container = containerRef.current

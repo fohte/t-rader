@@ -122,20 +122,26 @@ describe('PortfolioHistoryChart', () => {
 
     render(<StatefulHistoryChart />)
 
-    expect(readTooltip()).toEqual({
-      date: '2025-04-18',
-      metrics: [
-        { label: '総資産', value: '¥1,015,000' },
-        { label: '株式 (時価)', value: '¥615,000' },
-        { label: '現金', value: '¥400,000' },
-        { label: '前期比', value: '+¥5,000' },
-      ],
-    })
+    const tooltipSnapshots = [readTooltip()]
 
     await user.click(screen.getByRole('button', { name: '月' }))
-    expect(readTooltip()).toEqual(null)
+    tooltipSnapshots.push(readTooltip())
 
     await user.click(screen.getByRole('button', { name: '週' }))
-    expect(readTooltip()).toEqual(null)
+    tooltipSnapshots.push(readTooltip())
+
+    expect(tooltipSnapshots).toEqual([
+      {
+        date: '2025-04-18',
+        metrics: [
+          { label: '総資産', value: '¥1,015,000' },
+          { label: '株式 (時価)', value: '¥615,000' },
+          { label: '現金', value: '¥400,000' },
+          { label: '前期比', value: '+¥5,000' },
+        ],
+      },
+      null,
+      null,
+    ])
   })
 })
