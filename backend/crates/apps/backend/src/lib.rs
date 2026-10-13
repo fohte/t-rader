@@ -56,6 +56,7 @@ pub fn build_http_state(
         paper_trade_use_cases: use_cases.paper_trade(),
         prediction_use_cases: use_cases.predictions(),
         ref_use_cases: use_cases.refs(),
+        stock_group_use_cases: use_cases.stock_groups(),
         rss_feed_use_cases: use_cases.rss_feeds(),
         strategy_scope_use_cases: Arc::new(use_cases.strategy_scope()),
         strategy_task_use_cases: use_cases.strategy_tasks(),

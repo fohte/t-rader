@@ -15,7 +15,7 @@ use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::{
-    IndicatorObservationResponse, IndicatorResponse, RefResolution, StockResponse,
+    GroupResponse, IndicatorObservationResponse, IndicatorResponse, RefResolution, StockResponse,
 };
 use core_domain::note_reference::ALLOWED_REF_KINDS;
 
@@ -87,6 +87,34 @@ pub async fn get_stock(
         .map_err(map_ref_error)?
         .ok_or_else(|| AppError::NotFound(format!("stock {id} not found")))?;
     Ok(Json(StockResponse::from(m)))
+}
+
+/// group 詳細
+#[utoipa::path(
+    get,
+    path = "/api/refs/groups/{axis_key}/{group_key}",
+    tag = "refs",
+    operation_id = "get_ref_group",
+    params(
+        ("axis_key" = String, Path, description = "グループ軸の key"),
+        ("group_key" = String, Path, description = "グループの key"),
+    ),
+    responses(
+        (status = 200, body = GroupResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_group(
+    State(state): State<FrontendApiState>,
+    JsonPath((axis_key, group_key)): JsonPath<(String, String)>,
+) -> Result<Json<GroupResponse>, AppError> {
+    let detail = state
+        .stock_group_use_cases
+        .get_detail(&axis_key, &group_key)
+        .await?;
+    Ok(Json(GroupResponse::from(detail)))
 }
 
 /// indicator 検索

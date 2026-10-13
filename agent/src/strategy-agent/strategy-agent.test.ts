@@ -241,6 +241,26 @@ const normalizeSuccessfulRetry = (
   requestBodies,
 })
 
+const normalizeSuccessfulRetryWithCallCount = (
+  result: PhaseAgentResult,
+  requestBodies: readonly string[],
+  callCount: number,
+) => ({
+  ...normalizeSuccessfulRetry(result, requestBodies),
+  callCount,
+})
+
+const normalizeModelCallOutcome = (
+  callCount: number,
+  status: 'resolved' | 'rejected',
+  error: unknown,
+) => ({
+  callCount,
+  status,
+  errorName: error instanceof Error ? error.name : undefined,
+  message: error instanceof Error ? error.message : undefined,
+})
+
 const normalizeSuccessfulRetryWithWarnings = (
   result: PhaseAgentResult,
   requestBodies: readonly string[],
@@ -950,6 +970,35 @@ describe('createStrategyAgentDeps', () => {
     })
   }
 
+  const buildRolelessModelStreamResponse = (callId: string): Response => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              id: callId,
+              model: 'example-model-test-stream',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: 'stop',
+                  delta: { content: '' },
+                },
+              ],
+            })}\n\n`,
+          ),
+        )
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      },
+    })
+    return new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })
+  }
+
   const buildPartialModelStreamResponse = (
     ending:
       | { readonly kind: 'sse-error' }
@@ -1287,6 +1336,72 @@ describe('createStrategyAgentDeps', () => {
       })
     },
   )
+
+  it('retries after a streamed message without a role', async () => {
+    const requestBodies: string[] = []
+    let callCount = 0
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = getRequestBody(init)
+      requestBodies.push(body)
+      if (callCount === 1) {
+        return Promise.resolve(buildRolelessModelStreamResponse('call-1'))
+      }
+      return Promise.resolve(
+        buildStructuredOutputStreamResponse(`call-${String(callCount)}`, body),
+      )
+    }, true)
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+    const firstRequestBody = requestBodies[0]
+
+    expect(
+      normalizeSuccessfulRetryWithCallCount(result, requestBodies, callCount),
+    ).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestBodies: [firstRequestBody, firstRequestBody],
+      callCount: 2,
+    })
+  }, 15_000)
+
+  it('fails with a dedicated error after two retries for streamed messages without a role', async () => {
+    let callCount = 0
+    const model = buildStubModel(() => {
+      callCount += 1
+      return Promise.resolve(
+        buildRolelessModelStreamResponse(`call-${String(callCount)}`),
+      )
+    }, true)
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const outcome = await agent
+      .invoke({ messages: [new HumanMessage('hi')] })
+      .then(
+        () => ({ status: 'resolved' as const, error: undefined }),
+        (error: unknown) => ({ status: 'rejected' as const, error }),
+      )
+
+    expect(
+      normalizeModelCallOutcome(callCount, outcome.status, outcome.error),
+    ).toEqual({
+      callCount: 3,
+      status: 'rejected',
+      errorName: 'NonAssistantModelResponseError',
+      message:
+        'nonAssistantModelResponseMiddleware: model returned a non-assistant message (type: generic)',
+    })
+  }, 15_000)
 
   it('does not retry after a non-transport TypeError while reading a stream', async () => {
     let callCount = 0

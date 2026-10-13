@@ -862,6 +862,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/refs/groups/{axis_key}/{group_key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** group 詳細 */
+    get: operations['get_ref_group']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/refs/indicators': {
     parameters: {
       query?: never
@@ -1735,9 +1752,20 @@ export interface components {
       /** Format: double */
       y?: number | null
     }
+    Group: {
+      axis: components['schemas']['GroupAxisReference']
+      description?: string | null
+      key: string
+      name: string
+      stocks: components['schemas']['GroupStockReference'][]
+    }
     GroupAxis: {
       derive_from?: string | null
       description: string
+      key: string
+      name: string
+    }
+    GroupAxisReference: {
       key: string
       name: string
     }
@@ -1749,6 +1777,10 @@ export interface components {
        * @description 分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。
        */
       ratio: number
+    }
+    GroupStockReference: {
+      id: string
+      name: string
     }
     /** @description ヘルスチェックレスポンス */
     HealthResponse: {
@@ -5995,6 +6027,54 @@ export interface operations {
         }
       }
       /** @description 口座が見つからない */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_ref_group: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description グループ軸の key */
+        axis_key: string
+        /** @description グループの key */
+        group_key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Group']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
         headers: {
           [name: string]: unknown
