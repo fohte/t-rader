@@ -87,6 +87,11 @@ export const Weekly: Story = {
   args: { period: 'week' },
 }
 
+export const Tooltip: Story = {
+  name: 'shows details for a hovered weekly point.',
+  args: { period: 'week', initialHoveredDate: '2026-08-14' },
+}
+
 export const Monthly: Story = {
   name: 'shows the portfolio history for each month.',
   args: { period: 'month' },

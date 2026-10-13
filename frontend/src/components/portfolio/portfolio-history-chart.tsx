@@ -26,6 +26,7 @@ interface PortfolioHistoryChartProps {
   period: PortfolioHistoryPeriod
   status: HistoryStatus
   errorMessage?: string
+  initialHoveredDate?: string
   onPeriodChange: (period: PortfolioHistoryPeriod) => void
 }
 
@@ -90,6 +91,7 @@ export function PortfolioHistoryChart({
   period,
   status,
   errorMessage,
+  initialHoveredDate,
   onPeriodChange,
 }: PortfolioHistoryChartProps) {
   const points = useMemo(
@@ -139,7 +141,13 @@ export function PortfolioHistoryChart({
             取引がありません。資産推移は取引の登録後に表示されます。
           </div>
         )}
-        {isReady && <PortfolioHistoryPlot points={points} />}
+        {isReady && (
+          <PortfolioHistoryPlot
+            points={points}
+            period={period}
+            initialHoveredDate={initialHoveredDate}
+          />
+        )}
 
         {isReady && (
           <div
@@ -171,7 +179,15 @@ export function PortfolioHistoryChart({
   )
 }
 
-function PortfolioHistoryPlot({ points }: { points: PortfolioHistoryPoint[] }) {
+function PortfolioHistoryPlot({
+  points,
+  period,
+  initialHoveredDate,
+}: {
+  points: PortfolioHistoryPoint[]
+  period: PortfolioHistoryPeriod
+  initialHoveredDate?: string
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const totalSeriesRef = useRef<ISeriesApi<'Area'> | null>(null)
@@ -187,9 +203,22 @@ function PortfolioHistoryPlot({ points }: { points: PortfolioHistoryPoint[] }) {
       ),
     [points],
   )
-  const [hoveredDate, setHoveredDate] = useState<string | null>(null)
+  const [hoveredDate, setHoveredDate] = useState<string | null>(
+    initialHoveredDate ?? null,
+  )
+  const previousPeriodRef = useRef(period)
+  const activeHoveredDate =
+    previousPeriodRef.current === period ? hoveredDate : null
   const hoveredPoint =
-    hoveredDate == null ? null : (pointsByDate.get(hoveredDate) ?? null)
+    activeHoveredDate == null
+      ? null
+      : (pointsByDate.get(activeHoveredDate) ?? null)
+
+  useEffect(() => {
+    if (previousPeriodRef.current === period) return
+    previousPeriodRef.current = period
+    setHoveredDate(null)
+  }, [period])
 
   useEffect(() => {
     const container = containerRef.current
@@ -317,7 +346,10 @@ function PortfolioHistoryPlot({ points }: { points: PortfolioHistoryPoint[] }) {
     <div className="relative">
       <div ref={containerRef} className="h-64 w-full" />
       {hoveredPoint != null && (
-        <div className="pointer-events-none absolute left-2 top-2 z-10 min-w-44 border border-border bg-card/95 px-3 py-2 shadow-sm">
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute left-2 top-2 z-10 min-w-44 border border-border bg-card/95 px-3 py-2 shadow-sm"
+        >
           <p className="mb-1 font-mono text-2xs text-muted-foreground">
             {hoveredPoint.point.date}
           </p>
