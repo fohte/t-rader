@@ -8,7 +8,7 @@ const STRATEGY_SETTINGS_TABS = [
 
 export type StrategySettingsTab = (typeof STRATEGY_SETTINGS_TABS)[number]['key']
 
-export function parseStrategySettingsTab(
+function parseStrategySettingsTab(
   value: unknown,
 ): StrategySettingsTab | undefined {
   return STRATEGY_SETTINGS_TABS.find((tab) => tab.key === value)?.key

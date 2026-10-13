@@ -2,8 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider, useRouterState } from '@tanstack/react-router'
 
 import {
-  parseStrategySettingsTab,
   StrategySettingsTabs,
+  validateStrategySettingsSearch,
 } from '#components/strategy-settings/settings-tabs'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -34,7 +34,8 @@ function renderTabs(initialTab: 'general' | 'triggers' | 'indicators') {
 function StorySettingsTabs() {
   const activeTab = useRouterState({
     select: (state) =>
-      parseStrategySettingsTab(state.location.search.settingsTab) ?? 'general',
+      validateStrategySettingsSearch(state.location.search).settingsTab ??
+      'general',
   })
   return (
     <StrategySettingsTabs strategyId="demo-strategy" activeTab={activeTab} />

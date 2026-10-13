@@ -5,7 +5,7 @@ const STRATEGY_LIST_TAB_IDS = ['list', 'runs'] as const
 export type StrategyListTab = (typeof STRATEGY_LIST_TAB_IDS)[number]
 export type LegacyStrategyListTab = Extract<StrategyListTab, 'runs'>
 
-export function parseStrategyListTab(value: unknown) {
+function parseStrategyListTab(value: unknown) {
   return STRATEGY_LIST_TAB_IDS.find((tab) => tab === value)
 }
 

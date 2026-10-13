@@ -10,7 +10,6 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
-  parseStrategySettingsTab,
   StrategySettingsTabs,
   validateStrategySettingsSearch,
 } from '#components/strategy-settings/settings-tabs'
@@ -21,7 +20,8 @@ afterEach(cleanup)
 function RouterSettingsTabs() {
   const activeTab = useRouterState({
     select: (state) =>
-      parseStrategySettingsTab(state.location.search.settingsTab) ?? 'general',
+      validateStrategySettingsSearch(state.location.search).settingsTab ??
+      'general',
   })
   return (
     <StrategySettingsTabs strategyId="demo-strategy" activeTab={activeTab} />
@@ -119,15 +119,6 @@ describe('StrategySettingsTabs', () => {
         ],
       })
     })
-  })
-
-  it.each([
-    { value: 'general', expected: 'general' },
-    { value: 'triggers', expected: 'triggers' },
-    { value: 'indicators', expected: 'indicators' },
-    { value: 'unknown', expected: undefined },
-  ] as const)('$value search 値をタブへ変換する', ({ value, expected }) => {
-    expect(parseStrategySettingsTab(value)).toEqual(expected)
   })
 
   it.each([

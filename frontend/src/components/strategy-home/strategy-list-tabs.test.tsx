@@ -3,7 +3,6 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
-  parseStrategyListTab,
   StrategyListTabs,
   validateStrategyListSearch,
 } from '#components/strategy-home/strategy-list-tabs'
@@ -54,14 +53,7 @@ describe('StrategyListTabs', () => {
   )
 
   it.each([
-    { value: 'list', expected: 'list' },
-    { value: 'runs', expected: 'runs' },
-    { value: 'unknown', expected: undefined },
-  ] as const)('$value search 値を検証する', ({ value, expected }) => {
-    expect(parseStrategyListTab(value)).toEqual(expected)
-  })
-
-  it.each([
+    { search: { strategyTab: 'list' }, expected: { strategyTab: 'list' } },
     { search: { strategyTab: 'runs' }, expected: { strategyTab: 'runs' } },
     {
       search: { strategyTab: 'indicators' },
