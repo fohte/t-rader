@@ -7,6 +7,25 @@ import { createStoryRouter } from '#storybook/story-router'
 
 afterEach(cleanup)
 
+function getGlobalHeaderOutput(
+  heading: HTMLElement,
+  backLink: HTMLElement,
+  description: HTMLElement,
+) {
+  return {
+    heading: heading.textContent,
+    backHref: backLink.getAttribute('href'),
+    description: description.textContent,
+  }
+}
+
+function getStrategyHeaderOutput(scopeLabel: HTMLElement, link: HTMLElement) {
+  return {
+    scopeLabel: scopeLabel.textContent,
+    linkHref: link.getAttribute('href'),
+  }
+}
+
 function renderHeader(scope: 'global' | 'strategy') {
   render(
     <RouterProvider
@@ -43,11 +62,12 @@ describe('IndicatorSettingsPageHeader', () => {
       '全体の設定に登録した自作指標は、すべての戦略から参照できます。',
     )
 
-    expect(heading.textContent).toBe('設定 — 自作指標 (共通)')
-    expect(backLink.getAttribute('href')).toBe('/settings')
-    expect(description.textContent).toBe(
-      '全体の設定に登録した自作指標は、すべての戦略から参照できます。',
-    )
+    expect(getGlobalHeaderOutput(heading, backLink, description)).toEqual({
+      heading: '設定 — 自作指標 (共通)',
+      backHref: '/settings',
+      description:
+        '全体の設定に登録した自作指標は、すべての戦略から参照できます。',
+    })
   })
 
   it('戦略 scope に共通の指標へのリンクを表示する', async () => {
@@ -58,7 +78,9 @@ describe('IndicatorSettingsPageHeader', () => {
 
     const scopeLabel = await screen.findByText('この戦略だけの指標')
 
-    expect(scopeLabel.textContent).toBe('>この戦略だけの指標')
-    expect(link.getAttribute('href')).toBe('/settings/indicators')
+    expect(getStrategyHeaderOutput(scopeLabel, link)).toEqual({
+      scopeLabel: '>この戦略だけの指標',
+      linkHref: '/settings/indicators',
+    })
   })
 })

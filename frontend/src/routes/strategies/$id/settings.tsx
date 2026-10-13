@@ -86,11 +86,7 @@ function StrategySettingsPage() {
         {tab === 'indicators' && (
           <div className="space-y-5">
             <IndicatorSettingsPageHeader scope="strategy" />
-            <IndicatorsPage
-              scope="strategy"
-              strategyId={id}
-              showHeader={false}
-            />
+            <IndicatorsPage scope="strategy" strategyId={id} />
           </div>
         )}
       </section>

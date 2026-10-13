@@ -11,7 +11,7 @@ function GlobalIndicatorsSettingsPage() {
   return (
     <div className="space-y-5">
       <IndicatorSettingsPageHeader scope="global" />
-      <IndicatorsPage scope="global" showHeader={false} />
+      <IndicatorsPage scope="global" />
     </div>
   )
 }

@@ -38,6 +38,16 @@ function getTabsOutput(navigation: HTMLElement) {
     }))
 }
 
+function getTabsState(
+  search: Record<string, unknown>,
+  navigation: HTMLElement,
+) {
+  return {
+    search,
+    tabs: getTabsOutput(navigation),
+  }
+}
+
 describe('StrategySettingsTabs', () => {
   it.each([
     { activeTab: 'general' },
@@ -86,30 +96,29 @@ describe('StrategySettingsTabs', () => {
 
     await user.click(await screen.findByRole('tab', { name: '自作指標' }))
 
+    const navigation = screen.getByRole('tablist', { name: '戦略設定タブ' })
     await waitFor(() => {
-      expect(router.state.location.search).toEqual({
-        settingsTab: 'indicators',
+      expect(getTabsState(router.state.location.search, navigation)).toEqual({
+        search: { settingsTab: 'indicators' },
+        tabs: [
+          {
+            label: '全般',
+            href: '/strategies/demo-strategy/settings?settingsTab=general',
+            selected: false,
+          },
+          {
+            label: 'トリガー',
+            href: '/strategies/demo-strategy/settings?settingsTab=triggers',
+            selected: false,
+          },
+          {
+            label: '自作指標',
+            href: '/strategies/demo-strategy/settings?settingsTab=indicators',
+            selected: true,
+          },
+        ],
       })
     })
-
-    const navigation = screen.getByRole('tablist', { name: '戦略設定タブ' })
-    expect(getTabsOutput(navigation)).toEqual([
-      {
-        label: '全般',
-        href: '/strategies/demo-strategy/settings?settingsTab=general',
-        selected: false,
-      },
-      {
-        label: 'トリガー',
-        href: '/strategies/demo-strategy/settings?settingsTab=triggers',
-        selected: false,
-      },
-      {
-        label: '自作指標',
-        href: '/strategies/demo-strategy/settings?settingsTab=indicators',
-        selected: true,
-      },
-    ])
   })
 
   it.each([
