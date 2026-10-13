@@ -20,6 +20,7 @@ afterEach(() => {
 })
 
 type TaskRun = NonNullable<ComponentProps<typeof TaskRunView>['task']>
+type TaskRunNote = ComponentProps<typeof TaskRunView>['notes'][number]
 
 function makeTask(overrides: Partial<TaskRun> = {}): TaskRun {
   return {
@@ -34,7 +35,7 @@ function makeTask(overrides: Partial<TaskRun> = {}): TaskRun {
   }
 }
 
-async function renderTaskView(task: TaskRun) {
+async function renderTaskView(task: TaskRun, notes: TaskRunNote[] = []) {
   const rootRoute = createRootRoute({
     component: () => (
       <TaskRunView
@@ -42,7 +43,7 @@ async function renderTaskView(task: TaskRun) {
         task={task}
         steps={[]}
         configPhases={[]}
-        generatedNotesCount={0}
+        notes={notes}
       />
     ),
   })
@@ -51,8 +52,13 @@ async function renderTaskView(task: TaskRun) {
     path: '/strategies/$id/runs',
     component: () => null,
   })
+  const noteRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/notes/$noteId',
+    component: () => null,
+  })
   const router = createRouter({
-    routeTree: rootRoute.addChildren([runsRoute]),
+    routeTree: rootRoute.addChildren([runsRoute, noteRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
   render(<RouterProvider router={router} />)
@@ -69,6 +75,24 @@ function readElapsedText(): string | null {
       element?.tagName === 'P' && element.textContent.includes(' · 経過 '),
   )
   return summary.textContent.split(' · 経過 ').at(-1) ?? null
+}
+
+function readNotesOutput() {
+  const section = screen.getByRole('region', {
+    name: '作成・更新したノート',
+  })
+  return {
+    heading: section.querySelector('h2')?.textContent,
+    count: section.querySelector('div > span')?.textContent,
+    emptyMessage: section.querySelector('p')?.textContent ?? null,
+    notes: Array.from(section.querySelectorAll('li'), (item) => {
+      const link = item.querySelector('a')
+      return {
+        title: link?.textContent,
+        href: link?.getAttribute('href'),
+      }
+    }),
+  }
 }
 
 describe('sourceLabel', () => {
@@ -111,5 +135,39 @@ describe('TaskRunView', () => {
     await renderTaskView(makeTask({ phase: 'running' }))
 
     expect(readElapsedText()).toBe('1m5s')
+  })
+
+  it('ノート一覧に詳細へのリンクを表示する', async () => {
+    await renderTaskView(makeTask(), [
+      { id: 'fake-note-001', title: 'サンプル調査メモ' },
+      { id: 'fake-note-002', title: '架空グループの確認事項' },
+    ])
+
+    expect(readNotesOutput()).toEqual({
+      heading: '> 作成・更新したノート',
+      count: '2 件',
+      emptyMessage: null,
+      notes: [
+        {
+          title: 'サンプル調査メモ',
+          href: '/notes/fake-note-001',
+        },
+        {
+          title: '架空グループの確認事項',
+          href: '/notes/fake-note-002',
+        },
+      ],
+    })
+  })
+
+  it('ノートが 0 件のときに空表示を出す', async () => {
+    await renderTaskView(makeTask())
+
+    expect(readNotesOutput()).toEqual({
+      heading: '> 作成・更新したノート',
+      count: '0 件',
+      emptyMessage: 'この実行で作成・更新されたノートはありません。',
+      notes: [],
+    })
   })
 })

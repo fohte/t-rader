@@ -66,8 +66,6 @@ function TaskRunPage() {
     void notesQuery.refetch()
   }, [taskPhase, notesQuery.refetch])
 
-  const generatedNotesCount = notesQuery.data?.length ?? 0
-
   return (
     <TaskRunView
       strategyId={id}
@@ -86,7 +84,10 @@ function TaskRunPage() {
       }
       steps={steps}
       configPhases={configPhases}
-      generatedNotesCount={generatedNotesCount}
+      notes={(notesQuery.data ?? []).map(({ id: noteId, title }) => ({
+        id: noteId,
+        title,
+      }))}
       traceUrlTemplate={configQuery.data?.trace_url_template ?? undefined}
       taskLoadError={taskQuery.isError}
     />

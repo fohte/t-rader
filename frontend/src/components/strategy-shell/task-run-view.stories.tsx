@@ -64,7 +64,7 @@ export const Running: Story = {
           investigateStep('半導体サイクルの反転', { status: 'running' }),
         ],
         configPhases: CONFIG_PHASES,
-        generatedNotesCount: 0,
+        notes: [],
         traceUrlTemplate:
           'https://grafana.example/explore?traceID={trace_id}&spanID={span_id}',
       })}
@@ -73,7 +73,7 @@ export const Running: Story = {
 }
 
 export const Completed: Story = {
-  name: 'shows a completed task with created and updated notes.',
+  name: 'shows a completed task with links to its notes.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
@@ -98,7 +98,10 @@ export const Completed: Story = {
           }),
         ],
         configPhases: CONFIG_PHASES,
-        generatedNotesCount: 2,
+        notes: [
+          { id: 'fake-note-001', title: 'サンプル企業の調査メモ' },
+          { id: 'fake-note-002', title: '架空グループの確認事項' },
+        ],
       })}
     />
   ),
@@ -125,7 +128,7 @@ export const Failed: Story = {
           },
         ],
         configPhases: CONFIG_PHASES,
-        generatedNotesCount: 0,
+        notes: [],
       })}
     />
   ),
@@ -143,7 +146,7 @@ export const CompletedWithoutNotes: Story = {
         }),
         steps: [PLAN_STEP],
         configPhases: CONFIG_PHASES,
-        generatedNotesCount: 0,
+        notes: [],
       })}
     />
   ),
@@ -158,7 +161,7 @@ export const NoSteps: Story = {
         task: baseTask({ phase: 'pending' }),
         steps: [],
         configPhases: [],
-        generatedNotesCount: 0,
+        notes: [],
       })}
     />
   ),
@@ -173,7 +176,7 @@ export const Loading: Story = {
         task: null,
         steps: [],
         configPhases: [],
-        generatedNotesCount: 0,
+        notes: [],
       })}
     />
   ),
