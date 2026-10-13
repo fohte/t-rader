@@ -34,6 +34,7 @@ pub struct MarketMoversQuery {
     pub to: NaiveDate,
     pub direction: MarketMoverDirection,
     pub min_avg_turnover: Decimal,
+    pub markets: Option<Vec<String>>,
     pub limit: u32,
 }
 

@@ -49,11 +49,11 @@ async fn insert_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
     .expect("insert fictional instrument");
 }
 
-async fn insert_stock(db: &impl sea_orm::ConnectionTrait, id: &str) {
+async fn insert_stock(db: &impl sea_orm::ConnectionTrait, id: &str, market: Option<&str>) {
     stock::ActiveModel {
         id: Set(id.to_string()),
         name: Set(format!("Fictional {id}")),
-        market: Set(None),
+        market: Set(market.map(str::to_owned)),
         product_category: Set(None),
         ..Default::default()
     }
@@ -209,20 +209,19 @@ async fn insert_prediction_contact(
 }
 
 async fn seed_movers(db: &gateway_postgres::DatabaseHandle, strategy_id: Uuid) -> Uuid {
-    let ids = [
-        "fictional-query",
-        "fictional-note",
-        "fictional-trade",
-        "fictional-paper",
-        "fictional-prediction",
-        "fictional-unseen",
-        "fictional-illiquid",
-    ];
-    for id in ids {
+    for (id, market) in [
+        ("fictional-query", Some("Fictional Market A")),
+        ("fictional-note", Some("Fictional Market B")),
+        ("fictional-trade", Some("Fictional Market A")),
+        ("fictional-paper", Some("Fictional Market B")),
+        ("fictional-prediction", Some("Fictional Market C")),
+        ("fictional-unseen", None),
+        ("fictional-illiquid", Some("Fictional Market A")),
+    ] {
         insert_instrument(db, id).await;
-        insert_stock(db, id).await;
+        insert_stock(db, id, market).await;
     }
-    insert_stock(db, "fictional-benchmark").await;
+    insert_stock(db, "fictional-benchmark", None).await;
 
     upsert_bars(
         db,
@@ -309,6 +308,116 @@ fn expected_mover(
         "first_seen_at": first_seen_at,
         "seen_via": seen_via,
     })
+}
+
+#[backend_test_macros::database_test]
+async fn list_movers_filters_by_selected_markets(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "Fictional strategy").await;
+    seed_movers(&db, strategy_id).await;
+
+    let server = build_server(db);
+    let one_market = server
+        .invoke::<_, Value>(
+            "list_movers",
+            strategy_id,
+            json!({
+                "from": "2025-02-03",
+                "to": "2025-02-04",
+                "direction": "abs",
+                "markets": ["Fictional Market B"],
+                "limit": 1,
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("list movers in one market")
+        .as_json()
+        .clone();
+    let multiple_markets = server
+        .invoke::<_, Value>(
+            "list_movers",
+            strategy_id,
+            json!({
+                "from": "2025-02-03",
+                "to": "2025-02-04",
+                "direction": "abs",
+                "markets": ["Fictional Market A", "Fictional Market B"],
+                "limit": 10,
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("list movers in multiple markets")
+        .as_json()
+        .clone();
+    let empty_markets = server
+        .invoke::<_, Value>(
+            "list_movers",
+            strategy_id,
+            json!({
+                "from": "2025-02-03",
+                "to": "2025-02-04",
+                "direction": "abs",
+                "markets": [],
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("list movers in no markets")
+        .as_json()
+        .clone();
+
+    assert_eq!(
+        (one_market, multiple_markets, empty_markets),
+        (
+            json!({
+                "movers": [expected_mover(
+                    "fictional-note",
+                    -0.3,
+                    7_500.0,
+                    Some(instant("2025-02-03T09:15:00Z")),
+                    Some("note"),
+                )],
+            }),
+            json!({
+                "movers": [
+                    expected_mover("fictional-illiquid", 1.0, 175.0, None, None),
+                    expected_mover(
+                        "fictional-query",
+                        0.5,
+                        13_500.0,
+                        Some(instant("2025-02-04T12:30:00Z")),
+                        Some("query_data"),
+                    ),
+                    expected_mover(
+                        "fictional-note",
+                        -0.3,
+                        7_500.0,
+                        Some(instant("2025-02-03T09:15:00Z")),
+                        Some("note"),
+                    ),
+                    expected_mover(
+                        "fictional-trade",
+                        0.3,
+                        13_000.0,
+                        Some(instant("2025-02-03T00:00:00Z")),
+                        Some("trade"),
+                    ),
+                    expected_mover(
+                        "fictional-paper",
+                        -0.1,
+                        10_500.0,
+                        Some(instant("2025-02-04T01:02:00Z")),
+                        Some("paper_trade"),
+                    ),
+                ],
+            }),
+            json!({"movers": []}),
+        ),
+    );
 }
 
 #[backend_test_macros::database_test]

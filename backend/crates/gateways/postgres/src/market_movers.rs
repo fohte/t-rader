@@ -13,9 +13,11 @@ const LIST_MOVERS_SQL: &str = r#"
     WITH period_bars AS (
         SELECT instrument_id, timestamp, close, volume
         FROM bars
+        LEFT JOIN stock ON stock.id = bars.instrument_id
         WHERE timeframe = '1d'
           AND timestamp >= ($2::date::timestamp AT TIME ZONE 'UTC')
           AND timestamp < (($3::date + 1)::timestamp AT TIME ZONE 'UTC')
+          AND ($7::text[] IS NULL OR stock.market = ANY($7::text[]))
     ),
     avg_turnover AS (
         SELECT instrument_id, AVG(close * volume::numeric) AS avg_turnover
@@ -174,6 +176,7 @@ impl MarketMoversQuerySource for PostgresMarketMoversQuerySource {
                     query.min_avg_turnover.into(),
                     query.direction.as_str().into(),
                     i64::from(query.limit).into(),
+                    query.markets.into(),
                 ],
             ))
             .await
