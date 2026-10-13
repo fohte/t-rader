@@ -35,6 +35,7 @@ pub mod note_kind;
 pub mod note_status_change_aggregate;
 pub mod paper_trade;
 pub mod persistence;
+pub mod portfolio_history;
 pub mod prediction;
 pub mod refs;
 pub mod rss_feed;

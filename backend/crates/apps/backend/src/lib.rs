@@ -55,6 +55,7 @@ pub fn build_http_state(
         note_read_use_cases: use_cases.note_reads(),
         note_use_cases: use_cases.notes(),
         paper_trade_use_cases: use_cases.paper_trade(),
+        portfolio_history_use_cases: use_cases.portfolio_history(),
         prediction_use_cases: use_cases.predictions(),
         ref_use_cases: use_cases.refs(),
         stock_group_use_cases: use_cases.stock_groups(),

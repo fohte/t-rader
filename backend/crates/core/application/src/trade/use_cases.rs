@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::bars::SharedBarsRepository;
+use crate::bars::{BarsRepository, SharedBarsRepository};
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
@@ -73,7 +73,7 @@ impl TradeUseCases {
                 include_note_references: false,
             })
             .await?;
-        let split_cursor = self.split_cursor_for_rows(&rows).await?;
+        let split_cursor = split_cursor_for_rows(self.bars_repository.as_ref(), &rows).await?;
         calculate_trade_detail(trade, &rows, split_cursor)
     }
 
@@ -277,44 +277,8 @@ impl TradeUseCases {
                 include_note_references: false,
             })
             .await?;
-        let split_cursor = self.split_cursor_for_rows(&rows).await?;
+        let split_cursor = split_cursor_for_rows(self.bars_repository.as_ref(), &rows).await?;
         summarize(strategy_id, &rows, split_cursor)
-    }
-
-    async fn split_cursor_for_rows(
-        &self,
-        rows: &[TradeListItem],
-    ) -> Result<SplitCursor, TradeUseCaseError> {
-        let mut adjustments = Vec::new();
-        let mut from_by_symbol = BTreeMap::<String, NaiveDate>::new();
-        for row in rows {
-            from_by_symbol
-                .entry(row.trade.symbol.clone())
-                .and_modify(|from| *from = (*from).min(row.trade.date))
-                .or_insert(row.trade.date);
-        }
-        for (symbol, from) in from_by_symbol {
-            adjustments.extend(
-                self.bars_repository
-                    .find_daily_adjustment_factors_from(&symbol, from)
-                    .await?
-                    .into_iter()
-                    .map(|adjustment| SplitAdjustment {
-                        instrument_id: symbol.clone(),
-                        date: adjustment.date,
-                        factor: adjustment.factor,
-                    }),
-            );
-        }
-        SplitCursor::new(adjustments.clone()).map_err(|error| {
-            match adjustments
-                .iter()
-                .find(|adjustment| adjustment.factor <= Decimal::ZERO)
-            {
-                Some(adjustment) => split_adjustment_error(error, adjustment),
-                None => TradeUseCaseError::FifoCalculation(error.to_string()),
-            }
-        })
     }
 
     async fn ensure_strategy_exists(
@@ -333,6 +297,42 @@ impl TradeUseCases {
         }
         Ok(())
     }
+}
+
+pub(crate) async fn split_cursor_for_rows(
+    bars_repository: &dyn BarsRepository,
+    rows: &[TradeListItem],
+) -> Result<SplitCursor, TradeUseCaseError> {
+    let mut adjustments = Vec::new();
+    let mut from_by_symbol = BTreeMap::<String, NaiveDate>::new();
+    for row in rows {
+        from_by_symbol
+            .entry(row.trade.symbol.clone())
+            .and_modify(|from| *from = (*from).min(row.trade.date))
+            .or_insert(row.trade.date);
+    }
+    for (symbol, from) in from_by_symbol {
+        adjustments.extend(
+            bars_repository
+                .find_daily_adjustment_factors_from(&symbol, from)
+                .await?
+                .into_iter()
+                .map(|adjustment| SplitAdjustment {
+                    instrument_id: symbol.clone(),
+                    date: adjustment.date,
+                    factor: adjustment.factor,
+                }),
+        );
+    }
+    SplitCursor::new(adjustments.clone()).map_err(|error| {
+        match adjustments
+            .iter()
+            .find(|adjustment| adjustment.factor <= Decimal::ZERO)
+        {
+            Some(adjustment) => split_adjustment_error(error, adjustment),
+            None => TradeUseCaseError::FifoCalculation(error.to_string()),
+        }
+    })
 }
 
 fn validate_side(side: &str) -> Result<(), TradeUseCaseError> {

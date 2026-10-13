@@ -10,7 +10,10 @@ use core_application::market_daily_bar_source::MarketDailyBarSourceError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
+use core_application::portfolio_history::PortfolioHistoryUseCaseError;
 use core_application::stock_group::{StockGroupRepositoryError, StockGroupUseCaseError};
+use core_application::strategy::StrategyRepositoryError;
+use core_application::trade::TradeRepositoryError;
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -79,6 +82,25 @@ impl From<BarsUseCaseError> for AppError {
             BarsUseCaseError::Repository(BarsRepositoryError::Database(error)) => error.into(),
             BarsUseCaseError::UnitOfWork(
                 UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
+            ) => error.into(),
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
+impl From<PortfolioHistoryUseCaseError> for AppError {
+    fn from(error: PortfolioHistoryUseCaseError) -> Self {
+        match error {
+            error @ (PortfolioHistoryUseCaseError::ReversedDateRange
+            | PortfolioHistoryUseCaseError::DateRangeTooLong { .. }) => {
+                Self::Validation(error.to_string())
+            }
+            PortfolioHistoryUseCaseError::TradeRepository(TradeRepositoryError::Database(
+                error,
+            ))
+            | PortfolioHistoryUseCaseError::BarsRepository(BarsRepositoryError::Database(error))
+            | PortfolioHistoryUseCaseError::StrategyRepository(
+                StrategyRepositoryError::Database(error),
             ) => error.into(),
             other => Self::Internal(other.to_string()),
         }
@@ -214,6 +236,18 @@ mod tests {
 
     use super::*;
 
+    async fn response_parts(error: impl Into<AppError>) -> (StatusCode, serde_json::Value) {
+        let response = error.into().into_response();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        (
+            status,
+            serde_json::from_slice(&body).expect("parse response body"),
+        )
+    }
+
     #[rstest]
     #[case::not_found(
         DailyBarSourceError::NotFound("sample instrument not found".to_string()),
@@ -236,18 +270,34 @@ mod tests {
         #[case] expected_status: StatusCode,
         #[case] expected_message: &str,
     ) {
-        let response = AppError::from(error).into_response();
-        let status = response.status();
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read response body");
-        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse response body");
-
         assert_eq!(
-            (status, body),
+            response_parts(error).await,
             (
                 expected_status,
                 serde_json::json!({ "error": expected_message }),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::reversed(
+        PortfolioHistoryUseCaseError::ReversedDateRange,
+        "from must be on or before to"
+    )]
+    #[case::too_long(
+        PortfolioHistoryUseCaseError::DateRangeTooLong { max_days: 3_660 },
+        "date range must not exceed 3660 days",
+    )]
+    #[tokio::test]
+    async fn portfolio_history_range_errors_map_to_http_validation_responses(
+        #[case] error: PortfolioHistoryUseCaseError,
+        #[case] expected_message: &str,
+    ) {
+        assert_eq!(
+            response_parts(error).await,
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": expected_message }),
             ),
         );
     }
@@ -261,15 +311,8 @@ mod tests {
 
     #[tokio::test]
     async fn internal_error_maps_to_http_internal_response() {
-        let response = AppError::Internal("database unavailable".into()).into_response();
-        let status = response.status();
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read body");
-        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
-
         assert_eq!(
-            (status, body),
+            response_parts(AppError::Internal("database unavailable".into())).await,
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": "internal server error" }),
@@ -282,15 +325,8 @@ mod tests {
         let error =
             parse_risk_policy::<AccountRiskPolicyData>(json!({ "max_group_ratios": "invalid" }))
                 .expect_err("malformed policy must fail to parse");
-        let response = AppError::from(error).into_response();
-        let status = response.status();
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read body");
-        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse json body");
-
         assert_eq!(
-            (status, body),
+            response_parts(error).await,
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({ "error": "internal server error" }),
