@@ -116,6 +116,24 @@ export const BuyingWithoutNotes: Story = {
   },
 }
 
+export const NotesLoading: Story = {
+  name: 'shows a loading message while linked notes are loading.',
+  args: { notesPending: true, linkedNotes: [] },
+}
+
+export const NotesLoadError: Story = {
+  name: 'shows an error when linked notes cannot be loaded.',
+  args: { notesError: true, linkedNotes: [] },
+}
+
+export const NoteLinkError: Story = {
+  name: 'shows an error when a created note could not be linked.',
+  args: {
+    noteLinkError:
+      'ノートを作成しましたが、この取引への紐付けに失敗しました。既存のノートを紐付ける操作から追加してください。',
+  },
+}
+
 export const Loading: Story = {
   name: 'shows placeholders while trade details are loading.',
   args: { state: 'loading' },

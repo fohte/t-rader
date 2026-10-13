@@ -28,7 +28,7 @@ export function CreateNoteDialog({
   const [formError, setFormError] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const noteKindsQuery = $api.useQuery('get', '/api/note-kinds', undefined, {
-    enabled: open,
+    enabled: dialogOpen,
   })
   const createMutation = $api.useMutation('post', '/api/notes')
 
@@ -79,7 +79,6 @@ export function CreateNoteDialog({
             queryKey: $api.queryOptions('get', '/api/notes').queryKey,
           })
           onCreated?.(note.id)
-          reset()
           handleOpenChange(false)
         },
         onError: () => {

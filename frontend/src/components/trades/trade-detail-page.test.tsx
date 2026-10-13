@@ -14,8 +14,9 @@ function readReflectionSubmissionOutput(
   draft: { title: string; body: string },
   postRequests: Array<{ path: string; body: unknown }>,
   linkedNote: { title: string | null; href: string | null },
+  linkError: string | null,
 ) {
-  return { draft, postRequests, linkedNote }
+  return { draft, postRequests, linkedNote, linkError }
 }
 
 afterEach(() => {
@@ -66,6 +67,7 @@ describe('TradeDetailPage', () => {
       body: unknown
     }> = []
     let noteLinked = false
+    let linkAttempts = 0
 
     vi.stubGlobal(
       'fetch',
@@ -119,8 +121,12 @@ describe('TradeDetailPage', () => {
           path === '/api/trades/fake-trade-sell/notes' &&
           request.method === 'POST'
         ) {
-          noteLinked = true
-          return Response.json({}, { status: 201 })
+          linkAttempts += 1
+          if (linkAttempts === 1) {
+            noteLinked = true
+            return Response.json({}, { status: 201 })
+          }
+          return Response.json({ message: 'link failed' }, { status: 500 })
         }
         return Response.json({}, { status: 200 })
       },
@@ -158,14 +164,24 @@ describe('TradeDetailPage', () => {
     const draft = { title: titleInput.value, body: bodyInput.value }
 
     await user.click(screen.getByRole('button', { name: '作成' }))
-    const noteTitle = await screen.findByText(note.title)
+    await screen.findByText(note.title)
+    await user.click(screen.getByRole('button', { name: '振り返りを書く' }))
+    await screen.findByLabelText('タイトル *')
+    await user.click(screen.getByRole('button', { name: '作成' }))
+    const linkError = await screen.findByRole('alert')
+    const noteTitle = screen.getByText(note.title)
     const noteLink = noteTitle.closest('a')
 
     expect(
-      readReflectionSubmissionOutput(draft, postRequests, {
-        title: noteTitle.textContent,
-        href: noteLink?.getAttribute('href') ?? null,
-      }),
+      readReflectionSubmissionOutput(
+        draft,
+        postRequests,
+        {
+          title: noteTitle.textContent,
+          href: noteLink?.getAttribute('href') ?? null,
+        },
+        linkError.textContent,
+      ),
     ).toEqual({
       draft: {
         title: '架空銘柄を売った振り返り',
@@ -194,11 +210,30 @@ describe('TradeDetailPage', () => {
           path: '/api/trades/fake-trade-sell/notes',
           body: { note_id: 'fake-note' },
         },
+        {
+          path: '/api/notes',
+          body: {
+            title: '架空銘柄を売った振り返り',
+            body_md: [
+              '2099-02-10 売 10 株 @¥1,000',
+              '実現損益 +¥2,200',
+              '',
+              '[[stock:FIC-01]]',
+            ].join('\n'),
+            kind: null,
+          },
+        },
+        {
+          path: '/api/trades/fake-trade-sell/notes',
+          body: { note_id: 'fake-note' },
+        },
       ],
       linkedNote: {
         title: '架空銘柄を売った振り返り',
         href: '/notes/fake-note?version_id=fake-note-version',
       },
+      linkError:
+        'ノートを作成しましたが、この取引への紐付けに失敗しました。既存のノートを紐付ける操作から追加してください。',
     })
   })
 })
