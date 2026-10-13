@@ -43,6 +43,7 @@ pub mod shareholding_structure_source;
 pub mod short_ratio;
 pub mod short_sale_report;
 pub mod short_selling_source;
+mod split_adjustment;
 pub mod stock_group;
 pub mod stock_registration;
 pub mod strategy;

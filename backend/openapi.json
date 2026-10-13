@@ -1047,6 +1047,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "created_by_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3522,7 +3538,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/NoteVersion"
+                    "$ref": "#/components/schemas/PendingNoteVersion"
                   }
                 }
               }
@@ -4685,6 +4701,77 @@
           },
           "404": {
             "description": "口座が見つからない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/groups/{axis_key}/{group_key}": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "group 詳細",
+        "operationId": "get_ref_group",
+        "parameters": [
+          {
+            "name": "axis_key",
+            "in": "path",
+            "description": "グループ軸の key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group_key",
+            "in": "path",
+            "description": "グループの key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Group"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -8501,7 +8588,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "省略時は `created_by_kind` が \"human\" なら \"approved\"、\"llm\" なら \"unread\"。"
           },
           "target_kind": {
             "type": "string"
@@ -9188,6 +9276,38 @@
         },
         "additionalProperties": false
       },
+      "Group": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "axis",
+          "stocks"
+        ],
+        "properties": {
+          "axis": {
+            "$ref": "#/components/schemas/GroupAxisReference"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupStockReference"
+            }
+          }
+        }
+      },
       "GroupAxis": {
         "type": "object",
         "required": [
@@ -9213,6 +9333,21 @@
           }
         }
       },
+      "GroupAxisReference": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "GroupRatio": {
         "type": "object",
         "required": [
@@ -9228,6 +9363,21 @@
             "type": "number",
             "format": "double",
             "description": "分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。"
+          }
+        }
+      },
+      "GroupStockReference": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -10031,6 +10181,33 @@
             "format": "double"
           }
         }
+      },
+      "PendingNoteVersion": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NoteVersion"
+          },
+          {
+            "type": "object",
+            "required": [
+              "tags"
+            ],
+            "properties": {
+              "kind": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
       },
       "PerformanceSummary": {
         "type": "object",

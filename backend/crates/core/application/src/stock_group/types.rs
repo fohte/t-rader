@@ -28,6 +28,19 @@ pub struct StockGroup {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StockGroupStock {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StockGroupDetail {
+    pub group: StockGroup,
+    pub axis_name: String,
+    pub stocks: Vec<StockGroupStock>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewStockGroup {
     pub id: Uuid,
     pub axis_id: Uuid,

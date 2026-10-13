@@ -52,13 +52,13 @@ pub use import::{
 pub use ingest_status::IngestStatusResponse;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use note_kind::NoteKindResponse;
-pub use note_version::NoteVersionResponse;
+pub use note_version::{NoteVersionResponse, PendingNoteVersionResponse};
 pub use paper_account::{
     CreatePaperAccountRequest, PaperAccountPortfolioResponse, PaperAccountResponse,
     PaperAccountStatsResponse,
 };
 pub use prediction::PredictionResponse;
-pub use refs::{IndicatorResponse, RefResolution, StockResponse};
+pub use refs::{GroupResponse, IndicatorResponse, RefResolution, StockResponse};
 pub use risk_policy::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,

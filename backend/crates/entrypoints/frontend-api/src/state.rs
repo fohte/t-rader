@@ -52,6 +52,7 @@ pub struct FrontendApiState {
     pub paper_trade_use_cases: PaperTradeUseCases,
     pub prediction_use_cases: PredictionUseCases,
     pub ref_use_cases: RefUseCases,
+    pub stock_group_use_cases: StockGroupUseCases,
     pub rss_feed_use_cases: RssFeedUseCases,
     pub strategy_scope_use_cases: Arc<StrategyScopeUseCases>,
     pub strategy_task_use_cases: StrategyTaskUseCases,

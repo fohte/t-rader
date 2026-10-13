@@ -40,6 +40,12 @@ impl AnnotationReadQuery for PostgresAnnotationReadQuery {
         if let Some(target_symbol) = query.target_symbol {
             select = select.filter(annotation::Column::TargetSymbol.eq(target_symbol));
         }
+        if let Some(status) = query.status {
+            select = select.filter(annotation::Column::Status.eq(status));
+        }
+        if let Some(created_by_kind) = query.created_by_kind {
+            select = select.filter(annotation::Column::CreatedByKind.eq(created_by_kind));
+        }
         select = select.order_by_desc(annotation::Column::Timestamp);
         if let Some(limit) = query.limit {
             select = select.limit(limit);
@@ -119,19 +125,78 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    #[backend_test_macros::database_test]
+    async fn list_filters_by_status_creator_and_target_symbol(db: DatabaseHandle) {
+        let unread_llm = insert_annotation_with_fields(&db, "sample-symbol", "unread", "llm").await;
+        let approved_human =
+            insert_annotation_with_fields(&db, "sample-symbol", "approved", "human").await;
+        let unread_human =
+            insert_annotation_with_fields(&db, "another-symbol", "unread", "human").await;
+        let rejected_llm =
+            insert_annotation_with_fields(&db, "sample-symbol", "rejected", "llm").await;
+        let query = PostgresAnnotationReadQuery::new(db);
+
+        let actual = (
+            list_ids(&query, AnnotationListQuery::default()).await,
+            list_ids(
+                &query,
+                AnnotationListQuery {
+                    status: Some("unread".to_owned()),
+                    ..Default::default()
+                },
+            )
+            .await,
+            list_ids(
+                &query,
+                AnnotationListQuery {
+                    created_by_kind: Some("llm".to_owned()),
+                    ..Default::default()
+                },
+            )
+            .await,
+            list_ids(
+                &query,
+                AnnotationListQuery {
+                    target_symbol: Some("sample-symbol".to_owned()),
+                    status: Some("unread".to_owned()),
+                    created_by_kind: Some("llm".to_owned()),
+                    ..Default::default()
+                },
+            )
+            .await,
+        );
+        let expected = (
+            sorted_ids(vec![unread_llm, approved_human, unread_human, rejected_llm]),
+            sorted_ids(vec![unread_llm, unread_human]),
+            sorted_ids(vec![unread_llm, rejected_llm]),
+            vec![unread_llm],
+        );
+
+        assert_eq!(actual, expected);
+    }
+
     async fn insert_annotation(db: &DatabaseHandle) -> Uuid {
+        insert_annotation_with_fields(db, "sample-symbol", "approved", "human").await
+    }
+
+    async fn insert_annotation_with_fields(
+        db: &DatabaseHandle,
+        target_symbol: &str,
+        status: &str,
+        created_by_kind: &str,
+    ) -> Uuid {
         let id = Uuid::new_v4();
         annotation::Entity::insert(annotation::ActiveModel {
             id: Set(id),
-            target_symbol: Set("sample-symbol".to_string()),
+            target_symbol: Set(target_symbol.to_owned()),
             target_kind: Set("sample-kind".to_string()),
             timestamp: Set(Utc::now().fixed_offset()),
             timestamp_start: Set(None),
             price: Set(None),
             text: Set("sample annotation".to_string()),
-            status: Set("approved".to_string()),
+            status: Set(status.to_owned()),
             linked_note_id: Set(None),
-            created_by_kind: Set("human".to_string()),
+            created_by_kind: Set(created_by_kind.to_owned()),
             created_at: NotSet,
             updated_at: NotSet,
             execution_step_id: Set(None),
@@ -141,5 +206,25 @@ mod tests {
         .await
         .expect("insert test annotation");
         id
+    }
+
+    async fn list_ids(
+        query: &PostgresAnnotationReadQuery,
+        parameters: AnnotationListQuery,
+    ) -> Vec<Uuid> {
+        let mut ids = query
+            .list(parameters)
+            .await
+            .expect("list filtered annotations")
+            .into_iter()
+            .map(|annotation| annotation.id)
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids
+    }
+
+    fn sorted_ids(mut ids: Vec<Uuid>) -> Vec<Uuid> {
+        ids.sort();
+        ids
     }
 }
