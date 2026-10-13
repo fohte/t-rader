@@ -1,6 +1,6 @@
 import { Button } from '@fohte/ui/button'
 import { useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -76,14 +76,6 @@ function RssFeedsSettingsPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <Link
-          to="/strategies"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 戦略一覧に戻る
-        </Link>
-      </div>
       <header className="flex items-end justify-between gap-3">
         <div>
           <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">

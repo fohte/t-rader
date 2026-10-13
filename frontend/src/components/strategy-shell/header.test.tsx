@@ -15,42 +15,108 @@ import { StrategySwitcherQueryDecorator } from '#storybook/strategy-switcher-moc
 
 afterEach(cleanup)
 
-const STRATEGY_ID = 'sample-alpha'
+const STRATEGY_ID = 'demo-strategy'
 const PERFORMANCE_PATH = `/strategies/${STRATEGY_ID}/performance`
 
-function renderHeader() {
+function renderHeader(
+  initialPath = PERFORMANCE_PATH,
+  unreadCount = 2,
+  reviewQueueError = false,
+) {
   const router = createStoryRouter(() => <Header />, {
     paths: [
+      '/strategies',
       '/strategies/$id/performance',
       '/strategies/$id/runs',
       '/strategies/$id/indicators',
       '/strategies/$id/settings',
+      '/note-versions/pending',
+      '/notes',
+      '/annotations/$annoId',
+      '/paper-trading',
+      '/calendar',
+      '/settings',
+      '/settings/rss-feeds',
       '/',
+      '/portfolio',
+      '/trades',
     ],
-    initialPath: PERFORMANCE_PATH,
+    initialPath,
   })
   render(
-    <StrategySwitcherQueryDecorator>
+    <StrategySwitcherQueryDecorator
+      unreadCount={unreadCount}
+      reviewQueueError={reviewQueueError}
+    >
       <RouterProvider router={router} />
     </StrategySwitcherQueryDecorator>,
   )
   return router
 }
 
-function getHeaderOutput(pathname: string, navigation: HTMLElement) {
+function getNavigationOutput(navigation: HTMLElement) {
+  return within(navigation)
+    .getAllByRole('link')
+    .map((link) => ({
+      label: link.textContent,
+      href: link.getAttribute('href'),
+      active: link.getAttribute('aria-current') === 'page',
+    }))
+}
+
+function getMenuOutput(menuButton: HTMLElement, navigation: HTMLElement) {
   return {
-    pathname,
-    tabs: within(navigation)
-      .getAllByRole('link')
-      .map((link) => ({
-        label: link.textContent,
-        href: link.getAttribute('href'),
-        active: link.getAttribute('aria-current') === 'page',
-      })),
+    menuActive: menuButton.getAttribute('aria-current') === 'page',
+    links: getNavigationOutput(navigation),
   }
 }
 
-function getExpectedHeaderOutput(pathname: string, activeTab: string) {
+function getExpectedMenuOutput(
+  activeLabel: string,
+  calendarHref = '/calendar',
+) {
+  return {
+    menuActive: true,
+    links: [
+      { label: 'ノート', href: '/notes', active: activeLabel === 'ノート' },
+      { label: '戦略', href: '/strategies', active: activeLabel === '戦略' },
+      {
+        label: 'ペーパートレード',
+        href: '/paper-trading',
+        active: activeLabel === 'ペーパートレード',
+      },
+      {
+        label: 'カレンダー',
+        href: calendarHref,
+        active: activeLabel === 'カレンダー',
+      },
+      {
+        label: '全体の設定',
+        href: '/settings',
+        active: activeLabel === '全体の設定',
+      },
+    ],
+  }
+}
+
+function getMenuTransitionOutput(pathname: string, menuButton: HTMLElement) {
+  return {
+    pathname,
+    menuOpen: menuButton.getAttribute('aria-expanded') === 'true',
+  }
+}
+
+function getStrategyNavigationOutput(
+  pathname: string,
+  navigation: HTMLElement,
+) {
+  return {
+    pathname,
+    tabs: getNavigationOutput(navigation),
+  }
+}
+
+function getExpectedStrategyNavigation(pathname: string, activeTab: string) {
   return {
     pathname,
     tabs: [
@@ -86,10 +152,175 @@ describe('Header', () => {
     await user.click(
       await screen.findByRole('link', { name: 'ダッシュボードへ' }),
     )
+
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/')
+      expect(router.state.location.pathname).toEqual('/')
     })
   })
+
+  it.each(['/portfolio', '/trades'])(
+    '資産画面 %s で資産を active にする',
+    async (path) => {
+      renderHeader(path)
+      const navigation = await screen.findByRole('navigation', {
+        name: 'メインナビゲーション',
+      })
+      await screen.findByRole('link', { name: 'レビュー2' })
+
+      expect(getNavigationOutput(navigation)).toEqual([
+        { label: '資産', href: '/portfolio', active: true },
+        {
+          label: 'レビュー2',
+          href: '/note-versions/pending',
+          active: false,
+        },
+      ])
+    },
+  )
+
+  it('レビュー画面で未読数付きのレビューを active にする', async () => {
+    renderHeader('/note-versions/pending')
+    const navigation = await screen.findByRole('navigation', {
+      name: 'メインナビゲーション',
+    })
+    await screen.findByRole('link', { name: 'レビュー2' })
+
+    expect(getNavigationOutput(navigation)).toEqual([
+      { label: '資産', href: '/portfolio', active: false },
+      {
+        label: 'レビュー2',
+        href: '/note-versions/pending',
+        active: true,
+      },
+    ])
+  })
+
+  it('未読が 0 件ならレビューのバッジを表示しない', async () => {
+    renderHeader('/portfolio', 0)
+    const navigation = await screen.findByRole('navigation', {
+      name: 'メインナビゲーション',
+    })
+    await screen.findByRole('link', { name: 'レビュー' })
+
+    expect(getNavigationOutput(navigation)).toEqual([
+      { label: '資産', href: '/portfolio', active: true },
+      {
+        label: 'レビュー',
+        href: '/note-versions/pending',
+        active: false,
+      },
+    ])
+  })
+
+  it('未読数の取得に失敗した場合はダッシュを表示する', async () => {
+    renderHeader('/portfolio', 2, true)
+    const navigation = await screen.findByRole('navigation', {
+      name: 'メインナビゲーション',
+    })
+    await screen.findByRole('link', { name: 'レビュー—' })
+
+    expect(getNavigationOutput(navigation)).toEqual([
+      { label: '資産', href: '/portfolio', active: true },
+      {
+        label: 'レビュー—',
+        href: '/note-versions/pending',
+        active: false,
+      },
+    ])
+  })
+
+  it('メニューを開くと補助ページへのリンクを表示する', async () => {
+    const user = userEvent.setup()
+    renderHeader('/portfolio')
+
+    await user.click(await screen.findByRole('button', { name: 'メニュー' }))
+    const navigation = await screen.findByRole('navigation', {
+      name: 'その他のページ',
+    })
+
+    expect(getNavigationOutput(navigation)).toEqual([
+      { label: 'ノート', href: '/notes', active: false },
+      { label: '戦略', href: '/strategies', active: false },
+      { label: 'ペーパートレード', href: '/paper-trading', active: false },
+      { label: 'カレンダー', href: '/calendar', active: false },
+      { label: '全体の設定', href: '/settings', active: false },
+    ])
+  })
+
+  it('メニューボタンを再度押すとメニューを閉じる', async () => {
+    const user = userEvent.setup()
+    renderHeader('/portfolio')
+    const menuButton = await screen.findByRole('button', { name: 'メニュー' })
+
+    await user.click(menuButton)
+    await screen.findByRole('navigation', { name: 'その他のページ' })
+    await user.click(menuButton)
+
+    await waitFor(() => {
+      expect(menuButton.getAttribute('aria-expanded')).toEqual('false')
+    })
+  })
+
+  it('メニュー項目を選ぶと遷移してメニューを閉じる', async () => {
+    const user = userEvent.setup()
+    const router = renderHeader('/portfolio')
+    const menuButton = await screen.findByRole('button', { name: 'メニュー' })
+
+    await user.click(menuButton)
+    const menuNavigation = await screen.findByRole('navigation', {
+      name: 'その他のページ',
+    })
+    await user.click(
+      within(menuNavigation).getByRole('link', { name: '全体の設定' }),
+    )
+
+    await waitFor(() => {
+      expect(
+        getMenuTransitionOutput(router.state.location.pathname, menuButton),
+      ).toEqual({ pathname: '/settings', menuOpen: false })
+    })
+  })
+
+  it.each([
+    { pageName: '戦略一覧', path: '/strategies', activeLabel: '戦略' },
+    {
+      pageName: '戦略ページ',
+      path: PERFORMANCE_PATH,
+      activeLabel: '戦略',
+      calendarHref: `/calendar?strategy=${STRATEGY_ID}`,
+    },
+    {
+      pageName: 'ペーパートレード',
+      path: '/paper-trading',
+      activeLabel: 'ペーパートレード',
+    },
+    { pageName: 'カレンダー', path: '/calendar', activeLabel: 'カレンダー' },
+    {
+      pageName: '全体の設定',
+      path: '/settings/rss-feeds',
+      activeLabel: '全体の設定',
+    },
+    {
+      pageName: 'アノテーション詳細',
+      path: '/annotations/demo-annotation',
+      activeLabel: 'ノート',
+    },
+  ])(
+    '$pageName ではメニューと該当項目を active にする',
+    async ({ path, activeLabel, calendarHref }) => {
+      renderHeader(path)
+      const menuButton = await screen.findByRole('button', { name: 'メニュー' })
+      const user = userEvent.setup()
+      await user.click(menuButton)
+      const navigation = await screen.findByRole('navigation', {
+        name: 'その他のページ',
+      })
+
+      expect(getMenuOutput(menuButton, navigation)).toEqual(
+        getExpectedMenuOutput(activeLabel, calendarHref),
+      )
+    },
+  )
 
   it.each([
     {
@@ -114,12 +345,13 @@ describe('Header', () => {
 
       await user.click(navigation.getByRole('link', { name: label }))
       await waitFor(() => {
-        expect(router.state.location.pathname).toBe(path)
+        expect(
+          getStrategyNavigationOutput(
+            router.state.location.pathname,
+            navigationElement,
+          ),
+        ).toEqual(getExpectedStrategyNavigation(path, activeTab))
       })
-
-      expect(
-        getHeaderOutput(router.state.location.pathname, navigationElement),
-      ).toEqual(getExpectedHeaderOutput(path, activeTab))
     },
   )
 })
