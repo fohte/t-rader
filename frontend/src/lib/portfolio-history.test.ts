@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  addPortfolioHistoryChanges,
+  getPortfolioHistoryStartDate,
   type PortfolioHistoryPeriod,
   type PortfolioHistoryPoint,
   selectPortfolioHistoryPoints,
@@ -110,4 +112,51 @@ describe('selectPortfolioHistoryPoints', () => {
       )
     },
   )
+})
+
+describe('addPortfolioHistoryChanges', () => {
+  it.each([
+    {
+      name: 'empty history',
+      points: [],
+      expected: [],
+    },
+    {
+      name: 'first point has no previous change',
+      points: [points.dec29],
+      expected: [{ point: points.dec29, change: null }],
+    },
+    {
+      name: 'later points use the preceding total',
+      points: [points.dec29, points.dec31, points.jan01],
+      expected: [
+        { point: points.dec29, change: null },
+        { point: points.dec31, change: 10_000 },
+        { point: points.jan01, change: 10_000 },
+      ],
+    },
+  ])('computes changes for $name', ({ points: input, expected }) => {
+    expect(addPortfolioHistoryChanges(input)).toEqual(expected)
+  })
+})
+
+describe('getPortfolioHistoryStartDate', () => {
+  it.each([
+    {
+      name: 'first trade within range',
+      firstTradeDate: '2036-10-01',
+      today: '2036-10-14',
+      expected: '2036-10-01',
+    },
+    {
+      name: 'first trade older than supported range',
+      firstTradeDate: '2010-01-01',
+      today: '2036-10-14',
+      expected: '2026-10-08',
+    },
+  ])('limits the request range for $name', (input) => {
+    expect(
+      getPortfolioHistoryStartDate(input.firstTradeDate, input.today),
+    ).toBe(input.expected)
+  })
 })

@@ -5,6 +5,36 @@ export type PortfolioHistoryPoint =
 
 export type PortfolioHistoryPeriod = 'day' | 'week' | 'month' | 'year'
 
+export interface PortfolioHistoryPointWithChange {
+  point: PortfolioHistoryPoint
+  change: number | null
+}
+
+const MAX_HISTORY_DAYS = 3_660
+
+export function getPortfolioHistoryStartDate(
+  firstTradeDate: string,
+  today: string,
+): string {
+  const latestStart = new Date(`${today}T00:00:00Z`)
+  latestStart.setUTCDate(latestStart.getUTCDate() - (MAX_HISTORY_DAYS - 1))
+  const latestStartDate = latestStart.toISOString().slice(0, 10)
+  return firstTradeDate < latestStartDate ? latestStartDate : firstTradeDate
+}
+
+export function addPortfolioHistoryChanges(
+  points: PortfolioHistoryPoint[],
+): PortfolioHistoryPointWithChange[] {
+  let previousTotal: number | undefined
+
+  return points.map((point) => {
+    const change =
+      previousTotal == null ? null : point.total_assets - previousTotal
+    previousTotal = point.total_assets
+    return { point, change }
+  })
+}
+
 function getPeriodKey(
   date: string,
   period: Exclude<PortfolioHistoryPeriod, 'day'>,

@@ -14,7 +14,10 @@ import { type StatItem, StatRow } from '#components/portfolio/stat-row'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
-import type { PortfolioHistoryPeriod } from '#lib/portfolio-history'
+import {
+  getPortfolioHistoryStartDate,
+  type PortfolioHistoryPeriod,
+} from '#lib/portfolio-history'
 
 export const Route = createFileRoute('/portfolio')({
   component: PortfolioPage,
@@ -52,7 +55,10 @@ function PortfolioPage() {
     {
       params: {
         query: {
-          from: firstTradeDate ?? today,
+          from:
+            firstTradeDate == null
+              ? today
+              : getPortfolioHistoryStartDate(firstTradeDate, today),
           to: today,
         },
       },
@@ -86,22 +92,24 @@ function PortfolioPage() {
   const cashRatio = totalAssets > 0 ? (cash / totalAssets) * 100 : 0
   const investedRatio = totalAssets > 0 ? 100 - cashRatio : 0
   const realizedPnl = summary?.realized_pnl ?? 0
-  const historyStatus = tradesPending
-    ? 'loading'
-    : tradesError
-      ? 'error'
-      : firstTradeDate == null
-        ? 'empty'
-        : historyPending
-          ? 'loading'
-          : historyError
-            ? 'error'
-            : 'ready'
-  const historyErrorMessage = tradesError
-    ? '取引履歴を読み込めませんでした'
-    : historyError
-      ? '資産推移を読み込めませんでした'
-      : undefined
+  const historyViewState = (() => {
+    if (tradesPending) return { status: 'loading' as const }
+    if (tradesError) {
+      return {
+        status: 'error' as const,
+        errorMessage: '取引履歴を読み込めませんでした',
+      }
+    }
+    if (firstTradeDate == null) return { status: 'empty' as const }
+    if (historyPending) return { status: 'loading' as const }
+    if (historyError) {
+      return {
+        status: 'error' as const,
+        errorMessage: '資産推移を読み込めませんでした',
+      }
+    }
+    return { status: 'ready' as const }
+  })()
 
   const stockNameById = useMemo(
     () => new Map(stocks.map((s) => [s.id, s.name])),
@@ -163,8 +171,12 @@ function PortfolioPage() {
       <PortfolioHistoryChart
         data={portfolioHistory}
         period={historyPeriod}
-        status={historyStatus}
-        errorMessage={historyErrorMessage}
+        status={historyViewState.status}
+        errorMessage={
+          historyViewState.status === 'error'
+            ? historyViewState.errorMessage
+            : undefined
+        }
         onPeriodChange={setHistoryPeriod}
       />
 

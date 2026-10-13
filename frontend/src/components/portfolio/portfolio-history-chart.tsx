@@ -1,6 +1,5 @@
 import {
   AreaSeries,
-  ColorType,
   createChart,
   type IChartApi,
   type ISeriesApi,
@@ -12,7 +11,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import { Skeleton } from '#components/ui/skeleton'
+import { getChartThemeOptions, observeChartTheme } from '#lib/chart-theme'
 import {
+  addPortfolioHistoryChanges,
   type PortfolioHistoryPeriod,
   type PortfolioHistoryPoint,
   selectPortfolioHistoryPoints,
@@ -44,15 +45,6 @@ const seriesColors = {
   cashFillBottom: 'rgba(74, 222, 128, 0.08)',
   total: '#e5e7eb',
   investable: '#fbbf24',
-}
-
-function getThemeColors(isDark: boolean) {
-  return {
-    background: isDark ? '#1a1a1a' : '#ffffff',
-    textColor: isDark ? '#d1d5db' : '#374151',
-    gridColor: isDark ? '#2d2d2d' : '#e5e7eb',
-    borderColor: isDark ? '#3f3f46' : '#d1d5db',
-  }
 }
 
 function timeToDateKey(time: Time | undefined): string | undefined {
@@ -171,7 +163,7 @@ export function PortfolioHistoryChart({
 
         {isReady && (
           <p className="mt-1.5 font-mono text-2xs text-muted-foreground">
-            日足の最新日: {data.at(-1)?.date}
+            資産推移の最終日: {data.at(-1)?.date}
           </p>
         )}
       </div>
@@ -185,24 +177,16 @@ function PortfolioHistoryPlot({ points }: { points: PortfolioHistoryPoint[] }) {
   const totalSeriesRef = useRef<ISeriesApi<'Area'> | null>(null)
   const stockSeriesRef = useRef<ISeriesApi<'Area'> | null>(null)
   const investableSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
-  const pointsByDate = useMemo(() => {
-    const historyByDate = new Map<
-      string,
-      { point: PortfolioHistoryPoint; change: number | null }
-    >()
-    let previousTotal: number | undefined
-
-    for (const point of points) {
-      historyByDate.set(point.date, {
-        point,
-        change:
-          previousTotal == null ? null : point.total_assets - previousTotal,
-      })
-      previousTotal = point.total_assets
-    }
-
-    return historyByDate
-  }, [points])
+  const pointsByDate = useMemo(
+    () =>
+      new Map(
+        addPortfolioHistoryChanges(points).map((item) => [
+          item.point.date,
+          item,
+        ]),
+      ),
+    [points],
+  )
   const [hoveredDate, setHoveredDate] = useState<string | null>(null)
   const hoveredPoint =
     hoveredDate == null ? null : (pointsByDate.get(hoveredDate) ?? null)
@@ -211,22 +195,13 @@ function PortfolioHistoryPlot({ points }: { points: PortfolioHistoryPoint[] }) {
     const container = containerRef.current
     if (!container) return
 
-    const colors = getThemeColors(
+    const themeOptions = getChartThemeOptions(
       document.documentElement.classList.contains('dark'),
     )
     const chart = createChart(container, {
       width: container.clientWidth,
       height: 256,
-      layout: {
-        background: { type: ColorType.Solid, color: colors.background },
-        textColor: colors.textColor,
-      },
-      grid: {
-        vertLines: { color: colors.gridColor },
-        horzLines: { color: colors.gridColor },
-      },
-      timeScale: { borderColor: colors.borderColor },
-      rightPriceScale: { borderColor: colors.borderColor },
+      ...themeOptions,
       localization: { locale: 'ja-JP' },
     })
     chartRef.current = chart
@@ -282,27 +257,7 @@ function PortfolioHistoryPlot({ points }: { points: PortfolioHistoryPoint[] }) {
     })
     resizeObserver.observe(container)
 
-    const mutationObserver = new MutationObserver(() => {
-      const themeColors = getThemeColors(
-        document.documentElement.classList.contains('dark'),
-      )
-      chart.applyOptions({
-        layout: {
-          background: { type: ColorType.Solid, color: themeColors.background },
-          textColor: themeColors.textColor,
-        },
-        grid: {
-          vertLines: { color: themeColors.gridColor },
-          horzLines: { color: themeColors.gridColor },
-        },
-        timeScale: { borderColor: themeColors.borderColor },
-        rightPriceScale: { borderColor: themeColors.borderColor },
-      })
-    })
-    mutationObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
+    const disconnectThemeObserver = observeChartTheme(chart)
 
     const handleCrosshairMove = (param: { time?: Time }) => {
       const date = timeToDateKey(param.time)
@@ -312,7 +267,7 @@ function PortfolioHistoryPlot({ points }: { points: PortfolioHistoryPoint[] }) {
 
     return () => {
       chart.unsubscribeCrosshairMove(handleCrosshairMove)
-      mutationObserver.disconnect()
+      disconnectThemeObserver()
       resizeObserver.disconnect()
       chart.remove()
       chartRef.current = null
