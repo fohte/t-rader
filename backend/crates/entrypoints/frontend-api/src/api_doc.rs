@@ -15,6 +15,7 @@ use utoipa::OpenApi;
         (name = "comments", description = "コメントスレッド"),
         (name = "history", description = "変更履歴"),
         (name = "trades", description = "取引履歴と損益サマリ"),
+        (name = "portfolio", description = "口座全体の資産推移"),
         (name = "tasks", description = "戦略タスクの実行履歴 (口座横断)"),
         (name = "triggers", description = "戦略 trigger (cron / hook)"),
         (name = "paper_accounts", description = "ペーパートレード口座"),

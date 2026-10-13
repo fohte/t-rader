@@ -10,7 +10,10 @@ use core_application::market_daily_bar_source::MarketDailyBarSourceError;
 use core_application::note::{NoteRepositoryError, NoteUseCaseError};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
+use core_application::portfolio_history::PortfolioHistoryUseCaseError;
 use core_application::stock_group::{StockGroupRepositoryError, StockGroupUseCaseError};
+use core_application::strategy::StrategyRepositoryError;
+use core_application::trade::TradeRepositoryError;
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -79,6 +82,24 @@ impl From<BarsUseCaseError> for AppError {
             BarsUseCaseError::Repository(BarsRepositoryError::Database(error)) => error.into(),
             BarsUseCaseError::UnitOfWork(
                 UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
+            ) => error.into(),
+            other => Self::Internal(other.to_string()),
+        }
+    }
+}
+
+impl From<PortfolioHistoryUseCaseError> for AppError {
+    fn from(error: PortfolioHistoryUseCaseError) -> Self {
+        match error {
+            PortfolioHistoryUseCaseError::InvalidDateRange => {
+                Self::Validation("from must be on or before to".into())
+            }
+            PortfolioHistoryUseCaseError::TradeRepository(TradeRepositoryError::Database(
+                error,
+            ))
+            | PortfolioHistoryUseCaseError::BarsRepository(BarsRepositoryError::Database(error))
+            | PortfolioHistoryUseCaseError::StrategyRepository(
+                StrategyRepositoryError::Database(error),
             ) => error.into(),
             other => Self::Internal(other.to_string()),
         }

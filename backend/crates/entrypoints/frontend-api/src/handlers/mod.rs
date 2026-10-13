@@ -16,6 +16,7 @@ pub mod note_predictions;
 pub mod note_versions;
 pub mod notes;
 pub mod paper_accounts;
+pub mod portfolio_history;
 pub mod refs;
 pub mod risk_policy;
 pub mod rss_feeds;

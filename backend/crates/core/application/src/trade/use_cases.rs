@@ -368,7 +368,7 @@ fn apply_split_adjustment(
     Ok(())
 }
 
-fn summarize(
+pub(crate) fn summarize(
     strategy_id: Option<Uuid>,
     rows: &[TradeListItem],
     mut split_cursor: SplitCursor,

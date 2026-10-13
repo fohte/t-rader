@@ -21,6 +21,7 @@ pub use types::{
     TradeNoteReference, TradeOrder, TradeQuery, TradeUpdate, TradeUpdateCommand,
 };
 pub use use_cases::TradeUseCases;
+pub(crate) use use_cases::summarize;
 
 #[cfg(feature = "test-support")]
 pub use fake::FakeTradeRepository;
