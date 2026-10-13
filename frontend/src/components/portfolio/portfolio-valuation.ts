@@ -1,3 +1,7 @@
+import {
+  allocationTotal,
+  positiveAllocationValue,
+} from '#components/portfolio/allocation'
 import type { StatItem } from '#components/portfolio/stat-row'
 import {
   formatOptionalPercent,
@@ -49,15 +53,21 @@ export function calculatePortfolioValuation(
       : null
   const cash = investableAmount + realizedPnl - costBasis
   const totalAssets = marketValue == null ? null : cash + marketValue
-  const knownMarketValue = positions.reduce(
-    (sum, position) => sum + Math.max(position.market_value ?? 0, 0),
-    0,
+  const knownMarketValue = allocationTotal(
+    positions.map((position) => position.market_value),
   )
-  const allocationTotal = Math.max(cash, 0) + knownMarketValue
+  const allocationDenominator = allocationTotal([
+    ...positions.map((position) => position.market_value),
+    cash,
+  ])
   const cashRatio =
-    allocationTotal > 0 ? (Math.max(cash, 0) / allocationTotal) * 100 : null
+    allocationDenominator > 0
+      ? (positiveAllocationValue(cash) / allocationDenominator) * 100
+      : null
   const investedRatio =
-    allocationTotal > 0 ? (knownMarketValue / allocationTotal) * 100 : null
+    allocationDenominator > 0
+      ? (knownMarketValue / allocationDenominator) * 100
+      : null
   const stats: StatItem[] = [
     {
       label: '総資産 (時価)',

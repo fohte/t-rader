@@ -1,3 +1,7 @@
+import {
+  allocationTotal,
+  positiveAllocationValue,
+} from '#components/portfolio/allocation'
 import { formatYen } from '#components/trades/format'
 
 export interface AllocationSegment {
@@ -23,10 +27,7 @@ export function AllocationBar({
   segments: AllocationSegment[]
   priceObservedAt?: string | null
 }) {
-  const total = segments.reduce(
-    (sum, segment) => sum + Math.max(segment.value ?? 0, 0),
-    0,
-  )
+  const total = allocationTotal(segments.map((segment) => segment.value))
   const hasUnavailableValue = segments.some((segment) => segment.value == null)
 
   return (
@@ -34,7 +35,7 @@ export function AllocationBar({
       {total > 0 ? (
         <div className="flex h-3 w-full overflow-hidden border border-border">
           {segments.map((segment, index) => {
-            const value = Math.max(segment.value ?? 0, 0)
+            const value = positiveAllocationValue(segment.value)
             if (value === 0) return null
             return (
               <div
@@ -56,7 +57,9 @@ export function AllocationBar({
         <ul className="space-y-1 font-mono text-xs">
           {segments.map((segment, index) => {
             const value =
-              segment.value == null ? null : Math.max(segment.value, 0)
+              segment.value == null
+                ? null
+                : positiveAllocationValue(segment.value)
             const percentage =
               value == null || total <= 0 ? null : (value / total) * 100
             return (
