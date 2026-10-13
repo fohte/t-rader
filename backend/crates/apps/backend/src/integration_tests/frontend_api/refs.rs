@@ -162,6 +162,7 @@ mod tests {
     async fn get_group_returns_404_for_missing_axis_or_group(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         insert_test_group(&db, "demo-axis", "existing-group", "Existing Group").await;
+        insert_test_group(&db, "other-axis", "missing-group", "Group On Other Axis").await;
 
         let missing_axis = server.get("/api/refs/groups/missing-axis/demo-group").await;
         let missing_group = server.get("/api/refs/groups/demo-axis/missing-group").await;
@@ -181,6 +182,19 @@ mod tests {
                     json!({ "error": "stock group demo-axis/missing-group not found" }),
                 ),
             ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_group_returns_400_for_invalid_path_keys(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
+
+        let response = server.get("/api/refs/groups/%20/demo-group").await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "axis_key must not be empty" })),
         );
     }
 

@@ -6044,6 +6044,14 @@ export interface operations {
           'application/json': components['schemas']['Group']
         }
       }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
         headers: {
           [name: string]: unknown

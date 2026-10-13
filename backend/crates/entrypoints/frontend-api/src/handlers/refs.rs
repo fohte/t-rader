@@ -84,6 +84,7 @@ pub async fn get_stock(
     ),
     responses(
         (status = 200, body = GroupResponse),
+        (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

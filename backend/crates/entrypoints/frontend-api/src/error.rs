@@ -119,13 +119,8 @@ impl From<StockGroupUseCaseError> for AppError {
     fn from(error: StockGroupUseCaseError) -> Self {
         match error {
             StockGroupUseCaseError::Validation(message) => Self::Validation(message),
-            StockGroupUseCaseError::AxisNotFound(axis_key) => {
-                Self::NotFound(format!("group axis {axis_key} not found"))
-            }
-            StockGroupUseCaseError::GroupNotFound {
-                axis_key,
-                group_key,
-            } => Self::NotFound(format!("stock group {axis_key}/{group_key} not found")),
+            error @ (StockGroupUseCaseError::AxisNotFound(_)
+            | StockGroupUseCaseError::GroupNotFound { .. }) => Self::NotFound(error.to_string()),
             StockGroupUseCaseError::Repository(StockGroupRepositoryError::Database(error))
             | StockGroupUseCaseError::UnitOfWork(
                 UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
