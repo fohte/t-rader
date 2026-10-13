@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   parseStrategyListTab,
   StrategyListTabs,
+  validateStrategyListSearch,
 } from '#components/strategy-home/strategy-list-tabs'
-import { Route as StrategiesRoute } from '#routes/strategies/index'
 import { createStoryRouter } from '#storybook/story-router'
 
 afterEach(cleanup)
@@ -22,63 +22,53 @@ function getTabsOutput(navigation: HTMLElement) {
 }
 
 describe('StrategyListTabs', () => {
-  it.each([
-    { activeTab: 'list' },
-    { activeTab: 'runs' },
-    { activeTab: 'indicators' },
-  ] as const)('$activeTab タブの URL と表示を持つ', async ({ activeTab }) => {
-    const router = createStoryRouter(
-      () => <StrategyListTabs activeTab={activeTab} />,
-      {
-        paths: ['/strategies'],
-        initialPath: `/strategies?strategyTab=${activeTab}`,
-      },
-    )
-    render(<RouterProvider router={router} />)
+  it.each([{ activeTab: 'list' }, { activeTab: 'runs' }] as const)(
+    '$activeTab タブの URL と表示を持つ',
+    async ({ activeTab }) => {
+      const router = createStoryRouter(
+        () => <StrategyListTabs activeTab={activeTab} />,
+        {
+          paths: ['/strategies'],
+          initialPath: `/strategies?strategyTab=${activeTab}`,
+        },
+      )
+      render(<RouterProvider router={router} />)
 
-    const navigation = await screen.findByRole('navigation', {
-      name: '戦略一覧のタブ',
-    })
+      const navigation = await screen.findByRole('navigation', {
+        name: '戦略一覧のタブ',
+      })
 
-    expect(getTabsOutput(navigation)).toEqual([
-      {
-        label: '一覧',
-        href: '/strategies?strategyTab=list',
-        current: activeTab === 'list',
-      },
-      {
-        label: '実行履歴',
-        href: '/strategies?strategyTab=runs',
-        current: activeTab === 'runs',
-      },
-      {
-        label: 'indicators',
-        href: '/strategies?strategyTab=indicators',
-        current: activeTab === 'indicators',
-      },
-    ])
-  })
+      expect(getTabsOutput(navigation)).toEqual([
+        {
+          label: '一覧',
+          href: '/strategies?strategyTab=list',
+          current: activeTab === 'list',
+        },
+        {
+          label: '実行履歴',
+          href: '/strategies?strategyTab=runs',
+          current: activeTab === 'runs',
+        },
+      ])
+    },
+  )
 
   it.each([
     { value: 'list', expected: 'list' },
     { value: 'runs', expected: 'runs' },
-    { value: 'indicators', expected: 'indicators' },
     { value: 'unknown', expected: undefined },
   ] as const)('$value search 値を検証する', ({ value, expected }) => {
     expect(parseStrategyListTab(value)).toEqual(expected)
   })
 
   it.each([
-    { value: 'runs', expected: { strategyTab: 'runs' } },
-    { value: 'indicators', expected: { strategyTab: 'indicators' } },
-  ] as const)(
-    '戦略一覧ルートで $value タブを URL から復元する',
-    ({ value, expected }) => {
-      const actual =
-        typeof StrategiesRoute.options.validateSearch === 'function'
-          ? StrategiesRoute.options.validateSearch({ strategyTab: value })
-          : null
-      expect(actual).toEqual(expected)
+    { search: { strategyTab: 'runs' }, expected: { strategyTab: 'runs' } },
+    {
+      search: { strategyTab: 'indicators' },
+      expected: { legacyIndicatorsTab: true },
     },
-  )
+    { search: { strategyTab: 'unknown' }, expected: {} },
+  ] as const)('search $search を検証する', ({ search, expected }) => {
+    expect(validateStrategyListSearch(search)).toEqual(expected)
+  })
 })
