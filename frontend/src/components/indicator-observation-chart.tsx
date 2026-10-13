@@ -1,6 +1,5 @@
 import { Button } from '@fohte/ui/button'
 import {
-  ColorType,
   createChart,
   type IChartApi,
   type ISeriesApi,
@@ -8,6 +7,12 @@ import {
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
 
+import {
+  getChartThemeColors,
+  getChartThemeOptions,
+  observeChartResize,
+  observeChartTheme,
+} from '#lib/chart-theme'
 import {
   type IndicatorObservation,
   type IndicatorPeriod,
@@ -29,16 +34,6 @@ const PERIODS: { value: IndicatorPeriod; label: string }[] = [
   { value: 'all', label: '全期間' },
 ]
 
-function getThemeColors(isDark: boolean) {
-  return {
-    background: isDark ? '#1a1a1a' : '#ffffff',
-    textColor: isDark ? '#d1d5db' : '#374151',
-    gridColor: isDark ? '#2d2d2d' : '#e5e7eb',
-    borderColor: isDark ? '#3f3f46' : '#d1d5db',
-    lineColor: isDark ? '#60a5fa' : '#2563eb',
-  }
-}
-
 export function IndicatorObservationChart({
   observations,
   period,
@@ -55,67 +50,40 @@ export function IndicatorObservationChart({
     const container = containerRef.current
     if (!shouldShowChart || container == null) return
 
-    const colors = getThemeColors(
-      document.documentElement.classList.contains('dark'),
-    )
+    const isDark = document.documentElement.classList.contains('dark')
+    const colors = getChartThemeColors(isDark)
     const chart = createChart(container, {
-      layout: {
-        background: { type: ColorType.Solid, color: colors.background },
-        textColor: colors.textColor,
-      },
-      grid: {
-        vertLines: { color: colors.gridColor },
-        horzLines: { color: colors.gridColor },
-      },
+      ...getChartThemeOptions(colors),
       width: container.clientWidth,
       height: container.clientHeight,
-      timeScale: { borderColor: colors.borderColor },
-      rightPriceScale: { borderColor: colors.borderColor },
     })
     chartRef.current = chart
 
     const lineSeries = chart.addSeries(LineSeries, {
-      color: colors.lineColor,
+      color: getLineColor(isDark),
       lineWidth: 2,
       priceLineVisible: false,
       crosshairMarkerVisible: true,
     })
     lineSeriesRef.current = lineSeries
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect
+    const disconnectResizeObserver = observeChartResize(
+      container,
+      (width, height) => {
         chart.applyOptions({ width, height })
-      }
-    })
-    resizeObserver.observe(container)
+      },
+    )
 
-    const mutationObserver = new MutationObserver(() => {
-      const nextColors = getThemeColors(
-        document.documentElement.classList.contains('dark'),
-      )
-      chart.applyOptions({
-        layout: {
-          background: { type: ColorType.Solid, color: nextColors.background },
-          textColor: nextColors.textColor,
-        },
-        grid: {
-          vertLines: { color: nextColors.gridColor },
-          horzLines: { color: nextColors.gridColor },
-        },
-        timeScale: { borderColor: nextColors.borderColor },
-        rightPriceScale: { borderColor: nextColors.borderColor },
-      })
-      lineSeries.applyOptions({ color: nextColors.lineColor })
-    })
-    mutationObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
+    const disconnectThemeObserver = observeChartTheme(() => {
+      const dark = document.documentElement.classList.contains('dark')
+      const nextColors = getChartThemeColors(dark)
+      chart.applyOptions(getChartThemeOptions(nextColors))
+      lineSeries.applyOptions({ color: getLineColor(dark) })
     })
 
     return () => {
-      mutationObserver.disconnect()
-      resizeObserver.disconnect()
+      disconnectThemeObserver()
+      disconnectResizeObserver()
       chart.remove()
       chartRef.current = null
       lineSeriesRef.current = null
@@ -189,4 +157,8 @@ export function IndicatorObservationChart({
       )}
     </section>
   )
+}
+
+function getLineColor(isDark: boolean): string {
+  return isDark ? '#60a5fa' : '#2563eb'
 }
