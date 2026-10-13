@@ -66,7 +66,7 @@ fn apply_split_adjustment(
 fn consume_sell_lots(
     lots: &mut VecDeque<Lot>,
     trade: &Trade,
-    mut on_match: impl FnMut(&mut Lot, Decimal),
+    mut on_match: impl FnMut(&Lot, Decimal),
 ) -> Decimal {
     let mut remaining = trade.qty;
     let mut realized_pnl = Decimal::ZERO;
@@ -76,9 +76,15 @@ fn consume_sell_lots(
             break;
         };
         let taken = remaining.min(front.qty);
-        on_match(front, taken);
+        let trade_basis_taken = if taken == front.qty {
+            front.remaining_trade_qty
+        } else {
+            front.remaining_trade_qty * taken / front.qty
+        };
+        on_match(front, trade_basis_taken);
         realized_pnl += taken * (trade.price - front.price);
         front.qty -= taken;
+        front.remaining_trade_qty -= trade_basis_taken;
         remaining -= taken;
         if front.qty == Decimal::ZERO {
             lots.pop_front();
@@ -111,13 +117,7 @@ pub(super) fn calculate_trade_detail(
             "sell" => {
                 let is_target = row.trade.id == trade.id;
                 let mut sale_matches = Vec::new();
-                let sale_pnl = consume_sell_lots(&mut lots, &row.trade, |lot, qty| {
-                    let trade_basis_qty = if qty == lot.qty {
-                        lot.remaining_trade_qty
-                    } else {
-                        lot.remaining_trade_qty * qty / lot.qty
-                    };
-                    lot.remaining_trade_qty -= trade_basis_qty;
+                let sale_pnl = consume_sell_lots(&mut lots, &row.trade, |lot, trade_basis_qty| {
                     if is_target {
                         sale_matches.push(MatchedBuy {
                             date: lot.date,
