@@ -27,7 +27,7 @@ use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
-use core_application::trade::{TradeNoteUseCases, TradeUseCases};
+use core_application::trade::{TradeNoteUseCases, TradeSummaryUseCases, TradeUseCases};
 use core_application::trigger::TriggerUseCases;
 
 #[derive(Clone)]
@@ -59,6 +59,7 @@ pub struct FrontendApiState {
     pub strategy_use_cases: StrategyUseCases,
     pub trigger_use_cases: TriggerUseCases,
     pub trade_note_use_cases: TradeNoteUseCases,
+    pub trade_summary_use_cases: TradeSummaryUseCases,
     pub trade_use_cases: TradeUseCases,
     pub agent_task_client: SharedAgentTaskClient,
     pub kata_executor: Option<SharedKataExecutor>,

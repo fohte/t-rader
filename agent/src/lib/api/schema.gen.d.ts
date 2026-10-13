@@ -2054,6 +2054,11 @@ export interface components {
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
       positions: components['schemas']['PositionSummary'][]
+      /**
+       * Format: date
+       * @description 使用した日足のうち最も新しい観測日。価格が無い場合は `null`。
+       */
+      price_observed_at?: string | null
       /** Format: double */
       realized_pnl: number
       /** Format: uuid */
@@ -2075,6 +2080,16 @@ export interface components {
       cost_basis: number
       /**
        * Format: double
+       * @description 共通観測日の終値。該当する日足が無い場合は `null` です。
+       */
+      current_price?: number | null
+      /**
+       * Format: double
+       * @description 現在値 × 保有数量。現在値が無い場合は `null`。
+       */
+      market_value?: number | null
+      /**
+       * Format: double
        * @description 保有数量 (買い残 - 売り残)
        */
       qty: number
@@ -2084,6 +2099,11 @@ export interface components {
        */
       realized_pnl: number
       symbol: string
+      /**
+       * Format: double
+       * @description 評価額 - 取得簿価。現在値が無い場合は `null`。
+       */
+      unrealized_pnl?: number | null
     }
     Prediction: {
       /** Format: date */

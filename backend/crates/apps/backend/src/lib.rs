@@ -64,6 +64,7 @@ pub fn build_http_state(
         strategy_use_cases: use_cases.strategies(),
         trigger_use_cases,
         trade_note_use_cases: use_cases.trade_notes(),
+        trade_summary_use_cases: use_cases.trade_summaries(),
         trade_use_cases: use_cases.trades(),
         agent_task_client,
         kata_executor,

@@ -10138,6 +10138,14 @@
               "$ref": "#/components/schemas/PositionSummary"
             }
           },
+          "price_observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "使用した日足のうち最も新しい観測日。価格が無い場合は `null`。"
+          },
           "realized_pnl": {
             "type": "number",
             "format": "double"
@@ -10176,6 +10184,22 @@
             "format": "double",
             "description": "取得簿価 (qty * avg_cost)"
           },
+          "current_price": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "共通観測日の終値。該当する日足が無い場合は `null` です。"
+          },
+          "market_value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "現在値 × 保有数量。現在値が無い場合は `null`。"
+          },
           "qty": {
             "type": "number",
             "format": "double",
@@ -10188,6 +10212,14 @@
           },
           "symbol": {
             "type": "string"
+          },
+          "unrealized_pnl": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "評価額 - 取得簿価。現在値が無い場合は `null`。"
           }
         }
       },
