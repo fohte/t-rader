@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { IndicatorDetailPage } from '#components/indicator-detail-page'
 import { $api, fetchClient } from '#lib/api/client'
-import type { IndicatorPeriod } from '#lib/indicator-observation'
+import {
+  type IndicatorPeriod,
+  selectIndicatorObservations,
+} from '#lib/indicator-observation'
 
 export const Route = createFileRoute('/indicators/$indicatorId')({
   component: IndicatorDetailRoute,
@@ -40,6 +43,10 @@ function IndicatorDetailRoute() {
     { params: { query: { ref: `indicator:${indicatorId}` } } },
     { enabled: indicatorQuery.data?.kind === 'loaded' },
   )
+  const visibleObservations = useMemo(
+    () => selectIndicatorObservations(observationsQuery.data ?? [], period),
+    [observationsQuery.data, period],
+  )
 
   if (indicatorQuery.isPending) {
     return <IndicatorDetailPage state="loading" indicatorId={indicatorId} />
@@ -63,6 +70,7 @@ function IndicatorDetailRoute() {
       state="loaded"
       indicator={indicatorResult.indicator}
       observations={observationsQuery.data ?? null}
+      visibleObservations={visibleObservations}
       isObservationsLoading={observationsQuery.isPending}
       isObservationsError={observationsQuery.isError}
       notes={notesQuery.data ?? null}

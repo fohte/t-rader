@@ -30,6 +30,11 @@ const notes: Note[] = [
   },
 ]
 
+const observations = [
+  { date: '2026-10-08', value: 151.52 },
+  { date: '2026-10-09', value: 152.34 },
+]
+
 function withRouter(Story: ComponentType) {
   return (
     <RouterProvider
@@ -58,10 +63,8 @@ export const Loaded: Story = {
   args: {
     state: 'loaded',
     indicator: { id: 'DEMO_FX', name: 'デモ為替', kind: 'macro' },
-    observations: [
-      { date: '2026-10-08', value: 151.52 },
-      { date: '2026-10-09', value: 152.34 },
-    ],
+    observations,
+    visibleObservations: observations,
     isObservationsLoading: false,
     isObservationsError: false,
     notes,

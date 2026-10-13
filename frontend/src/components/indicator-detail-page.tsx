@@ -3,8 +3,8 @@ import { RelatedNotes } from '#components/related-notes'
 import type { components } from '#lib/api/schema.gen'
 import {
   getIndicatorObservationSummary,
+  type IndicatorObservation,
   type IndicatorPeriod,
-  selectIndicatorObservations,
 } from '#lib/indicator-observation'
 
 type Indicator = components['schemas']['Indicator']
@@ -17,8 +17,8 @@ type IndicatorDetailPageProps =
   | {
       state: 'loaded'
       indicator: Indicator
-      observations:
-        components['schemas']['IndicatorObservationResponse'][] | null
+      observations: IndicatorObservation[] | null
+      visibleObservations: IndicatorObservation[]
       isObservationsLoading: boolean
       isObservationsError: boolean
       notes: Note[] | null
@@ -129,10 +129,7 @@ export function IndicatorDetailPage(props: IndicatorDetailPageProps) {
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <IndicatorObservationChart
-            observations={selectIndicatorObservations(
-              props.observations ?? [],
-              props.period,
-            )}
+            observations={props.visibleObservations}
             period={props.period}
             onPeriodChange={props.onPeriodChange}
             isPending={props.isObservationsLoading}
