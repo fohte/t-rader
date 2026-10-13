@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -18,7 +24,7 @@ import {
 afterEach(cleanup)
 
 // Link コンポーネントが parent route を要求するため、最低限のテストルーターを噛ませる。
-async function renderInRouter(ui: React.ReactElement): Promise<void> {
+async function renderInRouter(ui: React.ReactElement): Promise<HTMLElement> {
   const rootRoute = createRootRoute({ component: () => ui })
   const noteRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -34,13 +40,14 @@ async function renderInRouter(ui: React.ReactElement): Promise<void> {
     routeTree: rootRoute.addChildren([noteRoute, runRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
-  render(<RouterProvider router={router} />)
+  const rendered = render(<RouterProvider router={router} />)
   // TanStack Router は非同期にルートを解決するため初回 render を待つ。
   await waitFor(() => {
     expect(
       document.body.firstElementChild?.children.length ?? 0,
     ).toBeGreaterThan(0)
   })
+  return rendered.container
 }
 
 const NOOP = (): void => {}
@@ -51,8 +58,15 @@ function makeProps(
   const base: FloatingChatViewProps = {
     open: true,
     strategyId: 'S1',
+    taskStrategyId: null,
+    strategies: [
+      { id: 'S1', name: '例示戦略 A' },
+      { id: 'S2', name: '例示戦略 B' },
+    ],
+    submittedPrompt: null,
     seed: null,
     input: '',
+    resultText: null,
     status: { kind: 'idle' },
     notes: [],
     purposes: [],
@@ -61,10 +75,56 @@ function makeProps(
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
+    onStrategyChange: NOOP,
     onPurposeChange: NOOP,
     onSubmit: NOOP,
   }
   return { ...base, ...overrides }
+}
+
+function readClosedPanelOutput(openCalls: number) {
+  return {
+    triggerLabel: screen
+      .getByRole('button', { name: 'アナリストを呼ぶ' })
+      .getAttribute('aria-label'),
+    dialogVisible: screen.queryByRole('dialog') != null,
+    onOpenCalls: openCalls,
+  }
+}
+
+function readComposerOutput() {
+  const input = screen.getByLabelText('メッセージ入力')
+  return {
+    inputDisabled: input.hasAttribute('disabled'),
+    placeholder: input.getAttribute('placeholder'),
+    submitDisabled: screen
+      .getByRole('button', { name: '送信' })
+      .hasAttribute('disabled'),
+    strategyValue: screen.getByLabelText<HTMLSelectElement>('戦略').value,
+  }
+}
+
+function readCompletedOutput(container: HTMLElement) {
+  return {
+    messages: [
+      ...container.querySelectorAll<HTMLElement>('[data-message-role]'),
+    ].map((message) => ({
+      role: message.dataset.messageRole,
+      text: message.dataset.messageRole === 'user' ? message.textContent : null,
+      paragraphs: [...message.querySelectorAll('p')].map(
+        (paragraph) => paragraph.textContent,
+      ),
+      strong: [...message.querySelectorAll('strong')].map(
+        (element) => element.textContent,
+      ),
+    })),
+    noteLinks: [
+      ...container.querySelectorAll<HTMLAnchorElement>('a[href^="/notes/"]'),
+    ].map((link) => ({
+      href: link.getAttribute('href'),
+      label: link.firstElementChild?.textContent,
+    })),
+  }
 }
 
 describe('FloatingChatView', () => {
@@ -75,11 +135,13 @@ describe('FloatingChatView', () => {
     )
 
     const trigger = screen.getByRole('button', { name: 'アナリストを呼ぶ' })
-    expect(trigger).toBeInTheDocument()
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(trigger)
 
-    await userEvent.click(trigger)
-    expect(onOpen).toHaveBeenCalledOnce()
+    expect(readClosedPanelOutput(onOpen.mock.calls.length)).toEqual({
+      triggerLabel: 'アナリストを呼ぶ',
+      dialogVisible: false,
+      onOpenCalls: 1,
+    })
   })
 
   it('送信ボタンを押すと onSubmit が呼ばれる', async () => {
@@ -104,6 +166,34 @@ describe('FloatingChatView', () => {
     // userEvent.type は controlled input の value 増分ではなく
     // 各キーごとの最新値 (現在値 + キー) を伝える。
     expect(onInputChange).toHaveBeenCalledWith('ax')
+  })
+
+  it('選んだ戦略 ID を onStrategyChange に渡す', async () => {
+    const onStrategyChange = vi.fn()
+    await renderInRouter(
+      <FloatingChatView
+        {...makeProps({ strategyId: null, onStrategyChange })}
+      />,
+    )
+
+    await userEvent.selectOptions(screen.getByLabelText('戦略'), 'S2')
+
+    expect(onStrategyChange.mock.calls).toEqual([['S2']])
+  })
+
+  it('戦略未選択でも入力できるが送信できない', async () => {
+    await renderInRouter(
+      <FloatingChatView
+        {...makeProps({ strategyId: null, input: '分析依頼' })}
+      />,
+    )
+
+    expect(readComposerOutput()).toEqual({
+      inputDisabled: false,
+      placeholder: 'プロンプトを入力',
+      submitDisabled: true,
+      strategyValue: '',
+    })
   })
 
   it('submitting 中は入力と送信ボタンを無効化する', async () => {
@@ -134,12 +224,17 @@ describe('FloatingChatView', () => {
     const status: FloatingChatStatus = { kind: 'polling', phase: 'running' }
     await renderInRouter(
       <FloatingChatView
-        {...makeProps({ input: 'x', status, currentTaskId: 'T1' })}
+        {...makeProps({
+          input: 'x',
+          status,
+          currentTaskId: 'example-task',
+          taskStrategyId: 'S2',
+        })}
       />,
     )
 
     const link = screen.getByRole('link', { name: /実行の詳細を見る/ })
-    expect(link).toHaveAttribute('href', '/strategies/S1/runs/T1')
+    expect(link).toHaveAttribute('href', '/strategies/S2/runs/example-task')
   })
 
   it('currentTaskId が無ければ実行詳細へのリンクを出さない', async () => {
@@ -150,28 +245,47 @@ describe('FloatingChatView', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('completed では生成ノートへのリンクを表示する', async () => {
-    await renderInRouter(
+  it('完了時にプロンプトと Markdown 形式の返信を表示する', async () => {
+    const container = await renderInRouter(
       <FloatingChatView
         {...makeProps({
           status: { kind: 'completed' },
+          submittedPrompt: '架空銘柄の変化をまとめて',
+          resultText: '前回との差分です。\n\n**次回を確認します。**',
+          taskStrategyId: 'S1',
           notes: [
             {
-              id: 'N1',
-              title: '今日の半導体メモ',
+              id: 'example-note-a',
+              title: '架空銘柄の分析メモ',
               updated_at: '2026-06-26T00:00:00Z',
             },
-            { id: 'N2', title: '別件', updated_at: '2026-06-25T00:00:00Z' },
           ],
         })}
       />,
     )
 
-    expect(screen.getByText('completed')).toBeInTheDocument()
-    const link1 = screen.getByRole('link', { name: /今日の半導体メモ/ })
-    const link2 = screen.getByRole('link', { name: /別件/ })
-    expect(link1).toHaveAttribute('href', '/notes/N1')
-    expect(link2).toHaveAttribute('href', '/notes/N2')
+    expect(readCompletedOutput(container)).toEqual({
+      messages: [
+        {
+          role: 'user',
+          text: '架空銘柄の変化をまとめて',
+          paragraphs: [],
+          strong: [],
+        },
+        {
+          role: 'assistant',
+          text: null,
+          paragraphs: ['前回との差分です。', '次回を確認します。'],
+          strong: ['次回を確認します。'],
+        },
+      ],
+      noteLinks: [
+        {
+          href: '/notes/example-note-a',
+          label: '架空銘柄の分析メモ',
+        },
+      ],
+    })
   })
 
   it('completed でもノートが空ならフォールバック文言を出す', async () => {
@@ -209,15 +323,5 @@ describe('FloatingChatView', () => {
     expect(
       screen.getByText('戦略 Agent が ready ではありません'),
     ).toBeInTheDocument()
-  })
-
-  it('戦略コンテキストが無い場合は入力を無効化する', async () => {
-    await renderInRouter(
-      <FloatingChatView {...makeProps({ strategyId: null })} />,
-    )
-
-    const input = screen.getByLabelText('メッセージ入力')
-    expect(input).toBeDisabled()
-    expect(input).toHaveAttribute('placeholder', '戦略ページを開いてください')
   })
 })

@@ -32,9 +32,16 @@ function makeProps(
 ): FloatingChatViewProps {
   return {
     open: true,
-    strategyId: 'semi-swing',
+    strategyId: 'example-strategy-a',
+    taskStrategyId: null,
+    strategies: [
+      { id: 'example-strategy-a', name: '例示戦略 A' },
+      { id: 'example-strategy-b', name: '例示戦略 B' },
+    ],
+    submittedPrompt: null,
     seed: null,
     input: '',
+    resultText: null,
     status,
     notes: [],
     purposes: ['example-purpose', 'another-example-purpose'],
@@ -43,6 +50,7 @@ function makeProps(
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
+    onStrategyChange: NOOP,
     onPurposeChange: NOOP,
     onSubmit: NOOP,
     ...overrides,
@@ -88,6 +96,20 @@ export const SelectedPurpose: Story = {
   ),
 }
 
+export const NoStrategySelected: Story = {
+  name: 'allows drafting a prompt before a strategy is selected.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(
+        makeProps(
+          { kind: 'idle' },
+          { strategyId: null, submittedPrompt: null },
+        ),
+      )}
+    />
+  ),
+}
+
 export const Polling: Story = {
   name: 'shows a submitted prompt while its task is still running.',
   render: () => (
@@ -95,7 +117,10 @@ export const Polling: Story = {
       router={createFloatingChatRouter(
         makeProps(
           { kind: 'polling', phase: 'running' },
-          { input: 'SUMCO の足元評価' },
+          {
+            input: '',
+            submittedPrompt: '架空銘柄の足元評価',
+          },
         ),
       )}
     />
@@ -109,7 +134,12 @@ export const PollingWithRunLink: Story = {
       router={createFloatingChatRouter(
         makeProps(
           { kind: 'polling', phase: 'running' },
-          { input: 'SUMCO の足元評価', currentTaskId: 'T1' },
+          {
+            input: '',
+            submittedPrompt: '架空銘柄の足元評価',
+            currentTaskId: 'example-task',
+            taskStrategyId: 'example-strategy-a',
+          },
         ),
       )}
     />
@@ -124,14 +154,18 @@ export const Completed: Story = {
         makeProps(
           { kind: 'completed' },
           {
+            taskStrategyId: 'example-strategy-a',
+            submittedPrompt: '架空銘柄の直近の変化をまとめて',
+            resultText:
+              '前回より受注が増えています。\n\n**次の決算で確認します。**',
             notes: [
               {
-                id: 'N1',
-                title: '輸出企業の受注メモ',
+                id: 'example-note-a',
+                title: '架空企業の受注メモ',
                 updated_at: '2026-06-26T07:00:00Z',
               },
               {
-                id: 'N2',
+                id: 'example-note-b',
                 title: '需給の変化をまとめたメモ',
                 updated_at: '2026-06-25T04:00:00Z',
               },
@@ -147,7 +181,16 @@ export const CompletedWithoutNotes: Story = {
   name: 'shows a completed task with no linked notes.',
   render: () => (
     <RouterProvider
-      router={createFloatingChatRouter(makeProps({ kind: 'completed' }))}
+      router={createFloatingChatRouter(
+        makeProps(
+          { kind: 'completed' },
+          {
+            taskStrategyId: 'example-strategy-a',
+            submittedPrompt: '架空銘柄の見立てを教えて',
+            resultText: '分析結果の本文です。',
+          },
+        ),
+      )}
     />
   ),
 }
