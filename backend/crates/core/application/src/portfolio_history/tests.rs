@@ -179,6 +179,37 @@ async fn missing_daily_bars_carry_forward_the_previous_close() {
 }
 
 #[tokio::test]
+async fn history_includes_trades_and_prices_before_the_requested_range() {
+    let fixture = fixture();
+    fixture.trades.insert_trade(trade(8, "buy", 2, 100)).await;
+    fixture
+        .bars
+        .seed_bars(vec![bar(9, 120, Decimal::ONE)])
+        .await;
+    fixture
+        .strategies
+        .insert_investable_amount(investable_amount(1, 1_000))
+        .await;
+
+    let actual = fixture
+        .use_cases
+        .history(PortfolioHistoryQuery {
+            from: date(10),
+            to: date(11),
+        })
+        .await
+        .map_err(|error| error.to_string());
+
+    assert_eq!(
+        actual,
+        Ok(vec![
+            point(10, 1_040, 240, 800, 1_000),
+            point(11, 1_040, 240, 800, 1_000),
+        ])
+    );
+}
+
+#[tokio::test]
 async fn an_unpriced_position_uses_its_cost_basis_until_a_close_exists() {
     let fixture = fixture();
     fixture.trades.insert_trade(trade(10, "buy", 2, 100)).await;
@@ -242,6 +273,75 @@ async fn investable_amount_histories_sum_and_backfill_first_settings() {
             point(10, 800, 80, 720, 800),
             point(11, 800, 80, 720, 800),
             point(12, 800, 80, 720, 800),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn investable_amount_changes_on_its_effective_date() {
+    let fixture = fixture();
+    fixture.trades.insert_trade(trade(10, "buy", 1, 80)).await;
+    fixture
+        .bars
+        .seed_bars(vec![bar(10, 80, Decimal::ONE)])
+        .await;
+    fixture
+        .strategies
+        .insert_investable_amount(investable_amount(10, 500))
+        .await;
+    fixture
+        .strategies
+        .insert_investable_amount(investable_amount(12, 700))
+        .await;
+
+    let actual = fixture
+        .use_cases
+        .history(PortfolioHistoryQuery {
+            from: date(10),
+            to: date(12),
+        })
+        .await
+        .map_err(|error| error.to_string());
+
+    assert_eq!(
+        actual,
+        Ok(vec![
+            point(10, 500, 80, 420, 500),
+            point(11, 500, 80, 420, 500),
+            point(12, 700, 80, 620, 700),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn realized_profit_from_a_sale_increases_cash() {
+    let fixture = fixture();
+    fixture.trades.insert_trade(trade(10, "buy", 2, 100)).await;
+    fixture.trades.insert_trade(trade(12, "sell", 1, 120)).await;
+    fixture
+        .bars
+        .seed_bars(vec![bar(10, 100, Decimal::ONE), bar(12, 120, Decimal::ONE)])
+        .await;
+    fixture
+        .strategies
+        .insert_investable_amount(investable_amount(1, 1_000))
+        .await;
+
+    let actual = fixture
+        .use_cases
+        .history(PortfolioHistoryQuery {
+            from: date(10),
+            to: date(12),
+        })
+        .await
+        .map_err(|error| error.to_string());
+
+    assert_eq!(
+        actual,
+        Ok(vec![
+            point(10, 1_000, 200, 800, 1_000),
+            point(11, 1_000, 200, 800, 1_000),
+            point(12, 1_040, 120, 920, 1_000),
         ])
     );
 }
