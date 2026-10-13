@@ -662,10 +662,13 @@ mod tests {
             mkt_cap: Some(Decimal::new(250_000, 0)),
         }];
         bars_repository
-            .seed_daily_adjustment_factors(vec![DailyBarAdjustmentFactor {
-                date: date(2099, 1, 5),
-                factor: Decimal::new(5, 1),
-            }])
+            .seed_daily_adjustment_factors(
+                "ZZZZ",
+                vec![DailyBarAdjustmentFactor {
+                    date: date(2099, 1, 5),
+                    factor: Decimal::new(5, 1),
+                }],
+            )
             .await;
         let use_cases = ValuationUseCases::new(repository, bars_repository.clone());
 
