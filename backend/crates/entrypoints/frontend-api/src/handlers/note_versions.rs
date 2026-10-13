@@ -8,7 +8,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::comments::map_comment_read_error;
 use crate::handlers::strategies::{map_get_task_error, map_submit_error};
-use crate::models::{ChangeStatusRequest, NoteVersionResponse};
+use crate::models::{ChangeStatusRequest, NoteVersionResponse, PendingNoteVersionResponse};
 use core_application::note::INITIAL_NOTE_STATUS;
 
 /// ノートの全バージョンを古い順に返す。
@@ -72,13 +72,13 @@ pub async fn get_note_version(
     path = "/api/note-versions/pending",
     tag = "notes",
     responses(
-        (status = 200, body = Vec<NoteVersionResponse>),
+        (status = 200, body = Vec<PendingNoteVersionResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_pending_note_versions(
     State(state): State<FrontendApiState>,
-) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
+) -> Result<Json<Vec<PendingNoteVersionResponse>>, AppError> {
     let versions = state
         .note_read_use_cases
         .list_pending_note_versions()

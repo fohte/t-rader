@@ -1991,6 +1991,31 @@ export interface components {
       /** Format: double */
       unrealized_pnl_jpy: number
     }
+    PendingNoteVersion: {
+      body_md: string
+      change_reason?: string | null
+      /** Format: date-time */
+      created_at: string
+      created_by_kind: string
+      execution_id?: string | null
+      frontmatter_json: components['schemas']['Value']
+      graphs_json: components['schemas']['GraphDef'][]
+      /** Format: uuid */
+      id: string
+      is_current: boolean
+      kind?: string | null
+      /** Format: uuid */
+      note_id: string
+      /** @description 本文中の価格リンクを key、実行データから解決した値を value とする。 */
+      resolved_price_references_json: components['schemas']['Value']
+      /** Format: date-time */
+      reviewed_at?: string | null
+      status: string
+      tags: string[]
+      title: string
+      /** Format: int32 */
+      version_no: number
+    }
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
       positions: components['schemas']['PositionSummary'][]
@@ -3234,6 +3259,8 @@ export interface operations {
     parameters: {
       query?: {
         target_symbol?: string
+        status?: string
+        created_by_kind?: string
       }
       header?: never
       path?: never
@@ -5124,7 +5151,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['NoteVersion'][]
+          'application/json': components['schemas']['PendingNoteVersion'][]
         }
       }
       500: {

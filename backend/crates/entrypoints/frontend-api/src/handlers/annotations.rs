@@ -26,6 +26,8 @@ use crate::models::{
 #[into_params(parameter_in = Query)]
 pub struct ListAnnotationsQuery {
     pub target_symbol: Option<String>,
+    pub status: Option<String>,
+    pub created_by_kind: Option<String>,
 }
 
 /// アノテーション一覧
@@ -48,6 +50,8 @@ pub async fn list_annotations(
         .annotation_read_use_cases
         .list_annotations(AnnotationListQuery {
             target_symbol: params.target_symbol.filter(|symbol| !symbol.is_empty()),
+            status: params.status,
+            created_by_kind: params.created_by_kind,
             limit: None,
         })
         .await

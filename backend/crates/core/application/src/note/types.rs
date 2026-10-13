@@ -35,6 +35,12 @@ pub struct NoteVersion {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PendingNoteVersion {
+    pub version: NoteVersion,
+    pub kind: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NoteSnapshot {
     pub note: Note,
     pub version: NoteVersion,

@@ -162,6 +162,8 @@ async fn list_annotations_preserves_the_query() {
     let use_cases = AnnotationReadUseCases::new(query.clone());
     let requested_query = AnnotationListQuery {
         target_symbol: Some("FICTIONAL-ASSET".into()),
+        status: Some("unread".into()),
+        created_by_kind: Some("llm".into()),
         limit: Some(5),
     };
 
