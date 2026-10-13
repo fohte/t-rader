@@ -49,7 +49,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const StrategyList: Story = {
-  name: 'shows strategy navigation on the strategy list page.',
+  name: 'shows the menu navigation active on the strategy list page.',
   render: () => <RouterProvider router={createHeaderRouter('/strategies')} />,
 }
 
@@ -88,18 +88,6 @@ export const Portfolio: Story = {
 export const Trades: Story = {
   name: 'shows assets navigation active on the trade history page.',
   render: () => <RouterProvider router={createHeaderRouter('/trades')} />,
-}
-
-export const PaperTrading: Story = {
-  name: 'ペーパートレードのナビを選択状態で表示する。',
-  render: () => (
-    <RouterProvider router={createHeaderRouter('/paper-trading')} />
-  ),
-}
-
-export const Calendar: Story = {
-  name: 'shows the header with calendar navigation active.',
-  render: () => <RouterProvider router={createHeaderRouter('/calendar')} />,
 }
 
 export const MenuOpen: Story = {
