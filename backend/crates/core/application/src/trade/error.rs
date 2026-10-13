@@ -1,4 +1,5 @@
 use super::repository::TradeRepositoryError;
+use crate::bars::BarsRepositoryError;
 use crate::change_history::ChangeHistoryError;
 use crate::note::{NoteReadUseCaseError, NoteRepositoryError};
 use crate::strategy_existence::StrategyExistenceError;
@@ -16,6 +17,8 @@ pub enum TradeUseCaseError {
     ResourceNotFound(String),
     #[error(transparent)]
     Repository(#[from] TradeRepositoryError),
+    #[error(transparent)]
+    BarsRepository(#[from] BarsRepositoryError),
     #[error(transparent)]
     NoteRepository(#[from] NoteRepositoryError),
     #[error(transparent)]

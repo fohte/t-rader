@@ -1,11 +1,13 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
-use chrono::Utc;
+use crate::bars::SharedBarsRepository;
+use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, TargetKind};
+use crate::split_adjustment::{SplitAdjustment, SplitAdjustmentError, SplitCursor, adjust_lot};
 use crate::strategy_existence::SharedStrategyExistence;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
@@ -23,6 +25,7 @@ const ALLOWED_SOURCE: [&str; 3] = ["manual", "csv", "api"];
 pub struct TradeUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) repository: SharedTradeRepository,
+    pub(super) bars_repository: SharedBarsRepository,
     pub(super) strategy_existence: SharedStrategyExistence,
     pub(super) change_history: crate::change_history::SharedChangeHistoryPort,
 }
@@ -33,10 +36,12 @@ impl TradeUseCases {
         repository: SharedTradeRepository,
         strategy_existence: SharedStrategyExistence,
         change_history: crate::change_history::SharedChangeHistoryPort,
+        bars_repository: SharedBarsRepository,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
+            bars_repository,
             strategy_existence,
             change_history,
         }
@@ -253,7 +258,29 @@ impl TradeUseCases {
                 include_note_references: false,
             })
             .await?;
-        Ok(summarize(strategy_id, &rows))
+        let mut adjustments = Vec::new();
+        let mut from_by_symbol = BTreeMap::<String, NaiveDate>::new();
+        for row in &rows {
+            from_by_symbol
+                .entry(row.trade.symbol.clone())
+                .and_modify(|from| *from = (*from).min(row.trade.date))
+                .or_insert(row.trade.date);
+        }
+        for (symbol, from) in from_by_symbol {
+            adjustments.extend(
+                self.bars_repository
+                    .find_daily_adjustment_factors_from(&symbol, from)
+                    .await?
+                    .into_iter()
+                    .map(|adjustment| SplitAdjustment {
+                        instrument_id: symbol.clone(),
+                        date: adjustment.date,
+                        factor: adjustment.factor,
+                    }),
+            );
+        }
+        let split_cursor = SplitCursor::new(adjustments).map_err(split_adjustment_error)?;
+        summarize(strategy_id, &rows, split_cursor)
     }
 
     async fn ensure_strategy_exists(
@@ -294,18 +321,40 @@ fn validate_source(source: &str) -> Result<(), TradeUseCaseError> {
     }
 }
 
-fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> PerformanceSummary {
-    #[derive(Debug, Clone)]
-    struct Lot {
-        qty: Decimal,
-        price: Decimal,
-    }
+#[derive(Debug, Clone)]
+struct Lot {
+    qty: Decimal,
+    price: Decimal,
+}
 
+fn split_adjustment_error(error: SplitAdjustmentError) -> TradeUseCaseError {
+    TradeUseCaseError::Validation(error.to_string())
+}
+
+fn adjust_lots(lots: &mut VecDeque<Lot>, factor: Decimal) -> Result<(), TradeUseCaseError> {
+    for lot in lots {
+        (lot.qty, lot.price) =
+            adjust_lot(lot.qty, lot.price, factor).map_err(split_adjustment_error)?;
+    }
+    Ok(())
+}
+
+fn summarize(
+    strategy_id: Option<Uuid>,
+    rows: &[TradeListItem],
+    mut split_cursor: SplitCursor,
+) -> Result<PerformanceSummary, TradeUseCaseError> {
     let mut lots_by_symbol: HashMap<String, VecDeque<Lot>> = HashMap::new();
     let mut realized_by_symbol: HashMap<String, Decimal> = HashMap::new();
 
     for row in rows {
         let trade = &row.trade;
+        split_cursor.apply_through(trade.date, |adjustment| {
+            if let Some(lots) = lots_by_symbol.get_mut(&adjustment.instrument_id) {
+                adjust_lots(lots, adjustment.factor)?;
+            }
+            Ok::<(), TradeUseCaseError>(())
+        })?;
         let lots = lots_by_symbol.entry(trade.symbol.clone()).or_default();
         let realized = realized_by_symbol.entry(trade.symbol.clone()).or_default();
         match trade.side.as_str() {
@@ -341,6 +390,13 @@ fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> PerformanceSu
         }
     }
 
+    split_cursor.apply_remaining(|adjustment| {
+        if let Some(lots) = lots_by_symbol.get_mut(&adjustment.instrument_id) {
+            adjust_lots(lots, adjustment.factor)?;
+        }
+        Ok::<(), TradeUseCaseError>(())
+    })?;
+
     let mut positions: Vec<PositionSummary> = lots_by_symbol
         .into_iter()
         .filter_map(|(symbol, lots)| {
@@ -363,23 +419,25 @@ fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> PerformanceSu
         .collect();
     positions.sort_by(|left, right| left.symbol.cmp(&right.symbol));
 
-    PerformanceSummary {
+    Ok(PerformanceSummary {
         strategy_id,
         trade_count: rows.len() as i64,
         realized_pnl: realized_by_symbol.values().copied().sum(),
         positions,
-    }
+    })
 }
 
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
     use std::sync::Arc;
 
+    use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository, SharedBarsRepository};
     use chrono::NaiveDate;
     use rstest::rstest;
     use serde_json::json;
 
     use crate::change_history::{Actor, FakeChangeHistory, Op, TargetKind};
+    use crate::split_adjustment::SplitCursor;
     use crate::strategy_existence::FakeStrategyExistence;
     use crate::trade::FakeTradeRepository;
     use crate::trade::types::{PerformanceSummary, PositionSummary, Trade, TradeListItem};
@@ -405,6 +463,27 @@ mod tests {
             },
             note_count: 0,
             note_references: Vec::new(),
+        }
+    }
+
+    fn dated_trade(id: u128, date: NaiveDate, side: &str, qty: i64, price: i64) -> Trade {
+        let timestamp = date
+            .and_time(chrono::NaiveTime::MIN)
+            .and_utc()
+            .fixed_offset();
+        Trade {
+            id: uuid::Uuid::from_u128(id),
+            strategy_id: uuid::Uuid::nil(),
+            symbol: "FICTIONAL-SYMBOL".into(),
+            side: side.into(),
+            qty: rust_decimal::Decimal::from(qty),
+            price: rust_decimal::Decimal::from(price),
+            fee: rust_decimal::Decimal::ZERO,
+            date,
+            source: "manual".into(),
+            note: None,
+            created_at: timestamp,
+            updated_at: timestamp,
         }
     }
 
@@ -459,7 +538,70 @@ mod tests {
         #[case] rows: Vec<TradeListItem>,
         #[case] expected: PerformanceSummary,
     ) {
-        assert_eq!(summarize(None, &rows), expected);
+        let split_cursor = SplitCursor::new([]).expect("empty split cursor succeeds");
+        assert_eq!(
+            summarize(None, &rows, split_cursor).expect("summary succeeds"),
+            expected,
+        );
+    }
+
+    #[tokio::test]
+    async fn summary_adjusts_fifo_lots_for_splits_before_and_after_trades() {
+        let before_first_split = NaiveDate::from_ymd_opt(2026, 1, 5).expect("valid date");
+        let first_split_date = NaiveDate::from_ymd_opt(2026, 1, 6).expect("valid date");
+        let after_first_split = NaiveDate::from_ymd_opt(2026, 1, 7).expect("valid date");
+        let final_trade_date = NaiveDate::from_ymd_opt(2026, 1, 8).expect("valid date");
+        let final_split_date = NaiveDate::from_ymd_opt(2026, 1, 9).expect("valid date");
+        let repository = Arc::new(FakeTradeRepository::new());
+        for trade in [
+            dated_trade(1, before_first_split, "buy", 100, 1000),
+            dated_trade(2, first_split_date, "sell", 100, 600),
+            dated_trade(3, after_first_split, "buy", 100, 700),
+            dated_trade(4, final_trade_date, "sell", 150, 800),
+        ] {
+            repository.insert_trade(trade).await;
+        }
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository
+            .seed_daily_adjustment_factors(vec![
+                DailyBarAdjustmentFactor {
+                    date: first_split_date,
+                    factor: rust_decimal::Decimal::new(5, 1),
+                },
+                DailyBarAdjustmentFactor {
+                    date: final_split_date,
+                    factor: rust_decimal::Decimal::new(25, 2),
+                },
+            ])
+            .await;
+        let trade_use_cases = TradeUseCases::new(
+            Arc::new(FakeUnitOfWork::new()),
+            repository,
+            Arc::new(FakeStrategyExistence::new()),
+            Arc::new(FakeChangeHistory::new()),
+            bars_repository as SharedBarsRepository,
+        );
+
+        let summary = trade_use_cases
+            .summary(None)
+            .await
+            .expect("summary succeeds");
+
+        assert_eq!(
+            summary,
+            PerformanceSummary {
+                strategy_id: None,
+                trade_count: 4,
+                realized_pnl: rust_decimal::Decimal::from(45_000),
+                positions: vec![PositionSummary {
+                    symbol: "FICTIONAL-SYMBOL".into(),
+                    qty: rust_decimal::Decimal::from(200),
+                    avg_cost: rust_decimal::Decimal::from(175),
+                    cost_basis: rust_decimal::Decimal::from(35_000),
+                    realized_pnl: rust_decimal::Decimal::from(45_000),
+                }],
+            },
+        );
     }
 
     #[tokio::test]
@@ -476,6 +618,7 @@ mod tests {
             repository.clone(),
             strategy_existence.clone(),
             change_history.clone(),
+            Arc::new(FakeBarsRepository::new()),
         );
 
         let trade = trade_use_cases
