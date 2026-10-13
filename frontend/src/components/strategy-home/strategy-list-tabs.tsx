@@ -3,10 +3,7 @@ import { Link } from '@tanstack/react-router'
 const STRATEGY_LIST_TAB_IDS = ['list', 'runs', 'indicators'] as const
 
 export type StrategyListTab = (typeof STRATEGY_LIST_TAB_IDS)[number]
-export type LegacyStrategyListTab = Extract<
-  StrategyListTab,
-  'runs' | 'indicators'
->
+export type LegacyStrategyListTab = Extract<StrategyListTab, 'runs'>
 
 export function parseStrategyListTab(value: unknown) {
   return STRATEGY_LIST_TAB_IDS.find((tab) => tab === value)
