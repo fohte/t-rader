@@ -9,20 +9,20 @@ type RelatedNote = ComponentProps<typeof RelatedNotes>['notes'][number]
 
 const notes: RelatedNote[] = [
   {
-    id: 'fake-note-a',
-    title: '架空企業の業績確認',
-    status: 'unread',
-    strategyName: '架空戦略',
-    author: 'エージェント',
-    updatedAt: '2026-10-10T03:00:00Z',
-  },
-  {
     id: 'fake-note-b',
     title: '売買後の振り返り',
     status: 'approved',
     strategyName: '別の架空戦略',
     author: '自分',
     updatedAt: '2026-10-09T03:00:00Z',
+  },
+  {
+    id: 'fake-note-a',
+    title: '架空企業の業績確認',
+    status: 'unread',
+    strategyName: '架空戦略',
+    author: 'エージェント',
+    updatedAt: '2026-10-10T03:00:00Z',
   },
 ]
 

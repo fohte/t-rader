@@ -2,7 +2,7 @@ use super::super::graph_dto::GraphDef;
 use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteSnapshot, frontmatter_tags,
 };
-use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
+use core_domain::note_reference::{NoteReferenceParseError, parse_note_reference};
 use rmcp::ErrorData as McpError;
 
 use super::super::dto::{ListNotesParams, ListNotesResult, NoteDto, NoteLinkDto, ReadNoteParams};
@@ -13,23 +13,16 @@ const ALLOWED_NOTE_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
 const PENDING_LIST_SCAN_PAGE_SIZE: u64 = super::super::MAX_LIST_LIMIT;
 
 fn parse_note_ref(value: &str) -> Result<(String, String), McpError> {
-    let Some((kind, id)) = value.split_once(':') else {
-        return Err(invalid_params("ref must use the kind:id format"));
-    };
-    let kind = kind.trim();
-    if !ALLOWED_REF_KINDS.contains(&kind) {
-        return Err(invalid_params(format!("invalid ref kind: {kind}")));
-    }
-    let id = id.trim();
-    if id.is_empty() {
-        return Err(invalid_params("ref id must not be empty"));
-    }
-    if !is_valid_ref_id_format(kind, id) {
-        return Err(invalid_params(
-            "group ref id must use axis-key/group-key format",
-        ));
-    }
-    Ok((kind.to_string(), id.to_string()))
+    parse_note_reference(value).map_err(|error| {
+        invalid_params(match error {
+            NoteReferenceParseError::MissingSeparator => "ref must use the kind:id format".into(),
+            NoteReferenceParseError::UnsupportedKind(kind) => format!("invalid ref kind: {kind}"),
+            NoteReferenceParseError::EmptyId => "ref id must not be empty".into(),
+            NoteReferenceParseError::InvalidGroupId => {
+                "group ref id must use axis-key/group-key format".into()
+            }
+        })
+    })
 }
 
 fn note_to_dto(snapshot: NoteSnapshot, include_body: bool) -> Result<NoteDto, McpError> {

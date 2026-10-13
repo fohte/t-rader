@@ -20,6 +20,7 @@ mod tests {
     use gateway_postgres::entities::{
         change_history, comment, note, note_kind, note_version, strategy_task_step_evidence,
     };
+    use rstest::{fixture, rstest};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::sea_query::Expr;
@@ -817,32 +818,32 @@ mod tests {
         assert_eq!(actual_cases, expected_cases);
     }
 
-    #[backend_test_macros::database_test]
-    async fn list_notes_rejects_invalid_ref_with_bad_request(db: gateway_postgres::DatabaseHandle) {
-        let (_, server) = create_test_server_with_db(db).await;
-        let cases = [
-            ("/api/notes?ref=demo-id", "ref must use kind:id format"),
-            (
-                "/api/notes?ref=unknown:demo-id",
-                "unsupported ref kind: unknown",
-            ),
-            ("/api/notes?ref=stock:", "ref ID must not be empty"),
-            (
-                "/api/notes?ref=group:demo-group",
-                "group ref ID must use axis-key/group-key format",
-            ),
-        ];
-        let mut actual = Vec::new();
-        for (path, _) in cases {
-            let response = server.get(path).await;
-            actual.push((response.status_code(), response.json::<Value>()));
-        }
-        let expected = cases
-            .iter()
-            .map(|(_, message)| (StatusCode::BAD_REQUEST, json!({ "error": message })))
-            .collect::<Vec<_>>();
+    #[fixture]
+    async fn note_ref_filter_test_server() -> TestServer {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
+        create_test_server_with_db(db).await.1
+    }
 
-        assert_eq!(actual, expected);
+    #[rstest]
+    #[case::missing_separator("/api/notes?ref=demo-id", "ref must use kind:id format")]
+    #[case::unsupported_kind("/api/notes?ref=unknown:demo-id", "unsupported ref kind: unknown")]
+    #[case::empty_id("/api/notes?ref=stock:", "ref ID must not be empty")]
+    #[case::invalid_group_id(
+        "/api/notes?ref=group:demo-group",
+        "group ref ID must use axis-key/group-key format"
+    )]
+    #[tokio::test]
+    async fn list_notes_rejects_invalid_ref_with_bad_request(
+        #[future] note_ref_filter_test_server: TestServer,
+        #[case] path: &str,
+        #[case] expected_error: &str,
+    ) {
+        let server = note_ref_filter_test_server.await;
+        let response = server.get(path).await;
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (StatusCode::BAD_REQUEST, json!({ "error": expected_error }),),
+        );
     }
 
     #[backend_test_macros::database_test]

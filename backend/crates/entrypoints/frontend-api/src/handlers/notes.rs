@@ -19,7 +19,7 @@ use core_application::strategy_task_step_evidence::{
     StrategyTaskStepEvidenceRepositoryError, StrategyTaskStepEvidenceUseCaseError,
 };
 use core_application::unit_of_work::UnitOfWorkError;
-use core_domain::note_reference::{ALLOWED_REF_KINDS, is_valid_ref_id_format};
+use core_domain::note_reference::{NoteReferenceParseError, parse_note_reference};
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -62,7 +62,7 @@ pub async fn list_notes(
         .as_deref()
         .map(parse_note_reference)
         .transpose()
-        .map_err(AppError::Validation)?
+        .map_err(|error| AppError::Validation(note_reference_error_message(error)))?
         .map(|reference| vec![reference]);
     let page = state
         .note_read_use_cases
@@ -84,21 +84,17 @@ pub async fn list_notes(
     Ok(Json(responses))
 }
 
-fn parse_note_reference(raw: &str) -> Result<(String, String), String> {
-    let Some((kind, id)) = raw.split_once(':') else {
-        return Err("ref must use kind:id format".into());
-    };
-    if !ALLOWED_REF_KINDS.contains(&kind) {
-        return Err(format!("unsupported ref kind: {kind}"));
+fn note_reference_error_message(error: NoteReferenceParseError) -> String {
+    match error {
+        NoteReferenceParseError::MissingSeparator => "ref must use kind:id format".into(),
+        NoteReferenceParseError::UnsupportedKind(kind) => {
+            format!("unsupported ref kind: {kind}")
+        }
+        NoteReferenceParseError::EmptyId => "ref ID must not be empty".into(),
+        NoteReferenceParseError::InvalidGroupId => {
+            "group ref ID must use axis-key/group-key format".into()
+        }
     }
-    let id = id.trim();
-    if id.is_empty() {
-        return Err("ref ID must not be empty".into());
-    }
-    if !is_valid_ref_id_format(kind, id) {
-        return Err("group ref ID must use axis-key/group-key format".into());
-    }
-    Ok((kind.to_string(), id.to_string()))
 }
 
 /// ノート取得
