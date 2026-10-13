@@ -1933,6 +1933,14 @@ export interface components {
     }
     /** @enum {string} */
     Layout: 'flow' | 'tree' | 'chain' | 'scatter'
+    MatchedBuyResponse: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+    }
     Note: {
       body_md: string
       /** Format: date-time */
@@ -2556,6 +2564,13 @@ export interface components {
       symbol: string
       /** Format: date-time */
       updated_at: string
+    }
+    TradeDetailResponse: components['schemas']['Trade'] & {
+      matched_buys?: components['schemas']['MatchedBuyResponse'][] | null
+      /** Format: double */
+      realized_pnl?: number | null
+      /** Format: double */
+      remaining_qty?: number | null
     }
     TradeListItem: components['schemas']['Trade'] & {
       /** Format: int64 */
@@ -8160,7 +8175,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['Trade']
+          'application/json': components['schemas']['TradeDetailResponse']
         }
       }
       /** @description リクエストパラメータが不正 */

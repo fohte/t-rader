@@ -1,4 +1,5 @@
 mod error;
+mod fifo;
 mod import;
 mod repository;
 mod summary;
@@ -16,9 +17,10 @@ pub use summary::{
 };
 pub use trade_notes::TradeNoteUseCases;
 pub use types::{
-    CreateTradeCommand, NewTrade, NewTradeNoteLink, PerformanceSummary, PositionSummary,
-    SbiImportResult, SbiImportRow, Trade, TradeListItem, TradeMatchQuery, TradeNoteLink,
-    TradeNoteReference, TradeOrder, TradeQuery, TradeUpdate, TradeUpdateCommand,
+    CreateTradeCommand, MatchedBuy, NewTrade, NewTradeNoteLink, PerformanceSummary,
+    PositionSummary, SbiImportResult, SbiImportRow, Trade, TradeDetail, TradeListItem,
+    TradeMatchQuery, TradeNoteLink, TradeNoteReference, TradeOrder, TradeQuery, TradeUpdate,
+    TradeUpdateCommand,
 };
 pub use use_cases::TradeUseCases;
 
