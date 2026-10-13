@@ -1,20 +1,15 @@
 import { Link } from '@tanstack/react-router'
 
 import {
-  getReviewNavigation,
   type ReviewNavigationSnapshot,
   type ReviewQueueData,
   type ReviewQueueItem,
   reviewQueueItemKey,
+  reviewQueueModel,
+  type ReviewTypeFilter,
 } from '#components/review/review-queue-model'
 import { Skeleton } from '#components/ui/skeleton'
 import { formatRelative } from '#lib/note-utils'
-
-export type ReviewTypeFilter = 'all' | 'note' | 'annotation'
-
-function reviewNoteKindFilterKey(kind: string | null): string {
-  return kind == null ? 'none' : `value:${encodeURIComponent(kind)}`
-}
 
 export interface ReviewPageViewProps {
   data: ReviewQueueData | null
@@ -92,31 +87,20 @@ export function ReviewPageView({
   onToggleVisibleItems,
   onApproveSelected,
 }: ReviewPageViewProps) {
-  const selectedKeys = new Set(selectedItemIds)
-  const visibleItems = (data?.items ?? []).filter((item) => {
-    const matchesType = typeFilter === 'all' || item.kind === typeFilter
-    const matchesNoteKind =
-      item.kind !== 'note' ||
-      noteKindFilter === 'all' ||
-      reviewNoteKindFilterKey(item.noteKind) === noteKindFilter
-    return matchesType && matchesNoteKind
+  const {
+    visibleItems,
+    noteKinds,
+    visibleKeys,
+    allVisibleSelected,
+    selectedCount,
+    noteKindFilter: effectiveNoteKindFilter,
+  } = reviewQueueModel.buildPage({
+    items: data?.items ?? [],
+    typeFilter,
+    noteKindFilter,
+    selectedItemIds,
   })
-  const noteKinds = [
-    ...new Set(
-      (data?.items ?? [])
-        .filter(
-          (item): item is Extract<ReviewQueueItem, { kind: 'note' }> =>
-            item.kind === 'note',
-        )
-        .map((item) => item.noteKind),
-    ),
-  ]
-  const visibleKeys = visibleItems.map(reviewQueueItemKey)
-  const allVisibleSelected =
-    visibleKeys.length > 0 && visibleKeys.every((key) => selectedKeys.has(key))
-  const selectedCount = (data?.items ?? []).filter((item) =>
-    selectedKeys.has(reviewQueueItemKey(item)),
-  ).length
+  const selectedKeys = new Set(selectedItemIds)
   const bottomPaddingClass = selectedCount > 0 ? 'pb-16 md:pb-0' : ''
 
   function renderApprovalButton(className: string) {
@@ -175,7 +159,7 @@ export function ReviewPageView({
           ノート種別
           <select
             aria-label="ノート種別で絞り込む"
-            value={noteKindFilter}
+            value={effectiveNoteKindFilter}
             disabled={typeFilter === 'annotation'}
             onChange={(event) => {
               onNoteKindFilterChange(event.currentTarget.value)
@@ -184,7 +168,7 @@ export function ReviewPageView({
           >
             <option value="all">すべて</option>
             {noteKinds.map((kind) => {
-              const value = reviewNoteKindFilterKey(kind)
+              const value = reviewQueueModel.noteKindFilterKey(kind)
               return (
                 <option key={value} value={value}>
                   {kind ?? '種別なし'}
@@ -254,11 +238,6 @@ export function ReviewPageView({
                       reviewQueue: {
                         snapshot: navigationSnapshot,
                         currentItemKey: key,
-                        navigation: getReviewNavigation(
-                          navigationSnapshot,
-                          key,
-                          data.items,
-                        ),
                       },
                     }
               const linkContent = (

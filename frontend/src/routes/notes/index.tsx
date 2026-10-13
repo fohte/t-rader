@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { AnnotationsList } from '#components/annotations/annotations-list'
 import { AnnotationsListSkeleton } from '#components/annotations/annotations-list-skeleton'
-import { PendingNoteVersionsLink } from '#components/note-detail/pending-note-versions-link'
+import { ReviewLink } from '#components/note-detail/review-link'
 import {
   type NotesTab,
   NotesTabs,
@@ -67,7 +67,7 @@ function NotesPage() {
         {showingNotes && (
           <div className="flex flex-wrap items-center gap-2">
             <CreateNoteDialog />
-            <PendingNoteVersionsLink />
+            <ReviewLink />
             <NoteTagFilterSelect
               tags={tags}
               value={tag}

@@ -2,11 +2,11 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { Menu as MenuIcon } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
-import { useReviewQueue } from '#components/dashboard/use-review-queue'
 import {
   NAV_PILL_ACTIVE,
   NAV_PILL_INACTIVE,
 } from '#components/nav-pill-classes'
+import { useReviewQueue } from '#components/review/use-review-queue'
 import { StockSearch } from '#components/stocks/stock-search'
 import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'

@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
-export function PendingNoteVersionsLink() {
+export function ReviewLink() {
   return (
     <Link
       to="/review"

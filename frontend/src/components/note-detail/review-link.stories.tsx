@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
-import { PendingNoteVersionsLink } from '#components/note-detail/pending-note-versions-link'
+import { ReviewLink } from '#components/note-detail/review-link'
 import { createStoryRouter } from '#storybook/story-router'
 
 function withRouter(Story: ComponentType) {
@@ -22,14 +22,14 @@ function withRouter(Story: ComponentType) {
 
 const meta = {
   title: 'NoteDetail/ReviewLink',
-  component: PendingNoteVersionsLink,
+  component: ReviewLink,
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
       <div className="bg-background text-foreground">{withRouter(Story)}</div>
     ),
   ],
-} satisfies Meta<typeof PendingNoteVersionsLink>
+} satisfies Meta<typeof ReviewLink>
 
 export default meta
 type Story = StoryObj<typeof meta>

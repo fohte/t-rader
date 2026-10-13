@@ -1,16 +1,20 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import {
-  buildReviewQueueData,
   type ReviewQueueData,
+  reviewQueueModel,
 } from '#components/review/review-queue-model'
+import { getReviewQueueQueryKeys } from '#components/review/review-queue-query-keys'
 import { $api } from '#lib/api/client'
 
 export function useReviewQueue(): {
   data: ReviewQueueData | null
   isPending: boolean
   isError: boolean
+  invalidate: () => void
 } {
+  const queryClient = useQueryClient()
   const versionsQuery = $api.useQuery('get', '/api/note-versions/pending')
   const annotationsQuery = $api.useQuery('get', '/api/annotations', {
     params: { query: { status: 'unread' } },
@@ -21,12 +25,18 @@ export function useReviewQueue(): {
     () =>
       versionsQuery.data == null || annotationsQuery.data == null
         ? null
-        : buildReviewQueueData({
+        : reviewQueueModel.buildData({
             noteVersions: versionsQuery.data,
             annotations: annotationsQuery.data,
           }),
     [versionsQuery.data, annotationsQuery.data],
   )
 
-  return { data, isPending, isError }
+  function invalidate(): void {
+    for (const queryKey of getReviewQueueQueryKeys()) {
+      void queryClient.invalidateQueries({ queryKey })
+    }
+  }
+
+  return { data, isPending, isError, invalidate }
 }

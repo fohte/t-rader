@@ -1,4 +1,4 @@
-import { PendingNoteVersionsLink } from '#components/note-detail/pending-note-versions-link'
+import { ReviewLink } from '#components/note-detail/review-link'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NoteVersion } from '#lib/api/note-version-types'
 import { formatRelative } from '#lib/note-utils'
@@ -24,7 +24,7 @@ export function NoteVersionList({
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           バージョン
         </h2>
-        <PendingNoteVersionsLink />
+        <ReviewLink />
       </header>
       {orderedVersions.length === 0 ? (
         <p className="px-3.5 py-3 font-mono text-xs text-muted-foreground">

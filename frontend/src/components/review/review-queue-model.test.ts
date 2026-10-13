@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  buildReviewQueueData,
-  createReviewNavigationSnapshot,
-  getReviewNavigation,
   type ReviewQueueItem,
+  reviewQueueModel,
 } from '#components/review/review-queue-model'
 import type { components } from '#lib/api/schema.gen'
 
@@ -59,7 +57,6 @@ function createAnnotationItem(id: string, createdAt: string): ReviewQueueItem {
     id,
     title: '架空の確認メモ',
     createdAt,
-    targetKind: 'stock',
     targetSymbol: 'DEMO-A',
     timestamp: createdAt,
     price: null,
@@ -69,7 +66,7 @@ function createAnnotationItem(id: string, createdAt: string): ReviewQueueItem {
 describe('buildReviewQueueData', () => {
   it('keeps the newest unread version for each note and orders it with unread annotations', () => {
     expect(
-      buildReviewQueueData({
+      reviewQueueModel.buildData({
         noteVersions: [
           createNoteVersion(
             'fake-version-old',
@@ -114,8 +111,6 @@ describe('buildReviewQueueData', () => {
           title: '架空のノート v3',
           createdAt: '2026-10-12T01:00:00Z',
           noteKind: '架空の種別',
-          tags: ['架空タグ'],
-          changeReason: null,
           createdByKind: 'llm',
           unreadVersionCount: 2,
         },
@@ -124,7 +119,6 @@ describe('buildReviewQueueData', () => {
           id: 'fake-annotation-a',
           title: '架空の確認メモ',
           createdAt: '2026-10-11T12:00:00Z',
-          targetKind: 'stock',
           targetSymbol: 'DEMO-A',
           timestamp: '2026-10-11T12:00:00Z',
           price: null,
@@ -137,12 +131,92 @@ describe('buildReviewQueueData', () => {
           title: '架空のノート v1',
           createdAt: '2026-10-11T01:00:00Z',
           noteKind: '架空の種別',
-          tags: ['架空タグ'],
-          changeReason: null,
           createdByKind: 'llm',
           unreadVersionCount: 1,
         },
       ],
+    })
+  })
+})
+
+describe('reviewQueueModel.buildPage', () => {
+  it('filters by item type and note kind while reporting selection state', () => {
+    const items: ReviewQueueItem[] = [
+      {
+        kind: 'note',
+        id: 'fake-version-a',
+        noteId: 'fake-note-a',
+        versionNo: 1,
+        title: '架空の確認メモ A',
+        createdAt: '2026-10-12T01:00:00Z',
+        noteKind: '架空の種別',
+        createdByKind: 'llm',
+        unreadVersionCount: 1,
+      },
+      {
+        kind: 'note',
+        id: 'fake-version-b',
+        noteId: 'fake-note-b',
+        versionNo: 1,
+        title: '架空の確認メモ B',
+        createdAt: '2026-10-11T01:00:00Z',
+        noteKind: null,
+        createdByKind: 'llm',
+        unreadVersionCount: 1,
+      },
+      createAnnotationItem('fake-annotation-a', '2026-10-10T01:00:00Z'),
+    ]
+
+    expect(
+      reviewQueueModel.buildPage({
+        items,
+        typeFilter: 'note',
+        noteKindFilter: 'none',
+        selectedItemIds: [
+          'note:fake-version-b',
+          'annotation:fake-annotation-a',
+        ],
+      }),
+    ).toEqual({
+      visibleItems: [items[1]],
+      noteKinds: ['架空の種別', null],
+      visibleKeys: ['note:fake-version-b'],
+      allVisibleSelected: true,
+      selectedCount: 2,
+      noteKindFilter: 'none',
+    })
+  })
+
+  it('falls back to all note kinds when the selected kind disappears', () => {
+    const items: ReviewQueueItem[] = [
+      {
+        kind: 'note',
+        id: 'fake-version-a',
+        noteId: 'fake-note-a',
+        versionNo: 1,
+        title: '架空の確認メモ A',
+        createdAt: '2026-10-12T01:00:00Z',
+        noteKind: '別の架空種別',
+        createdByKind: 'llm',
+        unreadVersionCount: 1,
+      },
+      createAnnotationItem('fake-annotation-a', '2026-10-11T01:00:00Z'),
+    ]
+
+    expect(
+      reviewQueueModel.buildPage({
+        items,
+        typeFilter: 'all',
+        noteKindFilter: 'value:以前の種別',
+        selectedItemIds: [],
+      }),
+    ).toEqual({
+      visibleItems: items,
+      noteKinds: ['別の架空種別'],
+      visibleKeys: ['note:fake-version-a', 'annotation:fake-annotation-a'],
+      allVisibleSelected: false,
+      selectedCount: 0,
+      noteKindFilter: 'all',
     })
   })
 })
@@ -158,8 +232,6 @@ describe('getReviewNavigation', () => {
         title: '架空のノート A',
         createdAt: '2026-10-12T01:00:00Z',
         noteKind: null,
-        tags: [],
-        changeReason: null,
         createdByKind: 'llm',
         unreadVersionCount: 1,
       },
@@ -172,16 +244,18 @@ describe('getReviewNavigation', () => {
         title: '架空のノート C',
         createdAt: '2026-10-10T01:00:00Z',
         noteKind: null,
-        tags: [],
-        changeReason: null,
         createdByKind: 'llm',
         unreadVersionCount: 1,
       },
     ]
-    const snapshot = createReviewNavigationSnapshot(items)
+    const snapshot = reviewQueueModel.createNavigationSnapshot(items)
 
     expect(
-      getReviewNavigation(snapshot, 'note:fake-version-a', items.slice(1)),
+      reviewQueueModel.getNavigation(
+        snapshot,
+        'note:fake-version-a',
+        items.slice(1),
+      ),
     ).toEqual({
       kind: 'item',
       total: 2,
@@ -195,10 +269,14 @@ describe('getReviewNavigation', () => {
       createAnnotationItem('fake-annotation-a', '2026-10-12T01:00:00Z'),
       createAnnotationItem('fake-annotation-b', '2026-10-11T01:00:00Z'),
     ]
-    const snapshot = createReviewNavigationSnapshot(items)
+    const snapshot = reviewQueueModel.createNavigationSnapshot(items)
 
     expect(
-      getReviewNavigation(snapshot, 'annotation:fake-annotation-b', items),
+      reviewQueueModel.getNavigation(
+        snapshot,
+        'annotation:fake-annotation-b',
+        items,
+      ),
     ).toEqual({
       kind: 'item',
       total: 2,
@@ -216,20 +294,28 @@ describe('getReviewNavigation', () => {
       'fake-annotation-in-queue',
       '2026-10-11T01:00:00Z',
     )
-    const snapshot = createReviewNavigationSnapshot([openedItem])
+    const snapshot = reviewQueueModel.createNavigationSnapshot([openedItem])
 
     expect(
-      getReviewNavigation(snapshot, 'note:fake-version-outside-queue', [item]),
+      reviewQueueModel.getNavigation(
+        snapshot,
+        'note:fake-version-outside-queue',
+        [item],
+      ),
     ).toEqual({ kind: 'start', total: 1, firstItem: item })
   })
 
   it('returns an empty state when there are no unread items', () => {
-    const snapshot = createReviewNavigationSnapshot([
+    const snapshot = reviewQueueModel.createNavigationSnapshot([
       createAnnotationItem('fake-annotation-a', '2026-10-12T01:00:00Z'),
     ])
 
     expect(
-      getReviewNavigation(snapshot, 'annotation:fake-annotation-a', []),
+      reviewQueueModel.getNavigation(
+        snapshot,
+        'annotation:fake-annotation-a',
+        [],
+      ),
     ).toEqual({ kind: 'empty', total: 0 })
   })
 
@@ -238,7 +324,7 @@ describe('getReviewNavigation', () => {
       createAnnotationItem('fake-annotation-a', '2026-10-12T01:00:00Z'),
       createAnnotationItem('fake-annotation-b', '2026-10-11T01:00:00Z'),
     ]
-    const snapshot = createReviewNavigationSnapshot(items)
+    const snapshot = reviewQueueModel.createNavigationSnapshot(items)
     items.reverse()
 
     expect(snapshot.itemKeys).toEqual([

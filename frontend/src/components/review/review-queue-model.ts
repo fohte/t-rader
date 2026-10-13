@@ -12,8 +12,6 @@ export type ReviewQueueItem =
       title: string
       createdAt: string
       noteKind: string | null
-      tags: string[]
-      changeReason: string | null
       createdByKind: string
       unreadVersionCount: number
     }
@@ -22,7 +20,6 @@ export type ReviewQueueItem =
       id: string
       title: string
       createdAt: string
-      targetKind: string
       targetSymbol: string
       timestamp: string
       price: number | null
@@ -36,6 +33,8 @@ export interface ReviewQueueData {
   }
   items: ReviewQueueItem[]
 }
+
+export type ReviewTypeFilter = 'all' | 'note' | 'annotation'
 
 export function reviewQueueItemKey(item: ReviewQueueItem): string {
   return `${item.kind}:${item.id}`
@@ -51,7 +50,7 @@ function compareReviewItems(
   )
 }
 
-export function buildReviewQueueData({
+function buildReviewQueueData({
   noteVersions,
   annotations,
 }: {
@@ -83,8 +82,6 @@ export function buildReviewQueueData({
         title: latest.title,
         createdAt: latest.created_at,
         noteKind: latest.kind ?? null,
-        tags: latest.tags,
-        changeReason: latest.change_reason ?? null,
         createdByKind: latest.created_by_kind,
         unreadVersionCount: versions.length,
       }
@@ -97,7 +94,6 @@ export function buildReviewQueueData({
       id: annotation.id,
       title: annotation.text,
       createdAt: annotation.created_at,
-      targetKind: annotation.target_kind,
       targetSymbol: annotation.target_symbol,
       timestamp: annotation.timestamp,
       price: annotation.price ?? null,
@@ -118,13 +114,18 @@ export interface ReviewNavigationSnapshot {
   itemKeys: readonly string[]
 }
 
-export function createReviewNavigationSnapshot(
+export interface ReviewQueueNavigationState {
+  snapshot: ReviewNavigationSnapshot
+  currentItemKey: string
+}
+
+function createReviewNavigationSnapshot(
   items: ReviewQueueItem[],
 ): ReviewNavigationSnapshot {
   return { itemKeys: Object.freeze(items.map(reviewQueueItemKey)) }
 }
 
-export type ReviewNavigation =
+type ReviewNavigation =
   | { kind: 'empty'; total: 0 }
   | { kind: 'start'; total: number; firstItem: ReviewQueueItem }
   | {
@@ -133,12 +134,6 @@ export type ReviewNavigation =
       previousItem: ReviewQueueItem | null
       nextItem: ReviewQueueItem
     }
-
-export interface ReviewNavigationState {
-  snapshot: ReviewNavigationSnapshot
-  currentItemKey: string
-  navigation: ReviewNavigation
-}
 
 function findRemainingItem(
   snapshot: ReviewNavigationSnapshot,
@@ -162,7 +157,7 @@ function findRemainingItem(
   return null
 }
 
-export function getReviewNavigation(
+function getReviewNavigation(
   snapshot: ReviewNavigationSnapshot,
   currentItemKey: string,
   remainingItems: ReviewQueueItem[],
@@ -201,4 +196,87 @@ export function getReviewNavigation(
     ),
     nextItem: nextItem ?? firstRemainingItem,
   }
+}
+
+function reviewNoteKindFilterKey(kind: string | null): string {
+  return kind == null ? 'none' : `value:${encodeURIComponent(kind)}`
+}
+
+function normalizeReviewNoteKindFilter(
+  items: ReviewQueueItem[],
+  noteKindFilter: string,
+): string {
+  if (noteKindFilter === 'all') return 'all'
+  const selectedFilterExists = items.some(
+    (item) =>
+      item.kind === 'note' &&
+      reviewNoteKindFilterKey(item.noteKind) === noteKindFilter,
+  )
+  return selectedFilterExists ? noteKindFilter : 'all'
+}
+
+function buildReviewPageModel({
+  items,
+  typeFilter,
+  noteKindFilter,
+  selectedItemIds,
+}: {
+  items: ReviewQueueItem[]
+  typeFilter: ReviewTypeFilter
+  noteKindFilter: string
+  selectedItemIds: string[]
+}): {
+  visibleItems: ReviewQueueItem[]
+  noteKinds: (string | null)[]
+  visibleKeys: string[]
+  allVisibleSelected: boolean
+  selectedCount: number
+  noteKindFilter: string
+} {
+  const noteKinds = [
+    ...new Set(
+      items
+        .filter(
+          (item): item is Extract<ReviewQueueItem, { kind: 'note' }> =>
+            item.kind === 'note',
+        )
+        .map((item) => item.noteKind),
+    ),
+  ]
+  const effectiveNoteKindFilter = normalizeReviewNoteKindFilter(
+    items,
+    noteKindFilter,
+  )
+  const visibleItems = items.filter((item) => {
+    const matchesType = typeFilter === 'all' || item.kind === typeFilter
+    const matchesNoteKind =
+      item.kind !== 'note' ||
+      effectiveNoteKindFilter === 'all' ||
+      reviewNoteKindFilterKey(item.noteKind) === effectiveNoteKindFilter
+    return matchesType && matchesNoteKind
+  })
+  const selectedKeys = new Set(selectedItemIds)
+  const visibleKeys = visibleItems.map(reviewQueueItemKey)
+
+  return {
+    visibleItems,
+    noteKinds,
+    visibleKeys,
+    allVisibleSelected:
+      visibleKeys.length > 0 &&
+      visibleKeys.every((key) => selectedKeys.has(key)),
+    selectedCount: items.filter((item) =>
+      selectedKeys.has(reviewQueueItemKey(item)),
+    ).length,
+    noteKindFilter: effectiveNoteKindFilter,
+  }
+}
+
+export const reviewQueueModel = {
+  buildData: buildReviewQueueData,
+  buildPage: buildReviewPageModel,
+  createNavigationSnapshot: createReviewNavigationSnapshot,
+  getNavigation: getReviewNavigation,
+  normalizeNoteKindFilter: normalizeReviewNoteKindFilter,
+  noteKindFilterKey: reviewNoteKindFilterKey,
 }
