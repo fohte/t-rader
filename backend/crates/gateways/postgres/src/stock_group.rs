@@ -1,14 +1,14 @@
 use async_trait::async_trait;
 use core_application::stock_group::{
     GroupAxis, NewStockGroup, StockGroup, StockGroupMembership, StockGroupRepository,
-    StockGroupRepositoryError,
+    StockGroupRepositoryError, StockGroupStock,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, FromQueryResult, JoinType, QueryFilter, QueryOrder,
+    QuerySelect, RelationTrait,
 };
 use uuid::Uuid;
 
@@ -42,6 +42,7 @@ impl StockGroupRepository for PostgresStockGroupRepository {
                 row.map(|row| GroupAxis {
                     id: row.id,
                     key: row.key,
+                    name: row.name,
                     derive_from: row.derive_from,
                 })
             })
@@ -158,6 +159,37 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             .map_err(repository_error)
     }
 
+    async fn list_stocks(
+        &self,
+        unit_of_work: &UnitOfWorkTransaction,
+        group_id: Uuid,
+    ) -> Result<Vec<StockGroupStock>, StockGroupRepositoryError> {
+        let transaction =
+            transaction_ref(unit_of_work).ok_or(StockGroupRepositoryError::InvalidTransaction)?;
+        stock_group_member::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                stock_group_member::Relation::Stock.def(),
+            )
+            .select_only()
+            .column(stock_group_member::Column::StockId)
+            .column(stock::Column::Name)
+            .filter(stock_group_member::Column::GroupId.eq(group_id))
+            .order_by_asc(stock_group_member::Column::StockId)
+            .into_model::<StockGroupStockRow>()
+            .all(transaction)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| StockGroupStock {
+                        id: row.stock_id,
+                        name: row.name,
+                    })
+                    .collect()
+            })
+            .map_err(repository_error)
+    }
+
     async fn list_memberships(
         &self,
         unit_of_work: &UnitOfWorkTransaction,
@@ -254,6 +286,12 @@ struct StockGroupMembershipRow {
     axis_key: String,
     group_key: String,
     stock_id: String,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct StockGroupStockRow {
+    stock_id: String,
+    name: String,
 }
 
 fn repository_error(error: sea_orm::DbErr) -> StockGroupRepositoryError {

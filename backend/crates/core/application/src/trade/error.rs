@@ -1,4 +1,5 @@
 use super::repository::TradeRepositoryError;
+use crate::bars::BarsRepositoryError;
 use crate::change_history::ChangeHistoryError;
 use crate::note::{NoteReadUseCaseError, NoteRepositoryError};
 use crate::strategy_existence::StrategyExistenceError;
@@ -10,12 +11,16 @@ use uuid::Uuid;
 pub enum TradeUseCaseError {
     #[error("{0}")]
     Validation(String),
+    #[error("trade summary calculation failed: {0}")]
+    SummaryCalculation(String),
     #[error("trade {0} not found")]
     NotFound(Uuid),
     #[error("{0}")]
     ResourceNotFound(String),
     #[error(transparent)]
     Repository(#[from] TradeRepositoryError),
+    #[error(transparent)]
+    BarsRepository(#[from] BarsRepositoryError),
     #[error(transparent)]
     NoteRepository(#[from] NoteRepositoryError),
     #[error(transparent)]

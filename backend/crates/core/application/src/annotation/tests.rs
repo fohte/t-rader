@@ -100,7 +100,7 @@ fn create_command() -> CreateAnnotationCommand {
         timestamp_start: None,
         price: None,
         text: "sample text".into(),
-        status: "unread".into(),
+        status: Some("unread".into()),
         linked_note_id: None,
         created_by_kind: "llm".into(),
         execution_step_id: None,
@@ -294,7 +294,7 @@ async fn create_rejects_invalid_fields_before_opening_transaction(
         "text" => command.text = value.into(),
         "target_symbol" => command.target_symbol = value.into(),
         "target_kind" => command.target_kind = value.into(),
-        "status" => command.status = value.into(),
+        "status" => command.status = Some(value.into()),
         "created_by_kind" => command.created_by_kind = value.into(),
         _ => unreachable!(),
     }

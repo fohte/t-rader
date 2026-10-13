@@ -33,6 +33,7 @@ import {
 } from '#strategy-agent/final-turn-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
+import { nonAssistantModelResponseMiddleware } from '#strategy-agent/non-assistant-model-response-middleware'
 import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
 import {
   createToolCallCapMiddleware,
@@ -115,7 +116,7 @@ const buildCompiledAgent = (
       // 通常の ToolMessage に戻しつつ MCP の通信障害を記録する。
       createStrategyToolErrorMiddleware(),
       finalTurnMiddleware,
-      // finalTurnMiddleware より内側 (モデル呼び出しに最も近い位置) に置き、
+      // finalTurnMiddleware より内側に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
       stripMessageNameMiddleware,
@@ -127,6 +128,8 @@ const buildCompiledAgent = (
       ...(options.deadlineSignal !== undefined
         ? [createDeadlineMiddleware(options.deadlineSignal)]
         : []),
+      // LangChain の戻り値検証前に assistant 以外の message を再試行可能なエラーへ変える。
+      nonAssistantModelResponseMiddleware,
     ],
   })
   return {

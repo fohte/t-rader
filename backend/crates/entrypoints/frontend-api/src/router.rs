@@ -61,6 +61,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(agent_config::get_agent_config_bundle))
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))
+        .routes(routes!(refs::get_group))
         .routes(routes!(refs::list_indicators))
         .routes(routes!(refs::get_indicator))
         .routes(routes!(refs::resolve_refs))

@@ -3,6 +3,9 @@ use std::collections::{HashMap, VecDeque};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
+use crate::split_adjustment::{SplitAdjustment, SplitAdjustmentError, SplitCursor, adjust_lot};
+
+use super::error::TradeUseCaseError;
 use super::types::{
     MatchedBuy, PerformanceSummary, PositionSummary, Trade, TradeDetail, TradeListItem,
 };
@@ -22,6 +25,59 @@ fn push_buy_lot(lots: &mut VecDeque<Lot>, trade: &Trade) {
         qty: trade.qty,
         price: trade.price,
     });
+}
+
+pub(super) fn split_adjustment_error(
+    error: SplitAdjustmentError,
+    adjustment: &SplitAdjustment,
+) -> TradeUseCaseError {
+    TradeUseCaseError::SummaryCalculation(format!(
+        "split adjustment for {} on {} failed: {error}",
+        adjustment.instrument_id, adjustment.date
+    ))
+}
+
+fn adjust_lots(
+    lots: &mut VecDeque<Lot>,
+    adjustment: &SplitAdjustment,
+) -> Result<(), TradeUseCaseError> {
+    for lot in lots.iter_mut() {
+        (lot.qty, lot.price) = adjust_lot(lot.qty, lot.price, adjustment.factor)
+            .map_err(|error| split_adjustment_error(error, adjustment))?;
+    }
+    lots.retain(|lot| lot.qty > Decimal::ZERO);
+    Ok(())
+}
+
+fn apply_split_adjustment(
+    lots_by_symbol: &mut HashMap<String, VecDeque<Lot>>,
+    adjustment: &SplitAdjustment,
+) -> Result<(), TradeUseCaseError> {
+    if let Some(lots) = lots_by_symbol.get_mut(&adjustment.instrument_id) {
+        adjust_lots(lots, adjustment)?;
+    }
+    Ok(())
+}
+
+fn apply_detail_adjustment(
+    lots: &mut VecDeque<Lot>,
+    trade: &Trade,
+    target_buy_remaining: &mut Option<Decimal>,
+    adjustment: &SplitAdjustment,
+) -> Result<(), TradeUseCaseError> {
+    if adjustment.instrument_id != trade.symbol {
+        return Ok(());
+    }
+    adjust_lots(lots, adjustment)?;
+    if trade.side == "buy" && target_buy_remaining.is_some() {
+        *target_buy_remaining = Some(
+            lots.iter()
+                .find(|lot| lot.trade_id == trade.id)
+                .map(|lot| lot.qty)
+                .unwrap_or(Decimal::ZERO),
+        );
+    }
+    Ok(())
 }
 
 fn consume_sell_lots(
@@ -48,13 +104,20 @@ fn consume_sell_lots(
     realized_pnl - trade.fee
 }
 
-pub(super) fn calculate_trade_detail(trade: Trade, rows: &[TradeListItem]) -> TradeDetail {
+pub(super) fn calculate_trade_detail(
+    trade: Trade,
+    rows: &[TradeListItem],
+    mut split_cursor: SplitCursor,
+) -> Result<TradeDetail, TradeUseCaseError> {
     let mut lots = VecDeque::new();
     let mut realized_pnl = None;
     let mut matched_buys = None;
     let mut target_buy_remaining = None;
 
     for row in rows {
+        split_cursor.apply_through(row.trade.date, |adjustment| {
+            apply_detail_adjustment(&mut lots, &trade, &mut target_buy_remaining, adjustment)
+        })?;
         match row.trade.side.as_str() {
             "buy" => {
                 push_buy_lot(&mut lots, &row.trade);
@@ -86,26 +149,37 @@ pub(super) fn calculate_trade_detail(trade: Trade, rows: &[TradeListItem]) -> Tr
         }
     }
 
+    split_cursor.apply_remaining(|adjustment| {
+        apply_detail_adjustment(&mut lots, &trade, &mut target_buy_remaining, adjustment)
+    })?;
+
     let remaining_qty = (trade.side == "buy").then(|| target_buy_remaining.unwrap_or(trade.qty));
     if trade.side == "sell" && realized_pnl.is_none() {
         realized_pnl = Some(-trade.fee);
         matched_buys = Some(Vec::new());
     }
 
-    TradeDetail {
+    Ok(TradeDetail {
         trade,
         realized_pnl,
         matched_buys,
         remaining_qty,
-    }
+    })
 }
 
-pub(super) fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> PerformanceSummary {
+pub(super) fn summarize(
+    strategy_id: Option<Uuid>,
+    rows: &[TradeListItem],
+    mut split_cursor: SplitCursor,
+) -> Result<PerformanceSummary, TradeUseCaseError> {
     let mut lots_by_symbol: HashMap<String, VecDeque<Lot>> = HashMap::new();
     let mut realized_by_symbol: HashMap<String, Decimal> = HashMap::new();
 
     for row in rows {
         let trade = &row.trade;
+        split_cursor.apply_through(trade.date, |adjustment| {
+            apply_split_adjustment(&mut lots_by_symbol, adjustment)
+        })?;
         let lots = lots_by_symbol.entry(trade.symbol.clone()).or_default();
         let realized = realized_by_symbol.entry(trade.symbol.clone()).or_default();
         match trade.side.as_str() {
@@ -123,6 +197,9 @@ pub(super) fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> Pe
             ),
         }
     }
+
+    split_cursor
+        .apply_remaining(|adjustment| apply_split_adjustment(&mut lots_by_symbol, adjustment))?;
 
     let mut positions: Vec<PositionSummary> = lots_by_symbol
         .into_iter()
@@ -146,12 +223,12 @@ pub(super) fn summarize(strategy_id: Option<Uuid>, rows: &[TradeListItem]) -> Pe
         .collect();
     positions.sort_by(|left, right| left.symbol.cmp(&right.symbol));
 
-    PerformanceSummary {
+    Ok(PerformanceSummary {
         strategy_id,
         trade_count: rows.len() as i64,
         realized_pnl: realized_by_symbol.values().copied().sum(),
         positions,
-    }
+    })
 }
 
 #[cfg(all(test, feature = "test-support"))]
@@ -159,6 +236,7 @@ mod tests {
     use chrono::NaiveDate;
     use rstest::rstest;
 
+    use crate::split_adjustment::SplitCursor;
     use crate::trade::types::{PerformanceSummary, PositionSummary, Trade, TradeListItem};
 
     use super::summarize;
@@ -235,6 +313,10 @@ mod tests {
         #[case] rows: Vec<TradeListItem>,
         #[case] expected: PerformanceSummary,
     ) {
-        assert_eq!(summarize(None, &rows), expected);
+        let split_cursor = SplitCursor::new([]).expect("empty split cursor succeeds");
+        assert_eq!(
+            summarize(None, &rows, split_cursor).expect("summary succeeds"),
+            expected,
+        );
     }
 }
