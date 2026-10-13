@@ -84,10 +84,14 @@ function TaskRunPage() {
       }
       steps={steps}
       configPhases={configPhases}
-      notes={(notesQuery.data ?? []).map(({ id: noteId, title }) => ({
-        id: noteId,
-        title,
-      }))}
+      notes={notesQuery.data ?? []}
+      notesState={
+        notesQuery.isPending
+          ? 'loading'
+          : notesQuery.isError
+            ? 'error'
+            : 'success'
+      }
       traceUrlTemplate={configQuery.data?.trace_url_template ?? undefined}
       taskLoadError={taskQuery.isError}
     />

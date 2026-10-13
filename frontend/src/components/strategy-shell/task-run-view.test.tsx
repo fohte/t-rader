@@ -5,7 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -35,7 +41,11 @@ function makeTask(overrides: Partial<TaskRun> = {}): TaskRun {
   }
 }
 
-async function renderTaskView(task: TaskRun, notes: TaskRunNote[] = []) {
+async function renderTaskView(
+  task: TaskRun,
+  notes: TaskRunNote[] = [],
+  notesState: ComponentProps<typeof TaskRunView>['notesState'] = 'success',
+) {
   const rootRoute = createRootRoute({
     component: () => (
       <TaskRunView
@@ -44,6 +54,7 @@ async function renderTaskView(task: TaskRun, notes: TaskRunNote[] = []) {
         steps={[]}
         configPhases={[]}
         notes={notes}
+        notesState={notesState}
       />
     ),
   })
@@ -81,17 +92,18 @@ function readNotesOutput() {
   const section = screen.getByRole('region', {
     name: '作成・更新したノート',
   })
+  const scopedQueries = within(section)
   return {
-    heading: section.querySelector('h2')?.textContent,
-    count: section.querySelector('div > span')?.textContent,
-    emptyMessage: section.querySelector('p')?.textContent ?? null,
-    notes: Array.from(section.querySelectorAll('li'), (item) => {
-      const link = item.querySelector('a')
-      return {
-        title: link?.textContent,
-        href: link?.getAttribute('href'),
-      }
-    }),
+    heading: scopedQueries.getByRole('heading', { level: 2 }).textContent,
+    count: scopedQueries.getByText(/^\d+ 件$/).textContent,
+    emptyMessage:
+      scopedQueries.queryByText(
+        'この実行で作成・更新されたノートはありません。',
+      )?.textContent ?? null,
+    notes: scopedQueries.queryAllByRole('link').map((link) => ({
+      title: link.textContent,
+      href: link.getAttribute('href'),
+    })),
   }
 }
 

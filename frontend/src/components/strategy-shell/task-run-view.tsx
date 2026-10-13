@@ -9,6 +9,10 @@ import {
   TaskExecutionTree,
   type TaskStep,
 } from '#components/strategy-shell/task-execution-tree'
+import {
+  TaskRunNotes,
+  type TaskRunNotesState,
+} from '#components/strategy-shell/task-run-notes'
 import { Skeleton } from '#components/ui/skeleton'
 
 export interface TaskRunViewProps {
@@ -25,6 +29,7 @@ export interface TaskRunViewProps {
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
   notes: { id: string; title: string }[]
+  notesState: TaskRunNotesState
   traceUrlTemplate?: string
   /** task の取得に失敗したか (`task` が null の間、ロード中との表示を出し分けるために使う) */
   taskLoadError?: boolean
@@ -81,6 +86,7 @@ export function TaskRunView({
   steps,
   configPhases,
   notes,
+  notesState,
   traceUrlTemplate,
   taskLoadError = false,
 }: TaskRunViewProps): React.ReactElement {
@@ -149,46 +155,7 @@ export function TaskRunView({
               </pre>
             )}
 
-          <section
-            aria-labelledby="task-run-notes-heading"
-            className="space-y-2 border border-border bg-card p-4"
-          >
-            <div className="flex items-baseline justify-between border-b border-border pb-2">
-              <h2
-                id="task-run-notes-heading"
-                className="font-mono text-xs text-muted-foreground-strong"
-              >
-                <span aria-hidden="true" className="text-primary">
-                  &gt;
-                </span>{' '}
-                作成・更新したノート
-              </h2>
-              <span className="font-mono text-xs text-muted-foreground">
-                {notes.length.toLocaleString()} 件
-              </span>
-            </div>
-            {notes.length === 0 ? (
-              <p className="font-mono text-xs text-muted-foreground">
-                この実行で作成・更新されたノートはありません。
-              </p>
-            ) : (
-              <ul className="space-y-1">
-                {notes.map((note) => (
-                  <li key={note.id}>
-                    <Link
-                      to="/notes/$noteId"
-                      params={{ noteId: note.id }}
-                      className="flex items-baseline gap-2 border border-border bg-background px-2.5 py-1.5 hover:border-primary"
-                    >
-                      <span className="flex-1 text-xs text-foreground">
-                        {note.title}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <TaskRunNotes notes={notes} state={notesState} />
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-task-run)">
             <div className="border border-border bg-card p-4">

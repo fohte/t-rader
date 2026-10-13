@@ -65,6 +65,7 @@ export const Running: Story = {
         ],
         configPhases: CONFIG_PHASES,
         notes: [],
+        notesState: 'loading',
         traceUrlTemplate:
           'https://grafana.example/explore?traceID={trace_id}&spanID={span_id}',
       })}
@@ -102,6 +103,7 @@ export const Completed: Story = {
           { id: 'fake-note-001', title: 'サンプル企業の調査メモ' },
           { id: 'fake-note-002', title: '架空グループの確認事項' },
         ],
+        notesState: 'success',
       })}
     />
   ),
@@ -129,6 +131,7 @@ export const Failed: Story = {
         ],
         configPhases: CONFIG_PHASES,
         notes: [],
+        notesState: 'success',
       })}
     />
   ),
@@ -147,6 +150,7 @@ export const CompletedWithoutNotes: Story = {
         steps: [PLAN_STEP],
         configPhases: CONFIG_PHASES,
         notes: [],
+        notesState: 'success',
       })}
     />
   ),
@@ -162,6 +166,7 @@ export const NoSteps: Story = {
         steps: [],
         configPhases: [],
         notes: [],
+        notesState: 'loading',
       })}
     />
   ),
@@ -177,6 +182,7 @@ export const Loading: Story = {
         steps: [],
         configPhases: [],
         notes: [],
+        notesState: 'loading',
       })}
     />
   ),
