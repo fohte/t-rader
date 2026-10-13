@@ -2,15 +2,14 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { DetailBackLink } from '#components/detail-back-link'
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
-import { HistoryPanel } from '#components/note-detail/history-panel'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
+import { NoteHistoryPanel } from '#components/note-detail/note-history-panel'
 import { NoteLinksPanelView } from '#components/note-detail/note-links-panel'
 import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
 import { NoteVersionDiffPanel } from '#components/note-detail/note-version-diff-panel'
 import { NoteVersionFallback } from '#components/note-detail/note-version-fallback'
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
-import { NoteVersionList } from '#components/note-detail/note-version-list'
 import { NoteVersionReviewPanel } from '#components/note-detail/note-version-review-panel'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
@@ -53,6 +52,13 @@ function NoteDetailPage() {
   } = $api.useQuery('get', '/api/notes/{id}/versions', {
     params: { path: { id: noteId } },
   })
+  const { data: noteHistory, isPending: isNoteHistoryPending } = $api.useQuery(
+    'get',
+    '/api/history',
+    {
+      params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
+    },
+  )
 
   const orderedVersions = [...(versions ?? [])].sort(
     (left, right) => left.version_no - right.version_no,
@@ -131,8 +137,10 @@ function NoteDetailPage() {
           />
         </article>
         <aside className="space-y-4">
-          <NoteVersionList
+          <NoteHistoryPanel
             versions={orderedVersions}
+            history={noteHistory ?? []}
+            isHistoryPending={isNoteHistoryPending}
             selectedVersionNo={selectedVersion.version_no}
             onSelectVersion={(versionNo) => {
               void navigate({
@@ -157,7 +165,6 @@ function NoteDetailPage() {
             isPending={linksPending}
             isError={linksError}
           />
-          <HistoryPanel noteId={noteId} />
         </aside>
       </div>
     </div>
