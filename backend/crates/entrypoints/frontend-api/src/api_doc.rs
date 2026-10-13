@@ -21,6 +21,7 @@ use utoipa::OpenApi;
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
         (name = "group_axes", description = "銘柄を分類する軸"),
+        (name = "stocks", description = "銘柄の企業情報"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
         (name = "ingest_status", description = "取り込み job の状態"),
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),

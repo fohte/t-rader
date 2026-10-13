@@ -13,6 +13,7 @@ use crate::entities::{valuation, valuation_ingested_date};
 use crate::persistence::persistence_error;
 
 const FIND_BY_SYMBOL_DATE_RANGE_SQL: &str = "SELECT code, date, eps, fwd_eps, bps, roe, fwd_roe, per, fwd_per, pbr, mkt_cap FROM valuation WHERE LEFT(code, 4) = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC";
+const FIND_LATEST_BY_SYMBOL_SQL: &str = "SELECT code, date, eps, fwd_eps, bps, roe, fwd_roe, per, fwd_per, pbr, mkt_cap FROM valuation WHERE LEFT(code, 4) = $1 ORDER BY date DESC LIMIT 1";
 
 #[derive(Clone)]
 pub struct PostgresValuationRepository {
@@ -152,6 +153,27 @@ impl ValuationRepository for PostgresValuationRepository {
         rows.into_iter()
             .map(|row| ValuationRow::from_query_result(&row, "").map(Into::into))
             .collect::<Result<Vec<_>, _>>()
+            .map_err(repository_error)
+    }
+
+    async fn find_latest_by_symbol(
+        &self,
+        symbol: &str,
+    ) -> Result<Option<Valuation>, ValuationRepositoryError> {
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                FIND_LATEST_BY_SYMBOL_SQL,
+                [symbol.to_owned().into()],
+            ))
+            .await
+            .map_err(repository_error)?;
+
+        rows.into_iter()
+            .next()
+            .map(|row| ValuationRow::from_query_result(&row, "").map(Into::into))
+            .transpose()
             .map_err(repository_error)
     }
 }

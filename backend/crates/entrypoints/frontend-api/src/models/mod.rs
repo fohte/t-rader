@@ -23,6 +23,7 @@ pub mod risk_policy;
 pub mod rss_feed;
 pub mod short_ratio;
 pub mod short_sale_report;
+pub mod stock_info;
 pub mod strategy;
 pub mod strategy_earnings_target;
 pub mod trade;
@@ -63,6 +64,10 @@ pub use refs::{
 pub use risk_policy::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
+};
+pub use stock_info::{
+    StockFinancialSummaryResponse, StockGroupMembershipResponse, StockNextEarningsResponse,
+    StockValuationResponse,
 };
 pub use strategy::{
     CreateStrategyRequest, InvestableAmountResponse, PutInvestableAmountRequest,
