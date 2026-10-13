@@ -24,6 +24,7 @@ pub use types::{
     TradeUpdateCommand,
 };
 pub use use_cases::TradeUseCases;
+pub(crate) use use_cases::split_cursor_for_rows;
 
 #[cfg(feature = "test-support")]
 pub use fake::FakeTradeRepository;

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{NaiveDate, NaiveTime, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
+use rstest::rstest;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -178,6 +179,38 @@ async fn missing_daily_bars_carry_forward_the_previous_close() {
 }
 
 #[tokio::test]
+async fn an_unpriced_position_uses_its_cost_basis_until_a_close_exists() {
+    let fixture = fixture();
+    fixture.trades.insert_trade(trade(10, "buy", 2, 100)).await;
+    fixture
+        .bars
+        .seed_bars(vec![bar(12, 120, Decimal::ONE)])
+        .await;
+    fixture
+        .strategies
+        .insert_investable_amount(investable_amount(1, 1_000))
+        .await;
+
+    let actual = fixture
+        .use_cases
+        .history(PortfolioHistoryQuery {
+            from: date(10),
+            to: date(12),
+        })
+        .await
+        .map_err(|error| error.to_string());
+
+    assert_eq!(
+        actual,
+        Ok(vec![
+            point(10, 1_000, 200, 800, 1_000),
+            point(11, 1_000, 200, 800, 1_000),
+            point(12, 1_040, 240, 800, 1_000),
+        ])
+    );
+}
+
+#[tokio::test]
 async fn investable_amount_histories_sum_and_backfill_first_settings() {
     let fixture = fixture();
     fixture.trades.insert_trade(trade(10, "buy", 1, 80)).await;
@@ -210,5 +243,27 @@ async fn investable_amount_histories_sum_and_backfill_first_settings() {
             point(11, 800, 80, 720, 800),
             point(12, 800, 80, 720, 800),
         ])
+    );
+}
+
+#[rstest]
+#[case::reversed(date(12), date(10))]
+#[case::too_long(
+    date(10),
+    date(10) + chrono::Duration::days(3_660),
+)]
+#[tokio::test]
+async fn history_rejects_invalid_date_ranges(#[case] from: NaiveDate, #[case] to: NaiveDate) {
+    let fixture = fixture();
+
+    let actual = fixture
+        .use_cases
+        .history(PortfolioHistoryQuery { from, to })
+        .await
+        .map_err(|error| error.to_string());
+
+    assert_eq!(
+        actual,
+        Err("date range is invalid or exceeds the maximum length".into()),
     );
 }

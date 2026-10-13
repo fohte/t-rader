@@ -1,16 +1,20 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use core_domain::bar::Bar;
 use rust_decimal::Decimal;
 
 use crate::bars::{BarsByInstrumentsQuery, SharedBarsRepository};
-use crate::split_adjustment::{SplitAdjustment, SplitCursor};
+use crate::split_adjustment::SplitCursor;
 use crate::strategy::{InvestableAmount, SharedStrategyRepository};
-use crate::trade::{SharedTradeRepository, TradeListItem, TradeOrder, TradeQuery, summarize};
+use crate::trade::{
+    SharedTradeRepository, TradeListItem, TradeOrder, TradeQuery, split_cursor_for_rows, summarize,
+};
 
 use super::error::PortfolioHistoryUseCaseError;
 use super::types::{PortfolioHistoryPoint, PortfolioHistoryQuery};
+
+const MAX_HISTORY_DAYS: i64 = 3_660;
 
 #[derive(Clone)]
 pub struct PortfolioHistoryUseCases {
@@ -36,7 +40,9 @@ impl PortfolioHistoryUseCases {
         &self,
         query: PortfolioHistoryQuery,
     ) -> Result<Vec<PortfolioHistoryPoint>, PortfolioHistoryUseCaseError> {
-        if query.from > query.to {
+        if query.from > query.to
+            || query.to.signed_duration_since(query.from).num_days() >= MAX_HISTORY_DAYS
+        {
             return Err(PortfolioHistoryUseCaseError::InvalidDateRange);
         }
 
@@ -56,44 +62,11 @@ impl PortfolioHistoryUseCases {
             .filter(|row| row.trade.date <= query.to)
             .collect::<Vec<_>>();
         let symbols = trade_symbols(&trades);
-        let adjustments = self.split_adjustments(&trades, &symbols).await?;
+        let split_cursor = split_cursor_for_rows(self.bars.as_ref(), &trades).await?;
         let bars = self.bars_until(&symbols, query.to).await?;
         let amounts = self.strategies.find_investable_amount_history().await?;
 
-        build_history(query, &trades, &adjustments, &bars, &amounts)
-    }
-
-    async fn split_adjustments(
-        &self,
-        trades: &[TradeListItem],
-        symbols: &[String],
-    ) -> Result<Vec<SplitAdjustment>, PortfolioHistoryUseCaseError> {
-        let mut first_trade_by_symbol = BTreeMap::<String, NaiveDate>::new();
-        for row in trades {
-            first_trade_by_symbol
-                .entry(row.trade.symbol.clone())
-                .and_modify(|date| *date = (*date).min(row.trade.date))
-                .or_insert(row.trade.date);
-        }
-
-        let mut adjustments = Vec::new();
-        for symbol in symbols {
-            let Some(from) = first_trade_by_symbol.get(symbol) else {
-                continue;
-            };
-            adjustments.extend(
-                self.bars
-                    .find_daily_adjustment_factors_from(symbol, *from)
-                    .await?
-                    .into_iter()
-                    .map(|factor| SplitAdjustment {
-                        instrument_id: symbol.clone(),
-                        date: factor.date,
-                        factor: factor.factor,
-                    }),
-            );
-        }
-        Ok(adjustments)
+        build_history(query, &trades, split_cursor, &bars, &amounts)
     }
 
     async fn bars_until(
@@ -144,22 +117,16 @@ fn trade_symbols(trades: &[TradeListItem]) -> Vec<String> {
 fn build_history(
     query: PortfolioHistoryQuery,
     trades: &[TradeListItem],
-    adjustments: &[SplitAdjustment],
+    split_cursor: SplitCursor,
     bars: &[Bar],
     amounts: &[InvestableAmount],
 ) -> Result<Vec<PortfolioHistoryPoint>, PortfolioHistoryUseCaseError> {
-    let mut amounts = amounts.to_vec();
-    amounts.sort_by(|left, right| {
-        left.strategy_id
-            .cmp(&right.strategy_id)
-            .then_with(|| left.effective_at.cmp(&right.effective_at))
-            .then_with(|| left.created_at.cmp(&right.created_at))
-    });
-
     let mut latest_prices = HashMap::<String, Decimal>::new();
     let mut next_bar = 0;
     let mut points = Vec::new();
     let mut date = query.from;
+    let mut summary = summarize(None, &trades[..0], split_cursor.clone())?;
+    let mut summarized_trade_count = 0;
     loop {
         while bars
             .get(next_bar)
@@ -171,11 +138,12 @@ fn build_history(
         }
 
         let trade_count = trades.partition_point(|row| row.trade.date <= date);
-        let cursor = SplitCursor::new(adjustments.iter().cloned())
-            .map_err(|error| PortfolioHistoryUseCaseError::Calculation(error.to_string()))?;
-        // 保存済み日足は将来の分割を反映した基準なので、過去日の保有にも同じ係数を適用する。
-        let summary = summarize(None, &trades[..trade_count], cursor)?;
-        let investable_amount = investable_amount_at(&amounts, date);
+        if trade_count != summarized_trade_count {
+            // 保存済み日足は将来の分割を反映した基準なので、過去日の保有にも同じ係数を適用する。
+            summary = summarize(None, &trades[..trade_count], split_cursor.clone())?;
+            summarized_trade_count = trade_count;
+        }
+        let investable_amount = investable_amount_at(amounts, date);
         let cost_basis: Decimal = summary
             .positions
             .iter()
@@ -185,11 +153,9 @@ fn build_history(
             .positions
             .iter()
             .map(|position| {
-                position.qty
-                    * latest_prices
-                        .get(&position.symbol)
-                        .copied()
-                        .unwrap_or_default()
+                latest_prices
+                    .get(&position.symbol)
+                    .map_or(position.cost_basis, |price| position.qty * price)
             })
             .sum();
         let cash = investable_amount + summary.realized_pnl - cost_basis;

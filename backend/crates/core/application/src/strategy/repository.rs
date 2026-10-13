@@ -44,6 +44,7 @@ pub trait StrategyRepository: Send + Sync {
         strategy_id: Uuid,
         as_of: chrono::DateTime<chrono::FixedOffset>,
     ) -> Result<Option<InvestableAmount>, StrategyRepositoryError>;
+    /// 戦略ごとの集計と履歴選択に使えるよう、戦略 ID・適用日時・作成日時の昇順で返す。
     async fn find_investable_amount_history(
         &self,
     ) -> Result<Vec<InvestableAmount>, StrategyRepositoryError>;

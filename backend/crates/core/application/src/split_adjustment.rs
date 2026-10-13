@@ -31,6 +31,7 @@ pub(crate) enum SplitAdjustmentError {
     PriceOverflow,
 }
 
+#[derive(Clone)]
 pub(crate) struct SplitCursor {
     adjustments: Vec<SplitAdjustment>,
     next: usize,

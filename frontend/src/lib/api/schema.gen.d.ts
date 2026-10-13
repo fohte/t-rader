@@ -6300,9 +6300,9 @@ export interface operations {
   get_portfolio_history: {
     parameters: {
       query: {
-        /** @description 取得開始日 (両端を含む) */
+        /** @description 取得開始日 (両端を含む。最大 3,660 日) */
         from: string
-        /** @description 取得終了日 (両端を含む) */
+        /** @description 取得終了日 (両端を含む。最大 3,660 日) */
         to: string
       }
       header?: never
@@ -6319,7 +6319,7 @@ export interface operations {
           'application/json': components['schemas']['PortfolioHistoryPointResponse'][]
         }
       }
-      /** @description 期間が不正 */
+      /** @description 期間が不正または最大 3,660 日を超過 */
       400: {
         headers: {
           [name: string]: unknown

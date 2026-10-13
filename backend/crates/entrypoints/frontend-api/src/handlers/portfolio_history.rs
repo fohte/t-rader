@@ -13,9 +13,9 @@ use crate::models::PortfolioHistoryPointResponse;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct PortfolioHistoryParams {
-    /// 取得開始日 (両端を含む)
+    /// 取得開始日 (両端を含む。最大 3,660 日)
     pub from: NaiveDate,
-    /// 取得終了日 (両端を含む)
+    /// 取得終了日 (両端を含む。最大 3,660 日)
     pub to: NaiveDate,
 }
 
@@ -27,7 +27,7 @@ pub struct PortfolioHistoryParams {
     params(PortfolioHistoryParams),
     responses(
         (status = 200, body = Vec<PortfolioHistoryPointResponse>),
-        (status = 400, description = "期間が不正", body = ErrorResponse),
+        (status = 400, description = "期間が不正または最大 3,660 日を超過", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]

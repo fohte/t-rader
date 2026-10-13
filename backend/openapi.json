@@ -4742,7 +4742,7 @@
           {
             "name": "from",
             "in": "query",
-            "description": "取得開始日 (両端を含む)",
+            "description": "取得開始日 (両端を含む。最大 3,660 日)",
             "required": true,
             "schema": {
               "type": "string",
@@ -4752,7 +4752,7 @@
           {
             "name": "to",
             "in": "query",
-            "description": "取得終了日 (両端を含む)",
+            "description": "取得終了日 (両端を含む。最大 3,660 日)",
             "required": true,
             "schema": {
               "type": "string",
@@ -4775,7 +4775,7 @@
             }
           },
           "400": {
-            "description": "期間が不正",
+            "description": "期間が不正または最大 3,660 日を超過",
             "content": {
               "application/json": {
                 "schema": {
