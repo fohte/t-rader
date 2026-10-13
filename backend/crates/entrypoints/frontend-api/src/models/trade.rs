@@ -95,7 +95,7 @@ pub struct PositionSummary {
     pub cost_basis: Decimal,
     /// 実現損益累計
     pub realized_pnl: Decimal,
-    /// DB の最新日足終値。日足が無い場合は `null`。
+    /// 共通観測日の終値。該当する日足が無い場合は `null` です。
     pub current_price: Option<Decimal>,
     /// 現在値 × 保有数量。現在値が無い場合は `null`。
     pub market_value: Option<Decimal>,

@@ -2020,7 +2020,7 @@ export interface components {
       cost_basis: number
       /**
        * Format: double
-       * @description DB の最新日足終値。日足が無い場合は `null`。
+       * @description 共通観測日の終値。該当する日足が無い場合は `null` です。
        */
       current_price?: number | null
       /**
