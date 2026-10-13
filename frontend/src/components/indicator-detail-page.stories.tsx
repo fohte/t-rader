@@ -58,20 +58,22 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const loadedArgs = {
+  state: 'loaded',
+  indicator: { id: 'DEMO_FX', name: 'デモ為替', kind: 'macro' },
+  observations,
+  visibleObservations: observations,
+  isObservationsLoading: false,
+  isObservationsError: false,
+  notes,
+  isNotesError: false,
+  period: '1y',
+  onPeriodChange: () => {},
+} satisfies Story['args']
+
 export const Loaded: Story = {
   name: 'the indicator page shows its latest value and related notes.',
-  args: {
-    state: 'loaded',
-    indicator: { id: 'DEMO_FX', name: 'デモ為替', kind: 'macro' },
-    observations,
-    visibleObservations: observations,
-    isObservationsLoading: false,
-    isObservationsError: false,
-    notes,
-    isNotesError: false,
-    period: '1y',
-    onPeriodChange: () => {},
-  },
+  args: loadedArgs,
 }
 
 export const NotFound: Story = {
@@ -87,4 +89,50 @@ export const Loading: Story = {
 export const Error: Story = {
   name: 'the page explains when the indicator cannot be loaded.',
   args: { state: 'error', indicatorId: 'demo-indicator' },
+}
+
+export const NoObservations: Story = {
+  name: 'the page explains when the indicator has no observations.',
+  args: {
+    ...loadedArgs,
+    observations: [],
+    visibleObservations: [],
+  },
+}
+
+export const LatestValueError: Story = {
+  name: 'the page explains when the latest value cannot be loaded.',
+  args: {
+    ...loadedArgs,
+    observations: null,
+    visibleObservations: [],
+    isObservationsError: true,
+  },
+}
+
+export const ObservationsLoading: Story = {
+  name: 'the page shows placeholders while observations load.',
+  args: {
+    ...loadedArgs,
+    observations: null,
+    visibleObservations: [],
+    isObservationsLoading: true,
+  },
+}
+
+export const NoPreviousValue: Story = {
+  name: 'the page omits the change when there is no previous value.',
+  args: {
+    ...loadedArgs,
+    observations: [{ date: '2026-10-09', value: 152.34 }],
+    visibleObservations: [{ date: '2026-10-09', value: 152.34 }],
+  },
+}
+
+export const NoRelatedNotes: Story = {
+  name: 'the page explains when no notes reference the indicator.',
+  args: {
+    ...loadedArgs,
+    notes: [],
+  },
 }
