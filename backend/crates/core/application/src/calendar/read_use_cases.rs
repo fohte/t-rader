@@ -238,6 +238,31 @@ mod tests {
                 .collect())
         }
 
+        async fn find_next_earnings_for_stock(
+            &self,
+            stock_id: &str,
+            from: NaiveDate,
+        ) -> Result<Option<CalendarEvent>, CalendarEventRepositoryError> {
+            let mut events = self
+                .events
+                .iter()
+                .filter(|event| {
+                    event.category == CalendarEventCategory::Earnings
+                        && event.stock_id.as_deref() == Some(stock_id)
+                        && event.event_date >= from
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            events.sort_by(|left, right| {
+                (&left.event_date, &left.event_at, &left.external_id).cmp(&(
+                    &right.event_date,
+                    &right.event_at,
+                    &right.external_id,
+                ))
+            });
+            Ok(events.into_iter().next())
+        }
+
         async fn upsert(
             &self,
             _transaction: &UnitOfWorkTransaction,

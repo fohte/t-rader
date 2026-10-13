@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_domain::calendar_event::{CalendarEvent, CalendarEventCategory};
+use core_domain::calendar_event::CalendarEvent;
 
 use crate::{
     daily_bar_source::DateRange, persistence::PersistenceError, unit_of_work::UnitOfWorkTransaction,
@@ -25,21 +25,7 @@ pub trait CalendarEventRepository: Send + Sync {
         &self,
         stock_id: &str,
         from: NaiveDate,
-    ) -> Result<Option<CalendarEvent>, CalendarEventRepositoryError> {
-        let events = self
-            .list_events(&DateRange {
-                from,
-                to: NaiveDate::MAX,
-            })
-            .await?;
-        Ok(events
-            .into_iter()
-            .filter(|event| {
-                event.category == CalendarEventCategory::Earnings
-                    && event.stock_id.as_deref() == Some(stock_id)
-            })
-            .min_by_key(|event| event.event_date))
-    }
+    ) -> Result<Option<CalendarEvent>, CalendarEventRepositoryError>;
 
     async fn upsert(
         &self,

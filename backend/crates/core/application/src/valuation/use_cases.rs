@@ -249,6 +249,20 @@ mod tests {
             *self.read_query.lock().expect("lock") = Some((symbol.to_string(), from, to));
             Ok(self.valuations.lock().expect("lock").clone())
         }
+
+        async fn find_latest_by_symbol(
+            &self,
+            symbol: &str,
+        ) -> Result<Option<Valuation>, ValuationRepositoryError> {
+            Ok(self
+                .valuations
+                .lock()
+                .expect("lock")
+                .iter()
+                .filter(|valuation| valuation.code.chars().take(4).collect::<String>() == symbol)
+                .max_by_key(|valuation| valuation.date)
+                .cloned())
+        }
     }
 
     struct FakeValuationSource {
@@ -621,6 +635,65 @@ mod tests {
                     mkt_cap: Some(Decimal::new(250_000, 0)),
                 },
             ],
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn find_latest_for_symbol_adjusts_per_share_indicators_for_later_splits(
+        repository: Arc<FakeValuationRepository>,
+        bars_repository: Arc<FakeBarsRepository>,
+    ) {
+        let valuation_date = date(2099, 1, 2);
+        *repository.valuations.lock().expect("lock") = vec![Valuation {
+            code: "ZZZZ0".to_string(),
+            date: valuation_date,
+            eps: Some(Decimal::new(400, 0)),
+            fwd_eps: Some(Decimal::new(500, 0)),
+            bps: Some(Decimal::new(800, 0)),
+            roe: Some(Decimal::new(8, 2)),
+            fwd_roe: Some(Decimal::new(10, 2)),
+            per: Some(Decimal::new(152, 1)),
+            fwd_per: Some(Decimal::new(123, 1)),
+            pbr: Some(Decimal::new(11, 1)),
+            mkt_cap: Some(Decimal::new(250_000, 0)),
+        }];
+        bars_repository
+            .seed_daily_adjustment_factors(vec![DailyBarAdjustmentFactor {
+                date: date(2099, 1, 5),
+                factor: Decimal::new(5, 1),
+            }])
+            .await;
+        let use_cases = ValuationUseCases::new(repository, bars_repository.clone());
+
+        let result = use_cases
+            .find_latest_for_symbol("ZZZZ")
+            .await
+            .expect("read succeeds");
+        let adjustment_factor_queries = bars_repository
+            .daily_adjustment_factor_queries
+            .lock()
+            .await
+            .clone();
+
+        assert_eq!(
+            (result, adjustment_factor_queries),
+            (
+                Some(Valuation {
+                    code: "ZZZZ0".to_string(),
+                    date: valuation_date,
+                    eps: Some(Decimal::new(200, 0)),
+                    fwd_eps: Some(Decimal::new(250, 0)),
+                    bps: Some(Decimal::new(400, 0)),
+                    roe: Some(Decimal::new(8, 2)),
+                    fwd_roe: Some(Decimal::new(10, 2)),
+                    per: Some(Decimal::new(152, 1)),
+                    fwd_per: Some(Decimal::new(123, 1)),
+                    pbr: Some(Decimal::new(11, 1)),
+                    mkt_cap: Some(Decimal::new(250_000, 0)),
+                }),
+                vec![("ZZZZ".to_string(), valuation_date)],
+            ),
         );
     }
 }

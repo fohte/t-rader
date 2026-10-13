@@ -92,10 +92,9 @@ impl FinancialSummaryUseCases {
     pub async fn list_for_symbol(
         &self,
         symbol: &str,
-        limit: u64,
     ) -> Result<Vec<FinancialSummary>, FinancialSummaryUseCaseError> {
         self.repository
-            .find_for_symbol(symbol, limit)
+            .find_for_symbol(symbol, u64::MAX)
             .await
             .map_err(Into::into)
     }

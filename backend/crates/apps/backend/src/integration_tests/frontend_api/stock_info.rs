@@ -106,28 +106,34 @@ async fn next_earnings_endpoint_returns_the_nearest_future_earnings_for_the_stoc
 
     let server = create_test_server(db).await;
     let response = server.get("/api/stocks/demo-code/next-earnings").await;
-    let empty_response = server
+
+    assert_eq!(
+        (response.status_code(), response.json::<Value>(),),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "title": "Demo earnings",
+                "fiscal_period": "demo-period",
+                "event_date": next_date.to_string(),
+                "event_at": null,
+                "time_of_day": "pre_market",
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn next_earnings_endpoint_returns_null_when_no_future_earnings_exists(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let server = create_test_server(db).await;
+    let response = server
         .get("/api/stocks/unknown-demo-code/next-earnings")
         .await;
 
     assert_eq!(
-        (
-            (response.status_code(), response.json::<Value>()),
-            (empty_response.status_code(), empty_response.json::<Value>(),),
-        ),
-        (
-            (
-                axum::http::StatusCode::OK,
-                json!({
-                    "title": "Demo earnings",
-                    "fiscal_period": "demo-period",
-                    "event_date": next_date.to_string(),
-                    "event_at": null,
-                    "time_of_day": "pre_market",
-                }),
-            ),
-            (axum::http::StatusCode::OK, Value::Null),
-        ),
+        (response.status_code(), response.json::<Value>()),
+        (axum::http::StatusCode::OK, Value::Null),
     );
 }
 
@@ -162,6 +168,19 @@ async fn valuation_endpoint_returns_the_latest_dated_value(db: gateway_postgres:
                 mkt_cap: None,
             },
             latest.clone(),
+            Valuation {
+                code: "OTHR".into(),
+                date: date(2098, 1, 3),
+                eps: None,
+                fwd_eps: None,
+                bps: None,
+                roe: None,
+                fwd_roe: None,
+                per: None,
+                fwd_per: None,
+                pbr: None,
+                mkt_cap: None,
+            },
         ])
         .await
         .expect("insert valuations");
@@ -187,6 +206,19 @@ async fn valuation_endpoint_returns_the_latest_dated_value(db: gateway_postgres:
                 "mkt_cap": latest.mkt_cap,
             }),
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn valuation_endpoint_returns_null_when_the_stock_has_no_valuation(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let server = create_test_server(db).await;
+    let response = server.get("/api/stocks/DEMO/valuation").await;
+
+    assert_eq!(
+        (response.status_code(), response.json::<Value>()),
+        (axum::http::StatusCode::OK, Value::Null),
     );
 }
 

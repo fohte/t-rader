@@ -95,7 +95,7 @@ pub async fn list_stock_financial_summaries(
 ) -> Result<Json<Vec<StockFinancialSummaryResponse>>, AppError> {
     let summaries = state
         .financial_summary_use_cases
-        .list_for_symbol(&stock_id, u64::MAX)
+        .list_for_symbol(&stock_id)
         .await
         .map_err(|error| AppError::Internal(error.to_string()))?;
     Ok(Json(summaries.into_iter().map(Into::into).collect()))
