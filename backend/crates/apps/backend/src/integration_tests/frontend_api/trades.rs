@@ -225,6 +225,53 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn detail_reports_sell_without_prior_buys(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        let sell_id = Uuid::new_v4();
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id: sell_id,
+                side: "sell",
+                qty: 3,
+                price: 140,
+                fee: 10,
+                day: 1,
+            },
+        )
+        .await;
+
+        let response = server.get(&format!("/api/trades/{sell_id}")).await;
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_trade(response.json::<Value>()),
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "side": "sell",
+                    "qty": 3,
+                    "price": 140,
+                    "fee": 10,
+                    "date": "2026-06-01",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                    "realized_pnl": 410,
+                    "matched_buys": [],
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn create_persists_trade_and_change_history(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
