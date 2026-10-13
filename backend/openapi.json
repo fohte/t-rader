@@ -9861,99 +9861,31 @@
         }
       },
       "PendingNoteVersion": {
-        "type": "object",
-        "required": [
-          "id",
-          "note_id",
-          "version_no",
-          "title",
-          "body_md",
-          "frontmatter_json",
-          "resolved_price_references_json",
-          "graphs_json",
-          "status",
-          "is_current",
-          "created_by_kind",
-          "created_at",
-          "tags"
-        ],
-        "properties": {
-          "body_md": {
-            "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NoteVersion"
           },
-          "change_reason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "created_by_kind": {
-            "type": "string"
-          },
-          "execution_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "frontmatter_json": {
-            "$ref": "#/components/schemas/Value"
-          },
-          "graphs_json": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/GraphDef"
-            }
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "is_current": {
-            "type": "boolean"
-          },
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "note_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "resolved_price_references_json": {
-            "$ref": "#/components/schemas/Value",
-            "description": "本文中の価格リンクを key、実行データから解決した値を value とする。"
-          },
-          "reviewed_at": {
-            "type": [
-              "string",
-              "null"
+          {
+            "type": "object",
+            "required": [
+              "tags"
             ],
-            "format": "date-time"
-          },
-          "status": {
-            "type": "string"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
+            "properties": {
+              "kind": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
-          },
-          "title": {
-            "type": "string"
-          },
-          "version_no": {
-            "type": "integer",
-            "format": "int32"
           }
-        }
+        ]
       },
       "PerformanceSummary": {
         "type": "object",

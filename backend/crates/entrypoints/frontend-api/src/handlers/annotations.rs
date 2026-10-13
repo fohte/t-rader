@@ -30,6 +30,17 @@ pub struct ListAnnotationsQuery {
     pub created_by_kind: Option<String>,
 }
 
+impl From<ListAnnotationsQuery> for AnnotationListQuery {
+    fn from(query: ListAnnotationsQuery) -> Self {
+        Self {
+            target_symbol: query.target_symbol.filter(|symbol| !symbol.is_empty()),
+            status: query.status.filter(|status| !status.is_empty()),
+            created_by_kind: query.created_by_kind.filter(|kind| !kind.is_empty()),
+            limit: None,
+        }
+    }
+}
+
 /// アノテーション一覧
 #[utoipa::path(
     get,
@@ -48,12 +59,7 @@ pub async fn list_annotations(
 ) -> Result<Json<Vec<AnnotationResponse>>, AppError> {
     let annotations = state
         .annotation_read_use_cases
-        .list_annotations(AnnotationListQuery {
-            target_symbol: params.target_symbol.filter(|symbol| !symbol.is_empty()),
-            status: params.status,
-            created_by_kind: params.created_by_kind,
-            limit: None,
-        })
+        .list_annotations(params.into())
         .await
         .map_err(map_annotation_read_error)?;
     Ok(Json(
@@ -62,6 +68,41 @@ pub async fn list_annotations(
             .map(AnnotationResponse::from)
             .collect(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::extract::Query;
+    use core_application::annotation::AnnotationListQuery;
+    use rstest::rstest;
+
+    use super::ListAnnotationsQuery;
+
+    #[rstest]
+    #[case::all_filters(
+        "/api/annotations?target_symbol=FICTIONAL-ASSET&status=unread&created_by_kind=llm",
+        AnnotationListQuery {
+            target_symbol: Some("FICTIONAL-ASSET".to_owned()),
+            status: Some("unread".to_owned()),
+            created_by_kind: Some("llm".to_owned()),
+            limit: None,
+        },
+    )]
+    #[case::empty_filters(
+        "/api/annotations?target_symbol=&status=&created_by_kind=",
+        AnnotationListQuery::default()
+    )]
+    #[case::omitted_filters("/api/annotations", AnnotationListQuery::default())]
+    fn list_query_maps_uri_filters_to_application_query(
+        #[case] uri: &'static str,
+        #[case] expected: AnnotationListQuery,
+    ) {
+        let uri = uri.parse().expect("URI is valid");
+        let Query(params) = Query::<ListAnnotationsQuery>::try_from_uri(&uri)
+            .expect("query parameters deserialize");
+
+        assert_eq!(AnnotationListQuery::from(params), expected);
+    }
 }
 
 /// アノテーション取得

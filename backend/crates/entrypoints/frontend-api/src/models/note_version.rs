@@ -9,7 +9,7 @@ use core_application::note::frontmatter_tags;
 
 use crate::services::graph::GraphDef;
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[schema(as = NoteVersion)]
 pub struct NoteVersionResponse {
     pub id: Uuid,
@@ -58,25 +58,8 @@ impl From<core_application::note::NoteVersion> for NoteVersionResponse {
 #[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[schema(as = PendingNoteVersion)]
 pub struct PendingNoteVersionResponse {
-    pub id: Uuid,
-    pub note_id: Uuid,
-    pub version_no: i32,
-    pub title: String,
-    pub body_md: String,
-    pub frontmatter_json: Json,
-    /// 本文中の価格リンクを key、実行データから解決した値を value とする。
-    pub resolved_price_references_json: Json,
-    #[schema(value_type = Vec<GraphDef>)]
-    pub graphs_json: serde_json::Value,
-    pub status: String,
-    pub is_current: bool,
-    pub change_reason: Option<String>,
-    pub created_by_kind: String,
-    pub execution_id: Option<String>,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
-    pub created_at: DateTime<FixedOffset>,
-    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
-    pub reviewed_at: Option<DateTime<FixedOffset>>,
+    #[serde(flatten)]
+    pub version: NoteVersionResponse,
     pub kind: Option<String>,
     pub tags: Vec<String>,
 }
@@ -85,21 +68,7 @@ impl From<PendingNoteVersion> for PendingNoteVersionResponse {
     fn from(pending: PendingNoteVersion) -> Self {
         let tags = frontmatter_tags(&pending.version.frontmatter_json);
         Self {
-            id: pending.version.id,
-            note_id: pending.version.note_id,
-            version_no: pending.version.version_no,
-            title: pending.version.title,
-            body_md: pending.version.body_md,
-            frontmatter_json: pending.version.frontmatter_json,
-            resolved_price_references_json: pending.version.resolved_price_references_json,
-            graphs_json: pending.version.graphs_json,
-            status: pending.version.status,
-            is_current: pending.version.is_current,
-            change_reason: pending.version.change_reason,
-            created_by_kind: pending.version.created_by_kind,
-            execution_id: pending.version.execution_id,
-            created_at: pending.version.created_at,
-            reviewed_at: pending.version.reviewed_at,
+            version: pending.version.into(),
             kind: pending.kind,
             tags,
         }
@@ -140,26 +109,26 @@ mod tests {
         });
 
         assert_eq!(
-            actual,
-            PendingNoteVersionResponse {
-                id: Uuid::from_u128(1),
-                note_id: Uuid::from_u128(2),
-                version_no: 3,
-                title: "Sample title".to_owned(),
-                body_md: "Sample body".to_owned(),
-                frontmatter_json: json!({ "tags": ["sample-tag", "another-tag"] }),
-                resolved_price_references_json: json!({}),
-                graphs_json: json!([]),
-                status: "unread".to_owned(),
-                is_current: false,
-                change_reason: Some("Sample reason".to_owned()),
-                created_by_kind: "llm".to_owned(),
-                execution_id: None,
-                created_at,
-                reviewed_at: None,
-                kind: Some("sample-kind".to_owned()),
-                tags: vec!["sample-tag".to_owned(), "another-tag".to_owned()],
-            },
+            serde_json::to_value(actual).expect("response serializes"),
+            json!({
+                "id": Uuid::from_u128(1),
+                "note_id": Uuid::from_u128(2),
+                "version_no": 3,
+                "title": "Sample title",
+                "body_md": "Sample body",
+                "frontmatter_json": { "tags": ["sample-tag", "another-tag"] },
+                "resolved_price_references_json": {},
+                "graphs_json": [],
+                "status": "unread",
+                "is_current": false,
+                "change_reason": "Sample reason",
+                "created_by_kind": "llm",
+                "execution_id": null,
+                "created_at": created_at,
+                "reviewed_at": null,
+                "kind": "sample-kind",
+                "tags": ["sample-tag", "another-tag"],
+            }),
         );
     }
 
