@@ -274,6 +274,50 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn create_annotation_preserves_explicit_unread_status_for_human(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_db, server) = create_test_server_with_db(db).await;
+        let response = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "FICTIONAL-ASSET",
+                "target_kind": "sample-kind",
+                "timestamp": "2030-01-03T00:00:00Z",
+                "text": "sample annotation",
+                "status": "unread",
+                "created_by_kind": "human",
+            }))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_annotation_response(response.json::<Value>()),
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "target_symbol": "FICTIONAL-ASSET",
+                    "target_kind": "sample-kind",
+                    "timestamp": "2030-01-03T00:00:00Z",
+                    "price": null,
+                    "text": "sample annotation",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "timestamp_start": null,
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn create_annotation_preserves_a_numeric_price(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
         let response = server

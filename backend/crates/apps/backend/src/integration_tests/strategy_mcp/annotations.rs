@@ -91,7 +91,7 @@ mod tests {
             ),
             price: Some(12.5),
             text: "breakout".into(),
-            status: "unread".into(),
+            status: DEFAULT_ANNOTATION_STATUS.into(),
             linked_note_id: None,
             created_by_kind: STRATEGY_AGENT_ACTOR.into(),
             created_at: ts_sentinel(),
