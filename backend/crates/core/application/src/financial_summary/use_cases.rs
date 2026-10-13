@@ -89,6 +89,17 @@ impl FinancialSummaryUseCases {
             .map_err(Into::into)
     }
 
+    pub async fn list_for_symbol(
+        &self,
+        symbol: &str,
+        limit: u64,
+    ) -> Result<Vec<FinancialSummary>, FinancialSummaryUseCaseError> {
+        self.repository
+            .find_for_symbol(symbol, limit)
+            .await
+            .map_err(Into::into)
+    }
+
     async fn upsert_day(
         &self,
         summaries: Vec<FinancialSummary>,

@@ -142,6 +142,17 @@ impl CalendarEventReadUseCases {
             .collect())
     }
 
+    pub async fn find_next_earnings_for_stock(
+        &self,
+        stock_id: &str,
+    ) -> Result<Option<CalendarEvent>, CalendarEventReadUseCaseError> {
+        let today = (Utc::now().naive_utc() + Duration::hours(9)).date();
+        Ok(self
+            .repository
+            .find_next_earnings_for_stock(stock_id, today)
+            .await?)
+    }
+
     async fn tracked_stock_ids(
         &self,
         strategy_scope: Option<StrategyScope>,

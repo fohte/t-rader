@@ -177,7 +177,9 @@ impl StockGroupRepository for PostgresStockGroupRepository {
             .join(JoinType::InnerJoin, stock_group::Relation::GroupAxis.def())
             .select_only()
             .column_as(group_axis::Column::Key, "axis_key")
+            .column_as(group_axis::Column::Name, "axis_name")
             .column_as(stock_group::Column::Key, "group_key")
+            .column_as(stock_group::Column::Name, "group_name")
             .column(stock_group_member::Column::StockId)
             .filter(stock_group_member::Column::StockId.is_in(stock_ids.to_vec()))
             .order_by_asc(group_axis::Column::Key)
@@ -196,7 +198,9 @@ impl StockGroupRepository for PostgresStockGroupRepository {
                 rows.into_iter()
                     .map(|row| StockGroupMembership {
                         axis_key: row.axis_key,
+                        axis_name: row.axis_name,
                         group_key: row.group_key,
+                        group_name: row.group_name,
                         stock_id: row.stock_id,
                     })
                     .collect()
@@ -252,7 +256,9 @@ impl StockGroupRepository for PostgresStockGroupRepository {
 #[derive(Debug, sea_orm::FromQueryResult)]
 struct StockGroupMembershipRow {
     axis_key: String,
+    axis_name: String,
     group_key: String,
+    group_name: String,
     stock_id: String,
 }
 

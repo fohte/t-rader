@@ -221,7 +221,9 @@ impl StockGroupRepository for FakeStockGroupRepository {
                 }
                 Some(StockGroupMembership {
                     axis_key: axis.key.clone(),
+                    axis_name: axis.key.clone(),
                     group_key: group.key.clone(),
+                    group_name: group.name.clone(),
                     stock_id: stock_id.clone(),
                 })
             })

@@ -30,6 +30,17 @@ pub trait ValuationRepository: Send + Sync {
         from: NaiveDate,
         to: NaiveDate,
     ) -> Result<Vec<Valuation>, ValuationRepositoryError>;
+
+    async fn find_latest_by_symbol(
+        &self,
+        symbol: &str,
+    ) -> Result<Option<Valuation>, ValuationRepositoryError> {
+        Ok(self
+            .find_by_symbol_date_range(symbol, NaiveDate::MIN, NaiveDate::MAX)
+            .await?
+            .into_iter()
+            .max_by_key(|valuation| valuation.date))
+    }
 }
 
 pub type SharedValuationRepository = Arc<dyn ValuationRepository>;

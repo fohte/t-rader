@@ -109,6 +109,24 @@ impl ValuationUseCases {
         apply_daily_bar_adjustment_factors(&mut valuations, &adjustment_factors);
         Ok(valuations)
     }
+
+    pub async fn find_latest_for_symbol(
+        &self,
+        symbol: &str,
+    ) -> Result<Option<Valuation>, ValuationUseCaseError> {
+        let Some(mut valuation) = self.repository.find_latest_by_symbol(symbol).await? else {
+            return Ok(None);
+        };
+        let adjustment_factors = self
+            .bars_repository
+            .find_daily_adjustment_factors_from(symbol, valuation.date)
+            .await?;
+        apply_daily_bar_adjustment_factors(
+            std::slice::from_mut(&mut valuation),
+            &adjustment_factors,
+        );
+        Ok(Some(valuation))
+    }
 }
 
 fn apply_daily_bar_adjustment_factors(
