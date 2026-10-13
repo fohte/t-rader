@@ -1,7 +1,6 @@
 import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { DashboardRecentTrades } from '#components/dashboard/dashboard-recent-trades'
 import type { components } from '#lib/api/schema.gen'
@@ -28,34 +27,27 @@ const trade: Trade = {
 }
 
 describe('DashboardRecentTrades', () => {
-  it('opens the existing trade note flow for the selected trade', async () => {
-    const onReflect = vi.fn()
-    const user = userEvent.setup()
+  it('links each reflection action to its trade detail', async () => {
     const router = createStoryRouter(
       () => (
-        <DashboardRecentTrades
-          trades={[trade]}
-          stocks={[]}
-          onReflect={onReflect}
-          isError={false}
-        />
+        <DashboardRecentTrades trades={[trade]} stocks={[]} isError={false} />
       ),
-      { paths: ['/trades', '/charts/$instrumentId'] },
+      { paths: ['/trades', '/trades/$tradeId', '/charts/$instrumentId'] },
     )
     render(<RouterProvider router={router} />)
 
-    const buttons = await screen.findAllByRole('button', {
+    const links = await screen.findAllByRole('link', {
       name: '振り返る →',
+      hidden: true,
     })
-    await user.click(
-      buttons.at(0) ?? screen.getByRole('heading', { name: '直近の取引' }),
-    )
 
-    expect(onReflect.mock.calls).toEqual([[trade]])
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/trades/fake-trade-a',
+      '/trades/fake-trade-a',
+    ])
   })
 
   it('shows the four most recent trades in date and creation order', async () => {
-    const onReflect = vi.fn()
     const trades: Trade[] = [
       trade,
       {
@@ -85,29 +77,22 @@ describe('DashboardRecentTrades', () => {
     ]
     const router = createStoryRouter(
       () => (
-        <DashboardRecentTrades
-          trades={trades}
-          stocks={[]}
-          onReflect={onReflect}
-          isError={false}
-        />
+        <DashboardRecentTrades trades={trades} stocks={[]} isError={false} />
       ),
-      { paths: ['/trades', '/charts/$instrumentId'] },
+      { paths: ['/trades', '/trades/$tradeId', '/charts/$instrumentId'] },
     )
     render(<RouterProvider router={router} />)
     const table = await screen.findByRole('table', { hidden: true })
-    const buttons = within(table).getAllByRole('button', {
+    const links = within(table).getAllByRole('link', {
       name: '振り返る →',
       hidden: true,
     })
-    const user = userEvent.setup()
-    for (const button of buttons) await user.click(button)
 
-    expect(onReflect.mock.calls).toEqual([
-      [trades[3]],
-      [trades[1]],
-      [trades[2]],
-      [trades[4]],
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/trades/fake-trade-d',
+      '/trades/fake-trade-b',
+      '/trades/fake-trade-c',
+      '/trades/fake-trade-e',
     ])
   })
 })

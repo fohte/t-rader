@@ -1,11 +1,27 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { CreateNoteDialogView } from '#components/strategy-home/create-note-dialog-view'
 import { $api } from '#lib/api/client'
 
-export function CreateNoteDialog() {
-  const [open, setOpen] = useState(false)
+export function CreateNoteDialog({
+  open,
+  onOpenChange,
+  initialTitle = '',
+  initialBody = '',
+  showTrigger = true,
+  onCreated,
+}: {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  initialTitle?: string
+  initialBody?: string
+  showTrigger?: boolean
+  onCreated?: (noteId: string) => void
+} = {}) {
+  const [localOpen, setLocalOpen] = useState(false)
+  const dialogOpen = open ?? localOpen
+  const previousOpen = useRef(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [kind, setKind] = useState('')
@@ -16,6 +32,16 @@ export function CreateNoteDialog() {
   })
   const createMutation = $api.useMutation('post', '/api/notes')
 
+  useEffect(() => {
+    if (dialogOpen && !previousOpen.current) {
+      setTitle(initialTitle)
+      setBody(initialBody)
+      setKind('')
+      setFormError(null)
+    }
+    previousOpen.current = dialogOpen
+  }, [dialogOpen, initialBody, initialTitle])
+
   function reset() {
     setTitle('')
     setBody('')
@@ -24,7 +50,8 @@ export function CreateNoteDialog() {
   }
 
   function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen)
+    if (open == null) setLocalOpen(nextOpen)
+    onOpenChange?.(nextOpen)
     if (!nextOpen) reset()
   }
 
@@ -47,12 +74,13 @@ export function CreateNoteDialog() {
     createMutation.mutate(
       { body: requestBody },
       {
-        onSuccess: () => {
+        onSuccess: (note) => {
           void queryClient.invalidateQueries({
             queryKey: $api.queryOptions('get', '/api/notes').queryKey,
           })
+          onCreated?.(note.id)
           reset()
-          setOpen(false)
+          handleOpenChange(false)
         },
         onError: () => {
           setFormError('ノートの作成に失敗しました')
@@ -63,8 +91,9 @@ export function CreateNoteDialog() {
 
   return (
     <CreateNoteDialogView
-      open={open}
+      open={dialogOpen}
       onOpenChange={handleOpenChange}
+      showTrigger={showTrigger}
       title={title}
       body={body}
       kind={kind}
