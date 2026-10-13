@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -8,6 +10,7 @@ use core_application::trade::{
     TradeRepositoryError, TradeUpdateCommand, TradeUseCaseError,
 };
 use core_application::unit_of_work::UnitOfWorkError;
+use core_domain::bar::Bar;
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -221,7 +224,17 @@ pub async fn trades_summary(
         .summary(p.strategy_id)
         .await
         .map_err(map_trade_error)?;
-    Ok(Json(summary_response(summary)))
+
+    let mut latest_bars = HashMap::with_capacity(summary.positions.len());
+    for position in &summary.positions {
+        let latest_bar = state
+            .bars_use_cases
+            .find_latest_bar(&position.symbol, "1d")
+            .await?;
+        latest_bars.insert(position.symbol.clone(), latest_bar);
+    }
+
+    Ok(Json(summary_response(summary, &latest_bars)))
 }
 
 pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
@@ -242,20 +255,55 @@ pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
     }
 }
 
-fn summary_response(summary: TradePerformanceSummary) -> PerformanceSummary {
+fn summary_response(
+    summary: TradePerformanceSummary,
+    latest_bars: &HashMap<String, Option<Bar>>,
+) -> PerformanceSummary {
+    let price_observed_at = summary
+        .positions
+        .iter()
+        .filter_map(|position| {
+            latest_bars
+                .get(&position.symbol)
+                .and_then(|bar| bar.as_ref())
+                .map(|bar| bar.timestamp.date_naive())
+        })
+        .max();
+
     PerformanceSummary {
         strategy_id: summary.strategy_id,
         trade_count: summary.trade_count,
         realized_pnl: summary.realized_pnl,
+        price_observed_at,
         positions: summary
             .positions
             .into_iter()
-            .map(|position| crate::models::PositionSummary {
-                symbol: position.symbol,
-                qty: position.qty,
-                avg_cost: position.avg_cost,
-                cost_basis: position.cost_basis,
-                realized_pnl: position.realized_pnl,
+            .map(|position| {
+                let (current_price, market_value, unrealized_pnl) = match latest_bars
+                    .get(&position.symbol)
+                    .and_then(|bar| bar.as_ref())
+                {
+                    Some(bar) => {
+                        let market_value = position.qty * bar.close;
+                        (
+                            Some(bar.close),
+                            Some(market_value),
+                            Some(market_value - position.cost_basis),
+                        )
+                    }
+                    None => (None, None, None),
+                };
+
+                crate::models::PositionSummary {
+                    symbol: position.symbol,
+                    qty: position.qty,
+                    avg_cost: position.avg_cost,
+                    cost_basis: position.cost_basis,
+                    realized_pnl: position.realized_pnl,
+                    current_price,
+                    market_value,
+                    unrealized_pnl,
+                }
             })
             .collect(),
     }

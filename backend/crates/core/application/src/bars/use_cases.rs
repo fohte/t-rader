@@ -20,6 +20,17 @@ impl BarsUseCases {
         }
     }
 
+    pub async fn find_latest_bar(
+        &self,
+        instrument_id: &str,
+        timeframe: &str,
+    ) -> Result<Option<Bar>, BarsUseCaseError> {
+        self.repository
+            .find_latest_bar(instrument_id, timeframe)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn find_bars(&self, query: BarsQuery) -> Result<Vec<Bar>, BarsUseCaseError> {
         self.repository.find_bars(query).await.map_err(Into::into)
     }

@@ -2,15 +2,17 @@
 mod tests {
     use super::super::assert_response_eq;
     use axum::http::StatusCode;
+    use chrono::{NaiveDate, TimeZone, Utc};
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::sea_query::OnConflict;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
     use crate::testing::{create_test_server_with_db, insert_test_strategy};
-    use gateway_postgres::entities::{change_history, trade};
+    use gateway_postgres::entities::{bars, change_history, instruments, trade};
 
     fn normalize_trade(mut value: Value) -> Value {
         for key in ["id", "strategy_id", "created_at", "updated_at"] {
@@ -49,6 +51,48 @@ mod tests {
         .insert(db)
         .await
         .expect("insert trade");
+    }
+
+    async fn seed_daily_bar(
+        db: &impl sea_orm::ConnectionTrait,
+        symbol: &str,
+        day: u32,
+        close: i64,
+    ) {
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(symbol.to_string()),
+            name: Set("Fictional Instrument".into()),
+            market: Set("TSE".into()),
+            sector: Set(None),
+        })
+        .on_conflict(
+            OnConflict::column(instruments::Column::Id)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(db)
+        .await
+        .expect("insert instrument");
+
+        let timestamp = NaiveDate::from_ymd_opt(2026, 6, day)
+            .and_then(|date| date.and_hms_opt(0, 0, 0))
+            .map(|datetime| Utc.from_utc_datetime(&datetime).fixed_offset())
+            .expect("valid daily bar timestamp");
+        let close = Decimal::from(close);
+        bars::Entity::insert(bars::ActiveModel {
+            instrument_id: Set(symbol.to_string()),
+            timeframe: Set("1d".into()),
+            timestamp: Set(timestamp),
+            open: Set(close),
+            high: Set(close),
+            low: Set(close),
+            close: Set(close),
+            volume: Set(100),
+            adjustment_factor: Set(Decimal::ONE),
+        })
+        .exec_without_returning(db)
+        .await
+        .expect("insert daily bar");
     }
 
     async fn history_snapshot(
@@ -287,6 +331,7 @@ mod tests {
             },
         )
         .await;
+        seed_daily_bar(&db, "FICTIONAL-SYMBOL", 3, 140).await;
 
         let response = server
             .get(&format!("/api/trades/summary?strategy_id={strategy_id}"))
@@ -300,14 +345,73 @@ mod tests {
                     "strategy_id": strategy_id,
                     "trade_count": 3,
                     "realized_pnl": 3470,
+                    "price_observed_at": "2026-06-03",
                     "positions": [{
                         "symbol": "FICTIONAL-SYMBOL",
                         "qty": 50,
                         "avg_cost": 120,
                         "cost_basis": 6000,
                         "realized_pnl": 3470,
+                        "current_price": 140,
+                        "market_value": 7000,
+                        "unrealized_pnl": 1000,
                     }],
                 }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn summary_returns_missing_market_values_when_daily_bar_is_unavailable(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id: Uuid::new_v4(),
+                side: "buy",
+                qty: 4,
+                price: 50,
+                fee: 0,
+                day: 1,
+            },
+        )
+        .await;
+
+        let response = server
+            .get(&format!("/api/trades/summary?strategy_id={strategy_id}"))
+            .await;
+        let body = response.json::<Value>();
+        let instrument_exists = instruments::Entity::find_by_id("FICTIONAL-SYMBOL")
+            .one(&db)
+            .await
+            .expect("query instrument")
+            .is_some();
+
+        assert_eq!(
+            (response.status_code(), body, instrument_exists),
+            (
+                StatusCode::OK,
+                json!({
+                    "strategy_id": strategy_id,
+                    "trade_count": 1,
+                    "realized_pnl": 0,
+                    "price_observed_at": null,
+                    "positions": [{
+                        "symbol": "FICTIONAL-SYMBOL",
+                        "qty": 4,
+                        "avg_cost": 50,
+                        "cost_basis": 200,
+                        "realized_pnl": 0,
+                        "current_price": null,
+                        "market_value": null,
+                        "unrealized_pnl": null,
+                    }],
+                }),
+                false,
             ),
         );
     }

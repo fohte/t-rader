@@ -95,6 +95,12 @@ pub struct PositionSummary {
     pub cost_basis: Decimal,
     /// 実現損益累計
     pub realized_pnl: Decimal,
+    /// DB の最新日足終値。日足が無い場合は `null`。
+    pub current_price: Option<Decimal>,
+    /// 現在値 × 保有数量。現在値が無い場合は `null`。
+    pub market_value: Option<Decimal>,
+    /// 評価額 - 取得簿価。現在値が無い場合は `null`。
+    pub unrealized_pnl: Option<Decimal>,
 }
 
 /// 戦略単位もしくはポートフォリオ全体の損益サマリ
@@ -103,5 +109,7 @@ pub struct PerformanceSummary {
     pub strategy_id: Option<Uuid>,
     pub trade_count: i64,
     pub realized_pnl: Decimal,
+    /// 使用した日足のうち最も新しい観測日。価格が無い場合は `null`。
+    pub price_observed_at: Option<NaiveDate>,
     pub positions: Vec<PositionSummary>,
 }
