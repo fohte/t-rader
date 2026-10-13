@@ -312,7 +312,7 @@ impl TradeUseCases {
                 .find(|adjustment| adjustment.factor <= Decimal::ZERO)
             {
                 Some(adjustment) => split_adjustment_error(error, adjustment),
-                None => TradeUseCaseError::SummaryCalculation(error.to_string()),
+                None => TradeUseCaseError::FifoCalculation(error.to_string()),
             }
         })
     }

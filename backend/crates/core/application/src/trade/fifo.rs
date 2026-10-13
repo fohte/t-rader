@@ -31,7 +31,7 @@ pub(super) fn split_adjustment_error(
     error: SplitAdjustmentError,
     adjustment: &SplitAdjustment,
 ) -> TradeUseCaseError {
-    TradeUseCaseError::SummaryCalculation(format!(
+    TradeUseCaseError::FifoCalculation(format!(
         "split adjustment for {} on {} failed: {error}",
         adjustment.instrument_id, adjustment.date
     ))
@@ -55,27 +55,6 @@ fn apply_split_adjustment(
 ) -> Result<(), TradeUseCaseError> {
     if let Some(lots) = lots_by_symbol.get_mut(&adjustment.instrument_id) {
         adjust_lots(lots, adjustment)?;
-    }
-    Ok(())
-}
-
-fn apply_detail_adjustment(
-    lots: &mut VecDeque<Lot>,
-    trade: &Trade,
-    target_buy_remaining: &mut Option<Decimal>,
-    adjustment: &SplitAdjustment,
-) -> Result<(), TradeUseCaseError> {
-    if adjustment.instrument_id != trade.symbol {
-        return Ok(());
-    }
-    adjust_lots(lots, adjustment)?;
-    if trade.side == "buy" && target_buy_remaining.is_some() {
-        *target_buy_remaining = Some(
-            lots.iter()
-                .find(|lot| lot.trade_id == trade.id)
-                .map(|lot| lot.qty)
-                .unwrap_or(Decimal::ZERO),
-        );
     }
     Ok(())
 }
@@ -112,26 +91,23 @@ pub(super) fn calculate_trade_detail(
     let mut lots = VecDeque::new();
     let mut realized_pnl = None;
     let mut matched_buys = None;
-    let mut target_buy_remaining = None;
+    let mut target_buy_seen = false;
 
     for row in rows {
         split_cursor.apply_through(row.trade.date, |adjustment| {
-            apply_detail_adjustment(&mut lots, &trade, &mut target_buy_remaining, adjustment)
+            adjust_lots(&mut lots, adjustment)
         })?;
         match row.trade.side.as_str() {
             "buy" => {
                 push_buy_lot(&mut lots, &row.trade);
                 if row.trade.id == trade.id {
-                    target_buy_remaining = Some(row.trade.qty);
+                    target_buy_seen = true;
                 }
             }
             "sell" => {
                 let is_target = row.trade.id == trade.id;
                 let mut sale_matches = Vec::new();
                 let sale_pnl = consume_sell_lots(&mut lots, &row.trade, |lot, qty| {
-                    if lot.trade_id == trade.id {
-                        target_buy_remaining = Some(lot.qty - qty);
-                    }
                     if is_target {
                         sale_matches.push(MatchedBuy {
                             date: lot.date,
@@ -149,11 +125,17 @@ pub(super) fn calculate_trade_detail(
         }
     }
 
-    split_cursor.apply_remaining(|adjustment| {
-        apply_detail_adjustment(&mut lots, &trade, &mut target_buy_remaining, adjustment)
-    })?;
+    split_cursor.apply_remaining(|adjustment| adjust_lots(&mut lots, adjustment))?;
 
-    let remaining_qty = (trade.side == "buy").then(|| target_buy_remaining.unwrap_or(trade.qty));
+    let remaining_qty = (trade.side == "buy").then(|| {
+        if target_buy_seen {
+            lots.iter()
+                .find(|lot| lot.trade_id == trade.id)
+                .map_or(Decimal::ZERO, |lot| lot.qty)
+        } else {
+            trade.qty
+        }
+    });
     if trade.side == "sell" && realized_pnl.is_none() {
         realized_pnl = Some(-trade.fee);
         matched_buys = Some(Vec::new());
