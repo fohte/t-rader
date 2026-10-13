@@ -2,6 +2,7 @@ mod error;
 mod fifo;
 mod import;
 mod repository;
+mod summary;
 mod trade_notes;
 mod types;
 mod use_cases;
@@ -11,6 +12,9 @@ mod fake;
 
 pub use error::TradeUseCaseError;
 pub use repository::{SharedTradeRepository, TradeRepository, TradeRepositoryError};
+pub use summary::{
+    TradeSummaryUseCaseError, TradeSummaryUseCases, ValuedPerformanceSummary, ValuedPositionSummary,
+};
 pub use trade_notes::TradeNoteUseCases;
 pub use types::{
     CreateTradeCommand, MatchedBuy, NewTrade, NewTradeNoteLink, PerformanceSummary,

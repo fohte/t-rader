@@ -64,6 +64,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(refs::get_group))
         .routes(routes!(refs::list_indicators))
         .routes(routes!(refs::get_indicator))
+        .routes(routes!(refs::get_indicator_observations))
         .routes(routes!(refs::resolve_refs))
         .routes(routes!(notes::list_notes, notes::create_note))
         .routes(routes!(

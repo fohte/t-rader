@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use core_application::note::{
     Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteReadQuery, NoteReadQueryError,
-    NoteSnapshot, NoteVersion,
+    NoteSnapshot, NoteVersion, PendingNoteVersion,
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
@@ -16,6 +16,7 @@ const PENDING_STATUS: &str = "unread";
 
 mod links;
 mod list;
+mod pending;
 mod task_notes;
 
 #[derive(Clone)]
@@ -160,16 +161,10 @@ impl NoteReadQuery for PostgresNoteReadQuery {
             .map_err(query_error)
     }
 
-    async fn list_pending_note_versions(&self) -> Result<Vec<NoteVersion>, NoteReadQueryError> {
-        note_version::Entity::find()
-            .filter(note_version::Column::Status.eq(PENDING_STATUS))
-            .order_by_asc(note_version::Column::CreatedAt)
-            .order_by_asc(note_version::Column::NoteId)
-            .order_by_asc(note_version::Column::VersionNo)
-            .all(&self.db)
-            .await
-            .map(|rows| rows.into_iter().map(to_version).collect())
-            .map_err(query_error)
+    async fn list_pending_note_versions(
+        &self,
+    ) -> Result<Vec<PendingNoteVersion>, NoteReadQueryError> {
+        pending::list_pending_note_versions(&self.db).await
     }
 
     async fn list_notes(&self, query: NoteListQuery) -> Result<NoteListPage, NoteReadQueryError> {

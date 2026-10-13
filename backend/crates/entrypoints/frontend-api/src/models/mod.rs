@@ -51,13 +51,15 @@ pub use import::{
 pub use ingest_status::IngestStatusResponse;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use note_kind::NoteKindResponse;
-pub use note_version::NoteVersionResponse;
+pub use note_version::{NoteVersionResponse, PendingNoteVersionResponse};
 pub use paper_account::{
     CreatePaperAccountRequest, PaperAccountPortfolioResponse, PaperAccountResponse,
     PaperAccountStatsResponse,
 };
 pub use prediction::PredictionResponse;
-pub use refs::{GroupResponse, IndicatorResponse, RefResolution, StockResponse};
+pub use refs::{
+    GroupResponse, IndicatorObservationResponse, IndicatorResponse, RefResolution, StockResponse,
+};
 pub use risk_policy::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
@@ -72,8 +74,8 @@ pub use strategy_earnings_target::{
     StrategyEarningsTargetChangeResponse, StrategyEarningsTargetResponse,
 };
 pub use trade::{
-    CreateTradeRequest, PerformanceSummary, PositionSummary, TradeDetailResponse, TradeListItem,
-    TradeResponse, UpdateTradeRequest,
+    CreateTradeRequest, PerformanceSummary, TradeDetailResponse, TradeListItem, TradeResponse,
+    UpdateTradeRequest,
 };
 pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};
 pub use trigger::{

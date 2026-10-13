@@ -1047,6 +1047,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "created_by_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3522,7 +3538,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/NoteVersion"
+                    "$ref": "#/components/schemas/PendingNoteVersion"
                   }
                 }
               }
@@ -4847,6 +4863,91 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Indicator"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/indicators/{id}/observations": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "indicator の観測値",
+        "operationId": "get_ref_indicator_observations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "指標 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "取得開始日 (YYYY-MM-DD, inclusive)。省略時は最古の観測日から取得",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "取得終了日 (YYYY-MM-DD, inclusive)。省略時は最新の観測日まで取得",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IndicatorObservationResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -9230,6 +9331,23 @@
           }
         }
       },
+      "IndicatorObservationResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "value"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "IngestJobStatusResponse": {
         "type": "object",
         "required": [
@@ -10000,6 +10118,33 @@
           }
         }
       },
+      "PendingNoteVersion": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NoteVersion"
+          },
+          {
+            "type": "object",
+            "required": [
+              "tags"
+            ],
+            "properties": {
+              "kind": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
       "PerformanceSummary": {
         "type": "object",
         "description": "戦略単位もしくはポートフォリオ全体の損益サマリ",
@@ -10014,6 +10159,14 @@
             "items": {
               "$ref": "#/components/schemas/PositionSummary"
             }
+          },
+          "price_observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "使用した日足のうち最も新しい観測日。価格が無い場合は `null`。"
           },
           "realized_pnl": {
             "type": "number",
@@ -10053,6 +10206,22 @@
             "format": "double",
             "description": "取得簿価 (qty * avg_cost)"
           },
+          "current_price": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "共通観測日の終値。該当する日足が無い場合は `null` です。"
+          },
+          "market_value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "現在値 × 保有数量。現在値が無い場合は `null`。"
+          },
           "qty": {
             "type": "number",
             "format": "double",
@@ -10065,6 +10234,14 @@
           },
           "symbol": {
             "type": "string"
+          },
+          "unrealized_pnl": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "評価額 - 取得簿価。現在値が無い場合は `null`。"
           }
         }
       },
