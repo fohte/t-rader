@@ -49,7 +49,7 @@ mod tests {
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "text",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -92,7 +92,7 @@ mod tests {
                     "timestamp": timestamp,
                     "price": null,
                     "text": "sample text",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -114,7 +114,7 @@ mod tests {
             "timestamp": timestamp,
             "price": null,
             "text": "sample text",
-            "status": "unread",
+            "status": "approved",
             "linked_note_id": null,
             "created_by_kind": "human",
             "created_at": "<created_at>",
@@ -217,7 +217,7 @@ mod tests {
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "市況アノテーション",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -258,7 +258,7 @@ mod tests {
                     "timestamp": "2030-01-02T00:00:00Z",
                     "price": 17.25,
                     "text": "sample annotation",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -302,7 +302,7 @@ mod tests {
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "text",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -367,7 +367,7 @@ mod tests {
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
                         "text": "text",
-                        "status": "unread",
+                        "status": "approved",
                         "linked_note_id": created_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
@@ -386,7 +386,7 @@ mod tests {
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
                         "text": "text",
-                        "status": "unread",
+                        "status": "approved",
                         "linked_note_id": updated_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
@@ -634,6 +634,6 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(anno.status, "unread");
+        assert_eq!(anno.status, "approved");
     }
 }

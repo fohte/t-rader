@@ -103,7 +103,7 @@ pub async fn create_annotation(
     State(state): State<FrontendApiState>,
     JsonBody(p): JsonBody<CreateAnnotationRequest>,
 ) -> Result<(StatusCode, Json<AnnotationResponse>), AppError> {
-    let status = p.status.as_deref().unwrap_or("unread").to_string();
+    let status = p.status.as_deref().unwrap_or("approved").to_string();
     let created_by = p.created_by_kind.as_deref().unwrap_or("human").to_string();
     let created = state
         .annotation_use_cases
