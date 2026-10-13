@@ -88,7 +88,16 @@ impl BarsUseCases {
         let mut bars: HashMap<String, (NaiveDate, Decimal)> = HashMap::new();
 
         for instrument_id in instrument_ids {
-            if let Some(bar) = self.repository.find_latest_bar(instrument_id, "1d").await? {
+            let latest_bar = self
+                .repository
+                .find_latest_bar(instrument_id, "1d")
+                .await
+                .map_err(|error| {
+                    tracing::error!(instrument_id, error = %error, "直近終値の取得に失敗");
+                    error
+                })?;
+
+            if let Some(bar) = latest_bar {
                 bars.insert(
                     instrument_id.clone(),
                     (bar.timestamp.date_naive(), bar.close),
