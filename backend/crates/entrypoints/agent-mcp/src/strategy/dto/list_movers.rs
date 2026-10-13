@@ -32,6 +32,9 @@ pub struct ListMoversParams {
     /// 期間内の平均売買代金の下限 (銘柄ごとの通貨単位)。省略時は下限なし。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_avg_turnover: Option<f64>,
+    /// 市場区分 (stock.market) の配列。省略時は全市場を対象にする。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markets: Option<Vec<String>>,
     /// 返却行数 (1〜100)。省略時は 50。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,

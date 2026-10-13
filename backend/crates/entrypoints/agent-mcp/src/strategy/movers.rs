@@ -38,6 +38,7 @@ impl StrategyServer {
                     to: params.to,
                     direction: MarketMoverDirection::from(params.direction),
                     min_avg_turnover,
+                    markets: params.markets,
                     limit,
                 },
             )
