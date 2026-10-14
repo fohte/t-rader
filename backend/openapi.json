@@ -4731,6 +4731,72 @@
         }
       }
     },
+    "/api/portfolio/history": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "口座全体の日次資産推移",
+        "operationId": "get_portfolio_history",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "取得開始日 (両端を含む。最大 3,660 日)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "取得終了日 (両端を含む。最大 3,660 日)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortfolioHistoryPointResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "期間が不正または最大 3,660 日を超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/refs/groups/{axis_key}/{group_key}": {
       "get": {
         "tags": [
@@ -7375,7 +7441,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Trade"
+                  "$ref": "#/components/schemas/TradeDetailResponse"
                 }
               }
             }
@@ -9719,6 +9785,28 @@
           "scatter"
         ]
       },
+      "MatchedBuyResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "qty",
+          "price"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "qty": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "Note": {
         "type": "object",
         "required": [
@@ -10357,6 +10445,38 @@
           "trade_count": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "PortfolioHistoryPointResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "total_assets",
+          "stock_market_value",
+          "cash",
+          "investable_amount"
+        ],
+        "properties": {
+          "cash": {
+            "type": "number",
+            "format": "double"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "investable_amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "stock_market_value": {
+            "type": "number",
+            "format": "double"
+          },
+          "total_assets": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -11600,6 +11720,41 @@
           }
         }
       },
+      "TradeDetailResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Trade"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "matched_buys": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/MatchedBuyResponse"
+                }
+              },
+              "realized_pnl": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "remaining_qty": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              }
+            }
+          }
+        ]
+      },
       "TradeListItem": {
         "allOf": [
           {
@@ -12168,6 +12323,10 @@
     {
       "name": "trades",
       "description": "取引履歴と損益サマリ"
+    },
+    {
+      "name": "portfolio",
+      "description": "口座全体の資産推移"
     },
     {
       "name": "tasks",

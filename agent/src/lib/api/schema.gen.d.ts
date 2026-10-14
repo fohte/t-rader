@@ -862,6 +862,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/portfolio/history': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 口座全体の日次資産推移 */
+    get: operations['get_portfolio_history']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/refs/groups/{axis_key}/{group_key}': {
     parameters: {
       query?: never
@@ -1933,6 +1950,14 @@ export interface components {
     }
     /** @enum {string} */
     Layout: 'flow' | 'tree' | 'chain' | 'scatter'
+    MatchedBuyResponse: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+    }
     Note: {
       body_md: string
       /** Format: date-time */
@@ -2133,6 +2158,18 @@ export interface components {
       strategy_id?: string | null
       /** Format: int64 */
       trade_count: number
+    }
+    PortfolioHistoryPointResponse: {
+      /** Format: double */
+      cash: number
+      /** Format: date */
+      date: string
+      /** Format: double */
+      investable_amount: number
+      /** Format: double */
+      stock_market_value: number
+      /** Format: double */
+      total_assets: number
     }
     /** @description 銘柄ごとの未決済ポジションと損益 */
     PositionSummary: {
@@ -2556,6 +2593,13 @@ export interface components {
       symbol: string
       /** Format: date-time */
       updated_at: string
+    }
+    TradeDetailResponse: components['schemas']['Trade'] & {
+      matched_buys?: components['schemas']['MatchedBuyResponse'][] | null
+      /** Format: double */
+      realized_pnl?: number | null
+      /** Format: double */
+      remaining_qty?: number | null
     }
     TradeListItem: components['schemas']['Trade'] & {
       /** Format: int64 */
@@ -6253,6 +6297,47 @@ export interface operations {
       }
     }
   }
+  get_portfolio_history: {
+    parameters: {
+      query: {
+        /** @description 取得開始日 (両端を含む。最大 3,660 日) */
+        from: string
+        /** @description 取得終了日 (両端を含む。最大 3,660 日) */
+        to: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioHistoryPointResponse'][]
+        }
+      }
+      /** @description 期間が不正または最大 3,660 日を超過 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   get_ref_group: {
     parameters: {
       query?: never
@@ -8160,7 +8245,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['Trade']
+          'application/json': components['schemas']['TradeDetailResponse']
         }
       }
       /** @description リクエストパラメータが不正 */

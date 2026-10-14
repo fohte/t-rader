@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use core_application::trade::{Trade, ValuedPerformanceSummary, ValuedPositionSummary};
+use core_application::trade::{
+    MatchedBuy, Trade, TradeDetail, ValuedPerformanceSummary, ValuedPositionSummary,
+};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trade)]
@@ -40,6 +42,48 @@ impl From<Trade> for TradeResponse {
             note: model.note,
             created_at: model.created_at,
             updated_at: model.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TradeDetailResponse {
+    #[serde(flatten)]
+    pub trade: TradeResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub realized_pnl: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_buys: Option<Vec<MatchedBuyResponse>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remaining_qty: Option<Decimal>,
+}
+
+impl From<TradeDetail> for TradeDetailResponse {
+    fn from(model: TradeDetail) -> Self {
+        Self {
+            trade: model.trade.into(),
+            realized_pnl: model.realized_pnl,
+            matched_buys: model
+                .matched_buys
+                .map(|buys| buys.into_iter().map(MatchedBuyResponse::from).collect()),
+            remaining_qty: model.remaining_qty,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MatchedBuyResponse {
+    pub date: NaiveDate,
+    pub qty: Decimal,
+    pub price: Decimal,
+}
+
+impl From<MatchedBuy> for MatchedBuyResponse {
+    fn from(model: MatchedBuy) -> Self {
+        Self {
+            date: model.date,
+            qty: model.qty,
+            price: model.price,
         }
     }
 }
