@@ -11,10 +11,12 @@ import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
+type Trade = components['schemas']['TradeListItem']
 
 export function StockPageChart({
   stockId,
   bars,
+  trades,
   annotations,
   selectedAnnotationId,
   onSelectAnnotation,
@@ -26,6 +28,7 @@ export function StockPageChart({
 }: {
   stockId: string
   bars: Bar[]
+  trades: Trade[]
   annotations: ChartAnnotation[]
   selectedAnnotationId: string | null
   onSelectAnnotation: (id: string) => void
@@ -71,6 +74,7 @@ export function StockPageChart({
       ) : (
         <CandlestickChart
           bars={bars}
+          trades={trades}
           annotations={annotations}
           onSelectAnnotation={onSelectAnnotation}
           selectedAnnotationId={selectedAnnotationId}

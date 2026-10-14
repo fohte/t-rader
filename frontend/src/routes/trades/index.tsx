@@ -20,7 +20,7 @@ import type { components } from '#lib/api/schema.gen'
 
 type Trade = components['schemas']['TradeListItem']
 
-export const Route = createFileRoute('/trades')({
+export const Route = createFileRoute('/trades/')({
   component: TradesPage,
 })
 

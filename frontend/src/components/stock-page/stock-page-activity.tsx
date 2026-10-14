@@ -2,15 +2,17 @@ import { Link } from '@tanstack/react-router'
 
 import { formatYen } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
-import { buildSnippet } from '#lib/note-utils'
+import { buildSnippet, formatRelative } from '#lib/note-utils'
 import {
   sortAnnotationsNewestFirst,
+  sortNotesNewestFirst,
   sortTradesNewestFirst,
   type StockPageListState,
 } from '#lib/stock-page-model'
 import { cn } from '#lib/utils'
 
 type Annotation = components['schemas']['Annotation']
+type Note = components['schemas']['Note']
 type Trade = components['schemas']['TradeListItem']
 
 const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
@@ -19,7 +21,7 @@ const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
 })
 
-type ActivityTab = 'annotations' | 'trades'
+type ActivityTab = 'annotations' | 'notes' | 'trades'
 type ListState = StockPageListState
 
 function ActivityMessage({
@@ -59,11 +61,13 @@ function ActivityTabs({
   activeTab,
   onTabChange,
   annotationCount,
+  noteCount,
   tradeCount,
 }: {
   activeTab: ActivityTab
   onTabChange: (tab: ActivityTab) => void
   annotationCount: string
+  noteCount: string
   tradeCount: string
 }) {
   const tabs = [
@@ -72,6 +76,7 @@ function ActivityTabs({
       label: 'アノテーション',
       count: annotationCount,
     },
+    { id: 'notes' as const, label: 'ノート', count: noteCount },
     { id: 'trades' as const, label: '取引', count: tradeCount },
   ]
 
@@ -106,6 +111,53 @@ function ActivityTabs({
         </button>
       ))}
     </div>
+  )
+}
+
+function NoteRows({ notes, state }: { notes: Note[]; state: ListState }) {
+  if (state === 'loading') {
+    return <ActivityMessage kind="loading">読み込み中</ActivityMessage>
+  }
+  if (state === 'error') {
+    return (
+      <ActivityMessage kind="error">ノートの取得に失敗しました</ActivityMessage>
+    )
+  }
+  if (notes.length === 0) {
+    return (
+      <ActivityMessage kind="empty">
+        この銘柄に触れたノートはありません
+      </ActivityMessage>
+    )
+  }
+
+  return (
+    <ul>
+      {sortNotesNewestFirst(notes).map((note) => (
+        <li key={note.id} className="border-b border-border last:border-b-0">
+          <Link
+            to="/notes/$noteId"
+            params={{ noteId: note.id }}
+            className="flex min-w-0 flex-col gap-1.5 px-3.5 py-3 hover:bg-surface-strong"
+          >
+            <span className="line-clamp-2 text-sm text-foreground">
+              {note.title}
+            </span>
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-2xs text-muted-foreground">
+              <span>{getAuthorLabel(note.created_by_kind)}</span>
+              {note.status === 'unread' && (
+                <span className="border border-primary/50 px-1 text-primary">
+                  未レビュー
+                </span>
+              )}
+              <time className="ml-auto" dateTime={note.updated_at}>
+                {formatRelative(note.updated_at)}
+              </time>
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -282,24 +334,29 @@ function TradeSide({ side }: { side: string }) {
 
 export function StockPageActivity({
   annotations,
+  notes,
   trades,
   activeTab,
   onTabChange,
   selectedAnnotationId,
   onSelectAnnotation,
   annotationState = 'ready',
+  noteState = 'ready',
   tradeState = 'ready',
 }: {
   annotations: Annotation[]
+  notes: Note[]
   trades: Trade[]
   activeTab: ActivityTab
   onTabChange: (tab: ActivityTab) => void
   selectedAnnotationId: string | null
   onSelectAnnotation: (id: string) => void
   annotationState?: ListState
+  noteState?: ListState
   tradeState?: ListState
 }) {
   const annotationCount = getCountLabel(annotationState, annotations.length)
+  const noteCount = getCountLabel(noteState, notes.length)
   const tradeCount = getCountLabel(tradeState, trades.length)
 
   return (
@@ -308,6 +365,7 @@ export function StockPageActivity({
         activeTab={activeTab}
         onTabChange={onTabChange}
         annotationCount={annotationCount}
+        noteCount={noteCount}
         tradeCount={tradeCount}
       />
       <div
@@ -322,6 +380,8 @@ export function StockPageActivity({
             onSelectAnnotation={onSelectAnnotation}
             state={annotationState}
           />
+        ) : activeTab === 'notes' ? (
+          <NoteRows notes={notes} state={noteState} />
         ) : (
           <TradeRows trades={trades} state={tradeState} />
         )}

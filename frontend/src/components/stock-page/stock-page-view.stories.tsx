@@ -129,6 +129,7 @@ const meta = {
     quoteError: false,
     bars,
     annotations,
+    notes: [],
     trades,
     position,
     holdingsLoading: false,
@@ -143,6 +144,7 @@ const meta = {
     chartLoading: false,
     chartError: false,
     annotationState: 'ready',
+    noteState: 'ready',
     tradeState: 'ready',
   },
 } satisfies Meta<typeof StockPageView>

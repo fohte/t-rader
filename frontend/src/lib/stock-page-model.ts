@@ -2,6 +2,7 @@ import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 type Annotation = components['schemas']['Annotation']
+type Note = components['schemas']['Note']
 type Stock = components['schemas']['Stock']
 type Trade = components['schemas']['TradeListItem']
 
@@ -74,6 +75,12 @@ export function sortAnnotationsNewestFirst(
     (right.timestamp_start ?? right.timestamp).localeCompare(
       left.timestamp_start ?? left.timestamp,
     ),
+  )
+}
+
+export function sortNotesNewestFirst(notes: Note[]): Note[] {
+  return [...notes].sort((left, right) =>
+    right.updated_at.localeCompare(left.updated_at),
   )
 }
 

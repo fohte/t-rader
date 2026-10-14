@@ -73,6 +73,7 @@ const meta = {
   args: {
     stockId: 'demo-code',
     bars,
+    trades: [],
     annotations,
     selectedAnnotationId: 'demo-annotation',
     onSelectAnnotation: () => undefined,

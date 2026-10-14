@@ -14,6 +14,7 @@ describe('StockPageChart', () => {
         <StockPageChart
           stockId="demo-code"
           bars={[]}
+          trades={[]}
           annotations={[]}
           selectedAnnotationId={null}
           onSelectAnnotation={() => undefined}

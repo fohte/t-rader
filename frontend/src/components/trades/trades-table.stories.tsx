@@ -104,7 +104,7 @@ function withChartRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/stocks/$stockId'],
+          paths: ['/stocks/$stockId', '/trades/$tradeId'],
         },
       )}
     />

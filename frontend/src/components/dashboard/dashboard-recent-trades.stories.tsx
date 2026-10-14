@@ -45,7 +45,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/trades', '/stocks/$stockId'],
+          paths: ['/trades', '/trades/$tradeId', '/stocks/$stockId'],
         },
       )}
     />
@@ -56,7 +56,7 @@ const meta = {
   title: 'Dashboard/DashboardRecentTrades',
   component: DashboardRecentTrades,
   decorators: [withRouter],
-  args: { trades, stocks, onReflect: () => {}, isError: false },
+  args: { trades, stocks, isError: false },
 } satisfies Meta<typeof DashboardRecentTrades>
 
 export default meta
