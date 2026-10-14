@@ -3,6 +3,10 @@ import { Link } from '@tanstack/react-router'
 
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { formatYen, pnlColorClass } from '#components/trades/format'
+import {
+  TradeRequestedAnalyses,
+  type TradeRequestedAnalysis,
+} from '#components/trades/trade-requested-analyses'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 
@@ -20,6 +24,8 @@ type TradeDetailViewProps =
       linkedNotes: Note[]
       notesPending: boolean
       notesError: boolean
+      requestedAnalyses: TradeRequestedAnalysis[]
+      requestedAnalysesState: 'loading' | 'error' | 'success'
       noteLinkError: string | null
       onManageNotes: () => void
       onWriteReflection: () => void
@@ -202,6 +208,11 @@ export function TradeDetailView(props: TradeDetailViewProps) {
           振り返りを書く
         </Button>
       </section>
+
+      <TradeRequestedAnalyses
+        analyses={props.requestedAnalyses}
+        state={props.requestedAnalysesState}
+      />
     </div>
   )
 }
