@@ -7,15 +7,15 @@ interface RefChipProps {
   token: string
   pill?: boolean
   showKind?: boolean
-  // 画面遷移先がある stock 参照に限って呼び出す。
-  onOpenStockRef?: (token: string, resolved: ResolvedRef) => void
+  // 画面遷移先がある参照に限って呼び出す。
+  onOpenRef?: (token: string, resolved: ResolvedRef) => void
 }
 
 export function RefChip({
   token,
   pill = false,
   showKind = true,
-  onOpenStockRef,
+  onOpenRef,
 }: RefChipProps) {
   const ref = useResolveRef(token)
   const kindJP = REF_KIND_JP[ref.kind]
@@ -30,7 +30,7 @@ export function RefChip({
   const pillCls = 'border border-border px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
   const interactive =
-    ref.kind === 'stock' && onOpenStockRef != null
+    onOpenRef != null
       ? 'cursor-pointer hover:text-primary hover:border-primary'
       : ''
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
@@ -52,7 +52,7 @@ export function RefChip({
     </>
   )
 
-  if (ref.kind === 'stock' && onOpenStockRef != null) {
+  if (onOpenRef != null) {
     return (
       <button
         type="button"
@@ -60,7 +60,7 @@ export function RefChip({
         title={title}
         onClick={(e) => {
           e.stopPropagation()
-          onOpenStockRef(token, ref)
+          onOpenRef(token, ref)
         }}
         className={`${className} bg-transparent p-0`}
       >
