@@ -155,12 +155,12 @@ function createReviewNavigationSnapshot(
 
 type ReviewNavigation =
   | { kind: 'empty'; total: 0 }
-  | { kind: 'start'; total: number; firstItem: ReviewQueueItem }
+  | { kind: 'start'; total: number; firstItem: ReviewQueueItem | null }
   | {
       kind: 'item'
       total: number
       previousItem: ReviewQueueItem | null
-      nextItem: ReviewQueueItem
+      nextItem: ReviewQueueItem | null
     }
 
 function findRemainingItem(
@@ -198,7 +198,12 @@ function getReviewNavigation(
     return {
       kind: 'start',
       total: remainingItems.length,
-      firstItem: firstRemainingItem,
+      firstItem:
+        reviewQueueItemKey(firstRemainingItem) === currentItemKey
+          ? (remainingItems.find(
+              (item) => reviewQueueItemKey(item) !== currentItemKey,
+            ) ?? null)
+          : firstRemainingItem,
     }
   }
 
@@ -212,6 +217,12 @@ function getReviewNavigation(
     remainingItemsByKey,
     true,
   )
+  const nextItemWithoutCurrent =
+    nextItem != null && reviewQueueItemKey(nextItem) !== currentItemKey
+      ? nextItem
+      : (remainingItems.find(
+          (item) => reviewQueueItemKey(item) !== currentItemKey,
+        ) ?? null)
   return {
     kind: 'item',
     total: remainingItems.length,
@@ -222,7 +233,7 @@ function getReviewNavigation(
       remainingItemsByKey,
       false,
     ),
-    nextItem: nextItem ?? firstRemainingItem,
+    nextItem: nextItemWithoutCurrent,
   }
 }
 

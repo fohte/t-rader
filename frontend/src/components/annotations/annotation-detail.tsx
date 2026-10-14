@@ -24,6 +24,7 @@ type AnnotationDetailProps = {
     snapshot: ReviewNavigationSnapshot
     currentItemKey: string
   } | null
+  reviewNavigationPending: boolean
   reviewNavigationError: boolean
   comments: Comment[] | undefined
   history: ChangeHistory[] | undefined
@@ -58,6 +59,7 @@ export function AnnotationDetail({
   annotation,
   isPending,
   reviewNavigation,
+  reviewNavigationPending,
   reviewNavigationError,
   comments,
   history,
@@ -81,6 +83,9 @@ export function AnnotationDetail({
       <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
       {reviewNavigation != null && (
         <ReviewNavigationBand {...reviewNavigation} />
+      )}
+      {reviewNavigation == null && reviewNavigationPending && (
+        <ReviewNavigationBand isPending />
       )}
       {reviewNavigationError && (
         <p role="alert" className="font-mono text-xs text-status-rejected">

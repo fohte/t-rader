@@ -83,6 +83,13 @@ function getRenderedOutput(container: HTMLElement) {
   }
 }
 
+function getRenderedStatus(container: HTMLElement) {
+  return {
+    text: container.textContent,
+    busy: container.querySelector('[role="status"]')?.getAttribute('aria-busy'),
+  }
+}
+
 describe('ReviewNavigationBand', () => {
   it.each([
     {
@@ -146,15 +153,41 @@ describe('ReviewNavigationBand', () => {
         links: [{ label: 'レビューへ', href: '/review' }],
       },
     },
+    {
+      name: 'hides the next link when the current item is the only unread item',
+      items: items.slice(0, 1),
+      currentItemKey: 'annotation:sample-annotation-01',
+      expected: {
+        text: 'レビュー · 残り 1 件',
+        links: [],
+      },
+    },
   ])('$name', async ({ items: queueItems, currentItemKey, expected }) => {
     const { container } = renderBand({
       items: queueItems,
       snapshot,
       currentItemKey,
     })
-    await screen.findAllByRole('link')
+    if (expected.links.length > 0) {
+      await screen.findAllByRole('link')
+    } else {
+      await screen.findByText(expected.text)
+    }
 
     expect(getRenderedOutput(container)).toEqual(expected)
+  })
+
+  it('shows a busy state while the unread queue is loading', async () => {
+    const router = createStoryRouter(() => <ReviewNavigationBand isPending />, {
+      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+    })
+    const { container } = render(<RouterProvider router={router} />)
+    await screen.findByRole('status')
+
+    expect(getRenderedStatus(container)).toEqual({
+      text: '未読を読み込んでいます',
+      busy: 'true',
+    })
   })
 
   it('keeps the original snapshot and changes the current key when following a note', async () => {

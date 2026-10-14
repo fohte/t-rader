@@ -18,7 +18,7 @@ const unreadAnnotation: Annotation = {
   id: '00000000-0000-0000-0000-000000000011',
   target_kind: 'stock',
   target_symbol: 'sample-code',
-  timestamp: '2026-10-13T01:23:00Z',
+  timestamp: '2026-01-14T01:23:00Z',
   price: 1234,
   text: 'サンプルの注釈本文です。',
   linked_note_id: null,
@@ -26,8 +26,8 @@ const unreadAnnotation: Annotation = {
   created_by_kind: 'llm',
   execution_step_id: null,
   execution_task_id: null,
-  created_at: '2026-10-13T01:24:00Z',
-  updated_at: '2026-10-13T01:24:00Z',
+  created_at: '2026-01-14T01:24:00Z',
+  updated_at: '2026-01-14T01:24:00Z',
 }
 
 const approvedAnnotation: Annotation = {
@@ -61,7 +61,7 @@ const unreadReviewItems: ReviewQueueItem[] = [
     noteId: '00000000-0000-0000-0000-000000000019',
     versionNo: 2,
     title: '確認用のメモ',
-    createdAt: '2026-10-13T01:22:00Z',
+    createdAt: '2026-01-14T01:22:00Z',
     noteKind: null,
     createdByKind: 'llm',
     unreadVersionCount: 1,
@@ -89,7 +89,7 @@ const approvedComment: Comment = {
   anchor_text: null,
   start_line: null,
   end_line: null,
-  created_at: '2026-10-13T01:25:00Z',
+  created_at: '2026-01-14T01:25:00Z',
 }
 
 const rejectedComment: Comment = {
@@ -107,7 +107,7 @@ const historyEntry: ChangeHistory = {
   op: 'approved',
   summary: '確認済み',
   diff_json: {},
-  created_at: '2026-10-13T01:26:00Z',
+  created_at: '2026-01-14T01:26:00Z',
 }
 
 const meta = {
@@ -138,6 +138,7 @@ const meta = {
     annotation: unreadAnnotation,
     isPending: false,
     reviewNavigation: unreadReviewNavigation,
+    reviewNavigationPending: false,
     reviewNavigationError: false,
     comments: [],
     history: [],
@@ -178,12 +179,12 @@ export const UnreadWithoutRelatedItems: Story = {
 }
 
 export const ApprovalPending: Story = {
-  name: 'disables approval while it is being processed.',
+  name: 'disables both decision buttons while approval is being processed.',
   args: { isApprovalPending: true },
 }
 
 export const RejectionPending: Story = {
-  name: 'disables rejection while it is being processed.',
+  name: 'disables both decision buttons while rejection is being processed.',
   args: { isRejectionPending: true },
 }
 
@@ -232,6 +233,11 @@ export const NoUnreadItems: Story = {
 export const ReviewNavigationError: Story = {
   name: 'shows an error when unread navigation cannot be loaded.',
   args: { reviewNavigation: null, reviewNavigationError: true },
+}
+
+export const ReviewNavigationLoading: Story = {
+  name: 'shows the unread navigation loading state after direct opening.',
+  args: { reviewNavigation: null, reviewNavigationPending: true },
 }
 
 export const ApprovalError: Story = {

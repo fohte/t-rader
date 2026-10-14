@@ -1,14 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, useRouterState } from '@tanstack/react-router'
-import { type SyntheticEvent, useEffect, useState } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { type SyntheticEvent, useState } from 'react'
 
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
-import {
-  type ReviewNavigationSnapshot,
-  reviewQueueItemKey,
-  reviewQueueModel,
-} from '#components/review/review-queue-model'
-import { useReviewQueue } from '#components/review/use-review-queue'
+import { reviewQueueItemKey } from '#components/review/review-queue-model'
+import { useReviewNavigation } from '#components/review/use-review-navigation'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { $api } from '#lib/api/client'
 
@@ -23,48 +19,8 @@ function AnnotationDetailPage() {
 
 function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
   const queryClient = useQueryClient()
-  const reviewQueue = useReviewQueue()
-  const reviewQueueHistoryState = useRouterState({
-    select: (routerState) =>
-      reviewQueueModel.readNavigationState(routerState.location.state),
-  })
   const currentItemKey = reviewQueueItemKey({ kind: 'annotation', id: annoId })
-  const hasMatchingHistoryState =
-    reviewQueueHistoryState?.currentItemKey === currentItemKey
-  const [fallbackNavigation, setFallbackNavigation] = useState<{
-    annoId: string
-    snapshot: ReviewNavigationSnapshot
-  } | null>(null)
-  const fallbackSnapshot =
-    fallbackNavigation?.annoId === annoId ? fallbackNavigation.snapshot : null
-
-  useEffect(() => {
-    if (
-      hasMatchingHistoryState ||
-      fallbackSnapshot != null ||
-      reviewQueue.data == null
-    ) {
-      return
-    }
-    setFallbackNavigation({
-      annoId,
-      snapshot: reviewQueueModel.createNavigationSnapshot(
-        reviewQueue.data.items,
-      ),
-    })
-  }, [annoId, fallbackSnapshot, hasMatchingHistoryState, reviewQueue.data])
-
-  const reviewNavigationSnapshot = hasMatchingHistoryState
-    ? reviewQueueHistoryState.snapshot
-    : fallbackSnapshot
-  const reviewNavigation =
-    reviewNavigationSnapshot == null || reviewQueue.data == null
-      ? null
-      : {
-          items: reviewQueue.data.items,
-          snapshot: reviewNavigationSnapshot,
-          currentItemKey,
-        }
+  const reviewNavigationState = useReviewNavigation(currentItemKey)
 
   const { data: annotation, isPending: annoPending } = $api.useQuery(
     'get',
@@ -95,7 +51,7 @@ function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
     void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/history').queryKey,
     })
-    reviewQueue.invalidate()
+    reviewNavigationState.invalidate()
   }
 
   const approveMutation = $api.useMutation(
@@ -166,8 +122,9 @@ function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
     <AnnotationDetail
       annotation={annotation}
       isPending={annoPending}
-      reviewNavigation={reviewNavigation}
-      reviewNavigationError={reviewQueue.isError}
+      reviewNavigation={reviewNavigationState.navigation}
+      reviewNavigationPending={reviewNavigationState.isPending}
+      reviewNavigationError={reviewNavigationState.isError}
       comments={comments}
       history={history}
       stockName={stockRef.name}

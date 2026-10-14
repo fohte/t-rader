@@ -40,6 +40,7 @@ function StatefulAnnotationDetail({
       annotation={annotation}
       isPending={false}
       reviewNavigation={null}
+      reviewNavigationPending={false}
       reviewNavigationError={false}
       comments={[]}
       history={[]}

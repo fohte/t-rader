@@ -8,11 +8,14 @@ import {
   reviewQueueModel,
 } from '#components/review/review-queue-model'
 
-interface ReviewNavigationBandProps {
-  items: ReviewQueueItem[]
-  snapshot: ReviewNavigationSnapshot
-  currentItemKey: string
-}
+type ReviewNavigationBandProps =
+  | { isPending: true }
+  | {
+      isPending?: false
+      items: ReviewQueueItem[]
+      snapshot: ReviewNavigationSnapshot
+      currentItemKey: string
+    }
 
 function ReviewQueueItemLink({
   item,
@@ -50,19 +53,24 @@ function ReviewQueueItemLink({
   )
 }
 
-export function ReviewNavigationBand({
-  items,
-  snapshot,
-  currentItemKey,
-}: ReviewNavigationBandProps) {
+export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
+  const className =
+    'flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-border bg-surface-strong px-4 py-2 font-mono text-xs text-muted-foreground-strong'
+
+  if (props.isPending === true) {
+    return (
+      <div className={className} aria-busy="true" role="status">
+        未読を読み込んでいます
+      </div>
+    )
+  }
+
+  const { items, snapshot, currentItemKey } = props
   const navigation = reviewQueueModel.getNavigation(
     snapshot,
     currentItemKey,
     items,
   )
-  const className =
-    'flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-border bg-surface-strong px-4 py-2 font-mono text-xs text-muted-foreground-strong'
-
   if (navigation.kind === 'empty') {
     return (
       <div className={className}>
@@ -80,30 +88,43 @@ export function ReviewNavigationBand({
   if (navigation.kind === 'start') {
     return (
       <div className={className}>
-        <span>未読 {String(navigation.total)} 件 · </span>
-        <ReviewQueueItemLink item={navigation.firstItem} snapshot={snapshot}>
-          未読の先頭へ →
-        </ReviewQueueItemLink>
+        <span>
+          未読 {String(navigation.total)} 件
+          {navigation.firstItem != null && ' · '}
+        </span>
+        {navigation.firstItem != null && (
+          <ReviewQueueItemLink item={navigation.firstItem} snapshot={snapshot}>
+            未読の先頭へ →
+          </ReviewQueueItemLink>
+        )}
       </div>
     )
   }
 
   return (
     <div className={className}>
-      <span>レビュー · 残り {String(navigation.total)} 件 </span>
-      <nav aria-label="未読の移動" className="ml-auto flex gap-2">
-        {navigation.previousItem != null && (
-          <ReviewQueueItemLink
-            item={navigation.previousItem}
-            snapshot={snapshot}
-          >
-            ← 前の未読
-          </ReviewQueueItemLink>
-        )}
-        <ReviewQueueItemLink item={navigation.nextItem} snapshot={snapshot}>
-          次の未読へ →
-        </ReviewQueueItemLink>
-      </nav>
+      <span>
+        レビュー · 残り {String(navigation.total)} 件
+        {(navigation.previousItem != null || navigation.nextItem != null) &&
+          ' '}
+      </span>
+      {(navigation.previousItem != null || navigation.nextItem != null) && (
+        <nav aria-label="未読の移動" className="ml-auto flex gap-2">
+          {navigation.previousItem != null && (
+            <ReviewQueueItemLink
+              item={navigation.previousItem}
+              snapshot={snapshot}
+            >
+              ← 前の未読
+            </ReviewQueueItemLink>
+          )}
+          {navigation.nextItem != null && (
+            <ReviewQueueItemLink item={navigation.nextItem} snapshot={snapshot}>
+              次の未読へ →
+            </ReviewQueueItemLink>
+          )}
+        </nav>
+      )}
     </div>
   )
 }
