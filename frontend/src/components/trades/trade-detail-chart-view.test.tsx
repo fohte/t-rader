@@ -114,7 +114,6 @@ describe('TradeDetailChartView', () => {
     const actual = JSON.stringify([
       screen.getByRole('img', { name: '日足チャート' }).textContent,
       screen.getByText('対象取引: 2099-02-10 買い 10 株').textContent,
-      screen.getByRole('group', { name: '取引マーカーの凡例' }).textContent,
     ])
 
     expect(actual).toBe(
@@ -129,8 +128,24 @@ describe('TradeDetailChartView', () => {
           selectedTradeId: 'fake-trade-buy',
         }),
         '対象取引: 2099-02-10 買い 10 株',
-        '▲買 ▼売',
       ]),
     )
+  })
+
+  it('shows a legend for buy and sell markers', () => {
+    render(
+      <TradeDetailChartView
+        trade={trade}
+        state={{
+          status: 'ready',
+          bars: TRADE_DETAIL_CHART_BARS,
+          trades: [tradeMarker],
+        }}
+      />,
+    )
+
+    expect(
+      screen.getByRole('group', { name: '取引マーカーの凡例' }).textContent,
+    ).toBe('▲買 ▼売')
   })
 })

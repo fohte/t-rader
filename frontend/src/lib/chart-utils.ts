@@ -11,6 +11,10 @@ type Bar = components['schemas']['Bar']
 type Trade = components['schemas']['TradeListItem']
 export type TradeMarker = Pick<Trade, 'date' | 'id' | 'side'>
 export type ChartCurrency = 'JPY' | 'USD'
+export const TRADE_MARKER_COLORS = {
+  buy: '#26a69a',
+  sell: '#ef5350',
+} as const
 
 /** 市場コードから価格表示に使う通貨を返す */
 export function getChartCurrency(
@@ -81,7 +85,7 @@ export function toTradeMarkers(
           id: trade.id,
           time,
           position: isBuy ? 'belowBar' : 'aboveBar',
-          color: isBuy ? '#26a69a' : '#ef5350',
+          color: isBuy ? TRADE_MARKER_COLORS.buy : TRADE_MARKER_COLORS.sell,
           shape: isBuy ? 'arrowUp' : 'arrowDown',
           ...(isSelected ? { text: '対象', size: 2 } : {}),
         },
