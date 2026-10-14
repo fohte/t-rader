@@ -9,20 +9,40 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use crate::testing::{create_test_server_with_db, insert_test_note, insert_test_strategy};
+    use crate::testing::{
+        create_test_server_with_db, find_current_note_version, insert_test_note,
+        insert_test_strategy,
+    };
     use gateway_postgres::entities::{trade, trade_note};
 
     async fn seed_trade(db: &impl sea_orm::ConnectionTrait, strategy_id: Uuid) -> Uuid {
+        seed_trade_with_details(
+            db,
+            strategy_id,
+            "demo-code",
+            "buy",
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date"),
+        )
+        .await
+    }
+
+    async fn seed_trade_with_details(
+        db: &impl sea_orm::ConnectionTrait,
+        strategy_id: Uuid,
+        symbol: &str,
+        side: &str,
+        date: chrono::NaiveDate,
+    ) -> Uuid {
         let id = Uuid::new_v4();
         trade::ActiveModel {
             id: Set(id),
             strategy_id: Set(strategy_id),
-            symbol: Set("demo-code".into()),
-            side: Set("buy".into()),
+            symbol: Set(symbol.into()),
+            side: Set(side.into()),
             qty: Set(Decimal::from(100)),
             price: Set(Decimal::from(1000)),
             fee: Set(Decimal::ZERO),
-            date: Set(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
+            date: Set(date),
             source: Set("manual".into()),
             note: Set(None),
             created_at: NotSet,
@@ -32,6 +52,23 @@ mod tests {
         .await
         .expect("insert trade");
         id
+    }
+
+    async fn link_trade_to_note(db: &impl sea_orm::ConnectionTrait, trade_id: Uuid, note_id: Uuid) {
+        let note_version_id = find_current_note_version(db, note_id)
+            .await
+            .expect("find current note version")
+            .expect("current note version exists")
+            .id;
+        trade_note::ActiveModel {
+            trade_id: Set(trade_id),
+            note_id: Set(note_id),
+            created_at: NotSet,
+            note_version_id: Set(note_version_id),
+        }
+        .insert(db)
+        .await
+        .expect("insert trade-note link");
     }
 
     async fn seed_note(db: &gateway_postgres::DatabaseHandle) -> Uuid {
@@ -138,6 +175,87 @@ mod tests {
         assert_eq!(
             (list.status_code(), normalized),
             (StatusCode::OK, vec![expected_note(nid)]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_trades_returns_linked_trades_newest_first(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let sid = insert_test_strategy(&db, "s").await;
+        let nid = seed_note(&db).await;
+        let other_note = seed_note(&db).await;
+        let older_trade = seed_trade_with_details(
+            &db,
+            sid,
+            "demo-code-old",
+            "buy",
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date"),
+        )
+        .await;
+        let newer_trade = seed_trade_with_details(
+            &db,
+            sid,
+            "demo-code-new",
+            "sell",
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 1).expect("date"),
+        )
+        .await;
+        let unrelated_trade = seed_trade_with_details(
+            &db,
+            sid,
+            "demo-code-other",
+            "buy",
+            chrono::NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+        )
+        .await;
+        link_trade_to_note(&db, older_trade, nid).await;
+        link_trade_to_note(&db, newer_trade, nid).await;
+        link_trade_to_note(&db, unrelated_trade, other_note).await;
+
+        let response = server.get(&format!("/api/notes/{nid}/trades")).await;
+        assert_response_eq(
+            &response,
+            StatusCode::OK,
+            Some(json!([
+                {
+                    "id": newer_trade,
+                    "date": "2026-02-01",
+                    "symbol": "demo-code-new",
+                    "side": "sell",
+                },
+                {
+                    "id": older_trade,
+                    "date": "2026-01-01",
+                    "symbol": "demo-code-old",
+                    "side": "buy",
+                },
+            ])),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_trades_returns_empty_for_note_without_linked_trades(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let nid = seed_note(&db).await;
+
+        let response = server.get(&format!("/api/notes/{nid}/trades")).await;
+        assert_response_eq(&response, StatusCode::OK, Some(json!([])));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_trades_for_unknown_note_returns_404(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
+        let missing_note_id = Uuid::new_v4();
+
+        let response = server
+            .get(&format!("/api/notes/{missing_note_id}/trades"))
+            .await;
+        assert_response_eq(
+            &response,
+            StatusCode::NOT_FOUND,
+            Some(json!({ "error": format!("note {missing_note_id} not found") })),
         );
     }
 

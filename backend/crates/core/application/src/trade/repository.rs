@@ -62,6 +62,8 @@ pub trait TradeRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         trade_id: Uuid,
     ) -> Result<Vec<TradeNoteLink>, TradeRepositoryError>;
+    async fn list_trades_for_note(&self, note_id: Uuid)
+    -> Result<Vec<Trade>, TradeRepositoryError>;
     async fn insert_note_link(
         &self,
         transaction: &UnitOfWorkTransaction,

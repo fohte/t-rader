@@ -48,6 +48,20 @@ impl TradeNoteUseCases {
         Ok(snapshots)
     }
 
+    pub async fn list_trades_for_note(
+        &self,
+        note_id: Uuid,
+    ) -> Result<Vec<super::types::Trade>, TradeUseCaseError> {
+        self.note_read_use_cases
+            .get_note(note_id, None, false)
+            .await
+            .map_err(map_note_read_error)?;
+        self.trade_repository
+            .list_trades_for_note(note_id)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn create(
         &self,
         trade_id: Uuid,

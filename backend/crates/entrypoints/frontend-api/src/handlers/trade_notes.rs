@@ -6,7 +6,37 @@ use uuid::Uuid;
 use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::models::{CreateTradeNoteRequest, NoteResponse, TradeNoteResponse};
+use crate::models::{
+    CreateTradeNoteRequest, NoteLinkedTradeResponse, NoteResponse, TradeNoteResponse,
+};
+
+/// ノートに紐付いた取引一覧
+#[utoipa::path(
+    get,
+    path = "/api/notes/{id}/trades",
+    tag = "notes",
+    params(("id" = Uuid, Path, description = "ノート ID")),
+    responses(
+        (status = 200, body = Vec<NoteLinkedTradeResponse>),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_note_trades(
+    State(state): State<FrontendApiState>,
+    JsonPath(note_id): JsonPath<Uuid>,
+) -> Result<Json<Vec<NoteLinkedTradeResponse>>, AppError> {
+    let trades = state
+        .trade_note_use_cases
+        .list_trades_for_note(note_id)
+        .await
+        .map_err(super::trades::map_trade_error)?
+        .into_iter()
+        .map(NoteLinkedTradeResponse::from)
+        .collect();
+    Ok(Json(trades))
+}
 
 /// 取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す)
 #[utoipa::path(

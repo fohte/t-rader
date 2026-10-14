@@ -232,6 +232,15 @@ describe('TradeDetailPage', () => {
       ) {
         return Response.json(noteLinked ? [note] : [])
       }
+      if (
+        /^\/api\/strategies\/[^/]+\/tasks$/.test(path) &&
+        request.method === 'GET'
+      ) {
+        return Response.json([])
+      }
+      if (/^\/api\/strategies\/[^/]+\/tasks\/[^/]+\/notes$/.test(path)) {
+        return Response.json([])
+      }
       if (path === '/api/strategies') {
         return Response.json([
           {
