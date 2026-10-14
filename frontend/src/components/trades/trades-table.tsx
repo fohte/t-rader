@@ -1,4 +1,5 @@
 import { Button } from '@fohte/ui/button'
+import { Link } from '@tanstack/react-router'
 import { Link2, Pencil, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 
@@ -79,7 +80,13 @@ export function TradesTable({
                 className="border-b border-border last:border-b-0 hover:bg-surface-strong"
               >
                 <td className="px-3 py-2 tabular-nums text-muted-foreground-strong">
-                  {t.date}
+                  <Link
+                    to="/trades/$tradeId"
+                    params={{ tradeId: t.id }}
+                    className="hover:text-primary hover:underline"
+                  >
+                    {t.date}
+                  </Link>
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-baseline gap-2">

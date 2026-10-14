@@ -28,7 +28,6 @@ function renderHeader(
       '/strategies',
       '/strategies/$id/performance',
       '/strategies/$id/runs',
-      '/strategies/$id/indicators',
       '/strategies/$id/settings',
       '/review',
       '/notes',
@@ -129,11 +128,6 @@ function getExpectedStrategyNavigation(pathname: string, activeTab: string) {
         label: '実行履歴',
         href: `/strategies/${STRATEGY_ID}/runs`,
         active: activeTab === '実行履歴',
-      },
-      {
-        label: 'indicators',
-        href: `/strategies/${STRATEGY_ID}/indicators`,
-        active: activeTab === 'indicators',
       },
       {
         label: '設定',
@@ -327,11 +321,6 @@ describe('Header', () => {
       label: '実行履歴',
       path: `/strategies/${STRATEGY_ID}/runs`,
       activeTab: '実行履歴',
-    },
-    {
-      label: 'indicators',
-      path: `/strategies/${STRATEGY_ID}/indicators`,
-      activeTab: 'indicators',
     },
   ])(
     '戦略の $label 画面へ移動して該当タブを active にする',

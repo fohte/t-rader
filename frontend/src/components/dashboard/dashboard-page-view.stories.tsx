@@ -113,7 +113,6 @@ const args: DashboardPageViewProps = {
     },
   ],
   isTradesError: false,
-  onReflectTrade: () => {},
   events: [
     {
       kind: 'event',
@@ -202,6 +201,7 @@ const paths = [
   '/portfolio',
   '/charts/$instrumentId',
   '/trades',
+  '/trades/$tradeId',
   '/calendar',
   '/review',
   '/notes',

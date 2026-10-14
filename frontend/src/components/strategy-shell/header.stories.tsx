@@ -11,7 +11,6 @@ function createHeaderRouter(initialPath: string, menuOpen = false) {
       '/strategies',
       '/strategies/$id/performance',
       '/strategies/$id/runs',
-      '/strategies/$id/indicators',
       '/strategies/$id/settings',
       '/',
       '/portfolio',
@@ -22,7 +21,6 @@ function createHeaderRouter(initialPath: string, menuOpen = false) {
       '/annotations',
       '/annotations/$annoId',
       '/runs',
-      '/indicators',
       '/review',
       '/calendar',
       '/settings',
@@ -67,15 +65,6 @@ export const StrategyRuns: Story = {
   render: () => (
     <RouterProvider
       router={createHeaderRouter('/strategies/demo-strategy/runs')}
-    />
-  ),
-}
-
-export const StrategyIndicators: Story = {
-  name: 'shows the strategy indicators tab as active.',
-  render: () => (
-    <RouterProvider
-      router={createHeaderRouter('/strategies/demo-strategy/indicators')}
     />
   ),
 }

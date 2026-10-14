@@ -67,7 +67,7 @@ const trades: Trade[] = [
 afterEach(cleanup)
 
 describe('TradesTable', () => {
-  it('銘柄名だけを日足チャートへのリンクとして表示する', async () => {
+  it('取引日を詳細へ、銘柄名を日足チャートへリンクする', async () => {
     const router = createStoryRouter(
       () => (
         <TradesTable
@@ -79,7 +79,7 @@ describe('TradesTable', () => {
           onDelete={() => undefined}
         />
       ),
-      { paths: ['/charts/$instrumentId'] },
+      { paths: ['/charts/$instrumentId', '/trades/$tradeId'] },
     )
     render(<RouterProvider router={router} />)
     await screen.findByRole('table')
@@ -93,8 +93,14 @@ describe('TradesTable', () => {
     )
 
     expect(rowLinks).toEqual([
-      [{ name: '架空商事', href: '/charts/demo-code' }],
-      [{ name: 'demo-code-2', href: '/charts/demo-code-2' }],
+      [
+        { name: '2099-01-02', href: '/trades/demo-trade-1' },
+        { name: '架空商事', href: '/charts/demo-code' },
+      ],
+      [
+        { name: '2099-01-01', href: '/trades/demo-trade-2' },
+        { name: 'demo-code-2', href: '/charts/demo-code-2' },
+      ],
     ])
   })
 })
