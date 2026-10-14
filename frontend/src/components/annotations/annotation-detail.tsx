@@ -76,11 +76,13 @@ export function AnnotationDetail({
   return (
     <div className="space-y-5 font-sans text-foreground">
       <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
-      {navigation != null && <ReviewNavigationBand {...navigation} />}
-      {navigation == null && isNavigationPending && (
+      {navigation != null ? (
+        <ReviewNavigationBand {...navigation} />
+      ) : isNavigationError ? (
+        <ReviewNavigationBand isError />
+      ) : isNavigationPending ? (
         <ReviewNavigationBand isPending />
-      )}
-      {isNavigationError && <ReviewNavigationBand isError />}
+      ) : null}
       {isPending || annotation == null ? (
         isPending ? (
           <div className="space-y-4">
