@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import { sourceLabel } from '#components/strategy-shell/task-run-view'
+import { taskPhaseLabel } from '#components/task-phase-label'
 import { Skeleton } from '#components/ui/skeleton'
 import { formatRelative } from '#lib/note-utils'
 
@@ -19,13 +20,6 @@ export interface TaskRunListViewProps {
   tasks: TaskRunListItem[] | null
 }
 
-const PHASE_LABEL: Record<string, string> = {
-  pending: 'PENDING',
-  running: 'RUNNING',
-  completed: 'COMPLETED',
-  failed: 'FAILED',
-}
-
 function PhaseBadge({ phase }: { phase: string }) {
   return (
     <span
@@ -35,7 +29,7 @@ function PhaseBadge({ phase }: { phase: string }) {
           : 'font-mono text-2xs uppercase tracking-wider text-muted-foreground'
       }
     >
-      {PHASE_LABEL[phase] ?? phase}
+      {taskPhaseLabel(phase)}
     </span>
   )
 }

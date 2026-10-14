@@ -21,6 +21,20 @@ function renderAnalyses(
   return render(<RouterProvider router={router} />)
 }
 
+function readAnalysisNotesOutput(row: Element) {
+  return {
+    noteLinks: Array.from(row.querySelectorAll('a[href^="/notes/"]')).map(
+      (link) => ({
+        label: link.textContent,
+        href: link.getAttribute('href'),
+      }),
+    ),
+    status: row.querySelector('[role="status"]')?.textContent ?? null,
+    alert: row.querySelector('[role="alert"]')?.textContent ?? null,
+    hasNoNotesMessage: row.textContent.includes('ノートはありません'),
+  }
+}
+
 function readAnalysesOutput(section: HTMLElement) {
   return {
     heading: section.querySelector('h2')?.textContent,
@@ -30,13 +44,7 @@ function readAnalysesOutput(section: HTMLElement) {
         prompt: row.querySelector('p')?.textContent,
         phase: row.querySelector('time')?.previousElementSibling?.textContent,
         date: row.querySelector('time')?.textContent,
-        noteLinks: Array.from(row.querySelectorAll('a[href^="/notes/"]')).map(
-          (link) => ({
-            label: link.textContent,
-            href: link.getAttribute('href'),
-          }),
-        ),
-        hasNoNotesMessage: row.textContent.includes('ノートはありません'),
+        notes: readAnalysisNotesOutput(row),
         runDetail:
           runDetail == null
             ? null
@@ -66,7 +74,7 @@ describe('TradeRequestedAnalyses', () => {
         taskId: 'fake-task-new',
         prompt: '新しい分析の依頼',
         phase: 'running',
-        createdAt: '2099-02-03T00:00:00Z',
+        createdAt: '2099-02-02T23:00:00Z',
         notes: [
           {
             id: 'fake-note',
@@ -98,13 +106,17 @@ describe('TradeRequestedAnalyses', () => {
           prompt: '新しい分析の依頼',
           phase: 'RUNNING',
           date: '2099-02-03',
-          noteLinks: [
-            {
-              label: '架空銘柄の分析ノート',
-              href: '/notes/fake-note?version_id=fake-note-version',
-            },
-          ],
-          hasNoNotesMessage: false,
+          notes: {
+            noteLinks: [
+              {
+                label: '架空銘柄の分析ノート',
+                href: '/notes/fake-note?version_id=fake-note-version',
+              },
+            ],
+            status: null,
+            alert: null,
+            hasNoNotesMessage: false,
+          },
           runDetail: {
             label: '実行詳細 →',
             href: '/strategies/fake-strategy-new/runs/fake-task-new',
@@ -114,8 +126,12 @@ describe('TradeRequestedAnalyses', () => {
           prompt: '古い分析の依頼',
           phase: 'COMPLETED',
           date: '2099-02-01',
-          noteLinks: [],
-          hasNoNotesMessage: true,
+          notes: {
+            noteLinks: [],
+            status: null,
+            alert: null,
+            hasNoNotesMessage: true,
+          },
           runDetail: {
             label: '実行詳細 →',
             href: '/strategies/fake-strategy-old/runs/fake-task-old',
@@ -164,6 +180,58 @@ describe('TradeRequestedAnalyses', () => {
       text: '>この取引について頼んだ分析頼んだ分析を読み込めませんでした。',
       status: null,
       alert: '頼んだ分析を読み込めませんでした。',
+    })
+  })
+
+  it.each([
+    {
+      notesState: 'loading' as const,
+      status: 'ノートを読み込み中です。',
+      alert: null,
+    },
+    {
+      notesState: 'error' as const,
+      status: null,
+      alert: 'ノートを読み込めませんでした。',
+    },
+  ])('shows the task note $notesState state', async (noteState) => {
+    renderAnalyses(
+      [
+        {
+          strategyId: 'fake-strategy',
+          taskId: 'fake-task',
+          prompt: '架空銘柄の分析を依頼する',
+          phase: 'completed',
+          createdAt: '2099-02-03T00:00:00Z',
+          notes: [],
+          notesState: noteState.notesState,
+        },
+      ],
+      'success',
+    )
+    const section = await screen.findByRole('region', {
+      name: 'この取引について頼んだ分析',
+    })
+
+    expect(readAnalysesOutput(section)).toEqual({
+      heading: '>この取引について頼んだ分析',
+      rows: [
+        {
+          prompt: '架空銘柄の分析を依頼する',
+          phase: 'COMPLETED',
+          date: '2099-02-03',
+          notes: {
+            noteLinks: [],
+            status: noteState.status,
+            alert: noteState.alert,
+            hasNoNotesMessage: false,
+          },
+          runDetail: {
+            label: '実行詳細 →',
+            href: '/strategies/fake-strategy/runs/fake-task',
+          },
+        },
+      ],
     })
   })
 })

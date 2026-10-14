@@ -1,5 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
+import { taskPhaseLabel } from '#components/task-phase-label'
+
 type TradeRequestedAnalysisNote = {
   id: string
   title: string
@@ -21,12 +23,12 @@ interface TradeRequestedAnalysesProps {
   state: 'loading' | 'error' | 'success'
 }
 
-const PHASE_LABEL: Record<string, string> = {
-  pending: 'PENDING',
-  running: 'RUNNING',
-  completed: 'COMPLETED',
-  failed: 'FAILED',
-}
+const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
 
 export function TradeRequestedAnalyses({
   analyses,
@@ -88,10 +90,10 @@ export function TradeRequestedAnalyses({
                           : ''
                     }
                   >
-                    {PHASE_LABEL[analysis.phase] ?? analysis.phase}
+                    {taskPhaseLabel(analysis.phase)}
                   </span>
                   <time dateTime={analysis.createdAt}>
-                    {analysis.createdAt.slice(0, 10)}
+                    {dateFormatter.format(new Date(analysis.createdAt))}
                   </time>
                 </div>
               </div>
