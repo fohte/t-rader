@@ -113,7 +113,7 @@ async function renderTradeDetailPageChart(barsResponse?: () => Response) {
         {
           id: trade.symbol,
           name: '架空銘柄',
-          market: '架空市場',
+          market: 'TSE',
           sector_id: null,
           created_at: '2099-01-01T00:00:00Z',
           updated_at: '2099-01-01T00:00:00Z',

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import type { components } from '#lib/api/schema.gen'
 import {
   getChartCurrency,
-  getChartCurrencyForStockId,
   toTradeMarkers,
   type TradeMarker,
 } from '#lib/chart-utils'
@@ -40,16 +39,6 @@ describe('getChartCurrency', () => {
     ).map((currency) => currency ?? null)
 
     expect(JSON.stringify(currencies)).toBe('["JPY","USD",null,null]')
-  })
-})
-
-describe('getChartCurrencyForStockId', () => {
-  it.each([
-    ['unprefixed domestic stock id', 'FIC-01', '架空市場', 'JPY'],
-    ['US stock id', 'US:DEMO-A', undefined, 'USD'],
-    ['unsupported foreign market', 'KR:DEMO-A', '架空市場', undefined],
-  ])('uses the supported currency for %s', (_, stockId, market, expected) => {
-    expect(getChartCurrencyForStockId(stockId, market)).toBe(expected)
   })
 })
 
