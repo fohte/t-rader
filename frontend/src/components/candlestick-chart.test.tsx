@@ -147,8 +147,7 @@ describe('CandlestickChart', () => {
           {
             id: '00000000-0000-0000-0000-000000000101',
             time: 1744243200,
-            position: 'atPriceMiddle',
-            price: 100,
+            position: 'belowBar',
             color: '#26a69a',
             shape: 'arrowUp',
           },

@@ -78,16 +78,14 @@ describe('toTradeMarkers', () => {
       {
         id: '00000000-0000-0000-0000-000000000101',
         time: 1744243500,
-        position: 'atPriceMiddle',
-        price: 101,
+        position: 'belowBar',
         color: '#26a69a',
         shape: 'arrowUp',
       },
       {
         id: '00000000-0000-0000-0000-000000000102',
         time: 1744329900,
-        position: 'atPriceMiddle',
-        price: 105,
+        position: 'aboveBar',
         color: '#ef5350',
         shape: 'arrowDown',
       },

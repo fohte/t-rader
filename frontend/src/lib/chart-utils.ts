@@ -77,8 +77,7 @@ export function toTradeMarkers(
         {
           id: trade.id,
           time,
-          position: 'atPriceMiddle',
-          price: trade.price,
+          position: isBuy ? 'belowBar' : 'aboveBar',
           color: isBuy ? '#26a69a' : '#ef5350',
           shape: isBuy ? 'arrowUp' : 'arrowDown',
         },

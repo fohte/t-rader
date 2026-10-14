@@ -241,7 +241,7 @@ export const Intraday: Story = {
 }
 
 export const WithTradeMarkers: Story = {
-  name: 'shows buy and sell markers at their execution prices.',
+  name: 'shows buy and sell markers on their trade dates.',
   args: {
     bars: tradeMarkerBars,
     trades: tradeMarkers,
