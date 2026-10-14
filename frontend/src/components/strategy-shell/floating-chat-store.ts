@@ -1,10 +1,15 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
-export type ChatContextKind = 'note' | 'stock' | 'trade'
+import type { components } from '#lib/api/schema.gen'
+
+export type ChatContextKind = components['schemas']['StrategyTaskContextKind']
 
 export interface ChatContext {
   kind: ChatContextKind
   id: string
+}
+
+export interface ChatContextRegistration extends ChatContext {
   strategyId?: string
 }
 
@@ -46,7 +51,7 @@ export function useFloatingChat(): ChatState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
-export function useChatContext(context: ChatContext | null): void {
+export function useChatContext(context: ChatContextRegistration | null): void {
   const kind = context?.kind
   const id = context?.id
   const strategyId = context?.strategyId
@@ -57,11 +62,11 @@ export function useChatContext(context: ChatContext | null): void {
   }, [id, kind, strategyId])
 }
 
-function registerChatContext(context: ChatContext): () => void {
+function registerChatContext(context: ChatContextRegistration): () => void {
   const registrationId = ++nextContextRegistrationId
   state = {
     ...state,
-    context,
+    context: { kind: context.kind, id: context.id },
     contextStrategyId: context.strategyId ?? null,
     contextRegistrationId: registrationId,
   }
