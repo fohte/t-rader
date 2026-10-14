@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { PurposeSelect } from '#components/purpose-select'
+import type { ChatContext } from '#components/strategy-shell/floating-chat-store'
 import { formatRelative } from '#lib/note-utils'
 
 export interface FloatingChatNote {
@@ -34,11 +35,13 @@ export interface FloatingChatViewProps {
   selectedPurpose: string
   /** 直近に投入したタスクの ID。詳細画面への導線を出すために使う (未投入なら null) */
   currentTaskId: string | null
+  context: ChatContext | null
   onOpen: () => void
   onClose: () => void
   onInputChange: (value: string) => void
   onStrategyChange: (value: string | null) => void
   onPurposeChange: (value: string) => void
+  onRemoveContext: () => void
   onSubmit: () => void
 }
 
@@ -56,11 +59,13 @@ export function FloatingChatView({
   purposes,
   selectedPurpose,
   currentTaskId,
+  context,
   onOpen,
   onClose,
   onInputChange,
   onStrategyChange,
   onPurposeChange,
+  onRemoveContext,
   onSubmit,
 }: FloatingChatViewProps): React.ReactElement {
   if (!open) {
@@ -82,6 +87,7 @@ export function FloatingChatView({
   const inputDisabled = submitting || polling
   const submitDisabled =
     strategyId == null || inputDisabled || input.trim() === ''
+  const contextDisplayValue = context?.label?.trim()
 
   return (
     <div
@@ -165,6 +171,24 @@ export function FloatingChatView({
         }}
         className="space-y-2 border-t border-border px-3.5 py-3"
       >
+        {context != null && (
+          <div className="flex min-w-0 items-center gap-2 border border-border bg-background px-2.5 py-1.5 font-mono text-2xs">
+            <span className="min-w-0 flex-1 truncate text-muted-foreground-strong">
+              {formatContextLabel(context.kind)}:{' '}
+              {contextDisplayValue == null || contextDisplayValue === ''
+                ? context.id
+                : contextDisplayValue}
+            </span>
+            <button
+              type="button"
+              aria-label="文脈を外す"
+              onClick={onRemoveContext}
+              className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
         <PurposeSelect
           purposes={purposes}
           selectedPurpose={selectedPurpose}
@@ -195,6 +219,17 @@ export function FloatingChatView({
       </form>
     </div>
   )
+}
+
+function formatContextLabel(kind: ChatContext['kind']): string {
+  switch (kind) {
+    case 'note':
+      return 'ノート'
+    case 'stock':
+      return '銘柄'
+    case 'trade':
+      return '取引'
+  }
 }
 
 function FloatingChatStatusBlock({

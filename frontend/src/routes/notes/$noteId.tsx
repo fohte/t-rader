@@ -13,7 +13,10 @@ import { NoteVersionFallback } from '#components/note-detail/note-version-fallba
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import { NoteVersionReviewPanel } from '#components/note-detail/note-version-review-panel'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
-import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
+import {
+  openFloatingChat,
+  useChatContext,
+} from '#components/strategy-shell/floating-chat-store'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/notes/$noteId')({
@@ -73,6 +76,7 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
+  useChatContext({ kind: 'note', id: noteId, label: selectedVersion?.title })
   const {
     data: noteLinks,
     isPending: linksPending,

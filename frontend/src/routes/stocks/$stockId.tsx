@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 
 import { StockPageState } from '#components/stock-page/stock-page-state'
 import { StockPageView } from '#components/stock-page/stock-page-view'
+import { useChatContext } from '#components/strategy-shell/floating-chat-store'
 import { type Timeframe } from '#components/timeframe-selector'
 import { $api, fetchClient } from '#lib/api/client'
 import { getBarsRange } from '#lib/chart-range'
@@ -63,6 +64,14 @@ function StockPage() {
         error: response.error,
       })
     },
+  })
+  useChatContext({
+    kind: 'stock',
+    id: stockId,
+    label:
+      stockQuery.data?.kind === 'found'
+        ? stockQuery.data.stock.name
+        : undefined,
   })
   const chartBarsQuery = $api.useQuery('get', '/api/bars', {
     params: {

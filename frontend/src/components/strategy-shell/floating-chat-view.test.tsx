@@ -15,6 +15,7 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { ChatContext } from '#components/strategy-shell/floating-chat-store'
 import {
   type FloatingChatStatus,
   FloatingChatView,
@@ -72,11 +73,13 @@ function makeProps(
     purposes: [],
     selectedPurpose: '',
     currentTaskId: null,
+    context: null,
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
     onStrategyChange: NOOP,
     onPurposeChange: NOOP,
+    onRemoveContext: NOOP,
     onSubmit: NOOP,
   }
   return { ...base, ...overrides }
@@ -101,6 +104,13 @@ function readComposerOutput() {
       .getByRole('button', { name: '送信' })
       .hasAttribute('disabled'),
     strategyValue: screen.getByLabelText<HTMLSelectElement>('戦略').value,
+  }
+}
+
+function readContextChipOutput(label: string, removeCalls: number) {
+  return {
+    chipLabel: screen.getByText(label).textContent,
+    removeCalls,
   }
 }
 
@@ -161,6 +171,43 @@ describe('FloatingChatView', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '送信' }))
     expect(onSubmit).toHaveBeenCalledOnce()
+  })
+
+  it('文脈チップに種類と表示名を出し、外す操作を通知する', async () => {
+    const onRemoveContext = vi.fn()
+    const context: ChatContext = {
+      kind: 'stock',
+      id: 'FIC-01',
+      label: '架空銘柄',
+    }
+    await renderInRouter(
+      <FloatingChatView {...makeProps({ context, onRemoveContext })} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '文脈を外す' }))
+
+    expect(
+      readContextChipOutput(
+        '銘柄: 架空銘柄',
+        onRemoveContext.mock.calls.length,
+      ),
+    ).toEqual({
+      chipLabel: '銘柄: 架空銘柄',
+      removeCalls: 1,
+    })
+  })
+
+  it('表示名が無いときは文脈 ID を表示する', async () => {
+    const context: ChatContext = { kind: 'stock', id: 'FIC-01' }
+    await renderInRouter(<FloatingChatView {...makeProps({ context })} />)
+
+    expect(screen.getByText('銘柄: FIC-01').textContent).toBe('銘柄: FIC-01')
+  })
+
+  it('文脈が無いときは削除ボタンを表示しない', async () => {
+    await renderInRouter(<FloatingChatView {...makeProps({ context: null })} />)
+
+    expect(screen.queryByRole('button', { name: '文脈を外す' })).toBeNull()
   })
 
   it('入力するたびに onInputChange に値が伝わる', async () => {

@@ -34,6 +34,7 @@ type TradeDetailViewProps =
       noteLinkError: string | null
       onManageNotes: () => void
       onWriteReflection: () => void
+      onAskAgent: () => void
     }
 
 export function TradeDetailView(props: TradeDetailViewProps) {
@@ -217,6 +218,9 @@ export function TradeDetailView(props: TradeDetailViewProps) {
         </div>
         <Button type="button" onClick={props.onWriteReflection}>
           振り返りを書く
+        </Button>
+        <Button type="button" variant="outline" onClick={props.onAskAgent}>
+          エージェントに振り返りを頼む
         </Button>
       </section>
 

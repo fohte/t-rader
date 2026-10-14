@@ -14,10 +14,16 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
 import { FloatingChat } from '#components/strategy-shell/floating-chat'
-import { closeFloatingChat } from '#components/strategy-shell/floating-chat-store'
+import {
+  closeFloatingChat,
+  openFloatingChat,
+  useChatContext,
+} from '#components/strategy-shell/floating-chat-store'
 
 interface ApiMockRequest {
   method: string
@@ -69,6 +75,80 @@ function readTaskRequests(requests: CapturedRequest[]) {
     .map(({ method, path, body }) => ({ method, path, body }))
 }
 
+function readChatRequests(requests: CapturedRequest[]) {
+  return requests
+    .filter(({ method, path }) => method === 'post' && path.includes('/chat'))
+    .map(({ method, path, body }) => ({ method, path, body }))
+}
+
+function StockContextRoute() {
+  useChatContext({ kind: 'stock', id: 'DEMO-A', label: '架空銘柄' })
+  return null
+}
+
+function NoteContextRoute() {
+  useChatContext({ kind: 'note', id: 'demo-note', label: '架空ノート' })
+  return (
+    <NoteVersionChatAction
+      title="架空ノート"
+      onAsk={(title) => {
+        openFloatingChat('「' + title + '」について補足して')
+      }}
+    />
+  )
+}
+
+function TradeContextRoute() {
+  const [label, setLabel] = useState('2099-02-10 売り 架空銘柄')
+  useChatContext({
+    kind: 'trade',
+    id: 'demo-trade',
+    label,
+    strategyId: 'demo-strategy-b',
+  })
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setLabel('2099-02-10 売り 架空銘柄 更新')
+      }}
+    >
+      対象名を更新
+    </button>
+  )
+}
+
+function mockChatApi(requests: CapturedRequest[]) {
+  apiMock.request.mockImplementation(({ method, path, options }) => {
+    const requestPath = readRequestPath(path, options)
+    const body = method === 'post' ? readRequestBody(options) : null
+    requests.push({ method, path: requestPath, body })
+
+    if (path === '/api/strategies' && method === 'get') {
+      return Promise.resolve([
+        { id: 'demo-strategy-a', name: '例示戦略 A' },
+        { id: 'demo-strategy-b', name: '例示戦略 B' },
+      ])
+    }
+    if (path === '/api/agent-configs' && method === 'get') {
+      return Promise.resolve([])
+    }
+    if (path === '/api/strategies/{id}/chat' && method === 'post') {
+      return Promise.resolve({
+        task_id: 'demo-task-a',
+        a2a_task_id: 'demo-a2a-task',
+      })
+    }
+    if (path === '/api/strategies/{id}/tasks/{task_id}' && method === 'get') {
+      return Promise.resolve({
+        phase: 'completed',
+        result_text: '確認が完了しました。',
+      })
+    }
+    return Promise.resolve([])
+  })
+}
+
 function readRequestPath(path: string, options: unknown): string {
   return path
     .replace('{id}', readPathParam(options, 'id'))
@@ -105,7 +185,7 @@ function readRequestBody(options: unknown): string | null {
   return JSON.stringify(options.body)
 }
 
-function renderFloatingChat() {
+function renderFloatingChat(initialPath = '/strategies/demo-strategy-a') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -133,15 +213,27 @@ function renderFloatingChat() {
   const noteRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/notes/$noteId',
-    component: () => null,
+    component: NoteContextRoute,
+  })
+  const stockRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/stocks/$stockId',
+    component: StockContextRoute,
+  })
+  const tradeRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/trades/$tradeId',
+    component: TradeContextRoute,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       strategyRoute.addChildren([runRoute]),
       noteRoute,
+      stockRoute,
+      tradeRoute,
     ]),
     history: createMemoryHistory({
-      initialEntries: ['/strategies/demo-strategy-a'],
+      initialEntries: [initialPath],
     }),
   })
   function Wrapper({ children }: { children: React.ReactNode }) {
@@ -156,6 +248,7 @@ function renderFloatingChat() {
 afterEach(() => {
   cleanup()
   closeFloatingChat()
+  window.localStorage.clear()
   apiMock.request.mockReset()
 })
 
@@ -237,6 +330,145 @@ describe('FloatingChat', () => {
           method: 'get',
           path: '/api/strategies/demo-strategy-a/tasks/demo-task-a/notes',
           body: null,
+        },
+      ])
+    })
+  })
+
+  it('uses the trade strategy by default and sends the registered context', async () => {
+    const requests: CapturedRequest[] = []
+    mockChatApi(requests)
+    renderFloatingChat('/trades/demo-trade')
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
+    )
+    await screen.findByText('取引: 2099-02-10 売り 架空銘柄')
+    fireEvent.change(screen.getByLabelText('メッセージ入力'), {
+      target: { value: 'この取引を確認する' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '送信' }))
+
+    await waitFor(() => {
+      expect(readChatRequests(requests)).toEqual([
+        {
+          method: 'post',
+          path: '/api/strategies/demo-strategy-b/chat',
+          body: '{"prompt":"この取引を確認する","context":{"kind":"trade","id":"demo-trade"}}',
+        },
+      ])
+    })
+  })
+
+  it('opens the note prompt with its registered context', async () => {
+    const requests: CapturedRequest[] = []
+    mockChatApi(requests)
+    renderFloatingChat('/notes/demo-note')
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '「架空ノート」についてアナリストに聞く',
+      }),
+    )
+    await screen.findByText('ノート: 架空ノート')
+    fireEvent.change(screen.getByLabelText('戦略'), {
+      target: { value: 'demo-strategy-a' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '送信' }))
+
+    await waitFor(() => {
+      expect(readChatRequests(requests)).toEqual([
+        {
+          method: 'post',
+          path: '/api/strategies/demo-strategy-a/chat',
+          body: '{"prompt":"「架空ノート」について補足して","context":{"kind":"note","id":"demo-note"}}',
+        },
+      ])
+    })
+  })
+
+  it('sends the active stock as context', async () => {
+    const requests: CapturedRequest[] = []
+    mockChatApi(requests)
+    renderFloatingChat('/stocks/DEMO-A')
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
+    )
+    await screen.findByText('銘柄: 架空銘柄')
+    fireEvent.change(screen.getByLabelText('戦略'), {
+      target: { value: 'demo-strategy-a' },
+    })
+    fireEvent.change(screen.getByLabelText('メッセージ入力'), {
+      target: { value: 'この銘柄を確認する' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '送信' }))
+
+    await waitFor(() => {
+      expect(readChatRequests(requests)).toEqual([
+        {
+          method: 'post',
+          path: '/api/strategies/demo-strategy-a/chat',
+          body: '{"prompt":"この銘柄を確認する","context":{"kind":"stock","id":"DEMO-A"}}',
+        },
+      ])
+    })
+  })
+
+  it('omits a context after the user removes its chip', async () => {
+    const requests: CapturedRequest[] = []
+    mockChatApi(requests)
+    renderFloatingChat('/trades/demo-trade')
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
+    )
+    await screen.findByText('取引: 2099-02-10 売り 架空銘柄')
+    fireEvent.click(screen.getByRole('button', { name: '文脈を外す' }))
+    fireEvent.click(screen.getByRole('button', { name: '対象名を更新' }))
+    fireEvent.change(screen.getByLabelText('メッセージ入力'), {
+      target: { value: 'この取引を確認する' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '送信' }))
+
+    await waitFor(() => {
+      expect(readChatRequests(requests)).toEqual([
+        {
+          method: 'post',
+          path: '/api/strategies/demo-strategy-b/chat',
+          body: '{"prompt":"この取引を確認する"}',
+        },
+      ])
+    })
+  })
+
+  it('clears the registered context when leaving its screen', async () => {
+    const requests: CapturedRequest[] = []
+    mockChatApi(requests)
+    const router = renderFloatingChat('/stocks/DEMO-A')
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
+    )
+    await screen.findByText('銘柄: 架空銘柄')
+    await router.navigate({ to: '/' })
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '文脈を外す' })).toBeNull()
+    })
+    fireEvent.change(screen.getByLabelText('戦略'), {
+      target: { value: 'demo-strategy-a' },
+    })
+    fireEvent.change(screen.getByLabelText('メッセージ入力'), {
+      target: { value: '対象なしで確認する' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '送信' }))
+
+    await waitFor(() => {
+      expect(readChatRequests(requests)).toEqual([
+        {
+          method: 'post',
+          path: '/api/strategies/demo-strategy-a/chat',
+          body: '{"prompt":"対象なしで確認する"}',
         },
       ])
     })

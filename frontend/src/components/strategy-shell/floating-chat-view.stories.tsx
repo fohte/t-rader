@@ -47,11 +47,13 @@ function makeProps(
     purposes: ['example-purpose', 'another-example-purpose'],
     selectedPurpose: '',
     currentTaskId: null,
+    context: null,
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
     onStrategyChange: NOOP,
     onPurposeChange: NOOP,
+    onRemoveContext: NOOP,
     onSubmit: NOOP,
     ...overrides,
   }
@@ -81,6 +83,34 @@ export const Idle: Story = {
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(makeProps({ kind: 'idle' }))}
+    />
+  ),
+}
+
+export const WithContext: Story = {
+  name: 'shows the active stock context above the composer.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(
+        makeProps(
+          { kind: 'idle' },
+          { context: { kind: 'stock', id: 'FIC-01', label: '架空銘柄' } },
+        ),
+      )}
+    />
+  ),
+}
+
+export const ContextWithoutLabel: Story = {
+  name: 'falls back to the context ID when its label is missing.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(
+        makeProps(
+          { kind: 'idle' },
+          { context: { kind: 'stock', id: 'FIC-01' } },
+        ),
+      )}
     />
   ),
 }

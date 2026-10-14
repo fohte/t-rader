@@ -6,6 +6,7 @@ import {
   closeFloatingChat,
   consumeFloatingChatSeed,
   openFloatingChat,
+  removeChatContext,
   useFloatingChat,
 } from '#components/strategy-shell/floating-chat-store'
 import {
@@ -34,7 +35,12 @@ interface StrategySelectionOverride {
 }
 
 export function FloatingChat(): React.ReactElement {
-  const { open, seed: storeSeed } = useFloatingChat()
+  const {
+    open,
+    seed: storeSeed,
+    context,
+    contextStrategyId,
+  } = useFloatingChat()
   const routeStrategyId = useCurrentStrategyId() ?? null
   const routePath = useLocation({ select: (location) => location.pathname })
   const queryClient = useQueryClient()
@@ -82,6 +88,7 @@ export function FloatingChat(): React.ReactElement {
     ? strategySelectionOverride.selectedStrategyId
     : resolveDefaultStrategyId({
         currentStrategyId: routeStrategyId,
+        contextStrategyId,
         lastUsedStrategyId,
         availableStrategyIds: strategies.map((strategy) => strategy.id),
       })
@@ -170,6 +177,9 @@ export function FloatingChat(): React.ReactElement {
         body: {
           prompt,
           ...(selectedPurpose === '' ? {} : { purpose: selectedPurpose }),
+          ...(context == null
+            ? {}
+            : { context: { kind: context.kind, id: context.id } }),
         },
       },
       {
@@ -202,6 +212,7 @@ export function FloatingChat(): React.ReactElement {
       purposes={agentConfigs.map((config) => config.purpose)}
       selectedPurpose={selectedPurpose}
       currentTaskId={currentTask?.taskId ?? null}
+      context={context}
       onOpen={() => {
         openFloatingChat()
       }}
@@ -216,6 +227,7 @@ export function FloatingChat(): React.ReactElement {
         })
       }}
       onPurposeChange={setSelectedPurpose}
+      onRemoveContext={removeChatContext}
       onSubmit={handleSubmit}
     />
   )

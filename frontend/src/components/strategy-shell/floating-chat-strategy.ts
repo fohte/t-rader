@@ -27,14 +27,17 @@ export function saveLastUsedStrategyId(strategyId: string): void {
 
 export function resolveDefaultStrategyId({
   currentStrategyId,
+  contextStrategyId,
   lastUsedStrategyId,
   availableStrategyIds,
 }: {
   currentStrategyId: string | null
+  contextStrategyId: string | null
   lastUsedStrategyId: string | null
   availableStrategyIds: readonly string[]
 }): string | null {
   if (currentStrategyId != null) return currentStrategyId
+  if (contextStrategyId != null) return contextStrategyId
   if (
     lastUsedStrategyId != null &&
     availableStrategyIds.includes(lastUsedStrategyId)
