@@ -76,7 +76,7 @@ describe('PositionsTable', () => {
   it('銘柄名だけを日足チャートへのリンクとして表示する', async () => {
     const router = createStoryRouter(
       () => <PositionsTable positions={positions} stocks={stocks} />,
-      { paths: ['/charts/$instrumentId'] },
+      { paths: ['/stocks/$stockId'] },
     )
     render(<RouterProvider router={router} />)
     await screen.findByRole('table')
@@ -90,8 +90,8 @@ describe('PositionsTable', () => {
     )
 
     expect(rowLinks).toEqual([
-      [{ name: '架空商事', href: '/charts/demo-code' }],
-      [{ name: 'demo-code-2', href: '/charts/demo-code-2' }],
+      [{ name: '架空商事', href: '/stocks/demo-code' }],
+      [{ name: 'demo-code-2', href: '/stocks/demo-code-2' }],
     ])
   })
 
@@ -104,7 +104,7 @@ describe('PositionsTable', () => {
           displayMarketValue
         />
       ),
-      { paths: ['/charts/$instrumentId'] },
+      { paths: ['/stocks/$stockId'] },
     )
     render(<RouterProvider router={router} />)
     await screen.findByRole('table')

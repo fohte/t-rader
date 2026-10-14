@@ -45,7 +45,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/trades', '/trades/$tradeId', '/charts/$instrumentId'],
+          paths: ['/trades', '/trades/$tradeId', '/stocks/$stockId'],
         },
       )}
     />

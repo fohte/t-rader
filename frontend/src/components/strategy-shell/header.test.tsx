@@ -29,7 +29,7 @@ function renderHeader(
       '/strategies/$id/performance',
       '/strategies/$id/runs',
       '/strategies/$id/settings',
-      '/note-versions/pending',
+      '/review',
       '/notes',
       '/annotations/$annoId',
       '/paper-trading',
@@ -165,7 +165,7 @@ describe('Header', () => {
         { label: '資産', href: '/portfolio', active: true },
         {
           label: 'レビュー2',
-          href: '/note-versions/pending',
+          href: '/review',
           active: false,
         },
       ])
@@ -173,7 +173,7 @@ describe('Header', () => {
   )
 
   it('レビュー画面で未読数付きのレビューを active にする', async () => {
-    renderHeader('/note-versions/pending')
+    renderHeader('/review')
     const navigation = await screen.findByRole('navigation', {
       name: 'メインナビゲーション',
     })
@@ -183,7 +183,7 @@ describe('Header', () => {
       { label: '資産', href: '/portfolio', active: false },
       {
         label: 'レビュー2',
-        href: '/note-versions/pending',
+        href: '/review',
         active: true,
       },
     ])
@@ -200,7 +200,7 @@ describe('Header', () => {
       { label: '資産', href: '/portfolio', active: true },
       {
         label: 'レビュー',
-        href: '/note-versions/pending',
+        href: '/review',
         active: false,
       },
     ])
@@ -217,7 +217,7 @@ describe('Header', () => {
       { label: '資産', href: '/portfolio', active: true },
       {
         label: 'レビュー—',
-        href: '/note-versions/pending',
+        href: '/review',
         active: false,
       },
     ])

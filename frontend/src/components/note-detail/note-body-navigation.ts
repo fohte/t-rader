@@ -2,8 +2,8 @@ import type { ResolvedRef } from '#hooks/use-resolve-ref'
 
 type NoteBodyNavigationTarget =
   | {
-      to: '/charts/$instrumentId'
-      params: { instrumentId: string }
+      to: '/stocks/$stockId'
+      params: { stockId: string }
     }
   | {
       to: '/annotations/$annoId'
@@ -16,8 +16,8 @@ export function createNoteBodyNavigationHandlers(navigate: Navigate) {
   return {
     onRef: (_token: string, resolved: ResolvedRef) => {
       void navigate({
-        to: '/charts/$instrumentId',
-        params: { instrumentId: resolved.id },
+        to: '/stocks/$stockId',
+        params: { stockId: resolved.id },
       })
     },
     onAnno: (annoId: string) => {

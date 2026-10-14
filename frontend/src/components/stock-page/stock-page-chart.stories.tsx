@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { StockPageChart } from '#components/stock-page/stock-page-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type Bar = components['schemas']['Bar']
 
@@ -54,7 +56,22 @@ const annotations: ChartAnnotation[] = [
 const meta = {
   title: 'StockPage/StockPageChart',
   component: StockPageChart,
+  decorators: [
+    (Story) => (
+      <RouterProvider
+        router={createStoryRouter(
+          () => (
+            <Story />
+          ),
+          {
+            paths: ['/stocks/$stockId/chart'],
+          },
+        )}
+      />
+    ),
+  ],
   args: {
+    stockId: 'demo-code',
     bars,
     trades: [],
     annotations,
