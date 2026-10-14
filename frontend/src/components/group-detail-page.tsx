@@ -1,3 +1,4 @@
+import { ReferenceDetailState } from '#components/reference-detail-state'
 import { RelatedNotes } from '#components/related-notes'
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import type { components } from '#lib/api/schema.gen'
@@ -13,48 +14,20 @@ type GroupDetailPageProps =
       state: 'loaded'
       group: Group
       heldStockIds: string[]
+      isHoldingsLoading: boolean
+      isHoldingsError: boolean
       notes: Note[] | null
       isNotesError: boolean
     }
 
 export function GroupDetailPage(props: GroupDetailPageProps) {
-  if (props.state === 'loading') {
+  if (props.state !== 'loaded') {
     return (
-      <main className="space-y-5 font-sans text-foreground" aria-busy="true">
-        <div className="space-y-3">
-          <div className="h-8 w-48 animate-pulse bg-surface-strong" />
-          <div className="h-9 w-36 animate-pulse bg-surface-strong" />
-        </div>
-        <p className="font-mono text-xs text-muted-foreground">
-          グループを読み込んでいます: {props.axisKey}/{props.groupKey}
-        </p>
-      </main>
-    )
-  }
-
-  if (props.state === 'not-found') {
-    return (
-      <main className="space-y-2 font-sans text-foreground">
-        <h1 className="text-2xl font-bold leading-tight tracking-tight">
-          グループが見つかりません
-        </h1>
-        <p className="font-mono text-sm text-muted-foreground">
-          {props.axisKey}/{props.groupKey}
-        </p>
-      </main>
-    )
-  }
-
-  if (props.state === 'error') {
-    return (
-      <main className="space-y-2 font-sans text-foreground">
-        <h1 className="text-2xl font-bold leading-tight tracking-tight">
-          グループを読み込めませんでした
-        </h1>
-        <p className="font-mono text-sm text-muted-foreground">
-          {props.axisKey}/{props.groupKey}
-        </p>
-      </main>
+      <ReferenceDetailState
+        state={props.state}
+        label="グループ"
+        identifier={`${props.axisKey}/${props.groupKey}`}
+      />
     )
   }
 
@@ -93,6 +66,19 @@ export function GroupDetailPage(props: GroupDetailPageProps) {
               {props.group.stocks.length} 件
             </span>
           </div>
+          {props.group.stocks.length > 0 && props.isHoldingsLoading && (
+            <p
+              className="font-mono text-2xs text-muted-foreground"
+              role="status"
+            >
+              保有状況を読み込んでいます。
+            </p>
+          )}
+          {props.group.stocks.length > 0 && props.isHoldingsError && (
+            <p className="font-mono text-2xs text-destructive" role="status">
+              保有状況を読み込めませんでした。
+            </p>
+          )}
           <div className="overflow-x-auto border border-border bg-card">
             {props.group.stocks.length === 0 ? (
               <p className="px-4 py-7 text-center font-mono text-xs text-muted-foreground">
@@ -122,11 +108,13 @@ export function GroupDetailPage(props: GroupDetailPageProps) {
                         />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        {heldStockIds.has(stock.id) && (
+                        {props.isHoldingsLoading || props.isHoldingsError ? (
+                          '—'
+                        ) : heldStockIds.has(stock.id) ? (
                           <span className="border border-primary/50 px-1.5 py-0.5 font-mono text-2xs text-primary">
                             保有
                           </span>
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   ))}

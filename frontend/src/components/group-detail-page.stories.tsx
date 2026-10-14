@@ -68,6 +68,8 @@ const loadedArgs = {
   state: 'loaded',
   group,
   heldStockIds: ['DEMO-A'],
+  isHoldingsLoading: false,
+  isHoldingsError: false,
   notes,
   isNotesError: false,
 } satisfies Story['args']
@@ -111,6 +113,16 @@ export const NoDescription: Story = {
 export const NoHoldings: Story = {
   name: 'the page omits holding badges when no stocks are held.',
   args: { ...loadedArgs, heldStockIds: [] },
+}
+
+export const HoldingsLoading: Story = {
+  name: 'the page explains when holdings are still loading.',
+  args: { ...loadedArgs, isHoldingsLoading: true },
+}
+
+export const HoldingsError: Story = {
+  name: 'the page explains when holdings cannot be loaded.',
+  args: { ...loadedArgs, isHoldingsError: true },
 }
 
 export const NoRelatedNotes: Story = {

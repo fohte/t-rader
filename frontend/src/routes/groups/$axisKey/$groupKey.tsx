@@ -77,6 +77,8 @@ function GroupDetailRoute() {
       state="loaded"
       group={groupResult.group}
       heldStockIds={heldStockIds}
+      isHoldingsLoading={summaryQuery.isPending}
+      isHoldingsError={summaryQuery.isError}
       notes={notesQuery.data ?? null}
       isNotesError={notesQuery.isError}
     />

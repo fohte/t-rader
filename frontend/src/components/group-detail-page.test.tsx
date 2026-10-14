@@ -19,10 +19,16 @@ const group: components['schemas']['Group'] = {
 
 function getGroupDetailPageOutput() {
   return {
-    stockLinks: Array.from(
-      document.querySelectorAll('a[href^="/stocks/"]'),
-    ).map((link) => [link.textContent, link.getAttribute('href')]),
-    heldBadges: screen.getAllByText('保有', { exact: true }).length,
+    stockRows: Array.from(document.querySelectorAll('tbody tr')).map((row) => {
+      const stockLink = row.querySelector('a[href^="/stocks/"]')
+      const holding = row.querySelector('td:nth-child(2)')?.textContent ?? ''
+
+      return {
+        name: stockLink?.textContent,
+        href: stockLink?.getAttribute('href'),
+        holding: holding.trim(),
+      }
+    }),
     headings: Array.from(document.querySelectorAll('h1, h2')).map(
       (heading) => heading.textContent,
     ),
@@ -37,6 +43,8 @@ describe('GroupDetailPage', () => {
           state="loaded"
           group={group}
           heldStockIds={['DEMO-A']}
+          isHoldingsLoading={false}
+          isHoldingsError={false}
           notes={[]}
           isNotesError={false}
         />
@@ -47,11 +55,18 @@ describe('GroupDetailPage', () => {
     await screen.findByRole('heading', { name: '見本グループ' })
 
     expect(getGroupDetailPageOutput()).toEqual({
-      stockLinks: [
-        ['架空電機', '/stocks/DEMO-A'],
-        ['見本素材', '/stocks/DEMO-B'],
+      stockRows: [
+        {
+          name: '架空電機',
+          href: '/stocks/DEMO-A',
+          holding: '保有',
+        },
+        {
+          name: '見本素材',
+          href: '/stocks/DEMO-B',
+          holding: '',
+        },
       ],
-      heldBadges: 1,
       headings: ['見本グループ', '>銘柄', '>関連ノート'],
     })
   })
