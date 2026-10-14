@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import type { ComponentProps } from 'react'
 import { useMemo, useState } from 'react'
 
 import { StockPageState } from '#components/stock-page/stock-page-state'
@@ -24,9 +25,8 @@ function StockPage() {
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null)
-  const [activeTab, setActiveTab] = useState<
-    'annotations' | 'notes' | 'trades'
-  >('annotations')
+  const [activeTab, setActiveTab] =
+    useState<ComponentProps<typeof StockPageView>['activeTab']>('annotations')
   const chartRange = useMemo(() => getBarsRange(timeframe), [timeframe])
   const dailyRange = useMemo(() => getBarsRange('1d'), [])
 
