@@ -7,9 +7,9 @@ import {
   getTokyoDate,
 } from '#components/calendar/calendar-date'
 import { DashboardPageView } from '#components/dashboard/dashboard-page-view'
-import { useReviewQueue } from '#components/dashboard/use-review-queue'
 import { calculatePortfolioValuation } from '#components/portfolio/portfolio-valuation'
 import type { StatItem } from '#components/portfolio/stat-row'
+import { useReviewQueue } from '#components/review/use-review-queue'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/')({

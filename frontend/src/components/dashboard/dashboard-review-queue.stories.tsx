@@ -2,27 +2,32 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
-import type { ReviewQueueData } from '#components/dashboard/dashboard-model'
 import { DashboardReviewQueue } from '#components/dashboard/dashboard-review-queue'
+import type { ReviewQueueData } from '#components/review/review-queue-model'
 import { createStoryRouter } from '#storybook/story-router'
 
 const data: ReviewQueueData = {
-  counts: { notes: 1, noteVersions: 1, annotations: 1, total: 2 },
+  counts: { notes: 1, annotations: 1, total: 2 },
   items: [
     {
-      kind: 'note-version',
+      kind: 'note',
       id: 'fake-version-a',
       noteId: 'fake-note-a',
       versionNo: 2,
       title: '架空企業の決算前メモ',
       createdAt: '2026-10-10T03:00:00Z',
+      noteKind: '架空の種別',
+      createdByKind: 'llm',
+      unreadVersionCount: 1,
     },
     {
       kind: 'annotation',
       id: 'fake-annotation-a',
       title: '出来高を確認する価格帯',
       createdAt: '2026-10-09T03:00:00Z',
-      targetSymbol: '0000',
+      targetSymbol: 'DEMO-A',
+      timestamp: '2026-10-09T03:00:00Z',
+      price: null,
     },
   ],
 }
@@ -35,11 +40,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: [
-            '/note-versions/pending',
-            '/notes/$noteId',
-            '/annotations/$annoId',
-          ],
+          paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
         },
       )}
     />
@@ -69,7 +70,7 @@ export const Empty: Story = {
   name: 'shows an empty state when there is nothing to review.',
   args: {
     data: {
-      counts: { notes: 0, noteVersions: 0, annotations: 0, total: 0 },
+      counts: { notes: 0, annotations: 0, total: 0 },
       items: [],
     },
   },
