@@ -12,22 +12,53 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const PortfolioOverview: Story = {
-  name: 'shows portfolio totals, realized profit, cash, and holdings.',
+  name: 'shows market value, unrealized return, cash, and realized profit.',
   args: {
     stats: [
-      { label: '総資産', value: '¥4,820,000' },
-      { label: '評価額 (株式・簿価)', value: '¥3,250,000' },
+      { label: '総資産 (時価)', value: '¥1,120,000' },
+      {
+        label: '評価額 (株式・時価)',
+        value: '¥710,000',
+        sub: '簿価 ¥680,000',
+      },
+      {
+        label: '含み損益',
+        value: '+¥30,000',
+        sub: '+4.4%',
+        cls: 'text-up',
+      },
       {
         label: '現金',
-        value: '¥1,570,000',
-        sub: '32.6% 比率',
+        value: '¥410,000',
+        sub: '36.6% 比率',
       },
       {
         label: '実現損益 (累計)',
-        value: '+¥124,500',
+        value: '+¥12,300',
         cls: 'text-up',
       },
-      { label: '保有銘柄', value: '5' },
+    ],
+  },
+}
+
+export const MissingMarketValue: Story = {
+  name: 'shows unavailable totals when a holding has no observed price.',
+  args: {
+    stats: [
+      { label: '総資産 (時価)', value: '—' },
+      {
+        label: '評価額 (株式・時価)',
+        value: '—',
+        sub: '簿価 ¥680,000',
+      },
+      {
+        label: '含み損益',
+        value: '—',
+        sub: '—',
+        cls: 'text-muted-foreground-strong',
+      },
+      { label: '現金', value: '¥410,000', sub: '57.7% 既知額比' },
+      { label: '実現損益 (累計)', value: '+¥12,300', cls: 'text-up' },
     ],
   },
 }

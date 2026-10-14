@@ -12,14 +12,27 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  name: 'shows the portfolio split across stock holdings and cash.',
+  name: 'shows market value allocation and the latest price observation date.',
   args: {
     segments: [
-      { key: 'p1', label: 'SUMCO', value: 296000, kind: 'position' },
-      { key: 'p2', label: 'トヨタ自動車', value: 281000, kind: 'position' },
-      { key: 'p3', label: 'ソニーグループ', value: 180000, kind: 'position' },
-      { key: 'cash', label: '現金', value: 1570000, kind: 'cash' },
+      { key: 'p1', label: '架空商事', value: 135000, kind: 'position' },
+      { key: 'p2', label: 'サンプル工業', value: 114000, kind: 'position' },
+      { key: 'p3', label: '仮想電機', value: 88000, kind: 'position' },
+      { key: 'cash', label: '現金', value: 390000, kind: 'cash' },
     ],
+    priceObservedAt: '2099-01-01',
+  },
+}
+
+export const MissingMarketValue: Story = {
+  name: 'marks holdings without a market value as unavailable.',
+  args: {
+    segments: [
+      { key: 'p1', label: '架空商事', value: 135000, kind: 'position' },
+      { key: 'p2', label: 'サンプル工業', value: null, kind: 'position' },
+      { key: 'cash', label: '現金', value: 390000, kind: 'cash' },
+    ],
+    priceObservedAt: null,
   },
 }
 
@@ -27,6 +40,7 @@ export const AllCash: Story = {
   name: 'shows a portfolio allocated entirely to cash.',
   args: {
     segments: [{ key: 'cash', label: '現金', value: 1000000, kind: 'cash' }],
+    priceObservedAt: '2099-01-01',
   },
 }
 
