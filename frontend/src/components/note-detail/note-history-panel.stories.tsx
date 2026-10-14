@@ -20,7 +20,7 @@ const newVersion: NoteVersion = {
   change_reason: '追加資料の確認結果を追記しました。',
   created_by_kind: 'llm',
   execution_id: null,
-  created_at: '2026-10-13T11:00:00Z',
+  created_at: '2026-01-12T11:00:00Z',
   reviewed_at: null,
 }
 
@@ -38,8 +38,8 @@ const currentVersion: NoteVersion = {
   change_reason: null,
   created_by_kind: 'human',
   execution_id: null,
-  created_at: '2026-10-10T11:00:00Z',
-  reviewed_at: '2026-10-10T12:00:00Z',
+  created_at: '2026-01-10T11:00:00Z',
+  reviewed_at: '2026-01-10T12:00:00Z',
 }
 
 const versions: NoteVersion[] = [newVersion, currentVersion]
@@ -57,7 +57,7 @@ const approvalHistory: ChangeHistory = {
     version_id: currentVersion.id,
   },
   summary: null,
-  created_at: '2026-10-10T12:00:00Z',
+  created_at: '2026-01-10T12:00:00Z',
 }
 
 const metadataUpdateHistory: ChangeHistory = {
@@ -66,14 +66,14 @@ const metadataUpdateHistory: ChangeHistory = {
   op: 'update',
   diff_json: { title: { from: '確認前の題名', to: '確認後の題名' } },
   summary: '確認後の題名に更新しました。',
-  created_at: '2026-10-13T12:00:00Z',
+  created_at: '2026-01-12T12:00:00Z',
 }
 
 const eventBeforeFirstVersionHistory: ChangeHistory = {
   ...metadataUpdateHistory,
   id: 'fixture-history-before-first-version',
   summary: 'ノート情報を更新しました。',
-  created_at: '2026-10-09T12:00:00Z',
+  created_at: '2026-01-09T12:00:00Z',
 }
 
 const currentVersionChangeHistory: ChangeHistory = {
@@ -86,7 +86,7 @@ const currentVersionChangeHistory: ChangeHistory = {
     version_no: currentVersion.version_no,
   },
   summary: null,
-  created_at: '2026-10-12T12:00:00Z',
+  created_at: '2026-01-11T12:00:00Z',
 }
 
 const agentUpdateHistory: ChangeHistory = {
@@ -123,7 +123,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const SelectedUnreadVersion: Story = {
-  name: 'shows the selected unread version and its approval history.',
+  name: "shows the selected unread version and the previous version's approval history.",
 }
 
 export const SelectedCurrentVersion: Story = {
@@ -149,7 +149,7 @@ export const RejectedVersion: Story = {
           version_id: 'fixture-version-new',
         },
         summary: '確認事項が残っています。',
-        created_at: '2026-10-13T12:00:00Z',
+        created_at: '2026-01-12T12:00:00Z',
       },
     ],
   },
@@ -173,7 +173,7 @@ export const SupersededVersion: Story = {
           superseded_version_ids: ['fixture-version-current'],
         },
         summary: null,
-        created_at: '2026-10-13T12:00:00Z',
+        created_at: '2026-01-12T12:00:00Z',
       },
     ],
   },
