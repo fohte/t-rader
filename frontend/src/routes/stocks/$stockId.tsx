@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import type { ComponentProps } from 'react'
 import { useMemo, useState } from 'react'
 
 import { StockPageState } from '#components/stock-page/stock-page-state'
@@ -31,9 +32,8 @@ function StockPage() {
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null)
-  const [activeTab, setActiveTab] = useState<'annotations' | 'trades'>(
-    'annotations',
-  )
+  const [activeTab, setActiveTab] =
+    useState<ComponentProps<typeof StockPageView>['activeTab']>('annotations')
   const chartRange = useMemo(() => {
     if (timeframe === '1d' && requestedDate != null) {
       return (
@@ -102,6 +102,9 @@ function StockPage() {
   const tradesQuery = $api.useQuery('get', '/api/trades', {
     params: { query: { symbol: stockId } },
   })
+  const notesQuery = $api.useQuery('get', '/api/notes', {
+    params: { query: { ref: `stock:${stockId}` } },
+  })
   const summaryQuery = $api.useQuery('get', '/api/trades/summary')
   const selectedDateBar = useMemo(
     () =>
@@ -148,6 +151,7 @@ function StockPage() {
       quoteError={dailyBarsQuery.isError}
       bars={chartBarsQuery.data ?? []}
       annotations={annotationsQuery.data ?? []}
+      notes={notesQuery.data ?? []}
       trades={tradesQuery.data ?? []}
       position={position}
       holdingsLoading={summaryQuery.isPending}
@@ -166,6 +170,7 @@ function StockPage() {
       selectedDateError={selectedDateError}
       selectedDateBar={selectedDateBar}
       annotationState={getStockPageListState(annotationsQuery)}
+      noteState={getStockPageListState(notesQuery)}
       tradeState={getStockPageListState(tradesQuery)}
     />
   )
