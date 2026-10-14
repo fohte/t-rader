@@ -14,6 +14,13 @@ const linkedTrade: NoteLinkedTrade = {
   side: 'buy',
 }
 
+const sellTradeWithoutStockName: NoteLinkedTrade = {
+  id: '00000000-0000-0000-0000-000000000102',
+  date: '2026-08-13',
+  symbol: 'demo-missing-code',
+  side: 'sell',
+}
+
 const meta = {
   title: 'NoteDetail/NoteLinkedTradesPanel',
   component: NoteLinkedTradesPanelView,
@@ -43,6 +50,15 @@ export const Linked: Story = {
     state: 'ready',
     trades: [linkedTrade],
     stockNameById: new Map([['demo-code', '架空商事']]),
+  },
+}
+
+export const SellWithoutResolvedStockName: Story = {
+  name: 'shows a sell trade when no stock name is resolved.',
+  args: {
+    state: 'ready',
+    trades: [sellTradeWithoutStockName],
+    stockNameById: new Map(),
   },
 }
 

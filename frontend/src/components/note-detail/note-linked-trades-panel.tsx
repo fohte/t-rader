@@ -1,7 +1,7 @@
-import { useQueries } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { NoteLinkedTradesPanelView } from '#components/note-detail/note-linked-trades-panel-view'
+import { useStockNameById } from '#components/stocks/use-stock-name-by-id'
 import { $api } from '#lib/api/client'
 
 export function NoteLinkedTradesPanel({ noteId }: { noteId: string }) {
@@ -9,28 +9,10 @@ export function NoteLinkedTradesPanel({ noteId }: { noteId: string }) {
     params: { path: { id: noteId } },
   })
   const symbols = useMemo(
-    () =>
-      Array.from(
-        new Set((tradesQuery.data ?? []).map((trade) => trade.symbol)),
-      ),
+    () => (tradesQuery.data ?? []).map((trade) => trade.symbol),
     [tradesQuery.data],
   )
-  const stockQueries = useQueries({
-    queries: symbols.map((id) =>
-      $api.queryOptions('get', '/api/refs/stocks/{id}', {
-        params: { path: { id } },
-      }),
-    ),
-  })
-  const stockNameById = useMemo(
-    () =>
-      new Map(
-        stockQueries.flatMap((query) =>
-          query.data != null ? [[query.data.id, query.data.name]] : [],
-        ),
-      ),
-    [stockQueries],
-  )
+  const stockNameById = useStockNameById(symbols)
 
   if (tradesQuery.isPending) {
     return <NoteLinkedTradesPanelView state="loading" />
@@ -38,8 +20,6 @@ export function NoteLinkedTradesPanel({ noteId }: { noteId: string }) {
   if (tradesQuery.isError) {
     return <NoteLinkedTradesPanelView state="error" />
   }
-  if (tradesQuery.data.length === 0) return null
-
   return (
     <NoteLinkedTradesPanelView
       state="ready"
