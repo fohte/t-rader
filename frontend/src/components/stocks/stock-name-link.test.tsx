@@ -12,7 +12,7 @@ afterEach(cleanup)
 
 async function renderStockNameLink(props: Props) {
   const router = createStoryRouter(() => <StockNameLink {...props} />, {
-    paths: ['/charts/$instrumentId'],
+    paths: ['/stocks/$stockId'],
   })
   render(<RouterProvider router={router} />)
   await screen.findByText(
@@ -44,7 +44,7 @@ describe('StockNameLink', () => {
     })
 
     expect(getLinkSnapshot()).toEqual({
-      links: [['架空商事', '/charts/demo-code']],
+      links: [['架空商事', '/stocks/demo-code']],
       unresolvedName: null,
       symbolCount: 1,
       symbolIsLinked: false,
@@ -59,7 +59,7 @@ describe('StockNameLink', () => {
     })
 
     expect(getLinkSnapshot()).toEqual({
-      links: [['demo-code', '/charts/demo-code']],
+      links: [['demo-code', '/stocks/demo-code']],
       unresolvedName: null,
       symbolCount: 1,
       symbolIsLinked: true,

@@ -102,7 +102,7 @@ describe('TradeDetailView', () => {
         paths: [
           '/trades',
           '/trades/$tradeId',
-          '/charts/$instrumentId',
+          '/stocks/$stockId',
           '/notes/$noteId',
         ],
       },
@@ -140,7 +140,7 @@ describe('TradeDetailView', () => {
           href: '/notes/fake-note-agent?version_id=fake-note-version-agent',
         },
       ],
-      stockLink: '/charts/FIC-01',
+      stockLink: '/stocks/FIC-01',
     })
   })
 })

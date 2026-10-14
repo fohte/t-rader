@@ -38,10 +38,7 @@ function getTabsOutput(navigation: HTMLElement) {
     }))
 }
 
-function getTabsState(
-  search: Record<string, unknown>,
-  navigation: HTMLElement,
-) {
+function getTabsState(search: unknown, navigation: HTMLElement) {
   return {
     search,
     tabs: getTabsOutput(navigation),
@@ -135,6 +132,8 @@ describe('StrategySettingsTabs', () => {
       expected: { settingsTab: 'indicators' },
     },
     { search: { settingsTab: 'unknown' }, expected: {} },
+    { search: null, expected: {} },
+    { search: 'invalid', expected: {} },
   ] as const)('search $search をタブへ変換する', ({ search, expected }) => {
     expect(validateStrategySettingsSearch(search)).toEqual(expected)
   })

@@ -24,9 +24,15 @@ import {
   getAnnotationPeriodLineRange,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
-import { getChartThemeOptions, observeChartTheme } from '#lib/chart-theme'
+import {
+  getChartThemeColors,
+  getChartThemeOptions,
+  observeChartResize,
+  observeChartTheme,
+} from '#lib/chart-theme'
 import {
   type ChartCurrency,
+  getChartBarDate,
   toCandlestickData,
   toTradeMarkers,
   toVolumeData,
@@ -50,6 +56,12 @@ interface BandLayout {
   bottom: number
 }
 
+interface DateMarkerLayout {
+  date: string
+  x: number
+  bottom: number
+}
+
 interface CandlestickChartProps {
   bars: Bar[]
   trades?: Trade[]
@@ -58,6 +70,7 @@ interface CandlestickChartProps {
   selectedAnnotationId?: string | null
   currency?: ChartCurrency
   intraday?: boolean
+  highlightedTimestamp?: string
   className?: string
 }
 
@@ -69,6 +82,7 @@ export function CandlestickChart({
   selectedAnnotationId,
   currency,
   intraday = false,
+  highlightedTimestamp,
   className,
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -80,6 +94,8 @@ export function CandlestickChart({
   const priceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
   const [bandLayout, setBandLayout] = useState<BandLayout | null>(null)
+  const [dateMarkerLayout, setDateMarkerLayout] =
+    useState<DateMarkerLayout | null>(null)
   const [bandMarkers, setBandMarkers] = useState<{ id: string; x: number }[]>(
     [],
   )
@@ -91,12 +107,13 @@ export function CandlestickChart({
     const container = containerRef.current
     if (!container) return
 
+    const isDark = document.documentElement.classList.contains('dark')
+    const colors = getChartThemeColors(isDark)
+
     const chart = createChart(container, {
+      ...getChartThemeOptions(colors),
       width: container.clientWidth,
       height: container.clientHeight,
-      ...getChartThemeOptions(
-        document.documentElement.classList.contains('dark'),
-      ),
     })
     chartRef.current = chart
 
@@ -138,20 +155,23 @@ export function CandlestickChart({
     isInitialDataRef.current = true
 
     // コンテナサイズ追従
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect
+    const disconnectResizeObserver = observeChartResize(
+      container,
+      (width, height) => {
         chart.applyOptions({ width, height })
-      }
-    })
-    resizeObserver.observe(container)
+      },
+    )
 
     // ダークモード追従: html 要素の class 変更を監視
-    const disconnectThemeObserver = observeChartTheme(chart)
+    const disconnectThemeObserver = observeChartTheme(() => {
+      const dark = document.documentElement.classList.contains('dark')
+      const nextColors = getChartThemeColors(dark)
+      chart.applyOptions(getChartThemeOptions(nextColors))
+    })
 
     return () => {
       disconnectThemeObserver()
-      resizeObserver.disconnect()
+      disconnectResizeObserver()
       tradeMarkersRef.current?.detach()
       tradeMarkersRef.current = null
       chart.remove()
@@ -220,6 +240,43 @@ export function CandlestickChart({
   useEffect(() => {
     tradeMarkersRef.current?.setMarkers(toTradeMarkers(trades ?? [], bars))
   }, [bars, trades])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    const selectedBar = bars.find(
+      (bar) => bar.timestamp === highlightedTimestamp,
+    )
+    const targetTime =
+      selectedBar == null ? null : toCandlestickData([selectedBar])[0]?.time
+    const date =
+      selectedBar == null ? null : getChartBarDate(selectedBar.timestamp)
+
+    if (chart == null || targetTime == null || date == null) {
+      setDateMarkerLayout(null)
+      return
+    }
+
+    const timeScale = chart.timeScale()
+    const updateMarker = () => {
+      const width = timeScale.width()
+      const x = timeScale.timeToCoordinate(targetTime)
+      if (x == null || x < 0 || x > width) {
+        setDateMarkerLayout(null)
+        return
+      }
+
+      setDateMarkerLayout({ date, x, bottom: timeScale.height() })
+    }
+
+    updateMarker()
+    timeScale.subscribeVisibleTimeRangeChange(updateMarker)
+    timeScale.subscribeSizeChange(updateMarker)
+
+    return () => {
+      timeScale.unsubscribeVisibleTimeRangeChange(updateMarker)
+      timeScale.unsubscribeSizeChange(updateMarker)
+    }
+  }, [bars, highlightedTimestamp])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -349,6 +406,14 @@ export function CandlestickChart({
   return (
     <div className={cn('relative min-w-0', className)}>
       <div ref={containerRef} className="absolute inset-0" />
+      {dateMarkerLayout != null && (
+        <span
+          aria-label={`${dateMarkerLayout.date} のチャート上の位置`}
+          className="pointer-events-none absolute top-0 z-10 border-l border-dashed border-amber-400"
+          role="img"
+          style={{ left: dateMarkerLayout.x, bottom: dateMarkerLayout.bottom }}
+        />
+      )}
       {bandLayout != null && (
         <AnnotationChartBand
           markers={bandMarkers}

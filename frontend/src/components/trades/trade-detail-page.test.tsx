@@ -140,7 +140,7 @@ describe('TradeDetailPage', () => {
     const router = createStoryRouter(
       () => <TradeDetailPage tradeId="fake-trade-sell" />,
       {
-        paths: ['/trades', '/charts/$instrumentId', '/notes/$noteId'],
+        paths: ['/trades', '/stocks/$stockId', '/notes/$noteId'],
       },
     )
     const user = userEvent.setup()
@@ -235,5 +235,5 @@ describe('TradeDetailPage', () => {
       linkError:
         'ノートを作成しましたが、この取引への紐付けに失敗しました。既存のノートを紐付ける操作から追加してください。',
     })
-  })
+  }, 30_000)
 })

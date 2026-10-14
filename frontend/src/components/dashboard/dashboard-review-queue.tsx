@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import type {
   ReviewQueueData,
   ReviewQueueItem,
-} from '#components/dashboard/dashboard-model'
+} from '#components/review/review-queue-model'
 import { Skeleton } from '#components/ui/skeleton'
 import { formatRelative } from '#lib/note-utils'
 
@@ -13,33 +13,18 @@ function ReviewItemLink({ item }: { item: ReviewQueueItem }) {
   const metadata = (
     <span className="font-mono text-2xs text-muted-foreground">
       {item.kind === 'note'
-        ? 'ノート'
-        : item.kind === 'note-version'
-          ? `ノート · v${String(item.versionNo)}`
-          : `アノテーション · ${item.targetSymbol}`}{' '}
+        ? `ノート · v${String(item.versionNo)}`
+        : `アノテーション · ${item.targetSymbol}`}{' '}
       · {formatRelative(item.createdAt)}
     </span>
   )
-
-  if (item.kind === 'note-version') {
-    return (
-      <Link
-        to="/notes/$noteId"
-        params={{ noteId: item.noteId }}
-        search={{ version: item.versionNo }}
-        className={className}
-      >
-        <span className="truncate text-sm text-foreground">{item.title}</span>
-        {metadata}
-      </Link>
-    )
-  }
 
   if (item.kind === 'note') {
     return (
       <Link
         to="/notes/$noteId"
         params={{ noteId: item.noteId }}
+        search={{ version: item.versionNo }}
         className={className}
       >
         <span className="truncate text-sm text-foreground">{item.title}</span>
@@ -74,7 +59,7 @@ export function DashboardReviewQueue({
   if (variant === 'compact') {
     return (
       <Link
-        to="/note-versions/pending"
+        to="/review"
         className="flex items-center justify-between gap-3 border border-border bg-card px-3.5 py-2.5 font-mono text-xs hover:border-primary"
       >
         <span className="text-foreground">レビュー待ち</span>
@@ -101,7 +86,7 @@ export function DashboardReviewQueue({
           レビュー待ち
         </h2>
         <Link
-          to="/note-versions/pending"
+          to="/review"
           className="font-mono text-2xs text-primary hover:underline"
         >
           レビューへ →
@@ -122,7 +107,6 @@ export function DashboardReviewQueue({
           <>
             <div className="flex flex-wrap gap-x-3 gap-y-1 border-b border-border px-3.5 py-2 font-mono text-2xs text-muted-foreground">
               <span>ノート {data.counts.notes}</span>
-              <span>バージョン {data.counts.noteVersions}</span>
               <span>アノテーション {data.counts.annotations}</span>
             </div>
             {data.items.length === 0 ? (
@@ -131,7 +115,7 @@ export function DashboardReviewQueue({
               </p>
             ) : (
               <div>
-                {data.items.map((item) => (
+                {data.items.slice(0, 3).map((item) => (
                   <ReviewItemLink key={`${item.kind}:${item.id}`} item={item} />
                 ))}
               </div>

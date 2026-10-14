@@ -86,7 +86,7 @@ const meta = {
             <Story />
           ),
           {
-            paths: ['/notes', '/notes/$noteId', '/charts/$instrumentId'],
+            paths: ['/notes', '/notes/$noteId', '/stocks/$stockId'],
           },
         )}
       />

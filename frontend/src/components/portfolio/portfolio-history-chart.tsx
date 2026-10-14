@@ -11,7 +11,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import { Skeleton } from '#components/ui/skeleton'
-import { getChartThemeOptions, observeChartTheme } from '#lib/chart-theme'
+import {
+  getChartThemeColors,
+  getChartThemeOptions,
+  observeChartResize,
+  observeChartTheme,
+} from '#lib/chart-theme'
 import {
   addPortfolioHistoryChanges,
   type PortfolioHistoryPeriod,
@@ -218,13 +223,13 @@ function PortfolioHistoryPlot({
     const container = containerRef.current
     if (!container) return
 
-    const themeOptions = getChartThemeOptions(
+    const themeColors = getChartThemeColors(
       document.documentElement.classList.contains('dark'),
     )
     const chart = createChart(container, {
       width: container.clientWidth,
       height: 256,
-      ...themeOptions,
+      ...getChartThemeOptions(themeColors),
       localization: { locale: 'ja-JP' },
     })
     chartRef.current = chart
@@ -272,15 +277,19 @@ function PortfolioHistoryPlot({
     stockSeriesRef.current = stockSeries
     investableSeriesRef.current = investableSeries
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect
+    const disconnectResizeObserver = observeChartResize(
+      container,
+      (width, height) => {
         chart.applyOptions({ width, height })
-      }
-    })
-    resizeObserver.observe(container)
+      },
+    )
 
-    const disconnectThemeObserver = observeChartTheme(chart)
+    const disconnectThemeObserver = observeChartTheme(() => {
+      const colors = getChartThemeColors(
+        document.documentElement.classList.contains('dark'),
+      )
+      chart.applyOptions(getChartThemeOptions(colors))
+    })
 
     const handleCrosshairMove = (param: { time?: Time }) => {
       const date = timeToDateKey(param.time)
@@ -291,7 +300,7 @@ function PortfolioHistoryPlot({
     return () => {
       chart.unsubscribeCrosshairMove(handleCrosshairMove)
       disconnectThemeObserver()
-      resizeObserver.disconnect()
+      disconnectResizeObserver()
       chart.remove()
       chartRef.current = null
       totalSeriesRef.current = null

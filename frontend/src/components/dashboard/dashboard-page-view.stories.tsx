@@ -69,22 +69,27 @@ const args: DashboardPageViewProps = {
   isPositionsError: false,
   stocks,
   reviewQueue: {
-    counts: { notes: 1, noteVersions: 1, annotations: 1, total: 2 },
+    counts: { notes: 1, annotations: 1, total: 2 },
     items: [
       {
-        kind: 'note-version',
+        kind: 'note',
         id: 'fake-version-a',
         noteId: 'fake-note-a',
         versionNo: 2,
         title: '架空企業の決算前メモ',
         createdAt: '2026-10-10T03:00:00Z',
+        noteKind: '架空の種別',
+        createdByKind: 'llm',
+        unreadVersionCount: 1,
       },
       {
         kind: 'annotation',
         id: 'fake-annotation-a',
         title: '出来高を確認する価格帯',
         createdAt: '2026-10-09T03:00:00Z',
-        targetSymbol: '0000',
+        targetSymbol: 'DEMO-A',
+        timestamp: '2026-10-09T03:00:00Z',
+        price: null,
       },
     ],
   },
@@ -194,11 +199,11 @@ const args: DashboardPageViewProps = {
 
 const paths = [
   '/portfolio',
-  '/charts/$instrumentId',
+  '/stocks/$stockId',
   '/trades',
   '/trades/$tradeId',
   '/calendar',
-  '/note-versions/pending',
+  '/review',
   '/notes',
   '/notes/$noteId',
   '/annotations/$annoId',
@@ -254,7 +259,7 @@ export const Empty: Story = {
     ],
     positions: [],
     reviewQueue: {
-      counts: { notes: 0, noteVersions: 0, annotations: 0, total: 0 },
+      counts: { notes: 0, annotations: 0, total: 0 },
       items: [],
     },
     trades: [],

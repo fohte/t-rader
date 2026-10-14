@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { StockPageChart } from '#components/stock-page/stock-page-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type Bar = components['schemas']['Bar']
 
@@ -54,7 +56,22 @@ const annotations: ChartAnnotation[] = [
 const meta = {
   title: 'StockPage/StockPageChart',
   component: StockPageChart,
+  decorators: [
+    (Story) => (
+      <RouterProvider
+        router={createStoryRouter(
+          () => (
+            <Story />
+          ),
+          {
+            paths: ['/stocks/$stockId/chart'],
+          },
+        )}
+      />
+    ),
+  ],
   args: {
+    stockId: 'demo-code',
     bars,
     trades: [],
     annotations,
@@ -71,6 +88,26 @@ type Story = StoryObj<typeof meta>
 
 export const DailyWithSelectedAnnotation: Story = {
   name: '選択中のアノテーション帯を日足チャートに表示する。',
+}
+
+export const DateSelected: Story = {
+  name: '指定日の位置と四本値を表示する。',
+  args: { selectedDate: '2030-04-02', selectedDateBar: bars[1] },
+}
+
+export const DateWithoutBar: Story = {
+  name: '日足のない指定日には四本値がないことを表示する。',
+  args: { selectedDate: '2030-04-04', selectedDateBar: null },
+}
+
+export const DateLoading: Story = {
+  name: '指定した日の日足を読み込み中と表示する。',
+  args: { selectedDate: '2030-04-02', selectedDateLoading: true },
+}
+
+export const DateError: Story = {
+  name: '指定した日の日足の取得エラーを表示する。',
+  args: { selectedDate: '2030-04-02', selectedDateError: true },
 }
 
 export const Loading: Story = {
