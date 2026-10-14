@@ -147,14 +147,25 @@ describe('StockPageActivity', () => {
     })
 
     expect(
-      screen
-        .getAllByRole('link')
-        .map((link) => [
+      screen.getAllByRole('link').map((link) => {
+        const time = link.querySelector('time')
+        const text =
+          time === null
+            ? link.textContent
+            : link.textContent.replace(time.textContent, '[相対日付]')
+
+        return [
           link.getAttribute('href'),
-          link.textContent.includes('エージェント'),
-          link.textContent.includes('未レビュー'),
-          link.querySelector('time')?.getAttribute('dateTime'),
-        ]),
-    ).toEqual([['/notes/demo-note', true, true, '2030-04-02T06:00:00Z']])
+          text.replace(/\s+/g, ' ').trim(),
+          time?.getAttribute('dateTime') ?? null,
+        ]
+      }),
+    ).toEqual([
+      [
+        '/notes/demo-note',
+        '銘柄を確認したデモ用ノートエージェント未レビュー[相対日付]',
+        '2030-04-02T06:00:00Z',
+      ],
+    ])
   })
 })
