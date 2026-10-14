@@ -44,7 +44,6 @@ export const Route = createFileRoute('/notes/$noteId')({
 
 function NoteDetailPage() {
   const { noteId } = Route.useParams()
-  useChatContext({ kind: 'note', id: noteId })
   const { version: requestedVersionNo, version_id: requestedVersionId } =
     Route.useSearch()
   const navigate = Route.useNavigate()
@@ -76,6 +75,7 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
+  useChatContext({ kind: 'note', id: noteId, label: selectedVersion?.title })
   const {
     data: noteLinks,
     isPending: linksPending,

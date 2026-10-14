@@ -87,6 +87,7 @@ export function FloatingChatView({
   const inputDisabled = submitting || polling
   const submitDisabled =
     strategyId == null || inputDisabled || input.trim() === ''
+  const contextDisplayValue = context?.label?.trim()
 
   return (
     <div
@@ -173,7 +174,10 @@ export function FloatingChatView({
         {context != null && (
           <div className="flex min-w-0 items-center gap-2 border border-border bg-background px-2.5 py-1.5 font-mono text-2xs">
             <span className="min-w-0 flex-1 truncate text-muted-foreground-strong">
-              {formatContextLabel(context.kind)}: {context.id}
+              {formatContextLabel(context.kind)}:{' '}
+              {contextDisplayValue == null || contextDisplayValue === ''
+                ? context.id
+                : contextDisplayValue}
             </span>
             <button
               type="button"

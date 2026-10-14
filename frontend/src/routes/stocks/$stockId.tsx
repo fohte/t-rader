@@ -28,7 +28,6 @@ export const Route = createFileRoute('/stocks/$stockId')({
 
 function StockPage() {
   const { stockId } = Route.useParams()
-  useChatContext({ kind: 'stock', id: stockId })
   const { date: requestedDate } = Route.useSearch()
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
@@ -65,6 +64,14 @@ function StockPage() {
         error: response.error,
       })
     },
+  })
+  useChatContext({
+    kind: 'stock',
+    id: stockId,
+    label:
+      stockQuery.data?.kind === 'found'
+        ? stockQuery.data.stock.name
+        : undefined,
   })
   const chartBarsQuery = $api.useQuery('get', '/api/bars', {
     params: {

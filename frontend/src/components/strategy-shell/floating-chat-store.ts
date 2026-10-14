@@ -7,6 +7,7 @@ export type ChatContextKind = components['schemas']['StrategyTaskContextKind']
 export interface ChatContext {
   kind: ChatContextKind
   id: string
+  label?: string
 }
 
 export interface ChatContextRegistration extends ChatContext {
@@ -54,19 +55,20 @@ export function useFloatingChat(): ChatState {
 export function useChatContext(context: ChatContextRegistration | null): void {
   const kind = context?.kind
   const id = context?.id
+  const label = context?.label
   const strategyId = context?.strategyId
 
   useEffect(() => {
     if (kind == null || id == null) return
-    return registerChatContext({ kind, id, strategyId })
-  }, [id, kind, strategyId])
+    return registerChatContext({ kind, id, label, strategyId })
+  }, [id, kind, label, strategyId])
 }
 
 function registerChatContext(context: ChatContextRegistration): () => void {
   const registrationId = ++nextContextRegistrationId
   state = {
     ...state,
-    context: { kind: context.kind, id: context.id },
+    context: { kind: context.kind, id: context.id, label: context.label },
     contextStrategyId: context.strategyId ?? null,
     contextRegistrationId: registrationId,
   }

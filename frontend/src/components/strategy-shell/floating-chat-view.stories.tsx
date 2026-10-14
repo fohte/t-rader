@@ -94,6 +94,20 @@ export const WithContext: Story = {
       router={createFloatingChatRouter(
         makeProps(
           { kind: 'idle' },
+          { context: { kind: 'stock', id: 'FIC-01', label: '架空銘柄' } },
+        ),
+      )}
+    />
+  ),
+}
+
+export const ContextWithoutLabel: Story = {
+  name: 'falls back to the context ID when its label is missing.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(
+        makeProps(
+          { kind: 'idle' },
           { context: { kind: 'stock', id: 'FIC-01' } },
         ),
       )}

@@ -107,9 +107,9 @@ function readComposerOutput() {
   }
 }
 
-function readContextChipOutput(removeCalls: number) {
+function readContextChipOutput(label: string, removeCalls: number) {
   return {
-    chipLabel: screen.getByText('銘柄: FIC-01').textContent,
+    chipLabel: screen.getByText(label).textContent,
     removeCalls,
   }
 }
@@ -173,19 +173,35 @@ describe('FloatingChatView', () => {
     expect(onSubmit).toHaveBeenCalledOnce()
   })
 
-  it('文脈チップに種類と ID を表示し、外す操作を通知する', async () => {
+  it('文脈チップに種類と表示名を出し、外す操作を通知する', async () => {
     const onRemoveContext = vi.fn()
-    const context: ChatContext = { kind: 'stock', id: 'FIC-01' }
+    const context: ChatContext = {
+      kind: 'stock',
+      id: 'FIC-01',
+      label: '架空銘柄',
+    }
     await renderInRouter(
       <FloatingChatView {...makeProps({ context, onRemoveContext })} />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: '文脈を外す' }))
 
-    expect(readContextChipOutput(onRemoveContext.mock.calls.length)).toEqual({
-      chipLabel: '銘柄: FIC-01',
+    expect(
+      readContextChipOutput(
+        '銘柄: 架空銘柄',
+        onRemoveContext.mock.calls.length,
+      ),
+    ).toEqual({
+      chipLabel: '銘柄: 架空銘柄',
       removeCalls: 1,
     })
+  })
+
+  it('表示名が無いときは文脈 ID を表示する', async () => {
+    const context: ChatContext = { kind: 'stock', id: 'FIC-01' }
+    await renderInRouter(<FloatingChatView {...makeProps({ context })} />)
+
+    expect(screen.getByText('銘柄: FIC-01').textContent).toBe('銘柄: FIC-01')
   })
 
   it('文脈が無いときは削除ボタンを表示しない', async () => {

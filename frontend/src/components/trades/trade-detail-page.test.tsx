@@ -43,7 +43,7 @@ function readReflectionSubmissionOutput(
 
 function readTradeChatOpenOutput() {
   return {
-    contextChip: screen.getByText('取引: fake-trade-sell').textContent,
+    contextChip: screen.getByText('取引: 2099-02-10 売り 架空銘柄').textContent,
     chatSeed: screen.getByLabelText<HTMLInputElement>('メッセージ入力').value,
     strategyId: screen.getByLabelText<HTMLSelectElement>('戦略').value,
   }
@@ -163,7 +163,7 @@ describe('TradeDetailPage', () => {
     )
 
     expect(readTradeChatOpenOutput()).toEqual({
-      contextChip: '取引: fake-trade-sell',
+      contextChip: '取引: 2099-02-10 売り 架空銘柄',
       chatSeed:
         'この取引について、売買時の判断とその後の結果を振り返ってください。',
       strategyId: 'fake-strategy',

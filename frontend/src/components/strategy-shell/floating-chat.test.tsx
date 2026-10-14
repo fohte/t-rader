@@ -81,12 +81,12 @@ function readChatRequests(requests: CapturedRequest[]) {
 }
 
 function StockContextRoute() {
-  useChatContext({ kind: 'stock', id: 'DEMO-A' })
+  useChatContext({ kind: 'stock', id: 'DEMO-A', label: '架空銘柄' })
   return null
 }
 
 function NoteContextRoute() {
-  useChatContext({ kind: 'note', id: 'demo-note' })
+  useChatContext({ kind: 'note', id: 'demo-note', label: '架空ノート' })
   return (
     <NoteVersionChatAction
       title="架空ノート"
@@ -101,6 +101,7 @@ function TradeContextRoute() {
   useChatContext({
     kind: 'trade',
     id: 'demo-trade',
+    label: '2099-02-10 売り 架空銘柄',
     strategyId: 'demo-strategy-b',
   })
   return null
@@ -331,7 +332,7 @@ describe('FloatingChat', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
     )
-    await screen.findByText('取引: demo-trade')
+    await screen.findByText('取引: 2099-02-10 売り 架空銘柄')
     fireEvent.change(screen.getByLabelText('メッセージ入力'), {
       target: { value: 'この取引を確認する' },
     })
@@ -358,7 +359,7 @@ describe('FloatingChat', () => {
         name: '「架空ノート」についてアナリストに聞く',
       }),
     )
-    await screen.findByText('ノート: demo-note')
+    await screen.findByText('ノート: 架空ノート')
     fireEvent.change(screen.getByLabelText('戦略'), {
       target: { value: 'demo-strategy-a' },
     })
@@ -383,7 +384,7 @@ describe('FloatingChat', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
     )
-    await screen.findByText('銘柄: DEMO-A')
+    await screen.findByText('銘柄: 架空銘柄')
     fireEvent.change(screen.getByLabelText('戦略'), {
       target: { value: 'demo-strategy-a' },
     })
@@ -411,7 +412,7 @@ describe('FloatingChat', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
     )
-    await screen.findByText('取引: demo-trade')
+    await screen.findByText('取引: 2099-02-10 売り 架空銘柄')
     fireEvent.click(screen.getByRole('button', { name: '文脈を外す' }))
     fireEvent.change(screen.getByLabelText('メッセージ入力'), {
       target: { value: 'この取引を確認する' },
@@ -437,7 +438,7 @@ describe('FloatingChat', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'アナリストを呼ぶ' }),
     )
-    await screen.findByText('銘柄: DEMO-A')
+    await screen.findByText('銘柄: 架空銘柄')
     await router.navigate({ to: '/' })
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: '文脈を外す' })).toBeNull()
