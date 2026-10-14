@@ -49,7 +49,7 @@ export function NoteVersionReviewView({
     <section className="border border-border bg-card">
       <header className="flex items-center justify-between border-b border-border px-3.5 py-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
-          このバージョンを判断する
+          {isReviewed ? 'バージョンレビュー' : 'このバージョンを判断する'}
         </h2>
         <StatusPill status={version.status} />
       </header>
