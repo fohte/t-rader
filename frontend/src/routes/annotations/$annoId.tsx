@@ -18,6 +18,10 @@ export const Route = createFileRoute('/annotations/$annoId')({
 
 function AnnotationDetailPage() {
   const { annoId } = Route.useParams()
+  return <AnnotationDetailPageContent key={annoId} annoId={annoId} />
+}
+
+function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
   const queryClient = useQueryClient()
   const reviewQueue = useReviewQueue()
   const reviewQueueHistoryState = useRouterState({
@@ -163,6 +167,7 @@ function AnnotationDetailPage() {
       annotation={annotation}
       isPending={annoPending}
       reviewNavigation={reviewNavigation}
+      reviewNavigationError={reviewQueue.isError}
       comments={comments}
       history={history}
       stockName={stockRef.name}

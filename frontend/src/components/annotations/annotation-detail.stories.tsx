@@ -138,6 +138,7 @@ const meta = {
     annotation: unreadAnnotation,
     isPending: false,
     reviewNavigation: unreadReviewNavigation,
+    reviewNavigationError: false,
     comments: [],
     history: [],
     stockName: 'サンプル銘柄',
@@ -226,6 +227,11 @@ export const NoUnreadItems: Story = {
       currentItemKey: `annotation:${approvedAnnotation.id}`,
     },
   },
+}
+
+export const ReviewNavigationError: Story = {
+  name: 'shows an error when unread navigation cannot be loaded.',
+  args: { reviewNavigation: null, reviewNavigationError: true },
 }
 
 export const ApprovalError: Story = {
