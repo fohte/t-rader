@@ -167,6 +167,26 @@ describe('MarkdownBody', () => {
     },
   )
 
+  it('keeps a malformed group ref non-interactive', () => {
+    const navigate = vi.fn()
+    const handlers = createNoteBodyNavigationHandlers(navigate)
+    render(
+      <MarkdownBody source="[[group:demo-group]]" onRef={handlers.onRef} />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    const chip = screen.getByTitle(/^\[\[group:demo-group\]\]/)
+    handlers.onRef('group:demo-group', {
+      kind: 'group',
+      id: 'demo-group',
+      name: null,
+    })
+    fireEvent.click(chip)
+
+    const actual = `${chip.tagName}:${String(navigate.mock.calls.length)}`
+    expect(actual).toBe('SPAN:0')
+  })
+
   it('replaces [[anno:xxx]] with a clickable annotation button', async () => {
     const user = userEvent.setup()
     const onAnno = vi.fn()

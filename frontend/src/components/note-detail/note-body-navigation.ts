@@ -1,4 +1,5 @@
 import type { ResolvedRef } from '#hooks/use-resolve-ref'
+import { parseGroupRefId } from '#lib/ref-id'
 
 type NoteBodyNavigationTarget =
   | {
@@ -37,19 +38,11 @@ export function createNoteBodyNavigationHandlers(navigate: Navigate) {
           })
           return
         case 'group': {
-          const separatorIndex = resolved.id.indexOf('/')
-          if (
-            separatorIndex <= 0 ||
-            separatorIndex === resolved.id.length - 1
-          ) {
-            return
-          }
+          const groupRefId = parseGroupRefId(resolved.id)
+          if (groupRefId == null) return
           void navigate({
             to: '/groups/$axisKey/$groupKey',
-            params: {
-              axisKey: resolved.id.slice(0, separatorIndex),
-              groupKey: resolved.id.slice(separatorIndex + 1),
-            },
+            params: groupRefId,
           })
         }
       }
