@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  parseReviewQueueNavigationState,
   type ReviewQueueItem,
   reviewQueueModel,
 } from '#components/review/review-queue-model'
@@ -318,5 +319,36 @@ describe('getReviewNavigation', () => {
       'annotation:fake-annotation-a',
       'annotation:fake-annotation-b',
     ])
+  })
+})
+
+describe('parseReviewQueueNavigationState', () => {
+  it.each([
+    [
+      'accepts a saved snapshot',
+      {
+        reviewQueue: {
+          snapshot: { itemKeys: ['note:fake-version-a'] },
+          currentItemKey: 'note:fake-version-a',
+        },
+      },
+      {
+        snapshot: { itemKeys: ['note:fake-version-a'] },
+        currentItemKey: 'note:fake-version-a',
+      },
+    ],
+    ['ignores a missing snapshot', { reviewQueue: {} }, undefined],
+    [
+      'ignores item keys with an invalid value',
+      {
+        reviewQueue: {
+          snapshot: { itemKeys: ['note:fake-version-a', 1] },
+          currentItemKey: 'note:fake-version-a',
+        },
+      },
+      undefined,
+    ],
+  ])('%s', (_name, state, expected) => {
+    expect(parseReviewQueueNavigationState(state)).toEqual(expected)
   })
 })

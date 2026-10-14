@@ -6,12 +6,14 @@ import { formatRelative } from '#lib/note-utils'
 interface NoteVersionHeaderProps {
   version: NoteVersion
   noteKind: string | null
+  hasNoteError: boolean
   onAsk: (title: string) => void
 }
 
 export function NoteVersionHeader({
   version,
   noteKind,
+  hasNoteError,
   onAsk,
 }: NoteVersionHeaderProps) {
   return (
@@ -21,7 +23,11 @@ export function NoteVersionHeader({
           <span>
             {version.created_by_kind === 'llm' ? 'エージェント' : 'ユーザー'}
           </span>
-          <span>{noteKind ?? '種別なし'}</span>
+          <span>
+            {hasNoteError
+              ? '種別を読み込めませんでした'
+              : (noteKind ?? '種別なし')}
+          </span>
           <span>v{String(version.version_no)}</span>
           <StatusPill status={version.status} />
         </div>

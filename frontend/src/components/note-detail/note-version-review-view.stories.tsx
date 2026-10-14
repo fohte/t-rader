@@ -24,7 +24,7 @@ const pendingVersion: NoteVersion = {
 
 const args: ComponentProps<typeof NoteVersionReviewView> = {
   version: pendingVersion,
-  isDecisionInline: false,
+  pinDecisionActionsOnMobile: false,
   lineCommentCount: 0,
   isCommentsPending: false,
   reason: '',
@@ -61,8 +61,8 @@ export const ReasonRequiredWithoutComments: Story = {
 }
 
 export const MobileDecisionActions: Story = {
-  name: 'fixes the decision actions to the bottom on a narrow screen.',
-  args: { isDecisionInline: true },
+  name: 'pins the decision actions to the bottom on a narrow screen.',
+  args: { pinDecisionActionsOnMobile: true },
   parameters: { viewport: { defaultViewport: 'mobile1' } },
 }
 
@@ -89,7 +89,7 @@ export const ReviewedInPlace: Story = {
   name: 'shows the approval result without leaving the current version.',
   args: {
     version: { ...pendingVersion, status: 'approved' },
-    isDecisionInline: true,
+    pinDecisionActionsOnMobile: true,
     recentlyReviewedStatus: 'approved',
   },
 }
@@ -98,7 +98,7 @@ export const RejectedInPlace: Story = {
   name: 'shows the rejection result without leaving the current version.',
   args: {
     version: { ...pendingVersion, status: 'rejected' },
-    isDecisionInline: true,
+    pinDecisionActionsOnMobile: true,
     recentlyReviewedStatus: 'rejected',
   },
 }

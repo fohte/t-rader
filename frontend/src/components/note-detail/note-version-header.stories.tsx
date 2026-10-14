@@ -27,6 +27,7 @@ const meta = {
   parameters: { layout: 'padded' },
   args: {
     noteKind: '架空の種別',
+    hasNoteError: false,
     onAsk: () => {},
   },
   decorators: [
@@ -64,5 +65,13 @@ export const CurrentApproved: Story = {
       reviewed_at: '2026-01-12T03:00:00Z',
     },
     noteKind: null,
+  },
+}
+
+export const KindUnavailable: Story = {
+  name: 'shows when the note kind could not be loaded.',
+  args: {
+    version: baseVersion,
+    hasNoteError: true,
   },
 }

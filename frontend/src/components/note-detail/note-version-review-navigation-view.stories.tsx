@@ -85,6 +85,11 @@ export const QueueEmpty: Story = {
   args: { state: { kind: 'empty', total: 0 } },
 }
 
+export const OnlyCurrentItem: Story = {
+  name: 'shows when the current note is the only unread item.',
+  args: { state: { kind: 'only-current', total: 1 } },
+}
+
 export const QueueLoading: Story = {
   name: 'shows a loading message while unread items are loading.',
   args: { state: { kind: 'loading' } },

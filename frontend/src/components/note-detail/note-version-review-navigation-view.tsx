@@ -1,15 +1,8 @@
-import {
-  type ReviewQueueItem,
-  reviewQueueModel,
-} from '#components/review/review-queue-model'
-
-export type NoteVersionReviewNavigationState =
-  | { kind: 'loading' }
-  | { kind: 'error' }
-  | ReturnType<typeof reviewQueueModel.getNavigation>
+import type { ReviewQueueItem } from '#components/review/review-queue-model'
+import type { ReviewQueueNavigationDisplayState } from '#components/review/use-review-queue-navigation'
 
 interface NoteVersionReviewNavigationViewProps {
-  state: NoteVersionReviewNavigationState
+  state: ReviewQueueNavigationDisplayState
   onNavigateToItem: (item: ReviewQueueItem) => void
   onReturnToReview: () => void
 }
@@ -49,6 +42,19 @@ export function NoteVersionReviewNavigationView({
           <span aria-hidden="true" className="text-muted-foreground">
             ·
           </span>
+          <button
+            type="button"
+            onClick={onReturnToReview}
+            className="border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-primary hover:text-primary"
+          >
+            レビューへ
+          </button>
+        </>
+      ) : state.kind === 'only-current' ? (
+        <>
+          <p className="text-muted-foreground">
+            未読 1 件 · この項目以外に未読はありません
+          </p>
           <button
             type="button"
             onClick={onReturnToReview}

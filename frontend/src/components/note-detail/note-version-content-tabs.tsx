@@ -1,5 +1,12 @@
 export type NoteVersionContentTab = 'changes' | 'full'
 
+export function resolveNoteVersionContentTab(
+  isReviewing: boolean,
+  selectedTab: NoteVersionContentTab | null,
+): NoteVersionContentTab {
+  return selectedTab ?? (isReviewing ? 'changes' : 'full')
+}
+
 interface NoteVersionContentTabsProps {
   activeTab: NoteVersionContentTab
   onChange: (tab: NoteVersionContentTab) => void

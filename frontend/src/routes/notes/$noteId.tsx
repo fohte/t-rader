@@ -1,5 +1,5 @@
 import { createFileRoute, useLocation } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
@@ -7,21 +7,26 @@ import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
 import { NoteHistoryPanel } from '#components/note-detail/note-history-panel'
 import { NoteLinksPanelView } from '#components/note-detail/note-links-panel'
-import { NoteVersionContentTabs } from '#components/note-detail/note-version-content-tabs'
+import {
+  type NoteVersionContentTab,
+  NoteVersionContentTabs,
+  resolveNoteVersionContentTab,
+} from '#components/note-detail/note-version-content-tabs'
 import { NoteVersionDiffPanel } from '#components/note-detail/note-version-diff-panel'
 import { NoteVersionFallback } from '#components/note-detail/note-version-fallback'
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
+import { createNoteVersionReviewDestination } from '#components/note-detail/note-version-review-navigation-model'
 import { NoteVersionReviewNavigationView } from '#components/note-detail/note-version-review-navigation-view'
 import { NoteVersionReviewPanel } from '#components/note-detail/note-version-review-panel'
+import type { NoteVersionReviewResult } from '#components/note-detail/note-version-review-view'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import {
-  type ReviewNavigationSnapshot,
+  parseReviewQueueNavigationState,
   type ReviewQueueItem,
   reviewQueueItemKey,
-  reviewQueueModel,
-  type ReviewQueueNavigationState,
 } from '#components/review/review-queue-model'
 import { useReviewQueue } from '#components/review/use-review-queue'
+import { useReviewQueueNavigation } from '#components/review/use-review-queue-navigation'
 import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
 import { $api } from '#lib/api/client'
 
@@ -56,22 +61,14 @@ function NoteDetailPage() {
   const navigate = Route.useNavigate()
   const location = useLocation()
   const reviewQueue = useReviewQueue()
-  const openedReviewQueue = (
-    location.state as typeof location.state & {
-      reviewQueue?: ReviewQueueNavigationState
-    }
-  ).reviewQueue
-  const [fallbackNavigation, setFallbackNavigation] = useState<{
-    noteId: string
-    snapshot: ReviewNavigationSnapshot | null
-  }>(() => ({ noteId, snapshot: null }))
+  const openedReviewQueue = parseReviewQueueNavigationState(location.state)
   const [contentTab, setContentTab] = useState<{
     versionId: string
-    tab: 'changes' | 'full'
+    tab: NoteVersionContentTab
   } | null>(null)
   const [reviewedVersion, setReviewedVersion] = useState<{
     versionId: string
-    status: 'approved' | 'rejected'
+    status: NoteVersionReviewResult
   } | null>(null)
   const noteBodyNavigation = createNoteBodyNavigationHandlers(navigate)
   const {
@@ -81,9 +78,11 @@ function NoteDetailPage() {
   } = $api.useQuery('get', '/api/notes/{id}/versions', {
     params: { path: { id: noteId } },
   })
-  const { data: note } = $api.useQuery('get', '/api/notes/{id}', {
-    params: { path: { id: noteId } },
-  })
+  const { data: note, isError: hasNoteError } = $api.useQuery(
+    'get',
+    '/api/notes/{id}',
+    { params: { path: { id: noteId } } },
+  )
   const {
     data: noteHistory,
     isPending: isNoteHistoryPending,
@@ -104,73 +103,57 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
-  const activeFallbackSnapshot =
-    fallbackNavigation.noteId === noteId ? fallbackNavigation.snapshot : null
-  const navigationSnapshot =
-    openedReviewQueue?.snapshot ??
-    activeFallbackSnapshot ??
-    (reviewQueue.data == null
-      ? null
-      : reviewQueueModel.createNavigationSnapshot(reviewQueue.data.items))
-  const queueNavigationState = reviewQueue.isError
-    ? ({ kind: 'error' } as const)
-    : reviewQueue.data == null || navigationSnapshot == null
-      ? ({ kind: 'loading' } as const)
-      : reviewQueueModel.getNavigation(
-          navigationSnapshot,
-          openedReviewQueue?.currentItemKey ??
-            (selectedVersion == null ? '' : `note:${selectedVersion.id}`),
-          reviewQueue.data.items,
-        )
   const showInlineReview =
     selectedVersion != null &&
     (selectedVersion.status === 'unread' ||
       reviewedVersion?.versionId === selectedVersion.id)
-  const activeContentTab =
+  const selectedContentTab =
     selectedVersion != null && contentTab?.versionId === selectedVersion.id
       ? contentTab.tab
-      : 'changes'
-
-  useEffect(() => {
-    if (
-      openedReviewQueue != null ||
-      activeFallbackSnapshot != null ||
-      reviewQueue.data == null
-    ) {
-      return
-    }
-
-    setFallbackNavigation({
-      noteId,
-      snapshot: reviewQueueModel.createNavigationSnapshot(
-        reviewQueue.data.items,
-      ),
+      : null
+  const activeContentTab = resolveNoteVersionContentTab(
+    showInlineReview,
+    selectedContentTab,
+  )
+  const { snapshot: navigationSnapshot, state: queueNavigationState } =
+    useReviewQueueNavigation({
+      scopeKey: noteId,
+      openedState: openedReviewQueue,
+      currentItemKey:
+        selectedVersion == null
+          ? ''
+          : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
+      items: reviewQueue.data?.items,
+      isError: reviewQueue.isError,
     })
-  }, [activeFallbackSnapshot, noteId, openedReviewQueue, reviewQueue.data])
 
   const navigateToReviewItem = (item: ReviewQueueItem): void => {
     if (navigationSnapshot == null) return
-    const state: { reviewQueue: ReviewQueueNavigationState } = {
-      reviewQueue: {
-        snapshot: navigationSnapshot,
-        currentItemKey: reviewQueueItemKey(item),
-      },
-    }
+    const destination = createNoteVersionReviewDestination(
+      item,
+      navigationSnapshot,
+    )
 
-    if (item.kind === 'note') {
+    if (destination.to === '/notes/$noteId') {
       void navigate({
-        to: '/notes/$noteId',
-        params: { noteId: item.noteId },
-        search: { version: item.versionNo, version_id: item.id },
-        state: (previous) => ({ ...previous, ...state }),
+        to: destination.to,
+        params: destination.params,
+        search: destination.search,
+        state: (previous) => ({
+          ...previous,
+          reviewQueue: destination.reviewQueue,
+        }),
       })
       return
     }
 
     void navigate({
-      to: '/annotations/$annoId',
-      params: { annoId: item.id },
-      state: (previous) => ({ ...previous, ...state }),
+      to: destination.to,
+      params: destination.params,
+      state: (previous) => ({
+        ...previous,
+        reviewQueue: destination.reviewQueue,
+      }),
     })
   }
 
@@ -212,9 +195,19 @@ function NoteDetailPage() {
     orderedVersions
       .filter((version) => version.version_no < selectedVersion.version_no)
       .at(-1) ?? null
-  const onSelectContentTab = (tab: 'changes' | 'full'): void => {
+  const onSelectContentTab = (tab: NoteVersionContentTab): void => {
     setContentTab({ versionId: selectedVersion.id, tab })
   }
+  const fullBody = (
+    <MarkdownBody
+      source={selectedVersion.body_md}
+      graphs={selectedVersion.graphs_json}
+      noteLinks={noteLinks?.outgoing}
+      resolvedPriceReferences={selectedVersion.resolved_price_references_json}
+      onRef={noteBodyNavigation.onRef}
+      onAnno={noteBodyNavigation.onAnno}
+    />
+  )
 
   return (
     <div
@@ -231,21 +224,13 @@ function NoteDetailPage() {
           <NoteVersionHeader
             version={selectedVersion}
             noteKind={note?.kind ?? null}
+            hasNoteError={hasNoteError}
             onAsk={(title) => {
               openFloatingChat('「' + title + '」について補足して')
             }}
           />
           {previousVersion == null ? (
-            <MarkdownBody
-              source={selectedVersion.body_md}
-              graphs={selectedVersion.graphs_json}
-              noteLinks={noteLinks?.outgoing}
-              resolvedPriceReferences={
-                selectedVersion.resolved_price_references_json
-              }
-              onRef={noteBodyNavigation.onRef}
-              onAnno={noteBodyNavigation.onAnno}
-            />
+            fullBody
           ) : (
             <>
               <NoteVersionContentTabs
@@ -259,16 +244,7 @@ function NoteDetailPage() {
                   previousVersion={previousVersion}
                 />
               ) : (
-                <MarkdownBody
-                  source={selectedVersion.body_md}
-                  graphs={selectedVersion.graphs_json}
-                  noteLinks={noteLinks?.outgoing}
-                  resolvedPriceReferences={
-                    selectedVersion.resolved_price_references_json
-                  }
-                  onRef={noteBodyNavigation.onRef}
-                  onAnno={noteBodyNavigation.onAnno}
-                />
+                fullBody
               )}
             </>
           )}
@@ -276,7 +252,7 @@ function NoteDetailPage() {
             <NoteVersionReviewPanel
               key={selectedVersion.id}
               version={selectedVersion}
-              isDecisionInline
+              pinDecisionActionsOnMobile
               recentlyReviewedStatus={
                 reviewedVersion?.versionId === selectedVersion.id
                   ? reviewedVersion.status
@@ -299,13 +275,8 @@ function NoteDetailPage() {
               void navigate({
                 search: { version: versionNo, version_id: undefined },
                 state: (previous) => {
-                  const previousReviewQueue = (
-                    previous as typeof previous & {
-                      reviewQueue?: ReviewQueueNavigationState
-                    }
-                  ).reviewQueue
                   if (
-                    previousReviewQueue != null ||
+                    parseReviewQueueNavigationState(previous) != null ||
                     navigationSnapshot == null
                   ) {
                     return previous
@@ -314,7 +285,10 @@ function NoteDetailPage() {
                     ...previous,
                     reviewQueue: {
                       snapshot: navigationSnapshot,
-                      currentItemKey: `note:${selectedVersion.id}`,
+                      currentItemKey: reviewQueueItemKey({
+                        kind: 'note',
+                        id: selectedVersion.id,
+                      }),
                     },
                   }
                 },

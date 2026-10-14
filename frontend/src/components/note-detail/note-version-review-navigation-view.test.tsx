@@ -74,6 +74,21 @@ describe('NoteVersionReviewNavigationView', () => {
     })
   })
 
+  it('does not offer a next action when the current note is the only unread item', () => {
+    const { container } = render(
+      <NoteVersionReviewNavigationView
+        state={{ kind: 'only-current', total: 1 }}
+        onNavigateToItem={() => {}}
+        onReturnToReview={() => {}}
+      />,
+    )
+
+    expect(getNavigationOutput(container)).toEqual({
+      message: '未読 1 件 · この項目以外に未読はありません',
+      actions: ['レビューへ'],
+    })
+  })
+
   it('shows the previous action only when a previous unread item exists', () => {
     const { container } = render(
       <NoteVersionReviewNavigationView
@@ -147,6 +162,21 @@ describe('NoteVersionReviewNavigationView', () => {
     expect(getNavigationOutput(container)).toEqual({
       message: '未読を読み込めませんでした',
       actions: ['レビューへ'],
+    })
+  })
+
+  it('shows a loading message while unread items are loading', () => {
+    const { container } = render(
+      <NoteVersionReviewNavigationView
+        state={{ kind: 'loading' }}
+        onNavigateToItem={() => {}}
+        onReturnToReview={() => {}}
+      />,
+    )
+
+    expect(getNavigationOutput(container)).toEqual({
+      message: '未読を読み込み中',
+      actions: [],
     })
   })
 })

@@ -1,13 +1,15 @@
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NoteVersion } from '#lib/api/note-version-types'
 
+export type NoteVersionReviewResult = 'approved' | 'rejected'
+
 interface NoteVersionReviewViewProps {
   version: NoteVersion
-  isDecisionInline: boolean
+  pinDecisionActionsOnMobile: boolean
   lineCommentCount: number
   isCommentsPending: boolean
   reason: string
-  recentlyReviewedStatus: 'approved' | 'rejected' | null
+  recentlyReviewedStatus: NoteVersionReviewResult | null
   isApproving: boolean
   isRejecting: boolean
   isMakingCurrent: boolean
@@ -20,7 +22,7 @@ interface NoteVersionReviewViewProps {
 
 export function NoteVersionReviewView({
   version,
-  isDecisionInline,
+  pinDecisionActionsOnMobile,
   lineCommentCount,
   isCommentsPending,
   reason,
@@ -96,7 +98,7 @@ export function NoteVersionReviewView({
               />
             </label>
             <div
-              className={`flex gap-2 ${isDecisionInline ? 'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-between max-lg:border-t max-lg:border-border max-lg:bg-card max-lg:px-4 max-lg:py-3 max-lg:shadow-lg' : ''}`}
+              className={`flex gap-2 ${pinDecisionActionsOnMobile ? 'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-between max-lg:border-t max-lg:border-border max-lg:bg-card max-lg:px-4 max-lg:py-3 max-lg:shadow-lg' : ''}`}
             >
               <button
                 type="button"

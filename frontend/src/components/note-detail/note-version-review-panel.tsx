@@ -1,20 +1,23 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { NoteVersionReviewView } from '#components/note-detail/note-version-review-view'
+import {
+  type NoteVersionReviewResult,
+  NoteVersionReviewView,
+} from '#components/note-detail/note-version-review-view'
 import { $api } from '#lib/api/client'
 import type { NoteVersion } from '#lib/api/note-version-types'
 
 interface NoteVersionReviewPanelProps {
   version: NoteVersion
-  isDecisionInline?: boolean
-  recentlyReviewedStatus?: 'approved' | 'rejected' | null
-  onReviewed?: (status: 'approved' | 'rejected') => void
+  pinDecisionActionsOnMobile?: boolean
+  recentlyReviewedStatus?: NoteVersionReviewResult | null
+  onReviewed?: (status: NoteVersionReviewResult) => void
 }
 
 export function NoteVersionReviewPanel({
   version,
-  isDecisionInline = false,
+  pinDecisionActionsOnMobile = false,
   recentlyReviewedStatus = null,
   onReviewed,
 }: NoteVersionReviewPanelProps) {
@@ -127,7 +130,7 @@ export function NoteVersionReviewPanel({
   return (
     <NoteVersionReviewView
       version={version}
-      isDecisionInline={isDecisionInline}
+      pinDecisionActionsOnMobile={pinDecisionActionsOnMobile}
       lineCommentCount={lineCommentCount}
       isCommentsPending={isCommentsPending}
       reason={reason}
