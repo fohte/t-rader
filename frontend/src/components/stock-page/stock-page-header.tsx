@@ -2,7 +2,7 @@ import { StockPageGroups } from '#components/stock-page/stock-page-groups'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 import { getChartCurrency } from '#lib/chart-utils'
-import type { StockQuote } from '#lib/stock-page-model'
+import type { StockPageListState, StockQuote } from '#lib/stock-page-model'
 
 type Stock = components['schemas']['Stock']
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
@@ -54,7 +54,7 @@ export function StockPageHeader({
   quote: StockQuote | null
   isHolding: boolean
   groups: GroupMembership[]
-  groupsState: 'ready' | 'loading' | 'error'
+  groupsState: StockPageListState
   quoteLoading?: boolean
   quoteError?: boolean
 }) {

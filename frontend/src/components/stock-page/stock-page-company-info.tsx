@@ -1,12 +1,15 @@
 import { StockPageHoldings } from '#components/stock-page/stock-page-holdings'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
-import { formatYenInHundredMillions } from '#lib/stock-page-format'
+import {
+  formatDecimal,
+  formatYenInHundredMillions,
+} from '#lib/stock-page-format'
+import type { StockPageListState } from '#lib/stock-page-model'
 
 type Position = components['schemas']['PositionSummary']
 type NextEarnings = components['schemas']['StockNextEarningsResponse']
 type Valuation = components['schemas']['StockValuationResponse']
-type QueryState = 'ready' | 'loading' | 'error'
 
 const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
   month: '2-digit',
@@ -19,16 +22,23 @@ function formatDate(date: string): string {
   return dateFormatter.format(new Date(`${date}T00:00:00+09:00`))
 }
 
-function formatMultiple(value: number | null | undefined): string {
-  return value == null
-    ? '—'
-    : value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })
+function selectPer(valuation: Valuation | null) {
+  return {
+    label: valuation?.fwd_per == null ? 'PER' : 'PER (予)',
+    value: valuation?.fwd_per ?? valuation?.per,
+  }
+}
+
+function selectRoe(valuation: Valuation | null) {
+  return {
+    label: valuation?.fwd_roe == null ? 'ROE' : 'ROE (予)',
+    value: valuation?.fwd_roe ?? valuation?.roe,
+  }
 }
 
 function formatPercent(value: number | null | undefined): string {
-  return value == null
-    ? '—'
-    : `${value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}%`
+  const formatted = formatDecimal(value)
+  return value == null ? formatted : `${formatted}%`
 }
 
 function SectionHeading({ title, detail }: { title: string; detail?: string }) {
@@ -76,7 +86,7 @@ function QueryMessage({
   error,
   empty,
 }: {
-  state: QueryState
+  state: StockPageListState
   error: string
   empty: string
 }) {
@@ -96,7 +106,7 @@ function NextEarningsCard({
   state,
 }: {
   earnings: NextEarnings | null
-  state: QueryState
+  state: StockPageListState
 }) {
   return (
     <section className="border border-border bg-card" aria-label="次の決算">
@@ -136,11 +146,10 @@ function ValuationCard({
   state,
 }: {
   valuation: Valuation | null
-  state: QueryState
+  state: StockPageListState
 }) {
-  const per = valuation?.fwd_per ?? valuation?.per
-  const perLabel = valuation?.fwd_per == null ? 'PER' : 'PER (予)'
-  const roe = valuation?.fwd_roe ?? valuation?.roe
+  const per = selectPer(valuation)
+  const roe = selectRoe(valuation)
 
   return (
     <section
@@ -165,9 +174,9 @@ function ValuationCard({
         />
       ) : (
         <dl className="grid grid-cols-2 divide-x divide-y divide-border">
-          <Metric label={perLabel} value={formatMultiple(per)} />
-          <Metric label="PBR" value={formatMultiple(valuation.pbr)} />
-          <Metric label="ROE" value={formatPercent(roe)} />
+          <Metric label={per.label} value={formatDecimal(per.value)} />
+          <Metric label="PBR" value={formatDecimal(valuation.pbr)} />
+          <Metric label={roe.label} value={formatPercent(roe.value)} />
           <Metric
             label="時価総額"
             value={formatYenInHundredMillions(valuation.mkt_cap)}
@@ -187,47 +196,37 @@ function MobileOverview({
   valuationState,
 }: {
   position: Position | null
-  holdingsState: QueryState
+  holdingsState: StockPageListState
   earnings: NextEarnings | null
-  earningsState: QueryState
+  earningsState: StockPageListState
   valuation: Valuation | null
-  valuationState: QueryState
+  valuationState: StockPageListState
 }) {
-  const per = valuation?.fwd_per ?? valuation?.per
-  const perLabel = valuation?.fwd_per == null ? 'PER' : 'PER (予)'
-
-  const holdingValue =
-    holdingsState === 'loading'
-      ? '読み込み中'
-      : holdingsState === 'error'
-        ? '取得失敗'
-        : position == null
-          ? '保有なし'
-          : `${position.qty.toLocaleString('ja-JP')} 株`
-  const earningsValue =
-    earningsState === 'loading'
-      ? '読み込み中'
-      : earningsState === 'error'
-        ? '取得失敗'
-        : earnings == null
-          ? '予定なし'
-          : formatDate(earnings.event_date)
-  const valuationValue =
-    valuationState === 'loading'
-      ? '読み込み中'
-      : valuationState === 'error'
-        ? '取得失敗'
-        : valuation == null
-          ? 'データなし'
-          : formatMultiple(per)
-  const pbrValue =
-    valuationState === 'loading'
-      ? '読み込み中'
-      : valuationState === 'error'
-        ? '取得失敗'
-        : valuation == null
-          ? 'データなし'
-          : formatMultiple(valuation.pbr)
+  const per = selectPer(valuation)
+  const holdingValue = formatStateValue(
+    holdingsState,
+    position,
+    '保有なし',
+    (value) => `${value.qty.toLocaleString('ja-JP')} 株`,
+  )
+  const earningsValue = formatStateValue(
+    earningsState,
+    earnings,
+    '予定なし',
+    (value) => formatDate(value.event_date),
+  )
+  const valuationValue = formatStateValue(
+    valuationState,
+    valuation,
+    'データなし',
+    () => formatDecimal(per.value),
+  )
+  const pbrValue = formatStateValue(
+    valuationState,
+    valuation,
+    'データなし',
+    (value) => formatDecimal(value.pbr),
+  )
 
   return (
     <dl className="grid grid-cols-2 divide-x divide-y divide-border border border-border bg-card lg:hidden">
@@ -246,7 +245,7 @@ function MobileOverview({
         }
       />
       <Metric
-        label={perLabel}
+        label={per.label}
         value={valuationValue}
         detail={
           valuationState === 'ready' && valuation != null
@@ -267,6 +266,18 @@ function MobileOverview({
   )
 }
 
+function formatStateValue<T>(
+  state: StockPageListState,
+  data: T | null,
+  empty: string,
+  format: (value: T) => string,
+): string {
+  if (state === 'loading') return '読み込み中'
+  if (state === 'error') return '取得失敗'
+  if (data == null) return empty
+  return format(data)
+}
+
 export function StockPageCompanyInfo({
   position,
   holdingsState,
@@ -276,11 +287,11 @@ export function StockPageCompanyInfo({
   valuationState,
 }: {
   position: Position | null
-  holdingsState: QueryState
+  holdingsState: StockPageListState
   earnings: NextEarnings | null
-  earningsState: QueryState
+  earningsState: StockPageListState
   valuation: Valuation | null
-  valuationState: QueryState
+  valuationState: StockPageListState
 }) {
   return (
     <aside className="space-y-4" aria-label="企業情報">

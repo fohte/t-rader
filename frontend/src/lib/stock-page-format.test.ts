@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatYenInHundredMillions } from '#lib/stock-page-format'
+import {
+  formatDecimal,
+  formatYenInHundredMillions,
+} from '#lib/stock-page-format'
+
+describe('formatDecimal', () => {
+  it.each([
+    ['null', null, '—'],
+    ['a decimal number', 16.2, '16.2'],
+  ] as const)('formats %s', (_label, value, expected) => {
+    expect(formatDecimal(value)).toEqual(expected)
+  })
+})
 
 describe('formatYenInHundredMillions', () => {
   it.each([

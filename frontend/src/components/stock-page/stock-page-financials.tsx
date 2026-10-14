@@ -1,12 +1,16 @@
 import { StockPageGroups } from '#components/stock-page/stock-page-groups'
 import type { components } from '#lib/api/schema.gen'
-import { formatYenInHundredMillions } from '#lib/stock-page-format'
-import { sortFinancialSummariesNewestFirst } from '#lib/stock-page-model'
+import {
+  formatDecimal,
+  formatYenInHundredMillions,
+} from '#lib/stock-page-format'
+import {
+  sortFinancialSummariesNewestFirst,
+  type StockPageListState,
+} from '#lib/stock-page-model'
 
 type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
-type QueryState = 'ready' | 'loading' | 'error'
-
 const disclosureDateFormatter = new Intl.DateTimeFormat('ja-JP', {
   year: 'numeric',
   month: '2-digit',
@@ -40,12 +44,6 @@ function formatPeriod(summary: FinancialSummary): string {
         summary.current_period_type)
 
   return [yearMonth, periodType].filter((part) => part != null).join(' ') || '—'
-}
-
-function formatEarningsPerShare(value: number | null | undefined): string {
-  return value == null
-    ? '—'
-    : value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })
 }
 
 function FinancialSummaryTable({
@@ -95,7 +93,7 @@ function FinancialSummaryTable({
                 {formatYenInHundredMillions(summary.operating_profit)}
               </td>
               <td className="px-3.5 py-2.5 text-right tabular-nums">
-                {formatEarningsPerShare(summary.eps)}
+                {formatDecimal(summary.eps)}
               </td>
             </tr>
           ))}
@@ -112,9 +110,9 @@ export function StockPageFinancials({
   groupsState,
 }: {
   summaries: FinancialSummary[]
-  summariesState: QueryState
+  summariesState: StockPageListState
   groups: GroupMembership[]
-  groupsState: QueryState
+  groupsState: StockPageListState
 }) {
   return (
     <div className="space-y-3">

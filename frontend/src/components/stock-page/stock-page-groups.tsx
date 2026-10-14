@@ -1,8 +1,8 @@
 import type { components } from '#lib/api/schema.gen'
+import type { StockPageListState } from '#lib/stock-page-model'
 import { cn } from '#lib/utils'
 
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
-type QueryState = 'ready' | 'loading' | 'error'
 
 export function StockPageGroups({
   memberships,
@@ -10,7 +10,7 @@ export function StockPageGroups({
   className,
 }: {
   memberships: GroupMembership[]
-  state: QueryState
+  state: StockPageListState
   className?: string
 }) {
   return (

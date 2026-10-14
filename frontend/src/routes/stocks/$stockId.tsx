@@ -121,8 +121,7 @@ function StockPage() {
       financialSummaries={financialSummariesQuery.data ?? []}
       financialSummariesState={getStockPageListState(financialSummariesQuery)}
       position={position}
-      holdingsLoading={summaryQuery.isPending}
-      holdingsError={summaryQuery.isError}
+      holdingsState={getStockPageListState(summaryQuery)}
       timeframe={timeframe}
       onTimeframeChange={setTimeframe}
       selectedAnnotationId={selectedAnnotationId}

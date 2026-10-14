@@ -1,3 +1,9 @@
+export function formatDecimal(value: number | null | undefined): string {
+  return value == null
+    ? '—'
+    : value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })
+}
+
 export function formatYenInHundredMillions(
   value: number | null | undefined,
 ): string {

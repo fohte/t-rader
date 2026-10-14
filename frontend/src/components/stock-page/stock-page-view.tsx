@@ -7,7 +7,7 @@ import { StockPageHeader } from '#components/stock-page/stock-page-header'
 import type { Timeframe } from '#components/timeframe-selector'
 import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'
-import type { StockQuote } from '#lib/stock-page-model'
+import type { StockPageListState, StockQuote } from '#lib/stock-page-model'
 
 type Stock = components['schemas']['Stock']
 type Position = components['schemas']['PositionSummary']
@@ -36,8 +36,7 @@ export function StockPageView({
   financialSummaries,
   financialSummariesState,
   position,
-  holdingsLoading,
-  holdingsError,
+  holdingsState,
   timeframe,
   onTimeframeChange,
   selectedAnnotationId,
@@ -58,16 +57,15 @@ export function StockPageView({
   annotations: Annotation[]
   trades: Trade[]
   groups: GroupMembership[]
-  groupsState: ActivityProps['groupsState']
+  groupsState: StockPageListState
   nextEarnings: NextEarnings | null
-  nextEarningsState: ActivityProps['groupsState']
+  nextEarningsState: StockPageListState
   valuation: Valuation | null
-  valuationState: ActivityProps['groupsState']
+  valuationState: StockPageListState
   financialSummaries: FinancialSummary[]
-  financialSummariesState: ActivityProps['financialSummariesState']
+  financialSummariesState: StockPageListState
   position: Position | null
-  holdingsLoading: boolean
-  holdingsError: boolean
+  holdingsState: StockPageListState
   timeframe: Timeframe
   onTimeframeChange: (timeframe: Timeframe) => void
   selectedAnnotationId: string | null
@@ -108,9 +106,7 @@ export function StockPageView({
         </div>
         <StockPageCompanyInfo
           position={position}
-          holdingsState={
-            holdingsLoading ? 'loading' : holdingsError ? 'error' : 'ready'
-          }
+          holdingsState={holdingsState}
           earnings={nextEarnings}
           earningsState={nextEarningsState}
           valuation={valuation}

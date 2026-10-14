@@ -57,6 +57,39 @@ export const CompanyOverview: Story = {
   name: '保有・次の決算・バリュエーションを表示する。',
 }
 
+export const MobileOverview: Story = {
+  name: 'スマートフォンで企業情報を 2 列に表示する。',
+  globals: { viewport: { value: 'mobileStock' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileStock: {
+          name: 'Mobile stock page',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
+}
+
+export const CurrentValuationFallback: Story = {
+  name: '予想指標がない場合に現在の指標を表示する。',
+  args: {
+    valuation: { ...valuation, fwd_per: null, fwd_roe: null },
+  },
+}
+
+export const ForecastValuation: Story = {
+  name: '予想の PER と ROE を区別して表示する。',
+  args: {
+    valuation: { ...valuation, fwd_roe: 11 },
+  },
+}
+
 export const WithoutPosition: Story = {
   name: '保有がない場合も企業情報を表示する。',
   args: { position: null },
