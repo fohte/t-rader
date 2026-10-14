@@ -12,6 +12,7 @@ import type { StockQuote } from '#lib/stock-page-model'
 type Stock = components['schemas']['Stock']
 type Position = components['schemas']['PositionSummary']
 type Annotation = components['schemas']['Annotation']
+type Note = components['schemas']['Note']
 type Trade = components['schemas']['TradeListItem']
 type ActivityProps = ComponentProps<typeof StockPageActivity>
 
@@ -22,6 +23,7 @@ export function StockPageView({
   quoteError,
   bars,
   annotations,
+  notes,
   trades,
   position,
   holdingsLoading,
@@ -36,6 +38,7 @@ export function StockPageView({
   chartLoading,
   chartError,
   annotationState,
+  noteState,
   tradeState,
 }: {
   stock: Stock
@@ -44,6 +47,7 @@ export function StockPageView({
   quoteError: boolean
   bars: components['schemas']['Bar'][]
   annotations: Annotation[]
+  notes: Note[]
   trades: Trade[]
   position: Position | null
   holdingsLoading: boolean
@@ -58,6 +62,7 @@ export function StockPageView({
   chartLoading: boolean
   chartError: boolean
   annotationState: ActivityProps['annotationState']
+  noteState: ActivityProps['noteState']
   tradeState: ActivityProps['tradeState']
 }) {
   const hasHoldingsColumn = position != null || holdingsLoading || holdingsError
@@ -102,12 +107,14 @@ export function StockPageView({
 
       <StockPageActivity
         annotations={annotations}
+        notes={notes}
         trades={trades}
         activeTab={activeTab}
         onTabChange={onTabChange}
         selectedAnnotationId={selectedAnnotationId}
         onSelectAnnotation={onSelectAnnotation}
         annotationState={annotationState}
+        noteState={noteState}
         tradeState={tradeState}
       />
     </main>
