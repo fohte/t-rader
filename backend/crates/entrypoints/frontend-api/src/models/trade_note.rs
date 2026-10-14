@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -27,4 +28,24 @@ impl From<core_application::trade::TradeNoteLink> for TradeNoteResponse {
 #[serde(deny_unknown_fields)]
 pub struct CreateTradeNoteRequest {
     pub note_id: Uuid,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = NoteLinkedTrade)]
+pub struct NoteLinkedTradeResponse {
+    pub id: Uuid,
+    pub date: NaiveDate,
+    pub symbol: String,
+    pub side: String,
+}
+
+impl From<core_application::trade::Trade> for NoteLinkedTradeResponse {
+    fn from(trade: core_application::trade::Trade) -> Self {
+        Self {
+            id: trade.id,
+            date: trade.date,
+            symbol: trade.symbol,
+            side: trade.side,
+        }
+    }
 }

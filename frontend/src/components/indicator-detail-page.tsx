@@ -1,4 +1,5 @@
 import { IndicatorObservationChart } from '#components/indicator-observation-chart'
+import { ReferenceDetailState } from '#components/reference-detail-state'
 import { RelatedNotes } from '#components/related-notes'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -28,43 +29,13 @@ type IndicatorDetailPageProps =
     }
 
 export function IndicatorDetailPage(props: IndicatorDetailPageProps) {
-  if (props.state === 'loading') {
+  if (props.state !== 'loaded') {
     return (
-      <main className="space-y-5 font-sans text-foreground" aria-busy="true">
-        <div className="space-y-3">
-          <div className="h-8 w-48 animate-pulse bg-surface-strong" />
-          <div className="h-9 w-36 animate-pulse bg-surface-strong" />
-        </div>
-        <p className="font-mono text-xs text-muted-foreground">
-          指標を読み込んでいます: {props.indicatorId}
-        </p>
-      </main>
-    )
-  }
-
-  if (props.state === 'not-found') {
-    return (
-      <main className="space-y-2 font-sans text-foreground">
-        <h1 className="text-2xl font-bold leading-tight tracking-tight">
-          指標が見つかりません
-        </h1>
-        <p className="font-mono text-sm text-muted-foreground">
-          {props.indicatorId}
-        </p>
-      </main>
-    )
-  }
-
-  if (props.state === 'error') {
-    return (
-      <main className="space-y-2 font-sans text-foreground">
-        <h1 className="text-2xl font-bold leading-tight tracking-tight">
-          指標を読み込めませんでした
-        </h1>
-        <p className="font-mono text-sm text-muted-foreground">
-          {props.indicatorId}
-        </p>
-      </main>
+      <ReferenceDetailState
+        state={props.state}
+        label="指標"
+        identifier={props.indicatorId}
+      />
     )
   }
 

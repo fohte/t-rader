@@ -195,6 +195,32 @@ impl TradeRepository for FakeTradeRepository {
         Ok(links)
     }
 
+    async fn list_trades_for_note(
+        &self,
+        note_id: Uuid,
+    ) -> Result<Vec<Trade>, TradeRepositoryError> {
+        let trade_ids: Vec<_> = self
+            .note_links
+            .lock()
+            .await
+            .iter()
+            .filter(|link| link.note_id == note_id)
+            .map(|link| link.trade_id)
+            .collect();
+        let trades = self.trades.lock().await;
+        let mut linked_trades: Vec<_> = trade_ids
+            .into_iter()
+            .filter_map(|trade_id| trades.get(&trade_id).cloned())
+            .collect();
+        linked_trades.sort_by(|left, right| {
+            right
+                .date
+                .cmp(&left.date)
+                .then_with(|| right.created_at.cmp(&left.created_at))
+        });
+        Ok(linked_trades)
+    }
+
     async fn insert_note_link(
         &self,
         transaction: &UnitOfWorkTransaction,
