@@ -158,11 +158,12 @@ impl WebSearchClient for TavilyClient {
 
 impl SearchResult {
     fn into_domain(self) -> WebSearchResult {
+        let snippet = crate::markdown_links::absolutize_markdown_links(&self.content, &self.url);
         WebSearchResult {
             title: self.title,
             url: self.url,
             published_date: self.published_date,
-            snippet: self.content,
+            snippet,
         }
     }
 }
@@ -242,10 +243,14 @@ mod tests {
             .respond_with(ResponseTemplate::new(StatusCode::OK).set_body_json(json!({
                 "results": [{
                     "title": "Example article",
-                    "url": "https://example.invalid/article",
-                    "content": "A short search snippet",
+                    "url": "https://news.example.com/reports/section/overview",
+                    "content": "Intro [root](/reports/annual), [relative](./detail), [parent](../archive), [external](https://docs.example.org/guide), [escaped](/reports/annual\\_summary), [titled](./detail \"section title\"), and code `[literal](/literal)`. ",
                     "raw_content": "# Article body",
                     "published_date": "2026-01-02"
+                }, {
+                    "title": "Invalid address",
+                    "url": "invalid address",
+                    "content": "[relative](/reports/annual) remains unchanged."
                 }]
             })))
             .mount(&mock)
@@ -279,12 +284,20 @@ mod tests {
                     "time_range": "week",
                     "include_published_date": true
                 }),
-                vec![WebSearchResult {
-                    title: "Example article".into(),
-                    url: "https://example.invalid/article".into(),
-                    published_date: Some("2026-01-02".into()),
-                    snippet: "A short search snippet".into(),
-                }],
+                vec![
+                    WebSearchResult {
+                        title: "Example article".into(),
+                        url: "https://news.example.com/reports/section/overview".into(),
+                        published_date: Some("2026-01-02".into()),
+                        snippet: "Intro [root](https://news.example.com/reports/annual), [relative](https://news.example.com/reports/section/detail), [parent](https://news.example.com/reports/archive), [external](https://docs.example.org/guide), [escaped](https://news.example.com/reports/annual_summary), [titled](https://news.example.com/reports/section/detail \"section title\"), and code `[literal](/literal)`. ".into(),
+                    },
+                    WebSearchResult {
+                        title: "Invalid address".into(),
+                        url: "invalid address".into(),
+                        published_date: None,
+                        snippet: "[relative](/reports/annual) remains unchanged.".into(),
+                    },
+                ],
             ),
         );
     }
