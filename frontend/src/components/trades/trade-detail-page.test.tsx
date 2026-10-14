@@ -94,6 +94,9 @@ describe('TradeDetailPage', () => {
       if (/^\/api\/strategies\/[^/]+\/tasks\/[^/]+\/notes$/.test(path)) {
         return Promise.resolve(Response.json([]))
       }
+      if (path === '/api/bars' || path === '/api/trades') {
+        return Promise.resolve(Response.json([]))
+      }
       if (path === '/api/strategies') {
         return Promise.resolve(
           Response.json([
@@ -248,6 +251,9 @@ describe('TradeDetailPage', () => {
         return Response.json([])
       }
       if (/^\/api\/strategies\/[^/]+\/tasks\/[^/]+\/notes$/.test(path)) {
+        return Response.json([])
+      }
+      if (path === '/api/bars' || path === '/api/trades') {
         return Response.json([])
       }
       if (path === '/api/strategies') {

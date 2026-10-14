@@ -32,17 +32,20 @@ type Story = StoryObj<typeof meta>
 
 export const Stock: Story = {
   name: 'shows a stock reference with its resolved name.',
-  args: { token: 'stock:demo-code' },
+  args: { token: 'stock:demo-code', onOpenRef: () => undefined },
 }
 
 export const Indicator: Story = {
-  name: 'shows an indicator reference with its resolved name.',
-  args: { token: 'indicator:demo-indicator' },
+  name: 'shows a clickable indicator reference with its resolved name.',
+  args: { token: 'indicator:demo-indicator', onOpenRef: () => undefined },
 }
 
 export const Group: Story = {
-  name: 'shows a group reference with its resolved name.',
-  args: { token: 'group:demo-axis/demo-group' },
+  name: 'shows a clickable group reference with its resolved name.',
+  args: {
+    token: 'group:demo-axis/demo-group',
+    onOpenRef: () => undefined,
+  },
 }
 
 export const Pill: Story = {
@@ -52,5 +55,5 @@ export const Pill: Story = {
 
 export const Unknown: Story = {
   name: 'shows an unresolved stock reference.',
-  args: { token: 'stock:missing-code' },
+  args: { token: 'stock:missing-code', onOpenRef: () => undefined },
 }

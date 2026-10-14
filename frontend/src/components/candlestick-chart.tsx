@@ -36,11 +36,11 @@ import {
   toCandlestickData,
   toTradeMarkers,
   toVolumeData,
+  type TradeMarker,
 } from '#lib/chart-utils'
 import { cn } from '#lib/utils'
 
 type Bar = components['schemas']['Bar']
-type Trade = components['schemas']['TradeListItem']
 type BucketedAnnotation =
   | {
       id: string
@@ -64,11 +64,13 @@ interface DateMarkerLayout {
 
 interface CandlestickChartProps {
   bars: Bar[]
-  trades?: Trade[]
+  trades?: TradeMarker[]
+  selectedTradeId?: string
   annotations?: ChartAnnotation[]
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
   currency?: ChartCurrency
+  priceScaleTopMargin?: number
   intraday?: boolean
   highlightedTimestamp?: string
   className?: string
@@ -77,10 +79,12 @@ interface CandlestickChartProps {
 export function CandlestickChart({
   bars,
   trades,
+  selectedTradeId,
   annotations,
   onSelectAnnotation,
   selectedAnnotationId,
   currency,
+  priceScaleTopMargin = 0.05,
   intraday = false,
   highlightedTimestamp,
   className,
@@ -125,9 +129,6 @@ export function CandlestickChart({
       wickDownColor: '#ef5350',
       borderVisible: false,
       priceScaleId: 'right',
-    })
-    candlestickSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.05, bottom: 0.25 },
     })
     candlestickSeriesRef.current = candlestickSeries
     tradeMarkersRef.current = createSeriesMarkers(candlestickSeries)
@@ -184,6 +185,15 @@ export function CandlestickChart({
   }, [])
 
   useEffect(() => {
+    const series = candlestickSeriesRef.current
+    if (series == null) return
+
+    series.priceScale().applyOptions({
+      scaleMargins: { top: priceScaleTopMargin, bottom: 0.25 },
+    })
+  }, [priceScaleTopMargin])
+
+  useEffect(() => {
     chartRef.current?.applyOptions({
       timeScale: { timeVisible: intraday, secondsVisible: false },
     })
@@ -238,8 +248,10 @@ export function CandlestickChart({
   }, [bars])
 
   useEffect(() => {
-    tradeMarkersRef.current?.setMarkers(toTradeMarkers(trades ?? [], bars))
-  }, [bars, trades])
+    tradeMarkersRef.current?.setMarkers(
+      toTradeMarkers(trades ?? [], bars, selectedTradeId),
+    )
+  }, [bars, trades, selectedTradeId])
 
   useEffect(() => {
     const chart = chartRef.current

@@ -159,7 +159,7 @@ export const WithGraph: Story = {
 }
 
 export const WithInteractiveReferences: Story = {
-  name: 'makes stock and annotation chips clickable while other refs stay plain.',
+  name: 'makes stock, indicator, group, and annotation chips clickable.',
   args: {
     source:
       '[[stock:demo-code]] [[indicator:demo-indicator]] [[group:demo-axis/demo-group]] [[anno:00000000-0000-0000-0000-000000000301]]\n\n[[graph:g1]]',

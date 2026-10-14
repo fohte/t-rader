@@ -3,12 +3,15 @@ import { Link } from '@tanstack/react-router'
 
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { formatYen, pnlColorClass } from '#components/trades/format'
+import { TradeDetailChartView } from '#components/trades/trade-detail-chart-view'
+import type { TradeDetailChartState } from '#components/trades/trade-detail-model'
 import {
   TradeRequestedAnalyses,
   type TradeRequestedAnalysis,
 } from '#components/trades/trade-requested-analyses'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
+import type { ChartCurrency } from '#lib/chart-utils'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
 type Note = components['schemas']['Note']
@@ -19,6 +22,8 @@ type TradeDetailViewProps =
   | {
       state: 'ready'
       trade: TradeDetail
+      chartCurrency?: ChartCurrency
+      chartState: TradeDetailChartState
       stockName: string | null
       strategyName: string | null
       linkedNotes: Note[]
@@ -150,6 +155,12 @@ export function TradeDetailView(props: TradeDetailViewProps) {
           </section>
         )}
       </section>
+
+      <TradeDetailChartView
+        trade={trade}
+        currency={props.chartCurrency}
+        state={props.chartState}
+      />
 
       <section aria-labelledby="trade-detail-notes-title" className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
