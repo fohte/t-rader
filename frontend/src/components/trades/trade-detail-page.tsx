@@ -2,8 +2,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
-import type { TradeDetailChartState } from '#components/trades/trade-detail-chart-view'
-import { createTradeReflectionDraft } from '#components/trades/trade-detail-model'
+import {
+  createTradeDetailChartState,
+  createTradeReflectionDraft,
+  getTradeDetailChartRange,
+} from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
@@ -66,18 +69,13 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const strategyName =
     strategiesQuery.data?.find((strategy) => strategy.id === detail.strategy_id)
       ?.name ?? null
-  const chartState: TradeDetailChartState =
-    chartBarsQuery.isPending || chartTradesQuery.isPending
-      ? { status: 'loading' }
-      : chartBarsQuery.isError || chartTradesQuery.isError
-        ? { status: 'error' }
-        : chartBarsQuery.data.length === 0
-          ? { status: 'empty' }
-          : {
-              status: 'ready',
-              bars: chartBarsQuery.data,
-              trades: chartTradesQuery.data,
-            }
+  const chartState = createTradeDetailChartState({
+    bars: chartBarsQuery.data,
+    barsPending: chartBarsQuery.isPending,
+    barsError: chartBarsQuery.isError,
+    trades: chartTradesQuery.data,
+    selectedTrade: detail,
+  })
   const reflectionDraft = createTradeReflectionDraft(detail, stockName)
 
   function handleCreated(noteId: string) {
@@ -138,19 +136,4 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
       />
     </>
   )
-}
-
-function getTradeDetailChartRange(tradeDate: string | undefined) {
-  if (tradeDate == null) return null
-
-  const center = new Date(`${tradeDate}T00:00:00.000Z`)
-  const from = new Date(center)
-  const to = new Date(center)
-  from.setUTCDate(from.getUTCDate() - 14)
-  to.setUTCDate(to.getUTCDate() + 14)
-
-  return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-  }
 }

@@ -3,10 +3,8 @@ import { Link } from '@tanstack/react-router'
 
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { formatYen, pnlColorClass } from '#components/trades/format'
-import {
-  type TradeDetailChartState,
-  TradeDetailChartView,
-} from '#components/trades/trade-detail-chart-view'
+import { TradeDetailChartView } from '#components/trades/trade-detail-chart-view'
+import type { TradeDetailChartState } from '#components/trades/trade-detail-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'

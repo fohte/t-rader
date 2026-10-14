@@ -2,46 +2,14 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
+import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
+import { toTradeListItem } from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
-type Trade = components['schemas']['TradeListItem']
 type Note = components['schemas']['Note']
-
-const chartBars: components['schemas']['Bar'][] = [
-  {
-    instrument_id: 'FIC-01',
-    timeframe: '1d',
-    timestamp: '2099-02-09T00:00:00Z',
-    open: 980,
-    high: 1020,
-    low: 970,
-    close: 1000,
-    volume: 1200,
-  },
-  {
-    instrument_id: 'FIC-01',
-    timeframe: '1d',
-    timestamp: '2099-02-10T00:00:00Z',
-    open: 1000,
-    high: 1030,
-    low: 990,
-    close: 1010,
-    volume: 1400,
-  },
-  {
-    instrument_id: 'FIC-01',
-    timeframe: '1d',
-    timestamp: '2099-02-11T00:00:00Z',
-    open: 1010,
-    high: 1020,
-    low: 960,
-    close: 970,
-    volume: 1600,
-  },
-]
 
 const sellingTrade: TradeDetail = {
   id: 'fake-trade-sell',
@@ -76,37 +44,8 @@ const buyingTrade: TradeDetail = {
   remaining_qty: 7,
 }
 
-const sellingTradeMarker: Trade = {
-  id: sellingTrade.id,
-  strategy_id: sellingTrade.strategy_id,
-  symbol: sellingTrade.symbol,
-  side: sellingTrade.side,
-  qty: sellingTrade.qty,
-  price: sellingTrade.price,
-  fee: sellingTrade.fee,
-  date: sellingTrade.date,
-  source: sellingTrade.source,
-  note: sellingTrade.note,
-  note_count: 0,
-  created_at: sellingTrade.created_at,
-  updated_at: sellingTrade.updated_at,
-}
-
-const buyingTradeMarker: Trade = {
-  id: buyingTrade.id,
-  strategy_id: buyingTrade.strategy_id,
-  symbol: buyingTrade.symbol,
-  side: buyingTrade.side,
-  qty: buyingTrade.qty,
-  price: buyingTrade.price,
-  fee: buyingTrade.fee,
-  date: buyingTrade.date,
-  source: buyingTrade.source,
-  note: buyingTrade.note,
-  note_count: 0,
-  created_at: buyingTrade.created_at,
-  updated_at: buyingTrade.updated_at,
-}
+const sellingTradeMarker = toTradeListItem(sellingTrade)
+const buyingTradeMarker = toTradeListItem(buyingTrade)
 
 const linkedNote: Note = {
   id: 'fake-note-human',
@@ -158,7 +97,7 @@ const meta = {
     trade: sellingTrade,
     chartState: {
       status: 'ready',
-      bars: chartBars,
+      bars: TRADE_DETAIL_CHART_BARS,
       trades: [sellingTradeMarker],
     },
     stockName: '架空銘柄',
@@ -185,7 +124,7 @@ export const BuyingWithoutNotes: Story = {
     trade: buyingTrade,
     chartState: {
       status: 'ready',
-      bars: chartBars,
+      bars: TRADE_DETAIL_CHART_BARS,
       trades: [buyingTradeMarker],
     },
     linkedNotes: [],

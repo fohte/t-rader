@@ -1,17 +1,10 @@
 import { CandlestickChart } from '#components/candlestick-chart'
+import type { TradeDetailChartState } from '#components/trades/trade-detail-model'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'
 
-type Bar = components['schemas']['Bar']
-type Trade = components['schemas']['TradeListItem']
 type TradeDetail = components['schemas']['TradeDetailResponse']
-
-export type TradeDetailChartState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'empty' }
-  | { status: 'ready'; bars: Bar[]; trades: Trade[] }
 
 export function TradeDetailChartView({
   trade,
