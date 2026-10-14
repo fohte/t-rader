@@ -1,4 +1,9 @@
 const intFmt = new Intl.NumberFormat('en-US')
+const percentFormatter = new Intl.NumberFormat('ja-JP', {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
 
 export function formatYen(value: number, signed = false): string {
   const rounded = Math.round(value)
@@ -15,6 +20,23 @@ export function pnlColorClass(value: number): string {
   if (value > 0) return 'text-up'
   if (value < 0) return 'text-down'
   return 'text-muted-foreground-strong'
+}
+
+export function formatOptionalPercent(
+  value: number | null | undefined,
+  signed = false,
+): string {
+  if (value == null) return '—'
+
+  const formatted = percentFormatter.format(Math.abs(value))
+  if (!signed || value === 0) return formatted
+  return (value > 0 ? '+' : '−') + formatted
+}
+
+export function optionalPnlColorClass(
+  value: number | null | undefined,
+): string {
+  return value == null ? 'text-muted-foreground-strong' : pnlColorClass(value)
 }
 
 export const SOURCE_LABEL: Record<string, string> = {

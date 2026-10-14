@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+
 import { DashboardRecentNotes } from '#components/dashboard/dashboard-recent-notes'
 import { DashboardRecentRuns } from '#components/dashboard/dashboard-recent-runs'
 import { DashboardRecentTrades } from '#components/dashboard/dashboard-recent-trades'
@@ -94,9 +96,17 @@ export function DashboardPageView({
                 <span className="mr-2 text-primary">&gt;</span>
                 保有銘柄
               </h2>
-              <span className="shrink-0 font-mono text-2xs text-muted-foreground">
-                {positions == null ? '…' : `${String(positions.length)} 銘柄`}
-              </span>
+              <div className="flex items-baseline gap-3">
+                <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                  {positions == null ? '…' : `${String(positions.length)} 銘柄`}
+                </span>
+                <Link
+                  to="/portfolio"
+                  className="shrink-0 font-mono text-2xs text-primary hover:underline"
+                >
+                  保有をすべて見る →
+                </Link>
+              </div>
             </div>
             {isPositionsError ? (
               <p className="border border-border bg-card px-4 py-5 font-mono text-xs text-muted-foreground">
@@ -105,7 +115,11 @@ export function DashboardPageView({
             ) : positions == null ? (
               <Skeleton className="h-40 w-full" />
             ) : (
-              <PositionsTable positions={positions} stocks={stocks} />
+              <PositionsTable
+                positions={positions}
+                stocks={stocks}
+                displayMarketValue
+              />
             )}
           </section>
 
