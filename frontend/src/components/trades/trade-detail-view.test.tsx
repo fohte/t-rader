@@ -49,13 +49,17 @@ describe('TradeDetailView', () => {
           trade={trade}
           stockName="架空銘柄"
           strategyName="検証用戦略"
+          requestedAnalyses={[]}
+          requestedAnalysesState="success"
           linkedNotes={[]}
           notesPending={false}
           notesError={false}
           noteLinkError={null}
           onManageNotes={() => undefined}
           onWriteReflection={() => undefined}
-          onAskAgent={onAskAgent}
+          onAskAgent={() => {
+            onAskAgent()
+          }}
         />
       ),
       { paths: ['/trades', '/stocks/$stockId', '/notes/$noteId'] },
@@ -68,7 +72,7 @@ describe('TradeDetailView', () => {
       }),
     )
 
-    expect(onAskAgent.mock.calls.length).toBe(1)
+    expect(onAskAgent.mock.calls).toEqual([[]])
   })
 
   it('shows sale facts, matched purchases, and note author links', async () => {

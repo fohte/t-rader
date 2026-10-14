@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 import type { components } from '#lib/api/schema.gen'
 
-export type ChatContextKind = components['schemas']['StrategyTaskContextKind']
+type ChatContextKind = components['schemas']['StrategyTaskContextKind']
 
 export interface ChatContext {
   kind: ChatContextKind

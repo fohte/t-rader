@@ -85,6 +85,15 @@ describe('TradeDetailPage', () => {
       if (path === '/api/trades/fake-trade-sell/notes') {
         return Promise.resolve(Response.json([]))
       }
+      if (
+        /^\/api\/strategies\/[^/]+\/tasks$/.test(path) &&
+        request.method === 'GET'
+      ) {
+        return Promise.resolve(Response.json([]))
+      }
+      if (/^\/api\/strategies\/[^/]+\/tasks\/[^/]+\/notes$/.test(path)) {
+        return Promise.resolve(Response.json([]))
+      }
       if (path === '/api/strategies') {
         return Promise.resolve(
           Response.json([
