@@ -3,8 +3,13 @@ import { useState } from 'react'
 
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
 import {
+  openFloatingChat,
+  useChatContext,
+} from '#components/strategy-shell/floating-chat-store'
+import {
   createTradeDetailChartState,
   createTradeReflectionDraft,
+  formatTradeContextLabel,
   getTradeDetailChartRange,
 } from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
@@ -55,6 +60,19 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const linkMutation = $api.useMutation('post', '/api/trades/{id}/notes')
+  const detail = detailQuery.data
+  const stock = stocksQuery.data?.find((item) => item.id === detail?.symbol)
+  const stockName = stock?.name ?? null
+  useChatContext(
+    detail == null
+      ? null
+      : {
+          kind: 'trade',
+          id: detail.id,
+          label: formatTradeContextLabel(detail, stockName),
+          strategyId: detail.strategy_id,
+        },
+  )
 
   const { analyses: requestedAnalyses, state: requestedAnalysesState } =
     useTradeRequestedAnalyses({
@@ -72,13 +90,10 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
     return <TradeDetailView state="loading" />
   }
 
-  const detail = detailQuery.data
   if (detail == null) {
     return <TradeDetailView state="error" />
   }
 
-  const stock = stocksQuery.data?.find((item) => item.id === detail.symbol)
-  const stockName = stock?.name ?? null
   const strategyName =
     strategiesQuery.data?.find((strategy) => strategy.id === detail.strategy_id)
       ?.name ?? null
@@ -134,6 +149,11 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
         onWriteReflection={() => {
           setNoteLinkError(null)
           setReflectionDialogOpen(true)
+        }}
+        onAskAgent={() => {
+          openFloatingChat(
+            'この取引について、売買時の判断とその後の結果を振り返ってください。',
+          )
         }}
       />
       <TradeNotesDialog

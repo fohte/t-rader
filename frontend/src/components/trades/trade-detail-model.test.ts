@@ -4,11 +4,43 @@ import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.f
 import {
   createTradeDetailChartState,
   createTradeReflectionDraft,
+  formatTradeContextLabel,
   getTradeDetailChartRange,
 } from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
+
+const sampleTrade: TradeDetail = {
+  id: 'fake-trade-sell',
+  strategy_id: 'fake-strategy',
+  symbol: 'FIC-01',
+  side: 'sell',
+  qty: 10,
+  price: 1000,
+  fee: 10,
+  date: '2099-02-10',
+  source: 'manual',
+  note: null,
+  created_at: '2099-02-10T00:00:00Z',
+  updated_at: '2099-02-10T00:00:00Z',
+  realized_pnl: 2200,
+  matched_buys: [{ date: '2099-02-01', qty: 10, price: 780 }],
+}
+
+describe('formatTradeContextLabel', () => {
+  it.each([
+    ['sell', '架空銘柄', '2099-02-10 売り 架空銘柄'],
+    ['buy', null, '2099-02-10 買い FIC-01'],
+  ] as const)(
+    'formats a %s trade with the available stock label',
+    (side, stockName, expected) => {
+      expect(formatTradeContextLabel({ ...sampleTrade, side }, stockName)).toBe(
+        expected,
+      )
+    },
+  )
+})
 
 const chartTrade: TradeDetail = {
   id: 'fake-trade-buy',

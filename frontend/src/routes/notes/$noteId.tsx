@@ -1,4 +1,4 @@
-import { createFileRoute, useLocation } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
@@ -16,19 +16,16 @@ import {
 import { NoteVersionDiffPanel } from '#components/note-detail/note-version-diff-panel'
 import { NoteVersionFallback } from '#components/note-detail/note-version-fallback'
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
-import { createNoteVersionReviewDestination } from '#components/note-detail/note-version-review-navigation-model'
-import { NoteVersionReviewNavigationView } from '#components/note-detail/note-version-review-navigation-view'
 import { NoteVersionReviewPanel } from '#components/note-detail/note-version-review-panel'
 import type { NoteVersionReviewResult } from '#components/note-detail/note-version-review-view'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
+import { ReviewNavigationBand } from '#components/review/review-navigation-band'
+import { reviewQueueItemKey } from '#components/review/review-queue-model'
+import { useReviewNavigation } from '#components/review/use-review-navigation'
 import {
-  parseReviewQueueNavigationState,
-  type ReviewQueueItem,
-  reviewQueueItemKey,
-} from '#components/review/review-queue-model'
-import { useReviewQueue } from '#components/review/use-review-queue'
-import { useReviewQueueNavigation } from '#components/review/use-review-queue-navigation'
-import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
+  openFloatingChat,
+  useChatContext,
+} from '#components/strategy-shell/floating-chat-store'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/notes/$noteId')({
@@ -60,9 +57,6 @@ function NoteDetailPage() {
   const { version: requestedVersionNo, version_id: requestedVersionId } =
     Route.useSearch()
   const navigate = Route.useNavigate()
-  const location = useLocation()
-  const reviewQueue = useReviewQueue()
-  const openedReviewQueue = parseReviewQueueNavigationState(location.state)
   const [contentTab, setContentTab] = useState<{
     versionId: string
     tab: NoteVersionContentTab
@@ -116,51 +110,13 @@ function NoteDetailPage() {
     showInlineReview,
     selectedContentTab,
   )
-  const { snapshot: navigationSnapshot, state: queueNavigationState } =
-    useReviewQueueNavigation({
-      scopeKey: noteId,
-      openedState: openedReviewQueue,
-      currentItemKey:
-        selectedVersion == null
-          ? ''
-          : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
-      items: reviewQueue.data?.items,
-      isError: reviewQueue.isError,
-    })
-
-  const navigateToReviewItem = (item: ReviewQueueItem): void => {
-    if (navigationSnapshot == null) return
-    const destination = createNoteVersionReviewDestination(
-      item,
-      navigationSnapshot,
-    )
-
-    if (destination.to === '/notes/$noteId') {
-      void navigate({
-        to: destination.to,
-        params: destination.params,
-        search: destination.search,
-        state: (previous) => ({
-          ...previous,
-          reviewQueue: destination.reviewQueue,
-        }),
-      })
-      return
-    }
-
-    void navigate({
-      to: destination.to,
-      params: destination.params,
-      state: (previous) => ({
-        ...previous,
-        reviewQueue: destination.reviewQueue,
-      }),
-    })
-  }
-
-  const onReturnToReview = (): void => {
-    void navigate({ to: '/review' })
-  }
+  const reviewNavigation = useReviewNavigation(
+    selectedVersion == null
+      ? ''
+      : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
+  )
+  const { navigation, isError: isReviewNavigationError } = reviewNavigation
+  useChatContext({ kind: 'note', id: noteId, label: selectedVersion?.title })
   const {
     data: noteLinks,
     isPending: linksPending,
@@ -215,11 +171,13 @@ function NoteDetailPage() {
       className={`space-y-4 font-sans text-foreground ${showInlineReview ? 'pb-20 lg:pb-0' : ''}`}
     >
       <DetailBackLink label="ノート一覧に戻る" />
-      <NoteVersionReviewNavigationView
-        state={queueNavigationState}
-        onNavigateToItem={navigateToReviewItem}
-        onReturnToReview={onReturnToReview}
-      />
+      {navigation != null ? (
+        <ReviewNavigationBand {...navigation} />
+      ) : isReviewNavigationError ? (
+        <ReviewNavigationBand isError />
+      ) : (
+        <ReviewNavigationBand isPending />
+      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="space-y-4 border border-border bg-card px-5 py-5">
           <NoteVersionHeader
@@ -276,16 +234,12 @@ function NoteDetailPage() {
               void navigate({
                 search: { version: versionNo, version_id: undefined },
                 state: (previous) => {
-                  if (
-                    parseReviewQueueNavigationState(previous) != null ||
-                    navigationSnapshot == null
-                  ) {
-                    return previous
-                  }
+                  const snapshot = reviewNavigation.navigation?.snapshot
+                  if (snapshot == null) return previous
                   return {
                     ...previous,
                     reviewQueue: {
-                      snapshot: navigationSnapshot,
+                      snapshot,
                       currentItemKey: reviewQueueItemKey({
                         kind: 'note',
                         id: selectedVersion.id,

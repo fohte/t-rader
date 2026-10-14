@@ -1,6 +1,7 @@
 import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import type { components } from '#lib/api/schema.gen'
@@ -24,6 +25,57 @@ function readTradeDetailViewOutput(
 afterEach(cleanup)
 
 describe('TradeDetailView', () => {
+  it('calls the agent review action from the trade detail', async () => {
+    const trade: TradeDetail = {
+      id: 'fake-trade-sell',
+      strategy_id: 'fake-strategy',
+      symbol: 'FIC-01',
+      side: 'sell',
+      qty: 10,
+      price: 1000,
+      fee: 10,
+      date: '2099-02-10',
+      source: 'manual',
+      note: null,
+      created_at: '2099-02-10T00:00:00Z',
+      updated_at: '2099-02-10T00:00:00Z',
+      realized_pnl: 2200,
+    }
+    const onAskAgent = vi.fn()
+    const router = createStoryRouter(
+      () => (
+        <TradeDetailView
+          state="ready"
+          trade={trade}
+          chartState={{ status: 'loading' }}
+          stockName="架空銘柄"
+          strategyName="検証用戦略"
+          requestedAnalyses={[]}
+          requestedAnalysesState="success"
+          linkedNotes={[]}
+          notesPending={false}
+          notesError={false}
+          noteLinkError={null}
+          onManageNotes={() => undefined}
+          onWriteReflection={() => undefined}
+          onAskAgent={() => {
+            onAskAgent()
+          }}
+        />
+      ),
+      { paths: ['/trades', '/stocks/$stockId', '/notes/$noteId'] },
+    )
+    render(<RouterProvider router={router} />)
+
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: 'エージェントに振り返りを頼む',
+      }),
+    )
+
+    expect(onAskAgent.mock.calls).toEqual([[]])
+  })
+
   it('shows sale facts, matched purchases, and note author links', async () => {
     const trade: TradeDetail = {
       id: 'fake-trade-sell',
@@ -99,6 +151,7 @@ describe('TradeDetailView', () => {
           noteLinkError={null}
           onManageNotes={() => undefined}
           onWriteReflection={() => undefined}
+          onAskAgent={() => undefined}
         />
       ),
       {

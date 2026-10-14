@@ -40,6 +40,7 @@ describe('floating chat strategy selection', () => {
     expect(
       resolveDefaultStrategyId({
         currentStrategyId: 'strategy-current',
+        contextStrategyId: 'strategy-context',
         lastUsedStrategyId: 'strategy-previous',
         availableStrategyIds: ['strategy-current', 'strategy-previous'],
       }),
@@ -50,6 +51,7 @@ describe('floating chat strategy selection', () => {
     expect(
       resolveDefaultStrategyId({
         currentStrategyId: null,
+        contextStrategyId: null,
         lastUsedStrategyId: 'strategy-previous',
         availableStrategyIds: ['strategy-previous'],
       }),
@@ -60,10 +62,22 @@ describe('floating chat strategy selection', () => {
     expect(
       resolveDefaultStrategyId({
         currentStrategyId: null,
+        contextStrategyId: null,
         lastUsedStrategyId: 'strategy-deleted',
         availableStrategyIds: ['strategy-current'],
       }),
     ).toBeNull()
+  })
+
+  it('uses the context strategy before the last sent strategy', () => {
+    expect(
+      resolveDefaultStrategyId({
+        currentStrategyId: null,
+        contextStrategyId: 'strategy-context',
+        lastUsedStrategyId: 'strategy-previous',
+        availableStrategyIds: ['strategy-context', 'strategy-previous'],
+      }),
+    ).toBe('strategy-context')
   })
 
   it('remembers the last strategy used for sending', () => {

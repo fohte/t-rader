@@ -61,6 +61,14 @@ export function createTradeDetailChartState({
   return { status: 'ready', bars, trades: tradesWithSelected }
 }
 
+export function formatTradeContextLabel(
+  trade: TradeDetail,
+  stockName: string | null,
+): string {
+  const sideLabel = trade.side === 'buy' ? '買い' : '売り'
+  return `${trade.date} ${sideLabel} ${stockName ?? trade.symbol}`
+}
+
 export function createTradeReflectionDraft(
   trade: TradeDetail,
   stockName: string | null,
