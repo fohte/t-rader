@@ -221,7 +221,7 @@ export function MarkdownBody({
         {children}
       </td>
     ),
-    'note-ref': ({ token }) => <RefChip token={token} onOpenStockRef={onRef} />,
+    'note-ref': ({ token }) => <RefChip token={token} onOpenRef={onRef} />,
     'note-link': ({ noteId, token }) => {
       const noteLink = noteLinks.find((link) => link.note_id === noteId)
       if (!noteLink) return <>{`[[${token}]]`}</>
@@ -285,7 +285,7 @@ export function MarkdownBody({
           >
             <GraphRenderer
               def={def}
-              onOpenStockRef={onRef}
+              onOpenRef={onRef}
               className="h-note-graph border border-border"
             />
           </ErrorBoundary>

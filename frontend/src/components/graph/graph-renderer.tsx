@@ -38,7 +38,7 @@ const DIMMED_CLASS = 'opacity-30 transition-opacity'
 
 export interface GraphRendererProps {
   def: GraphDef
-  onOpenStockRef?: (token: string, resolved: ResolvedRef) => void
+  onOpenRef?: (token: string, resolved: ResolvedRef) => void
   className?: string
   // Storybook の overflow-check がトランジション途中の不定なフレームを検査して
   // しまう (実行環境のスケジューリング差で結果がぶれる) ため、story 側からのみ 0
@@ -48,7 +48,7 @@ export interface GraphRendererProps {
 
 export function GraphRenderer({
   def,
-  onOpenStockRef,
+  onOpenRef,
   className,
   fitViewDuration,
 }: GraphRendererProps) {
@@ -57,7 +57,7 @@ export function GraphRenderer({
       <ReactFlowProvider>
         <GraphCanvas
           def={def}
-          onOpenStockRef={onOpenStockRef}
+          onOpenRef={onOpenRef}
           fitViewDuration={fitViewDuration}
         />
       </ReactFlowProvider>
@@ -67,15 +67,11 @@ export function GraphRenderer({
 
 interface GraphCanvasProps {
   def: GraphDef
-  onOpenStockRef?: (token: string, resolved: ResolvedRef) => void
+  onOpenRef?: (token: string, resolved: ResolvedRef) => void
   fitViewDuration?: number
 }
 
-function GraphCanvas({
-  def,
-  onOpenStockRef,
-  fitViewDuration,
-}: GraphCanvasProps) {
+function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
   const { fitView } = useReactFlow()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -169,7 +165,7 @@ function GraphCanvas({
 
   return (
     <GraphRenderContextProvider
-      value={{ layout: def.layout, maxNodeValue, citeNumbers, onOpenStockRef }}
+      value={{ layout: def.layout, maxNodeValue, citeNumbers, onOpenRef }}
     >
       <ReactFlow
         nodes={nodes}

@@ -156,18 +156,36 @@ describe('MarkdownBody', () => {
     { kind: 'indicator', token: 'indicator:demo-indicator' },
     { kind: 'group', token: 'group:demo-axis/demo-group' },
   ])(
-    'keeps a $kind ref non-interactive when onRef is provided',
-    ({ token }) => {
+    'renders a $kind ref as a button when onRef is provided',
+    ({ kind, token }) => {
       const onRef = vi.fn()
-      const { container } = render(
-        <MarkdownBody source={`[[${token}]]`} onRef={onRef} />,
-        { wrapper: QueryClientWrapper },
-      )
+      render(<MarkdownBody source={`[[${token}]]`} onRef={onRef} />, {
+        wrapper: QueryClientWrapper,
+      })
 
-      const chip = container.querySelector('[data-kind]')
-      expect(chip?.tagName).toBe('SPAN')
+      expect(screen.getByRole('button').getAttribute('data-kind')).toBe(kind)
     },
   )
+
+  it('keeps a malformed group ref non-interactive', () => {
+    const navigate = vi.fn()
+    const handlers = createNoteBodyNavigationHandlers(navigate)
+    render(
+      <MarkdownBody source="[[group:demo-group]]" onRef={handlers.onRef} />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    const chip = screen.getByTitle(/^\[\[group:demo-group\]\]/)
+    handlers.onRef('group:demo-group', {
+      kind: 'group',
+      id: 'demo-group',
+      name: null,
+    })
+    fireEvent.click(chip)
+
+    const actual = `${chip.tagName}:${String(navigate.mock.calls.length)}`
+    expect(actual).toBe('SPAN:0')
+  })
 
   it('replaces [[anno:xxx]] with a clickable annotation button', async () => {
     const user = userEvent.setup()
@@ -177,14 +195,14 @@ describe('MarkdownBody', () => {
     expect(onAnno).toHaveBeenCalledWith('A2')
   })
 
-  it('navigates from note and graph chips to stocks and annotations', async () => {
+  it('navigates from note and graph chips to stocks, indicators, groups, and annotations', async () => {
     const user = userEvent.setup()
     const navigate = vi.fn()
     const handlers = createNoteBodyNavigationHandlers(navigate)
     const annotationId = '00000000-0000-0000-0000-000000000301'
     render(
       <MarkdownBody
-        source={`本文 [[stock:demo-code]] と [[anno:${annotationId}]]\n\n[[graph:g-ref-links]]`}
+        source={`本文 [[stock:demo-code]] [[indicator:demo-indicator]] [[group:demo-axis/demo-group]] と [[anno:${annotationId}]]\n\n[[graph:g-ref-links]]`}
         graphs={[GRAPH_WITH_REFS]}
         onRef={handlers.onRef}
         onAnno={handlers.onAnno}
@@ -192,24 +210,46 @@ describe('MarkdownBody', () => {
       { wrapper: QueryClientWrapper },
     )
 
-    const stockChips = screen.getAllByTitle(/^\[\[stock:demo-code\]\]/)
-    for (const chip of stockChips) {
-      if (chip.closest('.react-flow') != null) fireEvent.click(chip)
-      else await user.click(chip)
+    const referenceTokens = [
+      'stock:demo-code',
+      'indicator:demo-indicator',
+      'group:demo-axis/demo-group',
+    ]
+    for (const token of referenceTokens) {
+      for (const chip of screen.getAllByTitle(
+        new RegExp(`^\\[\\[${token}\\]\\]`),
+      )) {
+        if (chip.closest('.react-flow') != null) fireEvent.click(chip)
+        else await user.click(chip)
+      }
     }
     await user.click(screen.getByTitle(`annotation ${annotationId}`))
 
     expect(navigate.mock.calls).toEqual([
+      [{ to: '/stocks/$stockId', params: { stockId: 'demo-code' } }],
+      [{ to: '/stocks/$stockId', params: { stockId: 'demo-code' } }],
       [
         {
-          to: '/stocks/$stockId',
-          params: { stockId: 'demo-code' },
+          to: '/indicators/$indicatorId',
+          params: { indicatorId: 'demo-indicator' },
         },
       ],
       [
         {
-          to: '/stocks/$stockId',
-          params: { stockId: 'demo-code' },
+          to: '/indicators/$indicatorId',
+          params: { indicatorId: 'demo-indicator' },
+        },
+      ],
+      [
+        {
+          to: '/groups/$axisKey/$groupKey',
+          params: { axisKey: 'demo-axis', groupKey: 'demo-group' },
+        },
+      ],
+      [
+        {
+          to: '/groups/$axisKey/$groupKey',
+          params: { axisKey: 'demo-axis', groupKey: 'demo-group' },
         },
       ],
       [
@@ -221,7 +261,7 @@ describe('MarkdownBody', () => {
     ])
   })
 
-  it('keeps indicator and group refs in a graph non-interactive', () => {
+  it('renders stock, indicator, and group refs in a graph as buttons', () => {
     const onRef = vi.fn()
     const { container } = render(
       <MarkdownBody
@@ -232,14 +272,13 @@ describe('MarkdownBody', () => {
       { wrapper: QueryClientWrapper },
     )
 
-    const nonStockChips = Array.from(
-      container.querySelectorAll(
-        '[data-kind="indicator"], [data-kind="group"]',
-      ),
+    const graphChips = Array.from(
+      container.querySelectorAll('[data-kind]'),
     ).map((chip) => [chip.getAttribute('data-kind'), chip.tagName])
-    expect(nonStockChips).toEqual([
-      ['indicator', 'SPAN'],
-      ['group', 'SPAN'],
+    expect(graphChips).toEqual([
+      ['stock', 'BUTTON'],
+      ['indicator', 'BUTTON'],
+      ['group', 'BUTTON'],
     ])
   })
 

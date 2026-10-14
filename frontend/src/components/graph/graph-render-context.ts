@@ -10,7 +10,7 @@ export interface GraphRenderContextValue {
   layout: Layout
   maxNodeValue: number
   citeNumbers: Map<string, number>
-  onOpenStockRef?: (token: string, resolved: ResolvedRef) => void
+  onOpenRef?: (token: string, resolved: ResolvedRef) => void
 }
 
 const GraphRenderContext = createContext<GraphRenderContextValue | null>(null)
