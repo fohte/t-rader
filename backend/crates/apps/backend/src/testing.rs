@@ -153,6 +153,8 @@ async fn insert_test_strategy_task_with_source(
         deadline_at: Set(created_at + chrono::Duration::minutes(15)),
         purpose: Set(purpose.map(str::to_string)),
         as_of: Set(Some(created_at)),
+        context_kind: Set(None),
+        context_id: Set(None),
         auto_resumed_at: NotSet,
         created_at: Set(created_at),
         updated_at: Set(created_at),

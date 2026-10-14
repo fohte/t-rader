@@ -29,8 +29,8 @@ pub use repository::{
     SharedStrategyTaskRepository, StrategyTaskRepository, StrategyTaskRepositoryError,
 };
 pub use types::{
-    StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus, StrategyTaskUpdate,
-    SubmittedTask, TaskListQuery, TaskSource, TaskStatusView,
+    StrategyTask, StrategyTaskContext, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
+    StrategyTaskUpdate, SubmittedTask, TaskListQuery, TaskSource, TaskStatusView,
 };
 
 use crate::unit_of_work::SharedUnitOfWork;

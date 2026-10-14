@@ -71,6 +71,8 @@ pub struct StrategyTask {
     pub deadline_at: DateTime<FixedOffset>,
     pub purpose: Option<String>,
     pub as_of: Option<DateTime<FixedOffset>>,
+    pub context_kind: Option<String>,
+    pub context_id: Option<String>,
     pub auto_resumed_at: Option<DateTime<FixedOffset>>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
@@ -116,12 +118,22 @@ pub struct TaskStatusView {
     pub steps: serde_json::Value,
     pub purpose: Option<String>,
     pub as_of: Option<DateTime<FixedOffset>>,
+    pub context_kind: Option<String>,
+    pub context_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskListQuery {
     pub strategy_id: Option<Uuid>,
     pub purpose: Option<String>,
+    pub context_kind: Option<String>,
+    pub context_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StrategyTaskContext {
+    pub kind: String,
+    pub id: String,
 }
 
 #[derive(Debug, Clone)]

@@ -43,6 +43,27 @@ func (e Layout) Valid() bool {
 	}
 }
 
+// Defines values for StrategyTaskContextKind.
+const (
+	StrategyTaskContextKindNote  StrategyTaskContextKind = "note"
+	StrategyTaskContextKindStock StrategyTaskContextKind = "stock"
+	StrategyTaskContextKindTrade StrategyTaskContextKind = "trade"
+)
+
+// Valid indicates whether the value is a known member of the StrategyTaskContextKind enum.
+func (e StrategyTaskContextKind) Valid() bool {
+	switch e {
+	case StrategyTaskContextKindNote:
+		return true
+	case StrategyTaskContextKindStock:
+		return true
+	case StrategyTaskContextKindTrade:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TriggerKind.
 const (
 	Cron TriggerKind = "cron"
@@ -523,9 +544,16 @@ type Strategy struct {
 	UpdatedAt   time.Time                 `json:"updated_at"`
 }
 
+// StrategyChatContextRequest defines model for StrategyChatContextRequest.
+type StrategyChatContextRequest struct {
+	Id   string                  `json:"id"`
+	Kind StrategyTaskContextKind `json:"kind"`
+}
+
 // StrategyChatRequest フローティングチャットから戦略 Agent に投入する 1 メッセージ。
 type StrategyChatRequest struct {
-	Prompt string `json:"prompt"`
+	Context nullable.Nullable[StrategyChatContextRequest] `json:"context,omitempty"`
+	Prompt  string                                        `json:"prompt"`
 
 	// Purpose タスク投入先の agent_config の purpose キー。省略時は既定の設定を使い、存在しないキーは 400 になる。
 	Purpose nullable.Nullable[string] `json:"purpose,omitempty"`
@@ -549,6 +577,9 @@ type StrategyEarningsTargetResponse struct {
 	RefKind   string    `json:"ref_kind"`
 }
 
+// StrategyTaskContextKind defines model for StrategyTaskContextKind.
+type StrategyTaskContextKind string
+
 // StrategyTaskStatusResponse `GET /api/strategies/:id/tasks/:task_id` の戻り値。
 type StrategyTaskStatusResponse struct {
 	A2aTaskId nullable.Nullable[string] `json:"a2a_task_id,omitempty"`
@@ -558,6 +589,8 @@ type StrategyTaskStatusResponse struct {
 	// (データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。
 	// `None` はこのカラムが追加される前に作成された行に限られる。
 	AsOf         nullable.Nullable[time.Time] `json:"as_of,omitempty"`
+	ContextId    nullable.Nullable[string]    `json:"context_id,omitempty"`
+	ContextKind  nullable.Nullable[string]    `json:"context_kind,omitempty"`
 	CreatedAt    time.Time                    `json:"created_at"`
 	ErrorSummary nullable.Nullable[string]    `json:"error_summary,omitempty"`
 	Phase        string                       `json:"phase"`
@@ -587,6 +620,8 @@ type StrategyTaskSummary struct {
 	// (データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。
 	// `None` はこのカラムが追加される前に作成された行に限られる。
 	AsOf         nullable.Nullable[time.Time] `json:"as_of,omitempty"`
+	ContextId    nullable.Nullable[string]    `json:"context_id,omitempty"`
+	ContextKind  nullable.Nullable[string]    `json:"context_kind,omitempty"`
 	CreatedAt    time.Time                    `json:"created_at"`
 	ErrorSummary nullable.Nullable[string]    `json:"error_summary,omitempty"`
 	Phase        string                       `json:"phase"`
@@ -726,6 +761,12 @@ type RemoveStrategyEarningsTargetParams struct {
 
 	// RefId 銘柄またはグループの ID
 	RefId string `form:"ref_id" json:"ref_id"`
+}
+
+// ListStrategyTasksParams defines parameters for ListStrategyTasks.
+type ListStrategyTasksParams struct {
+	ContextKind *StrategyTaskContextKind `form:"context_kind,omitempty" json:"context_kind,omitempty"`
+	ContextId   *string                  `form:"context_id,omitempty" json:"context_id,omitempty"`
 }
 
 // ListStrategyTriggersParams defines parameters for ListStrategyTriggers.
@@ -1432,7 +1473,7 @@ type ClientInterface interface {
 	// ListStrategyTasks 戦略の過去タスクを新しい順に一覧取得する
 	//
 	// Corresponds with GET /api/strategies/{id}/tasks (the `ListStrategyTasks` operationId).
-	ListStrategyTasks(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListStrategyTasks(ctx context.Context, id openapi_types.UUID, params *ListStrategyTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStrategyTask 投入済み戦略タスクの phase / error_summary を取得する
 	//
@@ -2894,8 +2935,8 @@ func (c *OpenAPIClient) PutInvestableAmount(ctx context.Context, id openapi_type
 // ListStrategyTasks 戦略の過去タスクを新しい順に一覧取得する
 //
 // Corresponds with GET /api/strategies/{id}/tasks (the `ListStrategyTasks` operationId).
-func (c *OpenAPIClient) ListStrategyTasks(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListStrategyTasksRequest(c.Server, id)
+func (c *OpenAPIClient) ListStrategyTasks(ctx context.Context, id openapi_types.UUID, params *ListStrategyTasksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListStrategyTasksRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5518,7 +5559,7 @@ func NewPutInvestableAmountRequestWithBody(server string, id openapi_types.UUID,
 }
 
 // NewListStrategyTasksRequest constructs an http.Request for the ListStrategyTasks method
-func NewListStrategyTasksRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+func NewListStrategyTasksRequest(server string, id openapi_types.UUID, params *ListStrategyTasksParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -5541,6 +5582,45 @@ func NewListStrategyTasksRequest(server string, id openapi_types.UUID) (*http.Re
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.ContextKind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "context_kind", *params.ContextKind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.ContextId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "context_id", *params.ContextId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -6524,7 +6604,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/strategies/{id}/tasks (the `ListStrategyTasks` operationId).
-	ListStrategyTasksWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListStrategyTasksResult, error)
+	ListStrategyTasksWithResponse(ctx context.Context, id openapi_types.UUID, params *ListStrategyTasksParams, reqEditors ...RequestEditorFn) (*ListStrategyTasksResult, error)
 
 	// GetStrategyTaskWithResponse 投入済み戦略タスクの phase / error_summary を取得する
 	//
@@ -12154,8 +12234,8 @@ func (c *ClientWithResponses) PutInvestableAmountWithResponse(ctx context.Contex
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/strategies/{id}/tasks (the `ListStrategyTasks` operationId).
-func (c *ClientWithResponses) ListStrategyTasksWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListStrategyTasksResult, error) {
-	rsp, err := c.ListStrategyTasks(ctx, id, reqEditors...)
+func (c *ClientWithResponses) ListStrategyTasksWithResponse(ctx context.Context, id openapi_types.UUID, params *ListStrategyTasksParams, reqEditors ...RequestEditorFn) (*ListStrategyTasksResult, error) {
+	rsp, err := c.ListStrategyTasks(ctx, id, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

@@ -5,7 +5,8 @@ use crate::agent_task_client::{AgentTaskClient, SubmitAgentTask};
 
 use super::error::SubmitTaskError;
 use super::types::{
-    StrategyTask, StrategyTaskPhase, StrategyTaskUpdate, SubmittedTask, TaskSource,
+    StrategyTask, StrategyTaskContext, StrategyTaskPhase, StrategyTaskUpdate, SubmittedTask,
+    TaskSource,
 };
 use super::{DEADLINE_DURATION, DEFAULT_PURPOSE, StrategyTaskUseCases};
 
@@ -24,6 +25,19 @@ impl StrategyTaskUseCases {
         prompt: &str,
         source: TaskSource,
         purpose: Option<String>,
+    ) -> Result<SubmittedTask, SubmitTaskError> {
+        self.submit_task_with_context(agent_client, strategy_id, prompt, source, purpose, None)
+            .await
+    }
+
+    pub async fn submit_task_with_context(
+        &self,
+        agent_client: &dyn AgentTaskClient,
+        strategy_id: Uuid,
+        prompt: &str,
+        source: TaskSource,
+        purpose: Option<String>,
+        context: Option<StrategyTaskContext>,
     ) -> Result<SubmittedTask, SubmitTaskError> {
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() {
@@ -53,6 +67,8 @@ impl StrategyTaskUseCases {
             deadline_at,
             purpose: Some(purpose.clone()),
             as_of: Some(as_of),
+            context_kind: context.as_ref().map(|context| context.kind.clone()),
+            context_id: context.map(|context| context.id),
             auto_resumed_at: None,
             created_at: now,
             updated_at: now,

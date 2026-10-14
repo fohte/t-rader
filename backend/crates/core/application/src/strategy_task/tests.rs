@@ -33,6 +33,8 @@ fn resumable_task() -> StrategyTask {
         deadline_at: now,
         purpose: Some("explore".to_string()),
         as_of: Some(now),
+        context_kind: None,
+        context_id: None,
         auto_resumed_at: None,
         created_at: now,
         updated_at: now,

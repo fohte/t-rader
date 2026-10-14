@@ -2487,8 +2487,13 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    StrategyChatContextRequest: {
+      id: string
+      kind: components['schemas']['StrategyTaskContextKind']
+    }
     /** @description フローティングチャットから戦略 Agent に投入する 1 メッセージ。 */
     StrategyChatRequest: {
+      context?: null | components['schemas']['StrategyChatContextRequest']
       prompt: string
       /** @description タスク投入先の agent_config の purpose キー。省略時は既定の設定を使い、存在しないキーは 400 になる。 */
       purpose?: string | null
@@ -2508,6 +2513,8 @@ export interface components {
       ref_id: string
       ref_kind: string
     }
+    /** @enum {string} */
+    StrategyTaskContextKind: 'note' | 'stock' | 'trade'
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
       a2a_task_id?: string | null
@@ -2519,6 +2526,8 @@ export interface components {
        *     `None` はこのカラムが追加される前に作成された行に限られる。
        */
       as_of?: string | null
+      context_id?: string | null
+      context_kind?: string | null
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
@@ -2557,6 +2566,8 @@ export interface components {
        *     `None` はこのカラムが追加される前に作成された行に限られる。
        */
       as_of?: string | null
+      context_id?: string | null
+      context_kind?: string | null
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
@@ -7271,7 +7282,7 @@ export interface operations {
           'application/json': components['schemas']['StrategyChatResponse']
         }
       }
-      /** @description prompt が空 (空白のみを含む)、または指定された purpose の agent_config が存在しない */
+      /** @description prompt が空、context が不正、または指定された purpose の agent_config が存在しない */
       400: {
         headers: {
           [name: string]: unknown
@@ -7280,7 +7291,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
-      /** @description 戦略が存在しない */
+      /** @description 戦略または context の取引が存在しない */
       404: {
         headers: {
           [name: string]: unknown
@@ -7781,7 +7792,10 @@ export interface operations {
   }
   list_strategy_tasks: {
     parameters: {
-      query?: never
+      query?: {
+        context_kind?: components['schemas']['StrategyTaskContextKind']
+        context_id?: string
+      }
       header?: never
       path: {
         /** @description 戦略 ID */
@@ -7849,7 +7863,7 @@ export interface operations {
           'application/json': components['schemas']['StrategyTaskStatusResponse']
         }
       }
-      /** @description パスパラメータが不正 */
+      /** @description パスパラメータまたは文脈フィルターが不正 */
       400: {
         headers: {
           [name: string]: unknown

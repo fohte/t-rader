@@ -33,6 +33,8 @@ impl StrategyTaskUseCases {
         self.list(TaskListQuery {
             strategy_id: Some(scope.id()),
             purpose,
+            context_kind: None,
+            context_id: None,
         })
         .await
     }
@@ -99,6 +101,8 @@ fn status_view(task: StrategyTask) -> TaskStatusView {
         steps: serde_json::json!([]),
         purpose: task.purpose,
         as_of: task.as_of,
+        context_kind: task.context_kind,
+        context_id: task.context_id,
     }
 }
 

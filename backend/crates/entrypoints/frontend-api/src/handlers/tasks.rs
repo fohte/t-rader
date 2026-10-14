@@ -39,6 +39,8 @@ pub async fn list_tasks(
         .list(TaskListQuery {
             strategy_id: p.strategy_id,
             purpose: p.purpose,
+            context_kind: None,
+            context_id: None,
         })
         .await
         .map_err(map_list_task_error)?;
