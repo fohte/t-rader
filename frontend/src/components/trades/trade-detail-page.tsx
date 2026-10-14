@@ -11,7 +11,7 @@ import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
 import { $api } from '#lib/api/client'
-import { getChartCurrency } from '#lib/chart-utils'
+import { getChartCurrencyForStockId } from '#lib/chart-utils'
 
 export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const queryClient = useQueryClient()
@@ -105,7 +105,7 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
       <TradeDetailView
         state="ready"
         trade={detail}
-        chartCurrency={getChartCurrency(stock?.market)}
+        chartCurrency={getChartCurrencyForStockId(detail.symbol, stock?.market)}
         chartState={chartState}
         stockName={stockName}
         strategyName={strategyName}

@@ -14,16 +14,19 @@ vi.mock('#components/candlestick-chart', () => ({
     bars,
     trades,
     selectedTradeId,
+    priceScaleTopMargin,
   }: {
     bars: Bar[]
     trades?: TradeMarker[]
     selectedTradeId?: string
+    priceScaleTopMargin?: number
   }) => (
     <div role="img" aria-label="日足チャート">
       {JSON.stringify({
         barDates: bars.map((bar) => bar.timestamp),
         tradeIds: trades?.map((item) => item.id),
         selectedTradeId,
+        priceScaleTopMargin,
       })}
     </div>
   ),
@@ -102,7 +105,7 @@ describe('TradeDetailChartView', () => {
     )
   })
 
-  it('passes the daily bars and selected trade to the chart', () => {
+  it('passes the daily bars, selected trade, and marker spacing to the chart', () => {
     render(
       <TradeDetailChartView
         trade={trade}
@@ -129,6 +132,7 @@ describe('TradeDetailChartView', () => {
           ],
           tradeIds: ['fake-trade-buy'],
           selectedTradeId: 'fake-trade-buy',
+          priceScaleTopMargin: 0.25,
         }),
         '対象取引: 2099-02-10 買い 10 株',
       ]),

@@ -40,6 +40,7 @@ export function TradeDetailChartView({
             trades={state.trades}
             selectedTradeId={trade.id}
             currency={currency}
+            priceScaleTopMargin={0.25}
             className="h-60 w-full min-w-0 border border-border bg-card"
           />
           <p

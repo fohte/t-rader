@@ -103,6 +103,7 @@ const meta = {
   args: {
     state: 'ready',
     trade: sellingTrade,
+    chartCurrency: 'JPY',
     chartState: {
       status: 'ready',
       bars: TRADE_DETAIL_CHART_BARS,

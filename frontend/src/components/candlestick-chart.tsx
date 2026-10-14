@@ -63,6 +63,7 @@ interface CandlestickChartProps {
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
   currency?: ChartCurrency
+  priceScaleTopMargin?: number
   intraday?: boolean
   className?: string
 }
@@ -75,6 +76,7 @@ export function CandlestickChart({
   onSelectAnnotation,
   selectedAnnotationId,
   currency,
+  priceScaleTopMargin = 0.05,
   intraday = false,
   className,
 }: CandlestickChartProps) {
@@ -116,9 +118,6 @@ export function CandlestickChart({
       wickDownColor: '#ef5350',
       borderVisible: false,
       priceScaleId: 'right',
-    })
-    candlestickSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.05, bottom: 0.25 },
     })
     candlestickSeriesRef.current = candlestickSeries
     tradeMarkersRef.current = createSeriesMarkers(candlestickSeries)
@@ -173,6 +172,15 @@ export function CandlestickChart({
       priceLineRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const series = candlestickSeriesRef.current
+    if (series == null) return
+
+    series.priceScale().applyOptions({
+      scaleMargins: { top: priceScaleTopMargin, bottom: 0.25 },
+    })
+  }, [priceScaleTopMargin])
 
   useEffect(() => {
     chartRef.current?.applyOptions({

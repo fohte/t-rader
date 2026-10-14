@@ -65,6 +65,7 @@ const chartMocks = vi.hoisted(() => {
 
   return {
     chart,
+    candlePriceScale,
     candlestickSeries,
     annotationPriceSeries,
     volumePriceScale,
@@ -196,6 +197,17 @@ describe('CandlestickChart', () => {
     render(<CandlestickChart bars={bars} />)
 
     expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([[[]]])
+  })
+
+  it.each([
+    ['default', undefined, 0.05],
+    ['trade detail', 0.25, 0.25],
+  ])('applies the %s top price scale margin', (_, topMargin, expectedTop) => {
+    render(<CandlestickChart bars={bars} priceScaleTopMargin={topMargin} />)
+
+    expect(chartMocks.candlePriceScale.applyOptions.mock.calls).toEqual([
+      [{ scaleMargins: { top: expectedTop, bottom: 0.25 } }],
+    ])
   })
 
   it('adds the annotation band and its spacing when annotations arrive', () => {
