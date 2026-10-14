@@ -93,6 +93,8 @@ describe('TradeDetailView', () => {
           linkedNotes={notes}
           notesPending={false}
           notesError={false}
+          requestedAnalyses={[]}
+          requestedAnalysesState="success"
           noteLinkError={null}
           onManageNotes={() => undefined}
           onWriteReflection={() => undefined}

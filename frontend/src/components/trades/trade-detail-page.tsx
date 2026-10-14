@@ -1,10 +1,11 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
 import { createTradeReflectionDraft } from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
+import type { TradeRequestedAnalysis } from '#components/trades/trade-requested-analyses'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
 import { $api } from '#lib/api/client'
 
@@ -27,6 +28,61 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const linkMutation = $api.useMutation('post', '/api/trades/{id}/notes')
+
+  const strategyTaskQueries = useQueries({
+    queries: (strategiesQuery.data ?? []).map((strategy) => ({
+      ...$api.queryOptions('get', '/api/strategies/{id}/tasks', {
+        params: {
+          path: { id: strategy.id },
+          query: { context_kind: 'trade', context_id: tradeId },
+        },
+      }),
+      enabled: detailQuery.data != null,
+    })),
+  })
+  const tasks = strategyTaskQueries
+    .flatMap((query) => query.data ?? [])
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  const taskNotesQueries = useQueries({
+    queries: tasks.map((task) =>
+      $api.queryOptions('get', '/api/strategies/{id}/tasks/{task_id}/notes', {
+        params: {
+          path: { id: task.strategy_id, task_id: task.task_id },
+        },
+      }),
+    ),
+  })
+  const requestedAnalyses: TradeRequestedAnalysis[] = tasks.map(
+    (task, index) => {
+      const notesQuery = taskNotesQueries[index]
+      return {
+        strategyId: task.strategy_id,
+        taskId: task.task_id,
+        prompt: task.prompt,
+        phase: task.phase,
+        createdAt: task.created_at,
+        notes: (notesQuery?.data ?? []).map((note) => ({
+          id: note.id,
+          title: note.title,
+          versionId: note.version_id,
+        })),
+        notesState:
+          notesQuery?.isPending === true
+            ? 'loading'
+            : notesQuery?.isError === true
+              ? 'error'
+              : 'success',
+      }
+    },
+  )
+  const requestedAnalysesState =
+    strategiesQuery.isPending ||
+    strategyTaskQueries.some((query) => query.isPending)
+      ? 'loading'
+      : strategiesQuery.isError ||
+          strategyTaskQueries.some((query) => query.isError)
+        ? 'error'
+        : 'success'
 
   if (detailQuery.isPending) {
     return <TradeDetailView state="loading" />
@@ -76,6 +132,8 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
         linkedNotes={linkedNotesQuery.data ?? []}
         notesPending={linkedNotesQuery.isPending}
         notesError={linkedNotesQuery.isError}
+        requestedAnalyses={requestedAnalyses}
+        requestedAnalysesState={requestedAnalysesState}
         noteLinkError={noteLinkError}
         onManageNotes={() => {
           setNotesDialogOpen(true)
