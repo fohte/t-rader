@@ -90,6 +90,14 @@ function getRenderedStatus(container: HTMLElement) {
   }
 }
 
+function getRenderedAlert(container: HTMLElement) {
+  const alert = container.querySelector('[role="alert"]')
+  return {
+    text: alert?.textContent,
+    role: alert?.getAttribute('role'),
+  }
+}
+
 describe('ReviewNavigationBand', () => {
   it.each([
     {
@@ -187,6 +195,19 @@ describe('ReviewNavigationBand', () => {
     expect(getRenderedStatus(container)).toEqual({
       text: '未読を読み込んでいます',
       busy: 'true',
+    })
+  })
+
+  it('shows an alert when unread navigation fails', async () => {
+    const router = createStoryRouter(() => <ReviewNavigationBand isError />, {
+      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
+    })
+    const { container } = render(<RouterProvider router={router} />)
+    await screen.findByRole('alert')
+
+    expect(getRenderedAlert(container)).toEqual({
+      text: '未読の移動情報を読み込めませんでした。',
+      role: 'alert',
     })
   })
 

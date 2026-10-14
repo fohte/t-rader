@@ -80,11 +80,7 @@ export function AnnotationDetail({
       {navigation == null && isNavigationPending && (
         <ReviewNavigationBand isPending />
       )}
-      {isNavigationError && (
-        <p role="alert" className="font-mono text-xs text-status-rejected">
-          未読の移動情報を読み込めませんでした。
-        </p>
-      )}
+      {isNavigationError && <ReviewNavigationBand isError />}
       {isPending || annotation == null ? (
         isPending ? (
           <div className="space-y-4">
@@ -113,6 +109,42 @@ export function AnnotationDetail({
               {annotation.text}
             </p>
           </header>
+
+          <section className="border border-border bg-card p-5">
+            <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-(--grid-cols-annotation-fields)">
+              <dt>銘柄</dt>
+              <dd>
+                <StockNameLink
+                  name={stockName}
+                  symbol={annotation.target_symbol}
+                  missingName="unresolved"
+                />
+              </dd>
+              <dt>timestamp</dt>
+              <dd>{formatDateTime(annotation.timestamp)}</dd>
+              {annotation.price != null && (
+                <>
+                  <dt>price</dt>
+                  <dd>¥{annotation.price.toLocaleString()}</dd>
+                </>
+              )}
+              <dt>作成者</dt>
+              <dd>{annotation.created_by_kind}</dd>
+              <dt>作成日時</dt>
+              <dd>{formatDateTime(annotation.created_at)}</dd>
+            </dl>
+            {annotation.linked_note_id != null && (
+              <div className="mt-4 border-t border-border pt-3">
+                <Link
+                  to="/notes/$noteId"
+                  params={{ noteId: annotation.linked_note_id }}
+                  className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+                >
+                  → 紐づくノートを開く
+                </Link>
+              </div>
+            )}
+          </section>
 
           <section className="border border-border bg-card p-5">
             <h2 className="mb-3 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
@@ -161,42 +193,6 @@ export function AnnotationDetail({
               <p className="mt-2 font-mono text-2xs text-status-rejected">
                 操作に失敗しました。時間を置いて再試行してください。
               </p>
-            )}
-          </section>
-
-          <section className="border border-border bg-card p-5">
-            <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-(--grid-cols-annotation-fields)">
-              <dt>銘柄</dt>
-              <dd>
-                <StockNameLink
-                  name={stockName}
-                  symbol={annotation.target_symbol}
-                  missingName="unresolved"
-                />
-              </dd>
-              <dt>timestamp</dt>
-              <dd>{formatDateTime(annotation.timestamp)}</dd>
-              {annotation.price != null && (
-                <>
-                  <dt>price</dt>
-                  <dd>¥{annotation.price.toLocaleString()}</dd>
-                </>
-              )}
-              <dt>作成者</dt>
-              <dd>{annotation.created_by_kind}</dd>
-              <dt>作成日時</dt>
-              <dd>{formatDateTime(annotation.created_at)}</dd>
-            </dl>
-            {annotation.linked_note_id != null && (
-              <div className="mt-4 border-t border-border pt-3">
-                <Link
-                  to="/notes/$noteId"
-                  params={{ noteId: annotation.linked_note_id }}
-                  className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
-                >
-                  → 紐づくノートを開く
-                </Link>
-              </div>
             )}
           </section>
 

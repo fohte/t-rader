@@ -8,7 +8,9 @@ import {
 } from '#components/review/review-queue-model'
 
 type ReviewNavigationBandProps =
-  { isPending: true } | (ReviewNavigationTarget & { isPending?: false })
+  | { isPending: true }
+  | { isError: true }
+  | (ReviewNavigationTarget & { isPending?: false; isError?: false })
 
 function ReviewQueueItemLink({
   item,
@@ -50,10 +52,18 @@ export function ReviewNavigationBand(props: ReviewNavigationBandProps) {
   const className =
     'flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-border bg-surface-strong px-4 py-2 font-mono text-xs text-muted-foreground-strong'
 
-  if (props.isPending === true) {
+  if ('isPending' in props && props.isPending === true) {
     return (
       <div className={className} aria-busy="true" role="status">
         未読を読み込んでいます
+      </div>
+    )
+  }
+
+  if ('isError' in props && props.isError === true) {
+    return (
+      <div className={className} role="alert">
+        未読の移動情報を読み込めませんでした。
       </div>
     )
   }

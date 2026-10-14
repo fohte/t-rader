@@ -132,3 +132,8 @@ export const Loading: Story = {
   name: 'shows the loading state while unread navigation is pending.',
   args: { isPending: true },
 }
+
+export const Error: Story = {
+  name: 'shows an error inside the unread navigation band.',
+  args: { isError: true },
+}
