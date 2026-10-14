@@ -24,12 +24,10 @@ function SideBadge({ side }: { side: string }) {
 export function DashboardRecentTrades({
   trades,
   stocks,
-  onReflect,
   isError,
 }: {
   trades: Trade[] | null
   stocks: Stock[]
-  onReflect: (trade: Trade) => void
   isError: boolean
 }) {
   const recentTrades =
@@ -117,15 +115,13 @@ export function DashboardRecentTrades({
                         {formatYen(trade.price)}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onReflect(trade)
-                          }}
+                        <Link
+                          to="/trades/$tradeId"
+                          params={{ tradeId: trade.id }}
                           className="whitespace-nowrap font-mono text-xs text-primary hover:underline"
                         >
                           振り返る →
-                        </button>
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -154,15 +150,13 @@ export function DashboardRecentTrades({
                       {formatYen(trade.price)}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onReflect(trade)
-                    }}
+                  <Link
+                    to="/trades/$tradeId"
+                    params={{ tradeId: trade.id }}
                     className="whitespace-nowrap font-mono text-2xs text-primary hover:underline"
                   >
                     振り返る →
-                  </button>
+                  </Link>
                 </li>
               ))}
             </ul>

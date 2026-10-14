@@ -31,7 +31,6 @@ interface DashboardPageViewProps {
   isReviewError: boolean
   trades: Trade[] | null
   isTradesError: boolean
-  onReflectTrade: (trade: Trade) => void
   events: CalendarEvent[] | null
   isEventsError: boolean
   notes: Note[] | null
@@ -52,7 +51,6 @@ export function DashboardPageView({
   isReviewError,
   trades,
   isTradesError,
-  onReflectTrade,
   events,
   isEventsError,
   notes,
@@ -126,7 +124,6 @@ export function DashboardPageView({
           <DashboardRecentTrades
             trades={trades}
             stocks={stocks}
-            onReflect={onReflectTrade}
             isError={isTradesError}
           />
           <DashboardWeeklyEvents
