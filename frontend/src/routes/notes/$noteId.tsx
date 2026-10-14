@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
@@ -7,12 +8,20 @@ import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-b
 import { NoteHistoryPanel } from '#components/note-detail/note-history-panel'
 import { NoteLinkedTradesPanel } from '#components/note-detail/note-linked-trades-panel'
 import { NoteLinksPanelView } from '#components/note-detail/note-links-panel'
-import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
+import {
+  type NoteVersionContentTab,
+  NoteVersionContentTabs,
+  resolveNoteVersionContentTab,
+} from '#components/note-detail/note-version-content-tabs'
 import { NoteVersionDiffPanel } from '#components/note-detail/note-version-diff-panel'
 import { NoteVersionFallback } from '#components/note-detail/note-version-fallback'
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import { NoteVersionReviewPanel } from '#components/note-detail/note-version-review-panel'
+import type { NoteVersionReviewResult } from '#components/note-detail/note-version-review-view'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
+import { ReviewNavigationBand } from '#components/review/review-navigation-band'
+import { reviewQueueItemKey } from '#components/review/review-queue-model'
+import { useReviewNavigation } from '#components/review/use-review-navigation'
 import {
   openFloatingChat,
   useChatContext,
@@ -48,6 +57,14 @@ function NoteDetailPage() {
   const { version: requestedVersionNo, version_id: requestedVersionId } =
     Route.useSearch()
   const navigate = Route.useNavigate()
+  const [contentTab, setContentTab] = useState<{
+    versionId: string
+    tab: NoteVersionContentTab
+  } | null>(null)
+  const [reviewedVersion, setReviewedVersion] = useState<{
+    versionId: string
+    status: NoteVersionReviewResult
+  } | null>(null)
   const noteBodyNavigation = createNoteBodyNavigationHandlers(navigate)
   const {
     data: versions,
@@ -56,6 +73,11 @@ function NoteDetailPage() {
   } = $api.useQuery('get', '/api/notes/{id}/versions', {
     params: { path: { id: noteId } },
   })
+  const { data: note, isError: hasNoteError } = $api.useQuery(
+    'get',
+    '/api/notes/{id}',
+    { params: { path: { id: noteId } } },
+  )
   const {
     data: noteHistory,
     isPending: isNoteHistoryPending,
@@ -76,6 +98,31 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
+  const previousVersion =
+    selectedVersion == null
+      ? null
+      : (orderedVersions
+          .filter((version) => version.version_no < selectedVersion.version_no)
+          .at(-1) ?? null)
+  const showInlineReview =
+    selectedVersion != null &&
+    (selectedVersion.status === 'unread' ||
+      reviewedVersion?.versionId === selectedVersion.id)
+  const selectedContentTab =
+    selectedVersion != null && contentTab?.versionId === selectedVersion.id
+      ? contentTab.tab
+      : null
+  const activeContentTab = resolveNoteVersionContentTab(selectedContentTab)
+  const reviewNavigation = useReviewNavigation(
+    selectedVersion == null
+      ? ''
+      : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
+  )
+  const {
+    navigation,
+    isPending: isReviewNavigationPending,
+    isError: isReviewNavigationError,
+  } = reviewNavigation
   useChatContext({ kind: 'note', id: noteId, label: selectedVersion?.title })
   const {
     data: noteLinks,
@@ -108,38 +155,76 @@ function NoteDetailPage() {
     )
   }
 
-  const previousVersion =
-    orderedVersions
-      .filter((version) => version.version_no < selectedVersion.version_no)
-      .at(-1) ?? null
+  const onSelectContentTab = (tab: NoteVersionContentTab): void => {
+    setContentTab({ versionId: selectedVersion.id, tab })
+  }
+  const fullBody = (
+    <MarkdownBody
+      source={selectedVersion.body_md}
+      graphs={selectedVersion.graphs_json}
+      noteLinks={noteLinks?.outgoing}
+      resolvedPriceReferences={selectedVersion.resolved_price_references_json}
+      onRef={noteBodyNavigation.onRef}
+      onAnno={noteBodyNavigation.onAnno}
+    />
+  )
 
   return (
-    <div className="space-y-4 font-sans text-foreground">
+    <div
+      className={`space-y-4 font-sans text-foreground ${showInlineReview ? 'pb-20 lg:pb-0' : ''}`}
+    >
       <DetailBackLink label="ノート一覧に戻る" />
+      {navigation != null ? (
+        <ReviewNavigationBand {...navigation} />
+      ) : isReviewNavigationError ? (
+        <ReviewNavigationBand isError />
+      ) : isReviewNavigationPending ? (
+        <ReviewNavigationBand isPending />
+      ) : null}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="space-y-4 border border-border bg-card px-5 py-5">
-          <NoteVersionHeader version={selectedVersion} />
-          <MarkdownBody
-            source={selectedVersion.body_md}
-            graphs={selectedVersion.graphs_json}
-            noteLinks={noteLinks?.outgoing}
-            resolvedPriceReferences={
-              selectedVersion.resolved_price_references_json
-            }
-            onRef={noteBodyNavigation.onRef}
-            onAnno={noteBodyNavigation.onAnno}
-          />
-          <NoteVersionDiffPanel
-            key={selectedVersion.id}
+          <NoteVersionHeader
             version={selectedVersion}
-            previousVersion={previousVersion}
-          />
-          <NoteVersionChatAction
-            title={selectedVersion.title}
+            noteKind={note?.kind ?? null}
+            hasNoteError={hasNoteError}
             onAsk={(title) => {
               openFloatingChat('「' + title + '」について補足して')
             }}
           />
+          {previousVersion == null ? (
+            fullBody
+          ) : (
+            <>
+              <NoteVersionContentTabs
+                activeTab={activeContentTab}
+                onChange={onSelectContentTab}
+              />
+              {activeContentTab === 'changes' ? (
+                <NoteVersionDiffPanel
+                  key={selectedVersion.id}
+                  version={selectedVersion}
+                  previousVersion={previousVersion}
+                />
+              ) : (
+                fullBody
+              )}
+            </>
+          )}
+          {showInlineReview && (
+            <NoteVersionReviewPanel
+              key={selectedVersion.id}
+              version={selectedVersion}
+              pinDecisionActionsOnMobile
+              recentlyReviewedStatus={
+                reviewedVersion?.versionId === selectedVersion.id
+                  ? reviewedVersion.status
+                  : null
+              }
+              onReviewed={(status) => {
+                setReviewedVersion({ versionId: selectedVersion.id, status })
+              }}
+            />
+          )}
         </article>
         <aside className="space-y-4">
           <NoteHistoryPanel
@@ -149,8 +234,25 @@ function NoteDetailPage() {
             isHistoryError={hasNoteHistoryError}
             selectedVersionNo={selectedVersion.version_no}
             onSelectVersion={(versionNo) => {
+              const targetVersion = orderedVersions.find(
+                (version) => version.version_no === versionNo,
+              )
               void navigate({
                 search: { version: versionNo, version_id: undefined },
+                state: (previous) => {
+                  const snapshot = reviewNavigation.navigation?.snapshot
+                  if (snapshot == null || targetVersion == null) return previous
+                  return {
+                    ...previous,
+                    reviewQueue: {
+                      snapshot,
+                      currentItemKey: reviewQueueItemKey({
+                        kind: 'note',
+                        id: targetVersion.id,
+                      }),
+                    },
+                  }
+                },
               })
             }}
           />
@@ -161,10 +263,12 @@ function NoteDetailPage() {
               versionNo={selectedVersion.version_no}
             />
           )}
-          <NoteVersionReviewPanel
-            key={selectedVersion.id}
-            version={selectedVersion}
-          />
+          {!showInlineReview && (
+            <NoteVersionReviewPanel
+              key={selectedVersion.id}
+              version={selectedVersion}
+            />
+          )}
           <NoteLinksPanelView
             outgoing={noteLinks?.outgoing ?? []}
             incoming={noteLinks?.incoming ?? []}

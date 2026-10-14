@@ -1,16 +1,25 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { NoteVersionReviewView } from '#components/note-detail/note-version-review-view'
+import {
+  type NoteVersionReviewResult,
+  NoteVersionReviewView,
+} from '#components/note-detail/note-version-review-view'
 import { $api } from '#lib/api/client'
 import type { NoteVersion } from '#lib/api/note-version-types'
 
 interface NoteVersionReviewPanelProps {
   version: NoteVersion
+  pinDecisionActionsOnMobile?: boolean
+  recentlyReviewedStatus?: NoteVersionReviewResult | null
+  onReviewed?: (status: NoteVersionReviewResult) => void
 }
 
 export function NoteVersionReviewPanel({
   version,
+  pinDecisionActionsOnMobile = false,
+  recentlyReviewedStatus = null,
+  onReviewed,
 }: NoteVersionReviewPanelProps) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
@@ -79,7 +88,12 @@ export function NoteVersionReviewPanel({
         },
         body: {},
       },
-      { onSuccess: invalidateReviewData },
+      {
+        onSuccess: () => {
+          onReviewed?.('approved')
+          invalidateReviewData()
+        },
+      },
     )
   }
 
@@ -95,6 +109,7 @@ export function NoteVersionReviewPanel({
       {
         onSuccess: () => {
           setReason('')
+          onReviewed?.('rejected')
           invalidateReviewData()
         },
       },
@@ -115,9 +130,11 @@ export function NoteVersionReviewPanel({
   return (
     <NoteVersionReviewView
       version={version}
+      pinDecisionActionsOnMobile={pinDecisionActionsOnMobile}
       lineCommentCount={lineCommentCount}
       isCommentsPending={isCommentsPending}
       reason={reason}
+      recentlyReviewedStatus={recentlyReviewedStatus}
       isApproving={approve.isPending}
       isRejecting={reject.isPending}
       isMakingCurrent={makeCurrent.isPending}

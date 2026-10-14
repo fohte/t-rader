@@ -25,6 +25,11 @@ const meta = {
   title: 'NoteDetail/NoteVersionHeader',
   component: NoteVersionHeader,
   parameters: { layout: 'padded' },
+  args: {
+    noteKind: '架空の種別',
+    hasNoteError: false,
+    onAsk: () => {},
+  },
   decorators: [
     (Story) => (
       <div className="max-w-3xl border border-border bg-card p-5 text-foreground">
@@ -38,8 +43,15 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const PendingReview: Story = {
-  name: 'shows the header for a version awaiting review.',
+  name: 'shows the metadata and change reason for a version awaiting review.',
   args: { version: baseVersion },
+}
+
+export const FirstVersion: Story = {
+  name: 'shows the full note metadata without a change reason for its first version.',
+  args: {
+    version: { ...baseVersion, version_no: 1, change_reason: null },
+  },
 }
 
 export const CurrentApproved: Story = {
@@ -52,5 +64,14 @@ export const CurrentApproved: Story = {
       change_reason: null,
       reviewed_at: '2026-01-12T03:00:00Z',
     },
+    noteKind: null,
+  },
+}
+
+export const KindUnavailable: Story = {
+  name: 'shows when the note kind could not be loaded.',
+  args: {
+    version: baseVersion,
+    hasNoteError: true,
   },
 }

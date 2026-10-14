@@ -24,9 +24,11 @@ const pendingVersion: NoteVersion = {
 
 const args: ComponentProps<typeof NoteVersionReviewView> = {
   version: pendingVersion,
+  pinDecisionActionsOnMobile: false,
   lineCommentCount: 0,
   isCommentsPending: false,
   reason: '',
+  recentlyReviewedStatus: null,
   isApproving: false,
   isRejecting: false,
   isMakingCurrent: false,
@@ -58,6 +60,26 @@ export const ReasonRequiredWithoutComments: Story = {
   name: 'shows the rejection reason marked as required when there are no line comments.',
 }
 
+export const MobileDecisionActions: Story = {
+  name: 'pins the decision actions to the bottom on a narrow screen.',
+  args: { pinDecisionActionsOnMobile: true },
+  globals: { viewport: { value: 'mobileNoteVersionReview' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileNoteVersionReview: {
+          name: 'Mobile note version review',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
+}
+
 export const CommentAllowsEmptyReason: Story = {
   name: 'shows the rejection reason marked as optional when the review has a line comment.',
   args: { lineCommentCount: 1 },
@@ -74,6 +96,24 @@ export const CurrentVersion: Story = {
   name: 'shows the review panel for the current approved version.',
   args: {
     version: { ...pendingVersion, status: 'approved', is_current: true },
+  },
+}
+
+export const ReviewedInPlace: Story = {
+  name: 'shows the approval result without leaving the current version.',
+  args: {
+    version: { ...pendingVersion, status: 'approved' },
+    pinDecisionActionsOnMobile: true,
+    recentlyReviewedStatus: 'approved',
+  },
+}
+
+export const RejectedInPlace: Story = {
+  name: 'shows the rejection result without leaving the current version.',
+  args: {
+    version: { ...pendingVersion, status: 'rejected' },
+    pinDecisionActionsOnMobile: true,
+    recentlyReviewedStatus: 'rejected',
   },
 }
 
