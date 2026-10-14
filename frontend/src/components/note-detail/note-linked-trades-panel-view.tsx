@@ -61,14 +61,6 @@ export function NoteLinkedTradesPanelView(
                     </time>
                     <SideBadge side={trade.side} label={sideLabel} />
                   </Link>
-                  <Link
-                    to="/trades/$tradeId"
-                    params={{ tradeId: trade.id }}
-                    aria-label={`${trade.date} ${stockName ?? trade.symbol} ${sideLabel}の取引詳細`}
-                    className="shrink-0 text-2xs text-primary hover:underline"
-                  >
-                    詳細 →
-                  </Link>
                 </div>
                 <div className="truncate text-xs">
                   <StockNameLink

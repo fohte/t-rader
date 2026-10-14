@@ -57,18 +57,16 @@ describe('NoteLinkedTradesPanelView', () => {
       heading: '紐付いた取引',
       rows: [
         {
-          text: '2099-02-10買い詳細 →架空商事FIC-01',
+          text: '2099-02-10買い架空商事FIC-01',
           links: [
             { text: '2099-02-10買い', href: '/trades/fake-trade-buy' },
-            { text: '詳細 →', href: '/trades/fake-trade-buy' },
             { text: '架空商事', href: '/stocks/FIC-01' },
           ],
         },
         {
-          text: '2099-02-11売り詳細 →FIC-02',
+          text: '2099-02-11売りFIC-02',
           links: [
             { text: '2099-02-11売り', href: '/trades/fake-trade-sell' },
-            { text: '詳細 →', href: '/trades/fake-trade-sell' },
             { text: 'FIC-02', href: '/stocks/FIC-02' },
           ],
         },
