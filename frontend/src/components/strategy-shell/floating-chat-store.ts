@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 
 import type { components } from '#lib/api/schema.gen'
 
@@ -57,33 +57,71 @@ export function useChatContext(context: ChatContextRegistration | null): void {
   const id = context?.id
   const label = context?.label
   const strategyId = context?.strategyId
+  const registrationIdRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (kind == null || id == null) return
-    return registerChatContext({ kind, id, label, strategyId })
+    const registration = registerChatContext({ kind, id })
+    registrationIdRef.current = registration.registrationId
+    return () => {
+      registrationIdRef.current = null
+      registration.unregister()
+    }
+  }, [id, kind])
+
+  useEffect(() => {
+    const registrationId = registrationIdRef.current
+    if (registrationId == null) return
+    updateChatContext(registrationId, label, strategyId)
   }, [id, kind, label, strategyId])
 }
 
-function registerChatContext(context: ChatContextRegistration): () => void {
+function registerChatContext(context: ChatContextRegistration): {
+  registrationId: number
+  unregister: () => void
+} {
   const registrationId = ++nextContextRegistrationId
   state = {
     ...state,
-    context: { kind: context.kind, id: context.id, label: context.label },
+    context: { kind: context.kind, id: context.id },
     contextStrategyId: context.strategyId ?? null,
     contextRegistrationId: registrationId,
   }
   emit()
 
-  return () => {
-    if (state.contextRegistrationId !== registrationId) return
-    state = {
-      ...state,
-      context: null,
-      contextStrategyId: null,
-      contextRegistrationId: null,
-    }
-    emit()
+  return {
+    registrationId,
+    unregister: () => {
+      if (state.contextRegistrationId !== registrationId) return
+      state = {
+        ...state,
+        context: null,
+        contextStrategyId: null,
+        contextRegistrationId: null,
+      }
+      emit()
+    },
   }
+}
+
+function updateChatContext(
+  registrationId: number,
+  label: string | undefined,
+  strategyId: string | undefined,
+): void {
+  if (state.contextRegistrationId !== registrationId) return
+  if (
+    (state.context == null || state.context.label === label) &&
+    state.contextStrategyId === (strategyId ?? null)
+  ) {
+    return
+  }
+  state = {
+    ...state,
+    context: state.context == null ? null : { ...state.context, label },
+    contextStrategyId: strategyId ?? null,
+  }
+  emit()
 }
 
 export function removeChatContext(): void {

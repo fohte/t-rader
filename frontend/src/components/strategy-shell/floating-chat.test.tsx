@@ -14,6 +14,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
@@ -98,13 +99,23 @@ function NoteContextRoute() {
 }
 
 function TradeContextRoute() {
+  const [label, setLabel] = useState('2099-02-10 売り 架空銘柄')
   useChatContext({
     kind: 'trade',
     id: 'demo-trade',
-    label: '2099-02-10 売り 架空銘柄',
+    label,
     strategyId: 'demo-strategy-b',
   })
-  return null
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setLabel('2099-02-10 売り 架空銘柄 更新')
+      }}
+    >
+      対象名を更新
+    </button>
+  )
 }
 
 function mockChatApi(requests: CapturedRequest[]) {
@@ -414,6 +425,7 @@ describe('FloatingChat', () => {
     )
     await screen.findByText('取引: 2099-02-10 売り 架空銘柄')
     fireEvent.click(screen.getByRole('button', { name: '文脈を外す' }))
+    fireEvent.click(screen.getByRole('button', { name: '対象名を更新' }))
     fireEvent.change(screen.getByLabelText('メッセージ入力'), {
       target: { value: 'この取引を確認する' },
     })

@@ -6,7 +6,10 @@ import {
   openFloatingChat,
   useChatContext,
 } from '#components/strategy-shell/floating-chat-store'
-import { createTradeReflectionDraft } from '#components/trades/trade-detail-model'
+import {
+  createTradeReflectionDraft,
+  formatTradeContextLabel,
+} from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
@@ -31,18 +34,20 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const linkMutation = $api.useMutation('post', '/api/trades/{id}/notes')
-  const contextTrade = detailQuery.data
-  const contextStockName = stocksQuery.data?.find(
-    (stock) => stock.id === contextTrade?.symbol,
-  )?.name
+  const detail = detailQuery.data
+  const stockName =
+    detail == null
+      ? null
+      : (stocksQuery.data?.find((stock) => stock.id === detail.symbol)?.name ??
+        null)
   useChatContext(
-    contextTrade == null
+    detail == null
       ? null
       : {
           kind: 'trade',
-          id: contextTrade.id,
-          label: `${contextTrade.date} ${contextTrade.side === 'buy' ? '買い' : '売り'} ${contextStockName ?? contextTrade.symbol}`,
-          strategyId: contextTrade.strategy_id,
+          id: detail.id,
+          label: formatTradeContextLabel(detail, stockName),
+          strategyId: detail.strategy_id,
         },
   )
 
@@ -50,13 +55,10 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
     return <TradeDetailView state="loading" />
   }
 
-  const detail = detailQuery.data
   if (detail == null) {
     return <TradeDetailView state="error" />
   }
 
-  const stockName =
-    stocksQuery.data?.find((stock) => stock.id === detail.symbol)?.name ?? null
   const strategyName =
     strategiesQuery.data?.find((strategy) => strategy.id === detail.strategy_id)
       ?.name ?? null

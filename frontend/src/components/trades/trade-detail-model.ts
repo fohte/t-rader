@@ -3,6 +3,14 @@ import type { components } from '#lib/api/schema.gen'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
 
+export function formatTradeContextLabel(
+  trade: TradeDetail,
+  stockName: string | null,
+): string {
+  const sideLabel = trade.side === 'buy' ? '買い' : '売り'
+  return `${trade.date} ${sideLabel} ${stockName ?? trade.symbol}`
+}
+
 export function createTradeReflectionDraft(
   trade: TradeDetail,
   stockName: string | null,
