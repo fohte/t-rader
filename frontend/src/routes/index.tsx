@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import {
   getCalendarWeekRange,
@@ -8,20 +8,15 @@ import {
 } from '#components/calendar/calendar-date'
 import { DashboardPageView } from '#components/dashboard/dashboard-page-view'
 import { useReviewQueue } from '#components/dashboard/use-review-queue'
+import { calculatePortfolioValuation } from '#components/portfolio/portfolio-valuation'
 import type { StatItem } from '#components/portfolio/stat-row'
-import { formatYen, pnlColorClass } from '#components/trades/format'
-import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { $api } from '#lib/api/client'
-import type { components } from '#lib/api/schema.gen'
-
-type Trade = components['schemas']['TradeListItem']
 
 export const Route = createFileRoute('/')({
   component: DashboardRoute,
 })
 
 function DashboardRoute() {
-  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const summaryQuery = $api.useQuery('get', '/api/trades/summary')
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
@@ -61,27 +56,17 @@ function DashboardRoute() {
       return null
     }
 
-    const equity = (positions ?? []).reduce(
-      (sum, position) => sum + position.cost_basis,
-      0,
-    )
-    const totalAssets = investableAmountQueries.reduce(
+    const investableAmount = investableAmountQueries.reduce(
       (sum, query) => sum + (query.data?.amount_jpy ?? 0),
       0,
     )
-    const cash = totalAssets - equity
     const realizedPnl = summaryQuery.data.realized_pnl
 
-    return [
-      { label: '総資産', value: formatYen(totalAssets) },
-      { label: '評価額 (株式・簿価)', value: formatYen(equity) },
-      { label: '現金', value: formatYen(cash) },
-      {
-        label: '実現損益 (累計)',
-        value: formatYen(realizedPnl, true),
-        cls: pnlColorClass(realizedPnl),
-      },
-    ]
+    return calculatePortfolioValuation(
+      positions ?? [],
+      investableAmount,
+      realizedPnl,
+    ).stats
   }, [
     investableAmountQueries,
     positions,
@@ -112,7 +97,6 @@ function DashboardRoute() {
         isReviewError={reviewQueue.isError}
         trades={tradesQuery.isPending ? null : (tradesQuery.data ?? [])}
         isTradesError={tradesQuery.isError}
-        onReflectTrade={setSelectedTrade}
         events={eventsQuery.isPending ? null : events}
         isEventsError={eventsQuery.isError}
         notes={notesQuery.isPending ? null : (notesQuery.data ?? [])}
@@ -120,13 +104,6 @@ function DashboardRoute() {
         tasks={taskQuery.isPending ? null : (taskQuery.data ?? [])}
         isTasksError={taskQuery.isError}
         strategies={strategies}
-      />
-      <TradeNotesDialog
-        open={selectedTrade != null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedTrade(null)
-        }}
-        trade={selectedTrade}
       />
     </>
   )

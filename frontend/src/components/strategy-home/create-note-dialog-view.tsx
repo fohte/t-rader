@@ -16,6 +16,7 @@ type NoteKind = components['schemas']['NoteKind']
 export interface CreateNoteDialogViewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  showTrigger?: boolean
   title: string
   body: string
   kind: string
@@ -33,6 +34,7 @@ export interface CreateNoteDialogViewProps {
 export function CreateNoteDialogView({
   open,
   onOpenChange,
+  showTrigger = true,
   title,
   body,
   kind,
@@ -48,13 +50,15 @@ export function CreateNoteDialogView({
 }: CreateNoteDialogViewProps) {
   return (
     <>
-      <Button
-        onClick={() => {
-          onOpenChange(true)
-        }}
-      >
-        + 新しいノート
-      </Button>
+      {showTrigger && (
+        <Button
+          onClick={() => {
+            onOpenChange(true)
+          }}
+        >
+          + 新しいノート
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent>
           <form onSubmit={onSubmit} className="space-y-4">

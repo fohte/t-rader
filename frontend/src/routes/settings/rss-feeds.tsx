@@ -5,6 +5,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { RssFeedDialog } from '#components/settings/rss-feed-dialog'
+import { SettingsBackLink } from '#components/settings/settings-back-link'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
@@ -76,6 +77,9 @@ function RssFeedsSettingsPage() {
 
   return (
     <div className="space-y-5">
+      <div>
+        <SettingsBackLink />
+      </div>
       <header className="flex items-end justify-between gap-3">
         <div>
           <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">

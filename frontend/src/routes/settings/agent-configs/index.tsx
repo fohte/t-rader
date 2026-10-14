@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { SettingsBackLink } from '#components/settings/settings-back-link'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
@@ -72,12 +73,7 @@ function AgentConfigsSettingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <Link
-          to="/settings"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 設定に戻る
-        </Link>
+        <SettingsBackLink />
       </div>
       <header>
         <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">

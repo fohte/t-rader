@@ -8,10 +8,12 @@ import {
   AllocationBar,
   type AllocationSegment,
 } from '#components/portfolio/allocation-bar'
+import { AllocationRatios } from '#components/portfolio/allocation-ratios'
 import { PortfolioHistoryChart } from '#components/portfolio/portfolio-history-chart'
+import { calculatePortfolioValuation } from '#components/portfolio/portfolio-valuation'
+import { sortPositionsByMarketValue } from '#components/portfolio/position-sorting'
 import { PositionsTable } from '#components/portfolio/positions-table'
-import { type StatItem, StatRow } from '#components/portfolio/stat-row'
-import { formatYen, pnlColorClass } from '#components/trades/format'
+import { StatRow } from '#components/portfolio/stat-row'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import {
@@ -84,14 +86,12 @@ function PortfolioPage() {
     [summary],
   )
 
-  const equity = openPositions.reduce((s, p) => s + p.cost_basis, 0)
-  // 投資可能額 (investableTotal) は保有株式の簿価 (equity) を含む枠のため、
-  // 単純合算すると投資済み分を二重計上する。未投資分だけを現金として扱う。
-  const cash = investableTotal - equity
-  const totalAssets = investableTotal
-  const cashRatio = totalAssets > 0 ? (cash / totalAssets) * 100 : 0
-  const investedRatio = totalAssets > 0 ? 100 - cashRatio : 0
   const realizedPnl = summary?.realized_pnl ?? 0
+  const valuation = calculatePortfolioValuation(
+    openPositions,
+    investableTotal,
+    realizedPnl,
+  )
   const historyViewState = (() => {
     if (tradesPending) return { status: 'loading' as const }
     if (tradesError) {
@@ -117,36 +117,22 @@ function PortfolioPage() {
   )
 
   const allocation: AllocationSegment[] = useMemo(() => {
-    const segs: AllocationSegment[] = [...openPositions]
-      .sort((a, b) => b.cost_basis - a.cost_basis)
-      .map((p) => ({
-        key: `pos:${p.symbol}`,
-        label: stockNameById.get(p.symbol) ?? p.symbol,
-        value: p.cost_basis,
-        kind: 'position' as const,
-      }))
-    segs.push({ key: 'cash', label: '現金', value: cash, kind: 'cash' })
-    return segs
-  }, [openPositions, cash, stockNameById])
-
-  const stats: StatItem[] = [
-    { label: '総資産', value: formatYen(totalAssets) },
-    { label: '評価額 (株式・簿価)', value: formatYen(equity) },
-    {
+    const segs: AllocationSegment[] = sortPositionsByMarketValue(
+      openPositions,
+    ).map((p) => ({
+      key: `pos:${p.symbol}`,
+      label: stockNameById.get(p.symbol) ?? p.symbol,
+      value: p.market_value ?? null,
+      kind: 'position' as const,
+    }))
+    segs.push({
+      key: 'cash',
       label: '現金',
-      value: formatYen(cash),
-      sub: `${cashRatio.toFixed(1)}% 比率`,
-    },
-    {
-      label: '実現損益 (累計)',
-      value: formatYen(realizedPnl, true),
-      cls: pnlColorClass(realizedPnl),
-    },
-    {
-      label: '保有銘柄',
-      value: openPositions.length.toLocaleString(),
-    },
-  ]
+      value: valuation.cash,
+      kind: 'cash',
+    })
+    return segs
+  }, [openPositions, stockNameById, valuation.cash])
 
   return (
     <div className="space-y-5 font-sans text-foreground">
@@ -165,7 +151,7 @@ function PortfolioPage() {
       {summaryPending ? (
         <Skeleton className="h-22 w-full" />
       ) : (
-        <StatRow stats={stats} />
+        <StatRow stats={valuation.stats} />
       )}
 
       <PortfolioHistoryChart
@@ -194,7 +180,11 @@ function PortfolioPage() {
           {summaryPending ? (
             <Skeleton className="h-40 w-full" />
           ) : (
-            <PositionsTable positions={openPositions} stocks={stocks} />
+            <PositionsTable
+              positions={openPositions}
+              stocks={stocks}
+              displayMarketValue
+            />
           )}
         </section>
 
@@ -204,20 +194,19 @@ function PortfolioPage() {
               <span className="mr-2 text-primary">&gt;</span>
               アロケーション
             </h2>
-            <span className="font-mono text-2xs text-muted-foreground">
-              現金 {cashRatio.toFixed(1)}% / 投資 {investedRatio.toFixed(1)}%
-            </span>
+            <AllocationRatios
+              cashRatio={valuation.cashRatio}
+              investedRatio={valuation.investedRatio}
+            />
           </div>
           <div className="border border-border bg-card p-4">
-            <AllocationBar segments={allocation} />
+            <AllocationBar
+              segments={allocation}
+              priceObservedAt={summary?.price_observed_at ?? null}
+            />
           </div>
         </section>
       </div>
-
-      <p className="font-mono text-2xs text-muted-foreground">
-        # 現在値の取得は未対応のため、評価額・アロケーションは取得簿価
-        (cost_basis) で計算しています。
-      </p>
     </div>
   )
 }

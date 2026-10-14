@@ -57,6 +57,21 @@ export const Open: Story = {
   args,
 }
 
+export const TradeReflectionDraft: Story = {
+  name: 'shows a trade reflection draft with facts and a stock reference.',
+  args: {
+    ...args,
+    showTrigger: false,
+    title: '架空銘柄を売った振り返り',
+    body: [
+      '2099-02-10 売 10 株 @¥1,000',
+      '実現損益 +¥2,200',
+      '',
+      '[[stock:FIC-01]]',
+    ].join('\n'),
+  },
+}
+
 export const LoadingKinds: Story = {
   name: 'shows the kind selector while kinds are loading.',
   args: { ...args, noteKinds: [], noteKindsPending: true },

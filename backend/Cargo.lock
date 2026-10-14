@@ -2363,6 +2363,7 @@ dependencies = [
  "async-trait",
  "core-application",
  "reqwest",
+ "rstest",
  "serde",
  "serde_json",
  "tokio",
