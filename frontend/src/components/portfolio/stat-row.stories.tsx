@@ -12,7 +12,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const TaskRunSummary: Story = {
-  name: 'shows phase and step counts for a task run.',
+  name: 'shows the task phase and completed steps out of the total.',
   args: {
     stats: [
       { label: 'PHASE', value: 'COMPLETED' },
