@@ -43,6 +43,11 @@ function StockPage() {
     return getBarsRange(timeframe)
   }, [requestedDate, timeframe])
   const dailyRange = useMemo(() => getBarsRange('1d'), [])
+  const selectedDateRange = useMemo(
+    () =>
+      requestedDate == null ? null : getDailyBarsRangeAroundDate(requestedDate),
+    [requestedDate],
+  )
 
   const stockQuery = useQuery({
     queryKey: ['stock-page-stock', stockId],
@@ -77,6 +82,20 @@ function StockPage() {
       },
     },
   })
+  const selectedDateBarsQuery = $api.useQuery(
+    'get',
+    '/api/bars',
+    {
+      params: {
+        query: {
+          instrument_id: stockId,
+          timeframe: '1d',
+          ...(selectedDateRange ?? dailyRange),
+        },
+      },
+    },
+    { enabled: requestedDate != null && timeframe !== '1d' },
+  )
   const annotationsQuery = $api.useQuery('get', '/api/annotations', {
     params: { query: { target_symbol: stockId } },
   })
@@ -88,9 +107,24 @@ function StockPage() {
     () =>
       requestedDate == null
         ? null
-        : findDailyBarForDate(chartBarsQuery.data ?? [], requestedDate),
-    [chartBarsQuery.data, requestedDate],
+        : findDailyBarForDate(
+            (timeframe === '1d'
+              ? chartBarsQuery.data
+              : selectedDateBarsQuery.data) ?? [],
+            requestedDate,
+          ),
+    [chartBarsQuery.data, requestedDate, selectedDateBarsQuery.data, timeframe],
   )
+  const selectedDateLoading =
+    requestedDate != null &&
+    (timeframe === '1d'
+      ? chartBarsQuery.isPending
+      : selectedDateBarsQuery.isPending)
+  const selectedDateError =
+    requestedDate != null &&
+    (timeframe === '1d'
+      ? chartBarsQuery.isError
+      : selectedDateBarsQuery.isError)
 
   if (stockQuery.isPending) return <StockPageState state="loading" />
   if (stockQuery.error != null) return <StockPageState state="error" />
@@ -128,6 +162,8 @@ function StockPage() {
       chartLoading={chartBarsQuery.isPending}
       chartError={chartBarsQuery.isError}
       selectedDate={requestedDate}
+      selectedDateLoading={selectedDateLoading}
+      selectedDateError={selectedDateError}
       selectedDateBar={selectedDateBar}
       annotationState={getStockPageListState(annotationsQuery)}
       tradeState={getStockPageListState(tradesQuery)}

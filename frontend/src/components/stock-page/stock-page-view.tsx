@@ -37,6 +37,8 @@ export function StockPageView({
   chartLoading,
   chartError,
   selectedDate,
+  selectedDateLoading,
+  selectedDateError,
   selectedDateBar,
   annotationState,
   tradeState,
@@ -61,6 +63,8 @@ export function StockPageView({
   chartLoading: boolean
   chartError: boolean
   selectedDate?: string
+  selectedDateLoading?: boolean
+  selectedDateError?: boolean
   selectedDateBar?: Bar | null
   annotationState: ActivityProps['annotationState']
   tradeState: ActivityProps['tradeState']
@@ -96,6 +100,8 @@ export function StockPageView({
             isLoading={chartLoading}
             hasError={chartError}
             selectedDate={selectedDate}
+            selectedDateLoading={selectedDateLoading}
+            selectedDateError={selectedDateError}
             selectedDateBar={selectedDateBar}
           />
         </div>

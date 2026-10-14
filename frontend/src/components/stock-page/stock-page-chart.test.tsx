@@ -39,6 +39,8 @@ describe('StockPageChart', () => {
       'a date with a daily bar',
       '2030-04-03',
       bar,
+      false,
+      false,
       '2030-04-03 始 3,000 高 3,100 安 2,980 終 3,060',
       bar.timestamp,
     ],
@@ -46,7 +48,27 @@ describe('StockPageChart', () => {
       'a date without a daily bar',
       '2030-04-04',
       null,
+      false,
+      false,
       '2030-04-04 の日足データがありません',
+      '',
+    ],
+    [
+      'a date while its daily bar is loading',
+      '2030-04-03',
+      null,
+      true,
+      false,
+      '2030-04-03 の日足を読み込み中です',
+      '',
+    ],
+    [
+      'a date whose daily bar failed to load',
+      '2030-04-03',
+      null,
+      false,
+      true,
+      '2030-04-03 の日足データを取得できません',
       '',
     ],
   ])(
@@ -55,6 +77,8 @@ describe('StockPageChart', () => {
       _name,
       selectedDate,
       selectedDateBar,
+      selectedDateLoading,
+      selectedDateError,
       expectedSummary,
       expectedTimestamp,
     ) => {
@@ -67,6 +91,8 @@ describe('StockPageChart', () => {
           timeframe="1d"
           onTimeframeChange={() => undefined}
           selectedDate={selectedDate}
+          selectedDateLoading={selectedDateLoading}
+          selectedDateError={selectedDateError}
           selectedDateBar={selectedDateBar}
         />,
       )

@@ -13,18 +13,31 @@ const priceFormatter = new Intl.NumberFormat('ja-JP', {
   maximumFractionDigits: 2,
 })
 
-function getSelectedDateSummary(
+type SelectedDateStatus =
+  | { kind: 'loading'; label: string }
+  | { kind: 'error'; label: string }
+  | { kind: 'missing'; label: string }
+  | { kind: 'bar'; label: string; bar: Bar }
+
+function getSelectedDateStatus(
   date: string | undefined,
   bar: Bar | null | undefined,
   isLoading: boolean,
   hasError: boolean,
-): string | null {
+): SelectedDateStatus | null {
   if (date == null) return null
-  if (isLoading) return `${date} の日足を読み込み中です`
-  if (hasError) return `${date} の日足データを取得できません`
-  if (bar == null) return `${date} の日足データがありません`
+  if (isLoading)
+    return { kind: 'loading', label: `${date} の日足を読み込み中です` }
+  if (hasError)
+    return { kind: 'error', label: `${date} の日足データを取得できません` }
+  if (bar == null)
+    return { kind: 'missing', label: `${date} の日足データがありません` }
 
-  return `${date} 始 ${priceFormatter.format(bar.open)} 高 ${priceFormatter.format(bar.high)} 安 ${priceFormatter.format(bar.low)} 終 ${priceFormatter.format(bar.close)}`
+  return {
+    kind: 'bar',
+    label: `${date} 始 ${priceFormatter.format(bar.open)} 高 ${priceFormatter.format(bar.high)} 安 ${priceFormatter.format(bar.low)} 終 ${priceFormatter.format(bar.close)}`,
+    bar,
+  }
 }
 
 export function StockPageChart({
@@ -38,6 +51,8 @@ export function StockPageChart({
   isLoading = false,
   hasError = false,
   selectedDate,
+  selectedDateLoading = false,
+  selectedDateError = false,
   selectedDateBar,
 }: {
   bars: Bar[]
@@ -50,13 +65,15 @@ export function StockPageChart({
   isLoading?: boolean
   hasError?: boolean
   selectedDate?: string
+  selectedDateLoading?: boolean
+  selectedDateError?: boolean
   selectedDateBar?: Bar | null
 }) {
-  const dateSummary = getSelectedDateSummary(
+  const selectedDateStatus = getSelectedDateStatus(
     selectedDate,
     selectedDateBar,
-    isLoading,
-    hasError,
+    selectedDateLoading,
+    selectedDateError,
   )
 
   return (
@@ -96,18 +113,18 @@ export function StockPageChart({
           className="h-55 w-full min-w-0 sm:h-110 lg:h-120"
         />
       )}
-      {selectedDate != null && (
+      {selectedDate != null && selectedDateStatus != null && (
         <div
-          aria-label={dateSummary ?? selectedDate}
+          aria-label={selectedDateStatus.label}
           className="flex flex-wrap items-center gap-x-4 gap-y-1 border border-border bg-card px-3 py-2 font-mono text-xs"
           role="status"
         >
           <span className="text-muted-foreground">{selectedDate}</span>
-          {isLoading ? (
+          {selectedDateStatus.kind === 'loading' ? (
             <span className="text-muted-foreground">読み込み中</span>
-          ) : hasError ? (
+          ) : selectedDateStatus.kind === 'error' ? (
             <span className="text-destructive">取得に失敗しました</span>
-          ) : selectedDateBar == null ? (
+          ) : selectedDateStatus.kind === 'missing' ? (
             <span className="text-muted-foreground">
               この日の四本値はありません
             </span>
@@ -115,19 +132,19 @@ export function StockPageChart({
             <dl className="flex flex-wrap gap-x-3 gap-y-1">
               <div className="flex gap-1">
                 <dt className="text-muted-foreground">始</dt>
-                <dd>{priceFormatter.format(selectedDateBar.open)}</dd>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.open)}</dd>
               </div>
               <div className="flex gap-1">
                 <dt className="text-muted-foreground">高</dt>
-                <dd>{priceFormatter.format(selectedDateBar.high)}</dd>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.high)}</dd>
               </div>
               <div className="flex gap-1">
                 <dt className="text-muted-foreground">安</dt>
-                <dd>{priceFormatter.format(selectedDateBar.low)}</dd>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.low)}</dd>
               </div>
               <div className="flex gap-1">
                 <dt className="text-muted-foreground">終</dt>
-                <dd>{priceFormatter.format(selectedDateBar.close)}</dd>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.close)}</dd>
               </div>
             </dl>
           )}

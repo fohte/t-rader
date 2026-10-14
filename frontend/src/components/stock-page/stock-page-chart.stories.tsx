@@ -82,6 +82,16 @@ export const DateWithoutBar: Story = {
   args: { selectedDate: '2030-04-04', selectedDateBar: null },
 }
 
+export const DateLoading: Story = {
+  name: '指定した日の日足を読み込み中と表示する。',
+  args: { selectedDate: '2030-04-02', selectedDateLoading: true },
+}
+
+export const DateError: Story = {
+  name: '指定した日の日足の取得エラーを表示する。',
+  args: { selectedDate: '2030-04-02', selectedDateError: true },
+}
+
 export const Loading: Story = {
   name: 'チャートデータの読み込み中を表示する。',
   args: { isLoading: true },
