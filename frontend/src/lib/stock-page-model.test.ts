@@ -6,11 +6,13 @@ import {
   getStockPageListState,
   resolveStockLookup,
   sortAnnotationsNewestFirst,
+  sortNotesNewestFirst,
   sortTradesNewestFirst,
 } from '#lib/stock-page-model'
 
 type Bar = components['schemas']['Bar']
 type Annotation = components['schemas']['Annotation']
+type Note = components['schemas']['Note']
 type Stock = components['schemas']['Stock']
 
 const stock: Stock = {
@@ -56,6 +58,28 @@ const annotations: Annotation[] = [
     created_at: '2030-04-02T06:00:00Z',
     updated_at: '2030-04-02T06:00:00Z',
   },
+]
+
+const makeNote = (id: string, updatedAt: string): Note => ({
+  body_md: 'デモ用ノート本文です。',
+  created_at: updatedAt,
+  created_by_kind: 'human',
+  frontmatter_json: {},
+  graphs_json: [],
+  id,
+  is_current: true,
+  resolved_price_references_json: {},
+  status: 'approved',
+  tags: [],
+  title: id,
+  updated_at: updatedAt,
+  version_id: `version-${id}`,
+  version_no: 1,
+})
+
+const notes: Note[] = [
+  makeNote('demo-note-older', '2030-04-01T06:00:00Z'),
+  makeNote('demo-note-newer', '2030-04-03T06:00:00Z'),
 ]
 
 const bars: Bar[] = [
@@ -171,6 +195,15 @@ describe('sortAnnotationsNewestFirst', () => {
     expect(sortAnnotationsNewestFirst(annotations)).toEqual([
       annotations[1],
       annotations[0],
+    ])
+  })
+})
+
+describe('sortNotesNewestFirst', () => {
+  it('orders notes by update time from newest to oldest', () => {
+    expect(sortNotesNewestFirst(notes).map((note) => note.id)).toEqual([
+      'demo-note-newer',
+      'demo-note-older',
     ])
   })
 })
