@@ -3,9 +3,11 @@ import type { NoteVersion } from '#lib/api/note-version-types'
 
 interface NoteVersionReviewViewProps {
   version: NoteVersion
+  isDecisionInline: boolean
   lineCommentCount: number
   isCommentsPending: boolean
   reason: string
+  recentlyReviewedStatus: 'approved' | 'rejected' | null
   isApproving: boolean
   isRejecting: boolean
   isMakingCurrent: boolean
@@ -18,9 +20,11 @@ interface NoteVersionReviewViewProps {
 
 export function NoteVersionReviewView({
   version,
+  isDecisionInline,
   lineCommentCount,
   isCommentsPending,
   reason,
+  recentlyReviewedStatus,
   isApproving,
   isRejecting,
   isMakingCurrent,
@@ -34,6 +38,7 @@ export function NoteVersionReviewView({
   const needsReason = lineCommentCount === 0
   const canReject = !needsReason || reason.trim() !== ''
   const isReviewed =
+    recentlyReviewedStatus != null ||
     version.status === 'approved' ||
     version.status === 'rejected' ||
     version.status === 'superseded'
@@ -42,7 +47,7 @@ export function NoteVersionReviewView({
     <section className="border border-border bg-card">
       <header className="flex items-center justify-between border-b border-border px-3.5 py-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
-          バージョンレビュー
+          このバージョンを判断する
         </h2>
         <StatusPill status={version.status} />
       </header>
@@ -58,26 +63,22 @@ export function NoteVersionReviewView({
             </span>
           )}
         </div>
+        {recentlyReviewedStatus != null && (
+          <p
+            role="status"
+            className={
+              recentlyReviewedStatus === 'approved'
+                ? 'text-status-approved'
+                : 'text-status-rejected'
+            }
+          >
+            {recentlyReviewedStatus === 'approved'
+              ? '承認しました'
+              : '却下しました'}
+          </p>
+        )}
         {!isReviewed && (
           <>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={pending || isCommentsPending}
-                onClick={onApprove}
-                className="border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-status-approved hover:text-status-approved disabled:opacity-50"
-              >
-                ✓ 承認
-              </button>
-              <button
-                type="button"
-                disabled={pending || isCommentsPending || !canReject}
-                onClick={onReject}
-                className="border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-status-rejected hover:text-status-rejected disabled:opacity-50"
-              >
-                ✕ 却下
-              </button>
-            </div>
             <label className="block space-y-1 text-2xs text-muted-foreground-strong">
               <span>却下理由{needsReason ? ' (必須)' : ' (任意)'}</span>
               <textarea
@@ -94,6 +95,26 @@ export function NoteVersionReviewView({
                 }
               />
             </label>
+            <div
+              className={`flex gap-2 ${isDecisionInline ? 'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:justify-between max-lg:border-t max-lg:border-border max-lg:bg-card max-lg:px-4 max-lg:py-3 max-lg:shadow-lg' : ''}`}
+            >
+              <button
+                type="button"
+                disabled={pending || isCommentsPending || !canReject}
+                onClick={onReject}
+                className="flex-1 border border-border px-2.5 py-2 text-muted-foreground-strong hover:border-status-rejected hover:text-status-rejected disabled:opacity-50"
+              >
+                ✕ 却下
+              </button>
+              <button
+                type="button"
+                disabled={pending || isCommentsPending}
+                onClick={onApprove}
+                className="flex-1 border border-status-approved px-2.5 py-2 text-status-approved hover:bg-status-approved/10 disabled:opacity-50"
+              >
+                ✓ 承認
+              </button>
+            </div>
           </>
         )}
         {version.status === 'approved' && !version.is_current && (

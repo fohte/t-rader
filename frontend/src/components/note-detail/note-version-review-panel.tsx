@@ -7,10 +7,16 @@ import type { NoteVersion } from '#lib/api/note-version-types'
 
 interface NoteVersionReviewPanelProps {
   version: NoteVersion
+  isDecisionInline?: boolean
+  recentlyReviewedStatus?: 'approved' | 'rejected' | null
+  onReviewed?: (status: 'approved' | 'rejected') => void
 }
 
 export function NoteVersionReviewPanel({
   version,
+  isDecisionInline = false,
+  recentlyReviewedStatus = null,
+  onReviewed,
 }: NoteVersionReviewPanelProps) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
@@ -79,7 +85,12 @@ export function NoteVersionReviewPanel({
         },
         body: {},
       },
-      { onSuccess: invalidateReviewData },
+      {
+        onSuccess: () => {
+          onReviewed?.('approved')
+          invalidateReviewData()
+        },
+      },
     )
   }
 
@@ -95,6 +106,7 @@ export function NoteVersionReviewPanel({
       {
         onSuccess: () => {
           setReason('')
+          onReviewed?.('rejected')
           invalidateReviewData()
         },
       },
@@ -115,9 +127,11 @@ export function NoteVersionReviewPanel({
   return (
     <NoteVersionReviewView
       version={version}
+      isDecisionInline={isDecisionInline}
       lineCommentCount={lineCommentCount}
       isCommentsPending={isCommentsPending}
       reason={reason}
+      recentlyReviewedStatus={recentlyReviewedStatus}
       isApproving={approve.isPending}
       isRejecting={reject.isPending}
       isMakingCurrent={makeCurrent.isPending}
