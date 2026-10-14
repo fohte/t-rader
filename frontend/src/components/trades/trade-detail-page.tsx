@@ -2,11 +2,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
+import type { TradeDetailChartState } from '#components/trades/trade-detail-chart-view'
 import { createTradeReflectionDraft } from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
 import { $api } from '#lib/api/client'
+import { getChartCurrency } from '#lib/chart-utils'
 
 export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const queryClient = useQueryClient()
@@ -18,6 +20,28 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const detailQuery = $api.useQuery('get', '/api/trades/{id}', {
     params: { path: { id: tradeId } },
   })
+  const chartRange = getTradeDetailChartRange(detailQuery.data?.date)
+  const chartBarsQuery = $api.useQuery(
+    'get',
+    '/api/bars',
+    {
+      params: {
+        query: {
+          instrument_id: detailQuery.data?.symbol ?? '',
+          timeframe: '1d',
+          from: chartRange?.from ?? '',
+          to: chartRange?.to ?? '',
+        },
+      },
+    },
+    { enabled: chartRange != null },
+  )
+  const chartTradesQuery = $api.useQuery(
+    'get',
+    '/api/trades',
+    { params: { query: { symbol: detailQuery.data?.symbol ?? '' } } },
+    { enabled: detailQuery.data != null },
+  )
   const linkedNotesQuery = $api.useQuery(
     'get',
     '/api/trades/{id}/notes',
@@ -37,11 +61,23 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
     return <TradeDetailView state="error" />
   }
 
-  const stockName =
-    stocksQuery.data?.find((stock) => stock.id === detail.symbol)?.name ?? null
+  const stock = stocksQuery.data?.find((item) => item.id === detail.symbol)
+  const stockName = stock?.name ?? null
   const strategyName =
     strategiesQuery.data?.find((strategy) => strategy.id === detail.strategy_id)
       ?.name ?? null
+  const chartState: TradeDetailChartState =
+    chartBarsQuery.isPending || chartTradesQuery.isPending
+      ? { status: 'loading' }
+      : chartBarsQuery.isError || chartTradesQuery.isError
+        ? { status: 'error' }
+        : chartBarsQuery.data.length === 0
+          ? { status: 'empty' }
+          : {
+              status: 'ready',
+              bars: chartBarsQuery.data,
+              trades: chartTradesQuery.data,
+            }
   const reflectionDraft = createTradeReflectionDraft(detail, stockName)
 
   function handleCreated(noteId: string) {
@@ -71,6 +107,8 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
       <TradeDetailView
         state="ready"
         trade={detail}
+        chartCurrency={getChartCurrency(stock?.market)}
+        chartState={chartState}
         stockName={stockName}
         strategyName={strategyName}
         linkedNotes={linkedNotesQuery.data ?? []}
@@ -100,4 +138,19 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
       />
     </>
   )
+}
+
+function getTradeDetailChartRange(tradeDate: string | undefined) {
+  if (tradeDate == null) return null
+
+  const center = new Date(`${tradeDate}T00:00:00.000Z`)
+  const from = new Date(center)
+  const to = new Date(center)
+  from.setUTCDate(from.getUTCDate() - 14)
+  to.setUTCDate(to.getUTCDate() + 14)
+
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  }
 }

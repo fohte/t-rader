@@ -156,6 +156,42 @@ describe('CandlestickChart', () => {
     ])
   })
 
+  it('labels the selected trade marker after same-day markers', () => {
+    const otherTrade = makeTrade({ id: 'fake-other-trade' })
+    const selectedTrade = makeTrade({ id: 'fake-selected-trade' })
+
+    render(
+      <CandlestickChart
+        bars={bars}
+        trades={[selectedTrade, otherTrade]}
+        selectedTradeId={selectedTrade.id}
+      />,
+    )
+
+    expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([
+      [
+        [
+          {
+            id: 'fake-other-trade',
+            time: 1744243200,
+            position: 'belowBar',
+            color: '#26a69a',
+            shape: 'arrowUp',
+          },
+          {
+            id: 'fake-selected-trade',
+            time: 1744243200,
+            position: 'belowBar',
+            color: '#26a69a',
+            shape: 'arrowUp',
+            text: '対象',
+            size: 2,
+          },
+        ],
+      ],
+    ])
+  })
+
   it('keeps trade markers empty when the optional prop is omitted', () => {
     render(<CandlestickChart bars={bars} />)
 

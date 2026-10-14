@@ -54,6 +54,7 @@ export function toVolumeData(bars: Bar[]): HistogramData[] {
 export function toTradeMarkers(
   trades: Trade[],
   bars: Bar[],
+  selectedTradeId?: string,
 ): SeriesMarker<UTCTimestamp>[] {
   const firstBarByDate = new Map<string, UTCTimestamp>()
 
@@ -73,6 +74,7 @@ export function toTradeMarkers(
       if (time == null) return []
 
       const isBuy = trade.side === 'buy'
+      const isSelected = trade.id === selectedTradeId
       return [
         {
           id: trade.id,
@@ -80,8 +82,14 @@ export function toTradeMarkers(
           position: isBuy ? 'belowBar' : 'aboveBar',
           color: isBuy ? '#26a69a' : '#ef5350',
           shape: isBuy ? 'arrowUp' : 'arrowDown',
+          ...(isSelected ? { text: '対象', size: 2 } : {}),
         },
       ]
     })
-    .sort((left, right) => left.time - right.time)
+    .sort(
+      (left, right) =>
+        left.time - right.time ||
+        Number(left.id === selectedTradeId) -
+          Number(right.id === selectedTradeId),
+    )
 }

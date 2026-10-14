@@ -58,6 +58,7 @@ interface BandLayout {
 interface CandlestickChartProps {
   bars: Bar[]
   trades?: Trade[]
+  selectedTradeId?: string
   annotations?: ChartAnnotation[]
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
@@ -69,6 +70,7 @@ interface CandlestickChartProps {
 export function CandlestickChart({
   bars,
   trades,
+  selectedTradeId,
   annotations,
   onSelectAnnotation,
   selectedAnnotationId,
@@ -227,8 +229,10 @@ export function CandlestickChart({
   }, [bars])
 
   useEffect(() => {
-    tradeMarkersRef.current?.setMarkers(toTradeMarkers(trades ?? [], bars))
-  }, [bars, trades])
+    tradeMarkersRef.current?.setMarkers(
+      toTradeMarkers(trades ?? [], bars, selectedTradeId),
+    )
+  }, [bars, trades, selectedTradeId])
 
   useEffect(() => {
     const chart = chartRef.current
