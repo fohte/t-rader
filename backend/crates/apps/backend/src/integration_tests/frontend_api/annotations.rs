@@ -49,7 +49,7 @@ mod tests {
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "text",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -92,7 +92,7 @@ mod tests {
                     "timestamp": timestamp,
                     "price": null,
                     "text": "sample text",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -114,7 +114,7 @@ mod tests {
             "timestamp": timestamp,
             "price": null,
             "text": "sample text",
-            "status": "unread",
+            "status": "approved",
             "linked_note_id": null,
             "created_by_kind": "human",
             "created_at": "<created_at>",
@@ -217,6 +217,93 @@ mod tests {
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "市況アノテーション",
+                    "status": "approved",
+                    "linked_note_id": null,
+                    "created_by_kind": "human",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "timestamp_start": null,
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_annotation_defaults_llm_annotations_to_unread(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_db, server) = create_test_server_with_db(db).await;
+        let response = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "FICTIONAL-ASSET",
+                "target_kind": "sample-kind",
+                "timestamp": "2030-01-02T00:00:00Z",
+                "text": "sample annotation",
+                "created_by_kind": "llm",
+            }))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_annotation_response(response.json::<Value>()),
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "target_symbol": "FICTIONAL-ASSET",
+                    "target_kind": "sample-kind",
+                    "timestamp": "2030-01-02T00:00:00Z",
+                    "price": null,
+                    "text": "sample annotation",
+                    "status": "unread",
+                    "linked_note_id": null,
+                    "created_by_kind": "llm",
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "timestamp_start": null,
+                    "execution_step_id": null,
+                    "execution_task_id": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_annotation_preserves_explicit_unread_status_for_human(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_db, server) = create_test_server_with_db(db).await;
+        let response = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "FICTIONAL-ASSET",
+                "target_kind": "sample-kind",
+                "timestamp": "2030-01-03T00:00:00Z",
+                "text": "sample annotation",
+                "status": "unread",
+                "created_by_kind": "human",
+            }))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_annotation_response(response.json::<Value>()),
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<id>",
+                    "target_symbol": "FICTIONAL-ASSET",
+                    "target_kind": "sample-kind",
+                    "timestamp": "2030-01-03T00:00:00Z",
+                    "price": null,
+                    "text": "sample annotation",
                     "status": "unread",
                     "linked_note_id": null,
                     "created_by_kind": "human",
@@ -258,7 +345,7 @@ mod tests {
                     "timestamp": "2030-01-02T00:00:00Z",
                     "price": 17.25,
                     "text": "sample annotation",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -302,7 +389,7 @@ mod tests {
                     "timestamp": "2026-01-01T00:00:00Z",
                     "price": null,
                     "text": "text",
-                    "status": "unread",
+                    "status": "approved",
                     "linked_note_id": null,
                     "created_by_kind": "human",
                     "created_at": "<created_at>",
@@ -367,7 +454,7 @@ mod tests {
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
                         "text": "text",
-                        "status": "unread",
+                        "status": "approved",
                         "linked_note_id": created_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
@@ -386,7 +473,7 @@ mod tests {
                         "timestamp": "2026-01-01T00:00:00Z",
                         "price": null,
                         "text": "text",
-                        "status": "unread",
+                        "status": "approved",
                         "linked_note_id": updated_note_id,
                         "created_by_kind": "human",
                         "created_at": "<created_at>",
@@ -634,6 +721,6 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(anno.status, "unread");
+        assert_eq!(anno.status, "approved");
     }
 }

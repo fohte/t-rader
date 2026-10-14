@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use core_application::trade::Trade;
+use core_application::trade::{
+    MatchedBuy, Trade, TradeDetail, ValuedPerformanceSummary, ValuedPositionSummary,
+};
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trade)]
@@ -40,6 +42,48 @@ impl From<Trade> for TradeResponse {
             note: model.note,
             created_at: model.created_at,
             updated_at: model.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TradeDetailResponse {
+    #[serde(flatten)]
+    pub trade: TradeResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub realized_pnl: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_buys: Option<Vec<MatchedBuyResponse>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remaining_qty: Option<Decimal>,
+}
+
+impl From<TradeDetail> for TradeDetailResponse {
+    fn from(model: TradeDetail) -> Self {
+        Self {
+            trade: model.trade.into(),
+            realized_pnl: model.realized_pnl,
+            matched_buys: model
+                .matched_buys
+                .map(|buys| buys.into_iter().map(MatchedBuyResponse::from).collect()),
+            remaining_qty: model.remaining_qty,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MatchedBuyResponse {
+    pub date: NaiveDate,
+    pub qty: Decimal,
+    pub price: Decimal,
+}
+
+impl From<MatchedBuy> for MatchedBuyResponse {
+    fn from(model: MatchedBuy) -> Self {
+        Self {
+            date: model.date,
+            qty: model.qty,
+            price: model.price,
         }
     }
 }
@@ -95,6 +139,12 @@ pub struct PositionSummary {
     pub cost_basis: Decimal,
     /// 実現損益累計
     pub realized_pnl: Decimal,
+    /// 共通観測日の終値。該当する日足が無い場合は `null` です。
+    pub current_price: Option<Decimal>,
+    /// 現在値 × 保有数量。現在値が無い場合は `null`。
+    pub market_value: Option<Decimal>,
+    /// 評価額 - 取得簿価。現在値が無い場合は `null`。
+    pub unrealized_pnl: Option<Decimal>,
 }
 
 /// 戦略単位もしくはポートフォリオ全体の損益サマリ
@@ -103,5 +153,34 @@ pub struct PerformanceSummary {
     pub strategy_id: Option<Uuid>,
     pub trade_count: i64,
     pub realized_pnl: Decimal,
+    /// 使用した日足のうち最も新しい観測日。価格が無い場合は `null`。
+    pub price_observed_at: Option<NaiveDate>,
     pub positions: Vec<PositionSummary>,
+}
+
+impl From<ValuedPositionSummary> for PositionSummary {
+    fn from(model: ValuedPositionSummary) -> Self {
+        Self {
+            symbol: model.symbol,
+            qty: model.qty,
+            avg_cost: model.avg_cost,
+            cost_basis: model.cost_basis,
+            realized_pnl: model.realized_pnl,
+            current_price: model.current_price,
+            market_value: model.market_value,
+            unrealized_pnl: model.unrealized_pnl,
+        }
+    }
+}
+
+impl From<ValuedPerformanceSummary> for PerformanceSummary {
+    fn from(model: ValuedPerformanceSummary) -> Self {
+        Self {
+            strategy_id: model.strategy_id,
+            trade_count: model.trade_count,
+            realized_pnl: model.realized_pnl,
+            price_observed_at: model.price_observed_at,
+            positions: model.positions.into_iter().map(Into::into).collect(),
+        }
+    }
 }

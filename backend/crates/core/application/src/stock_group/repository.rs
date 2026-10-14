@@ -11,6 +11,7 @@ use super::types::{NewStockGroup, StockGroup, StockGroupMembership};
 pub struct GroupAxis {
     pub id: Uuid,
     pub key: String,
+    pub name: String,
     pub derive_from: Option<String>,
 }
 
@@ -68,6 +69,12 @@ pub trait StockGroupRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         group_id: Uuid,
     ) -> Result<Vec<String>, StockGroupRepositoryError>;
+
+    async fn list_stocks(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        group_id: Uuid,
+    ) -> Result<Vec<super::types::StockGroupStock>, StockGroupRepositoryError>;
 
     async fn list_memberships(
         &self,

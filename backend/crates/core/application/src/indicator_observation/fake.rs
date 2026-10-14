@@ -91,7 +91,9 @@ impl IndicatorObservationRepository for FakeIndicatorObservationRepository {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .filter(|((indicator_id, date), _)| {
-                indicator_id == &query.indicator_id && *date >= query.from && *date <= query.to
+                indicator_id == &query.indicator_id
+                    && query.from.is_none_or(|from| *date >= from)
+                    && query.to.is_none_or(|to| *date <= to)
             })
             .map(|((_, date), value)| IndicatorObservation {
                 date: *date,

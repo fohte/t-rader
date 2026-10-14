@@ -3,6 +3,7 @@ import { type AnyAgentMiddleware, createMiddleware } from 'langchain'
 import { isRecord } from '#errors'
 import { logger } from '#logger'
 import { AbortedModelCallError } from '#strategy-agent/aborting-model-call-middleware'
+import { NonAssistantModelResponseError } from '#strategy-agent/non-assistant-model-response-middleware'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
 const CONNECTION_ERROR_CODES = new Set([
@@ -103,6 +104,11 @@ const isRetryableModelCallError = (error: Error): boolean => {
     isUsageLimitError(error)
   ) {
     return false
+  }
+  if (
+    errorChain.some((cause) => cause instanceof NonAssistantModelResponseError)
+  ) {
+    return true
   }
 
   let status: number | undefined
