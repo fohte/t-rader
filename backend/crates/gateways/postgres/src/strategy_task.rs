@@ -77,6 +77,8 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             deadline_at: Set(task.deadline_at),
             purpose: Set(task.purpose),
             as_of: Set(task.as_of),
+            context_kind: Set(task.context_kind),
+            context_id: Set(task.context_id),
             auto_resumed_at: Set(task.auto_resumed_at),
             created_at: NotSet,
             updated_at: NotSet,
@@ -181,6 +183,11 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         if let Some(purpose) = query.purpose {
             select = select.filter(strategy_task::Column::Purpose.eq(purpose));
         }
+        if let Some(context) = query.context {
+            select = select
+                .filter(strategy_task::Column::ContextKind.eq(context.kind))
+                .filter(strategy_task::Column::ContextId.eq(context.id));
+        }
         select
             .order_by_desc(strategy_task::Column::CreatedAt)
             .limit(TASK_LIST_LIMIT)
@@ -268,6 +275,8 @@ fn update_active_model(update: StrategyTaskUpdate) -> strategy_task::ActiveModel
         prompt: NotSet,
         purpose: NotSet,
         as_of: NotSet,
+        context_kind: NotSet,
+        context_id: NotSet,
         created_at: NotSet,
     }
 }
@@ -328,6 +337,8 @@ fn task_from_model(model: strategy_task::Model) -> StrategyTask {
         deadline_at: model.deadline_at,
         purpose: model.purpose,
         as_of: model.as_of,
+        context_kind: model.context_kind,
+        context_id: model.context_id,
         auto_resumed_at: model.auto_resumed_at,
         created_at: model.created_at,
         updated_at: model.updated_at,
@@ -519,6 +530,8 @@ mod tests {
             deadline_at: now,
             purpose: Some("fictional-purpose".to_string()),
             as_of: Some(now),
+            context_kind: None,
+            context_id: None,
             auto_resumed_at,
             created_at: now,
             updated_at: now,

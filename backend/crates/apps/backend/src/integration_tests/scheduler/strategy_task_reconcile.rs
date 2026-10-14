@@ -81,6 +81,8 @@ mod tests {
             deadline_at: Set(now + deadline_offset),
             purpose: NotSet,
             as_of: NotSet,
+            context_kind: NotSet,
+            context_id: NotSet,
             auto_resumed_at: NotSet,
             created_at: NotSet,
             updated_at: NotSet,

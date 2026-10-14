@@ -16,6 +16,27 @@ export const TRADE_MARKER_COLORS = {
   sell: '#ef5350',
 } as const
 
+const chartDateFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+/** 日足とアノテーションの日付を揃えるため、日本時間で取引日を返す */
+export function getChartBarDate(value: string): string | null {
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+
+  const parts = chartDateFormatter.formatToParts(date)
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+  if (year == null || month == null || day == null) return null
+
+  return `${year.padStart(4, '0')}-${month}-${day}`
+}
+
 /** 市場コードから価格表示に使う通貨を返す */
 export function getChartCurrency(
   market: string | null | undefined,

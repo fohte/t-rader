@@ -147,6 +147,8 @@ fn task(phase: StrategyTaskPhase, auto_resumed_at: Option<DateTime<FixedOffset>>
         deadline_at: now,
         purpose: Some("fictional-purpose".to_string()),
         as_of: Some(now),
+        context_kind: None,
+        context_id: None,
         auto_resumed_at,
         created_at: now,
         updated_at: now,

@@ -35,11 +35,12 @@ export function StockPageHoldings({
 
   return (
     <section className="border border-border bg-card" aria-label="保有">
-      <div className="border-b border-border px-3.5 py-2">
+      <div className="flex items-center justify-between border-b border-border px-3.5 py-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           <span className="mr-2 text-primary">&gt;</span>
           保有
         </h2>
+        <span className="font-mono text-2xs text-muted-foreground">現在</span>
       </div>
       {isLoading ? (
         <Skeleton className="h-40 w-full" />

@@ -1,18 +1,12 @@
 import { Link } from '@tanstack/react-router'
 
+import { taskPhaseLabel } from '#components/task-phase-label'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 import { formatRelative } from '#lib/note-utils'
 
 type Strategy = components['schemas']['Strategy']
 type Task = components['schemas']['StrategyTaskSummary']
-
-const PHASE_LABEL: Record<string, string> = {
-  pending: 'PENDING',
-  running: 'RUNNING',
-  completed: 'COMPLETED',
-  failed: 'FAILED',
-}
 
 export function DashboardRecentRuns({
   tasks,
@@ -89,7 +83,7 @@ export function DashboardRecentRuns({
                       : 'text-muted-foreground'
                 }`}
               >
-                {PHASE_LABEL[task.phase] ?? task.phase}
+                {taskPhaseLabel(task.phase)}
               </span>
               <span className="hidden shrink-0 font-mono text-2xs text-muted-foreground sm:inline">
                 {formatRelative(task.created_at)}

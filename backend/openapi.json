@@ -4063,6 +4063,72 @@
         }
       }
     },
+    "/api/notes/{id}/trades": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートに紐付いた取引一覧",
+        "operationId": "list_note_trades",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteLinkedTrade"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/{id}/versions": {
       "get": {
         "tags": [
@@ -6085,7 +6151,7 @@
             }
           },
           "400": {
-            "description": "prompt が空 (空白のみを含む)、または指定された purpose の agent_config が存在しない",
+            "description": "prompt が空、context が不正、または指定された purpose の agent_config が存在しない",
             "content": {
               "application/json": {
                 "schema": {
@@ -6095,7 +6161,7 @@
             }
           },
           "404": {
-            "description": "戦略が存在しない",
+            "description": "戦略または context の取引が存在しない",
             "content": {
               "application/json": {
                 "schema": {
@@ -6794,6 +6860,22 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "context_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StrategyTaskContextKind"
+            }
+          },
+          {
+            "name": "context_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -6811,7 +6893,7 @@
             }
           },
           "400": {
-            "description": "パスパラメータが不正",
+            "description": "パスパラメータまたは文脈フィルターが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -9970,6 +10052,31 @@
           }
         }
       },
+      "NoteLinkedTrade": {
+        "type": "object",
+        "required": [
+          "id",
+          "date",
+          "symbol",
+          "side"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "side": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        }
+      },
       "NoteLinksResponse": {
         "type": "object",
         "required": [
@@ -11447,6 +11554,24 @@
           }
         }
       },
+      "StrategyChatContextRequest": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StrategyTaskContextKind"
+          }
+        },
+        "additionalProperties": false
+      },
       "StrategyChatRequest": {
         "type": "object",
         "description": "フローティングチャットから戦略 Agent に投入する 1 メッセージ。",
@@ -11454,6 +11579,16 @@
           "prompt"
         ],
         "properties": {
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StrategyChatContextRequest"
+              }
+            ]
+          },
           "prompt": {
             "type": "string",
             "minLength": 1
@@ -11516,6 +11651,14 @@
           }
         }
       },
+      "StrategyTaskContextKind": {
+        "type": "string",
+        "enum": [
+          "note",
+          "stock",
+          "trade"
+        ]
+      },
       "StrategyTaskStatusResponse": {
         "type": "object",
         "description": "`GET /api/strategies/:id/tasks/:task_id` の戻り値。",
@@ -11543,6 +11686,18 @@
             ],
             "format": "date-time",
             "description": "実行の論理的な基準時刻。監査用に記録し、agent がプロンプトにも含めて LLM に伝える。\n各フェーズが実際に参照したデータの取得時刻がこの時刻に揃うことは保証しない\n(データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。\n`None` はこのカラムが追加される前に作成された行に限られる。"
+          },
+          "context_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "context_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "string",
@@ -11614,6 +11769,18 @@
             ],
             "format": "date-time",
             "description": "実行の論理的な基準時刻。監査用に記録し、agent がプロンプトにも含めて LLM に伝える。\n各フェーズが実際に参照したデータの取得時刻がこの時刻に揃うことは保証しない\n(データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。\n`None` はこのカラムが追加される前に作成された行に限られる。"
+          },
+          "context_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "context_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_at": {
             "type": "string",

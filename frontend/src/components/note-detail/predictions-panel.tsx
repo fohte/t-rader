@@ -1,7 +1,7 @@
-import { useQueries } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { PredictionsPanelView } from '#components/note-detail/predictions-panel-view'
+import { useStockNameById } from '#components/stocks/use-stock-name-by-id'
 import { $api } from '#lib/api/client'
 
 interface PredictionsPanelProps {
@@ -17,32 +17,13 @@ export function PredictionsPanel({ noteId }: PredictionsPanelProps) {
 
   const stockIds = useMemo(
     () =>
-      Array.from(
-        new Set(
-          (predictions ?? []).flatMap((p) => [
-            p.target_stock_id,
-            p.benchmark_stock_id,
-          ]),
-        ),
-      ),
+      (predictions ?? []).flatMap((prediction) => [
+        prediction.target_stock_id,
+        prediction.benchmark_stock_id,
+      ]),
     [predictions],
   )
-  const stockQueries = useQueries({
-    queries: stockIds.map((id) =>
-      $api.queryOptions('get', '/api/refs/stocks/{id}', {
-        params: { path: { id } },
-      }),
-    ),
-  })
-  const stockNameById = useMemo(
-    () =>
-      new Map(
-        stockQueries.flatMap((q) =>
-          q.data != null ? [[q.data.id, q.data.name]] : [],
-        ),
-      ),
-    [stockQueries],
-  )
+  const stockNameById = useStockNameById(stockIds)
 
   if (predictions == null || predictions.length === 0) return null
 

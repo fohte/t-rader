@@ -10,6 +10,7 @@ import {
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
+import { useTradeRequestedAnalyses } from '#components/trades/use-trade-requested-analyses'
 import { $api } from '#lib/api/client'
 import { getChartCurrencyForStockId } from '#lib/chart-utils'
 
@@ -54,6 +55,18 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const linkMutation = $api.useMutation('post', '/api/trades/{id}/notes')
+
+  const { analyses: requestedAnalyses, state: requestedAnalysesState } =
+    useTradeRequestedAnalyses({
+      tradeId,
+      strategies: strategiesQuery.data,
+      strategyState: strategiesQuery.isPending
+        ? 'loading'
+        : strategiesQuery.isError
+          ? 'error'
+          : 'success',
+      enabled: detailQuery.data != null,
+    })
 
   if (detailQuery.isPending) {
     return <TradeDetailView state="loading" />
@@ -112,6 +125,8 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
         linkedNotes={linkedNotesQuery.data ?? []}
         notesPending={linkedNotesQuery.isPending}
         notesError={linkedNotesQuery.isError}
+        requestedAnalyses={requestedAnalyses}
+        requestedAnalysesState={requestedAnalysesState}
         noteLinkError={noteLinkError}
         onManageNotes={() => {
           setNotesDialogOpen(true)
