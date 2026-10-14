@@ -159,7 +159,7 @@ const meta = {
             <Story />
           ),
           {
-            paths: ['/annotations/$annoId'],
+            paths: ['/annotations/$annoId', '/stocks/$stockId/chart'],
           },
         )}
       />
