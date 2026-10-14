@@ -56,6 +56,7 @@ const meta = {
   component: StockPageChart,
   args: {
     bars,
+    trades: [],
     annotations,
     selectedAnnotationId: 'demo-annotation',
     onSelectAnnotation: () => undefined,
