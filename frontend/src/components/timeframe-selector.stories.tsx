@@ -25,3 +25,19 @@ export const OneMinute: Story = {
     value: '1m',
   },
 }
+
+export const Compact: Story = {
+  name: 'the compact selector shows 1h and 1D while keeping the remaining intervals in a menu.',
+  args: {
+    variant: 'compact',
+  },
+}
+
+export const CompactMenuOpen: Story = {
+  name: 'the open compact menu shows the remaining intervals.',
+  args: {
+    variant: 'compact',
+    value: '5m',
+    moreTimeframesDefaultOpen: true,
+  },
+}
