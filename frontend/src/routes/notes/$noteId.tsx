@@ -231,18 +231,21 @@ function NoteDetailPage() {
             isHistoryError={hasNoteHistoryError}
             selectedVersionNo={selectedVersion.version_no}
             onSelectVersion={(versionNo) => {
+              const targetVersion = orderedVersions.find(
+                (version) => version.version_no === versionNo,
+              )
               void navigate({
                 search: { version: versionNo, version_id: undefined },
                 state: (previous) => {
                   const snapshot = reviewNavigation.navigation?.snapshot
-                  if (snapshot == null) return previous
+                  if (snapshot == null || targetVersion == null) return previous
                   return {
                     ...previous,
                     reviewQueue: {
                       snapshot,
                       currentItemKey: reviewQueueItemKey({
                         kind: 'note',
-                        id: selectedVersion.id,
+                        id: targetVersion.id,
                       }),
                     },
                   }
