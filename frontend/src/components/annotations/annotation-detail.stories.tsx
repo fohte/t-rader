@@ -3,6 +3,10 @@ import { RouterProvider } from '@tanstack/react-router'
 import { fn } from 'storybook/test'
 
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
+import {
+  type ReviewQueueItem,
+  reviewQueueModel,
+} from '#components/review/review-queue-model'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -14,7 +18,7 @@ const unreadAnnotation: Annotation = {
   id: '00000000-0000-0000-0000-000000000011',
   target_kind: 'stock',
   target_symbol: 'sample-code',
-  timestamp: '2026-10-13T01:23:00Z',
+  timestamp: '2026-01-14T01:23:00Z',
   price: 1234,
   text: 'サンプルの注釈本文です。',
   linked_note_id: null,
@@ -22,8 +26,8 @@ const unreadAnnotation: Annotation = {
   created_by_kind: 'llm',
   execution_step_id: null,
   execution_task_id: null,
-  created_at: '2026-10-13T01:24:00Z',
-  updated_at: '2026-10-13T01:24:00Z',
+  created_at: '2026-01-14T01:24:00Z',
+  updated_at: '2026-01-14T01:24:00Z',
 }
 
 const approvedAnnotation: Annotation = {
@@ -41,6 +45,37 @@ const rejectedAnnotation: Annotation = {
   status: 'rejected',
 }
 
+const unreadReviewItems: ReviewQueueItem[] = [
+  {
+    kind: 'annotation',
+    id: unreadAnnotation.id,
+    title: unreadAnnotation.text,
+    createdAt: unreadAnnotation.created_at,
+    targetSymbol: unreadAnnotation.target_symbol,
+    timestamp: unreadAnnotation.timestamp,
+    price: unreadAnnotation.price ?? null,
+  },
+  {
+    kind: 'note',
+    id: '00000000-0000-0000-0000-000000000018',
+    noteId: '00000000-0000-0000-0000-000000000019',
+    versionNo: 2,
+    title: '確認用のメモ',
+    createdAt: '2026-01-14T01:22:00Z',
+    noteKind: null,
+    createdByKind: 'llm',
+    unreadVersionCount: 1,
+  },
+]
+
+const reviewNavigationSnapshot =
+  reviewQueueModel.createNavigationSnapshot(unreadReviewItems)
+const unreadReviewNavigation = {
+  items: unreadReviewItems,
+  snapshot: reviewNavigationSnapshot,
+  currentItemKey: `annotation:${unreadAnnotation.id}`,
+}
+
 const approvedComment: Comment = {
   id: '00000000-0000-0000-0000-000000000015',
   target_id: approvedAnnotation.id,
@@ -54,7 +89,7 @@ const approvedComment: Comment = {
   anchor_text: null,
   start_line: null,
   end_line: null,
-  created_at: '2026-10-13T01:25:00Z',
+  created_at: '2026-01-14T01:25:00Z',
 }
 
 const rejectedComment: Comment = {
@@ -72,7 +107,7 @@ const historyEntry: ChangeHistory = {
   op: 'approved',
   summary: '確認済み',
   diff_json: {},
-  created_at: '2026-10-13T01:26:00Z',
+  created_at: '2026-01-14T01:26:00Z',
 }
 
 const meta = {
@@ -86,7 +121,14 @@ const meta = {
             <Story />
           ),
           {
-            paths: ['/notes', '/notes/$noteId', '/stocks/$stockId'],
+            paths: [
+              '/annotations',
+              '/annotations/$annoId',
+              '/notes',
+              '/notes/$noteId',
+              '/review',
+              '/stocks/$stockId',
+            ],
           },
         )}
       />
@@ -95,10 +137,16 @@ const meta = {
   args: {
     annotation: unreadAnnotation,
     isPending: false,
+    reviewNavigationState: {
+      navigation: unreadReviewNavigation,
+      isPending: false,
+      isError: false,
+    },
     comments: [],
     history: [],
     stockName: 'サンプル銘柄',
     commentDraft: '',
+    rejectionReason: '',
     isApprovalPending: false,
     isRejectionPending: false,
     isCommentPending: false,
@@ -107,6 +155,7 @@ const meta = {
     commentError: null,
     onApprove: fn(),
     onReject: fn(),
+    onRejectionReasonChange: fn(),
     onAddComment: (event) => {
       event.preventDefault()
     },
@@ -132,19 +181,30 @@ export const UnreadWithoutRelatedItems: Story = {
 }
 
 export const ApprovalPending: Story = {
-  name: 'disables approval while it is being processed.',
+  name: 'disables both decision buttons while approval is being processed.',
   args: { isApprovalPending: true },
 }
 
 export const RejectionPending: Story = {
-  name: 'disables rejection while it is being processed.',
-  args: { isRejectionPending: true },
+  name: 'disables both decision buttons while rejection is being processed.',
+  args: {
+    isRejectionPending: true,
+    rejectionReason: '記録内容を確認してください。',
+  },
 }
 
 export const ApprovedWithRelatedItems: Story = {
   name: 'shows an approved annotation with comments and a linked note.',
   args: {
     annotation: approvedAnnotation,
+    reviewNavigationState: {
+      navigation: {
+        ...unreadReviewNavigation,
+        currentItemKey: `annotation:${approvedAnnotation.id}`,
+      },
+      isPending: false,
+      isError: false,
+    },
     comments: [approvedComment],
     history: [historyEntry],
   },
@@ -154,7 +214,58 @@ export const RejectedWithComments: Story = {
   name: 'shows a rejected annotation with comments and no linked note.',
   args: {
     annotation: rejectedAnnotation,
+    reviewNavigationState: {
+      navigation: {
+        ...unreadReviewNavigation,
+        currentItemKey: `annotation:${rejectedAnnotation.id}`,
+      },
+      isPending: false,
+      isError: false,
+    },
     comments: [rejectedComment],
+  },
+}
+
+export const RejectionReasonEntered: Story = {
+  name: 'shows an optional rejection reason before the decision.',
+  args: { rejectionReason: '確認が必要な点を追記してください。' },
+}
+
+export const NoUnreadItems: Story = {
+  name: 'shows the review link when no unread items remain.',
+  args: {
+    annotation: approvedAnnotation,
+    reviewNavigationState: {
+      navigation: {
+        ...unreadReviewNavigation,
+        items: [],
+        currentItemKey: `annotation:${approvedAnnotation.id}`,
+      },
+      isPending: false,
+      isError: false,
+    },
+  },
+}
+
+export const ReviewNavigationError: Story = {
+  name: 'shows an error when unread navigation cannot be loaded.',
+  args: {
+    reviewNavigationState: {
+      navigation: null,
+      isPending: false,
+      isError: true,
+    },
+  },
+}
+
+export const ReviewNavigationLoading: Story = {
+  name: 'shows the unread navigation loading state after direct opening.',
+  args: {
+    reviewNavigationState: {
+      navigation: null,
+      isPending: true,
+      isError: false,
+    },
   },
 }
 
