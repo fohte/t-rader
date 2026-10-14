@@ -1,6 +1,5 @@
 import {
   CandlestickSeries,
-  ColorType,
   createChart,
   HistogramSeries,
   type IChartApi,
@@ -22,6 +21,7 @@ import {
   getAnnotationPeriodLineRange,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import { getChartThemeOptions, observeChartTheme } from '#lib/chart-theme'
 import {
   type ChartCurrency,
   toCandlestickData,
@@ -55,15 +55,6 @@ interface CandlestickChartProps {
   className?: string
 }
 
-function getThemeColors(isDark: boolean) {
-  return {
-    background: isDark ? '#1a1a1a' : '#ffffff',
-    textColor: isDark ? '#d1d5db' : '#374151',
-    gridColor: isDark ? '#2d2d2d' : '#e5e7eb',
-    borderColor: isDark ? '#3f3f46' : '#d1d5db',
-  }
-}
-
 export function CandlestickChart({
   bars,
   annotations,
@@ -92,22 +83,12 @@ export function CandlestickChart({
     const container = containerRef.current
     if (!container) return
 
-    const isDark = document.documentElement.classList.contains('dark')
-    const colors = getThemeColors(isDark)
-
     const chart = createChart(container, {
-      layout: {
-        background: { type: ColorType.Solid, color: colors.background },
-        textColor: colors.textColor,
-      },
-      grid: {
-        vertLines: { color: colors.gridColor },
-        horzLines: { color: colors.gridColor },
-      },
       width: container.clientWidth,
       height: container.clientHeight,
-      timeScale: { borderColor: colors.borderColor },
-      rightPriceScale: { borderColor: colors.borderColor },
+      ...getChartThemeOptions(
+        document.documentElement.classList.contains('dark'),
+      ),
     })
     chartRef.current = chart
 
@@ -157,29 +138,10 @@ export function CandlestickChart({
     resizeObserver.observe(container)
 
     // ダークモード追従: html 要素の class 変更を監視
-    const mutationObserver = new MutationObserver(() => {
-      const dark = document.documentElement.classList.contains('dark')
-      const c = getThemeColors(dark)
-      chart.applyOptions({
-        layout: {
-          background: { type: ColorType.Solid, color: c.background },
-          textColor: c.textColor,
-        },
-        grid: {
-          vertLines: { color: c.gridColor },
-          horzLines: { color: c.gridColor },
-        },
-        timeScale: { borderColor: c.borderColor },
-        rightPriceScale: { borderColor: c.borderColor },
-      })
-    })
-    mutationObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
+    const disconnectThemeObserver = observeChartTheme(chart)
 
     return () => {
-      mutationObserver.disconnect()
+      disconnectThemeObserver()
       resizeObserver.disconnect()
       chart.remove()
       chartRef.current = null

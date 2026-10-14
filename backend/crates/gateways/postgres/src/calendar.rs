@@ -122,6 +122,25 @@ impl CalendarEventRepository for PostgresCalendarEventRepository {
             .map(|result| result.rows_affected)
             .map_err(repository_error)
     }
+
+    async fn find_next_earnings_for_stock(
+        &self,
+        stock_id: &str,
+        from: NaiveDate,
+    ) -> Result<Option<CalendarEvent>, CalendarEventRepositoryError> {
+        calendar_event::Entity::find()
+            .filter(calendar_event::Column::Category.eq(CalendarEventCategory::Earnings.as_str()))
+            .filter(calendar_event::Column::StockId.eq(stock_id))
+            .filter(calendar_event::Column::EventDate.gte(from))
+            .order_by_asc(calendar_event::Column::EventDate)
+            .order_by_asc(calendar_event::Column::EventAt)
+            .order_by_asc(calendar_event::Column::ExternalId)
+            .one(&self.db)
+            .await
+            .map_err(repository_error)?
+            .map(to_domain)
+            .transpose()
+    }
 }
 
 fn transaction_ref(

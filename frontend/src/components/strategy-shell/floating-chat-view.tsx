@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 
+import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { PurposeSelect } from '#components/purpose-select'
 import { formatRelative } from '#lib/note-utils'
 
@@ -21,8 +22,12 @@ export type FloatingChatStatus =
 export interface FloatingChatViewProps {
   open: boolean
   strategyId: string | null
+  taskStrategyId: string | null
+  strategies: { id: string; name: string }[]
+  submittedPrompt: string | null
   seed: string | null
   input: string
+  resultText: string | null
   status: FloatingChatStatus
   notes: FloatingChatNote[]
   purposes: string[]
@@ -32,6 +37,7 @@ export interface FloatingChatViewProps {
   onOpen: () => void
   onClose: () => void
   onInputChange: (value: string) => void
+  onStrategyChange: (value: string | null) => void
   onPurposeChange: (value: string) => void
   onSubmit: () => void
 }
@@ -39,8 +45,12 @@ export interface FloatingChatViewProps {
 export function FloatingChatView({
   open,
   strategyId,
+  taskStrategyId,
+  strategies,
+  submittedPrompt,
   seed,
   input,
+  resultText,
   status,
   notes,
   purposes,
@@ -49,6 +59,7 @@ export function FloatingChatView({
   onOpen,
   onClose,
   onInputChange,
+  onStrategyChange,
   onPurposeChange,
   onSubmit,
 }: FloatingChatViewProps): React.ReactElement {
@@ -68,22 +79,43 @@ export function FloatingChatView({
 
   const submitting = status.kind === 'submitting'
   const polling = status.kind === 'polling'
-  const inputDisabled = strategyId == null || submitting || polling
-  const submitDisabled = inputDisabled || input.trim() === ''
-  const placeholder =
-    strategyId == null ? '戦略ページを開いてください' : 'プロンプトを入力'
+  const inputDisabled = submitting || polling
+  const submitDisabled =
+    strategyId == null || inputDisabled || input.trim() === ''
 
   return (
     <div
       role="dialog"
       aria-label="on-demand session"
-      className="fixed bottom-5 right-5 z-floating-chat flex h-145 max-h-floating-chat-h w-105 max-w-floating-chat-w flex-col border border-border bg-bg-secondary"
+      className="fixed inset-0 z-floating-chat flex h-dvh max-h-none w-screen max-w-none flex-col border border-border bg-bg-secondary md:inset-auto md:bottom-5 md:right-5 md:h-145 md:max-h-floating-chat-h md:w-105 md:max-w-floating-chat-w"
     >
       <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5">
         <span className="flex items-baseline gap-1.5 font-mono text-sm font-bold">
           <span className="text-primary">&gt;_</span>
           <span>on-demand session</span>
         </span>
+        <select
+          aria-label="戦略"
+          value={strategyId ?? ''}
+          disabled={submitting || polling}
+          onChange={(event) => {
+            onStrategyChange(
+              event.target.value === '' ? null : event.target.value,
+            )
+          }}
+          className="min-w-0 flex-1 border border-border bg-background px-2 py-1 font-mono text-xs text-foreground disabled:opacity-60"
+        >
+          <option value="">戦略を選択</option>
+          {strategyId != null &&
+            !strategies.some((strategy) => strategy.id === strategyId) && (
+              <option value={strategyId}>現在の戦略</option>
+            )}
+          {strategies.map((strategy) => (
+            <option key={strategy.id} value={strategy.id}>
+              {strategy.name}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
           onClick={onClose}
@@ -102,15 +134,23 @@ export function FloatingChatView({
             <p className="leading-relaxed text-foreground">{seed}</p>
           </div>
         )}
+        {submittedPrompt != null && (
+          <div
+            data-message-role="user"
+            className="ml-auto max-w-80 border border-border bg-background p-3 leading-relaxed text-foreground"
+          >
+            {submittedPrompt}
+          </div>
+        )}
         <FloatingChatStatusBlock
           status={status}
           notes={notes}
-          strategyId={strategyId}
+          resultText={resultText}
         />
-        {strategyId != null && currentTaskId != null && (
+        {taskStrategyId != null && currentTaskId != null && (
           <Link
             to="/strategies/$id/runs/$taskId"
-            params={{ id: strategyId, taskId: currentTaskId }}
+            params={{ id: taskStrategyId, taskId: currentTaskId }}
             className="block font-mono text-2xs text-primary hover:underline"
           >
             → 実行の詳細を見る
@@ -140,7 +180,7 @@ export function FloatingChatView({
               onInputChange(e.target.value)
             }}
             disabled={inputDisabled}
-            placeholder={placeholder}
+            placeholder="プロンプトを入力"
             className="flex-1 border border-border bg-background px-2.5 py-2 font-mono text-sm text-foreground outline-none disabled:opacity-60"
           />
           <button
@@ -160,11 +200,11 @@ export function FloatingChatView({
 function FloatingChatStatusBlock({
   status,
   notes,
-  strategyId,
+  resultText,
 }: {
   status: FloatingChatStatus
   notes: FloatingChatNote[]
-  strategyId: string | null
+  resultText: string | null
 }): React.ReactElement {
   switch (status.kind) {
     case 'idle':
@@ -183,7 +223,23 @@ function FloatingChatStatusBlock({
       return (
         <div className="space-y-2">
           <StatusLine label="completed" message="分析が完了しました。" />
-          <FloatingChatNoteList notes={notes} strategyId={strategyId} />
+          {resultText == null || resultText === '' ? (
+            <p
+              data-message-role="assistant"
+              className="border-l-2 border-primary pl-3 text-sm text-muted-foreground-strong"
+            >
+              返信本文はありません。
+            </p>
+          ) : (
+            <div
+              aria-label="エージェントの返信"
+              data-message-role="assistant"
+              className="min-w-0 border-l-2 border-primary pl-3 text-sm"
+            >
+              <MarkdownBody source={resultText} />
+            </div>
+          )}
+          <FloatingChatNoteList notes={notes} />
         </div>
       )
     case 'failed':
@@ -219,12 +275,10 @@ function StatusLine({
 
 function FloatingChatNoteList({
   notes,
-  strategyId,
 }: {
   notes: FloatingChatNote[]
-  strategyId: string | null
 }): React.ReactElement {
-  if (strategyId == null || notes.length === 0) {
+  if (notes.length === 0) {
     return (
       <p className="font-mono text-2xs text-muted-foreground">
         生成ノートはまだ取得できていません。
