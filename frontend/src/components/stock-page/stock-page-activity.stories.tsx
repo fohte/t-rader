@@ -7,6 +7,8 @@ import { createStoryRouter } from '#storybook/story-router'
 
 type Annotation = components['schemas']['Annotation']
 type Trade = components['schemas']['TradeListItem']
+type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
+type GroupMembership = components['schemas']['StockGroupMembershipResponse']
 
 const annotations: Annotation[] = [
   {
@@ -76,6 +78,28 @@ const trades: Trade[] = [
   },
 ]
 
+const financialSummaries: FinancialSummary[] = [
+  {
+    code: 'demo-code',
+    disclosure_no: 'demo-disclosure',
+    disclosure_date: '2030-04-03',
+    report_group_key: 'demo-period',
+    current_period_type: '2Q',
+    current_period_end: '2029-09-30',
+    current_fiscal_year_end: '2030-03-31',
+    sales: 410_000_000_000,
+    operating_profit: 21_000_000_000,
+    eps: 114,
+  },
+]
+
+const groups: GroupMembership[] = [
+  {
+    axis: { key: 'demo-axis', name: 'デモ軸' },
+    group: { key: 'demo-group', name: 'デモ群' },
+  },
+]
+
 const meta = {
   title: 'StockPage/StockPageActivity',
   component: StockPageActivity,
@@ -96,6 +120,10 @@ const meta = {
   args: {
     annotations,
     trades,
+    financialSummaries,
+    financialSummariesState: 'ready',
+    groups,
+    groupsState: 'ready',
     activeTab: 'annotations',
     onTabChange: () => undefined,
     selectedAnnotationId: 'demo-annotation-1',
@@ -113,6 +141,11 @@ export const Annotations: Story = {
 export const Trades: Story = {
   name: '取引を新しい順に表示する。',
   args: { activeTab: 'trades' },
+}
+
+export const Financials: Story = {
+  name: '財務タブに所属グループと決算短信の要約を表示する。',
+  args: { activeTab: 'financials' },
 }
 
 export const Empty: Story = {

@@ -39,6 +39,10 @@ describe('StockPageActivity', () => {
         <StockPageActivity
           annotations={annotations}
           trades={[]}
+          financialSummaries={[]}
+          financialSummariesState="ready"
+          groups={[]}
+          groupsState="ready"
           activeTab="annotations"
           onTabChange={() => undefined}
           selectedAnnotationId={null}
@@ -64,6 +68,10 @@ describe('StockPageActivity', () => {
         <StockPageActivity
           annotations={annotations}
           trades={[]}
+          financialSummaries={[]}
+          financialSummariesState="ready"
+          groups={[]}
+          groupsState="ready"
           activeTab="annotations"
           onTabChange={onTabChange}
           selectedAnnotationId={null}
@@ -77,5 +85,32 @@ describe('StockPageActivity', () => {
     await user.click(await screen.findByRole('tab', { name: /取引/ }))
 
     expect(onTabChange.mock.calls).toEqual([['trades']])
+  })
+
+  it('switches to the financial tab when it is clicked', async () => {
+    const onTabChange = vi.fn()
+    const user = userEvent.setup()
+    const router = createStoryRouter(
+      () => (
+        <StockPageActivity
+          annotations={annotations}
+          trades={[]}
+          financialSummaries={[]}
+          financialSummariesState="ready"
+          groups={[]}
+          groupsState="ready"
+          activeTab="annotations"
+          onTabChange={onTabChange}
+          selectedAnnotationId={null}
+          onSelectAnnotation={() => undefined}
+        />
+      ),
+      { paths: ['/annotations/$annoId'] },
+    )
+
+    render(<RouterProvider router={router} />)
+    await user.click(await screen.findByRole('tab', { name: '財務' }))
+
+    expect(onTabChange.mock.calls).toEqual([['financials']])
   })
 })

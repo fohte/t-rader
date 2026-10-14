@@ -26,7 +26,18 @@ const quote: StockQuote = {
 const meta = {
   title: 'StockPage/StockPageHeader',
   component: StockPageHeader,
-  args: { stock, quote, isHolding: true },
+  args: {
+    stock,
+    quote,
+    isHolding: true,
+    groups: [
+      {
+        axis: { key: 'demo-axis', name: 'デモ軸' },
+        group: { key: 'demo-group', name: 'デモ群' },
+      },
+    ],
+    groupsState: 'ready',
+  },
 } satisfies Meta<typeof StockPageHeader>
 
 export default meta

@@ -4,6 +4,7 @@ type Bar = components['schemas']['Bar']
 type Annotation = components['schemas']['Annotation']
 type Stock = components['schemas']['Stock']
 type Trade = components['schemas']['TradeListItem']
+type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
 
 export type StockPageListState = 'ready' | 'loading' | 'error'
 
@@ -79,4 +80,12 @@ export function sortAnnotationsNewestFirst(
 
 export function sortTradesNewestFirst(trades: Trade[]): Trade[] {
   return [...trades].sort((left, right) => right.date.localeCompare(left.date))
+}
+
+export function sortFinancialSummariesNewestFirst(
+  summaries: FinancialSummary[],
+): FinancialSummary[] {
+  return [...summaries].sort((left, right) =>
+    right.disclosure_date.localeCompare(left.disclosure_date),
+  )
 }

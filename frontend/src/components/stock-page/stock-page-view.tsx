@@ -2,8 +2,8 @@ import type { ComponentProps } from 'react'
 
 import { StockPageActivity } from '#components/stock-page/stock-page-activity'
 import { StockPageChart } from '#components/stock-page/stock-page-chart'
+import { StockPageCompanyInfo } from '#components/stock-page/stock-page-company-info'
 import { StockPageHeader } from '#components/stock-page/stock-page-header'
-import { StockPageHoldings } from '#components/stock-page/stock-page-holdings'
 import type { Timeframe } from '#components/timeframe-selector'
 import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'
@@ -13,6 +13,10 @@ type Stock = components['schemas']['Stock']
 type Position = components['schemas']['PositionSummary']
 type Annotation = components['schemas']['Annotation']
 type Trade = components['schemas']['TradeListItem']
+type GroupMembership = components['schemas']['StockGroupMembershipResponse']
+type NextEarnings = components['schemas']['StockNextEarningsResponse']
+type Valuation = components['schemas']['StockValuationResponse']
+type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
 type ActivityProps = ComponentProps<typeof StockPageActivity>
 
 export function StockPageView({
@@ -23,6 +27,14 @@ export function StockPageView({
   bars,
   annotations,
   trades,
+  groups,
+  groupsState,
+  nextEarnings,
+  nextEarningsState,
+  valuation,
+  valuationState,
+  financialSummaries,
+  financialSummariesState,
   position,
   holdingsLoading,
   holdingsError,
@@ -45,6 +57,14 @@ export function StockPageView({
   bars: components['schemas']['Bar'][]
   annotations: Annotation[]
   trades: Trade[]
+  groups: GroupMembership[]
+  groupsState: ActivityProps['groupsState']
+  nextEarnings: NextEarnings | null
+  nextEarningsState: ActivityProps['groupsState']
+  valuation: Valuation | null
+  valuationState: ActivityProps['groupsState']
+  financialSummaries: FinancialSummary[]
+  financialSummariesState: ActivityProps['financialSummariesState']
   position: Position | null
   holdingsLoading: boolean
   holdingsError: boolean
@@ -60,26 +80,20 @@ export function StockPageView({
   annotationState: ActivityProps['annotationState']
   tradeState: ActivityProps['tradeState']
 }) {
-  const hasHoldingsColumn = position != null || holdingsLoading || holdingsError
-
   return (
     <main className="space-y-4 font-sans text-foreground sm:space-y-5">
       <StockPageHeader
         stock={stock}
         quote={quote}
         isHolding={position != null}
+        groups={groups}
+        groupsState={groupsState}
         quoteLoading={quoteLoading}
         quoteError={quoteError}
       />
 
-      <div
-        className={
-          hasHoldingsColumn
-            ? 'grid grid-cols-1 gap-4 lg:grid-cols-4'
-            : 'grid grid-cols-1 gap-4'
-        }
-      >
-        <div className={hasHoldingsColumn ? 'lg:col-span-3' : undefined}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <div className="lg:col-span-3">
           <StockPageChart
             bars={bars}
             annotations={annotations}
@@ -92,16 +106,25 @@ export function StockPageView({
             hasError={chartError}
           />
         </div>
-        <StockPageHoldings
+        <StockPageCompanyInfo
           position={position}
-          isLoading={holdingsLoading}
-          hasError={holdingsError}
+          holdingsState={
+            holdingsLoading ? 'loading' : holdingsError ? 'error' : 'ready'
+          }
+          earnings={nextEarnings}
+          earningsState={nextEarningsState}
+          valuation={valuation}
+          valuationState={valuationState}
         />
       </div>
 
       <StockPageActivity
         annotations={annotations}
         trades={trades}
+        financialSummaries={financialSummaries}
+        financialSummariesState={financialSummariesState}
+        groups={groups}
+        groupsState={groupsState}
         activeTab={activeTab}
         onTabChange={onTabChange}
         selectedAnnotationId={selectedAnnotationId}
