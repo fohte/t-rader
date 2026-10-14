@@ -201,10 +201,7 @@ describe('sortAnnotationsNewestFirst', () => {
 
 describe('sortNotesNewestFirst', () => {
   it('orders notes by update time from newest to oldest', () => {
-    expect(sortNotesNewestFirst(notes).map((note) => note.id)).toEqual([
-      'demo-note-newer',
-      'demo-note-older',
-    ])
+    expect(sortNotesNewestFirst(notes)).toEqual([notes[1], notes[0]])
   })
 })
 
