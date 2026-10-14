@@ -9,6 +9,7 @@ import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
+type Trade = components['schemas']['TradeListItem']
 const priceFormatter = new Intl.NumberFormat('ja-JP', {
   maximumFractionDigits: 2,
 })
@@ -42,6 +43,7 @@ function getSelectedDateStatus(
 
 export function StockPageChart({
   bars,
+  trades,
   annotations,
   selectedAnnotationId,
   onSelectAnnotation,
@@ -56,6 +58,7 @@ export function StockPageChart({
   selectedDateBar,
 }: {
   bars: Bar[]
+  trades: Trade[]
   annotations: ChartAnnotation[]
   selectedAnnotationId: string | null
   onSelectAnnotation: (id: string) => void
@@ -104,6 +107,7 @@ export function StockPageChart({
       ) : (
         <CandlestickChart
           bars={bars}
+          trades={trades}
           annotations={annotations}
           onSelectAnnotation={onSelectAnnotation}
           selectedAnnotationId={selectedAnnotationId}

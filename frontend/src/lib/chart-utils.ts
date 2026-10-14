@@ -1,12 +1,14 @@
 import type {
   CandlestickData,
   HistogramData,
+  SeriesMarker,
   UTCTimestamp,
 } from 'lightweight-charts'
 
 import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
+type Trade = components['schemas']['TradeListItem']
 export type ChartCurrency = 'JPY' | 'USD'
 
 const chartDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -67,4 +69,40 @@ export function toVolumeData(bars: Bar[]): HistogramData[] {
         ? 'rgba(38, 166, 154, 0.5)'
         : 'rgba(239, 83, 80, 0.5)',
   }))
+}
+
+/** API の約定を同日の最初の足に対応するチャートマーカーへ変換する */
+export function toTradeMarkers(
+  trades: Trade[],
+  bars: Bar[],
+): SeriesMarker<UTCTimestamp>[] {
+  const firstBarByDate = new Map<string, UTCTimestamp>()
+
+  for (const bar of bars) {
+    const milliseconds = Date.parse(bar.timestamp)
+    if (!Number.isFinite(milliseconds)) continue
+
+    const date = new Date(milliseconds).toISOString().slice(0, 10)
+    if (firstBarByDate.has(date)) continue
+
+    firstBarByDate.set(date, toUTCTimestamp(bar.timestamp))
+  }
+
+  return trades
+    .flatMap((trade): SeriesMarker<UTCTimestamp>[] => {
+      const time = firstBarByDate.get(trade.date)
+      if (time == null) return []
+
+      const isBuy = trade.side === 'buy'
+      return [
+        {
+          id: trade.id,
+          time,
+          position: isBuy ? 'belowBar' : 'aboveBar',
+          color: isBuy ? '#26a69a' : '#ef5350',
+          shape: isBuy ? 'arrowUp' : 'arrowDown',
+        },
+      ]
+    })
+    .sort((left, right) => left.time - right.time)
 }

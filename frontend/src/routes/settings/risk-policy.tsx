@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
 import { GroupRatioEditor } from '#components/group-ratio-editor'
+import { SettingsBackLink } from '#components/settings/settings-back-link'
 import { $api } from '#lib/api/client'
 import {
   type GroupRatioDraft,
@@ -86,12 +87,7 @@ function RiskPolicySettingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <Link
-          to="/settings"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 設定に戻る
-        </Link>
+        <SettingsBackLink />
       </div>
       <header>
         <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">

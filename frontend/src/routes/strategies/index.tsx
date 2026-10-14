@@ -1,28 +1,27 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { IndicatorsPage } from '#components/indicators/indicators-page'
 import { FilterBar, type FilterOption } from '#components/runs/filter-bar'
 import { RunsTabHeader } from '#components/runs/runs-tab-header'
 import { CreateStrategyDialog } from '#components/strategy-home/create-strategy-dialog'
 import { StrategyCard } from '#components/strategy-home/strategy-card'
 import { StrategyListIntroduction } from '#components/strategy-home/strategy-list-introduction'
 import {
-  parseStrategyListTab,
-  type StrategyListTab,
   StrategyListTabs,
+  validateStrategyListSearch,
 } from '#components/strategy-home/strategy-list-tabs'
 import { TaskRunListView } from '#components/strategy-shell/task-run-list-view'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/strategies/')({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { strategyTab?: StrategyListTab } => {
-    const strategyTab = parseStrategyListTab(search.strategyTab)
-    return strategyTab ? { strategyTab } : {}
+  validateSearch: validateStrategyListSearch,
+  beforeLoad: ({ search }) => {
+    if (search.legacyIndicatorsTab === true) {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error, no-restricted-syntax -- TanStack Router の redirect API は throw を要求する
+      throw redirect({ to: '/settings/indicators' })
+    }
   },
   component: StrategyListPage,
 })
@@ -35,13 +34,7 @@ function StrategyListPage() {
   return (
     <div className="font-sans text-foreground">
       <StrategyListTabs activeTab={tab} />
-      {tab === 'list' ? (
-        <StrategyListContent />
-      ) : tab === 'runs' ? (
-        <RunsTab />
-      ) : (
-        <IndicatorsPage scope="global" />
-      )}
+      {tab === 'list' ? <StrategyListContent /> : <RunsTab />}
     </div>
   )
 }

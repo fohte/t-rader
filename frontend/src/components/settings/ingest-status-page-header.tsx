@@ -1,15 +1,10 @@
-import { Link } from '@tanstack/react-router'
+import { SettingsBackLink } from '#components/settings/settings-back-link'
 
 export function IngestStatusPageHeader() {
   return (
     <div className="space-y-2">
       <div>
-        <Link
-          to="/settings"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 設定に戻る
-        </Link>
+        <SettingsBackLink />
       </div>
       <header>
         <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">

@@ -1,13 +1,16 @@
 import {
   CandlestickSeries,
   createChart,
+  createSeriesMarkers,
   HistogramSeries,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   LineSeries,
   LineStyle,
   type SeriesType,
+  type Time,
 } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
 
@@ -26,11 +29,13 @@ import {
   type ChartCurrency,
   getChartBarDate,
   toCandlestickData,
+  toTradeMarkers,
   toVolumeData,
 } from '#lib/chart-utils'
 import { cn } from '#lib/utils'
 
 type Bar = components['schemas']['Bar']
+type Trade = components['schemas']['TradeListItem']
 type BucketedAnnotation =
   | {
       id: string
@@ -54,6 +59,7 @@ interface DateMarkerLayout {
 
 interface CandlestickChartProps {
   bars: Bar[]
+  trades?: Trade[]
   annotations?: ChartAnnotation[]
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
@@ -65,6 +71,7 @@ interface CandlestickChartProps {
 
 export function CandlestickChart({
   bars,
+  trades,
   annotations,
   onSelectAnnotation,
   selectedAnnotationId,
@@ -76,6 +83,7 @@ export function CandlestickChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
+  const tradeMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const annotationPriceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const priceLineRef = useRef<IPriceLine | null>(null)
@@ -116,6 +124,7 @@ export function CandlestickChart({
       scaleMargins: { top: 0.05, bottom: 0.25 },
     })
     candlestickSeriesRef.current = candlestickSeries
+    tradeMarkersRef.current = createSeriesMarkers(candlestickSeries)
 
     const annotationPriceSeries = chart.addSeries(LineSeries, {
       color: '#ef4444',
@@ -154,6 +163,8 @@ export function CandlestickChart({
     return () => {
       disconnectThemeObserver()
       resizeObserver.disconnect()
+      tradeMarkersRef.current?.detach()
+      tradeMarkersRef.current = null
       chart.remove()
       chartRef.current = null
       candlestickSeriesRef.current = null
@@ -216,6 +227,10 @@ export function CandlestickChart({
       isInitialDataRef.current = false
     }
   }, [bars])
+
+  useEffect(() => {
+    tradeMarkersRef.current?.setMarkers(toTradeMarkers(trades ?? [], bars))
+  }, [bars, trades])
 
   useEffect(() => {
     const chart = chartRef.current

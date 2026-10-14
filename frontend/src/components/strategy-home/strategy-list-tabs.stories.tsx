@@ -36,11 +36,6 @@ export const RunsSelected: Story = {
   render: () => renderTabs('runs'),
 }
 
-export const IndicatorsSelected: Story = {
-  name: 'the indicators tab is selected.',
-  render: () => renderTabs('indicators'),
-}
-
 export const Mobile: Story = {
   name: 'the tabs fit on a 375px screen.',
   render: () => (
