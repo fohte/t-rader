@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { useLocation } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
 import {
@@ -7,6 +8,11 @@ import {
   openFloatingChat,
   useFloatingChat,
 } from '#components/strategy-shell/floating-chat-store'
+import {
+  readLastUsedStrategyId,
+  resolveDefaultStrategyId,
+  saveLastUsedStrategyId,
+} from '#components/strategy-shell/floating-chat-strategy'
 import {
   type FloatingChatNote,
   type FloatingChatStatus,
@@ -18,17 +24,30 @@ import { $api } from '#lib/api/client'
 const POLL_INTERVAL_MS = 2000
 
 interface CurrentTask {
+  strategyId: string
   taskId: string
+}
+
+interface StrategySelectionOverride {
+  routePath: string
+  selectedStrategyId: string | null
 }
 
 export function FloatingChat(): React.ReactElement {
   const { open, seed: storeSeed } = useFloatingChat()
-  const strategyId = useCurrentStrategyId() ?? null
+  const routeStrategyId = useCurrentStrategyId() ?? null
+  const routePath = useLocation({ select: (location) => location.pathname })
   const queryClient = useQueryClient()
 
   const [seed, setSeed] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [selectedPurpose, setSelectedPurpose] = useState('')
+  const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null)
+  const [lastUsedStrategyId, setLastUsedStrategyId] = useState(
+    readLastUsedStrategyId,
+  )
+  const [strategySelectionOverride, setStrategySelectionOverride] =
+    useState<StrategySelectionOverride | null>(null)
   const [currentTask, setCurrentTask] = useState<CurrentTask | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -37,6 +56,9 @@ export function FloatingChat(): React.ReactElement {
     const s = consumeFloatingChatSeed()
     setSeed(s)
     setInput(s ?? '')
+    setSubmittedPrompt(null)
+    setCurrentTask(null)
+    setSubmitError(null)
   }, [open, storeSeed])
 
   useEffect(() => {
@@ -51,7 +73,18 @@ export function FloatingChat(): React.ReactElement {
   }, [open])
 
   const submitMutation = $api.useMutation('post', '/api/strategies/{id}/chat')
+  const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
   const { data: agentConfigs = [] } = $api.useQuery('get', '/api/agent-configs')
+
+  const hasSelectionOverride =
+    strategySelectionOverride?.routePath === routePath
+  const strategyId = hasSelectionOverride
+    ? strategySelectionOverride.selectedStrategyId
+    : resolveDefaultStrategyId({
+        currentStrategyId: routeStrategyId,
+        lastUsedStrategyId,
+        availableStrategyIds: strategies.map((strategy) => strategy.id),
+      })
 
   const taskQuery = $api.useQuery(
     'get',
@@ -59,13 +92,13 @@ export function FloatingChat(): React.ReactElement {
     {
       params: {
         path: {
-          id: strategyId ?? '',
+          id: currentTask?.strategyId ?? '',
           task_id: currentTask?.taskId ?? '',
         },
       },
     },
     {
-      enabled: strategyId != null && currentTask != null,
+      enabled: currentTask != null,
       refetchInterval: (query) => {
         if (query.state.error != null) return false
         const data = query.state.data
@@ -93,13 +126,13 @@ export function FloatingChat(): React.ReactElement {
     {
       params: {
         path: {
-          id: strategyId ?? '',
+          id: currentTask?.strategyId ?? '',
           task_id: currentTask?.taskId ?? '',
         },
       },
     },
     {
-      enabled: isCompleted && strategyId != null && currentTask != null,
+      enabled: isCompleted && currentTask != null,
     },
   )
 
@@ -126,7 +159,11 @@ export function FloatingChat(): React.ReactElement {
     const prompt = input.trim()
     if (prompt === '') return
     setSubmitError(null)
+    setSubmittedPrompt(prompt)
+    setSeed(null)
     setCurrentTask(null)
+    saveLastUsedStrategyId(strategyId)
+    setLastUsedStrategyId(strategyId)
     submitMutation.mutate(
       {
         params: { path: { id: strategyId } },
@@ -138,6 +175,7 @@ export function FloatingChat(): React.ReactElement {
       {
         onSuccess: (data) => {
           setCurrentTask({
+            strategyId,
             taskId: data.task_id,
           })
           setInput('')
@@ -153,8 +191,12 @@ export function FloatingChat(): React.ReactElement {
     <FloatingChatView
       open={open}
       strategyId={strategyId}
+      taskStrategyId={currentTask?.strategyId ?? null}
+      strategies={strategies.map(({ id, name }) => ({ id, name }))}
+      submittedPrompt={submittedPrompt}
       seed={seed}
       input={input}
+      resultText={taskQuery.data?.result_text ?? null}
       status={status}
       notes={generatedNotes}
       purposes={agentConfigs.map((config) => config.purpose)}
@@ -167,6 +209,12 @@ export function FloatingChat(): React.ReactElement {
         closeFloatingChat()
       }}
       onInputChange={setInput}
+      onStrategyChange={(selectedStrategyId) => {
+        setStrategySelectionOverride({
+          routePath,
+          selectedStrategyId,
+        })
+      }}
       onPurposeChange={setSelectedPurpose}
       onSubmit={handleSubmit}
     />

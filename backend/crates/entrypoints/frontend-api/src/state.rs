@@ -11,6 +11,7 @@ use core_application::calendar::read_use_cases::CalendarEventReadUseCases;
 use core_application::change_history::ChangeHistoryUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
+use core_application::financial_summary::FinancialSummaryUseCases;
 use core_application::group_axis::GroupAxisUseCases;
 use core_application::indicator_observation::IndicatorObservationUseCases;
 use core_application::ingest_status::IngestStatusUseCase;
@@ -19,6 +20,7 @@ use core_application::llm_client::SharedLlmClient;
 use core_application::note::{NoteReadUseCases, NoteUseCases};
 use core_application::note_kind::NoteKindUseCases;
 use core_application::paper_trade::PaperTradeUseCases;
+use core_application::portfolio_history::PortfolioHistoryUseCases;
 use core_application::prediction::PredictionUseCases;
 use core_application::refs::RefUseCases;
 use core_application::rss_feed::RssFeedUseCases;
@@ -29,6 +31,7 @@ use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::trade::{TradeNoteUseCases, TradeSummaryUseCases, TradeUseCases};
 use core_application::trigger::TriggerUseCases;
+use core_application::valuation::ValuationUseCases;
 
 #[derive(Clone)]
 pub struct FrontendApiState {
@@ -42,6 +45,7 @@ pub struct FrontendApiState {
     pub comment_read_use_cases: CommentReadUseCases,
     pub comment_use_cases: CommentUseCases,
     pub custom_indicator_use_cases: CustomIndicatorUseCases,
+    pub financial_summary_use_cases: FinancialSummaryUseCases,
     pub group_axis_use_cases: GroupAxisUseCases,
     pub indicator_observation_use_cases: IndicatorObservationUseCases,
     pub ingest_status_use_case: Arc<IngestStatusUseCase>,
@@ -49,6 +53,7 @@ pub struct FrontendApiState {
     pub note_read_use_cases: NoteReadUseCases,
     pub note_use_cases: NoteUseCases,
     pub paper_trade_use_cases: PaperTradeUseCases,
+    pub portfolio_history_use_cases: PortfolioHistoryUseCases,
     pub prediction_use_cases: PredictionUseCases,
     pub ref_use_cases: RefUseCases,
     pub stock_group_use_cases: StockGroupUseCases,
@@ -61,6 +66,7 @@ pub struct FrontendApiState {
     pub trade_note_use_cases: TradeNoteUseCases,
     pub trade_summary_use_cases: TradeSummaryUseCases,
     pub trade_use_cases: TradeUseCases,
+    pub valuation_use_cases: ValuationUseCases,
     pub agent_task_client: SharedAgentTaskClient,
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_gateway_client: Option<SharedLlmClient>,

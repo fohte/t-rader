@@ -178,6 +178,152 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn detail_returns_fifo_matches_and_remaining_quantity_across_strategies(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let first_strategy_id = insert_test_strategy(&db, "fictional-strategy-a").await;
+        let second_strategy_id = insert_test_strategy(&db, "fictional-strategy-b").await;
+        let first_buy_id = Uuid::new_v4();
+        let second_buy_id = Uuid::new_v4();
+        let sell_id = Uuid::new_v4();
+        for (strategy_id, trade_id, side, qty, price, fee, day) in [
+            (first_strategy_id, first_buy_id, "buy", 10, 100, 0, 1),
+            (second_strategy_id, second_buy_id, "buy", 20, 120, 0, 2),
+            (first_strategy_id, sell_id, "sell", 15, 130, 20, 3),
+        ] {
+            seed_trade(
+                &db,
+                SeedTrade {
+                    strategy_id,
+                    trade_id,
+                    side,
+                    qty,
+                    price,
+                    fee,
+                    day,
+                },
+            )
+            .await;
+        }
+
+        let sell_response = server.get(&format!("/api/trades/{sell_id}")).await;
+        let buy_response = server.get(&format!("/api/trades/{second_buy_id}")).await;
+        let closed_buy_response = server.get(&format!("/api/trades/{first_buy_id}")).await;
+        assert_eq!(
+            (
+                sell_response.status_code(),
+                normalize_trade(sell_response.json::<Value>()),
+                buy_response.status_code(),
+                normalize_trade(buy_response.json::<Value>()),
+                closed_buy_response.status_code(),
+                normalize_trade(closed_buy_response.json::<Value>()),
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "side": "sell",
+                    "qty": 15,
+                    "price": 130,
+                    "fee": 20,
+                    "date": "2026-06-03",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                    "realized_pnl": 330,
+                    "matched_buys": [
+                        { "date": "2026-06-01", "qty": 10, "price": 100 },
+                        { "date": "2026-06-02", "qty": 5, "price": 120 },
+                    ],
+                }),
+                StatusCode::OK,
+                json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "side": "buy",
+                    "qty": 20,
+                    "price": 120,
+                    "fee": 0,
+                    "date": "2026-06-02",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                    "remaining_qty": 15,
+                }),
+                StatusCode::OK,
+                json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "side": "buy",
+                    "qty": 10,
+                    "price": 100,
+                    "fee": 0,
+                    "date": "2026-06-01",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                    "remaining_qty": 0,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn detail_reports_sell_without_prior_buys(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        let sell_id = Uuid::new_v4();
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id: sell_id,
+                side: "sell",
+                qty: 3,
+                price: 140,
+                fee: 10,
+                day: 1,
+            },
+        )
+        .await;
+
+        let response = server.get(&format!("/api/trades/{sell_id}")).await;
+        assert_eq!(
+            (
+                response.status_code(),
+                normalize_trade(response.json::<Value>()),
+            ),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "side": "sell",
+                    "qty": 3,
+                    "price": 140,
+                    "fee": 10,
+                    "date": "2026-06-01",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                    "realized_pnl": 410,
+                    "matched_buys": [],
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn create_persists_trade_and_change_history(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;

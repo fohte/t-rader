@@ -545,12 +545,16 @@ async fn list_memberships_returns_every_group_for_requested_stocks_and_axes(harn
         vec![
             StockGroupMembership {
                 axis_key: "other-axis".into(),
+                axis_name: "other-axis".into(),
                 group_key: second_group.key,
+                group_name: second_group.name,
                 stock_id: "demo-stock".into(),
             },
             StockGroupMembership {
                 axis_key: "sample-axis".into(),
+                axis_name: "sample-axis".into(),
                 group_key: first_group.key,
+                group_name: first_group.name,
                 stock_id: "demo-stock".into(),
             },
         ],
