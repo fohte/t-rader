@@ -11,6 +11,16 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+export const TaskRunSummary: Story = {
+  name: 'shows phase and step counts for a task run.',
+  args: {
+    stats: [
+      { label: 'PHASE', value: 'COMPLETED' },
+      { label: 'ステップ', value: '3/3' },
+    ],
+  },
+}
+
 export const PortfolioOverview: Story = {
   name: 'shows portfolio totals, realized profit, cash, and holdings.',
   args: {
