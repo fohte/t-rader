@@ -11,6 +11,8 @@ use super::ports::Annotation;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AnnotationListQuery {
     pub target_symbol: Option<String>,
+    pub status: Option<String>,
+    pub created_by_kind: Option<String>,
     pub limit: Option<u64>,
 }
 

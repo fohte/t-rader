@@ -251,12 +251,27 @@ type GraphNode struct {
 	Y nullable.Nullable[float64] `json:"y,omitempty"`
 }
 
+// Group defines model for Group.
+type Group struct {
+	Axis        GroupAxisReference        `json:"axis"`
+	Description nullable.Nullable[string] `json:"description,omitempty"`
+	Key         string                    `json:"key"`
+	Name        string                    `json:"name"`
+	Stocks      []GroupStockReference     `json:"stocks"`
+}
+
 // GroupAxis defines model for GroupAxis.
 type GroupAxis struct {
 	DeriveFrom  nullable.Nullable[string] `json:"derive_from,omitempty"`
 	Description string                    `json:"description"`
 	Key         string                    `json:"key"`
 	Name        string                    `json:"name"`
+}
+
+// GroupAxisReference defines model for GroupAxisReference.
+type GroupAxisReference struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // GroupRatio defines model for GroupRatio.
@@ -266,6 +281,12 @@ type GroupRatio struct {
 
 	// Ratio 分類軸内の各グループに適用する保有比率の上限。(0, 1] の範囲。
 	Ratio float64 `json:"ratio"`
+}
+
+// GroupStockReference defines model for GroupStockReference.
+type GroupStockReference struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // HookResponse hook 受信レスポンス。
@@ -285,6 +306,12 @@ type Indicator struct {
 	Id   string `json:"id"`
 	Kind string `json:"kind"`
 	Name string `json:"name"`
+}
+
+// IndicatorObservationResponse defines model for IndicatorObservationResponse.
+type IndicatorObservationResponse struct {
+	Date  openapi_types.Date `json:"date"`
+	Value float64            `json:"value"`
 }
 
 // InvestableAmountResponse 戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。
@@ -663,6 +690,15 @@ type ReceiveHookJSONBody = interface{}
 type ListIndicatorsParams struct {
 	// Q 部分一致クエリ。空のときは先頭から最大 50 件返す
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// GetRefIndicatorObservationsParams defines parameters for GetRefIndicatorObservations.
+type GetRefIndicatorObservationsParams struct {
+	// From 取得開始日 (YYYY-MM-DD, inclusive)。省略時は最古の観測日から取得
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To 取得終了日 (YYYY-MM-DD, inclusive)。省略時は最新の観測日まで取得
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // ResolveRefsParams defines parameters for ResolveRefs.
@@ -1185,6 +1221,11 @@ type ClientInterface interface {
 	// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
 	GetPaperAccountPortfolio(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetRefGroup group 詳細
+	//
+	// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+	GetRefGroup(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListIndicators indicator 検索
 	//
 	// Corresponds with GET /api/refs/indicators (the `ListIndicators` operationId).
@@ -1194,6 +1235,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/refs/indicators/{id} (the `GetRefIndicator` operationId).
 	GetRefIndicator(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRefIndicatorObservations indicator の観測値
+	//
+	// Corresponds with GET /api/refs/indicators/{id}/observations (the `GetRefIndicatorObservations` operationId).
+	GetRefIndicatorObservations(ctx context.Context, id string, params *GetRefIndicatorObservationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResolveRefs `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
 	//
@@ -2297,6 +2343,21 @@ func (c *OpenAPIClient) GetPaperAccountPortfolio(ctx context.Context, id openapi
 	return c.Client.Do(req)
 }
 
+// GetRefGroup group 詳細
+//
+// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+func (c *OpenAPIClient) GetRefGroup(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRefGroupRequest(c.Server, axisKey, groupKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListIndicators indicator 検索
 //
 // Corresponds with GET /api/refs/indicators (the `ListIndicators` operationId).
@@ -2317,6 +2378,21 @@ func (c *OpenAPIClient) ListIndicators(ctx context.Context, params *ListIndicato
 // Corresponds with GET /api/refs/indicators/{id} (the `GetRefIndicator` operationId).
 func (c *OpenAPIClient) GetRefIndicator(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetRefIndicatorRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRefIndicatorObservations indicator の観測値
+//
+// Corresponds with GET /api/refs/indicators/{id}/observations (the `GetRefIndicatorObservations` operationId).
+func (c *OpenAPIClient) GetRefIndicatorObservations(ctx context.Context, id string, params *GetRefIndicatorObservationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRefIndicatorObservationsRequest(c.Server, id, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4314,6 +4390,47 @@ func NewGetPaperAccountPortfolioRequest(server string, id openapi_types.UUID) (*
 	return req, nil
 }
 
+// NewGetRefGroupRequest constructs an http.Request for the GetRefGroup method
+func NewGetRefGroupRequest(server string, axisKey string, groupKey string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "axis_key", axisKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "group_key", groupKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/groups/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListIndicatorsRequest constructs an http.Request for the ListIndicators method
 func NewListIndicatorsRequest(server string, params *ListIndicatorsParams) (*http.Request, error) {
 	var err error
@@ -4392,6 +4509,79 @@ func NewGetRefIndicatorRequest(server string, id string) (*http.Request, error) 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRefIndicatorObservationsRequest constructs an http.Request for the GetRefIndicatorObservations method
+func NewGetRefIndicatorObservationsRequest(server string, id string, params *GetRefIndicatorObservationsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/refs/indicators/%s/observations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "from", *params.From, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "to", *params.To, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -6085,6 +6275,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/paper-accounts/{id}/portfolio (the `GetPaperAccountPortfolio` operationId).
 	GetPaperAccountPortfolioWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetPaperAccountPortfolioResult, error)
 
+	// GetRefGroupWithResponse group 詳細
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+	GetRefGroupWithResponse(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*GetRefGroupResult, error)
+
 	// ListIndicatorsWithResponse indicator 検索
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -6098,6 +6295,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/refs/indicators/{id} (the `GetRefIndicator` operationId).
 	GetRefIndicatorWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetRefIndicatorResult, error)
+
+	// GetRefIndicatorObservationsWithResponse indicator の観測値
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/refs/indicators/{id}/observations (the `GetRefIndicatorObservations` operationId).
+	GetRefIndicatorObservationsWithResponse(ctx context.Context, id string, params *GetRefIndicatorObservationsParams, reqEditors ...RequestEditorFn) (*GetRefIndicatorObservationsResult, error)
 
 	// ResolveRefsWithResponse `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
 	//
@@ -8632,6 +8836,68 @@ func (r GetPaperAccountPortfolioResult) ContentType() string {
 	return ""
 }
 
+type GetRefGroupResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Group
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRefGroupResult) GetJSON200() *Group {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetRefGroupResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetRefGroupResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetRefGroupResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRefGroupResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRefGroupResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRefGroupResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRefGroupResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListIndicatorsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -8729,6 +8995,68 @@ func (r GetRefIndicatorResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetRefIndicatorResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetRefIndicatorObservationsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]IndicatorObservationResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRefIndicatorObservationsResult) GetJSON200() *[]IndicatorObservationResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetRefIndicatorObservationsResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetRefIndicatorObservationsResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetRefIndicatorObservationsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRefIndicatorObservationsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRefIndicatorObservationsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRefIndicatorObservationsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRefIndicatorObservationsResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11373,6 +11701,19 @@ func (c *ClientWithResponses) GetPaperAccountPortfolioWithResponse(ctx context.C
 	return ParseGetPaperAccountPortfolioResult(rsp)
 }
 
+// GetRefGroupWithResponse group 詳細
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/groups/{axis_key}/{group_key} (the `GetRefGroup` operationId).
+func (c *ClientWithResponses) GetRefGroupWithResponse(ctx context.Context, axisKey string, groupKey string, reqEditors ...RequestEditorFn) (*GetRefGroupResult, error) {
+	rsp, err := c.GetRefGroup(ctx, axisKey, groupKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRefGroupResult(rsp)
+}
+
 // ListIndicatorsWithResponse indicator 検索
 //
 // Returns a wrapper object for the known response body format(s).
@@ -11397,6 +11738,19 @@ func (c *ClientWithResponses) GetRefIndicatorWithResponse(ctx context.Context, i
 		return nil, err
 	}
 	return ParseGetRefIndicatorResult(rsp)
+}
+
+// GetRefIndicatorObservationsWithResponse indicator の観測値
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/refs/indicators/{id}/observations (the `GetRefIndicatorObservations` operationId).
+func (c *ClientWithResponses) GetRefIndicatorObservationsWithResponse(ctx context.Context, id string, params *GetRefIndicatorObservationsParams, reqEditors ...RequestEditorFn) (*GetRefIndicatorObservationsResult, error) {
+	rsp, err := c.GetRefIndicatorObservations(ctx, id, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRefIndicatorObservationsResult(rsp)
 }
 
 // ResolveRefsWithResponse `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
@@ -13649,6 +14003,53 @@ func ParseGetPaperAccountPortfolioResult(rsp *http.Response) (*GetPaperAccountPo
 	return response, nil
 }
 
+// ParseGetRefGroupResult parses an HTTP response from a GetRefGroupWithResponse call
+func ParseGetRefGroupResult(rsp *http.Response) (*GetRefGroupResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRefGroupResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Group
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListIndicatorsResult parses an HTTP response from a ListIndicatorsWithResponse call
 func ParseListIndicatorsResult(rsp *http.Response) (*ListIndicatorsResult, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -13702,6 +14103,53 @@ func ParseGetRefIndicatorResult(rsp *http.Response) (*GetRefIndicatorResult, err
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRefIndicatorObservationsResult parses an HTTP response from a GetRefIndicatorObservationsWithResponse call
+func ParseGetRefIndicatorObservationsResult(rsp *http.Response) (*GetRefIndicatorObservationsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRefIndicatorObservationsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []IndicatorObservationResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest ErrorResponse
