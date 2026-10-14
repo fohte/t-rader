@@ -49,22 +49,6 @@ const onlyCurrentItems = items.slice(0, 1)
 const onlyCurrentSnapshot =
   reviewQueueModel.createNavigationSnapshot(onlyCurrentItems)
 
-function readyState(
-  queueItems: ReviewQueueItem[],
-  queueSnapshot: typeof snapshot,
-  currentItemKey: string,
-) {
-  return {
-    navigation: {
-      items: queueItems,
-      snapshot: queueSnapshot,
-      currentItemKey,
-    },
-    isPending: false,
-    isError: false,
-  }
-}
-
 function withRouter(Story: ComponentType) {
   return (
     <RouterProvider
@@ -85,7 +69,9 @@ const meta = {
   component: ReviewNavigationBand,
   decorators: [withRouter],
   args: {
-    state: readyState(items, snapshot, 'note:sample-version-02'),
+    items,
+    snapshot,
+    currentItemKey: 'note:sample-version-02',
   },
 } satisfies Meta<typeof ReviewNavigationBand>
 
@@ -94,58 +80,60 @@ type Story = StoryObj<typeof meta>
 
 export const BetweenUnreadItems: Story = {
   name: 'shows previous and next unread items in the queue.',
-  args: { state: readyState(items, snapshot, 'note:sample-version-02') },
+  args: { items, snapshot, currentItemKey: 'note:sample-version-02' },
 }
 
 export const FirstUnreadItem: Story = {
   name: 'hides the previous link for the first unread item.',
   args: {
-    state: readyState(items, snapshot, 'annotation:sample-annotation-01'),
+    items,
+    snapshot,
+    currentItemKey: 'annotation:sample-annotation-01',
   },
 }
 
 export const LastUnreadItem: Story = {
   name: 'wraps the next link from the last unread item to the first.',
   args: {
-    state: readyState(
-      lastUnreadItems,
-      lastUnreadSnapshot,
-      'note:sample-version-02',
-    ),
+    items: lastUnreadItems,
+    snapshot: lastUnreadSnapshot,
+    currentItemKey: 'note:sample-version-02',
   },
 }
 
 export const ItemOutsideQueue: Story = {
   name: 'shows only the unread count and first item outside the queue.',
   args: {
-    state: readyState(items, snapshot, 'annotation:sample-annotation-outside'),
+    items,
+    snapshot,
+    currentItemKey: 'annotation:sample-annotation-outside',
   },
 }
 
 export const NoUnreadItems: Story = {
   name: 'links to the review page when no unread items remain.',
   args: {
-    state: readyState([], snapshot, 'annotation:sample-annotation-01'),
+    items: [],
+    snapshot,
+    currentItemKey: 'annotation:sample-annotation-01',
   },
 }
 
 export const OnlyCurrentUnreadItem: Story = {
   name: 'hides navigation links when the current item is the only unread item.',
   args: {
-    state: readyState(
-      onlyCurrentItems,
-      onlyCurrentSnapshot,
-      'annotation:sample-annotation-01',
-    ),
+    items: onlyCurrentItems,
+    snapshot: onlyCurrentSnapshot,
+    currentItemKey: 'annotation:sample-annotation-01',
   },
 }
 
 export const Loading: Story = {
   name: 'shows the loading state while unread navigation is pending.',
-  args: { state: { navigation: null, isPending: true, isError: false } },
+  args: { isPending: true },
 }
 
 export const Error: Story = {
   name: 'shows an error inside the unread navigation band.',
-  args: { state: { navigation: null, isPending: false, isError: true } },
+  args: { isError: true },
 }

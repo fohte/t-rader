@@ -121,13 +121,6 @@ export interface ReviewQueueNavigationState {
   currentItemKey: string
 }
 
-function createReviewNavigationState(
-  snapshot: ReviewNavigationSnapshot,
-  currentItemKey: string,
-): ReviewQueueNavigationState {
-  return { snapshot, currentItemKey }
-}
-
 export type ReviewNavigationTarget = ReviewQueueNavigationState & {
   items: ReviewQueueItem[]
 }
@@ -316,7 +309,6 @@ function buildReviewPageModel({
 export const reviewQueueModel = {
   buildData: buildReviewQueueData,
   buildPage: buildReviewPageModel,
-  createNavigationState: createReviewNavigationState,
   createNavigationSnapshot: createReviewNavigationSnapshot,
   getNavigation: getReviewNavigation,
   normalizeNoteKindFilter: normalizeReviewNoteKindFilter,

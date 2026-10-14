@@ -20,10 +20,7 @@ import { NoteVersionReviewPanel } from '#components/note-detail/note-version-rev
 import type { NoteVersionReviewResult } from '#components/note-detail/note-version-review-view'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import { ReviewNavigationBand } from '#components/review/review-navigation-band'
-import {
-  reviewQueueItemKey,
-  reviewQueueModel,
-} from '#components/review/review-queue-model'
+import { reviewQueueItemKey } from '#components/review/review-queue-model'
 import { useReviewNavigation } from '#components/review/use-review-navigation'
 import {
   openFloatingChat,
@@ -101,6 +98,12 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
+  const previousVersion =
+    selectedVersion == null
+      ? null
+      : (orderedVersions
+          .filter((version) => version.version_no < selectedVersion.version_no)
+          .at(-1) ?? null)
   const showInlineReview =
     selectedVersion != null &&
     (selectedVersion.status === 'unread' ||
@@ -110,7 +113,7 @@ function NoteDetailPage() {
       ? contentTab.tab
       : null
   const activeContentTab = resolveNoteVersionContentTab(
-    showInlineReview,
+    previousVersion != null,
     selectedContentTab,
   )
   const reviewNavigation = useReviewNavigation(
@@ -118,6 +121,11 @@ function NoteDetailPage() {
       ? ''
       : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
   )
+  const {
+    navigation,
+    isPending: isReviewNavigationPending,
+    isError: isReviewNavigationError,
+  } = reviewNavigation
   useChatContext({ kind: 'note', id: noteId, label: selectedVersion?.title })
   const {
     data: noteLinks,
@@ -150,10 +158,6 @@ function NoteDetailPage() {
     )
   }
 
-  const previousVersion =
-    orderedVersions
-      .filter((version) => version.version_no < selectedVersion.version_no)
-      .at(-1) ?? null
   const onSelectContentTab = (tab: NoteVersionContentTab): void => {
     setContentTab({ versionId: selectedVersion.id, tab })
   }
@@ -173,7 +177,13 @@ function NoteDetailPage() {
       className={`space-y-4 font-sans text-foreground ${showInlineReview ? 'pb-20 lg:pb-0' : ''}`}
     >
       <DetailBackLink label="ノート一覧に戻る" />
-      <ReviewNavigationBand state={reviewNavigation} />
+      {navigation != null ? (
+        <ReviewNavigationBand {...navigation} />
+      ) : isReviewNavigationError ? (
+        <ReviewNavigationBand isError />
+      ) : isReviewNavigationPending ? (
+        <ReviewNavigationBand isPending />
+      ) : null}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="space-y-4 border border-border bg-card px-5 py-5">
           <NoteVersionHeader
@@ -237,13 +247,13 @@ function NoteDetailPage() {
                   if (snapshot == null || targetVersion == null) return previous
                   return {
                     ...previous,
-                    reviewQueue: reviewQueueModel.createNavigationState(
+                    reviewQueue: {
                       snapshot,
-                      reviewQueueItemKey({
+                      currentItemKey: reviewQueueItemKey({
                         kind: 'note',
                         id: targetVersion.id,
                       }),
-                    ),
+                    },
                   }
                 },
               })

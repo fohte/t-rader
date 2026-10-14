@@ -67,10 +67,22 @@ export function AnnotationDetail({
   onAddComment,
   onCommentDraftChange,
 }: AnnotationDetailProps) {
+  const {
+    navigation,
+    isPending: isNavigationPending,
+    isError: isNavigationError,
+  } = reviewNavigationState
+
   return (
     <div className="space-y-5 font-sans text-foreground">
       <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
-      <ReviewNavigationBand state={reviewNavigationState} />
+      {navigation != null ? (
+        <ReviewNavigationBand {...navigation} />
+      ) : isNavigationError ? (
+        <ReviewNavigationBand isError />
+      ) : isNavigationPending ? (
+        <ReviewNavigationBand isPending />
+      ) : null}
       {isPending || annotation == null ? (
         isPending ? (
           <div className="space-y-4">
