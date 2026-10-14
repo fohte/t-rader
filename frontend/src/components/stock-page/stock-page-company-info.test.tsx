@@ -16,12 +16,12 @@ describe('StockPageCompanyInfo', () => {
       per: 16.2,
       fwd_per: null,
       pbr: 1.3,
-      roe: 9.1,
-      fwd_roe: 11,
+      roe: 0.091,
+      fwd_roe: 0.11,
       eps: 200,
       fwd_eps: 230,
       bps: 2500,
-      mkt_cap: 123_000_000_000,
+      mkt_cap: 123_456,
     }
     const { container } = render(
       <StockPageCompanyInfo
@@ -47,7 +47,7 @@ describe('StockPageCompanyInfo', () => {
       ['PER', ['16.2']],
       ['PBR', ['1.3']],
       ['ROE (予)', ['11%']],
-      ['時価総額', ['1,230 億円']],
+      ['時価総額', ['1,234.6 億円']],
       ['保有', ['保有なし', '現在']],
       ['次の決算', ['予定なし']],
       ['PER', ['16.2', '2030-04-09 時点']],

@@ -3,7 +3,7 @@ import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
 import {
   formatDecimal,
-  formatYenInHundredMillions,
+  formatMillionYenInHundredMillions,
 } from '#lib/stock-page-format'
 import type { StockPageListState } from '#lib/stock-page-model'
 
@@ -37,8 +37,7 @@ function selectRoe(valuation: Valuation | null) {
 }
 
 function formatPercent(value: number | null | undefined): string {
-  const formatted = formatDecimal(value)
-  return value == null ? formatted : `${formatted}%`
+  return value == null ? '—' : `${formatDecimal(value * 100)}%`
 }
 
 function SectionHeading({ title, detail }: { title: string; detail?: string }) {
@@ -179,7 +178,7 @@ function ValuationCard({
           <Metric label={roe.label} value={formatPercent(roe.value)} />
           <Metric
             label="時価総額"
-            value={formatYenInHundredMillions(valuation.mkt_cap)}
+            value={formatMillionYenInHundredMillions(valuation.mkt_cap)}
           />
         </dl>
       )}

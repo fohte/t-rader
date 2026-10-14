@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   formatDecimal,
+  formatMillionYenInHundredMillions,
   formatYenInHundredMillions,
 } from '#lib/stock-page-format'
 
@@ -21,5 +22,14 @@ describe('formatYenInHundredMillions', () => {
     ['hundred millions of yen', 820_000_000_000, '8,200 億円'],
   ] as const)('formats %s', (_label, value, expected) => {
     expect(formatYenInHundredMillions(value)).toEqual(expected)
+  })
+})
+
+describe('formatMillionYenInHundredMillions', () => {
+  it.each([
+    ['null', null, '—'],
+    ['millions of yen', 123_456, '1,234.6 億円'],
+  ] as const)('formats %s', (_label, value, expected) => {
+    expect(formatMillionYenInHundredMillions(value)).toEqual(expected)
   })
 })

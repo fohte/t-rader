@@ -16,3 +16,9 @@ export function formatYenInHundredMillions(
     maximumFractionDigits: 1,
   })} 億円`
 }
+
+export function formatMillionYenInHundredMillions(
+  value: number | null | undefined,
+): string {
+  return value == null ? '—' : formatYenInHundredMillions(value * 1_000_000)
+}

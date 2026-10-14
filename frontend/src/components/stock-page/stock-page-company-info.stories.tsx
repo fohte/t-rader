@@ -29,12 +29,12 @@ const valuation: Valuation = {
   per: 16.2,
   fwd_per: 14.2,
   pbr: 1.3,
-  roe: 9.1,
+  roe: 0.091,
   fwd_roe: null,
   eps: 200,
   fwd_eps: 230,
   bps: 2500,
-  mkt_cap: 123_000_000_000,
+  mkt_cap: 123_456,
 }
 
 const meta = {
@@ -86,7 +86,7 @@ export const CurrentValuationFallback: Story = {
 export const ForecastValuation: Story = {
   name: '予想の PER と ROE を区別して表示する。',
   args: {
-    valuation: { ...valuation, fwd_roe: 11 },
+    valuation: { ...valuation, fwd_roe: 0.11 },
   },
 }
 
