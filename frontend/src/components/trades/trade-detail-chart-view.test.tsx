@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
 import { TradeDetailChartView } from '#components/trades/trade-detail-chart-view'
-import { toTradeMarker } from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
 import type { TradeMarker } from '#lib/chart-utils'
 
@@ -46,7 +45,11 @@ const trade: TradeDetail = {
   remaining_qty: 10,
 }
 
-const tradeMarker = toTradeMarker(trade)
+const tradeMarker: TradeMarker = {
+  id: trade.id,
+  side: trade.side,
+  date: trade.date,
+}
 
 afterEach(cleanup)
 

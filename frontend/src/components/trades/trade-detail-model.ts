@@ -11,7 +11,7 @@ export type TradeDetailChartState =
   | { status: 'empty' }
   | { status: 'ready'; bars: Bar[]; trades: TradeMarker[] }
 
-export function toTradeMarker(trade: TradeDetail): TradeMarker {
+function toTradeMarker(trade: TradeDetail): TradeMarker {
   return {
     id: trade.id,
     side: trade.side,

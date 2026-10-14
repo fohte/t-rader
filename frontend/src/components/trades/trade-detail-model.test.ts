@@ -5,7 +5,6 @@ import {
   createTradeDetailChartState,
   createTradeReflectionDraft,
   getTradeDetailChartRange,
-  toTradeMarker,
 } from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
 
@@ -42,16 +41,6 @@ describe('getTradeDetailChartRange', () => {
     ['an absent date', undefined, null],
   ])('returns the 14-day range for %s', (_case, date, expected) => {
     expect(getTradeDetailChartRange(date)).toEqual(expected)
-  })
-})
-
-describe('toTradeMarker', () => {
-  it('converts the selected trade into a chart marker', () => {
-    expect(toTradeMarker(chartTrade)).toEqual({
-      id: 'fake-trade-buy',
-      side: 'buy',
-      date: '2099-02-10',
-    })
   })
 })
 
@@ -97,7 +86,7 @@ describe('createTradeDetailChartState', () => {
     ).toEqual({
       status: 'ready',
       bars: TRADE_DETAIL_CHART_BARS,
-      trades: [toTradeMarker(chartTrade)],
+      trades: [{ id: 'fake-trade-buy', side: 'buy', date: '2099-02-10' }],
     })
   })
 })

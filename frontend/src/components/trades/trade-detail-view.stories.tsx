@@ -3,9 +3,9 @@ import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
 import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
-import { toTradeMarker } from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import type { components } from '#lib/api/schema.gen'
+import type { TradeMarker } from '#lib/chart-utils'
 import { createStoryRouter } from '#storybook/story-router'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
@@ -44,8 +44,16 @@ const buyingTrade: TradeDetail = {
   remaining_qty: 7,
 }
 
-const sellingTradeMarker = toTradeMarker(sellingTrade)
-const buyingTradeMarker = toTradeMarker(buyingTrade)
+const sellingTradeMarker: TradeMarker = {
+  id: sellingTrade.id,
+  side: sellingTrade.side,
+  date: sellingTrade.date,
+}
+const buyingTradeMarker: TradeMarker = {
+  id: buyingTrade.id,
+  side: buyingTrade.side,
+  date: buyingTrade.date,
+}
 
 const linkedNote: Note = {
   id: 'fake-note-human',
