@@ -121,31 +121,34 @@ export interface ReviewQueueNavigationState {
   currentItemKey: string
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+export type ReviewNavigationTarget = ReviewQueueNavigationState & {
+  items: ReviewQueueItem[]
 }
 
-export function parseReviewQueueNavigationState(
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isReviewQueueNavigationState(
   value: unknown,
-): ReviewQueueNavigationState | undefined {
-  if (!isRecord(value) || !isRecord(value.reviewQueue)) return undefined
+): value is ReviewQueueNavigationState {
+  if (!isRecord(value) || !isRecord(value.snapshot)) return false
+  return (
+    isStringArray(value.snapshot.itemKeys) &&
+    typeof value.currentItemKey === 'string'
+  )
+}
 
-  const { currentItemKey, snapshot } = value.reviewQueue
-  if (
-    typeof currentItemKey !== 'string' ||
-    !isRecord(snapshot) ||
-    !Array.isArray(snapshot.itemKeys)
-  ) {
-    return undefined
-  }
-
-  const itemKeys: string[] = []
-  for (const itemKey of snapshot.itemKeys) {
-    if (typeof itemKey !== 'string') return undefined
-    itemKeys.push(itemKey)
-  }
-
-  return { currentItemKey, snapshot: { itemKeys } }
+function readReviewQueueNavigationState(
+  state: unknown,
+): ReviewQueueNavigationState | null {
+  if (!isRecord(state)) return null
+  const reviewQueue = state.reviewQueue
+  return isReviewQueueNavigationState(reviewQueue) ? reviewQueue : null
 }
 
 function createReviewNavigationSnapshot(
@@ -156,12 +159,12 @@ function createReviewNavigationSnapshot(
 
 type ReviewNavigation =
   | { kind: 'empty'; total: 0 }
-  | { kind: 'start'; total: number; firstItem: ReviewQueueItem }
+  | { kind: 'start'; total: number; firstItem: ReviewQueueItem | null }
   | {
       kind: 'item'
       total: number
       previousItem: ReviewQueueItem | null
-      nextItem: ReviewQueueItem
+      nextItem: ReviewQueueItem | null
     }
 
 function findRemainingItem(
@@ -194,12 +197,16 @@ function getReviewNavigation(
   const firstRemainingItem = remainingItems.at(0)
   if (firstRemainingItem == null) return { kind: 'empty', total: 0 }
 
+  const firstOtherItem =
+    remainingItems.find(
+      (item) => reviewQueueItemKey(item) !== currentItemKey,
+    ) ?? null
   const currentIndex = snapshot.itemKeys.indexOf(currentItemKey)
   if (currentIndex === -1) {
     return {
       kind: 'start',
       total: remainingItems.length,
-      firstItem: firstRemainingItem,
+      firstItem: firstOtherItem,
     }
   }
 
@@ -213,6 +220,10 @@ function getReviewNavigation(
     remainingItemsByKey,
     true,
   )
+  const nextItemWithoutCurrent =
+    nextItem != null && reviewQueueItemKey(nextItem) !== currentItemKey
+      ? nextItem
+      : firstOtherItem
   return {
     kind: 'item',
     total: remainingItems.length,
@@ -223,7 +234,7 @@ function getReviewNavigation(
       remainingItemsByKey,
       false,
     ),
-    nextItem: nextItem ?? firstRemainingItem,
+    nextItem: nextItemWithoutCurrent,
   }
 }
 
@@ -302,4 +313,5 @@ export const reviewQueueModel = {
   getNavigation: getReviewNavigation,
   normalizeNoteKindFilter: normalizeReviewNoteKindFilter,
   noteKindFilterKey: reviewNoteKindFilterKey,
+  readNavigationState: readReviewQueueNavigationState,
 }

@@ -2,6 +2,8 @@ import { Link } from '@tanstack/react-router'
 import type { SyntheticEvent } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
+import { ReviewNavigationBand } from '#components/review/review-navigation-band'
+import type { ReviewNavigationViewState } from '#components/review/use-review-navigation'
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
@@ -14,10 +16,12 @@ type ChangeHistory = components['schemas']['ChangeHistory']
 type AnnotationDetailProps = {
   annotation: Annotation | undefined
   isPending: boolean
+  reviewNavigationState: ReviewNavigationViewState
   comments: Comment[] | undefined
   history: ChangeHistory[] | undefined
   stockName: string | null
   commentDraft: string
+  rejectionReason: string
   isApprovalPending: boolean
   isRejectionPending: boolean
   isCommentPending: boolean
@@ -26,6 +30,7 @@ type AnnotationDetailProps = {
   commentError: unknown
   onApprove: () => void
   onReject: () => void
+  onRejectionReasonChange: (value: string) => void
   onAddComment: (event: SyntheticEvent<HTMLFormElement>) => void
   onCommentDraftChange: (value: string) => void
 }
@@ -44,10 +49,12 @@ function formatDateTime(iso: string): string {
 export function AnnotationDetail({
   annotation,
   isPending,
+  reviewNavigationState,
   comments,
   history,
   stockName,
   commentDraft,
+  rejectionReason,
   isApprovalPending,
   isRejectionPending,
   isCommentPending,
@@ -56,12 +63,26 @@ export function AnnotationDetail({
   commentError,
   onApprove,
   onReject,
+  onRejectionReasonChange,
   onAddComment,
   onCommentDraftChange,
 }: AnnotationDetailProps) {
+  const {
+    navigation,
+    isPending: isNavigationPending,
+    isError: isNavigationError,
+  } = reviewNavigationState
+
   return (
     <div className="space-y-5 font-sans text-foreground">
       <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
+      {navigation != null ? (
+        <ReviewNavigationBand {...navigation} />
+      ) : isNavigationError ? (
+        <ReviewNavigationBand isError />
+      ) : isNavigationPending ? (
+        <ReviewNavigationBand isPending />
+      ) : null}
       {isPending || annotation == null ? (
         isPending ? (
           <div className="space-y-4">
@@ -89,6 +110,9 @@ export function AnnotationDetail({
             <p className="mb-4 whitespace-pre-wrap text-base leading-relaxed">
               {annotation.text}
             </p>
+          </header>
+
+          <section className="border border-border bg-card p-5">
             <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-(--grid-cols-annotation-fields)">
               <dt>銘柄</dt>
               <dd>
@@ -122,45 +146,51 @@ export function AnnotationDetail({
                 </Link>
               </div>
             )}
-          </header>
+          </section>
 
           <section className="border border-border bg-card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-                レビュー
-              </h2>
-              <StatusPill status={annotation.status} />
-            </div>
-            <p className="mb-3 font-mono text-xs text-muted-foreground-strong">
-              現在:{' '}
-              <strong className="text-foreground">
-                {annotation.status === 'approved'
-                  ? '承認済み'
-                  : annotation.status === 'rejected'
-                    ? '却下'
-                    : '未レビュー'}
-              </strong>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={onApprove}
-                disabled={isApprovalPending || annotation.status === 'approved'}
-                className="cursor-pointer border border-primary bg-primary px-3 py-1.5 font-mono text-xs text-card hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ✓ 承認
-              </button>
-              <button
-                type="button"
-                onClick={onReject}
-                disabled={
-                  isRejectionPending || annotation.status === 'rejected'
-                }
-                className="cursor-pointer border border-status-rejected px-3 py-1.5 font-mono text-xs text-status-rejected hover:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ✕ 却下
-              </button>
-            </div>
+            <h2 className="mb-3 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+              このアノテーションを判断する
+            </h2>
+            {annotation.status === 'unread' ? (
+              <>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={onApprove}
+                    disabled={isApprovalPending || isRejectionPending}
+                    className="cursor-pointer border border-primary bg-primary px-3 py-1.5 font-mono text-xs text-card hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    ✓ 承認
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onReject}
+                    disabled={isApprovalPending || isRejectionPending}
+                    className="cursor-pointer border border-status-rejected px-3 py-1.5 font-mono text-xs text-status-rejected hover:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    ✕ 却下
+                  </button>
+                </div>
+                <label className="block space-y-1 font-mono text-2xs text-muted-foreground-strong">
+                  <span>却下理由 (任意)</span>
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(event) => {
+                      onRejectionReasonChange(event.target.value)
+                    }}
+                    disabled={isApprovalPending || isRejectionPending}
+                    rows={2}
+                    className="w-full border border-border bg-surface-strong px-2 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary disabled:opacity-50"
+                    placeholder="必要であれば理由を入力してください"
+                  />
+                </label>
+              </>
+            ) : (
+              <p className="font-mono text-xs text-muted-foreground-strong">
+                {annotation.status === 'approved' ? '承認済み' : '却下済み'}
+              </p>
+            )}
             {(approvalError != null || rejectionError != null) && (
               <p className="mt-2 font-mono text-2xs text-status-rejected">
                 操作に失敗しました。時間を置いて再試行してください。

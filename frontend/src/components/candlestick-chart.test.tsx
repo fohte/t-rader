@@ -65,6 +65,7 @@ const chartMocks = vi.hoisted(() => {
 
   return {
     chart,
+    candlePriceScale,
     candlestickSeries,
     annotationPriceSeries,
     volumePriceScale,
@@ -180,10 +181,57 @@ describe('CandlestickChart', () => {
     ])
   })
 
+  it('labels the selected trade marker after same-day markers', () => {
+    const otherTrade = makeTrade({ id: 'fake-other-trade' })
+    const selectedTrade = makeTrade({ id: 'fake-selected-trade' })
+
+    render(
+      <CandlestickChart
+        bars={bars}
+        trades={[selectedTrade, otherTrade]}
+        selectedTradeId={selectedTrade.id}
+      />,
+    )
+
+    expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([
+      [
+        [
+          {
+            id: 'fake-other-trade',
+            time: 1744243200,
+            position: 'belowBar',
+            color: '#26a69a',
+            shape: 'arrowUp',
+          },
+          {
+            id: 'fake-selected-trade',
+            time: 1744243200,
+            position: 'belowBar',
+            color: '#26a69a',
+            shape: 'arrowUp',
+            text: '対象',
+            size: 2,
+          },
+        ],
+      ],
+    ])
+  })
+
   it('keeps trade markers empty when the optional prop is omitted', () => {
     render(<CandlestickChart bars={bars} />)
 
     expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([[[]]])
+  })
+
+  it.each([
+    ['default', undefined, 0.05],
+    ['trade detail', 0.25, 0.25],
+  ])('applies the %s top price scale margin', (_, topMargin, expectedTop) => {
+    render(<CandlestickChart bars={bars} priceScaleTopMargin={topMargin} />)
+
+    expect(chartMocks.candlePriceScale.applyOptions.mock.calls).toEqual([
+      [{ scaleMargins: { top: expectedTop, bottom: 0.25 } }],
+    ])
   })
 
   it('adds the annotation band and its spacing when annotations arrive', () => {

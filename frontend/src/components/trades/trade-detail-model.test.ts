@@ -1,9 +1,95 @@
 import { describe, expect, it } from 'vitest'
 
-import { createTradeReflectionDraft } from '#components/trades/trade-detail-model'
+import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
+import {
+  createTradeDetailChartState,
+  createTradeReflectionDraft,
+  getTradeDetailChartRange,
+} from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
+
+const chartTrade: TradeDetail = {
+  id: 'fake-trade-buy',
+  strategy_id: 'fake-strategy',
+  symbol: 'FIC-01',
+  side: 'buy',
+  qty: 10,
+  price: 1000,
+  fee: 10,
+  date: '2099-02-10',
+  source: 'manual',
+  note: null,
+  created_at: '2099-02-10T00:00:00Z',
+  updated_at: '2099-02-10T00:00:00Z',
+  remaining_qty: 10,
+}
+
+describe('getTradeDetailChartRange', () => {
+  it.each([
+    [
+      'a date within the month',
+      '2099-02-10',
+      { from: '2099-01-27', to: '2099-02-24' },
+    ],
+    [
+      'a range crossing the year boundary',
+      '2099-01-05',
+      { from: '2098-12-22', to: '2099-01-19' },
+    ],
+    ['an absent date', undefined, null],
+  ])('returns the 14-day range for %s', (_case, date, expected) => {
+    expect(getTradeDetailChartRange(date)).toEqual(expected)
+  })
+})
+
+describe('createTradeDetailChartState', () => {
+  it.each([
+    [
+      'loading',
+      { bars: undefined, barsPending: true, barsError: false },
+      { status: 'loading' },
+    ],
+    [
+      'error',
+      { bars: undefined, barsPending: false, barsError: true },
+      { status: 'error' },
+    ],
+    [
+      'empty',
+      { bars: [], barsPending: false, barsError: false },
+      { status: 'empty' },
+    ],
+  ])(
+    'uses daily bars to determine the %s state',
+    (_case, chartInput, expected) => {
+      expect(
+        createTradeDetailChartState({
+          ...chartInput,
+          trades: undefined,
+          selectedTrade: chartTrade,
+        }),
+      ).toEqual(expected)
+    },
+  )
+
+  it('keeps the selected trade visible while the symbol trade list is unavailable', () => {
+    expect(
+      createTradeDetailChartState({
+        bars: TRADE_DETAIL_CHART_BARS,
+        barsPending: false,
+        barsError: false,
+        trades: undefined,
+        selectedTrade: chartTrade,
+      }),
+    ).toEqual({
+      status: 'ready',
+      bars: TRADE_DETAIL_CHART_BARS,
+      trades: [{ id: 'fake-trade-buy', side: 'buy', date: '2099-02-10' }],
+    })
+  })
+})
 
 describe('createTradeReflectionDraft', () => {
   it('includes sale facts, realized profit, and a stock reference', () => {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  parseReviewQueueNavigationState,
   type ReviewQueueItem,
   reviewQueueModel,
 } from '#components/review/review-queue-model'
@@ -293,6 +292,39 @@ describe('getReviewNavigation', () => {
     ).toEqual({ kind: 'start', total: 1, firstItem: item })
   })
 
+  it('does not point to the current item when it is the only unread item', () => {
+    const item = createAnnotationItem(
+      'fake-annotation-a',
+      '2026-10-12T01:00:00Z',
+    )
+    const snapshot = reviewQueueModel.createNavigationSnapshot([item])
+
+    expect(
+      reviewQueueModel.getNavigation(snapshot, 'annotation:fake-annotation-a', [
+        item,
+      ]),
+    ).toEqual({
+      kind: 'item',
+      total: 1,
+      previousItem: null,
+      nextItem: null,
+    })
+  })
+
+  it('does not link to the current item when it is outside the opened snapshot', () => {
+    const item = createAnnotationItem(
+      'fake-annotation-a',
+      '2026-10-12T01:00:00Z',
+    )
+    const snapshot = reviewQueueModel.createNavigationSnapshot([])
+
+    expect(
+      reviewQueueModel.getNavigation(snapshot, 'annotation:fake-annotation-a', [
+        item,
+      ]),
+    ).toEqual({ kind: 'start', total: 1, firstItem: null })
+  })
+
   it('returns an empty state when there are no unread items', () => {
     const snapshot = reviewQueueModel.createNavigationSnapshot([
       createAnnotationItem('fake-annotation-a', '2026-10-12T01:00:00Z'),
@@ -319,36 +351,5 @@ describe('getReviewNavigation', () => {
       'annotation:fake-annotation-a',
       'annotation:fake-annotation-b',
     ])
-  })
-})
-
-describe('parseReviewQueueNavigationState', () => {
-  it.each([
-    [
-      'accepts a saved snapshot',
-      {
-        reviewQueue: {
-          snapshot: { itemKeys: ['note:fake-version-a'] },
-          currentItemKey: 'note:fake-version-a',
-        },
-      },
-      {
-        snapshot: { itemKeys: ['note:fake-version-a'] },
-        currentItemKey: 'note:fake-version-a',
-      },
-    ],
-    ['ignores a missing snapshot', { reviewQueue: {} }, undefined],
-    [
-      'ignores item keys with an invalid value',
-      {
-        reviewQueue: {
-          snapshot: { itemKeys: ['note:fake-version-a', 1] },
-          currentItemKey: 'note:fake-version-a',
-        },
-      },
-      undefined,
-    ],
-  ])('%s', (_name, state, expected) => {
-    expect(parseReviewQueueNavigationState(state)).toEqual(expected)
   })
 })

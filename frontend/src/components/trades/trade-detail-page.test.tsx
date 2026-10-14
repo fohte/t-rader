@@ -89,6 +89,15 @@ describe('TradeDetailPage', () => {
         ) {
           return Response.json(noteLinked ? [note] : [])
         }
+        if (
+          /^\/api\/strategies\/[^/]+\/tasks$/.test(path) &&
+          request.method === 'GET'
+        ) {
+          return Response.json([])
+        }
+        if (/^\/api\/strategies\/[^/]+\/tasks\/[^/]+\/notes$/.test(path)) {
+          return Response.json([])
+        }
         if (path === '/api/strategies') {
           return Response.json([
             {
@@ -100,6 +109,9 @@ describe('TradeDetailPage', () => {
               updated_at: '2099-01-01T00:00:00Z',
             },
           ])
+        }
+        if (path === '/api/bars' || path === '/api/trades') {
+          return Response.json([])
         }
         if (path === '/api/refs/stocks') {
           return Response.json([

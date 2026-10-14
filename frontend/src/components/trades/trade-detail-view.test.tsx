@@ -88,11 +88,14 @@ describe('TradeDetailView', () => {
         <TradeDetailView
           state="ready"
           trade={trade}
+          chartState={{ status: 'loading' }}
           stockName="架空銘柄"
           strategyName="検証用戦略"
           linkedNotes={notes}
           notesPending={false}
           notesError={false}
+          requestedAnalyses={[]}
+          requestedAnalysesState="success"
           noteLinkError={null}
           onManageNotes={() => undefined}
           onWriteReflection={() => undefined}

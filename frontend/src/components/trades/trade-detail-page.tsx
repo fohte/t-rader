@@ -2,11 +2,17 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
-import { createTradeReflectionDraft } from '#components/trades/trade-detail-model'
+import {
+  createTradeDetailChartState,
+  createTradeReflectionDraft,
+  getTradeDetailChartRange,
+} from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
+import { useTradeRequestedAnalyses } from '#components/trades/use-trade-requested-analyses'
 import { $api } from '#lib/api/client'
+import { getChartCurrency } from '#lib/chart-utils'
 
 export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const queryClient = useQueryClient()
@@ -18,6 +24,28 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const detailQuery = $api.useQuery('get', '/api/trades/{id}', {
     params: { path: { id: tradeId } },
   })
+  const chartRange = getTradeDetailChartRange(detailQuery.data?.date)
+  const chartBarsQuery = $api.useQuery(
+    'get',
+    '/api/bars',
+    {
+      params: {
+        query: {
+          instrument_id: detailQuery.data?.symbol ?? '',
+          timeframe: '1d',
+          from: chartRange?.from ?? '',
+          to: chartRange?.to ?? '',
+        },
+      },
+    },
+    { enabled: chartRange != null },
+  )
+  const chartTradesQuery = $api.useQuery(
+    'get',
+    '/api/trades',
+    { params: { query: { symbol: detailQuery.data?.symbol ?? '' } } },
+    { enabled: detailQuery.data != null },
+  )
   const linkedNotesQuery = $api.useQuery(
     'get',
     '/api/trades/{id}/notes',
@@ -28,6 +56,18 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const linkMutation = $api.useMutation('post', '/api/trades/{id}/notes')
 
+  const { analyses: requestedAnalyses, state: requestedAnalysesState } =
+    useTradeRequestedAnalyses({
+      tradeId,
+      strategies: strategiesQuery.data,
+      strategyState: strategiesQuery.isPending
+        ? 'loading'
+        : strategiesQuery.isError
+          ? 'error'
+          : 'success',
+      enabled: detailQuery.data != null,
+    })
+
   if (detailQuery.isPending) {
     return <TradeDetailView state="loading" />
   }
@@ -37,11 +77,18 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
     return <TradeDetailView state="error" />
   }
 
-  const stockName =
-    stocksQuery.data?.find((stock) => stock.id === detail.symbol)?.name ?? null
+  const stock = stocksQuery.data?.find((item) => item.id === detail.symbol)
+  const stockName = stock?.name ?? null
   const strategyName =
     strategiesQuery.data?.find((strategy) => strategy.id === detail.strategy_id)
       ?.name ?? null
+  const chartState = createTradeDetailChartState({
+    bars: chartBarsQuery.data,
+    barsPending: chartBarsQuery.isPending,
+    barsError: chartBarsQuery.isError,
+    trades: chartTradesQuery.data,
+    selectedTrade: detail,
+  })
   const reflectionDraft = createTradeReflectionDraft(detail, stockName)
 
   function handleCreated(noteId: string) {
@@ -71,11 +118,15 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
       <TradeDetailView
         state="ready"
         trade={detail}
+        chartCurrency={getChartCurrency(stock?.market)}
+        chartState={chartState}
         stockName={stockName}
         strategyName={strategyName}
         linkedNotes={linkedNotesQuery.data ?? []}
         notesPending={linkedNotesQuery.isPending}
         notesError={linkedNotesQuery.isError}
+        requestedAnalyses={requestedAnalyses}
+        requestedAnalysesState={requestedAnalysesState}
         noteLinkError={noteLinkError}
         onManageNotes={() => {
           setNotesDialogOpen(true)

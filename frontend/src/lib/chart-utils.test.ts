@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import type { components } from '#lib/api/schema.gen'
-import { getChartCurrency, toTradeMarkers } from '#lib/chart-utils'
+import {
+  getChartCurrency,
+  toTradeMarkers,
+  type TradeMarker,
+} from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
-type Trade = components['schemas']['TradeListItem']
 
 const firstBar: Bar = {
   close: 101,
@@ -17,21 +20,11 @@ const firstBar: Bar = {
   volume: 42,
 }
 
-function makeTrade(overrides: Partial<Trade> = {}): Trade {
+function makeTradeMarker(overrides: Partial<TradeMarker> = {}): TradeMarker {
   return {
     id: '00000000-0000-0000-0000-000000000101',
-    strategy_id: '00000000-0000-0000-0000-000000000001',
-    symbol: 'demo-code',
     side: 'buy',
-    qty: 1,
-    price: 100,
-    fee: 0,
     date: '2025-04-10',
-    source: 'manual',
-    note: null,
-    note_count: 0,
-    created_at: '2025-04-10T00:00:00.000Z',
-    updated_at: '2025-04-10T00:00:00.000Z',
     ...overrides,
   }
 }
@@ -63,14 +56,18 @@ describe('toTradeMarkers', () => {
     expect(
       toTradeMarkers(
         [
-          makeTrade({
+          makeTradeMarker({
             id: '00000000-0000-0000-0000-000000000102',
             side: 'sell',
             date: '2025-04-11',
-            price: 105,
           }),
-          makeTrade({ date: '2025-04-10', price: 101 }),
-          makeTrade({ date: '2025-04-12' }),
+          makeTradeMarker({ date: '2025-04-10' }),
+          makeTradeMarker({
+            id: '00000000-0000-0000-0000-000000000103',
+            side: 'sell',
+            date: '2025-04-10',
+          }),
+          makeTradeMarker({ date: '2025-04-12' }),
         ],
         [firstBar, secondBar, nextDateBar],
       ),
@@ -83,11 +80,55 @@ describe('toTradeMarkers', () => {
         shape: 'arrowUp',
       },
       {
+        id: '00000000-0000-0000-0000-000000000103',
+        time: 1744243500,
+        position: 'aboveBar',
+        color: '#ef5350',
+        shape: 'arrowDown',
+      },
+      {
         id: '00000000-0000-0000-0000-000000000102',
         time: 1744329900,
         position: 'aboveBar',
         color: '#ef5350',
         shape: 'arrowDown',
+      },
+    ])
+  })
+
+  it('marks the selected trade and sorts it after other trades on the same day', () => {
+    expect(
+      toTradeMarkers(
+        [
+          makeTradeMarker({
+            id: 'fake-trade-selected',
+            date: '2025-04-10',
+          }),
+          makeTradeMarker({
+            id: 'fake-trade-other',
+            side: 'sell',
+            date: '2025-04-10',
+          }),
+        ],
+        [firstBar],
+        'fake-trade-selected',
+      ),
+    ).toEqual([
+      {
+        id: 'fake-trade-other',
+        time: 1744243500,
+        position: 'aboveBar',
+        color: '#ef5350',
+        shape: 'arrowDown',
+      },
+      {
+        id: 'fake-trade-selected',
+        time: 1744243500,
+        position: 'belowBar',
+        color: '#26a69a',
+        shape: 'arrowUp',
+        text: '対象',
+        size: 2,
       },
     ])
   })

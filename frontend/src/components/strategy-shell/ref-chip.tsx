@@ -1,5 +1,6 @@
 import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import { useResolveRef } from '#hooks/use-resolve-ref'
+import { parseGroupRefId } from '#lib/ref-id'
 import { REF_KIND_JP } from '#lib/strategy-mock'
 
 interface RefChipProps {
@@ -7,15 +8,15 @@ interface RefChipProps {
   token: string
   pill?: boolean
   showKind?: boolean
-  // 画面遷移先がある stock 参照に限って呼び出す。
-  onOpenStockRef?: (token: string, resolved: ResolvedRef) => void
+  // 画面遷移先がある参照に限って呼び出す。
+  onOpenRef?: (token: string, resolved: ResolvedRef) => void
 }
 
 export function RefChip({
   token,
   pill = false,
   showKind = true,
-  onOpenStockRef,
+  onOpenRef,
 }: RefChipProps) {
   const ref = useResolveRef(token)
   const kindJP = REF_KIND_JP[ref.kind]
@@ -23,16 +24,20 @@ export function RefChip({
   const displayName = ref.name ?? ref.id
   const sub =
     resolved && ref.kind === 'stock' && ref.id !== ref.name ? ref.id : undefined
+  const canOpenRef =
+    onOpenRef != null &&
+    (ref.kind === 'stock' ||
+      (ref.id !== '' &&
+        (ref.kind !== 'group' || parseGroupRefId(ref.id) != null)))
 
   const baseInner =
     'inline-flex items-baseline gap-1 font-mono text-em-88 leading-tight whitespace-nowrap text-foreground'
   const underline = 'border-b border-dotted border-muted-foreground pb-px'
   const pillCls = 'border border-border px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
-  const interactive =
-    ref.kind === 'stock' && onOpenStockRef != null
-      ? 'cursor-pointer hover:text-primary hover:border-primary'
-      : ''
+  const interactive = canOpenRef
+    ? 'cursor-pointer hover:text-primary hover:border-primary'
+    : ''
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
   const title = resolved ? `[[${token}]]` : `[[${token}]] (未解決)`
 
@@ -52,7 +57,7 @@ export function RefChip({
     </>
   )
 
-  if (ref.kind === 'stock' && onOpenStockRef != null) {
+  if (canOpenRef) {
     return (
       <button
         type="button"
@@ -60,7 +65,7 @@ export function RefChip({
         title={title}
         onClick={(e) => {
           e.stopPropagation()
-          onOpenStockRef(token, ref)
+          onOpenRef(token, ref)
         }}
         className={`${className} bg-transparent p-0`}
       >
