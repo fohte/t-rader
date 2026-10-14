@@ -16,6 +16,12 @@ function createRandom(seed: number): () => number {
   }
 }
 
+function getSampleBarDate(index: number): Date {
+  const date = new Date(2025, 0, 1)
+  date.setDate(date.getDate() + index)
+  return date
+}
+
 /** サンプルデータを生成する */
 function generateSampleBars(count: number): Bar[] {
   const random = createRandom(1)
@@ -23,7 +29,7 @@ function generateSampleBars(count: number): Bar[] {
   let price = 1500
 
   for (let i = 0; i < count; i++) {
-    const date = new Date(Date.UTC(2025, 0, 1 + i))
+    const date = getSampleBarDate(i)
 
     const open = price + (random() - 0.5) * 50
     const close = open + (random() - 0.5) * 60
@@ -170,13 +176,13 @@ const tradeMarkerBars = generateSampleBars(30)
 const tradeMarkers: Trade[] = [
   createTrade({
     id: '00000000-0000-0000-0000-000000000201',
-    date: '2025-01-03',
+    date: getSampleBarDate(2).toISOString().slice(0, 10),
     side: 'buy',
     price: 1512,
   }),
   createTrade({
     id: '00000000-0000-0000-0000-000000000202',
-    date: '2025-01-10',
+    date: getSampleBarDate(9).toISOString().slice(0, 10),
     side: 'sell',
     price: 1498,
   }),
