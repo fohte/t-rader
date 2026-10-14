@@ -57,7 +57,7 @@ export function StockPageChart({
           to="/stocks/$stockId/chart"
           params={{ stockId }}
           aria-label="全画面チャートを開く"
-          className="inline-flex h-6 shrink-0 items-center justify-center gap-1 rounded-(--btn-radius-xs) border border-border bg-background px-2 font-mono text-xs font-medium whitespace-nowrap transition-all outline-none select-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px"
+          className="shrink-0 font-mono text-xs text-muted-foreground-strong underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-primary"
         >
           全画面 ↗
         </Link>
