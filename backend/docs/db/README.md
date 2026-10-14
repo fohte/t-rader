@@ -15,7 +15,7 @@
 | [public.comment](public.comment.md)                                                         | 13      | ノートやアノテーションに付けるコメントと返信を保持する。                                               | BASE TABLE |
 | [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                                     | BASE TABLE |
 | [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                                               | BASE TABLE |
-| [public.strategy_task](public.strategy_task.md)                                             | 14      | 戦略に対して投入したエージェントタスクの内容と実行状態を記録する。                                     | BASE TABLE |
+| [public.strategy_task](public.strategy_task.md)                                             | 16      | 戦略に対して投入したエージェントタスクの内容と実行状態を記録する。                                     | BASE TABLE |
 | [public.trigger](public.trigger.md)                                                         | 13      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                                             | BASE TABLE |
 | [public.custom_indicator](public.custom_indicator.md)                                       | 10      | 共有または戦略ごとに定義する実行可能なカスタム指標。                                                   | BASE TABLE |
 | [public.news_item](public.news_item.md)                                                     | 7       | RSS フィードなどから取得したニュース記事情報を保持する。                                               | BASE TABLE |
@@ -343,6 +343,8 @@ erDiagram
   text purpose
   timestamp_with_time_zone as_of
   timestamp_with_time_zone auto_resumed_at
+  text context_kind
+  text context_id
 }
 "public.trigger" {
   uuid trigger_id

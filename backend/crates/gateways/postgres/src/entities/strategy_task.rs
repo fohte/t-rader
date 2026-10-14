@@ -28,6 +28,10 @@ pub struct Model {
     pub purpose: Option<String>,
     pub as_of: Option<DateTimeWithTimeZone>,
     pub auto_resumed_at: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub context_kind: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub context_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

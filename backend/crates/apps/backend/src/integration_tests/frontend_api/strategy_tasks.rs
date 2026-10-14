@@ -3,8 +3,9 @@ mod tests {
     use super::super::{assert_response_eq, normalize_timestamps};
     use std::sync::Arc;
 
+    use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
+    use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
     use serde_json::json;
     use uuid::Uuid;
@@ -19,7 +20,48 @@ mod tests {
         AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient,
     };
     use core_application::strategy_task::DEFAULT_PURPOSE;
-    use gateway_postgres::entities::{note_version, strategy_task, strategy_task_step};
+    use gateway_postgres::entities::{note_version, strategy_task, strategy_task_step, trade};
+
+    async fn insert_context_trade(
+        db: &gateway_postgres::DatabaseHandle,
+        strategy_id: Uuid,
+        trade_id: Uuid,
+    ) {
+        trade::ActiveModel {
+            id: Set(trade_id),
+            strategy_id: Set(strategy_id),
+            symbol: Set("ZX-104".to_string()),
+            side: Set("sell".to_string()),
+            qty: Set(Decimal::from(7)),
+            price: Set(Decimal::from(31)),
+            fee: Set(Decimal::ZERO),
+            date: Set(chrono::NaiveDate::from_ymd_opt(2026, 3, 4).expect("valid date")),
+            source: Set("manual".to_string()),
+            note: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("insert context trade");
+    }
+
+    async fn set_task_context(
+        db: &gateway_postgres::DatabaseHandle,
+        task_id: Uuid,
+        kind: &str,
+        id: &str,
+    ) {
+        strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            context_kind: Set(Some(kind.to_string())),
+            context_id: Set(Some(id.to_string())),
+            ..Default::default()
+        }
+        .update(db)
+        .await
+        .expect("set task context");
+    }
 
     #[backend_test_macros::database_test]
     async fn submit_chat_creates_task_row_and_submits_to_agent(
@@ -65,6 +107,8 @@ mod tests {
             row.prompt,
             row.phase,
             row.error_summary,
+            row.context_kind,
+            row.context_id,
         );
         assert_eq!(
             row_summary,
@@ -75,6 +119,8 @@ mod tests {
                 "frontend".to_string(),
                 "inspect demo-code".to_string(),
                 gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
+                None,
+                None,
                 None,
             ),
         );
@@ -89,6 +135,217 @@ mod tests {
         assert_eq!(
             submitted,
             vec![(strategy_id, "inspect demo-code".to_string())]
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn submit_chat_prefixes_and_persists_each_context_kind(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "context-strategy").await;
+        let trade_strategy_id = insert_test_strategy(&db, "trade-context-strategy").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
+        let note_id = Uuid::from_u128(0x11).to_string();
+        let trade_id = Uuid::from_u128(0x22);
+        insert_context_trade(&db, trade_strategy_id, trade_id).await;
+
+        let requests = [
+            (
+                json!({ "kind": "note", "id": note_id }),
+                indoc::indoc! {"
+                    文脈: [[note:00000000-0000-0000-0000-000000000011]]
+
+                    review this
+                "}
+                .trim_end()
+                .to_string(),
+                "note",
+                "00000000-0000-0000-0000-000000000011",
+            ),
+            (
+                json!({ "kind": "stock", "id": "ZX-104" }),
+                indoc::indoc! {"
+                    文脈: [[stock:ZX-104]]
+
+                    review this
+                "}
+                .trim_end()
+                .to_string(),
+                "stock",
+                "ZX-104",
+            ),
+            (
+                json!({ "kind": "trade", "id": trade_id }),
+                indoc::formatdoc! {"
+                    文脈: 取引 ID={trade_id}, 約定日=2026-03-04, 銘柄=ZX-104, 売買=sell, 数量=7, 単価=31
+
+                    review this
+                "}
+                .trim_end()
+                .to_string(),
+                "trade",
+                "00000000-0000-0000-0000-000000000022",
+            ),
+        ];
+        let mut response_summaries = Vec::new();
+        let mut task_ids = Vec::new();
+        for (index, (context, _, _, _)) in requests.iter().enumerate() {
+            let a2a_task_id = format!("context-task-{index}");
+            fake.set_next_task_id(&a2a_task_id).await;
+            let response = server
+                .post(&format!("/api/strategies/{strategy_id}/chat"))
+                .json(&json!({ "prompt": "review this", "context": context }))
+                .await;
+            let status = response.status_code();
+            let mut body: serde_json::Value = response.json();
+            task_ids.push(
+                Uuid::parse_str(body["task_id"].as_str().expect("task_id")).expect("task id"),
+            );
+            body["task_id"] = json!("<uuid>");
+            response_summaries.push((status, body));
+        }
+
+        let mut persisted = Vec::new();
+        for task_id in &task_ids {
+            let row = strategy_task::Entity::find_by_id(*task_id)
+                .one(&db)
+                .await
+                .expect("query task")
+                .expect("task row");
+            persisted.push((row.context_kind, row.context_id, row.prompt));
+        }
+        let submitted: Vec<(Uuid, String)> = fake
+            .submitted
+            .lock()
+            .await
+            .iter()
+            .map(|task| (task.strategy_id, task.prompt.clone()))
+            .collect();
+        let expected_prompts = requests
+            .iter()
+            .map(|(_, prompt, _, _)| prompt.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (response_summaries, persisted, submitted),
+            (
+                vec![
+                    (
+                        axum::http::StatusCode::ACCEPTED,
+                        json!({ "task_id": "<uuid>", "a2a_task_id": "context-task-0" }),
+                    ),
+                    (
+                        axum::http::StatusCode::ACCEPTED,
+                        json!({ "task_id": "<uuid>", "a2a_task_id": "context-task-1" }),
+                    ),
+                    (
+                        axum::http::StatusCode::ACCEPTED,
+                        json!({ "task_id": "<uuid>", "a2a_task_id": "context-task-2" }),
+                    ),
+                ],
+                requests
+                    .iter()
+                    .map(|(_, prompt, kind, id)| {
+                        (Some(kind.to_string()), Some(id.to_string()), prompt.clone())
+                    })
+                    .collect::<Vec<_>>(),
+                expected_prompts
+                    .into_iter()
+                    .map(|prompt| (strategy_id, prompt))
+                    .collect::<Vec<_>>(),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn submit_chat_rejects_invalid_contexts_before_submitting_a_task(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "context-validation-strategy").await;
+        let missing_trade_id = Uuid::from_u128(0x33);
+        let cases = [
+            (
+                json!({
+                    "prompt": "   ",
+                    "context": { "kind": "trade", "id": missing_trade_id },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "prompt must not be empty" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "note", "id": "" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must not be empty" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "note", "id": "invalid-id" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must be a note UUID" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "stock", "id": "us:abc" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must be a valid stock ID" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "trade", "id": "invalid-id" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must be a trade UUID" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "trade", "id": missing_trade_id },
+                }),
+                axum::http::StatusCode::NOT_FOUND,
+                json!({ "error": format!("trade {missing_trade_id} not found") }),
+            ),
+        ];
+        let mut responses = Vec::new();
+        for (body, _, _) in &cases {
+            let response = server
+                .post(&format!("/api/strategies/{strategy_id}/chat"))
+                .json(body)
+                .await;
+            responses.push((response.status_code(), response.json::<serde_json::Value>()));
+        }
+        let submitted: Vec<(Uuid, String)> = fake
+            .submitted
+            .lock()
+            .await
+            .iter()
+            .map(|task| (task.strategy_id, task.prompt.clone()))
+            .collect();
+
+        assert_eq!(
+            (responses, submitted),
+            (
+                cases
+                    .iter()
+                    .map(|(_, status, response)| (*status, response.clone()))
+                    .collect::<Vec<_>>(),
+                Vec::<(Uuid, String)>::new(),
+            ),
         );
     }
 
@@ -555,6 +812,107 @@ mod tests {
                     }),
                 ],
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_strategy_tasks_filters_by_context(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "context-strategy").await;
+        let other_strategy_id = insert_test_strategy(&db, "other-context-strategy").await;
+
+        let base = chrono::Utc::now().fixed_offset();
+        let matching_task =
+            insert_test_strategy_task(&db, strategy_id, "matching context", None, base).await;
+        let same_kind_task = insert_test_strategy_task(
+            &db,
+            strategy_id,
+            "same kind, different ID",
+            None,
+            base + chrono::Duration::seconds(1),
+        )
+        .await;
+        let same_id_task = insert_test_strategy_task(
+            &db,
+            strategy_id,
+            "same ID, different kind",
+            None,
+            base + chrono::Duration::seconds(2),
+        )
+        .await;
+        let other_strategy_task =
+            insert_test_strategy_task(&db, other_strategy_id, "other strategy", None, base).await;
+        set_task_context(&db, matching_task, "stock", "ZX-104").await;
+        set_task_context(&db, same_kind_task, "stock", "ZX-105").await;
+        set_task_context(&db, same_id_task, "note", "ZX-104").await;
+        set_task_context(&db, other_strategy_task, "stock", "ZX-104").await;
+
+        let response = server
+            .get(&format!(
+                "/api/strategies/{strategy_id}/tasks?context_kind=stock&context_id=ZX-104"
+            ))
+            .await;
+        let mut body: Vec<serde_json::Value> = response.json();
+        body.iter_mut().for_each(normalize_timestamps);
+
+        assert_eq!(
+            (response.status_code(), body),
+            (
+                axum::http::StatusCode::OK,
+                vec![json!({
+                    "task_id": matching_task,
+                    "strategy_id": strategy_id,
+                    "source": "frontend",
+                    "prompt": "matching context",
+                    "phase": "completed",
+                    "error_summary": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                    "purpose": null,
+                    "as_of": "<as_of>",
+                    "context_kind": "stock",
+                    "context_id": "ZX-104",
+                })],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_strategy_tasks_rejects_incomplete_context_filters(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "context-filter-strategy").await;
+        let cases = [
+            (
+                format!("/api/strategies/{strategy_id}/tasks?context_kind=stock"),
+                json!({
+                    "error": "context_kind and context_id must be provided together"
+                }),
+            ),
+            (
+                format!("/api/strategies/{strategy_id}/tasks?context_id=ZX-104"),
+                json!({
+                    "error": "context_kind and context_id must be provided together"
+                }),
+            ),
+            (
+                format!("/api/strategies/{strategy_id}/tasks?context_kind=stock&context_id="),
+                json!({ "error": "context_id must not be empty" }),
+            ),
+        ];
+        let mut responses = Vec::new();
+        for (path, _) in &cases {
+            let response = server.get(path).await;
+            responses.push((response.status_code(), response.json::<serde_json::Value>()));
+        }
+
+        assert_eq!(
+            responses,
+            cases
+                .iter()
+                .map(|(_, response)| (axum::http::StatusCode::BAD_REQUEST, response.clone()))
+                .collect::<Vec<_>>(),
         );
     }
 

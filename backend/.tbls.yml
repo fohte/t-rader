@@ -223,6 +223,8 @@ comments:
       deadline_at: 'タスクの実行期限。'
       purpose: '実行時に選択した agent_config の purpose キー。'
       as_of: '実行の論理的な基準時刻。監査用に記録し、実際に参照する全データがこの時刻のものとは限らない。'
+      context_kind: 'タスク投入時に指定した文脈対象の種類。'
+      context_id: 'タスク投入時に指定した文脈対象の ID。'
       auto_resumed_at: 'タスクを自動再開した時刻。'
   - table: strategy_task_step
     tableComment: 'エージェントタスクを構成する実行ステップの状態と結果を記録する。'
