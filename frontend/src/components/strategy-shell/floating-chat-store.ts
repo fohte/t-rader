@@ -1,13 +1,30 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
-// フローティングチャットの開閉と seed プロンプトを保持する最小ストア。
-// 「アナリストに聞く」ボタンが seed を投げ込み、チャット側がそれを購読する。
+export type ChatContextKind = 'note' | 'stock' | 'trade'
+
+export interface ChatContext {
+  kind: ChatContextKind
+  id: string
+  strategyId?: string
+}
+
+// 画面と常時表示チャットが独立しているため、起動操作と画面文脈を共有する。
 interface ChatState {
   open: boolean
   seed: string | null
+  context: ChatContext | null
+  contextStrategyId: string | null
+  contextRegistrationId: number | null
 }
 
-let state: ChatState = { open: false, seed: null }
+let state: ChatState = {
+  open: false,
+  seed: null,
+  context: null,
+  contextStrategyId: null,
+  contextRegistrationId: null,
+}
+let nextContextRegistrationId = 0
 const listeners = new Set<() => void>()
 
 function emit() {
@@ -29,8 +46,47 @@ export function useFloatingChat(): ChatState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
+export function useChatContext(context: ChatContext | null): void {
+  const kind = context?.kind
+  const id = context?.id
+  const strategyId = context?.strategyId
+
+  useEffect(() => {
+    if (kind == null || id == null) return
+    return registerChatContext({ kind, id, strategyId })
+  }, [id, kind, strategyId])
+}
+
+function registerChatContext(context: ChatContext): () => void {
+  const registrationId = ++nextContextRegistrationId
+  state = {
+    ...state,
+    context,
+    contextStrategyId: context.strategyId ?? null,
+    contextRegistrationId: registrationId,
+  }
+  emit()
+
+  return () => {
+    if (state.contextRegistrationId !== registrationId) return
+    state = {
+      ...state,
+      context: null,
+      contextStrategyId: null,
+      contextRegistrationId: null,
+    }
+    emit()
+  }
+}
+
+export function removeChatContext(): void {
+  if (state.context == null) return
+  state = { ...state, context: null }
+  emit()
+}
+
 export function openFloatingChat(seed?: string | null): void {
-  const next: ChatState = { open: true, seed: seed ?? null }
+  const next: ChatState = { ...state, open: true, seed: seed ?? null }
   if (state.open === next.open && state.seed === next.seed) return
   state = next
   emit()

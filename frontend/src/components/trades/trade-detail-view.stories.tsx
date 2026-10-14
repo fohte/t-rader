@@ -98,6 +98,7 @@ const meta = {
     noteLinkError: null,
     onManageNotes: () => undefined,
     onWriteReflection: () => undefined,
+    onAskAgent: () => undefined,
   },
 } satisfies Meta<typeof TradeDetailView>
 

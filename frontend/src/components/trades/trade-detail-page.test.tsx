@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { closeFloatingChat } from '#components/strategy-shell/floating-chat-store'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -19,8 +20,17 @@ function readReflectionSubmissionOutput(
   return { draft, postRequests, linkedNote, linkError }
 }
 
+function readTradeChatOpenOutput() {
+  return {
+    contextChip: screen.getByText('取引: fake-trade-sell').textContent,
+    chatSeed: screen.getByLabelText<HTMLInputElement>('メッセージ入力').value,
+  }
+}
+
 afterEach(() => {
   cleanup()
+  closeFloatingChat()
+  window.localStorage.clear()
   vi.unstubAllGlobals()
 })
 
@@ -101,6 +111,7 @@ describe('TradeDetailPage', () => {
             },
           ])
         }
+        if (path === '/api/agent-configs') return Response.json([])
         if (path === '/api/refs/stocks') {
           return Response.json([
             {
@@ -132,15 +143,27 @@ describe('TradeDetailPage', () => {
       },
     )
 
-    const { TradeDetailPage } =
-      await import('#components/trades/trade-detail-page')
+    const [{ TradeDetailPage }, { FloatingChat }] = await Promise.all([
+      import('#components/trades/trade-detail-page'),
+      import('#components/strategy-shell/floating-chat'),
+    ])
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
     const router = createStoryRouter(
-      () => <TradeDetailPage tradeId="fake-trade-sell" />,
+      () => (
+        <>
+          <FloatingChat />
+          <TradeDetailPage tradeId="fake-trade-sell" />
+        </>
+      ),
       {
-        paths: ['/trades', '/stocks/$stockId', '/notes/$noteId'],
+        paths: [
+          '/trades',
+          '/trades/$tradeId',
+          '/stocks/$stockId',
+          '/notes/$noteId',
+        ],
       },
     )
     const user = userEvent.setup()
@@ -156,6 +179,18 @@ describe('TradeDetailPage', () => {
       level: 1,
       name: '架空銘柄FIC-01の売り',
     })
+    await user.click(
+      screen.getByRole('button', { name: 'エージェントに振り返りを頼む' }),
+    )
+    await screen.findByText(
+      'この取引について、売買時の判断とその後の結果を振り返ってください。',
+    )
+    expect(readTradeChatOpenOutput()).toEqual({
+      contextChip: '取引: fake-trade-sell',
+      chatSeed:
+        'この取引について、売買時の判断とその後の結果を振り返ってください。',
+    })
+
     await user.click(screen.getByRole('button', { name: '振り返りを書く' }))
     const titleInput =
       await screen.findByLabelText<HTMLInputElement>('タイトル *')

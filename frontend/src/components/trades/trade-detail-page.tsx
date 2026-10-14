@@ -2,6 +2,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
+import {
+  openFloatingChat,
+  useChatContext,
+} from '#components/strategy-shell/floating-chat-store'
 import { createTradeReflectionDraft } from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
@@ -27,6 +31,15 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const linkMutation = $api.useMutation('post', '/api/trades/{id}/notes')
+  useChatContext(
+    detailQuery.data == null
+      ? null
+      : {
+          kind: 'trade',
+          id: detailQuery.data.id,
+          strategyId: detailQuery.data.strategy_id,
+        },
+  )
 
   if (detailQuery.isPending) {
     return <TradeDetailView state="loading" />
@@ -83,6 +96,11 @@ export function TradeDetailPage({ tradeId }: { tradeId: string }) {
         onWriteReflection={() => {
           setNoteLinkError(null)
           setReflectionDialogOpen(true)
+        }}
+        onAskAgent={() => {
+          openFloatingChat(
+            'この取引について、売買時の判断とその後の結果を振り返ってください。',
+          )
         }}
       />
       <TradeNotesDialog

@@ -12,7 +12,10 @@ import { NoteVersionFallback } from '#components/note-detail/note-version-fallba
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import { NoteVersionReviewPanel } from '#components/note-detail/note-version-review-panel'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
-import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
+import {
+  openFloatingChat,
+  useChatContext,
+} from '#components/strategy-shell/floating-chat-store'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/notes/$noteId')({
@@ -41,6 +44,7 @@ export const Route = createFileRoute('/notes/$noteId')({
 
 function NoteDetailPage() {
   const { noteId } = Route.useParams()
+  useChatContext({ kind: 'note', id: noteId })
   const { version: requestedVersionNo, version_id: requestedVersionId } =
     Route.useSearch()
   const navigate = Route.useNavigate()
