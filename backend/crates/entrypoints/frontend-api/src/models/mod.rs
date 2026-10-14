@@ -17,6 +17,7 @@ pub mod note;
 pub mod note_kind;
 pub mod note_version;
 pub mod paper_account;
+pub mod portfolio_history;
 pub mod prediction;
 pub mod refs;
 pub mod risk_policy;
@@ -57,6 +58,7 @@ pub use paper_account::{
     CreatePaperAccountRequest, PaperAccountPortfolioResponse, PaperAccountResponse,
     PaperAccountStatsResponse,
 };
+pub use portfolio_history::PortfolioHistoryPointResponse;
 pub use prediction::PredictionResponse;
 pub use refs::{
     GroupResponse, IndicatorObservationResponse, IndicatorResponse, RefResolution, StockResponse,

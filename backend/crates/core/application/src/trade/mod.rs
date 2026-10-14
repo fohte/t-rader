@@ -11,6 +11,7 @@ mod use_cases;
 mod fake;
 
 pub use error::TradeUseCaseError;
+pub(crate) use fifo::summarize;
 pub use repository::{SharedTradeRepository, TradeRepository, TradeRepositoryError};
 pub use summary::{
     TradeSummaryUseCaseError, TradeSummaryUseCases, ValuedPerformanceSummary, ValuedPositionSummary,
@@ -23,6 +24,7 @@ pub use types::{
     TradeUpdateCommand,
 };
 pub use use_cases::TradeUseCases;
+pub(crate) use use_cases::split_cursor_for_rows;
 
 #[cfg(feature = "test-support")]
 pub use fake::FakeTradeRepository;

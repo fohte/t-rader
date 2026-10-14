@@ -1,4 +1,9 @@
-import { pnlColorClass } from '#components/trades/format'
+import {
+  formatOptionalPercent,
+  optionalPnlColorClass,
+} from '#components/trades/format'
+
+export { formatOptionalPercent, optionalPnlColorClass }
 
 const percentFormatter = new Intl.NumberFormat('ja-JP', {
   style: 'percent',
@@ -12,24 +17,11 @@ export function formatPercent(value: number, signed = false): string {
   return (value > 0 ? '+' : '−') + formatted
 }
 
-export function formatOptionalPercent(
-  value: number | null | undefined,
-  signed = false,
-): string {
-  return value == null ? '—' : formatPercent(value, signed)
-}
-
 export function formatWinRate(
   closedTradeCount: number,
   winRate: number | null | undefined,
 ): string {
   return closedTradeCount === 0 ? '—' : formatOptionalPercent(winRate)
-}
-
-export function optionalPnlColorClass(
-  value: number | null | undefined,
-): string {
-  return value == null ? 'text-muted-foreground-strong' : pnlColorClass(value)
 }
 
 export function formatDateTime(value: string): string {

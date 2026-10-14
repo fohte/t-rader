@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+import { StrategyRunsHeading } from '#components/strategy-shell/strategy-runs-heading'
 import { TaskRunListView } from '#components/strategy-shell/task-run-list-view'
 import { $api } from '#lib/api/client'
 
@@ -14,18 +15,21 @@ function TaskRunListPage() {
   })
 
   return (
-    <TaskRunListView
-      tasks={
-        data?.map((t) => ({
-          taskId: t.task_id,
-          strategyId: t.strategy_id,
-          prompt: t.prompt,
-          source: t.source,
-          phase: t.phase,
-          purpose: t.purpose ?? null,
-          createdAt: t.created_at,
-        })) ?? null
-      }
-    />
+    <>
+      <StrategyRunsHeading />
+      <TaskRunListView
+        tasks={
+          data?.map((t) => ({
+            taskId: t.task_id,
+            strategyId: t.strategy_id,
+            prompt: t.prompt,
+            source: t.source,
+            phase: t.phase,
+            purpose: t.purpose ?? null,
+            createdAt: t.created_at,
+          })) ?? null
+        }
+      />
+    </>
   )
 }

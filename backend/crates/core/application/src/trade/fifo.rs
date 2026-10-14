@@ -159,7 +159,7 @@ pub(super) fn calculate_trade_detail(
     })
 }
 
-pub(super) fn summarize(
+pub(crate) fn summarize(
     strategy_id: Option<Uuid>,
     rows: &[TradeListItem],
     mut split_cursor: SplitCursor,
