@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
 import type { Middleware } from 'openapi-fetch'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { buildNodeProps } from '#components/graph/flow-node-props.test-helper'
 import { GraphNodeView } from '#components/graph/graph-node'
@@ -63,6 +63,17 @@ describe('GraphNodeView', () => {
     } finally {
       fetchClient.eject(middleware)
     }
+  })
+
+  it('id が空の stock ref でも onOpenRef があれば button にする', () => {
+    const onOpenRef = vi.fn()
+    renderNode({ id: 'a', label: 'A', ref: 'stock:' }, { onOpenRef })
+
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(onOpenRef.mock.calls).toEqual([
+      ['stock:', { kind: 'stock', id: '', name: null }],
+    ])
   })
 
   it('ref の kind が不明なら /api/refs/resolve を呼ばずに id をそのまま表示する', () => {

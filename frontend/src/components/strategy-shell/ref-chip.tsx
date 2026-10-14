@@ -26,8 +26,9 @@ export function RefChip({
     resolved && ref.kind === 'stock' && ref.id !== ref.name ? ref.id : undefined
   const canOpenRef =
     onOpenRef != null &&
-    ref.id !== '' &&
-    (ref.kind !== 'group' || parseGroupRefId(ref.id) != null)
+    (ref.kind === 'stock' ||
+      (ref.id !== '' &&
+        (ref.kind !== 'group' || parseGroupRefId(ref.id) != null)))
 
   const baseInner =
     'inline-flex items-baseline gap-1 font-mono text-em-88 leading-tight whitespace-nowrap text-foreground'
