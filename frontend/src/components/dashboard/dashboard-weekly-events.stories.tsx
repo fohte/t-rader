@@ -43,7 +43,7 @@ function withRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/calendar', '/charts/$instrumentId'],
+          paths: ['/calendar', '/stocks/$stockId'],
         },
       )}
     />

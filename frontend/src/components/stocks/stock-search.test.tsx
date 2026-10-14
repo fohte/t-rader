@@ -62,8 +62,8 @@ function renderStockSearch() {
       paths: [
         { path: '/portfolio', component: () => null },
         {
-          path: '/charts/$instrumentId',
-          component: () => <p>チャート画面</p>,
+          path: '/stocks/$stockId',
+          component: () => <p>銘柄ページ</p>,
         },
       ],
       initialPath: '/portfolio',
@@ -112,7 +112,7 @@ describe('StockSearch', () => {
   })
 
   it.each(['デモ商事', 'demo-code'])(
-    '銘柄名またはコードの検索からチャートへ遷移する (%s)',
+    '銘柄名またはコードの検索から銘柄ページへ遷移する (%s)',
     async (searchTerm) => {
       const user = userEvent.setup()
       const router = renderStockSearch()
@@ -128,12 +128,12 @@ describe('StockSearch', () => {
       const stockName = await screen.findByText('デモ商事')
       const selectedHref = stockName.closest('a')?.getAttribute('href') ?? null
       await user.click(stockName)
-      await screen.findByText('チャート画面')
+      await screen.findByText('銘柄ページ')
 
       expect(getStockSearchSnapshot(router, selectedHref)).toEqual({
         searchQueries: [searchTerm],
-        pathname: '/charts/demo-code',
-        selectedHref: '/charts/demo-code',
+        pathname: '/stocks/demo-code',
+        selectedHref: '/stocks/demo-code',
         searchInputVisible: false,
       })
     },

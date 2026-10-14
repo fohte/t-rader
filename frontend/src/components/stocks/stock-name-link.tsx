@@ -18,8 +18,8 @@ export function StockNameLink({
         <span className="italic text-muted-foreground">未解決</span>
       ) : (
         <Link
-          to="/charts/$instrumentId"
-          params={{ instrumentId: symbol }}
+          to="/stocks/$stockId"
+          params={{ stockId: symbol }}
           className="text-foreground hover:underline"
         >
           {linkText}

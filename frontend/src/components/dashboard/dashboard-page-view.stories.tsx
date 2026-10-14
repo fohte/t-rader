@@ -195,7 +195,7 @@ const args: DashboardPageViewProps = {
 
 const paths = [
   '/portfolio',
-  '/charts/$instrumentId',
+  '/stocks/$stockId',
   '/trades',
   '/calendar',
   '/note-versions/pending',

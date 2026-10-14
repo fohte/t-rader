@@ -40,7 +40,7 @@ describe('DashboardRecentTrades', () => {
           isError={false}
         />
       ),
-      { paths: ['/trades', '/charts/$instrumentId'] },
+      { paths: ['/trades', '/stocks/$stockId'] },
     )
     render(<RouterProvider router={router} />)
 
@@ -92,7 +92,7 @@ describe('DashboardRecentTrades', () => {
           isError={false}
         />
       ),
-      { paths: ['/trades', '/charts/$instrumentId'] },
+      { paths: ['/trades', '/stocks/$stockId'] },
     )
     render(<RouterProvider router={router} />)
     const table = await screen.findByRole('table', { hidden: true })

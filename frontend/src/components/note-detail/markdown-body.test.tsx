@@ -145,8 +145,8 @@ describe('MarkdownBody', () => {
     expect(navigate.mock.calls).toEqual([
       [
         {
-          to: '/charts/$instrumentId',
-          params: { instrumentId: 'demo-code' },
+          to: '/stocks/$stockId',
+          params: { stockId: 'demo-code' },
         },
       ],
     ])
@@ -202,14 +202,14 @@ describe('MarkdownBody', () => {
     expect(navigate.mock.calls).toEqual([
       [
         {
-          to: '/charts/$instrumentId',
-          params: { instrumentId: 'demo-code' },
+          to: '/stocks/$stockId',
+          params: { stockId: 'demo-code' },
         },
       ],
       [
         {
-          to: '/charts/$instrumentId',
-          params: { instrumentId: 'demo-code' },
+          to: '/stocks/$stockId',
+          params: { stockId: 'demo-code' },
         },
       ],
       [

@@ -91,8 +91,8 @@ export function DashboardWeeklyEvents({
                 </span>
                 {event.kind === 'event' && event.stock_id != null ? (
                   <Link
-                    to="/charts/$instrumentId"
-                    params={{ instrumentId: event.stock_id }}
+                    to="/stocks/$stockId"
+                    params={{ stockId: event.stock_id }}
                     className="min-w-0 flex-1 break-words text-sm text-foreground hover:underline"
                   >
                     {stockName ?? title}

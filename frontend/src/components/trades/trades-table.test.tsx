@@ -79,7 +79,7 @@ describe('TradesTable', () => {
           onDelete={() => undefined}
         />
       ),
-      { paths: ['/charts/$instrumentId'] },
+      { paths: ['/stocks/$stockId'] },
     )
     render(<RouterProvider router={router} />)
     await screen.findByRole('table')
@@ -93,8 +93,8 @@ describe('TradesTable', () => {
     )
 
     expect(rowLinks).toEqual([
-      [{ name: '架空商事', href: '/charts/demo-code' }],
-      [{ name: 'demo-code-2', href: '/charts/demo-code-2' }],
+      [{ name: '架空商事', href: '/stocks/demo-code' }],
+      [{ name: 'demo-code-2', href: '/stocks/demo-code-2' }],
     ])
   })
 })
