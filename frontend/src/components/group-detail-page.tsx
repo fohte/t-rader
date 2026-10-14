@@ -89,9 +89,6 @@ export function GroupDetailPage(props: GroupDetailPageProps) {
                 <thead>
                   <tr className="border-b border-border text-2xs uppercase tracking-wider text-muted-foreground">
                     <th className="px-3 py-2 text-left font-normal">銘柄</th>
-                    <th className="px-3 py-2 text-right font-normal">
-                      保有状況
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -101,20 +98,20 @@ export function GroupDetailPage(props: GroupDetailPageProps) {
                       className="border-b border-border last:border-b-0 hover:bg-surface-strong"
                     >
                       <td className="px-3 py-2">
-                        <StockNameLink
-                          name={stock.name}
-                          symbol={stock.id}
-                          missingName="link-symbol"
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {props.isHoldingsLoading || props.isHoldingsError ? (
-                          '—'
-                        ) : heldStockIds.has(stock.id) ? (
-                          <span className="border border-primary/50 px-1.5 py-0.5 font-mono text-2xs text-primary">
-                            保有
-                          </span>
-                        ) : null}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <StockNameLink
+                            name={stock.name}
+                            symbol={stock.id}
+                            missingName="link-symbol"
+                          />
+                          {!props.isHoldingsLoading &&
+                            !props.isHoldingsError &&
+                            heldStockIds.has(stock.id) && (
+                              <span className="border border-primary/50 px-1.5 py-0.5 font-mono text-2xs text-primary">
+                                保有
+                              </span>
+                            )}
+                        </div>
                       </td>
                     </tr>
                   ))}
