@@ -97,10 +97,16 @@ impl IndicatorObservationRepository for PostgresIndicatorObservationRepository {
         &self,
         query: IndicatorObservationQuery,
     ) -> Result<Vec<IndicatorObservation>, IndicatorObservationRepositoryError> {
-        indicator_observation::Entity::find()
-            .filter(indicator_observation::Column::IndicatorId.eq(query.indicator_id))
-            .filter(indicator_observation::Column::Date.gte(query.from))
-            .filter(indicator_observation::Column::Date.lte(query.to))
+        let mut observations = indicator_observation::Entity::find()
+            .filter(indicator_observation::Column::IndicatorId.eq(query.indicator_id));
+        if let Some(from) = query.from {
+            observations = observations.filter(indicator_observation::Column::Date.gte(from));
+        }
+        if let Some(to) = query.to {
+            observations = observations.filter(indicator_observation::Column::Date.lte(to));
+        }
+
+        observations
             .order_by_asc(indicator_observation::Column::Date)
             .all(&self.db)
             .await
@@ -207,8 +213,8 @@ mod tests {
         let observations = repository
             .find_observations(IndicatorObservationQuery {
                 indicator_id: "INDICATOR_TEST".to_string(),
-                from: date(3),
-                to: date(3),
+                from: Some(date(3)),
+                to: Some(date(3)),
             })
             .await
             .expect("read observations");
@@ -235,8 +241,8 @@ mod tests {
         let observations = repository
             .find_observations(IndicatorObservationQuery {
                 indicator_id: "INDICATOR_TEST".to_string(),
-                from: date(1),
-                to: date(10),
+                from: Some(date(1)),
+                to: Some(date(10)),
             })
             .await
             .expect("read observations");

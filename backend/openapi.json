@@ -3589,6 +3589,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "description": "本文で参照されている対象で絞り込む。形式は `kind:id`。",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4722,6 +4731,72 @@
         }
       }
     },
+    "/api/portfolio/history": {
+      "get": {
+        "tags": [
+          "portfolio"
+        ],
+        "summary": "口座全体の日次資産推移",
+        "operationId": "get_portfolio_history",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "取得開始日 (両端を含む。最大 3,660 日)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "取得終了日 (両端を含む。最大 3,660 日)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PortfolioHistoryPointResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "期間が不正または最大 3,660 日を超過",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/refs/groups/{axis_key}/{group_key}": {
       "get": {
         "tags": [
@@ -4863,6 +4938,91 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Indicator"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/indicators/{id}/observations": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "indicator の観測値",
+        "operationId": "get_ref_indicator_observations",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "指標 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "取得開始日 (YYYY-MM-DD, inclusive)。省略時は最古の観測日から取得",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "取得終了日 (YYYY-MM-DD, inclusive)。省略時は最新の観測日まで取得",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IndicatorObservationResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -5368,6 +5528,194 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stocks/{stock_id}/financial-summaries": {
+      "get": {
+        "tags": [
+          "stocks"
+        ],
+        "summary": "銘柄の決算短信要約一覧",
+        "operationId": "list_stock_financial_summaries",
+        "parameters": [
+          {
+            "name": "stock_id",
+            "in": "path",
+            "description": "銘柄 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockFinancialSummaryResponse"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stocks/{stock_id}/groups": {
+      "get": {
+        "tags": [
+          "stocks"
+        ],
+        "summary": "銘柄の所属グループ",
+        "operationId": "list_stock_groups",
+        "parameters": [
+          {
+            "name": "stock_id",
+            "in": "path",
+            "description": "銘柄 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StockGroupMembershipResponse"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stocks/{stock_id}/next-earnings": {
+      "get": {
+        "tags": [
+          "stocks"
+        ],
+        "summary": "銘柄の次の決算予定",
+        "operationId": "get_stock_next_earnings",
+        "parameters": [
+          {
+            "name": "stock_id",
+            "in": "path",
+            "description": "銘柄 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StockNextEarningsResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stocks/{stock_id}/valuation": {
+      "get": {
+        "tags": [
+          "stocks"
+        ],
+        "summary": "銘柄の最新バリュエーション",
+        "operationId": "get_stock_valuation",
+        "parameters": [
+          {
+            "name": "stock_id",
+            "in": "path",
+            "description": "銘柄 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StockValuationResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -7093,7 +7441,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Trade"
+                  "$ref": "#/components/schemas/TradeDetailResponse"
                 }
               }
             }
@@ -9246,6 +9594,23 @@
           }
         }
       },
+      "IndicatorObservationResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "value"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "IngestJobStatusResponse": {
         "type": "object",
         "required": [
@@ -9419,6 +9784,28 @@
           "chain",
           "scatter"
         ]
+      },
+      "MatchedBuyResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "qty",
+          "price"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "qty": {
+            "type": "number",
+            "format": "double"
+          }
+        }
       },
       "Note": {
         "type": "object",
@@ -10036,6 +10423,14 @@
               "$ref": "#/components/schemas/PositionSummary"
             }
           },
+          "price_observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "使用した日足のうち最も新しい観測日。価格が無い場合は `null`。"
+          },
           "realized_pnl": {
             "type": "number",
             "format": "double"
@@ -10050,6 +10445,38 @@
           "trade_count": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "PortfolioHistoryPointResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "total_assets",
+          "stock_market_value",
+          "cash",
+          "investable_amount"
+        ],
+        "properties": {
+          "cash": {
+            "type": "number",
+            "format": "double"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "investable_amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "stock_market_value": {
+            "type": "number",
+            "format": "double"
+          },
+          "total_assets": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -10074,6 +10501,22 @@
             "format": "double",
             "description": "取得簿価 (qty * avg_cost)"
           },
+          "current_price": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "共通観測日の終値。該当する日足が無い場合は `null` です。"
+          },
+          "market_value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "現在値 × 保有数量。現在値が無い場合は `null`。"
+          },
           "qty": {
             "type": "number",
             "format": "double",
@@ -10086,6 +10529,14 @@
           },
           "symbol": {
             "type": "string"
+          },
+          "unrealized_pnl": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "評価額 - 取得簿価。現在値が無い場合は `null`。"
           }
         }
       },
@@ -10562,6 +11013,403 @@
           }
         }
       },
+      "StockFinancialSummaryResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "disclosure_no",
+          "disclosure_date",
+          "report_group_key"
+        ],
+        "properties": {
+          "bps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "cash_and_equivalents": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "cash_flow_financing": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "cash_flow_investing": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "cash_flow_operating": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "code": {
+            "type": "string"
+          },
+          "current_fiscal_year_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "current_fiscal_year_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "current_period_end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "current_period_start": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "current_period_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disclosure_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "disclosure_no": {
+            "type": "string"
+          },
+          "dividend_annual": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "dividend_annual_forecast": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "dividend_annual_forecast_next": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "document_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "equity": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "equity_to_asset_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "forecast_eps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "forecast_net_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "forecast_operating_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "forecast_ordinary_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "forecast_sales": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "net_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "next_forecast_eps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "next_forecast_net_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "next_forecast_operating_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "next_forecast_ordinary_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "next_forecast_sales": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "operating_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "ordinary_profit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "report_group_key": {
+            "type": "string"
+          },
+          "roe": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "sales": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "total_assets": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "StockGroupKeyAndNameResponse": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "StockGroupMembershipResponse": {
+        "type": "object",
+        "required": [
+          "axis",
+          "group"
+        ],
+        "properties": {
+          "axis": {
+            "$ref": "#/components/schemas/StockGroupKeyAndNameResponse"
+          },
+          "group": {
+            "$ref": "#/components/schemas/StockGroupKeyAndNameResponse"
+          }
+        }
+      },
+      "StockNextEarningsResponse": {
+        "type": "object",
+        "required": [
+          "title",
+          "event_date"
+        ],
+        "properties": {
+          "event_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "event_date": {
+            "type": "string",
+            "format": "date"
+          },
+          "fiscal_period": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time_of_day": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "StockValuationResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "date"
+        ],
+        "properties": {
+          "bps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "code": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "eps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "fwd_eps": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "fwd_per": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "fwd_roe": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "mkt_cap": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "pbr": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "per": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "roe": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "Strategy": {
         "type": "object",
         "required": [
@@ -10871,6 +11719,41 @@
             "format": "date-time"
           }
         }
+      },
+      "TradeDetailResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Trade"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "matched_buys": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/MatchedBuyResponse"
+                }
+              },
+              "realized_pnl": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              },
+              "remaining_qty": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double"
+              }
+            }
+          }
+        ]
       },
       "TradeListItem": {
         "allOf": [
@@ -11442,6 +12325,10 @@
       "description": "取引履歴と損益サマリ"
     },
     {
+      "name": "portfolio",
+      "description": "口座全体の資産推移"
+    },
+    {
       "name": "tasks",
       "description": "戦略タスクの実行履歴 (口座横断)"
     },
@@ -11464,6 +12351,10 @@
     {
       "name": "group_axes",
       "description": "銘柄を分類する軸"
+    },
+    {
+      "name": "stocks",
+      "description": "銘柄の企業情報"
     },
     {
       "name": "rss_feeds",

@@ -171,6 +171,7 @@ mod paper_accounts;
 mod refs;
 mod risk_policy;
 mod rss_feeds;
+mod stock_info;
 mod strategies;
 mod strategy_earnings_targets;
 mod strategy_investable_amount;

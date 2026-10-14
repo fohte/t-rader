@@ -20,8 +20,8 @@ pub struct IndicatorObservationSeriesDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndicatorObservationQuery {
     pub indicator_id: String,
-    pub from: NaiveDate,
-    pub to: NaiveDate,
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

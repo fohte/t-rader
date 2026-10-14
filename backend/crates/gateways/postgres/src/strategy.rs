@@ -128,6 +128,19 @@ impl StrategyRepository for PostgresStrategyRepository {
             .map_err(repository_error)
     }
 
+    async fn find_investable_amount_history(
+        &self,
+    ) -> Result<Vec<InvestableAmount>, StrategyRepositoryError> {
+        strategy_investable_amount::Entity::find()
+            .order_by_asc(strategy_investable_amount::Column::StrategyId)
+            .order_by_asc(strategy_investable_amount::Column::EffectiveAt)
+            .order_by_asc(strategy_investable_amount::Column::CreatedAt)
+            .all(&self.db)
+            .await
+            .map(|rows| rows.into_iter().map(to_investable_amount).collect())
+            .map_err(repository_error)
+    }
+
     async fn record_investable_amount(
         &self,
         transaction: &UnitOfWorkTransaction,

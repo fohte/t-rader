@@ -19,6 +19,21 @@ pub struct Trade {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TradeDetail {
+    pub trade: Trade,
+    pub realized_pnl: Option<Decimal>,
+    pub matched_buys: Option<Vec<MatchedBuy>>,
+    pub remaining_qty: Option<Decimal>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchedBuy {
+    pub date: NaiveDate,
+    pub qty: Decimal,
+    pub price: Decimal,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NewTrade {
     pub id: Uuid,
     pub strategy_id: Uuid,

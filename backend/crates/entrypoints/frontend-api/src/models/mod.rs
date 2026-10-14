@@ -17,12 +17,14 @@ pub mod note;
 pub mod note_kind;
 pub mod note_version;
 pub mod paper_account;
+pub mod portfolio_history;
 pub mod prediction;
 pub mod refs;
 pub mod risk_policy;
 pub mod rss_feed;
 pub mod short_ratio;
 pub mod short_sale_report;
+pub mod stock_info;
 pub mod strategy;
 pub mod strategy_earnings_target;
 pub mod trade;
@@ -56,11 +58,18 @@ pub use paper_account::{
     CreatePaperAccountRequest, PaperAccountPortfolioResponse, PaperAccountResponse,
     PaperAccountStatsResponse,
 };
+pub use portfolio_history::PortfolioHistoryPointResponse;
 pub use prediction::PredictionResponse;
-pub use refs::{GroupResponse, IndicatorResponse, RefResolution, StockResponse};
+pub use refs::{
+    GroupResponse, IndicatorObservationResponse, IndicatorResponse, RefResolution, StockResponse,
+};
 pub use risk_policy::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
+};
+pub use stock_info::{
+    StockFinancialSummaryResponse, StockGroupMembershipResponse, StockNextEarningsResponse,
+    StockValuationResponse,
 };
 pub use strategy::{
     CreateStrategyRequest, InvestableAmountResponse, PutInvestableAmountRequest,
@@ -72,7 +81,7 @@ pub use strategy_earnings_target::{
     StrategyEarningsTargetChangeResponse, StrategyEarningsTargetResponse,
 };
 pub use trade::{
-    CreateTradeRequest, PerformanceSummary, PositionSummary, TradeListItem, TradeResponse,
+    CreateTradeRequest, PerformanceSummary, TradeDetailResponse, TradeListItem, TradeResponse,
     UpdateTradeRequest,
 };
 pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};

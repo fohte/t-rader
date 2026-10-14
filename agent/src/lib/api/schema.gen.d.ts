@@ -862,6 +862,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/portfolio/history': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 口座全体の日次資産推移 */
+    get: operations['get_portfolio_history']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/refs/groups/{axis_key}/{group_key}': {
     parameters: {
       query?: never
@@ -905,6 +922,23 @@ export interface paths {
     }
     /** indicator 詳細 */
     get: operations['get_ref_indicator']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/indicators/{id}/observations': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** indicator の観測値 */
+    get: operations['get_ref_indicator_observations']
     put?: never
     post?: never
     delete?: never
@@ -1005,6 +1039,74 @@ export interface paths {
     head?: never
     /** RSS フィードを部分更新する (`source` は変更不可) */
     patch: operations['update_rss_feed']
+    trace?: never
+  }
+  '/api/stocks/{stock_id}/financial-summaries': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 銘柄の決算短信要約一覧 */
+    get: operations['list_stock_financial_summaries']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/stocks/{stock_id}/groups': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 銘柄の所属グループ */
+    get: operations['list_stock_groups']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/stocks/{stock_id}/next-earnings': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 銘柄の次の決算予定 */
+    get: operations['get_stock_next_earnings']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/stocks/{stock_id}/valuation': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 銘柄の最新バリュエーション */
+    get: operations['get_stock_valuation']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
     trace?: never
   }
   '/api/strategies': {
@@ -1791,6 +1893,12 @@ export interface components {
       kind: string
       name: string
     }
+    IndicatorObservationResponse: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      value: number
+    }
     IngestJobStatusResponse: {
       /** Format: date */
       expected_data_date?: string | null
@@ -1842,6 +1950,14 @@ export interface components {
     }
     /** @enum {string} */
     Layout: 'flow' | 'tree' | 'chain' | 'scatter'
+    MatchedBuyResponse: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+    }
     Note: {
       body_md: string
       /** Format: date-time */
@@ -2031,12 +2147,29 @@ export interface components {
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
       positions: components['schemas']['PositionSummary'][]
+      /**
+       * Format: date
+       * @description 使用した日足のうち最も新しい観測日。価格が無い場合は `null`。
+       */
+      price_observed_at?: string | null
       /** Format: double */
       realized_pnl: number
       /** Format: uuid */
       strategy_id?: string | null
       /** Format: int64 */
       trade_count: number
+    }
+    PortfolioHistoryPointResponse: {
+      /** Format: double */
+      cash: number
+      /** Format: date */
+      date: string
+      /** Format: double */
+      investable_amount: number
+      /** Format: double */
+      stock_market_value: number
+      /** Format: double */
+      total_assets: number
     }
     /** @description 銘柄ごとの未決済ポジションと損益 */
     PositionSummary: {
@@ -2052,6 +2185,16 @@ export interface components {
       cost_basis: number
       /**
        * Format: double
+       * @description 共通観測日の終値。該当する日足が無い場合は `null` です。
+       */
+      current_price?: number | null
+      /**
+       * Format: double
+       * @description 現在値 × 保有数量。現在値が無い場合は `null`。
+       */
+      market_value?: number | null
+      /**
+       * Format: double
        * @description 保有数量 (買い残 - 売り残)
        */
       qty: number
@@ -2061,6 +2204,11 @@ export interface components {
        */
       realized_pnl: number
       symbol: string
+      /**
+       * Format: double
+       * @description 評価額 - 取得簿価。現在値が無い場合は `null`。
+       */
+      unrealized_pnl?: number | null
     }
     Prediction: {
       /** Format: date */
@@ -2216,6 +2364,117 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    StockFinancialSummaryResponse: {
+      /** Format: double */
+      bps?: number | null
+      /** Format: double */
+      cash_and_equivalents?: number | null
+      /** Format: double */
+      cash_flow_financing?: number | null
+      /** Format: double */
+      cash_flow_investing?: number | null
+      /** Format: double */
+      cash_flow_operating?: number | null
+      code: string
+      /** Format: date */
+      current_fiscal_year_end?: string | null
+      /** Format: date */
+      current_fiscal_year_start?: string | null
+      /** Format: date */
+      current_period_end?: string | null
+      /** Format: date */
+      current_period_start?: string | null
+      current_period_type?: string | null
+      /** Format: date */
+      disclosure_date: string
+      disclosure_no: string
+      /** Format: double */
+      dividend_annual?: number | null
+      /** Format: double */
+      dividend_annual_forecast?: number | null
+      /** Format: double */
+      dividend_annual_forecast_next?: number | null
+      document_type?: string | null
+      /** Format: double */
+      eps?: number | null
+      /** Format: double */
+      equity?: number | null
+      /** Format: double */
+      equity_to_asset_ratio?: number | null
+      /** Format: double */
+      forecast_eps?: number | null
+      /** Format: double */
+      forecast_net_profit?: number | null
+      /** Format: double */
+      forecast_operating_profit?: number | null
+      /** Format: double */
+      forecast_ordinary_profit?: number | null
+      /** Format: double */
+      forecast_sales?: number | null
+      /** Format: double */
+      net_profit?: number | null
+      /** Format: double */
+      next_forecast_eps?: number | null
+      /** Format: double */
+      next_forecast_net_profit?: number | null
+      /** Format: double */
+      next_forecast_operating_profit?: number | null
+      /** Format: double */
+      next_forecast_ordinary_profit?: number | null
+      /** Format: double */
+      next_forecast_sales?: number | null
+      /** Format: double */
+      operating_profit?: number | null
+      /** Format: double */
+      ordinary_profit?: number | null
+      report_group_key: string
+      /** Format: double */
+      roe?: number | null
+      /** Format: double */
+      sales?: number | null
+      /** Format: double */
+      total_assets?: number | null
+    }
+    StockGroupKeyAndNameResponse: {
+      key: string
+      name: string
+    }
+    StockGroupMembershipResponse: {
+      axis: components['schemas']['StockGroupKeyAndNameResponse']
+      group: components['schemas']['StockGroupKeyAndNameResponse']
+    }
+    StockNextEarningsResponse: {
+      /** Format: date-time */
+      event_at?: string | null
+      /** Format: date */
+      event_date: string
+      fiscal_period?: string | null
+      time_of_day?: string | null
+      title: string
+    }
+    StockValuationResponse: {
+      /** Format: double */
+      bps?: number | null
+      code: string
+      /** Format: date */
+      date: string
+      /** Format: double */
+      eps?: number | null
+      /** Format: double */
+      fwd_eps?: number | null
+      /** Format: double */
+      fwd_per?: number | null
+      /** Format: double */
+      fwd_roe?: number | null
+      /** Format: double */
+      mkt_cap?: number | null
+      /** Format: double */
+      pbr?: number | null
+      /** Format: double */
+      per?: number | null
+      /** Format: double */
+      roe?: number | null
+    }
     Strategy: {
       /** Format: date-time */
       created_at: string
@@ -2334,6 +2593,13 @@ export interface components {
       symbol: string
       /** Format: date-time */
       updated_at: string
+    }
+    TradeDetailResponse: components['schemas']['Trade'] & {
+      matched_buys?: components['schemas']['MatchedBuyResponse'][] | null
+      /** Format: double */
+      realized_pnl?: number | null
+      /** Format: double */
+      remaining_qty?: number | null
     }
     TradeListItem: components['schemas']['Trade'] & {
       /** Format: int64 */
@@ -5183,6 +5449,8 @@ export interface operations {
         kind?: string
         /** @description `frontmatter_json.tags` に完全一致するタグを持つノートだけを返す。 */
         tag?: string
+        /** @description 本文で参照されている対象で絞り込む。形式は `kind:id`。 */
+        ref?: string
       }
       header?: never
       path?: never
@@ -6029,6 +6297,47 @@ export interface operations {
       }
     }
   }
+  get_portfolio_history: {
+    parameters: {
+      query: {
+        /** @description 取得開始日 (両端を含む。最大 3,660 日) */
+        from: string
+        /** @description 取得終了日 (両端を含む。最大 3,660 日) */
+        to: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PortfolioHistoryPointResponse'][]
+        }
+      }
+      /** @description 期間が不正または最大 3,660 日を超過 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   get_ref_group: {
     parameters: {
       query?: never
@@ -6125,6 +6434,57 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['Indicator']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_ref_indicator_observations: {
+    parameters: {
+      query?: {
+        /** @description 取得開始日 (YYYY-MM-DD, inclusive)。省略時は最古の観測日から取得 */
+        from?: string
+        /** @description 取得終了日 (YYYY-MM-DD, inclusive)。省略時は最新の観測日まで取得 */
+        to?: string
+      }
+      header?: never
+      path: {
+        /** @description 指標 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['IndicatorObservationResponse'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       404: {
@@ -6506,6 +6866,128 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_stock_financial_summaries: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 銘柄 ID */
+        stock_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StockFinancialSummaryResponse'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_stock_groups: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 銘柄 ID */
+        stock_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StockGroupMembershipResponse'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_stock_next_earnings: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 銘柄 ID */
+        stock_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            null | components['schemas']['StockNextEarningsResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_stock_valuation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 銘柄 ID */
+        stock_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json':
+            null | components['schemas']['StockValuationResponse']
         }
       }
       500: {
@@ -7763,7 +8245,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['Trade']
+          'application/json': components['schemas']['TradeDetailResponse']
         }
       }
       /** @description リクエストパラメータが不正 */

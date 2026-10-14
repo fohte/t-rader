@@ -6,8 +6,8 @@ use crate::api_doc::ApiDoc;
 use crate::handlers::{
     agent_config, agent_options, annotations, bars, calendar, comments, config, custom_indicators,
     group_axes, history, imports, ingest_status, note_kinds, note_links, note_predictions,
-    note_versions, notes, paper_accounts, refs, risk_policy, rss_feeds, strategies, tasks,
-    trade_notes, trades, triggers,
+    note_versions, notes, paper_accounts, portfolio_history, refs, risk_policy, rss_feeds,
+    stock_info, strategies, tasks, trade_notes, trades, triggers,
 };
 use crate::state::FrontendApiState;
 
@@ -17,6 +17,10 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(bars::list_bars))
         .routes(routes!(calendar::list_calendar_events))
         .routes(routes!(calendar::list_other_earnings))
+        .routes(routes!(stock_info::list_stock_groups))
+        .routes(routes!(stock_info::get_stock_next_earnings))
+        .routes(routes!(stock_info::get_stock_valuation))
+        .routes(routes!(stock_info::list_stock_financial_summaries))
         .routes(routes!(
             strategies::list_strategies,
             strategies::create_strategy
@@ -64,6 +68,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(refs::get_group))
         .routes(routes!(refs::list_indicators))
         .routes(routes!(refs::get_indicator))
+        .routes(routes!(refs::get_indicator_observations))
         .routes(routes!(refs::resolve_refs))
         .routes(routes!(notes::list_notes, notes::create_note))
         .routes(routes!(
@@ -95,6 +100,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(history::list_history))
         .routes(routes!(history::get_history))
         .routes(routes!(trades::trades_summary))
+        .routes(routes!(portfolio_history::get_portfolio_history))
         .routes(routes!(
             paper_accounts::list_paper_accounts,
             paper_accounts::create_paper_account
