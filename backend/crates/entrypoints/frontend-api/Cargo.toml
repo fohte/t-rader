@@ -11,6 +11,7 @@ core-domain = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
 jsonschema = { workspace = true }
+indoc = { workspace = true }
 rust_decimal = { workspace = true, features = ["serde-float", "serde-arbitrary-precision"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -21,7 +22,6 @@ utoipa-axum = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-indoc = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 

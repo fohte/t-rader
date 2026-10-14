@@ -8,16 +8,22 @@ const STRATEGY_SETTINGS_TABS = [
 
 export type StrategySettingsTab = (typeof STRATEGY_SETTINGS_TABS)[number]['key']
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function parseStrategySettingsTab(
   value: unknown,
 ): StrategySettingsTab | undefined {
   return STRATEGY_SETTINGS_TABS.find((tab) => tab.key === value)?.key
 }
 
-export function validateStrategySettingsSearch(
-  search: Record<string, unknown>,
-): { settingsTab?: StrategySettingsTab } {
-  const settingsTab = parseStrategySettingsTab(search.settingsTab)
+export function validateStrategySettingsSearch(search: unknown): {
+  settingsTab?: StrategySettingsTab
+} {
+  const settingsTab = parseStrategySettingsTab(
+    isRecord(search) ? search.settingsTab : undefined,
+  )
   return settingsTab ? { settingsTab } : {}
 }
 

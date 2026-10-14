@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { IndicatorSettingsPageHeader } from '#components/indicators/indicator-settings-page-header'
 import { IndicatorsPage } from '#components/indicators/indicators-page'
@@ -57,14 +57,6 @@ function StrategySettingsPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <Link
-          to="/strategies"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 戦略一覧に戻る
-        </Link>
-      </div>
       <header>
         <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">
           戦略設定 — {strategy.name}

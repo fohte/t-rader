@@ -22,6 +22,8 @@
 | purpose         | text                     |                                | true     |                                                           |                                       | 実行時に選択した agent_config の purpose キー。                                              |
 | as_of           | timestamp with time zone |                                | true     |                                                           |                                       | 実行の論理的な基準時刻。監査用に記録し、実際に参照する全データがこの時刻のものとは限らない。 |
 | auto_resumed_at | timestamp with time zone |                                | true     |                                                           |                                       | タスクを自動再開した時刻。                                                                   |
+| context_kind    | text                     |                                | true     |                                                           |                                       | タスク投入時に指定した文脈対象の種類。                                                       |
+| context_id      | text                     |                                | true     |                                                           |                                       | タスク投入時に指定した文脈対象の ID。                                                        |
 
 ## Constraints
 
@@ -63,6 +65,8 @@ erDiagram
   text purpose
   timestamp_with_time_zone as_of
   timestamp_with_time_zone auto_resumed_at
+  text context_kind
+  text context_id
 }
 "public.strategy_task_step" {
   uuid execution_step_id

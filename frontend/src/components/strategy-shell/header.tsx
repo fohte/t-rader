@@ -234,6 +234,14 @@ export function Header({
 
       {strategyId != null && (
         <div className="flex items-center gap-2 border-t border-border bg-surface-strong px-3 py-1.5 md:gap-3 md:px-5">
+          <Link
+            to="/strategies"
+            aria-label="戦略一覧へ戻る"
+            className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap font-mono text-xs text-muted-foreground-strong hover:text-foreground"
+          >
+            <span aria-hidden="true">←</span>
+            <span className="hidden md:inline">戦略一覧</span>
+          </Link>
           <StrategySwitcher />
           <nav
             aria-label="戦略ページ"
@@ -255,7 +263,7 @@ export function Header({
               className={NAV_PILL_INACTIVE}
               activeProps={{ className: NAV_PILL_ACTIVE }}
             >
-              実行履歴
+              実行
             </Link>
             <Link
               to="/strategies/$id/settings"

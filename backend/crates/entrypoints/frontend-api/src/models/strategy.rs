@@ -67,6 +67,34 @@ pub struct StrategyChatRequest {
     /// タスク投入先の agent_config の purpose キー。省略時は既定の設定を使い、存在しないキーは 400 になる。
     #[serde(default)]
     pub purpose: Option<String>,
+    #[serde(default)]
+    pub context: Option<StrategyChatContextRequest>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StrategyTaskContextKind {
+    Note,
+    Stock,
+    Trade,
+}
+
+impl StrategyTaskContextKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Note => "note",
+            Self::Stock => "stock",
+            Self::Trade => "trade",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StrategyChatContextRequest {
+    pub kind: StrategyTaskContextKind,
+    #[schema(min_length = 1, pattern = r"\S")]
+    pub id: String,
 }
 
 /// `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。
@@ -102,6 +130,10 @@ pub struct StrategyTaskStatusResponse {
     /// (データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。
     /// `None` はこのカラムが追加される前に作成された行に限られる。
     pub as_of: Option<DateTime<FixedOffset>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
 }
 
 /// `GET /api/strategies/:id/tasks` と `GET /api/tasks` の一覧要素。`steps`/`result_text`
@@ -123,6 +155,10 @@ pub struct StrategyTaskSummary {
     /// (データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。
     /// `None` はこのカラムが追加される前に作成された行に限られる。
     pub as_of: Option<DateTime<FixedOffset>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
 }
 
 impl From<TaskStatusView> for StrategyTaskSummary {
@@ -138,6 +174,8 @@ impl From<TaskStatusView> for StrategyTaskSummary {
             updated_at: view.updated_at,
             purpose: view.purpose,
             as_of: view.as_of,
+            context_kind: view.context_kind,
+            context_id: view.context_id,
         }
     }
 }

@@ -73,8 +73,9 @@ pub use stock_info::{
 };
 pub use strategy::{
     CreateStrategyRequest, InvestableAmountResponse, PutInvestableAmountRequest,
-    StrategyChatRequest, StrategyChatResponse, StrategyResponse, StrategyTaskStatusResponse,
-    StrategyTaskSummary, UpdateStrategyRequest,
+    StrategyChatContextRequest, StrategyChatRequest, StrategyChatResponse, StrategyResponse,
+    StrategyTaskContextKind, StrategyTaskStatusResponse, StrategyTaskSummary,
+    UpdateStrategyRequest,
 };
 pub use strategy_earnings_target::{
     AddStrategyEarningsTargetRequest, RemoveStrategyEarningsTargetQuery,
@@ -84,7 +85,7 @@ pub use trade::{
     CreateTradeRequest, PerformanceSummary, TradeDetailResponse, TradeListItem, TradeResponse,
     UpdateTradeRequest,
 };
-pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};
+pub use trade_note::{CreateTradeNoteRequest, NoteLinkedTradeResponse, TradeNoteResponse};
 pub use trigger::{
     CreateTriggerRequest, ListTriggersQuery, TriggerKind, TriggerResponse, UpdateTriggerRequest,
 };

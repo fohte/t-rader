@@ -79,6 +79,8 @@ erDiagram
   text purpose
   timestamp_with_time_zone as_of
   timestamp_with_time_zone auto_resumed_at
+  text context_kind
+  text context_id
 }
 "public.trigger" {
   uuid trigger_id

@@ -6,6 +6,7 @@ import { HistoricalVersionNotice } from '#components/note-detail/historical-vers
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
 import { NoteHistoryPanel } from '#components/note-detail/note-history-panel'
+import { NoteLinkedTradesPanel } from '#components/note-detail/note-linked-trades-panel'
 import { NoteLinksPanelView } from '#components/note-detail/note-links-panel'
 import {
   type NoteVersionContentTab,
@@ -295,6 +296,7 @@ function NoteDetailPage() {
               })
             }}
           />
+          <NoteLinkedTradesPanel noteId={noteId} />
           {!selectedVersion.is_current && (
             <HistoricalVersionNotice
               noteId={noteId}
@@ -307,13 +309,13 @@ function NoteDetailPage() {
               version={selectedVersion}
             />
           )}
-          <PredictionsPanel noteId={noteId} />
           <NoteLinksPanelView
             outgoing={noteLinks?.outgoing ?? []}
             incoming={noteLinks?.incoming ?? []}
             isPending={linksPending}
             isError={linksError}
           />
+          <PredictionsPanel noteId={noteId} />
         </aside>
       </div>
     </div>

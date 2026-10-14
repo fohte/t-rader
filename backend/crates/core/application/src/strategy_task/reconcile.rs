@@ -199,6 +199,8 @@ mod tests {
             deadline_at: now + chrono::Duration::minutes(1),
             purpose: None,
             as_of: None,
+            context_kind: None,
+            context_id: None,
             auto_resumed_at,
             created_at: now,
             updated_at: now,

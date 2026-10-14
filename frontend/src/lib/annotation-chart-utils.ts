@@ -1,6 +1,7 @@
 import type { UTCTimestamp } from 'lightweight-charts'
 
 import type { components } from '#lib/api/schema.gen'
+import { getChartBarDate } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
 type Annotation = components['schemas']['Annotation']
@@ -58,27 +59,6 @@ interface BarTimePoint {
   date: string
 }
 
-const tokyoDateFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'Asia/Tokyo',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
-function getTokyoDate(value: string): string | null {
-  // 日足のバーと同じ日本時間の日付で、保存時刻を表示用の足へ割り当てる。
-  const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return null
-
-  const parts = tokyoDateFormatter.formatToParts(date)
-  const year = parts.find((part) => part.type === 'year')?.value
-  const month = parts.find((part) => part.type === 'month')?.value
-  const day = parts.find((part) => part.type === 'day')?.value
-  if (year == null || month == null || day == null) return null
-
-  return `${year}-${month}-${day}`
-}
-
 function toUTCTimestamp(value: string): UTCTimestamp | null {
   const seconds = Math.floor(new Date(value).getTime() / 1000)
   if (!Number.isFinite(seconds)) return null
@@ -102,7 +82,7 @@ function getBarTimePoints(bars: Bar[]): BarTimePoint[] {
   return bars
     .map((bar) => ({
       time: toUTCTimestamp(bar.timestamp),
-      date: getTokyoDate(bar.timestamp),
+      date: getChartBarDate(bar.timestamp),
     }))
     .filter(
       (point): point is BarTimePoint =>
@@ -140,7 +120,7 @@ function bucketTimestamp(
     )
   }
 
-  const annotationDate = getTokyoDate(timestamp)
+  const annotationDate = getChartBarDate(timestamp)
   if (annotationDate == null) return null
   if (
     !clampToBars &&
@@ -183,8 +163,8 @@ export function bucketAnnotationPeriod(
   const last = points.at(-1)
   const startTime = toUTCTimestamp(timestampStart)
   const endTime = toUTCTimestamp(timestampEnd)
-  const startDate = getTokyoDate(timestampStart)
-  const endDate = getTokyoDate(timestampEnd)
+  const startDate = getChartBarDate(timestampStart)
+  const endDate = getChartBarDate(timestampEnd)
   if (
     first == null ||
     last == null ||
