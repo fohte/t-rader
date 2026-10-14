@@ -3,7 +3,9 @@ use uuid::Uuid;
 use crate::strategy_scope::StrategyScope;
 
 use super::error::{GetTaskError, ListTasksError};
-use super::types::{StrategyTask, StrategyTaskStep, TaskListQuery, TaskStatusView};
+use super::types::{
+    StrategyTask, StrategyTaskContext, StrategyTaskStep, TaskListQuery, TaskStatusView,
+};
 use super::{StrategyTaskRepositoryError, StrategyTaskUseCases};
 
 impl StrategyTaskUseCases {
@@ -29,12 +31,12 @@ impl StrategyTaskUseCases {
         &self,
         scope: StrategyScope,
         purpose: Option<String>,
+        context: Option<StrategyTaskContext>,
     ) -> Result<Vec<TaskStatusView>, ListTasksError> {
         self.list(TaskListQuery {
             strategy_id: Some(scope.id()),
             purpose,
-            context_kind: None,
-            context_id: None,
+            context,
         })
         .await
     }

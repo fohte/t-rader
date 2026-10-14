@@ -126,8 +126,7 @@ pub struct TaskStatusView {
 pub struct TaskListQuery {
     pub strategy_id: Option<Uuid>,
     pub purpose: Option<String>,
-    pub context_kind: Option<String>,
-    pub context_id: Option<String>,
+    pub context: Option<StrategyTaskContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

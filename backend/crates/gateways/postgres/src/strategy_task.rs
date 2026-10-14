@@ -183,11 +183,10 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         if let Some(purpose) = query.purpose {
             select = select.filter(strategy_task::Column::Purpose.eq(purpose));
         }
-        if let Some(context_kind) = query.context_kind {
-            select = select.filter(strategy_task::Column::ContextKind.eq(context_kind));
-        }
-        if let Some(context_id) = query.context_id {
-            select = select.filter(strategy_task::Column::ContextId.eq(context_id));
+        if let Some(context) = query.context {
+            select = select
+                .filter(strategy_task::Column::ContextKind.eq(context.kind))
+                .filter(strategy_task::Column::ContextId.eq(context.id));
         }
         select
             .order_by_desc(strategy_task::Column::CreatedAt)

@@ -6,7 +6,7 @@ use core_application::strategy_scope::{
 };
 use core_application::strategy_task::{
     GetTaskError, ListTasksError, StrategyTaskContext, StrategyTaskRepositoryError,
-    SubmitTaskError, TaskListQuery, TaskSource,
+    SubmitTaskError, TaskSource,
 };
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
@@ -38,7 +38,7 @@ fn paired_context(
         (None, None) => Ok(None),
         (Some(kind), Some(id)) if !id.trim().is_empty() => Ok(Some(StrategyTaskContext {
             kind: kind.as_str().to_string(),
-            id,
+            id: id.trim().to_string(),
         })),
         (Some(_), Some(_)) => Err(AppError::Validation("context_id must not be empty".into())),
         _ => Err(AppError::Validation(
@@ -52,6 +52,10 @@ async fn chat_prompt_and_context(
     prompt: &str,
     context: Option<StrategyChatContextRequest>,
 ) -> Result<(String, Option<StrategyTaskContext>), AppError> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Err(map_submit_error(SubmitTaskError::EmptyPrompt));
+    }
     let Some(context) = context else {
         return Ok((prompt.to_string(), None));
     };
@@ -67,12 +71,17 @@ async fn chat_prompt_and_context(
             (id.to_string(), format!("[[note:{id}]]"))
         }
         StrategyTaskContextKind::Stock => {
-            if !id
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || ":-".contains(character))
-            {
+            let valid_stock_id = match id.split_once(':') {
+                Some((country, code)) => {
+                    core_domain::stock_id::ForeignStockId::new(country, code).is_ok()
+                }
+                None => id
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-'),
+            };
+            if !valid_stock_id {
                 return Err(AppError::Validation(
-                    "context.id contains unsupported stock ID characters".into(),
+                    "context.id must be a valid stock ID".into(),
                 ));
             }
             (id.to_string(), format!("[[stock:{id}]]"))
@@ -235,7 +244,7 @@ pub async fn submit_strategy_chat(
     ),
     responses(
         (status = 200, body = StrategyTaskStatusResponse),
-        (status = 400, description = "パスパラメータまたは文脈フィルターが不正", body = ErrorResponse),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -329,7 +338,7 @@ pub async fn list_strategy_task_notes(
     ),
     responses(
         (status = 200, body = Vec<StrategyTaskSummary>),
-        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
+        (status = 400, description = "パスパラメータまたは文脈フィルターが不正", body = ErrorResponse),
         (status = 404, description = "戦略が存在しない", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -348,12 +357,7 @@ pub async fn list_strategy_tasks(
     let context = paired_context(query.context_kind, query.context_id)?;
     let views = state
         .strategy_task_use_cases
-        .list(TaskListQuery {
-            strategy_id: Some(scope.id()),
-            purpose: None,
-            context_kind: context.as_ref().map(|context| context.kind.clone()),
-            context_id: context.map(|context| context.id),
-        })
+        .list_for_strategy(scope, None, context)
         .await
         .map_err(map_list_task_error)?;
     Ok(Json(

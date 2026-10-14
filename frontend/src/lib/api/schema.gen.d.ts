@@ -7813,7 +7813,7 @@ export interface operations {
           'application/json': components['schemas']['StrategyTaskSummary'][]
         }
       }
-      /** @description パスパラメータが不正 */
+      /** @description パスパラメータまたは文脈フィルターが不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -7863,7 +7863,7 @@ export interface operations {
           'application/json': components['schemas']['StrategyTaskStatusResponse']
         }
       }
-      /** @description パスパラメータまたは文脈フィルターが不正 */
+      /** @description パスパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown

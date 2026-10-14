@@ -146,12 +146,13 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "context-strategy").await;
+        let trade_strategy_id = insert_test_strategy(&db, "trade-context-strategy").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
         let note_id = Uuid::from_u128(0x11).to_string();
         let trade_id = Uuid::from_u128(0x22);
-        insert_context_trade(&db, strategy_id, trade_id).await;
+        insert_context_trade(&db, trade_strategy_id, trade_id).await;
 
         let requests = [
             (
@@ -257,6 +258,93 @@ mod tests {
                     .into_iter()
                     .map(|prompt| (strategy_id, prompt))
                     .collect::<Vec<_>>(),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn submit_chat_rejects_invalid_contexts_before_submitting_a_task(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "context-validation-strategy").await;
+        let missing_trade_id = Uuid::from_u128(0x33);
+        let cases = [
+            (
+                json!({
+                    "prompt": "   ",
+                    "context": { "kind": "trade", "id": missing_trade_id },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "prompt must not be empty" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "note", "id": "" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must not be empty" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "note", "id": "invalid-id" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must be a note UUID" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "stock", "id": "us:abc" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must be a valid stock ID" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "trade", "id": "invalid-id" },
+                }),
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "context.id must be a trade UUID" }),
+            ),
+            (
+                json!({
+                    "prompt": "review this",
+                    "context": { "kind": "trade", "id": missing_trade_id },
+                }),
+                axum::http::StatusCode::NOT_FOUND,
+                json!({ "error": format!("trade {missing_trade_id} not found") }),
+            ),
+        ];
+        let mut responses = Vec::new();
+        for (body, _, _) in &cases {
+            let response = server
+                .post(&format!("/api/strategies/{strategy_id}/chat"))
+                .json(body)
+                .await;
+            responses.push((response.status_code(), response.json::<serde_json::Value>()));
+        }
+        let submitted: Vec<(Uuid, String)> = fake
+            .submitted
+            .lock()
+            .await
+            .iter()
+            .map(|task| (task.strategy_id, task.prompt.clone()))
+            .collect();
+
+        assert_eq!(
+            (responses, submitted),
+            (
+                cases
+                    .iter()
+                    .map(|(_, status, response)| (*status, response.clone()))
+                    .collect::<Vec<_>>(),
+                Vec::<(Uuid, String)>::new(),
             ),
         );
     }
@@ -786,6 +874,45 @@ mod tests {
                     "context_id": "ZX-104",
                 })],
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_strategy_tasks_rejects_incomplete_context_filters(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "context-filter-strategy").await;
+        let cases = [
+            (
+                format!("/api/strategies/{strategy_id}/tasks?context_kind=stock"),
+                json!({
+                    "error": "context_kind and context_id must be provided together"
+                }),
+            ),
+            (
+                format!("/api/strategies/{strategy_id}/tasks?context_id=ZX-104"),
+                json!({
+                    "error": "context_kind and context_id must be provided together"
+                }),
+            ),
+            (
+                format!("/api/strategies/{strategy_id}/tasks?context_kind=stock&context_id="),
+                json!({ "error": "context_id must not be empty" }),
+            ),
+        ];
+        let mut responses = Vec::new();
+        for (path, _) in &cases {
+            let response = server.get(path).await;
+            responses.push((response.status_code(), response.json::<serde_json::Value>()));
+        }
+
+        assert_eq!(
+            responses,
+            cases
+                .iter()
+                .map(|(_, response)| (axum::http::StatusCode::BAD_REQUEST, response.clone()))
+                .collect::<Vec<_>>(),
         );
     }
 
