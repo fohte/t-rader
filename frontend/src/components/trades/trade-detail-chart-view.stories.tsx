@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
 import { TradeDetailChartView } from '#components/trades/trade-detail-chart-view'
-import { toTradeListItem } from '#components/trades/trade-detail-model'
+import { toTradeMarker } from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
@@ -23,7 +23,7 @@ const trade: TradeDetail = {
   remaining_qty: 10,
 }
 
-const tradeMarker = toTradeListItem(trade)
+const tradeMarker = toTradeMarker(trade)
 
 const meta = {
   title: 'Trades/TradeDetailChartView',

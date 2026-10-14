@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
 import { TradeDetailChartView } from '#components/trades/trade-detail-chart-view'
-import { toTradeListItem } from '#components/trades/trade-detail-model'
+import { toTradeMarker } from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
+import type { TradeMarker } from '#lib/chart-utils'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
-type Trade = components['schemas']['TradeListItem']
 type Bar = components['schemas']['Bar']
 
 vi.mock('#components/candlestick-chart', () => ({
@@ -17,7 +17,7 @@ vi.mock('#components/candlestick-chart', () => ({
     selectedTradeId,
   }: {
     bars: Bar[]
-    trades?: Trade[]
+    trades?: TradeMarker[]
     selectedTradeId?: string
   }) => (
     <div role="img" aria-label="日足チャート">
@@ -46,7 +46,7 @@ const trade: TradeDetail = {
   remaining_qty: 10,
 }
 
-const tradeMarker = toTradeListItem(trade)
+const tradeMarker = toTradeMarker(trade)
 
 afterEach(cleanup)
 
@@ -114,6 +114,7 @@ describe('TradeDetailChartView', () => {
     const actual = JSON.stringify([
       screen.getByRole('img', { name: '日足チャート' }).textContent,
       screen.getByText('対象取引: 2099-02-10 買い 10 株').textContent,
+      screen.getByRole('group', { name: '取引マーカーの凡例' }).textContent,
     ])
 
     expect(actual).toBe(
@@ -128,6 +129,7 @@ describe('TradeDetailChartView', () => {
           selectedTradeId: 'fake-trade-buy',
         }),
         '対象取引: 2099-02-10 買い 10 株',
+        '▲買 ▼売',
       ]),
     )
   })

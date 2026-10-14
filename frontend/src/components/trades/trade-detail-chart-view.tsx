@@ -34,13 +34,23 @@ export function TradeDetailChartView({
         </p>
       </div>
       {state.status === 'ready' ? (
-        <CandlestickChart
-          bars={state.bars}
-          trades={state.trades}
-          selectedTradeId={trade.id}
-          currency={currency}
-          className="h-60 w-full min-w-0 border border-border bg-card"
-        />
+        <>
+          <CandlestickChart
+            bars={state.bars}
+            trades={state.trades}
+            selectedTradeId={trade.id}
+            currency={currency}
+            className="h-60 w-full min-w-0 border border-border bg-card"
+          />
+          <p
+            aria-label="取引マーカーの凡例"
+            className="flex gap-3 font-mono text-2xs"
+            role="group"
+          >
+            <span className="text-chart-2">▲買</span>{' '}
+            <span className="text-up">▼売</span>
+          </p>
+        </>
       ) : state.status === 'loading' ? (
         <div
           aria-label="取引日のチャートを読み込み中"

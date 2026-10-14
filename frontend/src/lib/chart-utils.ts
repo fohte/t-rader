@@ -9,6 +9,7 @@ import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 type Trade = components['schemas']['TradeListItem']
+export type TradeMarker = Pick<Trade, 'date' | 'id' | 'side'>
 export type ChartCurrency = 'JPY' | 'USD'
 
 /** 市場コードから価格表示に使う通貨を返す */
@@ -52,7 +53,7 @@ export function toVolumeData(bars: Bar[]): HistogramData[] {
 
 /** API の約定を同日の最初の足に対応するチャートマーカーへ変換する */
 export function toTradeMarkers(
-  trades: Trade[],
+  trades: TradeMarker[],
   bars: Bar[],
   selectedTradeId?: string,
 ): SeriesMarker<UTCTimestamp>[] {

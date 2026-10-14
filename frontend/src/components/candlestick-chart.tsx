@@ -35,11 +35,11 @@ import {
   toCandlestickData,
   toTradeMarkers,
   toVolumeData,
+  type TradeMarker,
 } from '#lib/chart-utils'
 import { cn } from '#lib/utils'
 
 type Bar = components['schemas']['Bar']
-type Trade = components['schemas']['TradeListItem']
 type BucketedAnnotation =
   | {
       id: string
@@ -57,7 +57,7 @@ interface BandLayout {
 
 interface CandlestickChartProps {
   bars: Bar[]
-  trades?: Trade[]
+  trades?: TradeMarker[]
   selectedTradeId?: string
   annotations?: ChartAnnotation[]
   onSelectAnnotation?: (id: string) => void

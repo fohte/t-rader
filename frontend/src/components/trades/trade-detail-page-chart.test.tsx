@@ -4,8 +4,8 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
-import { toTradeListItem } from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
+import type { TradeMarker } from '#lib/chart-utils'
 import { createStoryRouter } from '#storybook/story-router'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
@@ -19,7 +19,7 @@ vi.mock('#components/candlestick-chart', () => ({
     currency,
   }: {
     bars: components['schemas']['Bar'][]
-    trades?: Trade[]
+    trades?: TradeMarker[]
     selectedTradeId?: string
     currency?: string
   }) => (
@@ -51,7 +51,21 @@ const trade: TradeDetail = {
 }
 
 const trades: Trade[] = [
-  toTradeListItem(trade),
+  {
+    id: trade.id,
+    strategy_id: trade.strategy_id,
+    symbol: trade.symbol,
+    side: trade.side,
+    qty: trade.qty,
+    price: trade.price,
+    fee: trade.fee,
+    date: trade.date,
+    source: trade.source,
+    note: trade.note,
+    note_count: 0,
+    created_at: trade.created_at,
+    updated_at: trade.updated_at,
+  },
   {
     id: 'fake-trade-sell',
     strategy_id: trade.strategy_id,

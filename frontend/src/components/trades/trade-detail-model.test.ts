@@ -5,7 +5,7 @@ import {
   createTradeDetailChartState,
   createTradeReflectionDraft,
   getTradeDetailChartRange,
-  toTradeListItem,
+  toTradeMarker,
 } from '#components/trades/trade-detail-model'
 import type { components } from '#lib/api/schema.gen'
 
@@ -45,22 +45,12 @@ describe('getTradeDetailChartRange', () => {
   })
 })
 
-describe('toTradeListItem', () => {
+describe('toTradeMarker', () => {
   it('converts the selected trade into a chart marker', () => {
-    expect(toTradeListItem(chartTrade)).toEqual({
+    expect(toTradeMarker(chartTrade)).toEqual({
       id: 'fake-trade-buy',
-      strategy_id: 'fake-strategy',
-      symbol: 'FIC-01',
       side: 'buy',
-      qty: 10,
-      price: 1000,
-      fee: 10,
       date: '2099-02-10',
-      source: 'manual',
-      note: null,
-      note_count: 0,
-      created_at: '2099-02-10T00:00:00Z',
-      updated_at: '2099-02-10T00:00:00Z',
     })
   })
 })
@@ -107,7 +97,7 @@ describe('createTradeDetailChartState', () => {
     ).toEqual({
       status: 'ready',
       bars: TRADE_DETAIL_CHART_BARS,
-      trades: [toTradeListItem(chartTrade)],
+      trades: [toTradeMarker(chartTrade)],
     })
   })
 })

@@ -1,31 +1,21 @@
 import { formatYen } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
+import type { TradeMarker } from '#lib/chart-utils'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
-type Trade = components['schemas']['TradeListItem']
 type Bar = components['schemas']['Bar']
 
 export type TradeDetailChartState =
   | { status: 'loading' }
   | { status: 'error' }
   | { status: 'empty' }
-  | { status: 'ready'; bars: Bar[]; trades: Trade[] }
+  | { status: 'ready'; bars: Bar[]; trades: TradeMarker[] }
 
-export function toTradeListItem(trade: TradeDetail): Trade {
+export function toTradeMarker(trade: TradeDetail): TradeMarker {
   return {
     id: trade.id,
-    strategy_id: trade.strategy_id,
-    symbol: trade.symbol,
     side: trade.side,
-    qty: trade.qty,
-    price: trade.price,
-    fee: trade.fee,
     date: trade.date,
-    source: trade.source,
-    note: trade.note,
-    note_count: 0,
-    created_at: trade.created_at,
-    updated_at: trade.updated_at,
   }
 }
 
@@ -54,7 +44,7 @@ export function createTradeDetailChartState({
   bars: Bar[] | undefined
   barsPending: boolean
   barsError: boolean
-  trades: Trade[] | undefined
+  trades: TradeMarker[] | undefined
   selectedTrade: TradeDetail
 }): TradeDetailChartState {
   if (barsPending) return { status: 'loading' }
@@ -66,7 +56,7 @@ export function createTradeDetailChartState({
     (trade) => trade.id === selectedTrade.id,
   )
     ? tradeMarkers
-    : [...tradeMarkers, toTradeListItem(selectedTrade)]
+    : [...tradeMarkers, toTradeMarker(selectedTrade)]
 
   return { status: 'ready', bars, trades: tradesWithSelected }
 }

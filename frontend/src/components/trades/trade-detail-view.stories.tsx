@@ -3,7 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
 import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
-import { toTradeListItem } from '#components/trades/trade-detail-model'
+import { toTradeMarker } from '#components/trades/trade-detail-model'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
@@ -44,8 +44,8 @@ const buyingTrade: TradeDetail = {
   remaining_qty: 7,
 }
 
-const sellingTradeMarker = toTradeListItem(sellingTrade)
-const buyingTradeMarker = toTradeListItem(buyingTrade)
+const sellingTradeMarker = toTradeMarker(sellingTrade)
+const buyingTradeMarker = toTradeMarker(buyingTrade)
 
 const linkedNote: Note = {
   id: 'fake-note-human',
