@@ -2,28 +2,21 @@ import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
 import {
-  type ReviewNavigationSnapshot,
-  type ReviewQueueItem,
+  type ReviewNavigationTarget,
   reviewQueueItemKey,
   reviewQueueModel,
 } from '#components/review/review-queue-model'
 
 type ReviewNavigationBandProps =
-  | { isPending: true }
-  | {
-      isPending?: false
-      items: ReviewQueueItem[]
-      snapshot: ReviewNavigationSnapshot
-      currentItemKey: string
-    }
+  { isPending: true } | (ReviewNavigationTarget & { isPending?: false })
 
 function ReviewQueueItemLink({
   item,
   snapshot,
   children,
 }: {
-  item: ReviewQueueItem
-  snapshot: ReviewNavigationSnapshot
+  item: ReviewNavigationTarget['items'][number]
+  snapshot: ReviewNavigationTarget['snapshot']
   children: ReactNode
 }) {
   const key = reviewQueueItemKey(item)

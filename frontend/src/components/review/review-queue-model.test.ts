@@ -311,6 +311,20 @@ describe('getReviewNavigation', () => {
     })
   })
 
+  it('does not link to the current item when it is outside the opened snapshot', () => {
+    const item = createAnnotationItem(
+      'fake-annotation-a',
+      '2026-10-12T01:00:00Z',
+    )
+    const snapshot = reviewQueueModel.createNavigationSnapshot([])
+
+    expect(
+      reviewQueueModel.getNavigation(snapshot, 'annotation:fake-annotation-a', [
+        item,
+      ]),
+    ).toEqual({ kind: 'start', total: 1, firstItem: null })
+  })
+
   it('returns an empty state when there are no unread items', () => {
     const snapshot = reviewQueueModel.createNavigationSnapshot([
       createAnnotationItem('fake-annotation-a', '2026-10-12T01:00:00Z'),

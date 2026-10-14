@@ -39,9 +39,11 @@ function StatefulAnnotationDetail({
     <AnnotationDetail
       annotation={annotation}
       isPending={false}
-      reviewNavigation={null}
-      reviewNavigationPending={false}
-      reviewNavigationError={false}
+      reviewNavigationState={{
+        navigation: null,
+        isPending: false,
+        isError: false,
+      }}
       comments={[]}
       history={[]}
       stockName="サンプル銘柄"

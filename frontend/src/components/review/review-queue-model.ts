@@ -121,6 +121,10 @@ export interface ReviewQueueNavigationState {
   currentItemKey: string
 }
 
+export type ReviewNavigationTarget = ReviewQueueNavigationState & {
+  items: ReviewQueueItem[]
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -193,17 +197,16 @@ function getReviewNavigation(
   const firstRemainingItem = remainingItems.at(0)
   if (firstRemainingItem == null) return { kind: 'empty', total: 0 }
 
+  const firstOtherItem =
+    remainingItems.find(
+      (item) => reviewQueueItemKey(item) !== currentItemKey,
+    ) ?? null
   const currentIndex = snapshot.itemKeys.indexOf(currentItemKey)
   if (currentIndex === -1) {
     return {
       kind: 'start',
       total: remainingItems.length,
-      firstItem:
-        reviewQueueItemKey(firstRemainingItem) === currentItemKey
-          ? (remainingItems.find(
-              (item) => reviewQueueItemKey(item) !== currentItemKey,
-            ) ?? null)
-          : firstRemainingItem,
+      firstItem: firstOtherItem,
     }
   }
 
@@ -220,9 +223,7 @@ function getReviewNavigation(
   const nextItemWithoutCurrent =
     nextItem != null && reviewQueueItemKey(nextItem) !== currentItemKey
       ? nextItem
-      : (remainingItems.find(
-          (item) => reviewQueueItemKey(item) !== currentItemKey,
-        ) ?? null)
+      : firstOtherItem
   return {
     kind: 'item',
     total: remainingItems.length,

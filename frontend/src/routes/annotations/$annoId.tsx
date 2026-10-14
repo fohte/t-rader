@@ -122,9 +122,7 @@ function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
     <AnnotationDetail
       annotation={annotation}
       isPending={annoPending}
-      reviewNavigation={reviewNavigationState.navigation}
-      reviewNavigationPending={reviewNavigationState.isPending}
-      reviewNavigationError={reviewNavigationState.isError}
+      reviewNavigationState={reviewNavigationState}
       comments={comments}
       history={history}
       stockName={stockRef.name}

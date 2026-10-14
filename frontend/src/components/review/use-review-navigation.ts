@@ -3,21 +3,24 @@ import { useEffect, useState } from 'react'
 
 import {
   type ReviewNavigationSnapshot,
-  type ReviewQueueItem,
+  type ReviewNavigationTarget,
   reviewQueueModel,
 } from '#components/review/review-queue-model'
 import { useReviewQueue } from '#components/review/use-review-queue'
 
-export function useReviewNavigation(currentItemKey: string): {
-  navigation: {
-    items: ReviewQueueItem[]
-    snapshot: ReviewNavigationSnapshot
-    currentItemKey: string
-  } | null
+export interface ReviewNavigationViewState {
+  navigation: ReviewNavigationTarget | null
   isPending: boolean
   isError: boolean
+}
+
+export interface ReviewNavigationResult extends ReviewNavigationViewState {
   invalidate: () => void
-} {
+}
+
+export function useReviewNavigation(
+  currentItemKey: string,
+): ReviewNavigationResult {
   const reviewQueue = useReviewQueue()
   const historyState = useRouterState({
     select: (routerState) =>
@@ -68,7 +71,8 @@ export function useReviewNavigation(currentItemKey: string): {
             snapshot,
             currentItemKey,
           },
-    isPending: snapshot == null && !reviewQueue.isError,
+    isPending:
+      reviewQueue.isPending || (snapshot == null && !reviewQueue.isError),
     isError: reviewQueue.isError,
     invalidate: reviewQueue.invalidate,
   }

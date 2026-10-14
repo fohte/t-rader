@@ -3,10 +3,7 @@ import type { SyntheticEvent } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
 import { ReviewNavigationBand } from '#components/review/review-navigation-band'
-import {
-  type ReviewNavigationSnapshot,
-  type ReviewQueueItem,
-} from '#components/review/review-queue-model'
+import type { ReviewNavigationViewState } from '#components/review/use-review-navigation'
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
@@ -19,13 +16,7 @@ type ChangeHistory = components['schemas']['ChangeHistory']
 type AnnotationDetailProps = {
   annotation: Annotation | undefined
   isPending: boolean
-  reviewNavigation: {
-    items: ReviewQueueItem[]
-    snapshot: ReviewNavigationSnapshot
-    currentItemKey: string
-  } | null
-  reviewNavigationPending: boolean
-  reviewNavigationError: boolean
+  reviewNavigationState: ReviewNavigationViewState
   comments: Comment[] | undefined
   history: ChangeHistory[] | undefined
   stockName: string | null
@@ -58,9 +49,7 @@ function formatDateTime(iso: string): string {
 export function AnnotationDetail({
   annotation,
   isPending,
-  reviewNavigation,
-  reviewNavigationPending,
-  reviewNavigationError,
+  reviewNavigationState,
   comments,
   history,
   stockName,
@@ -78,16 +67,20 @@ export function AnnotationDetail({
   onAddComment,
   onCommentDraftChange,
 }: AnnotationDetailProps) {
+  const {
+    navigation,
+    isPending: isNavigationPending,
+    isError: isNavigationError,
+  } = reviewNavigationState
+
   return (
     <div className="space-y-5 font-sans text-foreground">
       <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
-      {reviewNavigation != null && (
-        <ReviewNavigationBand {...reviewNavigation} />
-      )}
-      {reviewNavigation == null && reviewNavigationPending && (
+      {navigation != null && <ReviewNavigationBand {...navigation} />}
+      {navigation == null && isNavigationPending && (
         <ReviewNavigationBand isPending />
       )}
-      {reviewNavigationError && (
+      {isNavigationError && (
         <p role="alert" className="font-mono text-xs text-status-rejected">
           未読の移動情報を読み込めませんでした。
         </p>

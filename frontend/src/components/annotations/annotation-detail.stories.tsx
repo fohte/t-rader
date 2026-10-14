@@ -137,9 +137,11 @@ const meta = {
   args: {
     annotation: unreadAnnotation,
     isPending: false,
-    reviewNavigation: unreadReviewNavigation,
-    reviewNavigationPending: false,
-    reviewNavigationError: false,
+    reviewNavigationState: {
+      navigation: unreadReviewNavigation,
+      isPending: false,
+      isError: false,
+    },
     comments: [],
     history: [],
     stockName: 'サンプル銘柄',
@@ -192,9 +194,13 @@ export const ApprovedWithRelatedItems: Story = {
   name: 'shows an approved annotation with comments and a linked note.',
   args: {
     annotation: approvedAnnotation,
-    reviewNavigation: {
-      ...unreadReviewNavigation,
-      currentItemKey: `annotation:${approvedAnnotation.id}`,
+    reviewNavigationState: {
+      navigation: {
+        ...unreadReviewNavigation,
+        currentItemKey: `annotation:${approvedAnnotation.id}`,
+      },
+      isPending: false,
+      isError: false,
     },
     comments: [approvedComment],
     history: [historyEntry],
@@ -205,9 +211,13 @@ export const RejectedWithComments: Story = {
   name: 'shows a rejected annotation with comments and no linked note.',
   args: {
     annotation: rejectedAnnotation,
-    reviewNavigation: {
-      ...unreadReviewNavigation,
-      currentItemKey: `annotation:${rejectedAnnotation.id}`,
+    reviewNavigationState: {
+      navigation: {
+        ...unreadReviewNavigation,
+        currentItemKey: `annotation:${rejectedAnnotation.id}`,
+      },
+      isPending: false,
+      isError: false,
     },
     comments: [rejectedComment],
   },
@@ -222,22 +232,38 @@ export const NoUnreadItems: Story = {
   name: 'shows the review link when no unread items remain.',
   args: {
     annotation: approvedAnnotation,
-    reviewNavigation: {
-      ...unreadReviewNavigation,
-      items: [],
-      currentItemKey: `annotation:${approvedAnnotation.id}`,
+    reviewNavigationState: {
+      navigation: {
+        ...unreadReviewNavigation,
+        items: [],
+        currentItemKey: `annotation:${approvedAnnotation.id}`,
+      },
+      isPending: false,
+      isError: false,
     },
   },
 }
 
 export const ReviewNavigationError: Story = {
   name: 'shows an error when unread navigation cannot be loaded.',
-  args: { reviewNavigation: null, reviewNavigationError: true },
+  args: {
+    reviewNavigationState: {
+      navigation: null,
+      isPending: false,
+      isError: true,
+    },
+  },
 }
 
 export const ReviewNavigationLoading: Story = {
   name: 'shows the unread navigation loading state after direct opening.',
-  args: { reviewNavigation: null, reviewNavigationPending: true },
+  args: {
+    reviewNavigationState: {
+      navigation: null,
+      isPending: true,
+      isError: false,
+    },
+  },
 }
 
 export const ApprovalError: Story = {
