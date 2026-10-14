@@ -1,24 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
-
-import { PendingNoteVersionsView } from '#components/note-detail/pending-note-versions-view'
-import { $api } from '#lib/api/client'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/note-versions/pending')({
-  component: PendingNoteVersionsPage,
+  beforeLoad: () => {
+    // eslint-disable-next-line @typescript-eslint/only-throw-error, no-restricted-syntax -- TanStack Router の redirect API は throw を要求する
+    throw redirect({ to: '/review' })
+  },
 })
-
-function PendingNoteVersionsPage() {
-  const {
-    data: versions,
-    isPending,
-    isError,
-  } = $api.useQuery('get', '/api/note-versions/pending')
-
-  return (
-    <PendingNoteVersionsView
-      versions={versions ?? []}
-      isPending={isPending}
-      hasError={isError}
-    />
-  )
-}

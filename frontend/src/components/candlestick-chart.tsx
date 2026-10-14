@@ -24,7 +24,12 @@ import {
   getAnnotationPeriodLineRange,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
-import { getChartThemeOptions, observeChartTheme } from '#lib/chart-theme'
+import {
+  getChartThemeColors,
+  getChartThemeOptions,
+  observeChartResize,
+  observeChartTheme,
+} from '#lib/chart-theme'
 import {
   type ChartCurrency,
   toCandlestickData,
@@ -91,12 +96,13 @@ export function CandlestickChart({
     const container = containerRef.current
     if (!container) return
 
+    const isDark = document.documentElement.classList.contains('dark')
+    const colors = getChartThemeColors(isDark)
+
     const chart = createChart(container, {
+      ...getChartThemeOptions(colors),
       width: container.clientWidth,
       height: container.clientHeight,
-      ...getChartThemeOptions(
-        document.documentElement.classList.contains('dark'),
-      ),
     })
     chartRef.current = chart
 
@@ -138,20 +144,23 @@ export function CandlestickChart({
     isInitialDataRef.current = true
 
     // コンテナサイズ追従
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect
+    const disconnectResizeObserver = observeChartResize(
+      container,
+      (width, height) => {
         chart.applyOptions({ width, height })
-      }
-    })
-    resizeObserver.observe(container)
+      },
+    )
 
     // ダークモード追従: html 要素の class 変更を監視
-    const disconnectThemeObserver = observeChartTheme(chart)
+    const disconnectThemeObserver = observeChartTheme(() => {
+      const dark = document.documentElement.classList.contains('dark')
+      const nextColors = getChartThemeColors(dark)
+      chart.applyOptions(getChartThemeOptions(nextColors))
+    })
 
     return () => {
       disconnectThemeObserver()
-      resizeObserver.disconnect()
+      disconnectResizeObserver()
       tradeMarkersRef.current?.detach()
       tradeMarkersRef.current = null
       chart.remove()
