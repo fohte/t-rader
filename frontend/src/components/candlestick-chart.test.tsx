@@ -45,7 +45,7 @@ const chartMocks = vi.hoisted(() => {
     height: vi.fn(() => 24),
     subscribeSizeChange: vi.fn(),
     subscribeVisibleTimeRangeChange: vi.fn(),
-    timeToCoordinate: vi.fn(() => 36),
+    timeToCoordinate: vi.fn<(time: UTCTimestamp) => number>(() => 36),
     unsubscribeSizeChange: vi.fn(),
     unsubscribeVisibleTimeRangeChange: vi.fn(),
     width: vi.fn(() => 120),
@@ -68,6 +68,7 @@ const chartMocks = vi.hoisted(() => {
     candlestickSeries,
     annotationPriceSeries,
     volumePriceScale,
+    timeScale,
     seriesMarkers,
   }
 })
@@ -135,6 +136,29 @@ afterEach(() => {
 })
 
 describe('CandlestickChart', () => {
+  it('places a marker at the selected daily bar', () => {
+    render(
+      <CandlestickChart
+        bars={bars}
+        highlightedTimestamp={firstBar.timestamp}
+      />,
+    )
+
+    const readRenderedState = () => ({
+      markerStyle: screen
+        .getByRole('img', { name: '2025-04-10 のチャート上の位置' })
+        .getAttribute('style'),
+      targetTimes: chartMocks.timeScale.timeToCoordinate.mock.calls.map(
+        ([time]) => time,
+      ),
+    })
+
+    expect(readRenderedState()).toEqual({
+      markerStyle: 'left: 36px; bottom: 24px;',
+      targetTimes: [1744243200],
+    })
+  })
+
   it('updates trade markers when trades arrive after chart mount', () => {
     const { rerender } = render(<CandlestickChart bars={bars} trades={[]} />)
 

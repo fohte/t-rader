@@ -12,6 +12,36 @@ import type { ChartCurrency } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
 type Trade = components['schemas']['TradeListItem']
+const priceFormatter = new Intl.NumberFormat('ja-JP', {
+  maximumFractionDigits: 2,
+})
+
+type SelectedDateStatus =
+  | { kind: 'loading'; label: string }
+  | { kind: 'error'; label: string }
+  | { kind: 'missing'; label: string }
+  | { kind: 'bar'; label: string; bar: Bar }
+
+function getSelectedDateStatus(
+  date: string | undefined,
+  bar: Bar | null | undefined,
+  isLoading: boolean,
+  hasError: boolean,
+): SelectedDateStatus | null {
+  if (date == null) return null
+  if (isLoading)
+    return { kind: 'loading', label: `${date} の日足を読み込み中です` }
+  if (hasError)
+    return { kind: 'error', label: `${date} の日足データを取得できません` }
+  if (bar == null)
+    return { kind: 'missing', label: `${date} の日足データがありません` }
+
+  return {
+    kind: 'bar',
+    label: `${date} 始 ${priceFormatter.format(bar.open)} 高 ${priceFormatter.format(bar.high)} 安 ${priceFormatter.format(bar.low)} 終 ${priceFormatter.format(bar.close)}`,
+    bar,
+  }
+}
 
 export function StockPageChart({
   stockId,
@@ -25,6 +55,10 @@ export function StockPageChart({
   currency,
   isLoading = false,
   hasError = false,
+  selectedDate,
+  selectedDateLoading = false,
+  selectedDateError = false,
+  selectedDateBar,
 }: {
   stockId: string
   bars: Bar[]
@@ -37,7 +71,18 @@ export function StockPageChart({
   currency?: ChartCurrency
   isLoading?: boolean
   hasError?: boolean
+  selectedDate?: string
+  selectedDateLoading?: boolean
+  selectedDateError?: boolean
+  selectedDateBar?: Bar | null
 }) {
+  const selectedDateStatus = getSelectedDateStatus(
+    selectedDate,
+    selectedDateBar,
+    selectedDateLoading,
+    selectedDateError,
+  )
+
   return (
     <section className="min-w-0 space-y-2" aria-label="銘柄チャート">
       <div className="flex items-center justify-between gap-2">
@@ -78,10 +123,48 @@ export function StockPageChart({
           annotations={annotations}
           onSelectAnnotation={onSelectAnnotation}
           selectedAnnotationId={selectedAnnotationId}
+          highlightedTimestamp={selectedDateBar?.timestamp}
           currency={currency}
           intraday={timeframe !== '1d' && timeframe !== '1w'}
           className="h-55 w-full min-w-0 sm:h-110 lg:h-120"
         />
+      )}
+      {selectedDate != null && selectedDateStatus != null && (
+        <div
+          aria-label={selectedDateStatus.label}
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 border border-border bg-card px-3 py-2 font-mono text-xs"
+          role="status"
+        >
+          <span className="text-muted-foreground">{selectedDate}</span>
+          {selectedDateStatus.kind === 'loading' ? (
+            <span className="text-muted-foreground">読み込み中</span>
+          ) : selectedDateStatus.kind === 'error' ? (
+            <span className="text-destructive">取得に失敗しました</span>
+          ) : selectedDateStatus.kind === 'missing' ? (
+            <span className="text-muted-foreground">
+              この日の四本値はありません
+            </span>
+          ) : (
+            <dl className="flex flex-wrap gap-x-3 gap-y-1">
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">始</dt>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.open)}</dd>
+              </div>
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">高</dt>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.high)}</dd>
+              </div>
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">安</dt>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.low)}</dd>
+              </div>
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">終</dt>
+                <dd>{priceFormatter.format(selectedDateStatus.bar.close)}</dd>
+              </div>
+            </dl>
+          )}
+        </div>
       )}
     </section>
   )

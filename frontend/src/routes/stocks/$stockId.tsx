@@ -10,25 +10,44 @@ import { $api, fetchClient } from '#lib/api/client'
 import { getBarsRange } from '#lib/chart-range'
 import { getChartCurrency } from '#lib/chart-utils'
 import {
+  findDailyBarForDate,
+  getDailyBarsRangeAroundDate,
+  validateStockPageSearch,
+} from '#lib/stock-page-date'
+import {
   buildStockQuote,
   getStockPageListState,
   resolveStockLookup,
 } from '#lib/stock-page-model'
 
 export const Route = createFileRoute('/stocks/$stockId')({
+  validateSearch: validateStockPageSearch,
   component: StockPage,
 })
 
 function StockPage() {
   const { stockId } = Route.useParams()
+  const { date: requestedDate } = Route.useSearch()
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null)
   const [activeTab, setActiveTab] =
     useState<ComponentProps<typeof StockPageView>['activeTab']>('annotations')
-  const chartRange = useMemo(() => getBarsRange(timeframe), [timeframe])
+  const chartRange = useMemo(() => {
+    if (timeframe === '1d' && requestedDate != null) {
+      return (
+        getDailyBarsRangeAroundDate(requestedDate) ?? getBarsRange(timeframe)
+      )
+    }
+    return getBarsRange(timeframe)
+  }, [requestedDate, timeframe])
   const dailyRange = useMemo(() => getBarsRange('1d'), [])
+  const selectedDateRange = useMemo(
+    () =>
+      requestedDate == null ? null : getDailyBarsRangeAroundDate(requestedDate),
+    [requestedDate],
+  )
 
   const stockQuery = useQuery({
     queryKey: ['stock-page-stock', stockId],
@@ -63,6 +82,20 @@ function StockPage() {
       },
     },
   })
+  const selectedDateBarsQuery = $api.useQuery(
+    'get',
+    '/api/bars',
+    {
+      params: {
+        query: {
+          instrument_id: stockId,
+          timeframe: '1d',
+          ...(selectedDateRange ?? dailyRange),
+        },
+      },
+    },
+    { enabled: requestedDate != null && timeframe !== '1d' },
+  )
   const annotationsQuery = $api.useQuery('get', '/api/annotations', {
     params: { query: { target_symbol: stockId } },
   })
@@ -91,6 +124,28 @@ function StockPage() {
     '/api/stocks/{stock_id}/financial-summaries',
     { params: { path: { stock_id: stockId } } },
   )
+  const selectedDateBar = useMemo(
+    () =>
+      requestedDate == null
+        ? null
+        : findDailyBarForDate(
+            (timeframe === '1d'
+              ? chartBarsQuery.data
+              : selectedDateBarsQuery.data) ?? [],
+            requestedDate,
+          ),
+    [chartBarsQuery.data, requestedDate, selectedDateBarsQuery.data, timeframe],
+  )
+  const selectedDateLoading =
+    requestedDate != null &&
+    (timeframe === '1d'
+      ? chartBarsQuery.isPending
+      : selectedDateBarsQuery.isPending)
+  const selectedDateError =
+    requestedDate != null &&
+    (timeframe === '1d'
+      ? chartBarsQuery.isError
+      : selectedDateBarsQuery.isError)
 
   if (stockQuery.isPending) return <StockPageState state="loading" />
   if (stockQuery.error != null) return <StockPageState state="error" />
@@ -135,6 +190,10 @@ function StockPage() {
       currency={getChartCurrency(stock.market)}
       chartLoading={chartBarsQuery.isPending}
       chartError={chartBarsQuery.isError}
+      selectedDate={requestedDate}
+      selectedDateLoading={selectedDateLoading}
+      selectedDateError={selectedDateError}
+      selectedDateBar={selectedDateBar}
       annotationState={getStockPageListState(annotationsQuery)}
       noteState={getStockPageListState(notesQuery)}
       tradeState={getStockPageListState(tradesQuery)}
