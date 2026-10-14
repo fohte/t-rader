@@ -60,6 +60,30 @@ export const StrategyHome: Story = {
   ),
 }
 
+export const StrategyHomeMobileViewport: Story = {
+  name: 'shows the arrow-only strategy back link on a phone viewport.',
+  globals: { viewport: { value: 'mobileStrategyHeader' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileStrategyHeader: {
+          name: 'Mobile strategy header',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
+  render: () => (
+    <RouterProvider
+      router={createHeaderRouter('/strategies/demo-strategy/performance')}
+    />
+  ),
+}
+
 export const StrategyRuns: Story = {
   name: 'shows the strategy execution tab as active.',
   render: () => (
