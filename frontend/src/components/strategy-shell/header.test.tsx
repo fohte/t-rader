@@ -115,6 +115,15 @@ function getStrategyNavigationOutput(
   }
 }
 
+function getStrategyBackLinkOutput(backLink: HTMLElement, pathname: string) {
+  return {
+    label: backLink.getAttribute('aria-label'),
+    href: backLink.getAttribute('href'),
+    text: backLink.textContent,
+    pathname,
+  }
+}
+
 function getExpectedStrategyNavigation(pathname: string, activeTab: string) {
   return {
     pathname,
@@ -125,9 +134,9 @@ function getExpectedStrategyNavigation(pathname: string, activeTab: string) {
         active: false,
       },
       {
-        label: '実行履歴',
+        label: '実行',
         href: `/strategies/${STRATEGY_ID}/runs`,
-        active: activeTab === '実行履歴',
+        active: activeTab === '実行',
       },
       {
         label: '設定',
@@ -318,9 +327,9 @@ describe('Header', () => {
 
   it.each([
     {
-      label: '実行履歴',
+      label: '実行',
       path: `/strategies/${STRATEGY_ID}/runs`,
-      activeTab: '実行履歴',
+      activeTab: '実行',
     },
   ])(
     '戦略の $label 画面へ移動して該当タブを active にする',
@@ -343,4 +352,25 @@ describe('Header', () => {
       })
     },
   )
+
+  it('戦略ページから戦略一覧へ戻る', async () => {
+    const user = userEvent.setup()
+    const router = renderHeader()
+    const backLink = await screen.findByRole('link', {
+      name: '戦略一覧へ戻る',
+    })
+
+    await user.click(backLink)
+
+    await waitFor(() => {
+      expect(
+        getStrategyBackLinkOutput(backLink, router.state.location.pathname),
+      ).toEqual({
+        label: '戦略一覧へ戻る',
+        href: '/strategies',
+        text: '←戦略一覧',
+        pathname: '/strategies',
+      })
+    })
+  })
 })

@@ -61,7 +61,7 @@ export const StrategyHome: Story = {
 }
 
 export const StrategyRuns: Story = {
-  name: 'shows the strategy run history tab as active.',
+  name: 'shows the strategy execution tab as active.',
   render: () => (
     <RouterProvider
       router={createHeaderRouter('/strategies/demo-strategy/runs')}

@@ -100,15 +100,6 @@ function StrategyPerformancePage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      <div>
-        <Link
-          to="/strategies"
-          className="font-mono text-xs text-muted-foreground hover:text-foreground"
-        >
-          &lt; 戦略一覧に戻る
-        </Link>
-      </div>
-
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
           <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
