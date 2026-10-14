@@ -63,7 +63,21 @@ export const ReasonRequiredWithoutComments: Story = {
 export const MobileDecisionActions: Story = {
   name: 'pins the decision actions to the bottom on a narrow screen.',
   args: { pinDecisionActionsOnMobile: true },
-  parameters: { viewport: { defaultViewport: 'mobile1' } },
+  globals: { viewport: { value: 'mobileNoteVersionReview' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileNoteVersionReview: {
+          name: 'Mobile note version review',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
 }
 
 export const CommentAllowsEmptyReason: Story = {
