@@ -9,6 +9,10 @@ import {
   TaskExecutionTree,
   type TaskStep,
 } from '#components/strategy-shell/task-execution-tree'
+import {
+  TaskRunNotes,
+  type TaskRunNotesState,
+} from '#components/strategy-shell/task-run-notes'
 import { Skeleton } from '#components/ui/skeleton'
 
 export interface TaskRunViewProps {
@@ -24,7 +28,8 @@ export interface TaskRunViewProps {
   } | null
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
-  generatedNotesCount: number
+  notes: { id: string; title: string }[]
+  notesState: TaskRunNotesState
   traceUrlTemplate?: string
   /** task の取得に失敗したか (`task` が null の間、ロード中との表示を出し分けるために使う) */
   taskLoadError?: boolean
@@ -80,7 +85,8 @@ export function TaskRunView({
   task,
   steps,
   configPhases,
-  generatedNotesCount,
+  notes,
+  notesState,
   traceUrlTemplate,
   taskLoadError = false,
 }: TaskRunViewProps): React.ReactElement {
@@ -137,10 +143,6 @@ export function TaskRunView({
                   label: 'ステップ',
                   value: `${String(steps.filter((s) => s.status === 'completed').length)}/${String(steps.length)}`,
                 },
-                {
-                  label: '作成・更新ノート',
-                  value: generatedNotesCount.toLocaleString(),
-                },
               ] satisfies StatItem[]
             }
           />
@@ -152,6 +154,8 @@ export function TaskRunView({
                 {task.errorSummary}
               </pre>
             )}
+
+          <TaskRunNotes notes={notes} state={notesState} />
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-task-run)">
             <div className="border border-border bg-card p-4">
