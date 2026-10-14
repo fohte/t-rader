@@ -34,9 +34,8 @@ function renderTabs(initialTab: 'general' | 'triggers' | 'indicators') {
 function StorySettingsTabs() {
   const activeTab = useRouterState({
     select: (state) =>
-      validateStrategySettingsSearch(
-        Object.fromEntries(new URLSearchParams(state.location.searchStr)),
-      ).settingsTab ?? 'general',
+      validateStrategySettingsSearch(state.location.search).settingsTab ??
+      'general',
   })
   return (
     <StrategySettingsTabs strategyId="demo-strategy" activeTab={activeTab} />
