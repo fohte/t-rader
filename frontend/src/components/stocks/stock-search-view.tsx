@@ -82,8 +82,8 @@ export function StockSearchView({
               {stocks.map((stock) => (
                 <li key={stock.id}>
                   <Link
-                    to="/charts/$instrumentId"
-                    params={{ instrumentId: stock.id }}
+                    to="/stocks/$stockId"
+                    params={{ stockId: stock.id }}
                     onClick={() => {
                       onOpenChange(false)
                     }}

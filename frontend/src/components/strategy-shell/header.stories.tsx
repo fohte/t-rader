@@ -21,11 +21,11 @@ function createHeaderRouter(initialPath: string, menuOpen = false) {
       '/annotations',
       '/annotations/$annoId',
       '/runs',
-      '/note-versions/pending',
+      '/review',
       '/calendar',
       '/settings',
       '/settings/rss-feeds',
-      '/charts/$instrumentId',
+      '/stocks/$stockId',
     ],
     initialPath,
   })

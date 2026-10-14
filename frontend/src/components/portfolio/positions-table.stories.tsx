@@ -35,7 +35,7 @@ function withChartRouter(Story: ComponentType) {
           <Story />
         ),
         {
-          paths: ['/charts/$instrumentId'],
+          paths: ['/stocks/$stockId'],
         },
       )}
     />

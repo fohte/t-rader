@@ -16,7 +16,7 @@ const meta = {
             <StockNameLink {...args} />
           </div>
         ),
-        { paths: ['/charts/$instrumentId'] },
+        { paths: ['/stocks/$stockId'] },
       )}
     />
   ),
