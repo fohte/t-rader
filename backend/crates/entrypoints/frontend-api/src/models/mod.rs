@@ -84,7 +84,7 @@ pub use trade::{
     CreateTradeRequest, PerformanceSummary, TradeDetailResponse, TradeListItem, TradeResponse,
     UpdateTradeRequest,
 };
-pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};
+pub use trade_note::{CreateTradeNoteRequest, NoteLinkedTradeResponse, TradeNoteResponse};
 pub use trigger::{
     CreateTriggerRequest, ListTriggersQuery, TriggerKind, TriggerResponse, UpdateTriggerRequest,
 };

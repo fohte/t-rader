@@ -282,6 +282,21 @@ impl TradeRepository for PostgresTradeRepository {
             .map_err(repository_error)
     }
 
+    async fn list_trades_for_note(
+        &self,
+        note_id: Uuid,
+    ) -> Result<Vec<Trade>, TradeRepositoryError> {
+        trade::Entity::find()
+            .inner_join(trade_note::Entity)
+            .filter(trade_note::Column::NoteId.eq(note_id))
+            .order_by_desc(trade::Column::Date)
+            .order_by_desc(trade::Column::CreatedAt)
+            .all(&self.db)
+            .await
+            .map(|rows| rows.into_iter().map(to_domain).collect())
+            .map_err(repository_error)
+    }
+
     async fn insert_note_link(
         &self,
         transaction: &UnitOfWorkTransaction,

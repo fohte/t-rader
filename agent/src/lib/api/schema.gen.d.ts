@@ -725,6 +725,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/notes/{id}/trades': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートに紐付いた取引一覧 */
+    get: operations['list_note_trades']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes/{id}/versions': {
     parameters: {
       query?: never
@@ -2007,6 +2024,14 @@ export interface components {
       version_id?: string | null
       /** Format: int32 */
       version_no?: number | null
+    }
+    NoteLinkedTrade: {
+      /** Format: date */
+      date: string
+      /** Format: uuid */
+      id: string
+      side: string
+      symbol: string
     }
     NoteLinksResponse: {
       incoming: components['schemas']['NoteLinkItem'][]
@@ -5774,6 +5799,52 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['Prediction'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_note_trades: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteLinkedTrade'][]
         }
       }
       400: {

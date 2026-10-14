@@ -84,6 +84,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(note_versions::list_pending_note_versions))
         .routes(routes!(note_links::get_note_links))
         .routes(routes!(note_predictions::list_note_predictions))
+        .routes(routes!(trade_notes::list_note_trades))
         .routes(routes!(
             annotations::list_annotations,
             annotations::create_annotation
