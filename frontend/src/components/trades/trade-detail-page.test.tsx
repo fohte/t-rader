@@ -140,7 +140,7 @@ describe('TradeDetailPage', () => {
     const router = createStoryRouter(
       () => <TradeDetailPage tradeId="fake-trade-sell" />,
       {
-        paths: ['/trades', '/charts/$instrumentId', '/notes/$noteId'],
+        paths: ['/trades', '/stocks/$stockId', '/notes/$noteId'],
       },
     )
     const user = userEvent.setup()

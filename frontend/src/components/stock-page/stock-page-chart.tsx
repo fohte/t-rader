@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+
 import { CandlestickChart } from '#components/candlestick-chart'
 import {
   type Timeframe,
@@ -42,6 +44,7 @@ function getSelectedDateStatus(
 }
 
 export function StockPageChart({
+  stockId,
   bars,
   trades,
   annotations,
@@ -57,6 +60,7 @@ export function StockPageChart({
   selectedDateError = false,
   selectedDateBar,
 }: {
+  stockId: string
   bars: Bar[]
   trades: Trade[]
   annotations: ChartAnnotation[]
@@ -97,6 +101,14 @@ export function StockPageChart({
           variant="compact"
           className="sm:hidden"
         />
+        <Link
+          to="/stocks/$stockId/chart"
+          params={{ stockId }}
+          aria-label="全画面チャートを開く"
+          className="shrink-0 font-mono text-xs text-muted-foreground-strong underline decoration-border underline-offset-4 hover:text-foreground hover:decoration-primary"
+        >
+          全画面 ↗
+        </Link>
       </div>
       {isLoading ? (
         <Skeleton className="h-55 w-full sm:h-110 lg:h-120" />

@@ -95,6 +95,7 @@ export function StockPageView({
       >
         <div className={hasHoldingsColumn ? 'lg:col-span-3' : undefined}>
           <StockPageChart
+            stockId={stock.id}
             bars={bars}
             trades={trades}
             annotations={annotations}

@@ -57,8 +57,8 @@ export function CalendarEventRow({
         </button>
       ) : stockId != null ? (
         <Link
-          to="/charts/$instrumentId"
-          params={{ instrumentId: stockId }}
+          to="/stocks/$stockId"
+          params={{ stockId }}
           className={`${titleClassName} hover:underline`}
         >
           {title}

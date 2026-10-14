@@ -54,7 +54,7 @@ function renderCalendarPageView(
   props: CalendarPageViewProps,
 ): Promise<HTMLElement> {
   const router = createStoryRouter(() => <CalendarPageView {...props} />, {
-    paths: ['/calendar', '/charts/$instrumentId'],
+    paths: ['/calendar', '/stocks/$stockId'],
     initialPath: '/calendar',
   })
   render(<RouterProvider router={router} />)
@@ -161,7 +161,7 @@ describe('CalendarPageView', () => {
       screen
         .getByRole('link', { name: '架空工業 (0000)' })
         .getAttribute('href'),
-    ).toBe('/charts/0000')
+    ).toBe('/stocks/0000')
   })
 
   it('requests the other earnings for the selected country and date', async () => {
