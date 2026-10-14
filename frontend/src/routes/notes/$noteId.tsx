@@ -112,10 +112,7 @@ function NoteDetailPage() {
     selectedVersion != null && contentTab?.versionId === selectedVersion.id
       ? contentTab.tab
       : null
-  const activeContentTab = resolveNoteVersionContentTab(
-    previousVersion != null,
-    selectedContentTab,
-  )
+  const activeContentTab = resolveNoteVersionContentTab(selectedContentTab)
   const reviewNavigation = useReviewNavigation(
     selectedVersion == null
       ? ''

@@ -1,10 +1,9 @@
 export type NoteVersionContentTab = 'changes' | 'full'
 
 export function resolveNoteVersionContentTab(
-  hasPreviousVersion: boolean,
   selectedTab: NoteVersionContentTab | null,
 ): NoteVersionContentTab {
-  return selectedTab ?? (hasPreviousVersion ? 'changes' : 'full')
+  return selectedTab ?? 'changes'
 }
 
 interface NoteVersionContentTabsProps {

@@ -10,25 +10,16 @@ import {
 
 const resolverCases: {
   name: string
-  hasPreviousVersion: boolean
   selectedTab: NoteVersionContentTab | null
   expected: NoteVersionContentTab
 }[] = [
   {
     name: 'later versions start with changes',
-    hasPreviousVersion: true,
     selectedTab: null,
     expected: 'changes',
   },
   {
-    name: 'the first version starts with full text',
-    hasPreviousVersion: false,
-    selectedTab: null,
-    expected: 'full',
-  },
-  {
     name: 'keeps the explicitly selected tab for later versions',
-    hasPreviousVersion: true,
     selectedTab: 'full',
     expected: 'full',
   },
@@ -39,14 +30,9 @@ afterEach(() => {
 })
 
 describe('NoteVersionContentTabs', () => {
-  it.each(resolverCases)(
-    '$name',
-    ({ hasPreviousVersion, selectedTab, expected }) => {
-      expect(
-        resolveNoteVersionContentTab(hasPreviousVersion, selectedTab),
-      ).toBe(expected)
-    },
-  )
+  it.each(resolverCases)('$name', ({ selectedTab, expected }) => {
+    expect(resolveNoteVersionContentTab(selectedTab)).toBe(expected)
+  })
 
   it('keeps the selected tab and reports tab changes', async () => {
     const user = userEvent.setup()
