@@ -3,6 +3,10 @@ import { RouterProvider } from '@tanstack/react-router'
 import { fn } from 'storybook/test'
 
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
+import {
+  type ReviewQueueItem,
+  reviewQueueModel,
+} from '#components/review/review-queue-model'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
@@ -39,6 +43,37 @@ const rejectedAnnotation: Annotation = {
   id: '00000000-0000-0000-0000-000000000014',
   linked_note_id: null,
   status: 'rejected',
+}
+
+const unreadReviewItems: ReviewQueueItem[] = [
+  {
+    kind: 'annotation',
+    id: unreadAnnotation.id,
+    title: unreadAnnotation.text,
+    createdAt: unreadAnnotation.created_at,
+    targetSymbol: unreadAnnotation.target_symbol,
+    timestamp: unreadAnnotation.timestamp,
+    price: unreadAnnotation.price ?? null,
+  },
+  {
+    kind: 'note',
+    id: '00000000-0000-0000-0000-000000000018',
+    noteId: '00000000-0000-0000-0000-000000000019',
+    versionNo: 2,
+    title: '確認用のメモ',
+    createdAt: '2026-10-13T01:22:00Z',
+    noteKind: null,
+    createdByKind: 'llm',
+    unreadVersionCount: 1,
+  },
+]
+
+const reviewNavigationSnapshot =
+  reviewQueueModel.createNavigationSnapshot(unreadReviewItems)
+const unreadReviewNavigation = {
+  items: unreadReviewItems,
+  snapshot: reviewNavigationSnapshot,
+  currentItemKey: `annotation:${unreadAnnotation.id}`,
 }
 
 const approvedComment: Comment = {
@@ -86,7 +121,14 @@ const meta = {
             <Story />
           ),
           {
-            paths: ['/notes', '/notes/$noteId', '/stocks/$stockId'],
+            paths: [
+              '/annotations',
+              '/annotations/$annoId',
+              '/notes',
+              '/notes/$noteId',
+              '/review',
+              '/stocks/$stockId',
+            ],
           },
         )}
       />
@@ -95,10 +137,12 @@ const meta = {
   args: {
     annotation: unreadAnnotation,
     isPending: false,
+    reviewNavigation: unreadReviewNavigation,
     comments: [],
     history: [],
     stockName: 'サンプル銘柄',
     commentDraft: '',
+    rejectionReason: '',
     isApprovalPending: false,
     isRejectionPending: false,
     isCommentPending: false,
@@ -107,6 +151,7 @@ const meta = {
     commentError: null,
     onApprove: fn(),
     onReject: fn(),
+    onRejectionReasonChange: fn(),
     onAddComment: (event) => {
       event.preventDefault()
     },
@@ -145,6 +190,10 @@ export const ApprovedWithRelatedItems: Story = {
   name: 'shows an approved annotation with comments and a linked note.',
   args: {
     annotation: approvedAnnotation,
+    reviewNavigation: {
+      ...unreadReviewNavigation,
+      currentItemKey: `annotation:${approvedAnnotation.id}`,
+    },
     comments: [approvedComment],
     history: [historyEntry],
   },
@@ -154,7 +203,28 @@ export const RejectedWithComments: Story = {
   name: 'shows a rejected annotation with comments and no linked note.',
   args: {
     annotation: rejectedAnnotation,
+    reviewNavigation: {
+      ...unreadReviewNavigation,
+      currentItemKey: `annotation:${rejectedAnnotation.id}`,
+    },
     comments: [rejectedComment],
+  },
+}
+
+export const RejectionReasonEntered: Story = {
+  name: 'shows an optional rejection reason before the decision.',
+  args: { rejectionReason: '確認が必要な点を追記してください。' },
+}
+
+export const NoUnreadItems: Story = {
+  name: 'shows the review link when no unread items remain.',
+  args: {
+    annotation: approvedAnnotation,
+    reviewNavigation: {
+      ...unreadReviewNavigation,
+      items: [],
+      currentItemKey: `annotation:${approvedAnnotation.id}`,
+    },
   },
 }
 

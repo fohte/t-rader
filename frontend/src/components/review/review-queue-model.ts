@@ -36,7 +36,9 @@ export interface ReviewQueueData {
 
 export type ReviewTypeFilter = 'all' | 'note' | 'annotation'
 
-export function reviewQueueItemKey(item: ReviewQueueItem): string {
+export function reviewQueueItemKey(
+  item: Pick<ReviewQueueItem, 'kind' | 'id'>,
+): string {
   return `${item.kind}:${item.id}`
 }
 
@@ -117,6 +119,32 @@ export interface ReviewNavigationSnapshot {
 export interface ReviewQueueNavigationState {
   snapshot: ReviewNavigationSnapshot
   currentItemKey: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isReviewQueueNavigationState(
+  value: unknown,
+): value is ReviewQueueNavigationState {
+  if (!isRecord(value) || !isRecord(value.snapshot)) return false
+  return (
+    isStringArray(value.snapshot.itemKeys) &&
+    typeof value.currentItemKey === 'string'
+  )
+}
+
+function readReviewQueueNavigationState(
+  state: unknown,
+): ReviewQueueNavigationState | null {
+  if (!isRecord(state)) return null
+  const reviewQueue = state.reviewQueue
+  return isReviewQueueNavigationState(reviewQueue) ? reviewQueue : null
 }
 
 function createReviewNavigationSnapshot(
@@ -273,4 +301,5 @@ export const reviewQueueModel = {
   getNavigation: getReviewNavigation,
   normalizeNoteKindFilter: normalizeReviewNoteKindFilter,
   noteKindFilterKey: reviewNoteKindFilterKey,
+  readNavigationState: readReviewQueueNavigationState,
 }
