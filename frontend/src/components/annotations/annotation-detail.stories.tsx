@@ -187,7 +187,10 @@ export const ApprovalPending: Story = {
 
 export const RejectionPending: Story = {
   name: 'disables both decision buttons while rejection is being processed.',
-  args: { isRejectionPending: true },
+  args: {
+    isRejectionPending: true,
+    rejectionReason: '記録内容を確認してください。',
+  },
 }
 
 export const ApprovedWithRelatedItems: Story = {

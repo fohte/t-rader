@@ -42,6 +42,9 @@ const items: ReviewQueueItem[] = [
 ]
 
 const snapshot = reviewQueueModel.createNavigationSnapshot(items)
+const lastUnreadItems = items.slice(0, 2)
+const lastUnreadSnapshot =
+  reviewQueueModel.createNavigationSnapshot(lastUnreadItems)
 const onlyCurrentItems = items.slice(0, 1)
 const onlyCurrentSnapshot =
   reviewQueueModel.createNavigationSnapshot(onlyCurrentItems)
@@ -92,9 +95,9 @@ export const FirstUnreadItem: Story = {
 export const LastUnreadItem: Story = {
   name: 'wraps the next link from the last unread item to the first.',
   args: {
-    items,
-    snapshot,
-    currentItemKey: 'annotation:sample-annotation-03',
+    items: lastUnreadItems,
+    snapshot: lastUnreadSnapshot,
+    currentItemKey: 'note:sample-version-02',
   },
 }
 
