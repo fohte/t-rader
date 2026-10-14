@@ -25,7 +25,7 @@ function createHeaderRouter(initialPath: string, menuOpen = false) {
       '/calendar',
       '/settings',
       '/settings/rss-feeds',
-      '/charts/$instrumentId',
+      '/stocks/$stockId',
     ],
     initialPath,
   })

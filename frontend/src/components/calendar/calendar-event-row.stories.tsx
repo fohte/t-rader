@@ -6,7 +6,7 @@ import { createStoryRouter } from '#storybook/story-router'
 
 function createCalendarRouter(component: () => React.ReactNode) {
   return createStoryRouter(component, {
-    paths: ['/calendar', '/charts/$instrumentId'],
+    paths: ['/calendar', '/stocks/$stockId'],
     initialPath: '/calendar',
   })
 }
