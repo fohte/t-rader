@@ -59,9 +59,15 @@ function renderBand({
   const router = createStoryRouter(
     () => (
       <ReviewNavigationBand
-        items={queueItems}
-        snapshot={navigationSnapshot}
-        currentItemKey={currentItemKey}
+        state={{
+          navigation: {
+            items: queueItems,
+            snapshot: navigationSnapshot,
+            currentItemKey,
+          },
+          isPending: false,
+          isError: false,
+        }}
       />
     ),
     {
@@ -186,9 +192,14 @@ describe('ReviewNavigationBand', () => {
   })
 
   it('shows a busy state while the unread queue is loading', async () => {
-    const router = createStoryRouter(() => <ReviewNavigationBand isPending />, {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
-    })
+    const router = createStoryRouter(
+      () => (
+        <ReviewNavigationBand
+          state={{ navigation: null, isPending: true, isError: false }}
+        />
+      ),
+      { paths: ['/review', '/notes/$noteId', '/annotations/$annoId'] },
+    )
     const { container } = render(<RouterProvider router={router} />)
     await screen.findByRole('status')
 
@@ -199,9 +210,14 @@ describe('ReviewNavigationBand', () => {
   })
 
   it('shows an alert when unread navigation fails', async () => {
-    const router = createStoryRouter(() => <ReviewNavigationBand isError />, {
-      paths: ['/review', '/notes/$noteId', '/annotations/$annoId'],
-    })
+    const router = createStoryRouter(
+      () => (
+        <ReviewNavigationBand
+          state={{ navigation: null, isPending: false, isError: true }}
+        />
+      ),
+      { paths: ['/review', '/notes/$noteId', '/annotations/$annoId'] },
+    )
     const { container } = render(<RouterProvider router={router} />)
     await screen.findByRole('alert')
 

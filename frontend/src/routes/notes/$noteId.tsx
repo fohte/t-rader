@@ -20,7 +20,10 @@ import { NoteVersionReviewPanel } from '#components/note-detail/note-version-rev
 import type { NoteVersionReviewResult } from '#components/note-detail/note-version-review-view'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import { ReviewNavigationBand } from '#components/review/review-navigation-band'
-import { reviewQueueItemKey } from '#components/review/review-queue-model'
+import {
+  reviewQueueItemKey,
+  reviewQueueModel,
+} from '#components/review/review-queue-model'
 import { useReviewNavigation } from '#components/review/use-review-navigation'
 import {
   openFloatingChat,
@@ -115,7 +118,6 @@ function NoteDetailPage() {
       ? ''
       : reviewQueueItemKey({ kind: 'note', id: selectedVersion.id }),
   )
-  const { navigation, isError: isReviewNavigationError } = reviewNavigation
   useChatContext({ kind: 'note', id: noteId, label: selectedVersion?.title })
   const {
     data: noteLinks,
@@ -171,13 +173,7 @@ function NoteDetailPage() {
       className={`space-y-4 font-sans text-foreground ${showInlineReview ? 'pb-20 lg:pb-0' : ''}`}
     >
       <DetailBackLink label="ノート一覧に戻る" />
-      {navigation != null ? (
-        <ReviewNavigationBand {...navigation} />
-      ) : isReviewNavigationError ? (
-        <ReviewNavigationBand isError />
-      ) : (
-        <ReviewNavigationBand isPending />
-      )}
+      <ReviewNavigationBand state={reviewNavigation} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="space-y-4 border border-border bg-card px-5 py-5">
           <NoteVersionHeader
@@ -241,13 +237,13 @@ function NoteDetailPage() {
                   if (snapshot == null || targetVersion == null) return previous
                   return {
                     ...previous,
-                    reviewQueue: {
+                    reviewQueue: reviewQueueModel.createNavigationState(
                       snapshot,
-                      currentItemKey: reviewQueueItemKey({
+                      reviewQueueItemKey({
                         kind: 'note',
                         id: targetVersion.id,
                       }),
-                    },
+                    ),
                   }
                 },
               })
