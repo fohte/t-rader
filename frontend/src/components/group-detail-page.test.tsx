@@ -52,15 +52,14 @@ function getGroupDetailPageOutput() {
     stockRows: Array.from(document.querySelectorAll('tbody tr')).map((row) => {
       const cell = row.querySelector('td')
       const stockLink = cell?.querySelector('a[href^="/stocks/"]')
-      const labels = Array.from(cell?.querySelectorAll('span') ?? []).map(
-        (span) => span.textContent,
-      )
+      const holdingBadge = Array.from(
+        cell?.querySelectorAll('span') ?? [],
+      ).find((span) => span.textContent === '保有')
 
       return {
         name: stockLink?.textContent ?? null,
         href: stockLink?.getAttribute('href') ?? null,
-        symbol: labels[0] ?? null,
-        holding: labels[1] ?? null,
+        holding: holdingBadge?.textContent ?? null,
       }
     }),
     holdingsStatus: Array.from(
@@ -82,13 +81,11 @@ describe('GroupDetailPage', () => {
         {
           name: '架空電機',
           href: '/stocks/DEMO-A',
-          symbol: 'DEMO-A',
           holding: '保有',
         },
         {
           name: '見本素材',
           href: '/stocks/DEMO-B',
-          symbol: 'DEMO-B',
           holding: null,
         },
       ],
@@ -121,13 +118,11 @@ describe('GroupDetailPage', () => {
           {
             name: '架空電機',
             href: '/stocks/DEMO-A',
-            symbol: 'DEMO-A',
             holding: null,
           },
           {
             name: '見本素材',
             href: '/stocks/DEMO-B',
-            symbol: 'DEMO-B',
             holding: null,
           },
         ],
