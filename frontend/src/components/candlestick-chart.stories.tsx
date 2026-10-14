@@ -138,6 +138,9 @@ const periodAnnotationWithoutPrice: ChartAnnotation = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const dateHighlightedBars = generateSampleBars(30)
+const dateHighlightedTimestamp = dateHighlightedBars[14]?.timestamp ?? ''
+
 export const Default: Story = {
   name: 'shows a candlestick chart with a full price history.',
   args: {
@@ -150,6 +153,15 @@ export const FewBars: Story = {
   name: 'shows a candlestick chart with a short price history.',
   args: {
     bars: generateSampleBars(10),
+    className: 'h-full w-full',
+  },
+}
+
+export const DateHighlighted: Story = {
+  name: 'highlights a daily bar with a vertical date marker.',
+  args: {
+    bars: dateHighlightedBars,
+    highlightedTimestamp: dateHighlightedTimestamp,
     className: 'h-full w-full',
   },
 }

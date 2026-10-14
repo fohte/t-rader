@@ -72,6 +72,16 @@ export const DailyWithSelectedAnnotation: Story = {
   name: '選択中のアノテーション帯を日足チャートに表示する。',
 }
 
+export const DateSelected: Story = {
+  name: '指定日の位置と四本値を表示する。',
+  args: { selectedDate: '2030-04-02', selectedDateBar: bars[1] },
+}
+
+export const DateWithoutBar: Story = {
+  name: '日足のない指定日には四本値がないことを表示する。',
+  args: { selectedDate: '2030-04-04', selectedDateBar: null },
+}
+
 export const Loading: Story = {
   name: 'チャートデータの読み込み中を表示する。',
   args: { isLoading: true },

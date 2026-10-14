@@ -9,17 +9,24 @@ import { $api, fetchClient } from '#lib/api/client'
 import { getBarsRange } from '#lib/chart-range'
 import { getChartCurrency } from '#lib/chart-utils'
 import {
+  findDailyBarForDate,
+  getDailyBarsRangeAroundDate,
+  validateStockPageSearch,
+} from '#lib/stock-page-date'
+import {
   buildStockQuote,
   getStockPageListState,
   resolveStockLookup,
 } from '#lib/stock-page-model'
 
 export const Route = createFileRoute('/stocks/$stockId')({
+  validateSearch: validateStockPageSearch,
   component: StockPage,
 })
 
 function StockPage() {
   const { stockId } = Route.useParams()
+  const { date: requestedDate } = Route.useSearch()
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
@@ -27,7 +34,14 @@ function StockPage() {
   const [activeTab, setActiveTab] = useState<'annotations' | 'trades'>(
     'annotations',
   )
-  const chartRange = useMemo(() => getBarsRange(timeframe), [timeframe])
+  const chartRange = useMemo(() => {
+    if (timeframe === '1d' && requestedDate != null) {
+      return (
+        getDailyBarsRangeAroundDate(requestedDate) ?? getBarsRange(timeframe)
+      )
+    }
+    return getBarsRange(timeframe)
+  }, [requestedDate, timeframe])
   const dailyRange = useMemo(() => getBarsRange('1d'), [])
 
   const stockQuery = useQuery({
@@ -70,6 +84,13 @@ function StockPage() {
     params: { query: { symbol: stockId } },
   })
   const summaryQuery = $api.useQuery('get', '/api/trades/summary')
+  const selectedDateBar = useMemo(
+    () =>
+      requestedDate == null
+        ? null
+        : findDailyBarForDate(chartBarsQuery.data ?? [], requestedDate),
+    [chartBarsQuery.data, requestedDate],
+  )
 
   if (stockQuery.isPending) return <StockPageState state="loading" />
   if (stockQuery.error != null) return <StockPageState state="error" />
@@ -106,6 +127,8 @@ function StockPage() {
       currency={getChartCurrency(stock.market)}
       chartLoading={chartBarsQuery.isPending}
       chartError={chartBarsQuery.isError}
+      selectedDate={requestedDate}
+      selectedDateBar={selectedDateBar}
       annotationState={getStockPageListState(annotationsQuery)}
       tradeState={getStockPageListState(tradesQuery)}
     />

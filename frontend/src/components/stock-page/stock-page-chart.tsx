@@ -9,6 +9,23 @@ import type { components } from '#lib/api/schema.gen'
 import type { ChartCurrency } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
+const priceFormatter = new Intl.NumberFormat('ja-JP', {
+  maximumFractionDigits: 2,
+})
+
+function getSelectedDateSummary(
+  date: string | undefined,
+  bar: Bar | null | undefined,
+  isLoading: boolean,
+  hasError: boolean,
+): string | null {
+  if (date == null) return null
+  if (isLoading) return `${date} の日足を読み込み中です`
+  if (hasError) return `${date} の日足データを取得できません`
+  if (bar == null) return `${date} の日足データがありません`
+
+  return `${date} 始 ${priceFormatter.format(bar.open)} 高 ${priceFormatter.format(bar.high)} 安 ${priceFormatter.format(bar.low)} 終 ${priceFormatter.format(bar.close)}`
+}
 
 export function StockPageChart({
   bars,
@@ -20,6 +37,8 @@ export function StockPageChart({
   currency,
   isLoading = false,
   hasError = false,
+  selectedDate,
+  selectedDateBar,
 }: {
   bars: Bar[]
   annotations: ChartAnnotation[]
@@ -30,7 +49,16 @@ export function StockPageChart({
   currency?: ChartCurrency
   isLoading?: boolean
   hasError?: boolean
+  selectedDate?: string
+  selectedDateBar?: Bar | null
 }) {
+  const dateSummary = getSelectedDateSummary(
+    selectedDate,
+    selectedDateBar,
+    isLoading,
+    hasError,
+  )
+
   return (
     <section className="min-w-0 space-y-2" aria-label="銘柄チャート">
       <div className="flex items-center justify-between gap-2">
@@ -62,10 +90,48 @@ export function StockPageChart({
           annotations={annotations}
           onSelectAnnotation={onSelectAnnotation}
           selectedAnnotationId={selectedAnnotationId}
+          highlightedTimestamp={selectedDateBar?.timestamp}
           currency={currency}
           intraday={timeframe !== '1d' && timeframe !== '1w'}
           className="h-55 w-full min-w-0 sm:h-110 lg:h-120"
         />
+      )}
+      {selectedDate != null && (
+        <div
+          aria-label={dateSummary ?? selectedDate}
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 border border-border bg-card px-3 py-2 font-mono text-xs"
+          role="status"
+        >
+          <span className="text-muted-foreground">{selectedDate}</span>
+          {isLoading ? (
+            <span className="text-muted-foreground">読み込み中</span>
+          ) : hasError ? (
+            <span className="text-destructive">取得に失敗しました</span>
+          ) : selectedDateBar == null ? (
+            <span className="text-muted-foreground">
+              この日の四本値はありません
+            </span>
+          ) : (
+            <dl className="flex flex-wrap gap-x-3 gap-y-1">
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">始</dt>
+                <dd>{priceFormatter.format(selectedDateBar.open)}</dd>
+              </div>
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">高</dt>
+                <dd>{priceFormatter.format(selectedDateBar.high)}</dd>
+              </div>
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">安</dt>
+                <dd>{priceFormatter.format(selectedDateBar.low)}</dd>
+              </div>
+              <div className="flex gap-1">
+                <dt className="text-muted-foreground">終</dt>
+                <dd>{priceFormatter.format(selectedDateBar.close)}</dd>
+              </div>
+            </dl>
+          )}
+        </div>
       )}
     </section>
   )

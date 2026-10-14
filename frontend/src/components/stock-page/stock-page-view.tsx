@@ -10,6 +10,7 @@ import type { ChartCurrency } from '#lib/chart-utils'
 import type { StockQuote } from '#lib/stock-page-model'
 
 type Stock = components['schemas']['Stock']
+type Bar = components['schemas']['Bar']
 type Position = components['schemas']['PositionSummary']
 type Annotation = components['schemas']['Annotation']
 type Trade = components['schemas']['TradeListItem']
@@ -35,6 +36,8 @@ export function StockPageView({
   currency,
   chartLoading,
   chartError,
+  selectedDate,
+  selectedDateBar,
   annotationState,
   tradeState,
 }: {
@@ -57,6 +60,8 @@ export function StockPageView({
   currency?: ChartCurrency
   chartLoading: boolean
   chartError: boolean
+  selectedDate?: string
+  selectedDateBar?: Bar | null
   annotationState: ActivityProps['annotationState']
   tradeState: ActivityProps['tradeState']
 }) {
@@ -90,6 +95,8 @@ export function StockPageView({
             currency={currency}
             isLoading={chartLoading}
             hasError={chartError}
+            selectedDate={selectedDate}
+            selectedDateBar={selectedDateBar}
           />
         </div>
         <StockPageHoldings
