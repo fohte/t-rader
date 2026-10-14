@@ -8,6 +8,7 @@ import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Annotation = components['schemas']['Annotation']
+type Note = components['schemas']['Note']
 
 afterEach(cleanup)
 
@@ -30,6 +31,25 @@ const annotations: Annotation[] = [
   },
 ]
 
+const notes: Note[] = [
+  {
+    body_md: '架空コードへの言及を含むテスト用ノートです。',
+    created_at: '2030-04-02T06:00:00Z',
+    created_by_kind: 'llm',
+    frontmatter_json: {},
+    graphs_json: [],
+    id: 'demo-note',
+    is_current: true,
+    resolved_price_references_json: {},
+    status: 'unread',
+    tags: [],
+    title: '銘柄を確認したデモ用ノート',
+    updated_at: '2030-04-02T06:00:00Z',
+    version_id: 'demo-note-version',
+    version_no: 1,
+  },
+]
+
 describe('StockPageActivity', () => {
   it('selects an annotation when its row is clicked', async () => {
     const onSelectAnnotation = vi.fn()
@@ -38,6 +58,7 @@ describe('StockPageActivity', () => {
       () => (
         <StockPageActivity
           annotations={annotations}
+          notes={notes}
           trades={[]}
           financialSummaries={[]}
           financialSummariesState="ready"
@@ -49,7 +70,7 @@ describe('StockPageActivity', () => {
           onSelectAnnotation={onSelectAnnotation}
         />
       ),
-      { paths: ['/annotations/$annoId'] },
+      { paths: ['/annotations/$annoId', '/notes/$noteId'] },
     )
 
     render(<RouterProvider router={router} />)
@@ -67,6 +88,7 @@ describe('StockPageActivity', () => {
       () => (
         <StockPageActivity
           annotations={annotations}
+          notes={notes}
           trades={[]}
           financialSummaries={[]}
           financialSummariesState="ready"
@@ -78,7 +100,7 @@ describe('StockPageActivity', () => {
           onSelectAnnotation={() => undefined}
         />
       ),
-      { paths: ['/annotations/$annoId'] },
+      { paths: ['/annotations/$annoId', '/notes/$noteId'] },
     )
 
     render(<RouterProvider router={router} />)
@@ -94,6 +116,7 @@ describe('StockPageActivity', () => {
       () => (
         <StockPageActivity
           annotations={annotations}
+          notes={notes}
           trades={[]}
           financialSummaries={[]}
           financialSummariesState="ready"
@@ -112,5 +135,81 @@ describe('StockPageActivity', () => {
     await user.click(await screen.findByRole('tab', { name: '財務' }))
 
     expect(onTabChange.mock.calls).toEqual([['financials']])
+  })
+
+  it('switches to the notes tab when it is clicked', async () => {
+    const onTabChange = vi.fn()
+    const user = userEvent.setup()
+    const router = createStoryRouter(
+      () => (
+        <StockPageActivity
+          annotations={annotations}
+          notes={notes}
+          trades={[]}
+          financialSummaries={[]}
+          financialSummariesState="ready"
+          groups={[]}
+          groupsState="ready"
+          activeTab="annotations"
+          onTabChange={onTabChange}
+          selectedAnnotationId={null}
+          onSelectAnnotation={() => undefined}
+        />
+      ),
+      { paths: ['/annotations/$annoId', '/notes/$noteId'] },
+    )
+
+    render(<RouterProvider router={router} />)
+    await user.click(await screen.findByRole('tab', { name: /ノート/ }))
+
+    expect(onTabChange.mock.calls).toEqual([['notes']])
+  })
+
+  it('links an unread note to its detail page with its author and update date', async () => {
+    const router = createStoryRouter(
+      () => (
+        <StockPageActivity
+          annotations={[]}
+          notes={notes}
+          trades={[]}
+          financialSummaries={[]}
+          financialSummariesState="ready"
+          groups={[]}
+          groupsState="ready"
+          activeTab="notes"
+          onTabChange={() => undefined}
+          selectedAnnotationId={null}
+          onSelectAnnotation={() => undefined}
+        />
+      ),
+      { paths: ['/notes/$noteId'] },
+    )
+
+    render(<RouterProvider router={router} />)
+    await screen.findByRole('link', {
+      name: /銘柄を確認したデモ用ノート/,
+    })
+
+    expect(
+      screen.getAllByRole('link').map((link) => {
+        const time = link.querySelector('time')
+        const text =
+          time === null
+            ? link.textContent
+            : link.textContent.replace(time.textContent, '[相対日付]')
+
+        return [
+          link.getAttribute('href'),
+          text.replace(/\s+/g, ' ').trim(),
+          time?.getAttribute('dateTime') ?? null,
+        ]
+      }),
+    ).toEqual([
+      [
+        '/notes/demo-note',
+        '銘柄を確認したデモ用ノートエージェント未レビュー[相対日付]',
+        '2030-04-02T06:00:00Z',
+      ],
+    ])
   })
 })

@@ -177,6 +177,7 @@ const meta = {
     quoteError: false,
     bars,
     annotations,
+    notes: [],
     trades,
     groups,
     groupsState: 'ready',
@@ -198,6 +199,7 @@ const meta = {
     chartLoading: false,
     chartError: false,
     annotationState: 'ready',
+    noteState: 'ready',
     tradeState: 'ready',
   },
 } satisfies Meta<typeof StockPageView>

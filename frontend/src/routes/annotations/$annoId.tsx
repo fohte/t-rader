@@ -1,28 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { type SyntheticEvent, useState } from 'react'
 
-import { DetailBackLink } from '#components/detail-back-link'
-import { StockNameLink } from '#components/stocks/stock-name-link'
-import { StatusPill } from '#components/strategy-home/status-pill'
-import { Skeleton } from '#components/ui/skeleton'
+import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/annotations/$annoId')({
   component: AnnotationDetailPage,
 })
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const h = String(d.getHours()).padStart(2, '0')
-  const min = String(d.getMinutes()).padStart(2, '0')
-  return `${String(y)}-${m}-${day} ${h}:${min}`
-}
 
 function AnnotationDetailPage() {
   const { annoId } = Route.useParams()
@@ -83,25 +69,6 @@ function AnnotationDetailPage() {
 
   const [commentDraft, setCommentDraft] = useState('')
 
-  if (annoPending || annotation == null) {
-    return (
-      <div className="space-y-5 font-sans text-foreground">
-        <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
-        {annoPending ? (
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-72" />
-            <Skeleton className="h-5 w-full max-w-120" />
-            <Skeleton className="h-50 w-full" />
-          </div>
-        ) : (
-          <div className="font-mono text-sm text-muted-foreground">
-            アノテーションが見つかりませんでした。
-          </div>
-        )}
-      </div>
-    )
-  }
-
   function handleApprove() {
     if (approveMutation.isPending) return
     approveMutation.mutate({ params: { path: { id: annoId } }, body: {} })
@@ -112,8 +79,8 @@ function AnnotationDetailPage() {
     rejectMutation.mutate({ params: { path: { id: annoId } }, body: {} })
   }
 
-  function handleAddComment(e: React.SyntheticEvent<HTMLFormElement>) {
-    e.preventDefault()
+  function handleAddComment(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault()
     const body = commentDraft.trim()
     if (body === '' || createCommentMutation.isPending) return
     createCommentMutation.mutate(
@@ -133,191 +100,25 @@ function AnnotationDetailPage() {
   }
 
   return (
-    <div className="space-y-5 font-sans text-foreground">
-      <DetailBackLink tab="annotations" label="アノテーション一覧に戻る" />
-      <header className="border border-border bg-card p-5">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="inline-grid h-6 min-w-8 place-items-center border border-primary px-1 font-mono text-2xs text-primary">
-            ANNOTATION
-          </span>
-          <span className="border border-border bg-surface-strong px-1.5 py-px font-mono text-2xs uppercase text-muted-foreground-strong">
-            {annotation.target_kind}
-          </span>
-          <StatusPill status={annotation.status} />
-        </div>
-        <p className="mb-4 whitespace-pre-wrap text-base leading-relaxed">
-          {annotation.text}
-        </p>
-        <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-(--grid-cols-annotation-fields)">
-          <dt>銘柄</dt>
-          <dd>
-            <StockNameLink
-              name={stockRef.name}
-              symbol={annotation.target_symbol}
-              missingName="unresolved"
-            />
-          </dd>
-          <dt>timestamp</dt>
-          <dd>{formatDateTime(annotation.timestamp)}</dd>
-          {annotation.price != null && (
-            <>
-              <dt>price</dt>
-              <dd>¥{annotation.price.toLocaleString()}</dd>
-            </>
-          )}
-          <dt>作成者</dt>
-          <dd>{annotation.created_by_kind}</dd>
-          <dt>作成日時</dt>
-          <dd>{formatDateTime(annotation.created_at)}</dd>
-        </dl>
-        {annotation.linked_note_id != null && (
-          <div className="mt-4 border-t border-border pt-3">
-            <Link
-              to="/notes/$noteId"
-              params={{ noteId: annotation.linked_note_id }}
-              className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
-            >
-              → 紐づくノートを開く
-            </Link>
-          </div>
-        )}
-      </header>
-
-      <section className="border border-border bg-card p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-            レビュー
-          </h2>
-          <StatusPill status={annotation.status} />
-        </div>
-        <p className="mb-3 font-mono text-xs text-muted-foreground-strong">
-          現在:{' '}
-          <strong className="text-foreground">
-            {annotation.status === 'approved'
-              ? '承認済み'
-              : annotation.status === 'rejected'
-                ? '却下'
-                : '未レビュー'}
-          </strong>
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleApprove}
-            disabled={
-              approveMutation.isPending || annotation.status === 'approved'
-            }
-            className="cursor-pointer border border-primary bg-primary px-3 py-1.5 font-mono text-xs text-card hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            ✓ 承認
-          </button>
-          <button
-            type="button"
-            onClick={handleReject}
-            disabled={
-              rejectMutation.isPending || annotation.status === 'rejected'
-            }
-            className="cursor-pointer border border-status-rejected px-3 py-1.5 font-mono text-xs text-status-rejected hover:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            ✕ 却下
-          </button>
-        </div>
-        {(approveMutation.error != null || rejectMutation.error != null) && (
-          <p className="mt-2 font-mono text-2xs text-status-rejected">
-            操作に失敗しました。時間を置いて再試行してください。
-          </p>
-        )}
-      </section>
-
-      <section className="border border-border bg-card p-5">
-        <h2 className="mb-3 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          コメント · {comments?.length ?? 0}
-        </h2>
-        <div className="space-y-3">
-          {(comments ?? []).map((c) => (
-            <div key={c.id} className="border-l-2 border-border pl-3">
-              <div className="mb-1 flex items-center gap-2 font-mono text-2xs text-muted-foreground">
-                <span className="text-foreground">{c.author_label}</span>
-                <span className="border border-border px-1 text-2xs uppercase">
-                  {c.author_kind}
-                </span>
-                <span>{formatDateTime(c.created_at)}</span>
-              </div>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                {c.body}
-              </p>
-            </div>
-          ))}
-          {(comments == null || comments.length === 0) && (
-            <p className="font-mono text-xs text-muted-foreground">
-              まだコメントはありません。
-            </p>
-          )}
-        </div>
-        <form onSubmit={handleAddComment} className="mt-4 flex gap-2">
-          <input
-            type="text"
-            value={commentDraft}
-            onChange={(e) => {
-              setCommentDraft(e.target.value)
-            }}
-            placeholder="コメントを追加"
-            className="flex-1 border border-border bg-surface-strong px-2 py-1.5 font-mono text-xs outline-none focus:border-primary"
-          />
-          <button
-            type="submit"
-            disabled={
-              commentDraft.trim() === '' || createCommentMutation.isPending
-            }
-            className="cursor-pointer border border-border bg-surface-strong px-3 py-1.5 font-mono text-xs hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            送信
-          </button>
-        </form>
-        {createCommentMutation.error != null && (
-          <p className="mt-2 font-mono text-2xs text-status-rejected">
-            送信に失敗しました。時間を置いて再試行してください。
-          </p>
-        )}
-      </section>
-
-      <section className="border border-border bg-card p-5">
-        <h2 className="mb-3 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
-          変更履歴 · {history?.length ?? 0}
-        </h2>
-        <div className="space-y-2 font-mono text-xs">
-          {(history ?? []).map((h) => (
-            <div
-              key={h.id}
-              className="flex flex-wrap items-baseline gap-2 border-b border-border pb-1.5 last:border-b-0"
-            >
-              <span className="text-muted-foreground">
-                {formatDateTime(h.created_at)}
-              </span>
-              <span
-                className={
-                  h.actor_kind === 'human'
-                    ? 'text-foreground'
-                    : 'text-muted-foreground-strong'
-                }
-              >
-                {h.actor_label}
-              </span>
-              <span className="border border-border px-1 text-2xs uppercase text-muted-foreground-strong">
-                {h.op}
-              </span>
-              {h.summary != null && h.summary !== '' && (
-                <span className="text-muted-foreground-strong">
-                  {h.summary}
-                </span>
-              )}
-            </div>
-          ))}
-          {(history == null || history.length === 0) && (
-            <p className="text-muted-foreground">変更履歴はありません。</p>
-          )}
-        </div>
-      </section>
-    </div>
+    <AnnotationDetail
+      annotation={annotation}
+      isPending={annoPending}
+      comments={comments}
+      history={history}
+      stockName={stockRef.name}
+      commentDraft={commentDraft}
+      isApprovalPending={approveMutation.isPending}
+      isRejectionPending={rejectMutation.isPending}
+      isCommentPending={createCommentMutation.isPending}
+      approvalError={approveMutation.error}
+      rejectionError={rejectMutation.error}
+      commentError={createCommentMutation.error}
+      onApprove={handleApprove}
+      onReject={handleReject}
+      onAddComment={handleAddComment}
+      onCommentDraftChange={(value) => {
+        setCommentDraft(value)
+      }}
+    />
   )
 }

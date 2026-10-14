@@ -6,6 +6,7 @@ import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Annotation = components['schemas']['Annotation']
+type Note = components['schemas']['Note']
 type Trade = components['schemas']['TradeListItem']
 type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
@@ -100,6 +101,41 @@ const groups: GroupMembership[] = [
   },
 ]
 
+const notes: Note[] = [
+  {
+    body_md: '架空コードへの言及を含むデモ用ノートです。',
+    created_at: '2030-04-02T06:00:00Z',
+    created_by_kind: 'llm',
+    frontmatter_json: {},
+    graphs_json: [],
+    id: 'demo-note-newer',
+    is_current: true,
+    resolved_price_references_json: {},
+    status: 'unread',
+    tags: [],
+    title: '銘柄を確認したデモ用ノート',
+    updated_at: '2030-04-02T06:00:00Z',
+    version_id: 'demo-note-version-newer',
+    version_no: 1,
+  },
+  {
+    body_md: '別の架空コードへの言及を含むデモ用ノートです。',
+    created_at: '2030-03-28T06:00:00Z',
+    created_by_kind: 'human',
+    frontmatter_json: {},
+    graphs_json: [],
+    id: 'demo-note-older',
+    is_current: true,
+    resolved_price_references_json: {},
+    status: 'approved',
+    tags: [],
+    title: '以前の確認メモ',
+    updated_at: '2030-03-28T06:00:00Z',
+    version_id: 'demo-note-version-older',
+    version_no: 1,
+  },
+]
+
 const meta = {
   title: 'StockPage/StockPageActivity',
   component: StockPageActivity,
@@ -111,7 +147,7 @@ const meta = {
             <Story />
           ),
           {
-            paths: ['/annotations/$annoId'],
+            paths: ['/annotations/$annoId', '/notes/$noteId'],
           },
         )}
       />
@@ -119,6 +155,7 @@ const meta = {
   ],
   args: {
     annotations,
+    notes,
     trades,
     financialSummaries,
     financialSummariesState: 'ready',
@@ -146,6 +183,26 @@ export const Trades: Story = {
 export const Financials: Story = {
   name: '財務タブに所属グループと決算短信の要約を表示する。',
   args: { activeTab: 'financials' },
+}
+
+export const Notes: Story = {
+  name: 'ノートを新しい順に表示し、書いた人と未レビュー状態を示す。',
+  args: { activeTab: 'notes' },
+}
+
+export const EmptyNotes: Story = {
+  name: '該当するノートがない状態を表示する。',
+  args: { activeTab: 'notes', notes: [] },
+}
+
+export const LoadingNotes: Story = {
+  name: 'ノートを読み込み中の状態を表示する。',
+  args: { activeTab: 'notes', noteState: 'loading' },
+}
+
+export const NoteError: Story = {
+  name: 'ノートの取得に失敗した状態を表示する。',
+  args: { activeTab: 'notes', noteState: 'error' },
 }
 
 export const Empty: Story = {

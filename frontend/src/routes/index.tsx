@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import {
   getCalendarWeekRange,
@@ -10,18 +10,13 @@ import { DashboardPageView } from '#components/dashboard/dashboard-page-view'
 import { useReviewQueue } from '#components/dashboard/use-review-queue'
 import { calculatePortfolioValuation } from '#components/portfolio/portfolio-valuation'
 import type { StatItem } from '#components/portfolio/stat-row'
-import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { $api } from '#lib/api/client'
-import type { components } from '#lib/api/schema.gen'
-
-type Trade = components['schemas']['TradeListItem']
 
 export const Route = createFileRoute('/')({
   component: DashboardRoute,
 })
 
 function DashboardRoute() {
-  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const summaryQuery = $api.useQuery('get', '/api/trades/summary')
   const stocksQuery = $api.useQuery('get', '/api/refs/stocks')
   const strategiesQuery = $api.useQuery('get', '/api/strategies')
@@ -102,7 +97,6 @@ function DashboardRoute() {
         isReviewError={reviewQueue.isError}
         trades={tradesQuery.isPending ? null : (tradesQuery.data ?? [])}
         isTradesError={tradesQuery.isError}
-        onReflectTrade={setSelectedTrade}
         events={eventsQuery.isPending ? null : events}
         isEventsError={eventsQuery.isError}
         notes={notesQuery.isPending ? null : (notesQuery.data ?? [])}
@@ -110,13 +104,6 @@ function DashboardRoute() {
         tasks={taskQuery.isPending ? null : (taskQuery.data ?? [])}
         isTasksError={taskQuery.isError}
         strategies={strategies}
-      />
-      <TradeNotesDialog
-        open={selectedTrade != null}
-        onOpenChange={(open) => {
-          if (!open) setSelectedTrade(null)
-        }}
-        trade={selectedTrade}
       />
     </>
   )

@@ -258,15 +258,6 @@ export function Header({
               実行履歴
             </Link>
             <Link
-              to="/strategies/$id/indicators"
-              params={{ id: strategyId }}
-              activeOptions={{ exact: false }}
-              className={NAV_PILL_INACTIVE}
-              activeProps={{ className: NAV_PILL_ACTIVE }}
-            >
-              indicators
-            </Link>
-            <Link
               to="/strategies/$id/settings"
               params={{ id: strategyId }}
               activeOptions={{ exact: false }}

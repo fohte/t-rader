@@ -12,6 +12,7 @@ import type { StockPageListState, StockQuote } from '#lib/stock-page-model'
 type Stock = components['schemas']['Stock']
 type Position = components['schemas']['PositionSummary']
 type Annotation = components['schemas']['Annotation']
+type Note = components['schemas']['Note']
 type Trade = components['schemas']['TradeListItem']
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
 type NextEarnings = components['schemas']['StockNextEarningsResponse']
@@ -26,6 +27,7 @@ export function StockPageView({
   quoteError,
   bars,
   annotations,
+  notes,
   trades,
   groups,
   groupsState,
@@ -47,6 +49,7 @@ export function StockPageView({
   chartLoading,
   chartError,
   annotationState,
+  noteState,
   tradeState,
 }: {
   stock: Stock
@@ -55,6 +58,7 @@ export function StockPageView({
   quoteError: boolean
   bars: components['schemas']['Bar'][]
   annotations: Annotation[]
+  notes: Note[]
   trades: Trade[]
   groups: GroupMembership[]
   groupsState: StockPageListState
@@ -76,6 +80,7 @@ export function StockPageView({
   chartLoading: boolean
   chartError: boolean
   annotationState: ActivityProps['annotationState']
+  noteState: ActivityProps['noteState']
   tradeState: ActivityProps['tradeState']
 }) {
   return (
@@ -94,6 +99,7 @@ export function StockPageView({
         <div className="lg:col-span-3">
           <StockPageChart
             bars={bars}
+            trades={trades}
             annotations={annotations}
             selectedAnnotationId={selectedAnnotationId}
             onSelectAnnotation={onSelectAnnotation}
@@ -116,6 +122,7 @@ export function StockPageView({
 
       <StockPageActivity
         annotations={annotations}
+        notes={notes}
         trades={trades}
         financialSummaries={financialSummaries}
         financialSummariesState={financialSummariesState}
@@ -126,6 +133,7 @@ export function StockPageView({
         selectedAnnotationId={selectedAnnotationId}
         onSelectAnnotation={onSelectAnnotation}
         annotationState={annotationState}
+        noteState={noteState}
         tradeState={tradeState}
       />
     </main>
