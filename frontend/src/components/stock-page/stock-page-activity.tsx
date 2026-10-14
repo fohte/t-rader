@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
+import { StockPageFinancials } from '#components/stock-page/stock-page-financials'
 import { formatYen } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 import { buildSnippet, formatRelative } from '#lib/note-utils'
@@ -14,6 +15,8 @@ import { cn } from '#lib/utils'
 type Annotation = components['schemas']['Annotation']
 type Note = components['schemas']['Note']
 type Trade = components['schemas']['TradeListItem']
+type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
+type GroupMembership = components['schemas']['StockGroupMembershipResponse']
 
 const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
   month: '2-digit',
@@ -21,7 +24,7 @@ const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
 })
 
-type ActivityTab = 'annotations' | 'notes' | 'trades'
+type ActivityTab = 'annotations' | 'notes' | 'trades' | 'financials'
 type ListState = StockPageListState
 
 function ActivityMessage({
@@ -78,6 +81,7 @@ function ActivityTabs({
     },
     { id: 'notes' as const, label: 'ノート', count: noteCount },
     { id: 'trades' as const, label: '取引', count: tradeCount },
+    { id: 'financials' as const, label: '財務', count: null },
   ]
 
   return (
@@ -105,9 +109,11 @@ function ActivityTabs({
           }}
         >
           {tab.label}
-          <span className="ml-1.5 text-2xs text-muted-foreground">
-            {tab.count}
-          </span>
+          {tab.count != null && (
+            <span className="ml-1.5 text-2xs text-muted-foreground">
+              {tab.count}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -343,6 +349,10 @@ export function StockPageActivity({
   annotationState = 'ready',
   noteState = 'ready',
   tradeState = 'ready',
+  financialSummaries,
+  financialSummariesState,
+  groups,
+  groupsState,
 }: {
   annotations: Annotation[]
   notes: Note[]
@@ -354,6 +364,10 @@ export function StockPageActivity({
   annotationState?: ListState
   noteState?: ListState
   tradeState?: ListState
+  financialSummaries: FinancialSummary[]
+  financialSummariesState: ListState
+  groups: GroupMembership[]
+  groupsState: ListState
 }) {
   const annotationCount = getCountLabel(annotationState, annotations.length)
   const noteCount = getCountLabel(noteState, notes.length)
@@ -382,8 +396,15 @@ export function StockPageActivity({
           />
         ) : activeTab === 'notes' ? (
           <NoteRows notes={notes} state={noteState} />
-        ) : (
+        ) : activeTab === 'trades' ? (
           <TradeRows trades={trades} state={tradeState} />
+        ) : (
+          <StockPageFinancials
+            summaries={financialSummaries}
+            summariesState={financialSummariesState}
+            groups={groups}
+            groupsState={groupsState}
+          />
         )}
       </div>
     </section>

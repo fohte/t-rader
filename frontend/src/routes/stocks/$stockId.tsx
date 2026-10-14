@@ -106,6 +106,24 @@ function StockPage() {
     params: { query: { ref: `stock:${stockId}` } },
   })
   const summaryQuery = $api.useQuery('get', '/api/trades/summary')
+  const groupsQuery = $api.useQuery('get', '/api/stocks/{stock_id}/groups', {
+    params: { path: { stock_id: stockId } },
+  })
+  const nextEarningsQuery = $api.useQuery(
+    'get',
+    '/api/stocks/{stock_id}/next-earnings',
+    { params: { path: { stock_id: stockId } } },
+  )
+  const valuationQuery = $api.useQuery(
+    'get',
+    '/api/stocks/{stock_id}/valuation',
+    { params: { path: { stock_id: stockId } } },
+  )
+  const financialSummariesQuery = $api.useQuery(
+    'get',
+    '/api/stocks/{stock_id}/financial-summaries',
+    { params: { path: { stock_id: stockId } } },
+  )
   const selectedDateBar = useMemo(
     () =>
       requestedDate == null
@@ -153,9 +171,16 @@ function StockPage() {
       annotations={annotationsQuery.data ?? []}
       notes={notesQuery.data ?? []}
       trades={tradesQuery.data ?? []}
+      groups={groupsQuery.data ?? []}
+      groupsState={getStockPageListState(groupsQuery)}
+      nextEarnings={nextEarningsQuery.data ?? null}
+      nextEarningsState={getStockPageListState(nextEarningsQuery)}
+      valuation={valuationQuery.data ?? null}
+      valuationState={getStockPageListState(valuationQuery)}
+      financialSummaries={financialSummariesQuery.data ?? []}
+      financialSummariesState={getStockPageListState(financialSummariesQuery)}
       position={position}
-      holdingsLoading={summaryQuery.isPending}
-      holdingsError={summaryQuery.isError}
+      holdingsState={getStockPageListState(summaryQuery)}
       timeframe={timeframe}
       onTimeframeChange={setTimeframe}
       selectedAnnotationId={selectedAnnotationId}

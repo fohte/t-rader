@@ -10,6 +10,10 @@ type Position = components['schemas']['PositionSummary']
 type Bar = components['schemas']['Bar']
 type Annotation = components['schemas']['Annotation']
 type Trade = components['schemas']['TradeListItem']
+type GroupMembership = components['schemas']['StockGroupMembershipResponse']
+type NextEarnings = components['schemas']['StockNextEarningsResponse']
+type Valuation = components['schemas']['StockValuationResponse']
+type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
 
 const stock: Stock = {
   id: 'demo-code',
@@ -99,6 +103,50 @@ const trades: Trade[] = [
   },
 ]
 
+const groups: GroupMembership[] = [
+  {
+    axis: { key: 'demo-axis', name: 'デモ軸' },
+    group: { key: 'demo-group', name: 'デモ群' },
+  },
+]
+
+const nextEarnings: NextEarnings = {
+  event_date: '2030-04-14',
+  title: '決算発表予定',
+  event_at: null,
+  fiscal_period: 'デモ事業年度 第 2 四半期',
+  time_of_day: '午後',
+}
+
+const valuation: Valuation = {
+  code: 'demo-code',
+  date: '2030-04-09',
+  per: 16.2,
+  fwd_per: 14.2,
+  pbr: 1.3,
+  roe: 0.091,
+  fwd_roe: null,
+  eps: 200,
+  fwd_eps: 230,
+  bps: 2500,
+  mkt_cap: 123_456,
+}
+
+const financialSummaries: FinancialSummary[] = [
+  {
+    code: 'demo-code',
+    disclosure_no: 'demo-disclosure',
+    disclosure_date: '2030-04-03',
+    report_group_key: 'demo-period',
+    current_period_type: '2Q',
+    current_period_end: '2029-09-30',
+    current_fiscal_year_end: '2030-03-31',
+    sales: 410_000_000_000,
+    operating_profit: 21_000_000_000,
+    eps: 114,
+  },
+]
+
 const meta = {
   title: 'StockPage/StockPageView',
   component: StockPageView,
@@ -131,9 +179,16 @@ const meta = {
     annotations,
     notes: [],
     trades,
+    groups,
+    groupsState: 'ready',
+    nextEarnings,
+    nextEarningsState: 'ready',
+    valuation,
+    valuationState: 'ready',
+    financialSummaries,
+    financialSummariesState: 'ready',
     position,
-    holdingsLoading: false,
-    holdingsError: false,
+    holdingsState: 'ready',
     timeframe: '1d',
     onTimeframeChange: () => undefined,
     selectedAnnotationId: 'demo-annotation',
@@ -157,8 +212,13 @@ export const DesktopPage: Story = {
 }
 
 export const WithoutPosition: Story = {
-  name: '保有していない銘柄のチャートを全幅で表示する。',
+  name: '保有していない銘柄にも企業情報を表示する。',
   args: { position: null },
+}
+
+export const FinancialsTab: Story = {
+  name: '財務タブに所属グループと決算短信の要約を表示する。',
+  args: { activeTab: 'financials' },
 }
 
 export const DataErrors: Story = {
@@ -167,6 +227,13 @@ export const DataErrors: Story = {
     quote: null,
     quoteError: true,
     position: null,
-    holdingsError: true,
+    holdingsState: 'error',
+    groupsState: 'error',
+    nextEarnings: null,
+    nextEarningsState: 'error',
+    valuation: null,
+    valuationState: 'error',
+    financialSummaries: [],
+    financialSummariesState: 'error',
   },
 }

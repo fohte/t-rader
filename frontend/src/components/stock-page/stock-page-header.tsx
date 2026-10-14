@@ -1,9 +1,11 @@
+import { StockPageGroups } from '#components/stock-page/stock-page-groups'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 import { getChartCurrency } from '#lib/chart-utils'
-import type { StockQuote } from '#lib/stock-page-model'
+import type { StockPageListState, StockQuote } from '#lib/stock-page-model'
 
 type Stock = components['schemas']['Stock']
+type GroupMembership = components['schemas']['StockGroupMembershipResponse']
 
 const dateFormatter = new Intl.DateTimeFormat('ja-JP', {
   month: '2-digit',
@@ -43,12 +45,16 @@ export function StockPageHeader({
   stock,
   quote,
   isHolding,
+  groups,
+  groupsState,
   quoteLoading = false,
   quoteError = false,
 }: {
   stock: Stock
   quote: StockQuote | null
   isHolding: boolean
+  groups: GroupMembership[]
+  groupsState: StockPageListState
   quoteLoading?: boolean
   quoteError?: boolean
 }) {
@@ -76,6 +82,11 @@ export function StockPageHeader({
             </span>
           )}
         </div>
+        <StockPageGroups
+          memberships={groups}
+          state={groupsState}
+          className="mt-2 hidden sm:flex"
+        />
       </div>
 
       <div className="shrink-0 sm:text-right">

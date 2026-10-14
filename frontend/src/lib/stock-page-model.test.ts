@@ -6,6 +6,7 @@ import {
   getStockPageListState,
   resolveStockLookup,
   sortAnnotationsNewestFirst,
+  sortFinancialSummariesNewestFirst,
   sortNotesNewestFirst,
   sortTradesNewestFirst,
 } from '#lib/stock-page-model'
@@ -195,6 +196,31 @@ describe('sortAnnotationsNewestFirst', () => {
     expect(sortAnnotationsNewestFirst(annotations)).toEqual([
       annotations[1],
       annotations[0],
+    ])
+  })
+})
+
+describe('sortFinancialSummariesNewestFirst', () => {
+  it('orders financial summaries by disclosure date from newest to oldest', () => {
+    const summaries: components['schemas']['StockFinancialSummaryResponse'][] =
+      [
+        {
+          code: 'demo-code',
+          disclosure_no: 'demo-disclosure-older',
+          disclosure_date: '2030-04-01',
+          report_group_key: 'demo-period-older',
+        },
+        {
+          code: 'demo-code',
+          disclosure_no: 'demo-disclosure-newer',
+          disclosure_date: '2030-04-03',
+          report_group_key: 'demo-period-newer',
+        },
+      ]
+
+    expect(sortFinancialSummariesNewestFirst(summaries)).toEqual([
+      summaries[1],
+      summaries[0],
     ])
   })
 })
