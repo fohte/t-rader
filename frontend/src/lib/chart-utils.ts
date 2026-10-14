@@ -9,7 +9,12 @@ import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 type Trade = components['schemas']['TradeListItem']
+export type TradeMarker = Pick<Trade, 'date' | 'id' | 'side'>
 export type ChartCurrency = 'JPY' | 'USD'
+export const TRADE_MARKER_COLORS = {
+  buy: '#26a69a',
+  sell: '#ef5350',
+} as const
 
 const chartDateFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Tokyo',
@@ -73,8 +78,9 @@ export function toVolumeData(bars: Bar[]): HistogramData[] {
 
 /** API の約定を同日の最初の足に対応するチャートマーカーへ変換する */
 export function toTradeMarkers(
-  trades: Trade[],
+  trades: TradeMarker[],
   bars: Bar[],
+  selectedTradeId?: string,
 ): SeriesMarker<UTCTimestamp>[] {
   const firstBarByDate = new Map<string, UTCTimestamp>()
 
@@ -94,15 +100,22 @@ export function toTradeMarkers(
       if (time == null) return []
 
       const isBuy = trade.side === 'buy'
+      const isSelected = trade.id === selectedTradeId
       return [
         {
           id: trade.id,
           time,
           position: isBuy ? 'belowBar' : 'aboveBar',
-          color: isBuy ? '#26a69a' : '#ef5350',
+          color: isBuy ? TRADE_MARKER_COLORS.buy : TRADE_MARKER_COLORS.sell,
           shape: isBuy ? 'arrowUp' : 'arrowDown',
+          ...(isSelected ? { text: '対象', size: 2 } : {}),
         },
       ]
     })
-    .sort((left, right) => left.time - right.time)
+    .sort(
+      (left, right) =>
+        left.time - right.time ||
+        Number(left.id === selectedTradeId) -
+          Number(right.id === selectedTradeId),
+    )
 }

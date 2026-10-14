@@ -110,6 +110,9 @@ describe('TradeDetailPage', () => {
             },
           ])
         }
+        if (path === '/api/bars' || path === '/api/trades') {
+          return Response.json([])
+        }
         if (path === '/api/refs/stocks') {
           return Response.json([
             {

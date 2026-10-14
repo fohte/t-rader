@@ -2,8 +2,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 import type { ComponentType } from 'react'
 
+import { TRADE_DETAIL_CHART_BARS } from '#components/trades/trade-detail-chart.fixtures'
 import { TradeDetailView } from '#components/trades/trade-detail-view'
 import type { components } from '#lib/api/schema.gen'
+import type { TradeMarker } from '#lib/chart-utils'
 import { createStoryRouter } from '#storybook/story-router'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
@@ -40,6 +42,17 @@ const buyingTrade: TradeDetail = {
   created_at: '2099-02-10T00:00:00Z',
   updated_at: '2099-02-10T00:00:00Z',
   remaining_qty: 7,
+}
+
+const sellingTradeMarker: TradeMarker = {
+  id: sellingTrade.id,
+  side: sellingTrade.side,
+  date: sellingTrade.date,
+}
+const buyingTradeMarker: TradeMarker = {
+  id: buyingTrade.id,
+  side: buyingTrade.side,
+  date: buyingTrade.date,
 }
 
 const linkedNote: Note = {
@@ -90,6 +103,12 @@ const meta = {
   args: {
     state: 'ready',
     trade: sellingTrade,
+    chartCurrency: 'JPY',
+    chartState: {
+      status: 'ready',
+      bars: TRADE_DETAIL_CHART_BARS,
+      trades: [sellingTradeMarker],
+    },
     stockName: '架空銘柄',
     strategyName: '検証用戦略',
     linkedNotes: [linkedNote],
@@ -114,6 +133,11 @@ export const BuyingWithoutNotes: Story = {
   name: 'shows a purchase and an empty linked notes state.',
   args: {
     trade: buyingTrade,
+    chartState: {
+      status: 'ready',
+      bars: TRADE_DETAIL_CHART_BARS,
+      trades: [buyingTradeMarker],
+    },
     linkedNotes: [],
   },
 }
