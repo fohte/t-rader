@@ -4,6 +4,7 @@ import type { components } from '#lib/api/schema.gen'
 import {
   formatDecimal,
   formatMillionYenInHundredMillions,
+  formatRatioAsPercent,
 } from '#lib/stock-page-format'
 import type { StockPageListState } from '#lib/stock-page-model'
 
@@ -34,10 +35,6 @@ function selectRoe(valuation: Valuation | null) {
     label: valuation?.fwd_roe == null ? 'ROE' : 'ROE (予)',
     value: valuation?.fwd_roe ?? valuation?.roe,
   }
-}
-
-function formatPercent(value: number | null | undefined): string {
-  return value == null ? '—' : `${formatDecimal(value * 100)}%`
 }
 
 function SectionHeading({ title, detail }: { title: string; detail?: string }) {
@@ -175,7 +172,7 @@ function ValuationCard({
         <dl className="grid grid-cols-2 divide-x divide-y divide-border">
           <Metric label={per.label} value={formatDecimal(per.value)} />
           <Metric label="PBR" value={formatDecimal(valuation.pbr)} />
-          <Metric label={roe.label} value={formatPercent(roe.value)} />
+          <Metric label={roe.label} value={formatRatioAsPercent(roe.value)} />
           <Metric
             label="時価総額"
             value={formatMillionYenInHundredMillions(valuation.mkt_cap)}

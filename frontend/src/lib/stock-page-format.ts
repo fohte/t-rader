@@ -4,6 +4,10 @@ export function formatDecimal(value: number | null | undefined): string {
     : value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })
 }
 
+export function formatRatioAsPercent(value: number | null | undefined): string {
+  return value == null ? '—' : `${formatDecimal(value * 100)}%`
+}
+
 export function formatYenInHundredMillions(
   value: number | null | undefined,
 ): string {
