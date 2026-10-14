@@ -82,6 +82,7 @@ export function StockPageView({
         <div className={hasHoldingsColumn ? 'lg:col-span-3' : undefined}>
           <StockPageChart
             bars={bars}
+            trades={trades}
             annotations={annotations}
             selectedAnnotationId={selectedAnnotationId}
             onSelectAnnotation={onSelectAnnotation}

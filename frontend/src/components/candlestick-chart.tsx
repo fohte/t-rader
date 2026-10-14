@@ -1,13 +1,18 @@
 import {
   CandlestickSeries,
   createChart,
+  createSeriesMarkers,
   HistogramSeries,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   LineSeries,
   LineStyle,
+  type SeriesMarker,
   type SeriesType,
+  type Time,
+  type UTCTimestamp,
 } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
 
@@ -30,6 +35,7 @@ import {
 import { cn } from '#lib/utils'
 
 type Bar = components['schemas']['Bar']
+type Trade = components['schemas']['TradeListItem']
 type BucketedAnnotation =
   | {
       id: string
@@ -47,6 +53,7 @@ interface BandLayout {
 
 interface CandlestickChartProps {
   bars: Bar[]
+  trades?: Trade[]
   annotations?: ChartAnnotation[]
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
@@ -55,8 +62,47 @@ interface CandlestickChartProps {
   className?: string
 }
 
+function getTradeMarkers(
+  trades: Trade[],
+  bars: Bar[],
+): SeriesMarker<UTCTimestamp>[] {
+  const firstBarByDate = new Map<string, UTCTimestamp>()
+
+  for (const bar of bars) {
+    const milliseconds = Date.parse(bar.timestamp)
+    if (!Number.isFinite(milliseconds)) continue
+
+    const date = new Date(milliseconds).toISOString().slice(0, 10)
+    if (firstBarByDate.has(date)) continue
+
+    // 約定は日付までしか持たないため、同日の最初の足に合わせる。
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- UTCTimestamp は秒単位のブランド型
+    firstBarByDate.set(date, Math.floor(milliseconds / 1000) as UTCTimestamp)
+  }
+
+  return trades
+    .flatMap((trade): SeriesMarker<UTCTimestamp>[] => {
+      const time = firstBarByDate.get(trade.date)
+      if (time == null) return []
+
+      const isBuy = trade.side === 'buy'
+      return [
+        {
+          id: trade.id,
+          time,
+          position: 'atPriceMiddle',
+          price: trade.price,
+          color: isBuy ? '#26a69a' : '#ef5350',
+          shape: isBuy ? 'arrowUp' : 'arrowDown',
+        },
+      ]
+    })
+    .sort((left, right) => left.time - right.time)
+}
+
 export function CandlestickChart({
   bars,
+  trades,
   annotations,
   onSelectAnnotation,
   selectedAnnotationId,
@@ -67,6 +113,7 @@ export function CandlestickChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
+  const tradeMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const annotationPriceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const priceLineRef = useRef<IPriceLine | null>(null)
@@ -105,6 +152,7 @@ export function CandlestickChart({
       scaleMargins: { top: 0.05, bottom: 0.25 },
     })
     candlestickSeriesRef.current = candlestickSeries
+    tradeMarkersRef.current = createSeriesMarkers(candlestickSeries)
 
     const annotationPriceSeries = chart.addSeries(LineSeries, {
       color: '#ef4444',
@@ -143,6 +191,8 @@ export function CandlestickChart({
     return () => {
       disconnectThemeObserver()
       resizeObserver.disconnect()
+      tradeMarkersRef.current?.detach()
+      tradeMarkersRef.current = null
       chart.remove()
       chartRef.current = null
       candlestickSeriesRef.current = null
@@ -205,6 +255,10 @@ export function CandlestickChart({
       isInitialDataRef.current = false
     }
   }, [bars])
+
+  useEffect(() => {
+    tradeMarkersRef.current?.setMarkers(getTradeMarkers(trades ?? [], bars))
+  }, [bars, trades])
 
   useEffect(() => {
     const chart = chartRef.current

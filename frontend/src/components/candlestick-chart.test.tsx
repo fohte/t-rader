@@ -1,5 +1,10 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import type { CreatePriceLineOptions, UTCTimestamp } from 'lightweight-charts'
+import type {
+  CreatePriceLineOptions,
+  SeriesMarker,
+  Time,
+  UTCTimestamp,
+} from 'lightweight-charts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CandlestickChart } from '#components/candlestick-chart'
@@ -25,6 +30,11 @@ const chartMocks = vi.hoisted(() => {
   }
   const annotationPriceSeries = {
     setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
+  }
+  const seriesMarkers = {
+    detach: vi.fn(),
+    markers: vi.fn(),
+    setMarkers: vi.fn<(markers: SeriesMarker<Time>[]) => void>(),
   }
   const volumeSeries = {
     priceScale: vi.fn(() => volumePriceScale),
@@ -58,6 +68,7 @@ const chartMocks = vi.hoisted(() => {
     candlestickSeries,
     annotationPriceSeries,
     volumePriceScale,
+    seriesMarkers,
   }
 })
 
@@ -65,6 +76,7 @@ vi.mock('lightweight-charts', () => ({
   CandlestickSeries: {},
   ColorType: { Solid: 'solid' },
   createChart: vi.fn(() => chartMocks.chart),
+  createSeriesMarkers: vi.fn(() => chartMocks.seriesMarkers),
   HistogramSeries: {},
   LineSeries: {},
   LineStyle: { Dashed: 2 },
@@ -82,6 +94,26 @@ const firstBar: components['schemas']['Bar'] = {
 }
 
 const bars: components['schemas']['Bar'][] = [firstBar]
+type Trade = components['schemas']['TradeListItem']
+
+function makeTrade(overrides: Partial<Trade> = {}): Trade {
+  return {
+    id: '00000000-0000-0000-0000-000000000101',
+    strategy_id: '00000000-0000-0000-0000-000000000001',
+    symbol: 'demo-code',
+    side: 'buy',
+    qty: 1,
+    price: 100,
+    fee: 0,
+    date: '2025-04-10',
+    source: 'manual',
+    note: null,
+    note_count: 0,
+    created_at: '2025-04-10T00:00:00.000Z',
+    updated_at: '2025-04-10T00:00:00.000Z',
+    ...overrides,
+  }
+}
 
 const pointAnnotation: ChartAnnotation = {
   id: 'annotation-a',
@@ -103,6 +135,95 @@ afterEach(() => {
 })
 
 describe('CandlestickChart', () => {
+  it('places daily buy and sell markers at their execution prices', () => {
+    const nextBar = {
+      ...firstBar,
+      timestamp: '2025-04-11T00:00:00.000Z',
+    }
+    const trades = [
+      makeTrade({
+        id: '00000000-0000-0000-0000-000000000102',
+        side: 'sell',
+        date: '2025-04-11',
+        price: 105,
+      }),
+      makeTrade({
+        id: '00000000-0000-0000-0000-000000000101',
+        date: '2025-04-10',
+        price: 100,
+      }),
+      makeTrade({ date: '2025-04-12' }),
+    ]
+
+    render(<CandlestickChart bars={[firstBar, nextBar]} trades={trades} />)
+
+    expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([
+      [
+        [
+          {
+            id: '00000000-0000-0000-0000-000000000101',
+            time: 1744243200,
+            position: 'atPriceMiddle',
+            price: 100,
+            color: '#26a69a',
+            shape: 'arrowUp',
+          },
+          {
+            id: '00000000-0000-0000-0000-000000000102',
+            time: 1744329600,
+            position: 'atPriceMiddle',
+            price: 105,
+            color: '#ef5350',
+            shape: 'arrowDown',
+          },
+        ],
+      ],
+    ])
+  })
+
+  it('places a date-only trade on the first intraday bar from that date', () => {
+    const intradayBars = [
+      {
+        ...firstBar,
+        timeframe: '5m',
+        timestamp: '2025-04-10T00:05:00.000Z',
+      },
+      {
+        ...firstBar,
+        timeframe: '5m',
+        timestamp: '2025-04-10T00:10:00.000Z',
+      },
+    ]
+
+    render(
+      <CandlestickChart
+        bars={intradayBars}
+        trades={[makeTrade({ date: '2025-04-10', price: 101 })]}
+      />,
+    )
+
+    expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([
+      [
+        [
+          {
+            id: '00000000-0000-0000-0000-000000000101',
+            time: 1744243500,
+            position: 'atPriceMiddle',
+            price: 101,
+            color: '#26a69a',
+            shape: 'arrowUp',
+          },
+        ],
+      ],
+    ])
+  })
+
+  it('keeps trade markers empty when the optional prop is omitted', () => {
+    render(<CandlestickChart bars={bars} />)
+
+    expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([[[]]])
+  })
+
   it('adds the annotation band and its spacing when annotations arrive', () => {
     const { rerender } = render(
       <CandlestickChart bars={bars} annotations={[]} />,

@@ -5,6 +5,7 @@ import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
+type Trade = components['schemas']['TradeListItem']
 
 /** [0, 1) の疑似乱数を返す。スクリーンショットの決定性のため Math.random() の代わりに使う */
 function createRandom(seed: number): () => number {
@@ -22,8 +23,7 @@ function generateSampleBars(count: number): Bar[] {
   let price = 1500
 
   for (let i = 0; i < count; i++) {
-    const date = new Date(2025, 0, 1)
-    date.setDate(date.getDate() + i)
+    const date = new Date(Date.UTC(2025, 0, 1 + i))
 
     const open = price + (random() - 0.5) * 50
     const close = open + (random() - 0.5) * 60
@@ -32,7 +32,7 @@ function generateSampleBars(count: number): Bar[] {
     const volume = Math.floor(100000 + random() * 500000)
 
     bars.push({
-      instrument_id: 'DEMO-JP-ALPHA',
+      instrument_id: 'demo-code',
       timeframe: '1d',
       timestamp: date.toISOString(),
       open: Number(open.toFixed(1)),
@@ -60,7 +60,7 @@ function generateSampleIntradayBars(count: number): Bar[] {
     const low = Math.min(open, close) - random()
 
     bars.push({
-      instrument_id: 'DEMO-US-ALPHA',
+      instrument_id: 'US:DEMO-A',
       timeframe: '5m',
       timestamp: new Date(Date.UTC(2025, 0, 2, 14, 30 + i * 5)).toISOString(),
       open: Number(open.toFixed(2)),
@@ -74,6 +74,37 @@ function generateSampleIntradayBars(count: number): Bar[] {
   }
 
   return bars
+}
+
+function createTrade({
+  id,
+  date,
+  side,
+  price,
+  symbol = 'demo-code',
+}: {
+  id: string
+  date: string
+  side: 'buy' | 'sell'
+  price: number
+  symbol?: string
+}): Trade {
+  const timestamp = `${date}T00:00:00.000Z`
+  return {
+    id,
+    strategy_id: '00000000-0000-0000-0000-000000000001',
+    symbol,
+    side,
+    qty: 10,
+    price,
+    fee: 0,
+    date,
+    source: 'manual',
+    note: null,
+    note_count: 0,
+    created_at: timestamp,
+    updated_at: timestamp,
+  }
 }
 
 const meta = {
@@ -135,6 +166,31 @@ const periodAnnotationWithoutPrice: ChartAnnotation = {
   text: '価格を持たない期間注釈です。',
 }
 
+const tradeMarkerBars = generateSampleBars(30)
+const tradeMarkers: Trade[] = [
+  createTrade({
+    id: '00000000-0000-0000-0000-000000000201',
+    date: '2025-01-03',
+    side: 'buy',
+    price: 1512,
+  }),
+  createTrade({
+    id: '00000000-0000-0000-0000-000000000202',
+    date: '2025-01-10',
+    side: 'sell',
+    price: 1498,
+  }),
+]
+const intradayTradeMarkers: Trade[] = [
+  createTrade({
+    id: '00000000-0000-0000-0000-000000000203',
+    date: '2025-01-02',
+    side: 'buy',
+    price: 100,
+    symbol: 'US:DEMO-A',
+  }),
+]
+
 export default meta
 type Story = StoryObj<typeof meta>
 
@@ -178,6 +234,26 @@ export const Intraday: Story = {
   name: 'shows intraday bars with time labels.',
   args: {
     bars: generateSampleIntradayBars(30),
+    currency: 'USD',
+    intraday: true,
+    className: 'h-full w-full',
+  },
+}
+
+export const WithTradeMarkers: Story = {
+  name: 'shows buy and sell markers at their execution prices.',
+  args: {
+    bars: tradeMarkerBars,
+    trades: tradeMarkers,
+    className: 'h-full w-full',
+  },
+}
+
+export const IntradayWithTradeMarkers: Story = {
+  name: 'shows a trade marker on the first bar of its date.',
+  args: {
+    bars: generateSampleIntradayBars(30),
+    trades: intradayTradeMarkers,
     currency: 'USD',
     intraday: true,
     className: 'h-full w-full',
