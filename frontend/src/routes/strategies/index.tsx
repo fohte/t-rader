@@ -6,6 +6,7 @@ import { FilterBar, type FilterOption } from '#components/runs/filter-bar'
 import { RunsTabHeader } from '#components/runs/runs-tab-header'
 import { CreateStrategyDialog } from '#components/strategy-home/create-strategy-dialog'
 import { StrategyCard } from '#components/strategy-home/strategy-card'
+import { StrategyListIntroduction } from '#components/strategy-home/strategy-list-introduction'
 import {
   StrategyListTabs,
   validateStrategyListSearch,
@@ -46,15 +47,7 @@ function StrategyListContent() {
   )
   return (
     <div className="font-sans text-foreground">
-      <div className="mb-8 max-w-180">
-        <h1 className="mb-3 text-2xl font-bold tracking-tight">
-          <span className="font-mono font-bold text-primary">&gt;</span>{' '}
-          戦略を選ぶ
-        </h1>
-        <p className="text-sm leading-relaxed text-muted-foreground-strong">
-          各戦略は運用資金の区分です。取引の帰属先・投資可能額・リスク上限を管理します。分析は口座全体を対象に行います。
-        </p>
-      </div>
+      <StrategyListIntroduction />
 
       {isPending ? (
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">

@@ -70,7 +70,7 @@ impl StrategyServer {
                     .map(to_price_reference_field)
                     .map(AnnotationPriceInput::Field),
                 text: params.text,
-                status: DEFAULT_ANNOTATION_STATUS.into(),
+                status: Some(DEFAULT_ANNOTATION_STATUS.into()),
                 linked_note_id: params.linked_note_id,
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 execution_step_id,
@@ -95,6 +95,8 @@ impl StrategyServer {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
+            status: None,
+            created_by_kind: None,
             limit: Some(clamp_limit(params.limit)),
         };
         let annotations = self

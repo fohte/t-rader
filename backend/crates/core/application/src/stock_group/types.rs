@@ -11,7 +11,9 @@ pub enum StockGroupCodeLookup {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StockGroupMembership {
     pub axis_key: String,
+    pub axis_name: String,
     pub group_key: String,
+    pub group_name: String,
     pub stock_id: String,
 }
 
@@ -23,6 +25,19 @@ pub struct StockGroup {
     pub key: String,
     pub name: String,
     pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StockGroupStock {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StockGroupDetail {
+    pub group: StockGroup,
+    pub axis_name: String,
+    pub stocks: Vec<StockGroupStock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

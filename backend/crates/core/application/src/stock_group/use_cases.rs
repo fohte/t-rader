@@ -8,8 +8,8 @@ use crate::unit_of_work::SharedUnitOfWork;
 use super::error::StockGroupUseCaseError;
 use super::repository::{GroupAxis, SharedStockGroupRepository, StockGroupRepositoryError};
 use super::types::{
-    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupCodeLookup, StockGroupMembership,
-    UpdateStockGroupCommand,
+    CreateStockGroupCommand, NewStockGroup, StockGroup, StockGroupCodeLookup, StockGroupDetail,
+    StockGroupMembership, UpdateStockGroupCommand,
 };
 
 #[derive(Clone)]
@@ -146,6 +146,25 @@ impl StockGroupUseCases {
             .await?;
         self.unit_of_work.commit(transaction).await?;
         Ok(stock_ids)
+    }
+
+    pub async fn get_detail(
+        &self,
+        axis_key: &str,
+        group_key: &str,
+    ) -> Result<StockGroupDetail, StockGroupUseCaseError> {
+        let axis_key = validate_key("axis_key", axis_key)?;
+        let group_key = validate_key("group_key", group_key)?;
+        let transaction = self.unit_of_work.begin().await?;
+        let axis = self.axis(&transaction, &axis_key).await?;
+        let group = self.group(&transaction, &axis, &group_key).await?;
+        let stocks = self.repository.list_stocks(&transaction, group.id).await?;
+        self.unit_of_work.commit(transaction).await?;
+        Ok(StockGroupDetail {
+            group,
+            axis_name: axis.name,
+            stocks,
+        })
     }
 
     pub async fn find_code_by_derive_from(
