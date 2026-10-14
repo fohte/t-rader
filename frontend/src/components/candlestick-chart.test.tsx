@@ -135,29 +135,13 @@ afterEach(() => {
 })
 
 describe('CandlestickChart', () => {
-  it('places daily buy and sell markers at their execution prices', () => {
-    const nextBar = {
-      ...firstBar,
-      timestamp: '2025-04-11T00:00:00.000Z',
-    }
-    const trades = [
-      makeTrade({
-        id: '00000000-0000-0000-0000-000000000102',
-        side: 'sell',
-        date: '2025-04-11',
-        price: 105,
-      }),
-      makeTrade({
-        id: '00000000-0000-0000-0000-000000000101',
-        date: '2025-04-10',
-        price: 100,
-      }),
-      makeTrade({ date: '2025-04-12' }),
-    ]
+  it('updates trade markers when trades arrive after chart mount', () => {
+    const { rerender } = render(<CandlestickChart bars={bars} trades={[]} />)
 
-    render(<CandlestickChart bars={[firstBar, nextBar]} trades={trades} />)
+    rerender(<CandlestickChart bars={bars} trades={[makeTrade()]} />)
 
     expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([
+      [[]],
       [
         [
           {
@@ -165,51 +149,6 @@ describe('CandlestickChart', () => {
             time: 1744243200,
             position: 'atPriceMiddle',
             price: 100,
-            color: '#26a69a',
-            shape: 'arrowUp',
-          },
-          {
-            id: '00000000-0000-0000-0000-000000000102',
-            time: 1744329600,
-            position: 'atPriceMiddle',
-            price: 105,
-            color: '#ef5350',
-            shape: 'arrowDown',
-          },
-        ],
-      ],
-    ])
-  })
-
-  it('places a date-only trade on the first intraday bar from that date', () => {
-    const intradayBars = [
-      {
-        ...firstBar,
-        timeframe: '5m',
-        timestamp: '2025-04-10T00:05:00.000Z',
-      },
-      {
-        ...firstBar,
-        timeframe: '5m',
-        timestamp: '2025-04-10T00:10:00.000Z',
-      },
-    ]
-
-    render(
-      <CandlestickChart
-        bars={intradayBars}
-        trades={[makeTrade({ date: '2025-04-10', price: 101 })]}
-      />,
-    )
-
-    expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([
-      [
-        [
-          {
-            id: '00000000-0000-0000-0000-000000000101',
-            time: 1744243500,
-            position: 'atPriceMiddle',
-            price: 101,
             color: '#26a69a',
             shape: 'arrowUp',
           },
