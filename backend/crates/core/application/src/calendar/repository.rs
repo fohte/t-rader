@@ -21,6 +21,12 @@ pub trait CalendarEventRepository: Send + Sync {
         date_range: &DateRange,
     ) -> Result<Vec<CalendarEvent>, CalendarEventRepositoryError>;
 
+    async fn find_next_earnings_for_stock(
+        &self,
+        stock_id: &str,
+        from: NaiveDate,
+    ) -> Result<Option<CalendarEvent>, CalendarEventRepositoryError>;
+
     async fn upsert(
         &self,
         transaction: &UnitOfWorkTransaction,

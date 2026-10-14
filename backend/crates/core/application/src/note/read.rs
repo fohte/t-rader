@@ -6,6 +6,7 @@ use uuid::Uuid;
 use super::query::{NoteReadQueryError, SharedNoteReadQuery};
 use super::types::{
     Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot, NoteVersion,
+    PendingNoteVersion,
 };
 
 #[derive(Debug, Error)]
@@ -107,7 +108,7 @@ impl NoteReadUseCases {
 
     pub async fn list_pending_note_versions(
         &self,
-    ) -> Result<Vec<NoteVersion>, NoteReadUseCaseError> {
+    ) -> Result<Vec<PendingNoteVersion>, NoteReadUseCaseError> {
         Ok(self.query.list_pending_note_versions().await?)
     }
 

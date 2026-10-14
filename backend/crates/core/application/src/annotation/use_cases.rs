@@ -61,8 +61,16 @@ impl AnnotationUseCases {
         let target_symbol = non_empty_trimmed(command.target_symbol, "target_symbol")?;
         let target_kind = non_empty_trimmed(command.target_kind, "target_kind")?;
         validate_non_empty(&command.text, "text")?;
-        validate_status(&command.status)?;
         validate_created_by_kind(&command.created_by_kind)?;
+        let status = command.status.unwrap_or_else(|| {
+            if command.created_by_kind == "human" {
+                "approved"
+            } else {
+                "unread"
+            }
+            .into()
+        });
+        validate_status(&status)?;
         let transaction = self.unit_of_work.begin().await?;
         let needs_query_data = command.timestamp_start.is_some()
             || matches!(&price_input, ValidatedAnnotationPriceInput::Field(_));
@@ -111,7 +119,7 @@ impl AnnotationUseCases {
                     timestamp_start: command.timestamp_start,
                     price,
                     text: command.text,
-                    status: command.status,
+                    status,
                     linked_note_id: command.linked_note_id,
                     created_by_kind: command.created_by_kind,
                     execution_step_id: command.execution_step_id,

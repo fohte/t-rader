@@ -13,6 +13,36 @@ pub use markdown::{NoteToken, extract_tokens};
 pub const ALLOWED_REF_KINDS: [&str; 3] = ["stock", "indicator", "group"];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum NoteReferenceParseError {
+    #[error("missing kind:id separator")]
+    MissingSeparator,
+    #[error("unsupported ref kind: {0}")]
+    UnsupportedKind(String),
+    #[error("ref ID must not be empty")]
+    EmptyId,
+    #[error("group ref ID must use axis-key/group-key format")]
+    InvalidGroupId,
+}
+
+pub fn parse_note_reference(value: &str) -> Result<(String, String), NoteReferenceParseError> {
+    let Some((kind, id)) = value.split_once(':') else {
+        return Err(NoteReferenceParseError::MissingSeparator);
+    };
+    let kind = kind.trim();
+    if !ALLOWED_REF_KINDS.contains(&kind) {
+        return Err(NoteReferenceParseError::UnsupportedKind(kind.to_string()));
+    }
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(NoteReferenceParseError::EmptyId);
+    }
+    if !is_valid_ref_id_format(kind, id) {
+        return Err(NoteReferenceParseError::InvalidGroupId);
+    }
+    Ok((kind.to_string(), id.to_string()))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum NoteTokenValidationError {
     #[error("本文のトークン {token:?}: {reason}")]
     BodyToken { token: String, reason: String },
@@ -322,7 +352,27 @@ mod tests {
     use indoc::indoc;
     use rstest::rstest;
 
-    use super::collect_note_refs;
+    use super::{NoteReferenceParseError, collect_note_refs, parse_note_reference};
+
+    #[rstest]
+    #[case::stock("stock:DEMO-A", Ok(("stock".into(), "DEMO-A".into())))]
+    #[case::foreign_stock("stock:US:DEMO-A", Ok(("stock".into(), "US:DEMO-A".into())))]
+    #[case::indicator("indicator:DEMO_FX", Ok(("indicator".into(), "DEMO_FX".into())))]
+    #[case::group("group:demo-axis/demo-group", Ok(("group".into(), "demo-axis/demo-group".into())))]
+    #[case::trimmed_kind_and_id(" stock: US:DEMO-A ", Ok(("stock".into(), "US:DEMO-A".into())))]
+    #[case::missing_separator("demo-id", Err(NoteReferenceParseError::MissingSeparator))]
+    #[case::unsupported_kind(
+        "unknown:demo-id",
+        Err(NoteReferenceParseError::UnsupportedKind("unknown".into())),
+    )]
+    #[case::empty_id("stock:", Err(NoteReferenceParseError::EmptyId))]
+    #[case::invalid_group_id("group:demo-group", Err(NoteReferenceParseError::InvalidGroupId))]
+    fn parses_note_reference(
+        #[case] value: &str,
+        #[case] expected: Result<(String, String), NoteReferenceParseError>,
+    ) {
+        assert_eq!(parse_note_reference(value), expected);
+    }
 
     #[test]
     fn foreign_stock_link_keeps_country_code_in_reference_id() {

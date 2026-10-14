@@ -192,6 +192,28 @@ mod tests {
             Ok(events)
         }
 
+        async fn find_next_earnings_for_stock(
+            &self,
+            stock_id: &str,
+            from: NaiveDate,
+        ) -> Result<Option<CalendarEvent>, CalendarEventRepositoryError> {
+            Ok(self
+                .snapshot()
+                .into_iter()
+                .filter(|event| {
+                    event.category == CalendarEventCategory::Earnings
+                        && event.stock_id.as_deref() == Some(stock_id)
+                        && event.event_date >= from
+                })
+                .min_by(|left, right| {
+                    (&left.event_date, &left.event_at, &left.external_id).cmp(&(
+                        &right.event_date,
+                        &right.event_at,
+                        &right.external_id,
+                    ))
+                }))
+        }
+
         async fn upsert(
             &self,
             _transaction: &UnitOfWorkTransaction,

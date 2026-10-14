@@ -24,6 +24,6 @@ pub use repository::{NoteRepository, NoteRepositoryError, SharedNoteRepository};
 pub use types::{
     NewNote, NewNoteLink, NewNoteVersion, Note, NoteLink, NoteLinkTarget, NoteLinkView, NoteLinks,
     NoteListCursor, NoteListPage, NoteListQuery, NoteMetadataUpdate, NoteSnapshot, NoteVersion,
-    NoteVersionUpdate, NoteWriteCommand, NoteWriteResult, UpdateNoteCommand,
+    NoteVersionUpdate, NoteWriteCommand, NoteWriteResult, PendingNoteVersion, UpdateNoteCommand,
 };
 pub use use_cases::NoteUseCases;
