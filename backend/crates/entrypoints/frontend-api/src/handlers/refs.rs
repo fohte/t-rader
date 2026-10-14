@@ -2,6 +2,10 @@
 
 use axum::Json;
 use axum::extract::State;
+use chrono::NaiveDate;
+use core_application::indicator_observation::{
+    IndicatorObservationQuery, IndicatorObservationUseCaseError,
+};
 use core_application::refs::{RefRepositoryError, RefUseCaseError};
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
@@ -10,7 +14,9 @@ use utoipa::IntoParams;
 use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
-use crate::models::{IndicatorResponse, RefResolution, StockResponse};
+use crate::models::{
+    GroupResponse, IndicatorObservationResponse, IndicatorResponse, RefResolution, StockResponse,
+};
 use core_domain::note_reference::ALLOWED_REF_KINDS;
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -19,6 +25,17 @@ pub struct SearchQuery {
     /// 部分一致クエリ。空のときは先頭から最大 50 件返す
     #[serde(default)]
     pub q: Option<String>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct IndicatorObservationsQuery {
+    /// 取得開始日 (YYYY-MM-DD, inclusive)。省略時は最古の観測日から取得
+    #[serde(default)]
+    pub from: Option<NaiveDate>,
+    /// 取得終了日 (YYYY-MM-DD, inclusive)。省略時は最新の観測日まで取得
+    #[serde(default)]
+    pub to: Option<NaiveDate>,
 }
 
 /// stock 検索
@@ -72,6 +89,34 @@ pub async fn get_stock(
     Ok(Json(StockResponse::from(m)))
 }
 
+/// group 詳細
+#[utoipa::path(
+    get,
+    path = "/api/refs/groups/{axis_key}/{group_key}",
+    tag = "refs",
+    operation_id = "get_ref_group",
+    params(
+        ("axis_key" = String, Path, description = "グループ軸の key"),
+        ("group_key" = String, Path, description = "グループの key"),
+    ),
+    responses(
+        (status = 200, body = GroupResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_group(
+    State(state): State<FrontendApiState>,
+    JsonPath((axis_key, group_key)): JsonPath<(String, String)>,
+) -> Result<Json<GroupResponse>, AppError> {
+    let detail = state
+        .stock_group_use_cases
+        .get_detail(&axis_key, &group_key)
+        .await?;
+    Ok(Json(GroupResponse::from(detail)))
+}
+
 /// indicator 検索
 #[utoipa::path(
     get,
@@ -122,6 +167,54 @@ pub async fn get_indicator(
         .map_err(map_ref_error)?
         .ok_or_else(|| AppError::NotFound(format!("indicator {id} not found")))?;
     Ok(Json(IndicatorResponse::from(m)))
+}
+
+/// indicator の観測値
+#[utoipa::path(
+    get,
+    path = "/api/refs/indicators/{id}/observations",
+    tag = "refs",
+    operation_id = "get_ref_indicator_observations",
+    params(
+        ("id" = String, Path, description = "指標 ID"),
+        IndicatorObservationsQuery,
+    ),
+    responses(
+        (status = 200, body = Vec<IndicatorObservationResponse>),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_indicator_observations(
+    State(state): State<FrontendApiState>,
+    JsonPath(id): JsonPath<String>,
+    JsonQuery(params): JsonQuery<IndicatorObservationsQuery>,
+) -> Result<Json<Vec<IndicatorObservationResponse>>, AppError> {
+    state
+        .ref_use_cases
+        .get_indicator(&id)
+        .await
+        .map_err(map_ref_error)?
+        .ok_or_else(|| AppError::NotFound(format!("indicator {id} not found")))?;
+
+    let result = state
+        .indicator_observation_use_cases
+        .read(IndicatorObservationQuery {
+            indicator_id: id,
+            from: params.from,
+            to: params.to,
+        })
+        .await
+        .map_err(map_indicator_observation_error)?;
+
+    Ok(Json(
+        result
+            .observations
+            .into_iter()
+            .map(IndicatorObservationResponse::from)
+            .collect(),
+    ))
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -200,6 +293,15 @@ fn map_ref_error(error: RefUseCaseError) -> AppError {
         RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
         | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
             AppError::Internal("reference transaction has an unexpected type".into())
+        }
+    }
+}
+
+fn map_indicator_observation_error(error: IndicatorObservationUseCaseError) -> AppError {
+    match error {
+        IndicatorObservationUseCaseError::Validation(message) => AppError::Validation(message),
+        IndicatorObservationUseCaseError::Repository(error) => {
+            AppError::Internal(error.to_string())
         }
     }
 }

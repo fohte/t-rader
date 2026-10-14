@@ -4,8 +4,8 @@ use axum::http::StatusCode;
 use core_application::change_history::ChangeHistoryError;
 use core_application::note::NoteRepositoryError;
 use core_application::trade::{
-    CreateTradeCommand, PerformanceSummary as TradePerformanceSummary, TradeOrder, TradeQuery,
-    TradeRepositoryError, TradeUpdateCommand, TradeUseCaseError,
+    CreateTradeCommand, TradeOrder, TradeQuery, TradeRepositoryError, TradeSummaryUseCaseError,
+    TradeUpdateCommand, TradeUseCaseError,
 };
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
@@ -16,7 +16,8 @@ use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
-    CreateTradeRequest, PerformanceSummary, TradeListItem, TradeResponse, UpdateTradeRequest,
+    CreateTradeRequest, PerformanceSummary, TradeDetailResponse, TradeListItem, TradeResponse,
+    UpdateTradeRequest,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -72,7 +73,7 @@ pub async fn list_trades(
     tag = "trades",
     params(("id" = Uuid, Path, description = "取引 ID")),
     responses(
-        (status = 200, body = TradeResponse),
+        (status = 200, body = TradeDetailResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -81,10 +82,10 @@ pub async fn list_trades(
 pub async fn get_trade(
     State(state): State<FrontendApiState>,
     JsonPath(id): JsonPath<Uuid>,
-) -> Result<Json<TradeResponse>, AppError> {
+) -> Result<Json<TradeDetailResponse>, AppError> {
     let trade = state
         .trade_use_cases
-        .get(id)
+        .get_detail(id)
         .await
         .map_err(map_trade_error)?;
     Ok(Json(trade.into()))
@@ -217,11 +218,12 @@ pub async fn trades_summary(
     JsonQuery(p): JsonQuery<SummaryQuery>,
 ) -> Result<Json<PerformanceSummary>, AppError> {
     let summary = state
-        .trade_use_cases
+        .trade_summary_use_cases
         .summary(p.strategy_id)
         .await
-        .map_err(map_trade_error)?;
-    Ok(Json(summary_response(summary)))
+        .map_err(map_trade_summary_error)?;
+
+    Ok(Json(summary.into()))
 }
 
 pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
@@ -242,22 +244,10 @@ pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
     }
 }
 
-fn summary_response(summary: TradePerformanceSummary) -> PerformanceSummary {
-    PerformanceSummary {
-        strategy_id: summary.strategy_id,
-        trade_count: summary.trade_count,
-        realized_pnl: summary.realized_pnl,
-        positions: summary
-            .positions
-            .into_iter()
-            .map(|position| crate::models::PositionSummary {
-                symbol: position.symbol,
-                qty: position.qty,
-                avg_cost: position.avg_cost,
-                cost_basis: position.cost_basis,
-                realized_pnl: position.realized_pnl,
-            })
-            .collect(),
+fn map_trade_summary_error(error: TradeSummaryUseCaseError) -> AppError {
+    match error {
+        TradeSummaryUseCaseError::Trade(error) => map_trade_error(error),
+        TradeSummaryUseCaseError::Bars(error) => error.into(),
     }
 }
 

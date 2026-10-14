@@ -10,7 +10,7 @@ use crate::bars::BarsQuery;
 use super::{
     PaperOrder, PaperOrderRejectReason, PaperOrderResult, PaperOrderSide, PaperTradeFillStats,
     PaperTradeUseCaseError, PaperTradeUseCases,
-    adjustment::{SplitCursor, adjusted_quantity, utc_midnight},
+    adjustment::{adjusted_quantity, split_cursor_from_bars, utc_midnight},
 };
 
 #[derive(Clone)]
@@ -359,13 +359,13 @@ fn replay_account(
             .then_with(|| left.order().ordered_at.cmp(&right.order().ordered_at))
             .then_with(|| left.order().id.cmp(&right.order().id))
     });
-    let mut split_cursor = SplitCursor::new(bars_by_stock.values().flatten())?;
+    let mut split_cursor = split_cursor_from_bars(bars_by_stock.values().flatten())?;
     let mut position = Position::new(account.initial_cash_jpy);
     let mut results = Vec::new();
     for event in events {
         let fill_date = event.fill_date();
-        split_cursor.apply_through(fill_date, |bar| {
-            position.apply_split(&bar.instrument_id, bar.adjustment_factor)
+        split_cursor.apply_through(fill_date, |adjustment| {
+            position.apply_split(&adjustment.instrument_id, adjustment.factor)
         })?;
         match event {
             FillEvent::Recorded {

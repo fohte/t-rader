@@ -9,6 +9,7 @@ use crate::persistence::PersistenceError;
 
 use super::types::{
     Note, NoteLink, NoteLinks, NoteListPage, NoteListQuery, NoteSnapshot, NoteVersion,
+    PendingNoteVersion,
 };
 
 #[derive(Debug, Error)]
@@ -49,7 +50,9 @@ pub trait NoteReadQuery: Send + Sync {
         note_id: Uuid,
         version_no: i32,
     ) -> Result<Option<NoteVersion>, NoteReadQueryError>;
-    async fn list_pending_note_versions(&self) -> Result<Vec<NoteVersion>, NoteReadQueryError>;
+    async fn list_pending_note_versions(
+        &self,
+    ) -> Result<Vec<PendingNoteVersion>, NoteReadQueryError>;
     async fn list_notes(&self, query: NoteListQuery) -> Result<NoteListPage, NoteReadQueryError>;
     async fn list_notes_written_by_task(
         &self,

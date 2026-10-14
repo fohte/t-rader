@@ -27,6 +27,10 @@ impl FakeStrategyRepository {
         self.strategies.lock().await.insert(strategy.id, strategy);
     }
 
+    pub async fn insert_investable_amount(&self, amount: InvestableAmount) {
+        self.amounts.lock().await.push(amount);
+    }
+
     async fn record_transaction(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -126,6 +130,19 @@ impl StrategyRepository for FakeStrategyRepository {
                     .then_with(|| left.created_at.cmp(&right.created_at))
             })
             .cloned())
+    }
+
+    async fn find_investable_amount_history(
+        &self,
+    ) -> Result<Vec<InvestableAmount>, StrategyRepositoryError> {
+        let mut amounts = self.amounts.lock().await.clone();
+        amounts.sort_by(|left, right| {
+            left.strategy_id
+                .cmp(&right.strategy_id)
+                .then_with(|| left.effective_at.cmp(&right.effective_at))
+                .then_with(|| left.created_at.cmp(&right.created_at))
+        });
+        Ok(amounts)
     }
 
     async fn record_investable_amount(

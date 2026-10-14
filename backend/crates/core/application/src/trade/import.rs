@@ -251,6 +251,7 @@ mod tests {
             repository.clone(),
             strategy_existence.clone(),
             change_history.clone(),
+            Arc::new(crate::bars::FakeBarsRepository::new()),
         );
         ImportFixture {
             use_cases,

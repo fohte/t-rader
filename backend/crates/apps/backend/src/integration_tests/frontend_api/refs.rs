@@ -1,13 +1,57 @@
 #[cfg(test)]
 mod tests {
     use super::super::assert_response_eq;
+    use chrono::NaiveDate;
+    use core_application::indicator_observation::{
+        IndicatorObservationMetadata, IndicatorObservationRepository,
+    };
+    use core_domain::IndicatorObservation;
+    use rust_decimal::Decimal;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
+
+    use gateway_postgres::entities::{stock_group, stock_group_member};
 
     use crate::testing::{
         create_test_server_with_db, insert_test_group, insert_test_group_membership,
         insert_test_stock,
     };
+    use gateway_postgres::PostgresIndicatorObservationRepository;
     use rstest::{fixture, rstest};
+
+    const DEMO_INDICATOR_ID: &str = "DEMO_INDICATOR";
+
+    fn observation(day: u32, value: i64) -> IndicatorObservation {
+        IndicatorObservation {
+            date: NaiveDate::from_ymd_opt(2040, 1, day).expect("valid date"),
+            value: Decimal::from(value),
+        }
+    }
+
+    #[fixture]
+    async fn indicator_observations_context()
+    -> (gateway_postgres::DatabaseHandle, axum_test::TestServer) {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
+        let (db, server) = create_test_server_with_db(db).await;
+        let repository = PostgresIndicatorObservationRepository::new(db.clone());
+        repository
+            .ensure_indicator(IndicatorObservationMetadata {
+                indicator_id: DEMO_INDICATOR_ID.to_string(),
+                name: "Demo Indicator".to_string(),
+                kind: "index".to_string(),
+            })
+            .await
+            .expect("insert demo indicator");
+        repository
+            .upsert_observations(
+                DEMO_INDICATOR_ID,
+                vec![observation(3, 30), observation(1, 10), observation(2, 20)],
+            )
+            .await
+            .expect("insert demo observations");
+        (db, server)
+    }
 
     fn normalize_stock_timestamps(stocks: &mut Value) {
         for stock in stocks.as_array_mut().expect("stock list") {
@@ -80,6 +124,83 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::no_bounds(
+        "",
+        axum::http::StatusCode::OK,
+        json!([
+            { "date": "2040-01-01", "value": 10 },
+            { "date": "2040-01-02", "value": 20 },
+            { "date": "2040-01-03", "value": 30 },
+        ]),
+    )]
+    #[case::from_only(
+        "?from=2040-01-02",
+        axum::http::StatusCode::OK,
+        json!([
+            { "date": "2040-01-02", "value": 20 },
+            { "date": "2040-01-03", "value": 30 },
+        ]),
+    )]
+    #[case::to_only(
+        "?to=2040-01-02",
+        axum::http::StatusCode::OK,
+        json!([
+            { "date": "2040-01-01", "value": 10 },
+            { "date": "2040-01-02", "value": 20 },
+        ]),
+    )]
+    #[case::both_bounds(
+        "?from=2040-01-02&to=2040-01-03",
+        axum::http::StatusCode::OK,
+        json!([
+            { "date": "2040-01-02", "value": 20 },
+            { "date": "2040-01-03", "value": 30 },
+        ]),
+    )]
+    #[case::reversed_range(
+        "?from=2040-01-03&to=2040-01-02",
+        axum::http::StatusCode::BAD_REQUEST,
+        json!({ "error": "from must be on or before to" }),
+    )]
+    #[tokio::test]
+    async fn get_indicator_observations_handles_optional_bounds_and_invalid_ranges(
+        #[future] indicator_observations_context: (
+            gateway_postgres::DatabaseHandle,
+            axum_test::TestServer,
+        ),
+        #[case] query: &str,
+        #[case] expected_status: axum::http::StatusCode,
+        #[case] expected: Value,
+    ) {
+        let (_, server) = indicator_observations_context.await;
+
+        let response = server
+            .get(&format!(
+                "/api/refs/indicators/DEMO_INDICATOR/observations{query}"
+            ))
+            .await;
+
+        assert_response_eq(&response, expected_status, Some(expected));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_indicator_observations_returns_404_for_an_unknown_indicator(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_db, server) = create_test_server_with_db(db).await;
+
+        let response = server
+            .get("/api/refs/indicators/DEMO_UNKNOWN/observations")
+            .await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::NOT_FOUND,
+            Some(json!({ "error": "indicator DEMO_UNKNOWN not found" })),
+        );
+    }
+
     #[backend_test_macros::database_test]
     async fn resolve_group_link_returns_its_name(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
@@ -97,6 +218,100 @@ mod tests {
                 "id": "demo-axis/demo-group",
                 "name": "Sample Group",
             }])),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_group_returns_axis_group_and_stock_details(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        insert_test_stock(&db, "DEMO-001", "Demo Alpha").await;
+        insert_test_stock(&db, "DEMO-002", "Demo Beta").await;
+        insert_test_group_membership(
+            &db,
+            "DEMO-002",
+            "demo-axis",
+            "demo-group",
+            "Sample Group",
+            None,
+        )
+        .await;
+        let group = stock_group::Entity::find()
+            .filter(stock_group::Column::Key.eq("demo-group"))
+            .one(&db)
+            .await
+            .expect("find test group")
+            .expect("test group exists");
+        let group_id = group.id;
+        let mut group: stock_group::ActiveModel = group.into();
+        group.description = Set(Some("A synthetic group description".into()));
+        group.update(&db).await.expect("update test group");
+        stock_group_member::ActiveModel {
+            stock_id: Set("DEMO-001".into()),
+            group_id: Set(group_id),
+            created_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test group membership");
+
+        let response = server.get("/api/refs/groups/demo-axis/demo-group").await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::OK,
+            Some(json!({
+                "key": "demo-group",
+                "name": "Sample Group",
+                "description": "A synthetic group description",
+                "axis": {
+                    "key": "demo-axis",
+                    "name": "Sample Axis",
+                },
+                "stocks": [
+                    { "id": "DEMO-001", "name": "Demo Alpha" },
+                    { "id": "DEMO-002", "name": "Demo Beta" },
+                ],
+            })),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_group_returns_404_for_missing_axis_or_group(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        insert_test_group(&db, "demo-axis", "existing-group", "Existing Group").await;
+        insert_test_group(&db, "other-axis", "missing-group", "Group On Other Axis").await;
+
+        let missing_axis = server.get("/api/refs/groups/missing-axis/demo-group").await;
+        let missing_group = server.get("/api/refs/groups/demo-axis/missing-group").await;
+
+        assert_eq!(
+            vec![
+                (missing_axis.status_code(), missing_axis.json::<Value>()),
+                (missing_group.status_code(), missing_group.json::<Value>()),
+            ],
+            vec![
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    json!({ "error": "group axis missing-axis not found" }),
+                ),
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    json!({ "error": "stock group demo-axis/missing-group not found" }),
+                ),
+            ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_group_returns_400_for_invalid_path_keys(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
+
+        let response = server.get("/api/refs/groups/%20/demo-group").await;
+
+        assert_response_eq(
+            &response,
+            axum::http::StatusCode::BAD_REQUEST,
+            Some(json!({ "error": "axis_key must not be empty" })),
         );
     }
 

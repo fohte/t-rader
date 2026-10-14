@@ -126,7 +126,9 @@ impl NoteReadQuery for FakeNoteReadQuery {
         )
     }
 
-    async fn list_pending_note_versions(&self) -> Result<Vec<NoteVersion>, NoteReadQueryError> {
+    async fn list_pending_note_versions(
+        &self,
+    ) -> Result<Vec<super::types::PendingNoteVersion>, NoteReadQueryError> {
         Ok(Vec::new())
     }
 
