@@ -340,20 +340,6 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">
-          カスタムインジケーター
-          <span className="ml-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-            ({scope})
-          </span>
-        </h1>
-        <p className="text-sm text-muted-foreground-strong">
-          {scope === 'strategy'
-            ? '戦略 scope の indicator は同名のグローバル indicator を覆い、戦略実行時に優先されます。'
-            : 'グローバル scope の indicator は全戦略から参照されます。同名の戦略 scope indicator があれば覆われます。'}
-        </p>
-      </header>
-
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-indicators-list)">
         <aside className="space-y-2 border-r border-border pr-4">
           <Button

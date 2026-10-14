@@ -1,25 +1,36 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 
+import { IndicatorSettingsPageHeader } from '#components/indicators/indicator-settings-page-header'
+import { IndicatorsPage } from '#components/indicators/indicators-page'
 import { GeneralTab } from '#components/strategy-settings/general-tab'
+import {
+  StrategySettingsTabs,
+  validateStrategySettingsSearch,
+} from '#components/strategy-settings/settings-tabs'
 import { TriggersTab } from '#components/strategy-settings/triggers-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'general' | 'triggers'
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'general', label: '全般' },
-  { key: 'triggers', label: 'Triggers' },
-]
-
 export const Route = createFileRoute('/strategies/$id/settings')({
+  validateSearch: validateStrategySettingsSearch,
+  beforeLoad: ({ params, search }) => {
+    if (search.settingsTab == null) {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error, no-restricted-syntax -- TanStack Router の redirect API は throw を要求する
+      throw redirect({
+        to: '/strategies/$id/settings',
+        params: { id: params.id },
+        search: { settingsTab: 'general' },
+        replace: true,
+      })
+    }
+  },
   component: StrategySettingsPage,
 })
 
 function StrategySettingsPage() {
   const { id } = Route.useParams()
-  const [tab, setTab] = useState<TabKey>('general')
+  const { settingsTab } = Route.useSearch()
+  const tab = settingsTab ?? 'general'
 
   const { data: strategy, isPending } = $api.useQuery(
     'get',
@@ -63,34 +74,21 @@ function StrategySettingsPage() {
         </p>
       </header>
 
-      <div
-        role="tablist"
-        aria-label="戦略設定タブ"
-        className="flex items-center gap-1 border-b border-border"
-      >
-        {TABS.map((t) => {
-          const active = tab === t.key
-          return (
-            <button
-              key={t.key}
-              role="tab"
-              type="button"
-              aria-selected={active}
-              onClick={() => {
-                setTab(t.key)
-              }}
-              className="border-b-2 px-3 py-1.5 font-mono text-xs uppercase tracking-wider data-[active=true]:border-primary data-[active=true]:text-primary data-[active=false]:border-transparent data-[active=false]:text-muted-foreground"
-              data-active={active}
-            >
-              {t.label}
-            </button>
-          )
-        })}
-      </div>
+      <StrategySettingsTabs strategyId={id} activeTab={tab} />
 
-      <section role="tabpanel">
+      <section
+        id="strategy-settings-panel"
+        role="tabpanel"
+        aria-labelledby={`strategy-settings-tab-${tab}`}
+      >
         {tab === 'general' && <GeneralTab strategyId={id} />}
         {tab === 'triggers' && <TriggersTab strategyId={id} />}
+        {tab === 'indicators' && (
+          <div className="space-y-5">
+            <IndicatorSettingsPageHeader scope="strategy" />
+            <IndicatorsPage scope="strategy" strategyId={id} />
+          </div>
+        )}
       </section>
     </div>
   )
