@@ -32,7 +32,7 @@ fn estimated_intraday_bars(
         QueryDataTimeframe::FifteenMinutes => 96,
         QueryDataTimeframe::Hourly => 24,
         QueryDataTimeframe::FourHours => 6,
-        QueryDataTimeframe::Daily | QueryDataTimeframe::Weekly => return None,
+        QueryDataTimeframe::Daily => return None,
     };
     let calendar_days = usize::try_from(to.signed_duration_since(from).num_days())
         .unwrap_or(usize::MAX)
