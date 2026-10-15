@@ -539,6 +539,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'work'],
+            phaseKey: 'plan',
             phasePrompt: 'do plan',
             item: undefined,
             priorResults: {},
@@ -549,6 +551,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'work'],
+            phaseKey: 'work',
             phasePrompt: 'do work',
             item: 'a',
             priorResults: { plan: { items: ['a', 'b', 'c', 'd'] } },
@@ -559,6 +563,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'work'],
+            phaseKey: 'work',
             phasePrompt: 'do work',
             item: 'b',
             priorResults: { plan: { items: ['a', 'b', 'c', 'd'] } },
@@ -725,7 +731,7 @@ describe('runAgentGraph', () => {
           return Promise.resolve({ structuredResponse: { items } })
         }
 
-        const item = findAssignedItem(call.messageText, items)
+        const item = findAssignedItem(call.messageText, items, ['plan', 'work'])
         if (item === undefined) {
           return Promise.reject(new Error('unexpected item'))
         }
