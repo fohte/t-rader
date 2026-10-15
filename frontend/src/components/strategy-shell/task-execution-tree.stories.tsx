@@ -107,6 +107,53 @@ export const Completed: Story = {
   ),
 }
 
+export const CompletedWithNoEntries: Story = {
+  name: 'shows a completed phase when it has no entries.',
+  render: () => (
+    <Frame>
+      <TaskExecutionTree
+        steps={[
+          {
+            phase_key: 'source',
+            execution_step_id: 'source-step',
+            label: 'Source',
+            model: 'fictional-model',
+            status: 'completed',
+            output: { entries: [] },
+            started_at: '2026-08-15T09:00:00.000Z',
+            finished_at: '2026-08-15T09:00:01.000Z',
+            trace_id: 'source-trace',
+            span_id: 'source-span',
+          },
+          {
+            phase_key: 'summary',
+            execution_step_id: 'summary-step',
+            label: 'Summary',
+            model: 'fictional-model',
+            status: 'completed',
+            output: { summary: 'No entries' },
+            started_at: '2026-08-15T09:00:01.100Z',
+            finished_at: '2026-08-15T09:00:02.000Z',
+            trace_id: 'summary-trace',
+            span_id: 'summary-span',
+          },
+        ]}
+        configPhases={[
+          { key: 'source', label: 'Source', model: 'fictional-model' },
+          {
+            key: 'inspect',
+            label: 'Inspect',
+            model: 'fictional-model',
+            forEach: 'source.entries',
+          },
+          { key: 'summary', label: 'Summary', model: 'fictional-model' },
+        ]}
+        taskCompleted
+      />
+    </Frame>
+  ),
+}
+
 export const WithFailure: Story = {
   name: 'shows a failed analysis step alongside completed steps.',
   render: () => (

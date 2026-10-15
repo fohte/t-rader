@@ -19,6 +19,7 @@ pub mod event_dispatch_job;
 pub mod financial_summary;
 pub mod financial_summary_source;
 pub mod group_axis;
+pub mod group_movers;
 pub mod indicator_observation;
 pub mod indicator_observation_batch_source;
 pub mod indicator_observation_source;

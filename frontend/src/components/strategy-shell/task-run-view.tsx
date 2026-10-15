@@ -167,6 +167,7 @@ export function TaskRunView({
                 <TaskExecutionTree
                   steps={steps}
                   configPhases={configPhases}
+                  taskCompleted={task.phase === 'completed'}
                   traceUrlTemplate={traceUrlTemplate}
                   detailPlacement="external"
                   onSelectStep={setSelectedStep}

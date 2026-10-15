@@ -15,11 +15,13 @@ export interface AgentGraphPhaseSummary {
   key: string
   label: string
   model: string
+  forEach?: string
   output?: AgentGraphOutputSchema
 }
 
 export type PhaseNode =
   | { kind: 'pending'; key: string; label: string; model: string }
+  | { kind: 'empty'; key: string; label: string; model: string }
   | {
       kind: 'single'
       key: string
@@ -61,9 +63,8 @@ export function readTaskSteps(steps: unknown): TaskStep[] {
   return Array.isArray(steps) ? steps.filter(isTaskStep) : []
 }
 
-// agent_graph の YAML から表示に必要な `key`/`label`/`model` だけを緩く取り出す。
-// 保存時に backend 側で検証済みの内容を読むだけなので、他のフィールド (for_each 等)
-// は解釈しない。パースに失敗した場合は「未設定」と同じ扱い (空配列) にする。
+// agent_graph の YAML から表示に使う `key`/`label`/`model`/`for_each`/`output` を取り出す。
+// output の構造は解釈しない。パースに失敗した場合は「未設定」と同じ扱い (空配列) にする。
 export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
   if (yaml.trim() === '') return []
   const parsed = tryParseYaml(yaml)
@@ -76,6 +77,7 @@ export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
   for (const p of phases) {
     if (!isRecord(p)) continue
     const { key, label, model, output } = p
+    const forEach = p['for_each']
     if (
       typeof key === 'string' &&
       typeof label === 'string' &&
@@ -85,6 +87,7 @@ export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
         key,
         label,
         model,
+        ...(typeof forEach === 'string' ? { forEach } : {}),
         ...(isRecord(output) ? { output } : {}),
       })
     }
@@ -94,13 +97,15 @@ export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
 
 // フラットな steps を phase_key でグルーピングし、agent_graph の設定順に木を組み直す。
 // 設定に無いフェーズ (agent_graph 変更後の古いタスク等) は steps 内の初出順で末尾に追加する。
-// steps に一件も無い設定フェーズは "pending" (待機) として表示する。
+// steps に一件も無い設定フェーズは通常 "pending" (待機) として表示する。
+// タスク完了後に for_each の steps が無い場合は対象が 0 件だったと判定する。
 // steps が一件も無い (タスク未実行) ときは、configPhases があっても空配列を返す。
 // これが無いと、実行済み/実行中のタスクと「まだ steps が一件も記録されていないタスク」を
 // 区別できず、後者を恒久的に「全フェーズ待機」と誤表示してしまう。
 export function buildPhaseNodes(
   configPhases: AgentGraphPhaseSummary[],
   steps: TaskStep[],
+  taskCompleted = false,
 ): PhaseNode[] {
   if (steps.length === 0) return []
 
@@ -131,6 +136,14 @@ export function buildPhaseNodes(
     const first = phaseSteps[0]
     const config = configByKey.get(key)
     if (first == null) {
+      if (taskCompleted && config?.forEach !== undefined) {
+        return {
+          kind: 'empty',
+          key,
+          label: config.label,
+          model: config.model,
+        }
+      }
       return {
         kind: 'pending',
         key,

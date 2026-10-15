@@ -123,10 +123,8 @@ const splitForEach = (forEach: string): readonly [string, string] => {
   return [forEach.slice(0, dotIndex), forEach.slice(dotIndex + 1)]
 }
 
-// フェーズ key -> 後続フェーズの for_each から非空配列であることを要求されて
-// いる自分の output フィールド名の集合。この集合が空でないフィールドは、
-// 構造化出力のスキーマ検証と同じ再試行ループで「非空配列を返すまで」再試行
-// する対象になる (for_each の参照先が空/欠落のまま先に進むのを防ぐため)。
+// フェーズ key -> 後続フェーズの for_each が配列を要求する output フィールド名の集合。
+// 欠落または非配列の値は、構造化出力のスキーマ検証と同じ再試行ループで再試行する。
 const collectRequiredArrayFields = (
   phases: readonly AgentGraphPhase[],
 ): ReadonlyMap<string, ReadonlySet<string>> => {
@@ -141,9 +139,8 @@ const collectRequiredArrayFields = (
   return map
 }
 
-// 参照元フェーズ (invokePhaseWithRetry) が非空配列を返すまで再試行済みのため、
-// ここに到達した時点で参照先は本来常に妥当な非空配列のはず。このチェックは
-// その前提が崩れた場合 (参照先フェーズが存在しない等) の防御的フォールバック。
+// 参照元フェーズ (invokePhaseWithRetry) が配列を返すまで再試行済み。
+// 参照先フェーズが存在しない場合などの防御的フォールバックとして再確認する。
 const resolveForEachItems = (
   priorResults: Readonly<Record<string, unknown>>,
   refKey: string,
@@ -156,11 +153,6 @@ const resolveForEachItems = (
       new Error(
         `for_each の参照先 "${refKey}.${refField}" が配列ではありません`,
       ),
-    )
-  }
-  if (items.length === 0) {
-    return err(
-      new Error(`for_each の参照先 "${refKey}.${refField}" が空配列です`),
     )
   }
   return ok(items)
@@ -265,7 +257,7 @@ const runForEachItems = async (
     }
   }
 
-  if (outputs.length === 0) {
+  if (items.length > 0 && outputs.length === 0) {
     return err(
       isUsageLimitError(firstError)
         ? firstError
