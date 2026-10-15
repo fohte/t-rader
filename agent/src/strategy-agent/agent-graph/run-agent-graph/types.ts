@@ -1,5 +1,5 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import type { HumanMessage } from '@langchain/core/messages'
+import type { BaseMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 
 import type { ObjectJsonSchema } from '#strategy-agent/agent-graph/output-schema'
@@ -18,7 +18,7 @@ export interface BuildPhaseAgentOptions {
 
 export interface CompiledPhaseAgent {
   invoke(input: {
-    messages: readonly HumanMessage[]
+    messages: readonly BaseMessage[]
     // 実行ステップの識別子。同一ステップのリトライ間で同じ値が渡されることを
     // テストが観測点として使う (MCP 接続への焼き込みは呼び出し元の
     // context.createStepMcpClient(executionStepId) 側で行うため、この値自体を
