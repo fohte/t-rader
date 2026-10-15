@@ -69,12 +69,16 @@ impl StrategyTaskReconcileUseCases {
         let mut last_error = None;
 
         while self.waiting_reconcile.pending.swap(false, Ordering::SeqCst) {
-            match self.reconcile_after_acquiring_lock().await {
-                Ok(count) => {
+            match AssertUnwindSafe(self.reconcile_after_acquiring_lock())
+                .catch_unwind()
+                .await
+            {
+                Ok(Ok(count)) => {
                     updated += count;
                     last_error = None;
                 }
-                Err(error) => last_error = Some(error),
+                Ok(Err(error)) => last_error = Some(error),
+                Err(_) => last_error = Some("strategy task reconciliation panicked".to_string()),
             }
         }
 

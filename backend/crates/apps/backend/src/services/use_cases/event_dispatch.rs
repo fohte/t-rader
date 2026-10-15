@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use async_trait::async_trait;
+use futures_util::FutureExt;
 use core_application::{
     agent_task_client::SharedAgentTaskClient,
     event_dispatch::EventDispatchUseCases,
@@ -82,11 +83,17 @@ impl EventDispatchJobQueue for BackgroundEventDispatchJobQueue {
                     break;
                 }
 
-                if let Err(error) = event_dispatch
-                    .dispatch_pending_events(agent_task_client.as_ref())
-                    .await
+                match AssertUnwindSafe(
+                    event_dispatch.dispatch_pending_events(agent_task_client.as_ref()),
+                )
+                .catch_unwind()
+                .await
                 {
-                    tracing::warn!(%error, "event dispatch failed; periodic dispatch will retry");
+                    Ok(Ok(_)) => {}
+                    Ok(Err(error)) => {
+                        tracing::warn!(%error, "event dispatch failed; periodic dispatch will retry");
+                    }
+                    Err(_) => tracing::error!("event dispatch panicked"),
                 }
             }
         });

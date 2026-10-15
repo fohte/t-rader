@@ -47,6 +47,10 @@ struct BlockingReconcileLock(Arc<ReconcileLockState>);
 
 struct BlockingReconcileLockGuard(Arc<ReconcileLockState>);
 
+struct PanicOnceReconcileLock(AtomicUsize);
+
+struct EmptyReconcileLockGuard;
+
 impl BlockingReconcileLock {
     fn new() -> Self {
         Self(Arc::new(ReconcileLockState {
@@ -83,10 +87,33 @@ impl StrategyTaskReconcileLock for BlockingReconcileLock {
 }
 
 #[async_trait]
+impl StrategyTaskReconcileLock for PanicOnceReconcileLock {
+    async fn acquire(&self) -> Result<Box<dyn StrategyTaskReconcileLockGuard>, PersistenceError> {
+        if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
+            std::panic::panic_any("synthetic lock acquisition panic");
+        }
+        Ok(Box::new(EmptyReconcileLockGuard))
+    }
+
+    async fn try_acquire(
+        &self,
+    ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {
+        Ok(Some(Box::new(EmptyReconcileLockGuard)))
+    }
+}
+
+#[async_trait]
 impl StrategyTaskReconcileLockGuard for BlockingReconcileLockGuard {
     async fn release(self: Box<Self>) -> Result<(), PersistenceError> {
         *self.0.locked.lock().await = false;
         self.0.released.notify_one();
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl StrategyTaskReconcileLockGuard for EmptyReconcileLockGuard {
+    async fn release(self: Box<Self>) -> Result<(), PersistenceError> {
         Ok(())
     }
 }
@@ -337,6 +364,31 @@ async fn notification_reconciles_again_after_an_existing_run_finishes(
             true,
             Ok(1),
             StrategyTaskPhase::Completed,
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn waiting_reconcile_releases_its_gate_after_lock_acquisition_panics(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    let lock = Arc::new(PanicOnceReconcileLock(AtomicUsize::new(0)));
+    let lock_use_cases = StrategyTaskReconcileLockUseCases::new(lock.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(
+        db,
+        Arc::new(ReconcileAfterNotificationAgentTaskClient::new()),
+    );
+    let reconcile = use_cases.strategy_task_reconcile(lock_use_cases);
+
+    let first = reconcile.reconcile_waiting_for_lock().await;
+    let second = reconcile.reconcile_waiting_for_lock().await;
+
+    assert_eq!(
+        (first, second, lock.0.load(Ordering::SeqCst),),
+        (
+            Err("strategy task reconciliation panicked".to_string()),
+            Ok(0),
+            2,
         ),
     );
 }

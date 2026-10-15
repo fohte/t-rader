@@ -185,11 +185,27 @@ struct BlockingSubmitAgentTaskClient {
     submit_count: std::sync::atomic::AtomicUsize,
 }
 
+struct PanicOnceSubmitAgentTaskClient {
+    panic_started: Notify,
+    resume_panic: Notify,
+    submit_count: std::sync::atomic::AtomicUsize,
+}
+
 impl BlockingSubmitAgentTaskClient {
     fn new() -> Self {
         Self {
             submit_started: Notify::new(),
             resume_submit: Notify::new(),
+            submit_count: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+
+impl PanicOnceSubmitAgentTaskClient {
+    fn new() -> Self {
+        Self {
+            panic_started: Notify::new(),
+            resume_panic: Notify::new(),
             submit_count: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -204,6 +220,34 @@ impl AgentTaskClient for BlockingSubmitAgentTaskClient {
             + 1;
         self.submit_started.notify_one();
         self.resume_submit.notified().await;
+        Ok(AgentTaskRef {
+            task_id: format!("synthetic-agent-task-{submit_number}"),
+        })
+    }
+
+    async fn get(&self, _task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+        Ok(AgentTaskStatus {
+            state: AgentTaskState::Working,
+            result_text: None,
+            error_message: None,
+            error_kind: None,
+            steps: None,
+        })
+    }
+}
+
+#[async_trait]
+impl AgentTaskClient for PanicOnceSubmitAgentTaskClient {
+    async fn submit(&self, _request: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
+        let submit_number = self
+            .submit_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        if submit_number == 1 {
+            self.panic_started.notify_one();
+            self.resume_panic.notified().await;
+            std::panic::panic_any("synthetic submit panic");
+        }
         Ok(AgentTaskRef {
             task_id: format!("synthetic-agent-task-{submit_number}"),
         })
@@ -432,6 +476,77 @@ async fn concurrent_enqueues_share_a_single_background_dispatch(db: DatabaseHand
                 "synthetic-agent-task-1".to_string(),
                 "synthetic-agent-task-2".to_string(),
             ],
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn dispatch_runner_accepts_new_work_after_a_dispatch_panics(db: DatabaseHandle) {
+    let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
+    testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        .await
+        .expect("insert test agent configuration");
+    create_event(&db, "sample_process.first", json!({}), 0).await;
+    create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.first",
+        None,
+        "synthetic first prompt",
+    )
+    .await;
+
+    let fake = Arc::new(PanicOnceSubmitAgentTaskClient::new());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), fake.clone());
+    let first_enqueue = use_cases.event_dispatch_job().enqueue_dispatch().await;
+    let panic_started =
+        tokio::time::timeout(StdDuration::from_secs(2), fake.panic_started.notified())
+            .await
+            .is_ok();
+
+    create_event(&db, "sample_process.second", json!({}), 0).await;
+    create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.second",
+        None,
+        "synthetic second prompt",
+    )
+    .await;
+    let second_enqueue = use_cases.event_dispatch_job().enqueue_dispatch().await;
+    fake.resume_panic.notify_one();
+
+    let second_task_id = tokio::time::timeout(StdDuration::from_secs(2), async {
+        loop {
+            let second_task = strategy_task::Entity::find()
+                .all(&db)
+                .await
+                .expect("read submitted strategy tasks")
+                .into_iter()
+                .find(|task| task.prompt == "synthetic second prompt");
+            if let Some(task) = second_task
+                && task.a2a_task_id.is_some()
+            {
+                break task.a2a_task_id;
+            }
+            tokio::time::sleep(StdDuration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or(None);
+
+    assert_eq!(
+        (
+            first_enqueue.map_err(|error| error.to_string()),
+            panic_started,
+            second_enqueue.map_err(|error| error.to_string()),
+            second_task_id,
+        ),
+        (
+            Ok(()),
+            true,
+            Ok(()),
+            Some("synthetic-agent-task-2".to_string()),
         ),
     );
 }
