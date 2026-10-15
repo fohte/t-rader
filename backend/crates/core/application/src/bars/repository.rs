@@ -59,12 +59,6 @@ pub trait BarsRepository: Send + Sync {
         bars: Vec<Bar>,
     ) -> Result<(), BarsRepositoryError>;
 
-    async fn upsert_minute_bars(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        bars: Vec<Bar>,
-    ) -> Result<(), BarsRepositoryError>;
-
     async fn mark_ingested(
         &self,
         transaction: &UnitOfWorkTransaction,

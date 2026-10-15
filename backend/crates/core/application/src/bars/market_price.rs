@@ -353,14 +353,6 @@ mod tests {
             Err(database_error())
         }
 
-        async fn upsert_minute_bars(
-            &self,
-            _: &UnitOfWorkTransaction,
-            _: Vec<Bar>,
-        ) -> Result<(), BarsRepositoryError> {
-            Err(database_error())
-        }
-
         async fn mark_ingested(
             &self,
             _: &UnitOfWorkTransaction,
