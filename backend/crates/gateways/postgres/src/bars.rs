@@ -34,6 +34,13 @@ impl PostgresBarsRepository {
         &self,
         instrument_ids: &[String],
     ) -> Result<Vec<String>, BarsRepositoryError> {
+        Self::us_instrument_ids_from(&self.db, instrument_ids).await
+    }
+
+    async fn us_instrument_ids_from(
+        db: &impl ConnectionTrait,
+        instrument_ids: &[String],
+    ) -> Result<Vec<String>, BarsRepositoryError> {
         if instrument_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -41,7 +48,7 @@ impl PostgresBarsRepository {
         instruments::Entity::find()
             .filter(instruments::Column::Id.is_in(instrument_ids.to_vec()))
             .filter(instruments::Column::Market.eq(Market::Us.to_string()))
-            .all(&self.db)
+            .all(db)
             .await
             .map(|instruments| {
                 instruments
@@ -86,6 +93,51 @@ impl BarsRepository for PostgresBarsRepository {
         }
 
         bar_queries::find_bars(&self.db, to_postgres_query(query))
+            .await
+            .map(|rows| rows.into_iter().map(Into::into).collect())
+            .map_err(repository_error)
+    }
+
+    async fn find_bars_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        query: BarsQuery,
+    ) -> Result<Vec<Bar>, BarsRepositoryError> {
+        let connection =
+            postgres_transaction_ref(transaction).ok_or(BarsRepositoryError::InvalidTransaction)?;
+        let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
+            return Ok(Vec::new());
+        };
+
+        if timeframe == Timeframe::Weekly {
+            return bar_queries::find_weekly_bars_by_instruments(
+                connection,
+                std::slice::from_ref(&query.instrument_id),
+                query.from,
+                query.to,
+            )
+            .await
+            .map_err(repository_error);
+        }
+
+        if timeframe != Timeframe::Daily {
+            let us_instrument_ids = Self::us_instrument_ids_from(
+                connection,
+                std::slice::from_ref(&query.instrument_id),
+            )
+            .await?;
+            return bar_queries::find_intraday_bars_by_instruments(
+                connection,
+                &us_instrument_ids,
+                timeframe,
+                query.from,
+                query.to,
+            )
+            .await
+            .map_err(repository_error);
+        }
+
+        bar_queries::find_bars(connection, to_postgres_query(query))
             .await
             .map(|rows| rows.into_iter().map(Into::into).collect())
             .map_err(repository_error)
@@ -142,6 +194,18 @@ impl BarsRepository for PostgresBarsRepository {
         from: NaiveDate,
     ) -> Result<Vec<core_application::bars::DailyBarAdjustmentFactor>, BarsRepositoryError> {
         bar_queries::find_daily_adjustment_factors_from(&self.db, instrument_id, from)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn find_daily_adjustment_factors_from_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        instrument_id: &str,
+        from: NaiveDate,
+    ) -> Result<Vec<core_application::bars::DailyBarAdjustmentFactor>, BarsRepositoryError> {
+        let connection = transaction_ref(transaction)?;
+        bar_queries::find_daily_adjustment_factors_from(connection, instrument_id, from)
             .await
             .map_err(repository_error)
     }

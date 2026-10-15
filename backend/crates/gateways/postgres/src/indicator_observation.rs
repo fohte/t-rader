@@ -4,6 +4,7 @@ use core_application::indicator_observation::{
     IndicatorObservationMetadata, IndicatorObservationQuery, IndicatorObservationRepository,
     IndicatorObservationRepositoryError,
 };
+use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::IndicatorObservation;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
@@ -12,6 +13,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use crate::DatabaseHandle;
 use crate::entities::{indicator, indicator_observation};
 use crate::persistence::persistence_error;
+use crate::transaction::transaction_ref;
 
 #[derive(Clone)]
 pub struct PostgresIndicatorObservationRepository {
@@ -109,6 +111,37 @@ impl IndicatorObservationRepository for PostgresIndicatorObservationRepository {
         observations
             .order_by_asc(indicator_observation::Column::Date)
             .all(&self.db)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| IndicatorObservation {
+                        date: row.date,
+                        value: row.value,
+                    })
+                    .collect()
+            })
+            .map_err(repository_error)
+    }
+
+    async fn find_observations_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        query: IndicatorObservationQuery,
+    ) -> Result<Vec<IndicatorObservation>, IndicatorObservationRepositoryError> {
+        let connection = transaction_ref(transaction)
+            .ok_or(IndicatorObservationRepositoryError::InvalidTransaction)?;
+        let mut observations = indicator_observation::Entity::find()
+            .filter(indicator_observation::Column::IndicatorId.eq(query.indicator_id));
+        if let Some(from) = query.from {
+            observations = observations.filter(indicator_observation::Column::Date.gte(from));
+        }
+        if let Some(to) = query.to {
+            observations = observations.filter(indicator_observation::Column::Date.lte(to));
+        }
+
+        observations
+            .order_by_asc(indicator_observation::Column::Date)
+            .all(connection)
             .await
             .map(|rows| {
                 rows.into_iter()

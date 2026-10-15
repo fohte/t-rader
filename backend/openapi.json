@@ -10429,7 +10429,7 @@
           },
           "resolved_price_references_json": {
             "$ref": "#/components/schemas/Value",
-            "description": "本文中の価格リンクを key、実行データから解決した値を value とする。"
+            "description": "本文中の参照ごとの解決値を格納する。価格・変化率参照は bars の日足から解決する。"
           },
           "status": {
             "type": "string"
@@ -10650,7 +10650,7 @@
           },
           "resolved_price_references_json": {
             "$ref": "#/components/schemas/Value",
-            "description": "本文中の価格リンクを key、実行データから解決した値を value とする。"
+            "description": "本文中の参照ごとの解決値を格納する。価格・変化率参照は bars の日足から解決する。"
           },
           "reviewed_at": {
             "type": [

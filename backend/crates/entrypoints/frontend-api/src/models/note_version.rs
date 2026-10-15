@@ -18,7 +18,7 @@ pub struct NoteVersionResponse {
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
-    /// 本文中の価格リンクを key、実行データから解決した値を value とする。
+    /// 本文中の参照ごとの解決値を格納する。価格・変化率参照は bars の日足から解決する。
     pub resolved_price_references_json: Json,
     #[schema(value_type = Vec<GraphDef>)]
     pub graphs_json: serde_json::Value,

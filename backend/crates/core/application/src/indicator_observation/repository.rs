@@ -6,6 +6,7 @@ use core_domain::IndicatorObservation;
 
 use super::error::IndicatorObservationRepositoryError;
 use super::types::{IndicatorObservationMetadata, IndicatorObservationQuery};
+use crate::unit_of_work::UnitOfWorkTransaction;
 
 #[async_trait]
 pub trait IndicatorObservationRepository: Send + Sync {
@@ -29,6 +30,14 @@ pub trait IndicatorObservationRepository: Send + Sync {
         &self,
         query: IndicatorObservationQuery,
     ) -> Result<Vec<IndicatorObservation>, IndicatorObservationRepositoryError>;
+
+    async fn find_observations_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        query: IndicatorObservationQuery,
+    ) -> Result<Vec<IndicatorObservation>, IndicatorObservationRepositoryError> {
+        self.find_observations(query).await
+    }
 }
 
 pub type SharedIndicatorObservationRepository =

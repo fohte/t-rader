@@ -6,11 +6,14 @@ use core_domain::valuation::Valuation;
 use thiserror::Error;
 
 use crate::persistence::PersistenceError;
+use crate::unit_of_work::UnitOfWorkTransaction;
 
 #[derive(Debug, Error)]
 pub enum ValuationRepositoryError {
     #[error(transparent)]
     Database(#[from] PersistenceError),
+    #[error("transaction has an unexpected type")]
+    InvalidTransaction,
 }
 
 #[async_trait]
@@ -30,6 +33,16 @@ pub trait ValuationRepository: Send + Sync {
         from: NaiveDate,
         to: NaiveDate,
     ) -> Result<Vec<Valuation>, ValuationRepositoryError>;
+
+    async fn find_by_symbol_date_range_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        symbol: &str,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Vec<Valuation>, ValuationRepositoryError> {
+        self.find_by_symbol_date_range(symbol, from, to).await
+    }
 
     async fn find_latest_by_symbol(
         &self,

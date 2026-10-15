@@ -2046,7 +2046,7 @@ export interface components {
       id: string
       is_current: boolean
       kind?: string | null
-      /** @description 本文中の価格リンクを key、実行データから解決した値を value とする。 */
+      /** @description 本文中の参照ごとの解決値を格納する。価格・変化率参照は bars の日足から解決する。 */
       resolved_price_references_json: components['schemas']['Value']
       status: string
       tags: string[]
@@ -2115,7 +2115,7 @@ export interface components {
       is_current: boolean
       /** Format: uuid */
       note_id: string
-      /** @description 本文中の価格リンクを key、実行データから解決した値を value とする。 */
+      /** @description 本文中の参照ごとの解決値を格納する。価格・変化率参照は bars の日足から解決する。 */
       resolved_price_references_json: components['schemas']['Value']
       /** Format: date-time */
       reviewed_at?: string | null

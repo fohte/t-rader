@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
+use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_application::valuation::{ValuationRepository, ValuationRepositoryError};
 use core_domain::valuation::Valuation;
 use sea_orm::sea_query::OnConflict;
@@ -11,6 +12,7 @@ use sea_orm::{
 use crate::DatabaseHandle;
 use crate::entities::{valuation, valuation_ingested_date};
 use crate::persistence::persistence_error;
+use crate::transaction::transaction_ref;
 
 const FIND_BY_SYMBOL_DATE_RANGE_SQL: &str = "SELECT code, date, eps, fwd_eps, bps, roe, fwd_roe, per, fwd_per, pbr, mkt_cap FROM valuation WHERE LEFT(code, 4) = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC";
 const FIND_LATEST_BY_SYMBOL_SQL: &str = "SELECT code, date, eps, fwd_eps, bps, roe, fwd_roe, per, fwd_per, pbr, mkt_cap FROM valuation WHERE LEFT(code, 4) = $1 ORDER BY date DESC LIMIT 1";
@@ -142,6 +144,30 @@ impl ValuationRepository for PostgresValuationRepository {
     ) -> Result<Vec<Valuation>, ValuationRepositoryError> {
         let rows = self
             .db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                FIND_BY_SYMBOL_DATE_RANGE_SQL,
+                [symbol.to_owned().into(), from.into(), to.into()],
+            ))
+            .await
+            .map_err(repository_error)?;
+
+        rows.into_iter()
+            .map(|row| ValuationRow::from_query_result(&row, "").map(Into::into))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(repository_error)
+    }
+
+    async fn find_by_symbol_date_range_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        symbol: &str,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Vec<Valuation>, ValuationRepositoryError> {
+        let connection =
+            transaction_ref(transaction).ok_or(ValuationRepositoryError::InvalidTransaction)?;
+        let rows = connection
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 FIND_BY_SYMBOL_DATE_RANGE_SQL,
