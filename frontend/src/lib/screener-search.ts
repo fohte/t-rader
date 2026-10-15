@@ -178,7 +178,7 @@ export function countActiveScreenerFilters(search: ScreenerSearch): number {
   ].filter(Boolean).length
 }
 
-export function getNextScreenerSort(
+function getNextScreenerSort(
   current: Pick<ScreenerSearch, 'sort_by' | 'sort_order'>,
   field: ScreenerSortBy,
 ): Pick<ScreenerSearch, 'sort_by' | 'sort_order'> {

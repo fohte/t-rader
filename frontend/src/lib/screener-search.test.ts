@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   countActiveScreenerFilters,
-  getNextScreenerSort,
   getScreenerRangeError,
   getScreenerSearchAfterSortBy,
   getScreenerSearchAfterSortOrder,
@@ -124,23 +123,28 @@ describe('screener filter helpers', () => {
   })
 
   it.each([
-    ['new text column', {}, 'name', { sort_by: 'name', sort_order: 'asc' }],
+    [
+      'new text column',
+      {},
+      'name',
+      { sort_by: 'name', sort_order: 'asc', page: undefined },
+    ],
     [
       'new numeric column',
       { sort_by: 'name', sort_order: 'asc' },
       'roe',
-      { sort_by: 'roe', sort_order: 'desc' },
+      { sort_by: 'roe', sort_order: 'desc', page: undefined },
     ],
     [
       'currently sorted column',
       { sort_by: 'per', sort_order: 'desc' },
       'per',
-      { sort_by: 'per', sort_order: 'asc' },
+      { sort_by: 'per', sort_order: 'asc', page: undefined },
     ],
   ] as const)(
     'chooses the next direction for a %s',
     (_name, current, field, expected) => {
-      expect(getNextScreenerSort(current, field)).toEqual(expected)
+      expect(getScreenerSearchAfterSortBy(current, field)).toEqual(expected)
     },
   )
 })
