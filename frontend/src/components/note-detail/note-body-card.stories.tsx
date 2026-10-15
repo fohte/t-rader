@@ -10,7 +10,15 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const FormattedBody: Story = {
-  name: 'the note card keeps formatted body content aligned.',
+  name: 'the note card aligns with the surrounding page content.',
+  decorators: [
+    (Story) => (
+      <div className="space-y-4 bg-background p-5 text-foreground">
+        <div className="text-sm">ノート一覧に戻る</div>
+        <Story />
+      </div>
+    ),
+  ],
   args: {
     children: (
       <div>
