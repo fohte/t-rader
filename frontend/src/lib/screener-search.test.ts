@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clearSavedScreenSelectionSearch,
   countActiveScreenerFilters,
   getScreenerRangeError,
   getScreenerSearchAfterSortBy,
   getScreenerSearchAfterSortOrder,
+  type SavedScreen,
+  savedScreenHasSearchChanges,
+  toSavedScreenRequest,
   toScreenerApiQuery,
+  toScreenerSearch,
   validateScreenerSearch,
 } from '#lib/screener-search'
 
@@ -13,6 +18,7 @@ describe('validateScreenerSearch', () => {
   it('normalizes supported URL values and drops invalid values', () => {
     expect(
       validateScreenerSearch({
+        screen: 'saved-screen-a',
         markets: ['プライム,グロース', '架空市場'],
         sectors: 'sector-a, sector-b',
         min_per: '8.5',
@@ -24,6 +30,7 @@ describe('validateScreenerSearch', () => {
         max_pbr: 'not-a-number',
       }),
     ).toEqual({
+      screen: 'saved-screen-a',
       markets: ['プライム', 'グロース'],
       sectors: ['sector-a', 'sector-b'],
       min_per: 8.5,
@@ -50,6 +57,7 @@ describe('validateScreenerSearch', () => {
         page: '0',
       }),
     ).toEqual({
+      screen: undefined,
       markets: undefined,
       sectors: undefined,
       min_per: undefined,
@@ -96,6 +104,118 @@ describe('toScreenerApiQuery', () => {
       max_dividend_yield: undefined,
       min_market_cap: undefined,
       max_market_cap: 5000,
+      sort_by: 'per',
+      sort_order: 'asc',
+      page: 2,
+    })
+  })
+})
+
+describe('saved screen search conversion', () => {
+  const savedScreen: SavedScreen = {
+    id: 'saved-screen-a',
+    name: '試作条件',
+    created_at: '2099-01-01T00:00:00Z',
+    updated_at: '2099-01-02T00:00:00Z',
+    filters: {
+      markets: ['スタンダード', 'プライム'],
+      sectors: ['sector-b', 'sector-a'],
+      per: { min: null, max: 12 },
+      pbr: { min: 0.5, max: 1 },
+      roe: null,
+      dividend_yield: { min: 3, max: null },
+      market_cap: { min: 100, max: null },
+    },
+    sort: { field: 'per', direction: 'asc' },
+  }
+
+  it('converts an API screen to URL search values and resets paging', () => {
+    expect(toScreenerSearch(savedScreen)).toEqual({
+      markets: ['スタンダード', 'プライム'],
+      sectors: ['sector-b', 'sector-a'],
+      min_per: undefined,
+      max_per: 12,
+      min_pbr: 0.5,
+      max_pbr: 1,
+      min_roe: undefined,
+      max_roe: undefined,
+      min_dividend_yield: 3,
+      max_dividend_yield: undefined,
+      min_market_cap: 100,
+      max_market_cap: undefined,
+      sort_by: 'per',
+      sort_order: 'asc',
+      page: undefined,
+    })
+  })
+
+  it('converts URL search values to a complete saved screen request', () => {
+    expect(
+      toSavedScreenRequest('  試作条件  ', {
+        markets: ['プライム', 'スタンダード'],
+        sectors: ['sector-b', 'sector-a'],
+        min_per: 5,
+        max_pbr: 1,
+        min_roe: 8,
+        min_dividend_yield: 3,
+        min_market_cap: 100,
+        sort_by: 'per',
+        sort_order: 'asc',
+      }),
+    ).toEqual({
+      name: '試作条件',
+      filters: {
+        markets: ['スタンダード', 'プライム'],
+        sectors: ['sector-a', 'sector-b'],
+        per: { min: 5, max: undefined },
+        pbr: { min: undefined, max: 1 },
+        roe: { min: 8, max: undefined },
+        dividend_yield: { min: 3, max: undefined },
+        market_cap: { min: 100, max: undefined },
+      },
+      sort: { field: 'per', direction: 'asc' },
+    })
+  })
+
+  it('treats reordered filters and omitted defaults as the saved conditions', () => {
+    const savedSearch = toScreenerSearch(savedScreen)
+
+    expect(
+      savedScreenHasSearchChanges(savedScreen, {
+        ...savedSearch,
+        screen: savedScreen.id,
+        markets: [...(savedSearch.markets ?? [])].reverse(),
+        sectors: [...(savedSearch.sectors ?? [])].reverse(),
+        page: 2,
+      }),
+    ).toEqual(false)
+  })
+
+  it.each([
+    ['filter values', { ...toScreenerSearch(savedScreen), max_per: 11 }],
+    ['sort values', { ...toScreenerSearch(savedScreen), sort_order: 'desc' }],
+  ] as const)('detects changed %s', (_name, search) => {
+    expect(savedScreenHasSearchChanges(savedScreen, search)).toEqual(true)
+  })
+})
+
+describe('saved screen URL selection', () => {
+  it('clears only the selected screen while keeping the current search', () => {
+    expect(
+      clearSavedScreenSelectionSearch({
+        screen: 'missing-screen',
+        markets: ['プライム'],
+        sectors: ['sector-a'],
+        max_per: 12,
+        sort_by: 'per',
+        sort_order: 'asc',
+        page: 2,
+      }),
+    ).toEqual({
+      screen: undefined,
+      markets: ['プライム'],
+      sectors: ['sector-a'],
+      max_per: 12,
       sort_by: 'per',
       sort_order: 'asc',
       page: 2,
@@ -154,6 +274,7 @@ describe('screener sort search helpers', () => {
     expect(
       getScreenerSearchAfterSortBy(
         {
+          screen: 'saved-screen-a',
           markets: ['プライム'],
           sectors: ['sector-a'],
           min_per: 5,
@@ -164,6 +285,7 @@ describe('screener sort search helpers', () => {
         'per',
       ),
     ).toEqual({
+      screen: 'saved-screen-a',
       markets: ['プライム'],
       sectors: ['sector-a'],
       min_per: 5,
@@ -177,6 +299,7 @@ describe('screener sort search helpers', () => {
     expect(
       getScreenerSearchAfterSortOrder(
         {
+          screen: 'saved-screen-a',
           markets: ['プライム'],
           sectors: ['sector-a'],
           min_per: 5,
@@ -187,6 +310,7 @@ describe('screener sort search helpers', () => {
         'asc',
       ),
     ).toEqual({
+      screen: 'saved-screen-a',
       markets: ['プライム'],
       sectors: ['sector-a'],
       min_per: 5,

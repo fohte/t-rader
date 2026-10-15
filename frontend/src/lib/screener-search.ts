@@ -56,6 +56,7 @@ export type ScreenerRangeSearchKey =
   | (typeof SCREENER_RANGE_FIELDS)[number]['maxField']
 
 export type ScreenerSearch = {
+  screen?: string
   markets?: ScreenerMarket[]
   sectors?: string[]
   min_per?: number
@@ -75,6 +76,8 @@ export type ScreenerSearch = {
 
 export type ScreenerSectorOption =
   components['schemas']['ScreenerSectorResponse']
+export type SavedScreen = components['schemas']['SavedScreen']
+export type SaveScreenRequest = components['schemas']['SaveScreenRequest']
 export type ScreenerApiQuery = NonNullable<
   operations['screen_stocks']['parameters']['query']
 >
@@ -123,6 +126,10 @@ function parsePage(value: unknown): number | undefined {
 export function validateScreenerSearch(
   search: Record<string, unknown>,
 ): ScreenerSearch {
+  const screen =
+    typeof search.screen === 'string' && search.screen.trim() !== ''
+      ? search.screen
+      : undefined
   const requestedMarkets = parseList(search.markets)
   const markets = requestedMarkets?.filter((market): market is ScreenerMarket =>
     SCREENER_MARKETS.some((option) => option === market),
@@ -134,6 +141,7 @@ export function validateScreenerSearch(
       : undefined
 
   return {
+    screen,
     markets: markets == null || markets.length === 0 ? undefined : markets,
     sectors,
     min_per: parseNumber(search.min_per),
@@ -153,6 +161,84 @@ export function validateScreenerSearch(
         : undefined,
     page: parsePage(search.page),
   }
+}
+
+export function toSavedScreenRequest(
+  name: string,
+  search: ScreenerSearch,
+): SaveScreenRequest {
+  const range = (min?: number, max?: number) =>
+    min == null && max == null ? null : { min, max }
+
+  return {
+    name: name.trim(),
+    filters: {
+      markets: [...(search.markets ?? [])].sort(),
+      sectors: [...(search.sectors ?? [])].sort(),
+      per: range(search.min_per, search.max_per),
+      pbr: range(search.min_pbr, search.max_pbr),
+      roe: range(search.min_roe, search.max_roe),
+      dividend_yield: range(
+        search.min_dividend_yield,
+        search.max_dividend_yield,
+      ),
+      market_cap: range(search.min_market_cap, search.max_market_cap),
+    },
+    sort: {
+      field: search.sort_by ?? DEFAULT_SCREENER_SORT.sort_by,
+      direction: search.sort_order ?? DEFAULT_SCREENER_SORT.sort_order,
+    },
+  }
+}
+
+export function toScreenerSearch(savedScreen: SavedScreen): ScreenerSearch {
+  const { filters, sort } = savedScreen
+  return {
+    markets:
+      filters.markets.length === 0
+        ? undefined
+        : filters.markets.filter((market): market is ScreenerMarket =>
+            SCREENER_MARKETS.some((option) => option === market),
+          ),
+    sectors: filters.sectors.length === 0 ? undefined : filters.sectors,
+    min_per: filters.per?.min ?? undefined,
+    max_per: filters.per?.max ?? undefined,
+    min_pbr: filters.pbr?.min ?? undefined,
+    max_pbr: filters.pbr?.max ?? undefined,
+    min_roe: filters.roe?.min ?? undefined,
+    max_roe: filters.roe?.max ?? undefined,
+    min_dividend_yield: filters.dividend_yield?.min ?? undefined,
+    max_dividend_yield: filters.dividend_yield?.max ?? undefined,
+    min_market_cap: filters.market_cap?.min ?? undefined,
+    max_market_cap: filters.market_cap?.max ?? undefined,
+    sort_by: sort.field,
+    sort_order: sort.direction,
+    page: undefined,
+  }
+}
+
+export function savedScreenHasSearchChanges(
+  savedScreen: SavedScreen,
+  search: ScreenerSearch,
+): boolean {
+  const savedConditions = toSavedScreenRequest(
+    savedScreen.name,
+    toScreenerSearch(savedScreen),
+  )
+  const currentConditions = toSavedScreenRequest(savedScreen.name, search)
+
+  return (
+    JSON.stringify(savedConditions.filters) !==
+      JSON.stringify(currentConditions.filters) ||
+    JSON.stringify(savedConditions.sort) !==
+      JSON.stringify(currentConditions.sort)
+  )
+}
+
+export function clearSavedScreenSelectionSearch(
+  search: ScreenerSearch,
+): ScreenerSearch {
+  return { ...search, screen: undefined }
 }
 
 export function getScreenerRangeError(

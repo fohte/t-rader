@@ -1,10 +1,17 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ScreenerPageView } from '#components/screener/screener-page-view'
 import type { components } from '#lib/api/schema.gen'
+import type { SavedScreen } from '#lib/screener-search'
 
 type ScreenerResponse = components['schemas']['ScreenerResponse']
 
@@ -13,6 +20,23 @@ const data: ScreenerResponse = {
   total_count: 0,
   as_of: '2099-06-18',
   page: 1,
+}
+
+const savedScreen: SavedScreen = {
+  id: 'saved-screen-a',
+  name: '試作条件',
+  created_at: '2099-01-01T00:00:00Z',
+  updated_at: '2099-01-02T00:00:00Z',
+  filters: {
+    markets: ['プライム'],
+    sectors: [],
+    per: { min: null, max: 12 },
+    pbr: null,
+    roe: null,
+    dividend_yield: null,
+    market_cap: null,
+  },
+  sort: { field: 'per', direction: 'asc' },
 }
 
 afterEach(cleanup)
@@ -156,5 +180,169 @@ describe('ScreenerPageView', () => {
       calls: [],
     })
     expect(actual).toBe(expected)
+  })
+
+  it('selects a saved screen from the open menu', async () => {
+    const user = userEvent.setup()
+    const onSelectSavedScreen = vi.fn()
+    const args = {
+      search: {},
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      savedScreens: [savedScreen],
+      savedScreensMenuOpen: true,
+      onSelectSavedScreen,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    await user.click(screen.getByRole('button', { name: '試作条件' }))
+
+    expect(onSelectSavedScreen.mock.calls).toEqual([[savedScreen]])
+  })
+
+  it('shows overwrite only after the URL conditions differ from the saved screen', async () => {
+    const user = userEvent.setup()
+    const search: ComponentProps<typeof ScreenerPageView>['search'] = {
+      screen: savedScreen.id,
+      markets: ['プライム'],
+      max_per: 12,
+      sort_by: 'per',
+      sort_order: 'asc',
+    }
+    const args = {
+      search,
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      savedScreens: [savedScreen],
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+    const { container, rerender } = render(<ScreenerPageView {...args} />)
+    const readSaveActions = () =>
+      Array.from(container.querySelectorAll('button'))
+        .filter((button) => button.getAttribute('aria-label') == null)
+        .map((button) => button.textContent.trim())
+        .filter((label) =>
+          ['保存', '名前を付けて保存', '上書き保存'].includes(label),
+        )
+
+    await user.clear(screen.getByRole('spinbutton', { name: 'PER 上限' }))
+    await user.type(screen.getByRole('spinbutton', { name: 'PER 上限' }), '10')
+    const beforeApply = readSaveActions()
+
+    rerender(<ScreenerPageView {...args} search={{ ...search, max_per: 10 }} />)
+    const afterApply = readSaveActions()
+
+    const actual = JSON.stringify({ beforeApply, afterApply })
+    const expected = JSON.stringify({
+      beforeApply: ['名前を付けて保存'],
+      afterApply: ['上書き保存', '名前を付けて保存'],
+    })
+    expect(actual).toBe(expected)
+  })
+
+  it('shows a disabled loading action while saved screens are unresolved', () => {
+    const args = {
+      search: { screen: 'missing-screen' },
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      savedScreensPending: true,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    const { container } = render(<ScreenerPageView {...args} />)
+
+    const saveActions = Array.from(container.querySelectorAll('button'))
+      .filter(
+        (button) =>
+          button.getAttribute('aria-label') == null &&
+          ['保存', '読み込み中...', '名前を付けて保存', '上書き保存'].includes(
+            button.textContent.trim(),
+          ),
+      )
+      .map((button) => ({
+        label: button.textContent.trim(),
+        disabled: button.disabled,
+      }))
+
+    expect(saveActions).toEqual([{ label: '読み込み中...', disabled: true }])
+  })
+
+  it('saves the current filter draft with the requested name', async () => {
+    const user = userEvent.setup()
+    const onSaveSavedScreen = vi.fn()
+    const onApplyFilters = vi.fn()
+    const args = {
+      search: { max_per: 12, sort_by: 'per', sort_order: 'asc' },
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      savedScreenDialog: null,
+      onSaveSavedScreen,
+      onApplyFilters,
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    const { rerender } = render(<ScreenerPageView {...args} />)
+    await user.clear(screen.getByRole('spinbutton', { name: 'PER 上限' }))
+    await user.type(screen.getByRole('spinbutton', { name: 'PER 上限' }), '10')
+    rerender(
+      <ScreenerPageView {...args} savedScreenDialog={{ type: 'save' }} />,
+    )
+    await user.type(screen.getByRole('textbox', { name: '条件名' }), '試作条件')
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    expect(onSaveSavedScreen.mock.calls).toEqual([
+      [
+        '試作条件',
+        { type: 'save' },
+        {
+          markets: undefined,
+          sectors: undefined,
+          min_per: undefined,
+          max_per: 10,
+          min_pbr: undefined,
+          max_pbr: undefined,
+          min_roe: undefined,
+          max_roe: undefined,
+          min_dividend_yield: undefined,
+          max_dividend_yield: undefined,
+          min_market_cap: undefined,
+          max_market_cap: undefined,
+        },
+      ],
+    ])
+    expect(onApplyFilters.mock.calls).toEqual([])
   })
 })
