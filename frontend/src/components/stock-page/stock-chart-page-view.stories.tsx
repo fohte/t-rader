@@ -59,6 +59,17 @@ const meta = {
     onToggleMarketDepth: () => undefined,
     selectedAnnotationId: null,
     onSelectAnnotation: () => undefined,
+    horizontalLineDrawingEnabled: false,
+    pendingHorizontalLine: null,
+    isSavingHorizontalLine: false,
+    horizontalLineSaveError: null,
+    onToggleHorizontalLineDrawing: () => undefined,
+    onPlaceHorizontalLine: () => undefined,
+    onSaveHorizontalLine: () => undefined,
+    onCancelHorizontalLine: () => undefined,
+    isDeletingAnnotation: false,
+    annotationDeleteError: null,
+    onDeleteAnnotation: () => undefined,
     currency: 'JPY',
     isLoading: false,
     hasError: false,
@@ -86,4 +97,32 @@ export const Error: Story = {
 export const MarketDepthOpen: Story = {
   name: '板情報・歩み値パネルを開いた状態を表示する。',
   args: { isMarketDepthOpen: true },
+}
+
+export const DrawingHorizontalLine: Story = {
+  name: '水平線ツールを選び、チャート上のクリックを待つ。',
+  args: { horizontalLineDrawingEnabled: true },
+}
+
+export const EditingHorizontalLine: Story = {
+  name: '置いた水平線の種別キーとメモを入力する。',
+  args: {
+    annotations: [
+      {
+        id: 'annotation-sample',
+        created_by_kind: 'human',
+        price: 3110,
+        price_start: null,
+        status: 'approved',
+        target_kind: 'sample-level',
+        text: '過去の値動きで反応した水準を確認する。',
+        timestamp: '2030-04-02T06:00:00Z',
+        timestamp_start: null,
+      },
+    ],
+    pendingHorizontalLine: {
+      timestamp: '2030-04-02T06:00:00Z',
+      price: 3140,
+    },
+  },
 }

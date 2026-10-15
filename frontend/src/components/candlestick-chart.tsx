@@ -9,6 +9,7 @@ import {
   type ISeriesMarkersPluginApi,
   LineSeries,
   LineStyle,
+  type MouseEventParams,
   type SeriesType,
   type Time,
 } from 'lightweight-charts'
@@ -17,7 +18,11 @@ import { useEffect, useRef } from 'react'
 import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
 import { useAnnotationOverlays } from '#components/candlestick-chart/use-annotation-overlays'
 import { ChartIndicatorLegend } from '#components/chart-indicator-legend'
-import type { ChartAnnotation } from '#lib/annotation-chart-utils'
+import {
+  type ChartAnnotation,
+  type HorizontalLinePoint,
+  isHumanHorizontalLine,
+} from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import { calculateChartIndicatorLines } from '#lib/chart-indicator-calculations'
 import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
@@ -48,6 +53,9 @@ interface CandlestickChartProps {
   displayRangeStart?: string
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
+  horizontalLineDrawingEnabled?: boolean
+  pendingHorizontalLine?: HorizontalLinePoint | null
+  onPlaceHorizontalLine?: (line: HorizontalLinePoint) => void
   currency?: ChartCurrency
   priceScaleTopMargin?: number
   intraday?: boolean
@@ -64,6 +72,9 @@ export function CandlestickChart({
   displayRangeStart,
   onSelectAnnotation,
   selectedAnnotationId,
+  horizontalLineDrawingEnabled = false,
+  pendingHorizontalLine,
+  onPlaceHorizontalLine,
   currency,
   priceScaleTopMargin = 0.05,
   intraday = false,
@@ -80,9 +91,13 @@ export function CandlestickChart({
     new Map(),
   )
   const priceLineRef = useRef<IPriceLine | null>(null)
+  const humanPriceLinesRef = useRef<Map<string, IPriceLine>>(new Map())
+  const pendingPriceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
   const previousDisplayRangeRef = useRef<string | undefined>(undefined)
-  const hasAnnotations = (annotations?.length ?? 0) > 0
+  const hasAnnotationBand =
+    annotations?.some((annotation) => !isHumanHorizontalLine(annotation)) ??
+    false
 
   // チャートの初期化 (マウント時のみ)
   useEffect(() => {
@@ -153,6 +168,18 @@ export function CandlestickChart({
       disconnectResizeObserver()
       tradeMarkersRef.current?.detach()
       tradeMarkersRef.current = null
+      if (candlestickSeriesRef.current != null) {
+        for (const line of humanPriceLinesRef.current.values()) {
+          candlestickSeriesRef.current.removePriceLine(line)
+        }
+        humanPriceLinesRef.current.clear()
+        if (pendingPriceLineRef.current != null) {
+          candlestickSeriesRef.current.removePriceLine(
+            pendingPriceLineRef.current,
+          )
+          pendingPriceLineRef.current = null
+        }
+      }
       chart.remove()
       chartRef.current = null
       candlestickSeriesRef.current = null
@@ -162,6 +189,72 @@ export function CandlestickChart({
       priceLineRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    const series = candlestickSeriesRef.current
+    if (chart == null || series == null) return
+
+    function handleChartClick(param: MouseEventParams) {
+      const activeChart = chartRef.current
+      const activeSeries = candlestickSeriesRef.current
+      if (activeChart == null || activeSeries == null) return
+
+      const point = param.point
+      if (point == null || point.x < 0 || point.y < 0) return
+      if (point.x > activeChart.timeScale().width()) return
+
+      if (horizontalLineDrawingEnabled) {
+        if (onPlaceHorizontalLine == null || typeof param.time !== 'number') {
+          return
+        }
+
+        const bar = bars.find(
+          (item) =>
+            Math.floor(Date.parse(item.timestamp) / 1000) === param.time,
+        )
+        const price = activeSeries.coordinateToPrice(point.y)
+        if (bar == null || price == null || !Number.isFinite(price)) return
+
+        onPlaceHorizontalLine({ timestamp: bar.timestamp, price })
+        return
+      }
+
+      if (onSelectAnnotation == null) return
+
+      const nearestLine = (annotations ?? [])
+        .filter(isHumanHorizontalLine)
+        .map((annotation) => ({
+          id: annotation.id,
+          distance: Math.abs(
+            (activeSeries.priceToCoordinate(annotation.price) ??
+              Number.POSITIVE_INFINITY) - point.y,
+          ),
+        }))
+        .reduce<{ id: string; distance: number } | null>(
+          (nearest, candidate) =>
+            nearest == null || candidate.distance < nearest.distance
+              ? candidate
+              : nearest,
+          null,
+        )
+
+      if (nearestLine != null && nearestLine.distance <= 8) {
+        onSelectAnnotation(nearestLine.id)
+      }
+    }
+
+    chart.subscribeClick(handleChartClick)
+    return () => {
+      chart.unsubscribeClick(handleChartClick)
+    }
+  }, [
+    annotations,
+    bars,
+    horizontalLineDrawingEnabled,
+    onPlaceHorizontalLine,
+    onSelectAnnotation,
+  ])
 
   useEffect(() => {
     const series = candlestickSeriesRef.current
@@ -183,9 +276,9 @@ export function CandlestickChart({
     if (series == null) return
 
     series.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: hasAnnotations ? 0.06 : 0 },
+      scaleMargins: { top: 0.8, bottom: hasAnnotationBand ? 0.06 : 0 },
     })
-  }, [hasAnnotations])
+  }, [hasAnnotationBand])
 
   useEffect(() => {
     const series = candlestickSeriesRef.current
@@ -296,15 +389,24 @@ export function CandlestickChart({
       candlestickSeriesRef,
       annotationPriceSeriesRef,
       priceLineRef,
+      humanPriceLinesRef,
+      pendingPriceLineRef,
       bars,
       annotations,
       selectedAnnotationId,
+      pendingHorizontalLine,
       highlightedTimestamp,
     })
 
   return (
     <div className={cn('relative min-w-0', className)}>
-      <div ref={containerRef} className="absolute inset-0" />
+      <div
+        ref={containerRef}
+        className={cn(
+          'absolute inset-0',
+          horizontalLineDrawingEnabled && 'cursor-crosshair',
+        )}
+      />
       {dateMarkerLayout != null && (
         <span
           aria-label={`${dateMarkerLayout.date} のチャート上の位置`}

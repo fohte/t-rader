@@ -5,10 +5,12 @@ import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 
 const periodAnnotation: ChartAnnotation = {
   id: 'annotation-b',
+  created_by_kind: 'llm',
   target_kind: 'sample-kind',
   timestamp_start: '2025-01-02T00:00:00.000Z',
   timestamp: '2025-01-04T00:00:00.000Z',
   price: null,
+  price_start: null,
   text: '価格線を持たないサンプル注釈です。',
   status: 'approved',
 }
@@ -16,11 +18,14 @@ const periodAnnotation: ChartAnnotation = {
 const annotations: ChartAnnotation[] = [
   {
     id: 'annotation-a',
+    created_by_kind: 'human',
     target_kind: 'sample-kind',
     timestamp: '2025-01-03T00:00:00.000Z',
     price: 1250,
+    price_start: null,
+    timestamp_start: null,
     text: '値動きの節目を示すサンプル注釈です。',
-    status: 'unread',
+    status: 'approved',
   },
   periodAnnotation,
 ]
@@ -32,6 +37,7 @@ const meta = {
     annotations,
     selectedAnnotationId: 'annotation-a',
     onSelectAnnotation: () => undefined,
+    onDeleteAnnotation: () => undefined,
   },
   decorators: [
     (Story) => (

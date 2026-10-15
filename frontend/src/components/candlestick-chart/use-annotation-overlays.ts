@@ -5,7 +5,7 @@ import {
   LineStyle,
   type SeriesType,
 } from 'lightweight-charts'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   type AnnotationBandPeriod,
@@ -14,6 +14,8 @@ import {
   type ChartAnnotation,
   clipAnnotationBandSegment,
   getAnnotationPeriodLineRange,
+  type HorizontalLinePoint,
+  isHumanHorizontalLine,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import { getChartBarDate, toCandlestickData } from '#lib/chart-utils'
@@ -49,18 +51,24 @@ export function useAnnotationOverlays({
   candlestickSeriesRef,
   annotationPriceSeriesRef,
   priceLineRef,
+  humanPriceLinesRef,
+  pendingPriceLineRef,
   bars,
   annotations,
   selectedAnnotationId,
+  pendingHorizontalLine,
   highlightedTimestamp,
 }: {
   chartRef: ChartRef<IChartApi>
   candlestickSeriesRef: ChartRef<ISeriesApi<SeriesType>>
   annotationPriceSeriesRef: ChartRef<ISeriesApi<'Line'>>
   priceLineRef: ChartRef<IPriceLine>
+  humanPriceLinesRef: { current: Map<string, IPriceLine> }
+  pendingPriceLineRef: ChartRef<IPriceLine>
   bars: Bar[]
   annotations?: ChartAnnotation[]
   selectedAnnotationId?: string | null
+  pendingHorizontalLine?: HorizontalLinePoint | null
   highlightedTimestamp?: string
 }) {
   const [bandLayout, setBandLayout] = useState<BandLayout | null>(null)
@@ -70,7 +78,68 @@ export function useAnnotationOverlays({
     [],
   )
   const [bandPeriods, setBandPeriods] = useState<AnnotationBandPeriod[]>([])
-  const hasAnnotations = (annotations?.length ?? 0) > 0
+  const bandAnnotations = useMemo(
+    () =>
+      (annotations ?? []).filter(
+        (annotation) => !isHumanHorizontalLine(annotation),
+      ),
+    [annotations],
+  )
+  const hasAnnotations = bandAnnotations.length > 0
+
+  useEffect(() => {
+    const series = candlestickSeriesRef.current
+    if (series == null) return
+
+    for (const line of humanPriceLinesRef.current.values()) {
+      series.removePriceLine(line)
+    }
+    humanPriceLinesRef.current.clear()
+
+    for (const annotation of annotations ?? []) {
+      if (!isHumanHorizontalLine(annotation)) continue
+
+      humanPriceLinesRef.current.set(
+        annotation.id,
+        series.createPriceLine({
+          price: annotation.price,
+          color: '#ffffff',
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          lineVisible: true,
+          axisLabelVisible: true,
+          title: annotation.target_kind,
+          axisLabelColor: '#ffffff',
+          axisLabelTextColor: '#111827',
+        }),
+      )
+    }
+  }, [annotations, candlestickSeriesRef, humanPriceLinesRef])
+
+  useEffect(() => {
+    const series = candlestickSeriesRef.current
+    if (series == null) return
+
+    const previousLine = pendingPriceLineRef.current
+    if (previousLine != null) {
+      series.removePriceLine(previousLine)
+      pendingPriceLineRef.current = null
+    }
+
+    if (pendingHorizontalLine == null) return
+
+    pendingPriceLineRef.current = series.createPriceLine({
+      price: pendingHorizontalLine.price,
+      color: '#facc15',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      lineVisible: true,
+      axisLabelVisible: true,
+      title: '未保存',
+      axisLabelColor: '#facc15',
+      axisLabelTextColor: '#111827',
+    })
+  }, [candlestickSeriesRef, pendingHorizontalLine, pendingPriceLineRef])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -119,7 +188,7 @@ export function useAnnotationOverlays({
     }
 
     const timeScale = chart.timeScale()
-    const bucketedAnnotations = (annotations ?? []).flatMap<BucketedAnnotation>(
+    const bucketedAnnotations = bandAnnotations.flatMap<BucketedAnnotation>(
       (annotation): BucketedAnnotation[] => {
         if (annotation.timestamp_start != null) {
           const period = bucketAnnotationPeriod(
@@ -170,7 +239,7 @@ export function useAnnotationOverlays({
       timeScale.unsubscribeVisibleTimeRangeChange(updateBand)
       timeScale.unsubscribeSizeChange(updateBand)
     }
-  }, [annotations, bars, chartRef, hasAnnotations])
+  }, [bandAnnotations, bars, chartRef, hasAnnotations])
 
   useEffect(() => {
     const lineSeries = annotationPriceSeriesRef.current
@@ -187,7 +256,13 @@ export function useAnnotationOverlays({
       priceLineRef.current = null
     }
 
-    if (selectedAnnotation?.price == null) return
+    if (
+      selectedAnnotation == null ||
+      selectedAnnotation.price == null ||
+      isHumanHorizontalLine(selectedAnnotation)
+    ) {
+      return
+    }
 
     const timestampStart = selectedAnnotation.timestamp_start
     const isPeriod = timestampStart != null

@@ -10,12 +10,35 @@ export type ChartAnnotation = Pick<
   Annotation,
   | 'id'
   | 'price'
+  | 'price_start'
   | 'status'
   | 'target_kind'
   | 'text'
   | 'timestamp'
   | 'timestamp_start'
+  | 'created_by_kind'
 >
+
+export interface HorizontalLinePoint {
+  timestamp: string
+  price: number
+}
+
+export interface HorizontalLineAnnotationDraft extends HorizontalLinePoint {
+  target_kind: string
+  text: string
+}
+
+export function isHumanHorizontalLine(
+  annotation: ChartAnnotation,
+): annotation is ChartAnnotation & { price: number } {
+  return (
+    annotation.created_by_kind === 'human' &&
+    annotation.price != null &&
+    annotation.timestamp_start == null &&
+    annotation.price_start == null
+  )
+}
 
 export interface AnnotationBandMarker {
   id: string
