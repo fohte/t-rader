@@ -22,6 +22,7 @@ import type { components } from '#lib/api/schema.gen'
 import {
   addChartIndicator,
   CHART_INDICATOR_PANE_HEIGHT,
+  type ChartIndicatorConfig,
   getChartIndicatorPaneCount,
   removeChartIndicator,
   updateChartIndicatorDeviation,
@@ -49,6 +50,7 @@ export function StockChartPageView({
   isLoading,
   hasError,
   isAnnotationsLoading,
+  chartIndicators: configuredIndicators,
 }: {
   stockId: string
   stockName: string
@@ -65,8 +67,10 @@ export function StockChartPageView({
   isLoading: boolean
   hasError: boolean
   isAnnotationsLoading: boolean
+  chartIndicators?: ChartIndicatorConfig[]
 }) {
-  const indicators = useChartIndicators()
+  const savedIndicators = useChartIndicators()
+  const indicators = configuredIndicators ?? savedIndicators
   const lowerPaneCount = getChartIndicatorPaneCount(indicators)
   const chartHeightStyle = {
     height: `calc(600px + ${(
@@ -144,7 +148,6 @@ export function StockChartPageView({
               annotations={annotations}
               selectedAnnotationId={selectedAnnotationId}
               isLoading={isAnnotationsLoading}
-              className="h-150"
               style={chartHeightStyle}
               onSelectAnnotation={onSelectAnnotation}
             />

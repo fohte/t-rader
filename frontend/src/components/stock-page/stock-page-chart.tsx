@@ -12,6 +12,7 @@ import type { components } from '#lib/api/schema.gen'
 import {
   addChartIndicator,
   CHART_INDICATOR_PANE_HEIGHT,
+  type ChartIndicatorConfig,
   getChartIndicatorPaneCount,
   removeChartIndicator,
   updateChartIndicatorDeviation,
@@ -71,6 +72,7 @@ export function StockPageChart({
   selectedDateLoading = false,
   selectedDateError = false,
   selectedDateBar,
+  chartIndicators: configuredIndicators,
 }: {
   stockId: string
   bars: Bar[]
@@ -88,8 +90,10 @@ export function StockPageChart({
   selectedDateLoading?: boolean
   selectedDateError?: boolean
   selectedDateBar?: Bar | null
+  chartIndicators?: ChartIndicatorConfig[]
 }) {
-  const indicators = useChartIndicators()
+  const savedIndicators = useChartIndicators()
+  const indicators = configuredIndicators ?? savedIndicators
   const lowerPaneCount = getChartIndicatorPaneCount(indicators)
   const chartHeightStyle = {
     height: `calc(var(--stock-chart-base-height) + ${(

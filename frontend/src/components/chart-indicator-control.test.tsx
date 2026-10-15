@@ -128,16 +128,22 @@ describe('ChartIndicatorControl', () => {
     const fastPeriodInput = screen.getByRole('spinbutton', {
       name: 'MACDの短期期間',
     })
+    const slowPeriodInput = screen.getByRole('spinbutton', {
+      name: 'MACDの長期期間',
+    })
     const signalPeriodInput = screen.getByRole('spinbutton', {
       name: 'MACDのシグナル期間',
     })
     fireEvent.change(fastPeriodInput, { target: { value: '8' } })
     fireEvent.blur(fastPeriodInput)
+    fireEvent.change(slowPeriodInput, { target: { value: '24' } })
+    fireEvent.blur(slowPeriodInput)
     fireEvent.change(signalPeriodInput, { target: { value: '5' } })
     fireEvent.blur(signalPeriodInput)
 
     expect(onUpdateMacdPeriod.mock.calls).toEqual([
       ['indicator-macd', 'fastPeriod', 8],
+      ['indicator-macd', 'slowPeriod', 24],
       ['indicator-macd', 'signalPeriod', 5],
     ])
   })

@@ -3,7 +3,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { CandlestickChart } from '#components/candlestick-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
-import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
+import {
+  CHART_INDICATOR_PANE_HEIGHT,
+  type ChartIndicatorConfig,
+  getChartIndicatorPaneCount,
+} from '#lib/chart-indicator-settings'
 
 type Bar = components['schemas']['Bar']
 type Trade = components['schemas']['TradeListItem']
@@ -122,16 +126,16 @@ const meta = {
   },
   decorators: [
     (Story, { args }) => {
-      const paneCount =
-        args.indicators?.filter(
-          (indicator) => indicator.kind === 'rsi' || indicator.kind === 'macd',
-        ).length ?? 0
+      const paneCount = getChartIndicatorPaneCount(args.indicators ?? [])
 
       return (
         <div
           style={{
             width: '100%',
-            height: `${(600 + paneCount * 80).toString()}px`,
+            height: `${(
+              600 +
+              paneCount * CHART_INDICATOR_PANE_HEIGHT
+            ).toString()}px`,
           }}
         >
           <Story />

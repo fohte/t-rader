@@ -98,6 +98,26 @@ export function getChartIndicatorName(indicator: ChartIndicatorConfig): string {
   }
 }
 
+export function getChartIndicatorLabel(
+  indicator: ChartIndicatorConfig,
+): string {
+  const name = getChartIndicatorName(indicator)
+  return indicator.kind === 'macd'
+    ? `${name} ${indicator.fastPeriod.toString()} ${indicator.slowPeriod.toString()} ${indicator.signalPeriod.toString()}`
+    : `${name} ${indicator.period.toString()}`
+}
+
+export function getChartIndicatorPaneIndexes(
+  indicators: readonly ChartIndicatorConfig[],
+): number[] {
+  let nextLowerPaneIndex = 0
+  return indicators.map((indicator) =>
+    indicator.kind === 'rsi' || indicator.kind === 'macd'
+      ? ++nextLowerPaneIndex
+      : 0,
+  )
+}
+
 function isChartIndicator(value: unknown): value is ChartIndicatorConfig {
   if (!isRecord(value)) return false
 
@@ -313,7 +333,8 @@ export function getChartIndicatorLookbackBars(
 export function getChartIndicatorPaneCount(
   indicators: readonly ChartIndicatorConfig[],
 ): number {
-  return indicators.filter(
-    (indicator) => indicator.kind === 'rsi' || indicator.kind === 'macd',
-  ).length
+  return getChartIndicatorPaneIndexes(indicators).reduce(
+    (maximum, paneIndex) => Math.max(maximum, paneIndex),
+    0,
+  )
 }

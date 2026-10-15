@@ -187,6 +187,30 @@ describe('calculateChartIndicatorLines', () => {
       ),
     ).toEqual([{ variant: 'main', points: [] }])
   })
+
+  it('returns 50 when every price change is zero', () => {
+    const flatBars: ChartIndicatorBar<string>[] = [
+      { time: '2026-04-01', close: 20 },
+      { time: '2026-04-02', close: 20 },
+      { time: '2026-04-03', close: 20 },
+      { time: '2026-04-04', close: 20 },
+    ]
+
+    expect(
+      calculateChartIndicatorLines(
+        { id: 'indicator-rsi', kind: 'rsi', period: 2, color: '#38bdf8' },
+        flatBars,
+      ),
+    ).toEqual([
+      {
+        variant: 'main',
+        points: [
+          { time: '2026-04-03', value: 50 },
+          { time: '2026-04-04', value: 50 },
+        ],
+      },
+    ])
+  })
 })
 
 describe('invalid chart indicator parameters', () => {

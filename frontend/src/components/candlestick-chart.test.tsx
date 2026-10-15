@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import type {
   CreatePriceLineOptions,
   SeriesMarker,
@@ -15,14 +15,14 @@ const chartMocks = vi.hoisted(() => {
   const candlePriceScale = { applyOptions: vi.fn() }
   const paneApis: {
     getHeight: ReturnType<typeof vi.fn>
-    setHeight: ReturnType<typeof vi.fn>
+    setStretchFactor: ReturnType<typeof vi.fn>
   }[] = []
   const createPane = (initialHeight = 220) => {
     let height = initialHeight
     return {
       getHeight: vi.fn(() => height),
-      setHeight: vi.fn((nextHeight: number) => {
-        height = nextHeight
+      setStretchFactor: vi.fn((stretchFactor: number) => {
+        height = stretchFactor
       }),
     }
   }
@@ -170,14 +170,78 @@ const pointAnnotation: ChartAnnotation = {
 }
 
 const annotations: ChartAnnotation[] = [pointAnnotation]
+const pendingAnimationFrames = new Map<number, FrameRequestCallback>()
+const resizeObserverCallbacks: ResizeObserverCallback[] = []
+const resizeObservers: ResizeObserver[] = []
+let nextAnimationFrameId = 0
+
+function flushAnimationFrames(): void {
+  act(() => {
+    const callbacks = [...pendingAnimationFrames.values()]
+    pendingAnimationFrames.clear()
+    for (const callback of callbacks) callback(0)
+  })
+}
+
+function resizeChart(height: number): void {
+  act(() => {
+    const observer = resizeObservers[0]
+    if (observer == null) return
+
+    const entry: ResizeObserverEntry = {
+      borderBoxSize: [],
+      contentBoxSize: [],
+      contentRect: new DOMRectReadOnly(0, 0, 720, height),
+      devicePixelContentBoxSize: [],
+      target: document.createElement('div'),
+    }
+    for (const callback of resizeObserverCallbacks) {
+      callback([entry], observer)
+    }
+  })
+}
+
+class TestResizeObserver implements ResizeObserver {
+  constructor(callback: ResizeObserverCallback) {
+    resizeObserverCallbacks.push(callback)
+    resizeObservers.push(this)
+  }
+
+  observe(target: Element): void {
+    void target
+  }
+
+  unobserve(target: Element): void {
+    void target
+  }
+
+  disconnect(): void {
+    resizeObserverCallbacks.splice(0)
+    resizeObservers.splice(0)
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
   chartMocks.resetPanes()
+  pendingAnimationFrames.clear()
+  resizeObserverCallbacks.length = 0
+  resizeObservers.length = 0
+  nextAnimationFrameId = 0
+  vi.stubGlobal('ResizeObserver', TestResizeObserver)
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    nextAnimationFrameId += 1
+    pendingAnimationFrames.set(nextAnimationFrameId, callback)
+    return nextAnimationFrameId
+  })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+    pendingAnimationFrames.delete(id)
+  })
 })
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
 })
 
 describe('CandlestickChart', () => {
@@ -221,7 +285,7 @@ describe('CandlestickChart', () => {
     })
   })
 
-  it('creates separate eighty-pixel panes for RSI and MACD', () => {
+  it('adds eighty-pixel lower panes without shrinking the price pane', () => {
     render(
       <CandlestickChart
         bars={bars}
@@ -238,24 +302,33 @@ describe('CandlestickChart', () => {
         ]}
       />,
     )
+    resizeChart(380)
+    flushAnimationFrames()
 
     const paneState = () => ({
       seriesPaneIndexes: chartMocks.chart.addSeries.mock.calls
         .slice(3)
         .map(([, , paneIndex]) => paneIndex ?? 0),
-      lowerPaneHeights: chartMocks.paneApis
-        .slice(1)
-        .map((pane) => pane.setHeight.mock.calls),
+      paneStretchFactors: chartMocks.paneApis.map(
+        (pane) => pane.setStretchFactor.mock.lastCall,
+      ),
       lowerPaneLegends: [
         screen.getByRole('list', { name: '下段 1 の表示中の指標' }).textContent,
         screen.getByRole('list', { name: '下段 2 の表示中の指標' }).textContent,
       ],
+      lowerPaneLegendTops: [
+        screen.getByRole('list', { name: '下段 1 の表示中の指標' }).style.top,
+        screen.getByRole('list', { name: '下段 2 の表示中の指標' }).style.top,
+      ],
+      resizeHeight: chartMocks.chart.applyOptions.mock.calls.at(-1),
     })
 
     expect(paneState()).toEqual({
       seriesPaneIndexes: [1, 2, 2, 2],
-      lowerPaneHeights: [[[80]], [[80]]],
+      paneStretchFactors: [[196], [80], [80]],
       lowerPaneLegends: ['RSI 14', 'MACD 12 26 9'],
+      lowerPaneLegendTops: ['204px', '284px'],
+      resizeHeight: [{ width: 720, height: 380 }],
     })
   })
 

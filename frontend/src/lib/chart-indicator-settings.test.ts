@@ -240,8 +240,8 @@ describe('chart indicator settings', () => {
     ])
   })
 
-  it('reads saved SMA, EMA, and Bollinger settings from the existing storage shape', () => {
-    const legacyIndicators: ChartIndicatorConfig[] = [
+  it('reads saved legacy overlays and lower-pane settings', () => {
+    const savedIndicators: ChartIndicatorConfig[] = [
       { id: 'legacy-sma', kind: 'sma', period: 25, color: '#f97316' },
       { id: 'legacy-ema', kind: 'ema', period: 18, color: '#38bdf8' },
       {
@@ -251,11 +251,19 @@ describe('chart indicator settings', () => {
         deviation: 2,
         color: '#34d399',
       },
+      {
+        id: 'saved-macd',
+        kind: 'macd',
+        fastPeriod: 12,
+        slowPeriod: 26,
+        signalPeriod: 9,
+        color: '#c084fc',
+      },
     ]
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(legacyIndicators))
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(savedIndicators))
     const { result } = renderHook(() => useChartIndicators())
 
-    expect(result.current).toEqual(legacyIndicators)
+    expect(result.current).toEqual(savedIndicators)
   })
 
   it('removes only the selected indicator', () => {

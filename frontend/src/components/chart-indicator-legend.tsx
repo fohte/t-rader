@@ -1,17 +1,14 @@
 import {
   type ChartIndicatorConfig,
-  getChartIndicatorName,
+  getChartIndicatorLabel,
+  getChartIndicatorPaneIndexes,
 } from '#lib/chart-indicator-settings'
 
 function getIndicatorLabel(indicator: ChartIndicatorConfig): string {
-  const name = getChartIndicatorName(indicator)
   if (indicator.kind === 'bollinger') {
-    return `${name} ${indicator.period.toString()} ${indicator.deviation.toString()}σ`
+    return `${getChartIndicatorLabel(indicator)} ${indicator.deviation.toString()}σ`
   }
-  if (indicator.kind === 'macd') {
-    return `${name} ${indicator.fastPeriod.toString()} ${indicator.slowPeriod.toString()} ${indicator.signalPeriod.toString()}`
-  }
-  return `${name} ${indicator.period.toString()}`
+  return getChartIndicatorLabel(indicator)
 }
 
 export function ChartIndicatorLegend({
@@ -24,12 +21,9 @@ export function ChartIndicatorLegend({
   if (indicators.length === 0) return null
 
   const indicatorsByPane = new Map<number, ChartIndicatorConfig[]>()
-  let lowerPaneIndex = 0
-  for (const indicator of indicators) {
-    const paneIndex =
-      indicator.kind === 'rsi' || indicator.kind === 'macd'
-        ? ++lowerPaneIndex
-        : 0
+  const paneIndexes = getChartIndicatorPaneIndexes(indicators)
+  for (const [indicatorIndex, indicator] of indicators.entries()) {
+    const paneIndex = paneIndexes[indicatorIndex] ?? 0
     const paneIndicators = indicatorsByPane.get(paneIndex) ?? []
     paneIndicators.push(indicator)
     indicatorsByPane.set(paneIndex, paneIndicators)

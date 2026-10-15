@@ -13,6 +13,7 @@ import {
   type ChartIndicatorConfig,
   type ChartIndicatorKind,
   type ChartIndicatorMacdPeriodField,
+  getChartIndicatorLabel,
   getChartIndicatorName,
   isValidChartIndicatorDeviation,
   isValidChartIndicatorMacdPeriods,
@@ -200,10 +201,7 @@ function ChartIndicatorMenu({
           <ul className="space-y-2">
             {indicators.map((indicator) => {
               const name = getChartIndicatorName(indicator)
-              const label =
-                indicator.kind === 'macd'
-                  ? `${name} ${indicator.fastPeriod.toString()} ${indicator.slowPeriod.toString()} ${indicator.signalPeriod.toString()}`
-                  : `${name} ${indicator.period.toString()}`
+              const label = getChartIndicatorLabel(indicator)
 
               return (
                 <li

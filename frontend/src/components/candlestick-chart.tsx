@@ -23,6 +23,8 @@ import { calculateChartIndicatorLines } from '#lib/chart-indicator-calculations'
 import {
   CHART_INDICATOR_PANE_HEIGHT,
   type ChartIndicatorConfig,
+  getChartIndicatorPaneCount,
+  getChartIndicatorPaneIndexes,
 } from '#lib/chart-indicator-settings'
 import {
   getChartThemeColors,
@@ -78,7 +80,8 @@ export function CandlestickChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const [paneTops, setPaneTops] = useState<number[]>([])
-  const updatePaneTopsRef = useRef<() => void>(() => {})
+  const updatePaneLayoutRef = useRef<() => void>(() => {})
+  const lowerPaneCountRef = useRef(0)
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const tradeMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const annotationPriceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
@@ -106,6 +109,7 @@ export function CandlestickChart({
     })
     chartRef.current = chart
     chart.applyOptions({ layout: { panes: { enableResize: false } } })
+    let paneTopsAnimationFrame: number | null = null
 
     const updatePaneTops = () => {
       let top = 0
@@ -123,7 +127,31 @@ export function CandlestickChart({
           : nextPaneTops,
       )
     }
-    updatePaneTopsRef.current = updatePaneTops
+    const schedulePaneTopsUpdate = () => {
+      if (paneTopsAnimationFrame != null) {
+        cancelAnimationFrame(paneTopsAnimationFrame)
+      }
+      paneTopsAnimationFrame = requestAnimationFrame(() => {
+        paneTopsAnimationFrame = null
+        updatePaneTops()
+      })
+    }
+    const updatePaneLayout = (chartHeight = container.clientHeight) => {
+      const lowerPaneCount = lowerPaneCountRef.current
+      const mainPaneHeight = Math.max(
+        1,
+        chartHeight -
+          chart.timeScale().height() -
+          lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT,
+      )
+      const panes = chart.panes()
+      panes[0]?.setStretchFactor(mainPaneHeight)
+      for (let paneIndex = 1; paneIndex <= lowerPaneCount; paneIndex += 1) {
+        panes[paneIndex]?.setStretchFactor(CHART_INDICATOR_PANE_HEIGHT)
+      }
+      schedulePaneTopsUpdate()
+    }
+    updatePaneLayoutRef.current = updatePaneLayout
 
     // ローソク足シリーズ
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
@@ -156,7 +184,6 @@ export function CandlestickChart({
       priceScaleId: 'volume',
     })
     volumeSeriesRef.current = volumeSeries
-    updatePaneTops()
 
     isInitialDataRef.current = true
 
@@ -165,7 +192,7 @@ export function CandlestickChart({
       container,
       (width, height) => {
         chart.applyOptions({ width, height })
-        updatePaneTops()
+        updatePaneLayout(height)
       },
     )
 
@@ -179,6 +206,9 @@ export function CandlestickChart({
     return () => {
       disconnectThemeObserver()
       disconnectResizeObserver()
+      if (paneTopsAnimationFrame != null) {
+        cancelAnimationFrame(paneTopsAnimationFrame)
+      }
       tradeMarkersRef.current?.detach()
       tradeMarkersRef.current = null
       chart.remove()
@@ -188,7 +218,7 @@ export function CandlestickChart({
       volumeSeriesRef.current = null
       indicatorSeriesRef.current.clear()
       priceLineRef.current = null
-      updatePaneTopsRef.current = () => {}
+      updatePaneLayoutRef.current = () => {}
     }
   }, [])
 
@@ -293,17 +323,17 @@ export function CandlestickChart({
       chart.removePane(chart.panes().length - 1)
     }
 
+    const paneIndexes = getChartIndicatorPaneIndexes(indicators)
+    lowerPaneCountRef.current = getChartIndicatorPaneCount(indicators)
+
     const indicatorBars = toCandlestickData(bars).map(({ time, close }) => ({
       time,
       close,
     }))
-    let lowerPaneIndex = 0
 
-    for (const indicator of indicators) {
+    for (const [indicatorIndex, indicator] of indicators.entries()) {
       const lines = calculateChartIndicatorLines(indicator, indicatorBars)
-      const isLowerPane = indicator.kind === 'rsi' || indicator.kind === 'macd'
-      const paneIndex = isLowerPane ? lowerPaneIndex + 1 : 0
-      if (isLowerPane) lowerPaneIndex += 1
+      const paneIndex = paneIndexes[indicatorIndex] ?? 0
 
       const series: ISeriesApi<SeriesType>[] = []
       for (const { variant, points } of lines) {
@@ -383,10 +413,7 @@ export function CandlestickChart({
       indicatorSeriesRef.current.set(indicator.id, series)
     }
 
-    for (let paneIndex = 1; paneIndex <= lowerPaneIndex; paneIndex += 1) {
-      chart.panes()[paneIndex]?.setHeight(CHART_INDICATOR_PANE_HEIGHT)
-    }
-    updatePaneTopsRef.current()
+    updatePaneLayoutRef.current()
   }, [bars, indicators])
 
   useEffect(() => {

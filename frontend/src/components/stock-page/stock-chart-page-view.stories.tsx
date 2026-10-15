@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 
 import { StockChartPageView } from '#components/stock-page/stock-chart-page-view'
 import type { components } from '#lib/api/schema.gen'
+import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Bar = components['schemas']['Bar']
@@ -27,6 +28,32 @@ const bars: Bar[] = [
     low: 3030,
     close: 3110,
     volume: 12000,
+  },
+]
+
+const indicatorBars: Bar[] = Array.from({ length: 12 }, (_, index) => {
+  const close = 3000 + index * 12 + (index % 3 === 0 ? 20 : 0)
+  return {
+    instrument_id: 'demo-code',
+    timeframe: '1d',
+    timestamp: new Date(Date.UTC(2030, 3, index + 1, 6)).toISOString(),
+    open: close - 8,
+    high: close + 16,
+    low: close - 18,
+    close,
+    volume: 10000 + index * 100,
+  }
+})
+
+const lowerPaneIndicators: ChartIndicatorConfig[] = [
+  { id: 'indicator-rsi', kind: 'rsi', period: 3, color: '#38bdf8' },
+  {
+    id: 'indicator-macd',
+    kind: 'macd',
+    fastPeriod: 2,
+    slowPeriod: 5,
+    signalPeriod: 3,
+    color: '#34d399',
   },
 ]
 
@@ -71,6 +98,11 @@ type Story = StoryObj<typeof meta>
 
 export const DailyChart: Story = {
   name: '銘柄名から銘柄ページへ戻れる全画面チャートを表示する。',
+}
+
+export const WithLowerPaneIndicators: Story = {
+  name: 'RSI と MACD の下段を追加した全画面チャートを表示する。',
+  args: { bars: indicatorBars, chartIndicators: lowerPaneIndicators },
 }
 
 export const Loading: Story = {
