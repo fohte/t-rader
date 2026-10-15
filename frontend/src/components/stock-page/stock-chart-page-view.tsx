@@ -14,6 +14,7 @@ import { CandlestickChart } from '#components/candlestick-chart'
 import { ChartIndicatorControl } from '#components/chart-indicator-control'
 import { ChartMarketDepthPanel } from '#components/chart-market-depth-panel'
 import { HorizontalLineEditor } from '#components/stock-page/horizontal-line-editor'
+import { TrendLineEditor } from '#components/stock-page/trend-line-editor'
 import {
   type Timeframe,
   TimeframeSelector,
@@ -23,6 +24,8 @@ import type {
   ChartAnnotation,
   HorizontalLineAnnotationDraft,
   HorizontalLinePoint,
+  TrendLineAnnotationDraft,
+  TrendLinePoint,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -60,6 +63,16 @@ export function StockChartPageView({
   onPlaceHorizontalLine,
   onSaveHorizontalLine,
   onCancelHorizontalLine,
+  trendLineDrawingEnabled,
+  pendingTrendLineStart,
+  pendingTrendLinePreviewPoint,
+  pendingTrendLine,
+  isSavingTrendLine,
+  trendLineSaveError,
+  onToggleTrendLineDrawing,
+  onPlaceTrendLinePoint,
+  onSaveTrendLine,
+  onCancelTrendLine,
   isDeletingAnnotation,
   annotationDeleteError,
   onDeleteAnnotation,
@@ -88,6 +101,16 @@ export function StockChartPageView({
   onPlaceHorizontalLine: (line: HorizontalLinePoint) => void
   onSaveHorizontalLine: (draft: HorizontalLineAnnotationDraft) => void
   onCancelHorizontalLine: () => void
+  trendLineDrawingEnabled: boolean
+  pendingTrendLineStart: TrendLinePoint | null
+  pendingTrendLinePreviewPoint?: TrendLinePoint | null
+  pendingTrendLine: Pick<TrendLineAnnotationDraft, 'start' | 'end'> | null
+  isSavingTrendLine: boolean
+  trendLineSaveError: string | null
+  onToggleTrendLineDrawing: () => void
+  onPlaceTrendLinePoint: (point: TrendLinePoint) => void
+  onSaveTrendLine: (draft: TrendLineAnnotationDraft) => void
+  onCancelTrendLine: () => void
   isDeletingAnnotation: boolean
   annotationDeleteError: string | null
   onDeleteAnnotation: (id: string) => void
@@ -110,18 +133,36 @@ export function StockChartPageView({
   ]
 
   useEffect(() => {
-    if (!horizontalLineDrawingEnabled && pendingHorizontalLine == null) return
+    if (
+      !horizontalLineDrawingEnabled &&
+      pendingHorizontalLine == null &&
+      !trendLineDrawingEnabled &&
+      pendingTrendLineStart == null &&
+      pendingTrendLine == null
+    ) {
+      return
+    }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (
         event.key !== 'Escape' ||
         event.defaultPrevented ||
-        isSavingHorizontalLine
+        isSavingHorizontalLine ||
+        isSavingTrendLine
       ) {
         return
       }
 
       event.preventDefault()
+      if (
+        trendLineDrawingEnabled ||
+        pendingTrendLineStart != null ||
+        pendingTrendLine != null
+      ) {
+        onCancelTrendLine()
+        return
+      }
+
       onCancelHorizontalLine()
     }
 
@@ -132,8 +173,13 @@ export function StockChartPageView({
   }, [
     horizontalLineDrawingEnabled,
     isSavingHorizontalLine,
+    isSavingTrendLine,
     onCancelHorizontalLine,
+    onCancelTrendLine,
     pendingHorizontalLine,
+    pendingTrendLine,
+    pendingTrendLineStart,
+    trendLineDrawingEnabled,
   ])
   return (
     <div className="flex h-full flex-col gap-4">
@@ -163,7 +209,7 @@ export function StockChartPageView({
             className="sm:w-auto sm:gap-1 sm:px-2.5"
             aria-label="水平線"
             aria-pressed={horizontalLineDrawingEnabled}
-            disabled={pendingHorizontalLine != null}
+            disabled={pendingHorizontalLine != null || pendingTrendLine != null}
             title="水平線"
             onClick={() => {
               onToggleHorizontalLineDrawing()
@@ -172,6 +218,23 @@ export function StockChartPageView({
             <span aria-hidden="true">─</span>
             <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
               水平線
+            </span>
+          </Button>
+          <Button
+            variant={trendLineDrawingEnabled ? 'default' : 'outline'}
+            size="icon-sm"
+            className="sm:w-auto sm:gap-1 sm:px-2.5"
+            aria-label="トレンドライン"
+            aria-pressed={trendLineDrawingEnabled}
+            disabled={pendingHorizontalLine != null || pendingTrendLine != null}
+            title="トレンドライン"
+            onClick={() => {
+              onToggleTrendLineDrawing()
+            }}
+          >
+            <span aria-hidden="true">╱</span>
+            <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+              トレンドライン
             </span>
           </Button>
           <TooltipProvider>
@@ -216,6 +279,10 @@ export function StockChartPageView({
               horizontalLineDrawingEnabled={horizontalLineDrawingEnabled}
               pendingHorizontalLine={pendingHorizontalLine}
               onPlaceHorizontalLine={onPlaceHorizontalLine}
+              trendLineDrawingEnabled={trendLineDrawingEnabled}
+              pendingTrendLineStart={pendingTrendLineStart}
+              pendingTrendLinePreviewPoint={pendingTrendLinePreviewPoint}
+              onPlaceTrendLinePoint={onPlaceTrendLinePoint}
               currency={currency}
               intraday={timeframe !== '1d' && timeframe !== '1w'}
               className="min-w-0 flex-1"
@@ -234,6 +301,17 @@ export function StockChartPageView({
                   errorMessage={horizontalLineSaveError}
                   onSave={onSaveHorizontalLine}
                   onCancel={onCancelHorizontalLine}
+                />
+              )}
+              {pendingTrendLine != null && (
+                <TrendLineEditor
+                  start={pendingTrendLine.start}
+                  end={pendingTrendLine.end}
+                  targetKinds={targetKinds}
+                  isSaving={isSavingTrendLine}
+                  errorMessage={trendLineSaveError}
+                  onSave={onSaveTrendLine}
+                  onCancel={onCancelTrendLine}
                 />
               )}
               <ChartAnnotationList
