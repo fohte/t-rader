@@ -11,6 +11,8 @@ export interface AgentGraphPhase {
   readonly maxParallel?: number
   readonly timeoutMinutes?: number
   readonly skills: readonly string[]
+  readonly subagents: readonly string[]
+  readonly maxSubagentRuns?: number
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   readonly tools?: readonly string[]
   readonly output: Readonly<Record<string, unknown>>

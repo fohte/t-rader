@@ -33,6 +33,7 @@ use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
+use core_application::subagent_definition::SubagentDefinitionUseCases;
 use core_application::trade::{TradeNoteUseCases, TradeSummaryUseCases, TradeUseCases};
 use core_application::trigger::TriggerUseCases;
 use core_application::valuation::ValuationUseCases;
@@ -65,6 +66,7 @@ pub struct FrontendApiState {
     pub rss_feed_use_cases: RssFeedUseCases,
     pub saved_screen_use_cases: SavedScreenUseCases,
     pub screener_use_cases: ScreenerUseCases,
+    pub subagent_definition_use_cases: SubagentDefinitionUseCases,
     pub strategy_scope_use_cases: Arc<StrategyScopeUseCases>,
     pub strategy_task_use_cases: StrategyTaskUseCases,
     pub strategy_earnings_target_use_cases: StrategyEarningsTargetUseCases,

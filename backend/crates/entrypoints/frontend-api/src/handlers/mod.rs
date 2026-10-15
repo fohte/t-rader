@@ -26,6 +26,7 @@ pub mod screener;
 pub mod stock_info;
 pub mod strategies;
 pub mod strategy_task_steps;
+pub mod subagent_definitions;
 pub mod tasks;
 pub mod trade_notes;
 pub mod trades;
