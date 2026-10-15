@@ -117,12 +117,15 @@ const LIST_MOVERS_SQL: &str = r#"
         JOIN avg_turnover USING (instrument_id)
         WHERE start_prices.close <> 0
     )
-    SELECT movers.instrument_id, instruments.name, movers.change_rate,
+    SELECT movers.instrument_id, COALESCE(stock.name, instruments.name) AS name,
+           movers.change_rate,
            movers.avg_turnover, first_seen.seen_at AS first_seen_at,
            first_seen.seen_via
     FROM movers
     JOIN instruments
       ON instruments.id = movers.instrument_id
+    LEFT JOIN stock
+      ON stock.id = movers.instrument_id
     LEFT JOIN first_seen
       ON first_seen.instrument_id = movers.instrument_id
     WHERE $5::text = 'abs'

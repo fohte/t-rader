@@ -50,9 +50,18 @@ async fn insert_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
 }
 
 async fn insert_stock(db: &impl sea_orm::ConnectionTrait, id: &str, market: Option<&str>) {
+    insert_stock_named(db, id, &format!("Fictional {id}"), market).await;
+}
+
+async fn insert_stock_named(
+    db: &impl sea_orm::ConnectionTrait,
+    id: &str,
+    name: &str,
+    market: Option<&str>,
+) {
     stock::ActiveModel {
         id: Set(id.to_string()),
-        name: Set(format!("Fictional {id}")),
+        name: Set(name.to_string()),
         market: Set(market.map(str::to_owned)),
         product_category: Set(None),
         ..Default::default()
@@ -308,6 +317,70 @@ fn expected_mover(
         "first_seen_at": first_seen_at,
         "seen_via": seen_via,
     })
+}
+
+#[backend_test_macros::database_test]
+async fn list_movers_prefers_stock_name_and_falls_back_to_instrument_name(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    insert_instrument(&db, "fictional-instrument-only").await;
+    insert_instrument(&db, "fictional-stock-backed").await;
+    insert_stock_named(&db, "fictional-stock-backed", "Fictional listed name", None).await;
+    upsert_bars(
+        &db,
+        vec![
+            bar("fictional-instrument-only", date(2025, 1, 31), 100, 100),
+            bar("fictional-instrument-only", date(2025, 2, 3), 100, 100),
+            bar("fictional-instrument-only", date(2025, 2, 4), 110, 100),
+            bar("fictional-stock-backed", date(2025, 1, 31), 100, 100),
+            bar("fictional-stock-backed", date(2025, 2, 3), 100, 100),
+            bar("fictional-stock-backed", date(2025, 2, 4), 110, 100),
+        ],
+    )
+    .await
+    .expect("insert fictional daily bars");
+    let strategy_id = insert_strategy(&db, "Fictional strategy").await;
+
+    let response = build_server(db)
+        .invoke::<_, Value>(
+            "list_movers",
+            strategy_id,
+            json!({
+                "from": "2025-02-03",
+                "to": "2025-02-04",
+                "direction": "abs",
+            }),
+            None,
+            None,
+        )
+        .await
+        .expect("list movers with stock and instrument names")
+        .as_json()
+        .clone();
+
+    assert_eq!(
+        response,
+        json!({
+            "movers": [
+                {
+                    "instrument_id": "fictional-instrument-only",
+                    "name": "Fictional fictional-instrument-only",
+                    "change_rate": 0.1,
+                    "avg_turnover": 10_500.0,
+                    "first_seen_at": null,
+                    "seen_via": null,
+                },
+                {
+                    "instrument_id": "fictional-stock-backed",
+                    "name": "Fictional listed name",
+                    "change_rate": 0.1,
+                    "avg_turnover": 10_500.0,
+                    "first_seen_at": null,
+                    "seen_via": null,
+                },
+            ],
+        })
+    );
 }
 
 #[backend_test_macros::database_test]
