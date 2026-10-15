@@ -165,12 +165,30 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
 
     async fn apply_status_and_steps(
         &self,
-        _transaction: &UnitOfWorkTransaction,
-        _task_id: Uuid,
-        _task_update: Option<StrategyTaskUpdate>,
+        transaction: &UnitOfWorkTransaction,
+        task_id: Uuid,
+        _expected_a2a_task_id: Option<&str>,
+        task_update: Option<StrategyTaskUpdate>,
         _steps: Option<serde_json::Value>,
     ) -> Result<StrategyTaskApplyResult, StrategyTaskRepositoryError> {
-        Ok(StrategyTaskApplyResult::default())
+        let can_update = {
+            let state = self.state.lock().await;
+            state.task.as_ref().is_some_and(|task| {
+                task.task_id == task_id
+                    && matches!(
+                        task.phase,
+                        StrategyTaskPhase::Pending | StrategyTaskPhase::Running
+                    )
+            })
+        };
+        let task_updated = match (can_update, task_update) {
+            (true, Some(task_update)) => self.update(transaction, task_update).await?,
+            _ => false,
+        };
+        Ok(StrategyTaskApplyResult {
+            task_updated,
+            steps_updated: false,
+        })
     }
 
     async fn find_by_id(
@@ -254,6 +272,7 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
         let can_claim = resumable && (!mark_auto_resumed || task.auto_resumed_at.is_none());
         if can_claim {
             task.phase = StrategyTaskPhase::Running;
+            task.a2a_task_id = None;
             task.updated_at = now;
             if mark_auto_resumed {
                 task.auto_resumed_at = Some(now);

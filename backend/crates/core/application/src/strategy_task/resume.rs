@@ -50,6 +50,9 @@ impl StrategyTaskUseCases {
         if !claimed {
             return Err(ResumeTaskError::NotResumable(task_id, task.phase.as_str()));
         }
+        let mut claimed_task = task.clone();
+        claimed_task.phase = StrategyTaskPhase::Running;
+        claimed_task.a2a_task_id = None;
 
         let steps = self.repository.list_steps(task_id).await?;
         let resume_steps = steps
@@ -87,18 +90,14 @@ impl StrategyTaskUseCases {
                     "agent task resume submission failed",
                 );
                 if let Err(update_error) = self
-                    .update_task(StrategyTaskUpdate {
-                        task_id,
-                        a2a_task_id: None,
-                        phase: Some(StrategyTaskPhase::Failed),
-                        error_summary: Some(Some(format!(
-                            "agent task resume submission failed: {error}"
-                        ))),
-                        result_text: None,
-                        deadline_at: None,
-                        auto_resumed_at: None,
-                        updated_at: chrono::Utc::now().fixed_offset(),
-                    })
+                    .apply_phase(
+                        &claimed_task,
+                        StrategyTaskPhase::Failed,
+                        Some(format!("agent task resume submission failed: {error}")),
+                        claimed_task.result_text.clone(),
+                        None,
+                        true,
+                    )
                     .await
                 {
                     tracing::error!(

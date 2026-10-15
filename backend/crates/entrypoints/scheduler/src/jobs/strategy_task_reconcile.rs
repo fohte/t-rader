@@ -193,6 +193,7 @@ mod tests {
             &self,
             _transaction: &core_application::unit_of_work::UnitOfWorkTransaction,
             task_id: Uuid,
+            _expected_a2a_task_id: Option<&str>,
             _task_update: Option<StrategyTaskUpdate>,
             _steps: Option<serde_json::Value>,
         ) -> Result<

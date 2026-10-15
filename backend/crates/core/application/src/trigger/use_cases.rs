@@ -683,6 +683,7 @@ mod tests {
             &self,
             _transaction: &UnitOfWorkTransaction,
             _task_id: Uuid,
+            _expected_a2a_task_id: Option<&str>,
             _task_update: Option<StrategyTaskUpdate>,
             _steps: Option<serde_json::Value>,
         ) -> Result<crate::strategy_task::StrategyTaskApplyResult, StrategyTaskRepositoryError>

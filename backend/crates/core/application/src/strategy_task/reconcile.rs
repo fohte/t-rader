@@ -1,16 +1,11 @@
-use chrono::{DateTime, FixedOffset};
-use serde_json::json;
-
 use crate::agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
 };
+use chrono::{DateTime, FixedOffset};
 
+use super::StrategyTaskUseCases;
 use super::error::ReconcileTaskError;
-use super::repository::StrategyTaskApplyResult;
-use super::types::{StrategyTask, StrategyTaskPhase, StrategyTaskUpdate};
-use super::{CompletionEventDependencies, StrategyTaskUseCases};
-use crate::event::NewEvent;
-use crate::unit_of_work::UnitOfWorkTransaction;
+use super::types::{StrategyTask, StrategyTaskPhase};
 
 impl StrategyTaskUseCases {
     pub async fn reconcile_task(
@@ -32,7 +27,9 @@ impl StrategyTaskUseCases {
             Ok(status) => {
                 let auto_resume_eligible = is_auto_resume_eligible(&task, &status, now);
                 let task_id = task.task_id;
-                let updated = self.apply_status(task, status, now).await?;
+                let updated = self
+                    .apply_status(task, status, now, !auto_resume_eligible)
+                    .await?;
                 if updated && auto_resume_eligible {
                     match self.auto_resume(agent_client, task_id).await {
                         Ok(submitted) => tracing::info!(
@@ -76,6 +73,7 @@ impl StrategyTaskUseCases {
         task: StrategyTask,
         status: AgentTaskStatus,
         now: DateTime<FixedOffset>,
+        emit_failure_event: bool,
     ) -> Result<bool, ReconcileTaskError> {
         let (new_phase, new_error) = if now > task.deadline_at {
             let message = match agent_reported_reason(&status) {
@@ -91,8 +89,17 @@ impl StrategyTaskUseCases {
             (new_phase, new_error)
         };
         let new_result_text = status.result_text.or_else(|| task.result_text.clone());
-        self.apply_phase(task, new_phase, new_error, new_result_text, status.steps)
-            .await
+        self.apply_phase(
+            &task,
+            new_phase,
+            new_error,
+            new_result_text,
+            status.steps,
+            emit_failure_event,
+        )
+        .await
+        .map(|result| result.changed())
+        .map_err(Into::into)
     }
 
     async fn apply_failed(
@@ -100,114 +107,17 @@ impl StrategyTaskUseCases {
         task: StrategyTask,
         message: String,
     ) -> Result<bool, ReconcileTaskError> {
-        self.apply_phase(task, StrategyTaskPhase::Failed, Some(message), None, None)
-            .await
-    }
-
-    async fn apply_phase(
-        &self,
-        task: StrategyTask,
-        new_phase: StrategyTaskPhase,
-        new_error: Option<String>,
-        new_result_text: Option<String>,
-        new_steps: Option<serde_json::Value>,
-    ) -> Result<bool, ReconcileTaskError> {
-        let row_changed = new_phase != task.phase
-            || new_error != task.error_summary
-            || new_result_text != task.result_text;
-        let task_update = row_changed.then(|| StrategyTaskUpdate {
-            task_id: task.task_id,
-            a2a_task_id: None,
-            phase: Some(new_phase),
-            error_summary: Some(new_error.clone()),
-            result_text: Some(new_result_text.clone()),
-            deadline_at: None,
-            auto_resumed_at: None,
-            updated_at: chrono::Utc::now().fixed_offset(),
-        });
-
-        let transaction = self.unit_of_work.begin().await?;
-        let result: StrategyTaskApplyResult = self
-            .repository
-            .apply_status_and_steps(&transaction, task.task_id, task_update, new_steps)
-            .await?;
-
-        let completion_events = self
-            .create_completion_event(
-                &transaction,
-                &task,
-                new_phase,
-                result.task_updated,
-                &new_error,
-                &new_result_text,
-            )
-            .await?;
-
-        self.unit_of_work.commit(transaction).await?;
-        if let Some(completion_events) = completion_events
-            && let Err(error) = completion_events.dispatch_job.enqueue_dispatch().await
-        {
-            tracing::warn!(
-                error = %error,
-                task_id = %task.task_id,
-                "failed to enqueue event dispatch; periodic dispatch will pick up the committed event",
-            );
-        }
-
-        Ok(result.changed())
-    }
-
-    async fn create_completion_event<'a>(
-        &'a self,
-        transaction: &UnitOfWorkTransaction,
-        task: &StrategyTask,
-        new_phase: StrategyTaskPhase,
-        task_updated: bool,
-        new_error: &Option<String>,
-        new_result_text: &Option<String>,
-    ) -> Result<Option<&'a CompletionEventDependencies>, ReconcileTaskError> {
-        if !task_updated {
-            return Ok(None);
-        }
-        let Some(event_type) = event_type_for_phase(new_phase) else {
-            return Ok(None);
-        };
-        let Some(completion_events) = self.completion_events.as_ref() else {
-            return Ok(None);
-        };
-
-        let source_chain_depth = completion_events
-            .repository
-            .find_chain_depth_for_task(transaction, task.task_id)
-            .await?;
-        completion_events
-            .repository
-            .create(
-                transaction,
-                NewEvent {
-                    event_type: event_type.to_string(),
-                    payload: json!({
-                        "task_id": task.task_id,
-                        "strategy_id": task.strategy_id,
-                        "purpose": task.purpose,
-                        "result_text": new_result_text,
-                        "error_summary": new_error,
-                    }),
-                    chain_depth: Some(
-                        source_chain_depth.map_or(0, |depth| depth.saturating_add(1)),
-                    ),
-                },
-            )
-            .await?;
-        Ok(Some(completion_events))
-    }
-}
-
-fn event_type_for_phase(phase: StrategyTaskPhase) -> Option<&'static str> {
-    match phase {
-        StrategyTaskPhase::Completed => Some("strategy_task.completed"),
-        StrategyTaskPhase::Failed => Some("strategy_task.failed"),
-        StrategyTaskPhase::Pending | StrategyTaskPhase::Running => None,
+        self.apply_phase(
+            &task,
+            StrategyTaskPhase::Failed,
+            Some(message),
+            None,
+            None,
+            true,
+        )
+        .await
+        .map(|result| result.changed())
+        .map_err(Into::into)
     }
 }
 

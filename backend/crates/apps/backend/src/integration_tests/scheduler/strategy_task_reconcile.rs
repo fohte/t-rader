@@ -33,14 +33,16 @@ mod tests {
     use core_application::event_dispatch_job::{
         EventDispatchJobQueue, EventDispatchJobQueueError, EventDispatchJobUseCases,
     };
-    use core_application::strategy_task::{StrategyTaskRepository, StrategyTaskUseCases};
+    use core_application::strategy_task::{
+        StrategyTaskRepository, StrategyTaskUseCases, TaskSource,
+    };
     use core_application::trigger::{NewTrigger, TriggerKind, TriggerRepository};
     use core_application::unit_of_work::UnitOfWork;
     use gateway_postgres::entities::sea_orm_active_enums::{
         StrategyTaskPhase, StrategyTaskStepStatus,
     };
     use gateway_postgres::entities::{
-        event as event_entity, strategy, strategy_task, strategy_task_step,
+        agent_config, event as event_entity, strategy, strategy_task, strategy_task_step,
     };
     use gateway_postgres::{
         PostgresEventRepository, PostgresStrategyTaskRepository, PostgresTriggerRepository,
@@ -218,6 +220,21 @@ mod tests {
             .unwrap()
             .try_get("", "job_count")
             .unwrap()
+    }
+
+    async fn insert_agent_config(db: &impl ConnectionTrait, purpose: &str) {
+        agent_config::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            purpose: Set(purpose.to_string()),
+            agents_md: NotSet,
+            skills: NotSet,
+            agent_graph: Set(String::new()),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .unwrap();
     }
 
     fn sort_events(events: &mut [Value]) {
@@ -449,6 +466,151 @@ mod tests {
                 ),
                 (StrategyTaskPhase::Running, None, None),
                 expected_events,
+                1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn submit_failure_emits_event_and_enqueues_dispatch(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        ensure_event_dispatch_job_schema().await;
+        let strategy_id = insert_strategy(&db).await;
+        insert_agent_config(&db, "demo-purpose").await;
+        let fake = FakeAgentTaskClient::new();
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+
+        let result = crate::services::use_cases::build_use_cases(db.clone())
+            .strategy_tasks()
+            .submit_task(
+                &fake,
+                strategy_id,
+                "sample prompt",
+                TaskSource::Review,
+                Some("demo-purpose".to_string()),
+            )
+            .await;
+        let row = strategy_task::Entity::find()
+            .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        let events = event_entity::Entity::find()
+            .filter(event_entity::Column::EventType.eq("strategy_task.failed"))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| {
+                json!({
+                    "event_type": event.event_type,
+                    "payload": event.payload,
+                    "chain_depth": event.chain_depth,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (
+                matches!(
+                    result,
+                    Err(core_application::strategy_task::SubmitTaskError::AgentTask(
+                        _
+                    ))
+                ),
+                row.phase,
+                events,
+                event_dispatch_job_count(&db).await,
+            ),
+            (
+                true,
+                StrategyTaskPhase::Failed,
+                vec![json!({
+                    "event_type": "strategy_task.failed",
+                    "payload": {
+                        "task_id": row.task_id,
+                        "strategy_id": strategy_id,
+                        "purpose": "demo-purpose",
+                        "result_text": null,
+                        "error_summary": "agent task submission failed: agent task client is not configured",
+                    },
+                    "chain_depth": 0,
+                })],
+                1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn resume_submission_failure_emits_event_and_enqueues_dispatch(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        ensure_event_dispatch_job_schema().await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-resume-failure"),
+            StrategyTaskPhase::Failed,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = FakeAgentTaskClient::new();
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+
+        let result = crate::services::use_cases::build_use_cases(db.clone())
+            .strategy_tasks()
+            .resume(&fake, task_id)
+            .await;
+        let row = fetch_task(&db, task_id).await;
+        let events = event_entity::Entity::find()
+            .filter(event_entity::Column::EventType.eq("strategy_task.failed"))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| {
+                json!({
+                    "event_type": event.event_type,
+                    "payload": event.payload,
+                    "chain_depth": event.chain_depth,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (
+                matches!(
+                    result,
+                    Err(core_application::strategy_task::ResumeTaskError::AgentTask(
+                        _
+                    ))
+                ),
+                row.phase,
+                row.error_summary,
+                events,
+                event_dispatch_job_count(&db).await,
+            ),
+            (
+                true,
+                StrategyTaskPhase::Failed,
+                Some(
+                    "agent task resume submission failed: agent task client is not configured"
+                        .to_string()
+                ),
+                vec![json!({
+                    "event_type": "strategy_task.failed",
+                    "payload": {
+                        "task_id": task_id,
+                        "strategy_id": strategy_id,
+                        "purpose": null,
+                        "result_text": null,
+                        "error_summary": "agent task resume submission failed: agent task client is not configured",
+                    },
+                    "chain_depth": 0,
+                })],
                 1,
             ),
         );
@@ -1009,6 +1171,112 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn stale_reconcile_does_not_update_steps_for_terminal_task(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-stale-steps"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let step_id = Uuid::new_v4();
+        let started_at = DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap();
+        strategy_task_step::ActiveModel {
+            execution_step_id: Set(step_id),
+            task_id: Set(task_id),
+            phase_key: Set("sample-phase".to_string()),
+            label: Set("Sample phase".to_string()),
+            model: Set("example-model".to_string()),
+            status: Set(StrategyTaskStepStatus::Running),
+            item: Set(None),
+            item_label: Set(None),
+            output: Set(None),
+            started_at: Set(started_at),
+            finished_at: Set(None),
+            trace_id: Set("trace-before".to_string()),
+            span_id: Set("span-before".to_string()),
+            error: Set(None),
+            seq: NotSet,
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        let repository = Arc::new(PostgresStrategyTaskRepository::new(db.clone()));
+        let stale_task = repository.find_by_id(task_id).await.unwrap().unwrap();
+        strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            phase: Set(StrategyTaskPhase::Completed),
+            updated_at: Set(Utc::now().fixed_offset()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .unwrap();
+
+        let fake = FakeAgentTaskClient::new();
+        fake.set_status(
+            "t-stale-steps",
+            AgentTaskStatus {
+                state: AgentTaskState::Working,
+                result_text: None,
+                error_message: None,
+                error_kind: None,
+                steps: Some(json!([{
+                    "execution_step_id": step_id,
+                    "phase_key": "sample-phase",
+                    "label": "Sample phase",
+                    "model": "example-model",
+                    "status": "completed",
+                    "output": {"summary": "stale report"},
+                    "started_at": "2026-01-01T00:00:00.000Z",
+                    "finished_at": "2026-01-01T00:00:05.000Z",
+                    "trace_id": "trace-after",
+                    "span_id": "span-after",
+                }])),
+            },
+        )
+        .await;
+        let updated = crate::services::use_cases::build_use_cases(db.clone())
+            .strategy_tasks()
+            .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            (
+                updated,
+                fetch_task(&db, task_id).await.phase,
+                without_sequence(fetch_steps(&db, task_id).await),
+            ),
+            (
+                false,
+                StrategyTaskPhase::Completed,
+                vec![strategy_task_step::Model {
+                    execution_step_id: step_id,
+                    task_id,
+                    phase_key: "sample-phase".to_string(),
+                    label: "Sample phase".to_string(),
+                    model: "example-model".to_string(),
+                    status: StrategyTaskStepStatus::Running,
+                    item: None,
+                    item_label: None,
+                    output: None,
+                    started_at,
+                    finished_at: None,
+                    trace_id: "trace-before".to_string(),
+                    span_id: "span-before".to_string(),
+                    error: None,
+                    seq: 0,
+                }],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn apply_phase_rolls_back_row_update_when_step_upsert_fails(
         db: gateway_postgres::DatabaseHandle,
     ) {
@@ -1063,7 +1331,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn execution_lost_failure_emits_event_and_auto_resume_survives_enqueue_failure(
+    async fn execution_lost_auto_resume_does_not_emit_failed_event(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
@@ -1101,6 +1369,10 @@ mod tests {
         let task = repository.find_by_id(task_id).await.unwrap().unwrap();
 
         let updated = strategy_tasks
+            .reconcile_task(fake.as_ref(), task.clone(), Utc::now().fixed_offset())
+            .await
+            .unwrap();
+        let stale_reconcile_updated = strategy_tasks
             .reconcile_task(fake.as_ref(), task, Utc::now().fixed_offset())
             .await
             .unwrap();
@@ -1140,25 +1412,13 @@ mod tests {
                 })
             })
             .collect::<Vec<_>>();
-        let actual = (updated, fake.submitted.lock().await.len(), events);
-        assert_eq!(
-            actual,
-            (
-                true,
-                1,
-                vec![json!({
-                    "event_type": "strategy_task.failed",
-                    "payload": {
-                        "task_id": task_id,
-                        "strategy_id": strategy_id,
-                        "purpose": null,
-                        "result_text": null,
-                        "error_summary": EXECUTION_LOST_ERROR_KIND,
-                    },
-                    "chain_depth": 0,
-                })],
-            ),
+        let actual = (
+            updated,
+            stale_reconcile_updated,
+            fake.submitted.lock().await.len(),
+            events,
         );
+        assert_eq!(actual, (true, false, 1, vec![],),);
     }
 
     #[backend_test_macros::database_test]
@@ -1406,6 +1666,160 @@ mod tests {
                 })],
                 StrategyTaskPhase::Completed,
                 1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn execution_lost_auto_resume_submission_failure_emits_one_failed_event(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        ensure_event_dispatch_job_schema().await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-lost-resume-failure"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-lost-resume-failure",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_message: None,
+                error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let updated = run_once(&db, &agent_client).await;
+        let row = fetch_task(&db, task_id).await;
+        let events = event_entity::Entity::find()
+            .filter(event_entity::Column::EventType.eq("strategy_task.failed"))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| {
+                json!({
+                    "event_type": event.event_type,
+                    "payload": event.payload,
+                    "chain_depth": event.chain_depth,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (
+                updated,
+                row.phase,
+                row.error_summary,
+                row.auto_resumed_at.is_some(),
+                events,
+                event_dispatch_job_count(&db).await,
+            ),
+            (
+                1,
+                StrategyTaskPhase::Failed,
+                Some(
+                    "agent task resume submission failed: agent task client is not configured"
+                        .to_string()
+                ),
+                true,
+                vec![json!({
+                    "event_type": "strategy_task.failed",
+                    "payload": {
+                        "task_id": task_id,
+                        "strategy_id": strategy_id,
+                        "purpose": null,
+                        "result_text": null,
+                        "error_summary": "agent task resume submission failed: agent task client is not configured",
+                    },
+                    "chain_depth": 0,
+                })],
+                1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn dispatch_enqueue_failure_keeps_failed_transition_and_event(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-dispatch-failure"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = FakeAgentTaskClient::new();
+        fake.set_status(
+            "t-dispatch-failure",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_message: Some("sample failure".to_string()),
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
+        let repository = Arc::new(PostgresStrategyTaskRepository::new(db.clone()));
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            repository.clone(),
+        )
+        .with_completion_events(
+            Arc::new(PostgresEventRepository::new(db.clone())),
+            EventDispatchJobUseCases::new(Arc::new(FailingEventDispatchJobQueue)),
+        );
+        let task = repository.find_by_id(task_id).await.unwrap().unwrap();
+
+        let updated = strategy_tasks
+            .reconcile_task(&fake, task, Utc::now().fixed_offset())
+            .await
+            .unwrap();
+        let events = event_entity::Entity::find()
+            .filter(event_entity::Column::EventType.eq("strategy_task.failed"))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| {
+                json!({
+                    "event_type": event.event_type,
+                    "payload": event.payload,
+                    "chain_depth": event.chain_depth,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (updated, fetch_task(&db, task_id).await.phase, events,),
+            (
+                true,
+                StrategyTaskPhase::Failed,
+                vec![json!({
+                    "event_type": "strategy_task.failed",
+                    "payload": {
+                        "task_id": task_id,
+                        "strategy_id": strategy_id,
+                        "purpose": null,
+                        "result_text": null,
+                        "error_summary": "sample failure",
+                    },
+                    "chain_depth": 0,
+                })],
             ),
         );
     }

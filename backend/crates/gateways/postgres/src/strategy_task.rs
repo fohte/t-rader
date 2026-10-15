@@ -121,20 +121,32 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         &self,
         transaction: &UnitOfWorkTransaction,
         task_id: Uuid,
+        expected_a2a_task_id: Option<&str>,
         task_update: Option<StrategyTaskUpdate>,
         steps: Option<serde_json::Value>,
     ) -> Result<StrategyTaskApplyResult, StrategyTaskRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         let task_update_attempted = task_update.is_some();
         let task_updated = match task_update {
-            Some(task_update) => strategy_task::Entity::update_many()
-                .set(update_active_model(task_update))
-                .filter(strategy_task::Column::TaskId.eq(task_id))
-                .filter(strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]))
-                .exec(transaction)
-                .await
-                .map(|result| result.rows_affected > 0)
-                .map_err(repository_error)?,
+            Some(task_update) => {
+                let mut update = strategy_task::Entity::update_many()
+                    .set(update_active_model(task_update))
+                    .filter(strategy_task::Column::TaskId.eq(task_id))
+                    .filter(
+                        strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]),
+                    );
+                update = match expected_a2a_task_id {
+                    Some(expected_a2a_task_id) => update.filter(
+                        strategy_task::Column::A2aTaskId.eq(expected_a2a_task_id.to_string()),
+                    ),
+                    None => update.filter(strategy_task::Column::A2aTaskId.is_null()),
+                };
+                update
+                    .exec(transaction)
+                    .await
+                    .map(|result| result.rows_affected > 0)
+                    .map_err(repository_error)?
+            }
             None => false,
         };
 
@@ -143,9 +155,15 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         let can_update_steps = if task_updated {
             true
         } else if !task_update_attempted && has_steps {
-            strategy_task::Entity::find_by_id(task_id)
+            let mut select = strategy_task::Entity::find_by_id(task_id)
                 .filter(strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]))
-                .lock(LockType::Update)
+                .lock(LockType::Update);
+            select = match expected_a2a_task_id {
+                Some(expected_a2a_task_id) => select
+                    .filter(strategy_task::Column::A2aTaskId.eq(expected_a2a_task_id.to_string())),
+                None => select.filter(strategy_task::Column::A2aTaskId.is_null()),
+            };
+            select
                 .one(transaction)
                 .await
                 .map_err(repository_error)?
@@ -283,6 +301,10 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             );
         let mut update = strategy_task::Entity::update_many()
             .col_expr(strategy_task::Column::Phase, Expr::value(DbPhase::Running))
+            .col_expr(
+                strategy_task::Column::A2aTaskId,
+                Expr::value(None::<String>),
+            )
             .col_expr(strategy_task::Column::UpdatedAt, Expr::value(now));
         let mut filter = sea_orm::Condition::all()
             .add(strategy_task::Column::TaskId.eq(task_id))

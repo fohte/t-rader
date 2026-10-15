@@ -55,6 +55,7 @@ pub trait StrategyTaskRepository: Send + Sync {
         &self,
         transaction: &UnitOfWorkTransaction,
         task_id: Uuid,
+        expected_a2a_task_id: Option<&str>,
         task_update: Option<StrategyTaskUpdate>,
         steps: Option<serde_json::Value>,
     ) -> Result<StrategyTaskApplyResult, StrategyTaskRepositoryError>;

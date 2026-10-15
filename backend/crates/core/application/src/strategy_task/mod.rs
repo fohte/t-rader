@@ -1,3 +1,4 @@
+mod completion_event;
 mod queries;
 mod reconcile;
 mod resume;

@@ -6,6 +6,16 @@ use crate::unit_of_work::UnitOfWorkError;
 use super::repository::StrategyTaskRepositoryError;
 
 #[derive(Debug, Error)]
+pub(super) enum StrategyTaskCompletionError {
+    #[error(transparent)]
+    Repository(#[from] StrategyTaskRepositoryError),
+    #[error(transparent)]
+    UnitOfWork(#[from] UnitOfWorkError),
+    #[error(transparent)]
+    EventRepository(#[from] crate::event::EventRepositoryError),
+}
+
+#[derive(Debug, Error)]
 pub enum SubmitTaskError {
     #[error("strategy {0} not found")]
     StrategyNotFound(Uuid),
@@ -61,4 +71,14 @@ pub enum ReconcileTaskError {
     AgentTask(#[from] crate::agent_task_client::AgentTaskError),
     #[error(transparent)]
     EventRepository(#[from] crate::event::EventRepositoryError),
+}
+
+impl From<StrategyTaskCompletionError> for ReconcileTaskError {
+    fn from(error: StrategyTaskCompletionError) -> Self {
+        match error {
+            StrategyTaskCompletionError::Repository(error) => Self::Repository(error),
+            StrategyTaskCompletionError::UnitOfWork(error) => Self::UnitOfWork(error),
+            StrategyTaskCompletionError::EventRepository(error) => Self::EventRepository(error),
+        }
+    }
 }
