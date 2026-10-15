@@ -28,87 +28,73 @@ function normalizeError(error: unknown): unknown {
     : error
 }
 
+function respondWithError(status: number, message: string): typeof fetch {
+  return () => Promise.resolve(Response.json({ error: message }, { status }))
+}
+
+async function runQuery(fetcher: typeof fetch): Promise<string> {
+  let requestCount = 0
+  const countedFetcher: typeof fetch = (...args) => {
+    requestCount += 1
+    return fetcher(...args)
+  }
+  const result = await queryClientWithImmediateRetries()
+    .fetchQuery(linkedTradesQuery(countedFetcher))
+    .then(
+      () => ({ state: 'success' as const, error: null }),
+      (error: unknown) => ({
+        state: 'error' as const,
+        error: normalizeError(error),
+      }),
+    )
+
+  return JSON.stringify({ requestCount, result })
+}
+
 describe('createQueryClient', () => {
-  it('does not retry a 404 response', async () => {
-    let requestCount = 0
-    const fetcher: typeof fetch = () => {
-      requestCount += 1
-      return Promise.resolve(
-        Response.json({ error: 'not found' }, { status: 404 }),
-      )
-    }
-
-    const result = await queryClientWithImmediateRetries()
-      .fetchQuery(linkedTradesQuery(fetcher))
-      .then(
-        () => ({ state: 'success' as const, error: null }),
-        (error: unknown) => ({
-          state: 'error' as const,
-          error: normalizeError(error),
-        }),
-      )
-
-    const actual = JSON.stringify({ requestCount, result })
-    const expected = JSON.stringify({
-      requestCount: 1,
-      result: { state: 'error', error: { error: 'not found', status: 404 } },
-    })
-    expect(actual).toBe(expected)
-  })
-
-  it('retries a 500 response three times', async () => {
-    let requestCount = 0
-    const fetcher: typeof fetch = () => {
-      requestCount += 1
-      return Promise.resolve(
-        Response.json({ error: 'server error' }, { status: 500 }),
-      )
-    }
-
-    const result = await queryClientWithImmediateRetries()
-      .fetchQuery(linkedTradesQuery(fetcher))
-      .then(
-        () => ({ state: 'success' as const, error: null }),
-        (error: unknown) => ({
-          state: 'error' as const,
-          error: normalizeError(error),
-        }),
-      )
-
-    const actual = JSON.stringify({ requestCount, result })
-    const expected = JSON.stringify({
-      requestCount: 4,
-      result: { state: 'error', error: { error: 'server error', status: 500 } },
-    })
-    expect(actual).toBe(expected)
-  })
-
-  it('retries a communication error three times', async () => {
-    let requestCount = 0
-    const error = new TypeError('connection failed')
-    const fetcher: typeof fetch = () => {
-      requestCount += 1
-      return Promise.reject(error)
-    }
-
-    const result = await queryClientWithImmediateRetries()
-      .fetchQuery(linkedTradesQuery(fetcher))
-      .then(
-        () => ({ state: 'success' as const, error: null }),
-        (queryError: unknown) => ({
-          state: 'error' as const,
-          error: normalizeError(queryError),
-        }),
-      )
-
-    const actual = JSON.stringify({ requestCount, result })
-    const expected = JSON.stringify({
-      requestCount: 4,
-      result: {
-        state: 'error',
-        error: { name: error.name, message: error.message },
-      },
-    })
-    expect(actual).toBe(expected)
+  it.each([
+    [
+      'does not retry a 400 response',
+      respondWithError(400, 'invalid request'),
+      JSON.stringify({
+        requestCount: 1,
+        result: {
+          state: 'error',
+          error: { error: 'invalid request', status: 400 },
+        },
+      }),
+    ],
+    [
+      'does not retry a 404 response',
+      respondWithError(404, 'not found'),
+      JSON.stringify({
+        requestCount: 1,
+        result: { state: 'error', error: { error: 'not found', status: 404 } },
+      }),
+    ],
+    [
+      'retries a 500 response three times',
+      respondWithError(500, 'server error'),
+      JSON.stringify({
+        requestCount: 4,
+        result: {
+          state: 'error',
+          error: { error: 'server error', status: 500 },
+        },
+      }),
+    ],
+    [
+      'retries a communication error three times',
+      () => Promise.reject(new TypeError('connection failed')),
+      JSON.stringify({
+        requestCount: 4,
+        result: {
+          state: 'error',
+          error: { name: 'TypeError', message: 'connection failed' },
+        },
+      }),
+    ],
+  ] as const)('%s', async (_name, fetcher, expected) => {
+    expect(await runQuery(fetcher)).toBe(expected)
   })
 })

@@ -12,7 +12,6 @@ export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        // 不必要な再フェッチを抑制する
         staleTime: 1000 * 60,
         retry: (failureCount, error) => {
           const status = getHttpStatus(error)
