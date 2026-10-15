@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_application::screener::{
     SCREENER_PAGE_SIZE, ScreenerPage, ScreenerQuery, ScreenerQueryError, ScreenerQuerySource,
-    ScreenerSortDirection, ScreenerSortField, ScreenerStock,
+    ScreenerSector, ScreenerSortDirection, ScreenerSortField, ScreenerStock,
 };
 use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
@@ -97,6 +97,15 @@ const SCREEN_STOCKS_SQL: &str = r#"
     FROM metadata
     LEFT JOIN paged ON TRUE
     ORDER BY paged.{sort_column} {sort_direction} NULLS LAST, paged.id ASC
+"#;
+
+const LIST_SCREENER_SECTORS_SQL: &str = r#"
+    SELECT stock_group.key, stock_group.name
+    FROM stock_group
+    JOIN group_axis ON group_axis.id = stock_group.axis_id
+    WHERE group_axis.derive_from = 'tse_sector33'
+    GROUP BY stock_group.key, stock_group.name
+    ORDER BY MIN(stock_group.code) NULLS LAST, stock_group.key, stock_group.name
 "#;
 
 #[derive(Debug, FromQueryResult)]
@@ -194,6 +203,31 @@ impl ScreenerQuerySource for PostgresScreenerQuerySource {
             as_of,
             page: query.page,
         })
+    }
+
+    async fn list_sectors(&self) -> Result<Vec<ScreenerSector>, ScreenerQueryError> {
+        #[derive(Debug, FromQueryResult)]
+        struct SectorRow {
+            key: String,
+            name: String,
+        }
+
+        self.db
+            .query_all_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                LIST_SCREENER_SECTORS_SQL.to_string(),
+            ))
+            .await
+            .map_err(query_error)?
+            .iter()
+            .map(|row| SectorRow::from_query_result(row, "").map_err(query_error))
+            .map(|result| {
+                result.map(|sector| ScreenerSector {
+                    key: sector.key,
+                    name: sector.name,
+                })
+            })
+            .collect()
     }
 }
 

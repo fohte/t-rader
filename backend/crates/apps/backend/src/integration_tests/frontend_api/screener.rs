@@ -197,25 +197,32 @@ async fn seed_sector_axis(db: &gateway_postgres::DatabaseHandle) -> (Uuid, Uuid,
     .expect("insert screener sector axis");
 
     let sector_ids = [
-        ("sector-alpha", "Sector Alpha"),
-        ("sector-beta", "Sector Beta"),
+        ("sector-alpha", "Sector Alpha", "2000"),
+        ("sector-beta", "Sector Beta", "1000"),
     ]
-    .map(|(key, name)| (key.to_string(), name.to_string(), Uuid::new_v4()));
-    for (key, name, id) in &sector_ids {
+    .map(|(key, name, code)| {
+        (
+            key.to_string(),
+            name.to_string(),
+            code.to_string(),
+            Uuid::new_v4(),
+        )
+    });
+    for (key, name, code, id) in &sector_ids {
         stock_group::ActiveModel {
             id: Set(*id),
             axis_id: Set(axis_id),
             key: Set(key.clone()),
             name: Set(name.clone()),
             description: Set(None),
-            code: Set(None),
+            code: Set(Some(code.clone())),
         }
         .insert(db)
         .await
         .expect("insert screener sector");
     }
 
-    (axis_id, sector_ids[0].2, sector_ids[1].2)
+    (axis_id, sector_ids[0].3, sector_ids[1].3)
 }
 
 async fn seed_sector_membership(
@@ -294,6 +301,50 @@ async fn seed_screener_data(db: &gateway_postgres::DatabaseHandle) {
     seed_financial_summary(db, "D0010", "2", 2, 123.5).await;
     seed_financial_summary(db, "D0020", "1", 2, 52.36).await;
     seed_financial_summary(db, "D0030", "1", 2, 114.0).await;
+}
+
+#[backend_test_macros::database_test]
+async fn screener_sector_options_only_include_tse_sector33_groups(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    seed_screener_data(&db).await;
+
+    let axis_id = Uuid::new_v4();
+    group_axis::ActiveModel {
+        id: Set(axis_id),
+        key: Set("demo-custom-axis".to_string()),
+        name: Set("Demo custom groups".to_string()),
+        description: Set("Custom axis".to_string()),
+        derive_from: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("insert unrelated group axis");
+    stock_group::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        axis_id: Set(axis_id),
+        key: Set("unrelated-group".to_string()),
+        name: Set("Unrelated Group".to_string()),
+        description: Set(None),
+        code: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("insert unrelated group");
+
+    let server = create_test_server(db).await;
+    let response = server.get("/api/screener/sectors").await;
+
+    assert_eq!(
+        (response.status_code(), response.json::<Value>()),
+        (
+            axum::http::StatusCode::OK,
+            json!([
+                { "key": "sector-beta", "name": "Sector Beta" },
+                { "key": "sector-alpha", "name": "Sector Alpha" },
+            ]),
+        ),
+    );
 }
 
 #[backend_test_macros::database_test]

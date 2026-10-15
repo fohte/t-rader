@@ -16,10 +16,35 @@ impl NoteUseCases {
         note_id: Uuid,
         command: UpdateNoteCommand,
     ) -> Result<NoteSnapshot, NoteUseCaseError> {
-        let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
-            self.resolve_market_data_references(body_md).await?
+        let resolved_market_data = if command.title.is_some()
+            || command.body_md.is_some()
+            || command.frontmatter_json.is_some()
+        {
+            let read_transaction = self.unit_of_work.begin().await?;
+            let current_version = self
+                .repository
+                .find_current_version(&read_transaction, note_id)
+                .await?
+                .ok_or_else(|| {
+                    NoteUseCaseError::NotFound(format!(
+                        "current version for note {note_id} not found"
+                    ))
+                })?;
+            let latest_version = self
+                .repository
+                .find_latest_version(&read_transaction, note_id)
+                .await?;
+            self.unit_of_work.commit(read_transaction).await?;
+            let body_md = command
+                .body_md
+                .as_deref()
+                .unwrap_or(&current_version.body_md)
+                .to_string();
+            let previous = Some(current_version).or(latest_version);
+            self.resolve_market_data_references(&body_md, previous.as_ref())
+                .await?
         } else {
-            Map::new()
+            None
         };
         let transaction = self.unit_of_work.begin().await?;
         let current_note = self.require_note(&transaction, note_id).await?;

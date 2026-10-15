@@ -1111,6 +1111,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/screener/sectors': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** スクリーナーで選択できる東証 33 業種を一覧する */
+    get: operations['list_sector_options']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/stocks/{stock_id}/financial-summaries': {
     parameters: {
       query?: never
@@ -2046,7 +2063,7 @@ export interface components {
       id: string
       is_current: boolean
       kind?: string | null
-      /** @description 本文中の価格リンクを key、実行データから解決した値を value とする。 */
+      /** @description 本文中の価格・市場データ参照リンクを key、解決した値を value とする。 */
       resolved_price_references_json: components['schemas']['Value']
       status: string
       tags: string[]
@@ -2115,7 +2132,7 @@ export interface components {
       is_current: boolean
       /** Format: uuid */
       note_id: string
-      /** @description 本文中の価格リンクを key、実行データから解決した値を value とする。 */
+      /** @description 本文中の価格・市場データ参照リンクを key、解決した値を value とする。 */
       resolved_price_references_json: components['schemas']['Value']
       /** Format: date-time */
       reviewed_at?: string | null
@@ -2484,6 +2501,10 @@ export interface components {
       page: number
       /** Format: int64 */
       total_count: number
+    }
+    ScreenerSectorResponse: {
+      key: string
+      name: string
     }
     /** @enum {string} */
     ScreenerSortBy:
@@ -7384,6 +7405,34 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_sector_options: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 東証 33 業種の key と名前 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScreenerSectorResponse'][]
         }
       }
       500: {

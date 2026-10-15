@@ -33,6 +33,7 @@ function renderHeader(
       '/notes',
       '/annotations/$annoId',
       '/paper-trading',
+      '/screener',
       '/calendar',
       '/settings',
       '/settings/rss-feeds',
@@ -63,6 +64,14 @@ function getNavigationOutput(navigation: HTMLElement) {
     }))
 }
 
+function getQuickSwitcherTriggerOutput(button: HTMLElement) {
+  return {
+    label: button.getAttribute('aria-label'),
+    expanded: button.getAttribute('aria-expanded'),
+    hasSearchIcon: button.querySelector('svg')?.getAttribute('aria-hidden'),
+  }
+}
+
 function getMenuOutput(menuButton: HTMLElement, navigation: HTMLElement) {
   return {
     menuActive: menuButton.getAttribute('aria-current') === 'page',
@@ -83,6 +92,11 @@ function getExpectedMenuOutput(
         label: 'ペーパートレード',
         href: '/paper-trading',
         active: activeLabel === 'ペーパートレード',
+      },
+      {
+        label: 'スクリーナー',
+        href: '/screener',
+        active: activeLabel === 'スクリーナー',
       },
       {
         label: 'カレンダー',
@@ -148,6 +162,17 @@ function getExpectedStrategyNavigation(pathname: string, activeTab: string) {
 }
 
 describe('Header', () => {
+  it('quick switcher のボタンを表示する', async () => {
+    renderHeader()
+    const button = await screen.findByRole('button', { name: '探す' })
+
+    expect(getQuickSwitcherTriggerOutput(button)).toEqual({
+      label: '探す',
+      expanded: 'false',
+      hasSearchIcon: 'true',
+    })
+  })
+
   it('ロゴからダッシュボードへ戻る', async () => {
     const user = userEvent.setup()
     const router = renderHeader()
@@ -245,6 +270,7 @@ describe('Header', () => {
       { label: 'ノート', href: '/notes', active: false },
       { label: '戦略', href: '/strategies', active: false },
       { label: 'ペーパートレード', href: '/paper-trading', active: false },
+      { label: 'スクリーナー', href: '/screener', active: false },
       { label: 'カレンダー', href: '/calendar', active: false },
       { label: '全体の設定', href: '/settings', active: false },
     ])
@@ -296,6 +322,11 @@ describe('Header', () => {
       pageName: 'ペーパートレード',
       path: '/paper-trading',
       activeLabel: 'ペーパートレード',
+    },
+    {
+      pageName: 'スクリーナー',
+      path: '/screener',
+      activeLabel: 'スクリーナー',
     },
     { pageName: 'カレンダー', path: '/calendar', activeLabel: 'カレンダー' },
     {

@@ -14,6 +14,10 @@ import {
 } from '#lib/note-change-reference'
 import { parseNotePriceReference } from '#lib/note-price-reference'
 import { REF_PREFIX_RE } from '#lib/note-utils'
+import {
+  parseNoteIndicatorObservationReference,
+  parseNoteValuationReference,
+} from '#lib/note-valuation-indicator-reference'
 
 const TOKEN_RE = /\[\[([^\]]+)\]\]/g
 const ANNO_RE = /^anno:([A-Za-z0-9][\w-]*)$/
@@ -94,6 +98,20 @@ function resolvedPriceReferenceValue(
 
   const value = reference.value
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function resolvedEvidenceToken(
+  token: string,
+  references: unknown,
+  reference: Record<string, string> | undefined,
+  hName: 'note-valuation-reference' | 'note-indicator-reference',
+): NoteToken | false {
+  if (reference == null) return false
+
+  const value = resolvedPriceReferenceValue(references, token)
+  return value == null
+    ? false
+    : noteToken(hName, { ...reference, value: String(value) })
 }
 
 // `[[graph:g1]]` は図 (ブロック要素) を指す。<p> の子には div を置けないため、
@@ -187,18 +205,33 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
           })
         }
 
-        // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
-        if (
-          inner.startsWith('valuation:') ||
-          (inner.startsWith('indicator:') && inner.includes('@'))
-        ) {
+        if (inner.startsWith('eval:')) {
           const value = resolvedPriceReferenceValue(
             resolvedPriceReferences,
             token,
           )
           return value == null
             ? false
-            : noteToken('note-price-reference', { value: String(value) })
+            : noteToken('note-eval-reference', { value: String(value) })
+        }
+
+        if (inner.startsWith('valuation:')) {
+          return resolvedEvidenceToken(
+            token,
+            resolvedPriceReferences,
+            parseNoteValuationReference(token),
+            'note-valuation-reference',
+          )
+        }
+
+        // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
+        if (inner.startsWith('indicator:') && inner.includes('@')) {
+          return resolvedEvidenceToken(
+            token,
+            resolvedPriceReferences,
+            parseNoteIndicatorObservationReference(token),
+            'note-indicator-reference',
+          )
         }
 
         const priceReferenceValue = inner.startsWith('price:')

@@ -8,6 +8,12 @@ use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
 
+#[cfg(any(test, feature = "test-support"))]
+mod fake;
+
+#[cfg(any(test, feature = "test-support"))]
+pub use fake::FakeCustomIndicatorEvaluationRepository;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomIndicatorEvaluation {
     pub id: Uuid,
@@ -31,6 +37,11 @@ pub trait CustomIndicatorEvaluationRepository: Send + Sync {
         &self,
         evaluation: CustomIndicatorEvaluation,
     ) -> Result<(), CustomIndicatorEvaluationRepositoryError>;
+
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<CustomIndicatorEvaluation>, CustomIndicatorEvaluationRepositoryError>;
 }
 
 pub type SharedCustomIndicatorEvaluationRepository =
@@ -76,5 +87,12 @@ impl CustomIndicatorEvaluationUseCases {
         let id = evaluation.id;
         self.repository.insert(evaluation).await?;
         Ok(id)
+    }
+
+    pub async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<CustomIndicatorEvaluation>, CustomIndicatorEvaluationUseCaseError> {
+        Ok(self.repository.find_by_id(id).await?)
     }
 }

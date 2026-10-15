@@ -26,7 +26,7 @@ pub(super) struct AppendVersionCommand {
     pub change_reason: Option<String>,
     pub change_diff: Option<Value>,
     pub actor: Actor,
-    pub resolved_market_data: ResolvedMarketDataReferences,
+    pub resolved_market_data: Option<ResolvedMarketDataReferences>,
 }
 
 impl NoteUseCases {
@@ -99,7 +99,11 @@ impl NoteUseCases {
                 .map(|previous| previous.resolved_price_references_json.clone())
                 .unwrap_or_else(|| Value::Object(Map::new()))
         } else {
-            Value::Object(content.resolved_market_data)
+            Value::Object(content.resolved_market_data.ok_or_else(|| {
+                NoteUseCaseError::Conflict(
+                    "note body changed while resolving references; retry the write".into(),
+                )
+            })?)
         };
 
         let becomes_current = !requires_approval;

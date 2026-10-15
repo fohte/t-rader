@@ -317,19 +317,22 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
   it('renders valuation and dated indicator citations as numbers while keeping an undated indicator link', () => {
     const valuationToken = '[[valuation:fictional-code@2030-01-02:per]]'
     const observationToken = '[[indicator:demo-indicator@2030-01-02]]'
+    const evaluationToken =
+      '[[eval:00000000-0000-0000-0000-000000000101:result]]'
     const { container } = render(
       <MarkdownBody
-        source={`PER ${valuationToken}、FX ${observationToken}、参照 [[indicator:demo-indicator]]`}
+        source={`PER ${valuationToken}、FX ${observationToken}、結果 ${evaluationToken}、参照 [[indicator:demo-indicator]]`}
         resolvedPriceReferences={{
           [valuationToken]: { value: 27.5 },
           [observationToken]: { value: 160.25 },
+          [evaluationToken]: { value: 256.75 },
         }}
         onRef={vi.fn()}
       />,
       { wrapper: QueryClientWrapper },
     )
     expect(container.textContent).toBe(
-      'PER 27.5、FX 160.25、参照 指標demo-indicator',
+      'PER 27.5、FX 160.25、結果 256.75、参照 指標demo-indicator',
     )
   })
 

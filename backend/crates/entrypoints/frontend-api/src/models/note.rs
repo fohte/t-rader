@@ -38,7 +38,7 @@ pub struct NoteResponse {
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
-    /// 本文中の価格リンクを key、実行データから解決した値を value とする。
+    /// 本文中の価格・市場データ参照リンクを key、解決した値を value とする。
     pub resolved_price_references_json: Json,
     pub tags: Vec<String>,
     pub kind: Option<String>,

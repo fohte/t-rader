@@ -11,7 +11,7 @@ use utoipa::{IntoParams, ToSchema};
 use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
-use crate::models::ScreenerResponse;
+use crate::models::{ScreenerResponse, ScreenerSectorResponse};
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -171,6 +171,28 @@ pub async fn screen_stocks(
         .map_err(map_screener_error)?;
 
     Ok(Json(result.into()))
+}
+
+/// スクリーナーで選択できる東証 33 業種を一覧する
+#[utoipa::path(
+    get,
+    path = "/api/screener/sectors",
+    tag = "screener",
+    responses(
+        (status = 200, description = "東証 33 業種の key と名前", body = Vec<ScreenerSectorResponse>),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_sector_options(
+    State(state): State<FrontendApiState>,
+) -> Result<Json<Vec<ScreenerSectorResponse>>, AppError> {
+    let sectors = state
+        .screener_use_cases
+        .list_sectors()
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+
+    Ok(Json(sectors.into_iter().map(Into::into).collect()))
 }
 
 fn range(min: Option<Decimal>, max: Option<Decimal>) -> Option<ScreenerRange> {

@@ -6071,6 +6071,40 @@
         }
       }
     },
+    "/api/screener/sectors": {
+      "get": {
+        "tags": [
+          "screener"
+        ],
+        "summary": "スクリーナーで選択できる東証 33 業種を一覧する",
+        "operationId": "list_sector_options",
+        "responses": {
+          "200": {
+            "description": "東証 33 業種の key と名前",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScreenerSectorResponse"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/stocks/{stock_id}/financial-summaries": {
       "get": {
         "tags": [
@@ -10429,7 +10463,7 @@
           },
           "resolved_price_references_json": {
             "$ref": "#/components/schemas/Value",
-            "description": "本文中の価格リンクを key、実行データから解決した値を value とする。"
+            "description": "本文中の価格・市場データ参照リンクを key、解決した値を value とする。"
           },
           "status": {
             "type": "string"
@@ -10650,7 +10684,7 @@
           },
           "resolved_price_references_json": {
             "$ref": "#/components/schemas/Value",
-            "description": "本文中の価格リンクを key、実行データから解決した値を value とする。"
+            "description": "本文中の価格・市場データ参照リンクを key、解決した値を value とする。"
           },
           "reviewed_at": {
             "type": [
@@ -11714,6 +11748,21 @@
           "total_count": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ScreenerSectorResponse": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
