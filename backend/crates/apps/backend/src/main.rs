@@ -377,6 +377,7 @@ async fn main() -> Result<(), StartupError> {
         short_selling_source,
         margin_source,
         strategy_tasks: use_cases.strategy_tasks(),
+        event_dispatch: use_cases.event_dispatch(),
         triggers: use_cases.triggers(),
         agent_task_client: agent_task_client.clone(),
         strategy_task_reconcile_enabled,

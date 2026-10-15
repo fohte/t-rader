@@ -9,7 +9,9 @@ use crate::agent_task_client::AgentTaskClient;
 use crate::strategy::SharedStrategyRepository;
 use crate::strategy_existence::SharedStrategyExistence;
 use crate::strategy_scope::StrategyScope;
-use crate::strategy_task::{StrategyTaskUseCases, SubmittedTask, TaskSource};
+use crate::strategy_task::{
+    PreparedStrategyTaskSubmission, StrategyTaskUseCases, SubmittedTask, TaskSource,
+};
 use crate::unit_of_work::SharedUnitOfWork;
 
 use self::commands::{apply_update, ensure_scope, validate_create};
@@ -248,6 +250,67 @@ impl TriggerUseCases {
             return Err(error.into());
         }
         Ok(submitted)
+    }
+
+    pub(crate) async fn list_enabled_event_triggers(
+        &self,
+        event_type: &str,
+    ) -> Result<Vec<Trigger>, TriggerUseCaseError> {
+        self.repository
+            .list_enabled_event_by_type(event_type)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub(crate) async fn prepare_event_task(
+        &self,
+        trigger: &Trigger,
+        payload: &Value,
+    ) -> Result<PreparedStrategyTaskSubmission, TriggerUseCaseError> {
+        let strategy_id = trigger
+            .strategy_id
+            .ok_or(TriggerUseCaseError::NoStrategy(trigger.trigger_id))?;
+        let strategy = self
+            .strategy_repository
+            .find_by_id(strategy_id)
+            .await?
+            .ok_or(crate::strategy_task::SubmitTaskError::StrategyNotFound(
+                strategy_id,
+            ))?;
+        let context = build_standard_context(&strategy, Utc::now());
+        let prompt = expand_template(&trigger.prompt_template, payload, &context);
+        self.strategy_tasks
+            .prepare_submission(
+                strategy_id,
+                &prompt,
+                TaskSource::Event,
+                trigger.purpose.clone(),
+                None,
+            )
+            .await
+            .map_err(Into::into)
+    }
+
+    pub(crate) async fn insert_prepared_event_task(
+        &self,
+        transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+        prepared: &PreparedStrategyTaskSubmission,
+    ) -> Result<(), TriggerUseCaseError> {
+        self.strategy_tasks
+            .insert_prepared_submission(transaction, prepared)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub(crate) async fn submit_prepared_event_task(
+        &self,
+        agent_client: &dyn AgentTaskClient,
+        prepared: PreparedStrategyTaskSubmission,
+    ) -> Result<SubmittedTask, TriggerUseCaseError> {
+        self.strategy_tasks
+            .submit_prepared_submission(agent_client, prepared)
+            .await
+            .map_err(Into::into)
     }
 
     pub async fn fire_hook(

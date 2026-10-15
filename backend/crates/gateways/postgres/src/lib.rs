@@ -23,6 +23,7 @@ mod earnings_schedule;
 pub mod entities;
 mod equity_master;
 mod event;
+mod event_dispatch_job_queue;
 mod financial_summary;
 mod group_axis;
 mod indicator_observation;
@@ -80,6 +81,7 @@ pub use custom_indicator_evaluation::PostgresCustomIndicatorEvaluationRepository
 pub use earnings_schedule::PostgresEarningsScheduleRepository;
 pub use equity_master::PostgresEquityMasterRepository;
 pub use event::PostgresEventRepository;
+pub use event_dispatch_job_queue::PostgresEventDispatchJobQueue;
 pub use financial_summary::PostgresFinancialSummaryRepository;
 pub use group_axis::PostgresGroupAxisRepository;
 pub use indicator_observation::PostgresIndicatorObservationRepository;

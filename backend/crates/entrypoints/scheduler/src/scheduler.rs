@@ -2,6 +2,7 @@ use std::{future::Future, time::Duration};
 
 use chrono::Weekday;
 use core_application::{
+    event_dispatch_job::EVENT_DISPATCH_QUEUE_NAME,
     ingest_status::{
         BOJ_CALENDAR_EVENT_INGEST_JOB, ECB_CALENDAR_EVENT_INGEST_JOB,
         FED_CALENDAR_EVENT_INGEST_JOB, FRED_RELEASE_DATES_INGEST_JOB,
@@ -26,6 +27,7 @@ use crate::{
         edinet_holdings::ShareholdingStructureIngest,
         eoddata_kospi::EodDataKospiIngest,
         equity_master::EquityMasterIngest,
+        event_dispatch::EventDispatch,
         fed_calendar::FedCalendarEventIngest,
         financial_summary::FinancialSummaryIngest,
         fred::FredIngest,
@@ -180,6 +182,7 @@ impl Scheduler {
             .define_job::<PredictionGrading>()
             .define_job::<PaperOrderFilling>()
             .define_job::<StrategyTaskReconcile>()
+            .define_job::<EventDispatch>()
             .define_job::<TriggerEvaluation>();
         let worker_options = if news_content_configured {
             worker_options.define_job::<NewsContentFetch>()
@@ -382,6 +385,10 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
             Some(NEWS_CONTENT_QUEUE),
         )?);
     }
+    crontabs.push(every_minute_cron::<EventDispatch>(
+        "event_dispatch",
+        Some(EVENT_DISPATCH_QUEUE_NAME),
+    ));
     crontabs.push(every_minute_cron::<TriggerEvaluation>(
         "trigger_evaluation",
         None,
@@ -494,6 +501,7 @@ mod tests {
         edinet_holdings::ShareholdingStructureIngest,
         eoddata_kospi::EodDataKospiIngest,
         equity_master::EquityMasterIngest,
+        event_dispatch::EventDispatch,
         fed_calendar::FedCalendarEventIngest,
         financial_summary::FinancialSummaryIngest,
         fred::FredIngest,
@@ -512,9 +520,10 @@ mod tests {
     };
 
     use super::{
-        ALPACA_QUEUE, ConfiguredJobs, EODDATA_QUEUE, FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE,
-        JQUANTS_QUEUE, NEWS_CONTENT_QUEUE, STRATEGY_TASK_RECONCILE_QUEUE_NAME, TWSE_QUEUE,
-        build_crontabs, configure_cron, every_minute_cron, hourly_cron,
+        ALPACA_QUEUE, ConfiguredJobs, EODDATA_QUEUE, EVENT_DISPATCH_QUEUE_NAME,
+        FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE, JQUANTS_QUEUE, NEWS_CONTENT_QUEUE,
+        STRATEGY_TASK_RECONCILE_QUEUE_NAME, TWSE_QUEUE, build_crontabs, configure_cron,
+        every_minute_cron, hourly_cron,
     };
 
     #[fixture]
@@ -726,6 +735,10 @@ mod tests {
                     Some(NEWS_CONTENT_QUEUE),
                 )
             }),
+            Some(every_minute_cron::<EventDispatch>(
+                "event_dispatch",
+                Some(EVENT_DISPATCH_QUEUE_NAME),
+            )),
             Some(every_minute_cron::<TriggerEvaluation>(
                 "trigger_evaluation",
                 None,
@@ -908,6 +921,12 @@ mod tests {
                     Some(3),
                     Some(NEWS_CONTENT_QUEUE.to_string()),
                 ),
+                (
+                    Some("event_dispatch".to_string()),
+                    None,
+                    Some(3),
+                    Some(EVENT_DISPATCH_QUEUE_NAME.to_string()),
+                ),
                 (Some("trigger_evaluation".to_string()), None, Some(3), None,),
             ]),
         );
@@ -945,7 +964,12 @@ mod tests {
                 .filter_map(|crontab| crontab.options.id)
                 .collect::<Vec<_>>()
         });
-        let expected_ids = Some(expected_ids.into_iter().map(str::to_string).collect());
+        let mut expected_ids = expected_ids
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        expected_ids.insert(expected_ids.len() - 1, "event_dispatch".to_string());
+        let expected_ids = Some(expected_ids);
 
         assert_eq!(actual_ids, expected_ids);
     }

@@ -1,3 +1,4 @@
+use crate::agent_task_client::SubmitAgentTask;
 use chrono::{DateTime, FixedOffset};
 use uuid::Uuid;
 
@@ -44,6 +45,7 @@ pub enum TaskSource {
     Cron,
     Hook,
     Review,
+    Event,
 }
 
 impl TaskSource {
@@ -54,6 +56,7 @@ impl TaskSource {
             Self::Cron => "cron",
             Self::Hook => "hook",
             Self::Review => "review",
+            Self::Event => "event",
         }
     }
 }
@@ -101,6 +104,12 @@ pub struct StrategyTaskStep {
 pub struct SubmittedTask {
     pub task_id: Uuid,
     pub a2a_task_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedStrategyTaskSubmission {
+    pub(crate) task: StrategyTask,
+    pub(crate) request: SubmitAgentTask,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
