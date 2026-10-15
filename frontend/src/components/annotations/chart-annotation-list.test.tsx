@@ -119,26 +119,43 @@ describe('ChartAnnotationList', () => {
     })
   })
 
-  it('deletes a selected human period annotation', async () => {
+  it.each([
+    {
+      name: 'period',
+      annotation: {
+        id: 'annotation-human-period',
+        created_by_kind: 'human' as const,
+        target_kind: 'sample-kind',
+        timestamp_start: '2025-01-02T00:00:00.000Z',
+        timestamp: '2025-01-04T00:00:00.000Z',
+        price: null,
+        price_start: null,
+        status: 'approved' as const,
+        text: '架空の期間注釈です。',
+      },
+    },
+    {
+      name: 'trendline',
+      annotation: {
+        id: 'annotation-human-trendline',
+        created_by_kind: 'human' as const,
+        target_kind: 'sample-kind',
+        timestamp_start: '2030-04-01T06:00:00Z',
+        timestamp: '2030-04-02T06:00:00Z',
+        price: 3120,
+        price_start: 3390,
+        status: 'approved' as const,
+        text: '架空のトレンドラインです。',
+      },
+    },
+  ])('deletes a selected human $name annotation', async ({ annotation }) => {
     const onDeleteAnnotation = vi.fn()
     const user = userEvent.setup()
 
     render(
       <ChartAnnotationList
-        annotations={[
-          {
-            id: 'annotation-human-period',
-            created_by_kind: 'human',
-            target_kind: 'sample-kind',
-            timestamp_start: '2025-01-02T00:00:00.000Z',
-            timestamp: '2025-01-04T00:00:00.000Z',
-            price: null,
-            price_start: null,
-            status: 'approved',
-            text: '架空の期間注釈です。',
-          },
-        ]}
-        selectedAnnotationId="annotation-human-period"
+        annotations={[annotation]}
+        selectedAnnotationId={annotation.id}
         onSelectAnnotation={() => undefined}
         onDeleteAnnotation={onDeleteAnnotation}
       />,
@@ -150,43 +167,7 @@ describe('ChartAnnotationList', () => {
       }),
     )
 
-    expect(onDeleteAnnotation.mock.calls).toEqual([['annotation-human-period']])
-  })
-
-  it('deletes a selected human trendline annotation', async () => {
-    const onDeleteAnnotation = vi.fn()
-    const user = userEvent.setup()
-
-    render(
-      <ChartAnnotationList
-        annotations={[
-          {
-            id: 'annotation-human-trendline',
-            created_by_kind: 'human',
-            target_kind: 'sample-kind',
-            timestamp_start: '2030-04-01T06:00:00Z',
-            timestamp: '2030-04-02T06:00:00Z',
-            price: 3120,
-            price_start: 3390,
-            status: 'approved',
-            text: '架空のトレンドラインです。',
-          },
-        ]}
-        selectedAnnotationId="annotation-human-trendline"
-        onSelectAnnotation={() => undefined}
-        onDeleteAnnotation={onDeleteAnnotation}
-      />,
-    )
-
-    await user.click(
-      screen.getByRole('button', {
-        name: 'sample-kind のアノテーションを削除',
-      }),
-    )
-
-    expect(onDeleteAnnotation.mock.calls).toEqual([
-      ['annotation-human-trendline'],
-    ])
+    expect(onDeleteAnnotation.mock.calls).toEqual([[annotation.id]])
   })
 
   it('does not offer deletion for a selected LLM horizontal annotation', () => {
