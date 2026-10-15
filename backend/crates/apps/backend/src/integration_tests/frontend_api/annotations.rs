@@ -55,6 +55,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -98,6 +99,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -120,6 +122,7 @@ mod tests {
             "created_at": "<created_at>",
             "updated_at": "<updated_at>",
             "timestamp_start": null,
+            "price_start": null,
             "execution_step_id": null,
             "execution_task_id": null,
         })
@@ -174,6 +177,90 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn create_annotation_with_price_start_persists_both_prices_and_timestamps(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_db, server) = create_test_server_with_db(db).await;
+        let response = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "SAMPLE-A",
+                "target_kind": "sample-kind",
+                "timestamp": "2026-06-02T00:00:00Z",
+                "timestamp_start": "2026-06-01T00:00:00Z",
+                "price": 123.45,
+                "price_start": 120.5,
+                "text": "sample text",
+            }))
+            .await;
+        let created = response.json::<Value>();
+        let annotation_id = created["id"].as_str().expect("annotation id");
+        let get_response = server
+            .get(&format!("/api/annotations/{annotation_id}"))
+            .await;
+        let expected = json!({
+            "id": "<id>",
+            "target_symbol": "SAMPLE-A",
+            "target_kind": "sample-kind",
+            "timestamp": "2026-06-02T00:00:00Z",
+            "timestamp_start": "2026-06-01T00:00:00Z",
+            "price": 123.45,
+            "price_start": 120.5,
+            "text": "sample text",
+            "status": "approved",
+            "linked_note_id": null,
+            "created_by_kind": "human",
+            "created_at": "<created_at>",
+            "updated_at": "<updated_at>",
+            "execution_step_id": null,
+            "execution_task_id": null,
+        });
+
+        assert_eq!(
+            (
+                (
+                    response.status_code(),
+                    normalize_annotation_response(created)
+                ),
+                (
+                    get_response.status_code(),
+                    normalize_annotation_response(get_response.json()),
+                ),
+            ),
+            (
+                (StatusCode::CREATED, expected.clone()),
+                (StatusCode::OK, expected),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_annotation_rejects_price_start_without_price(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (_db, server) = create_test_server_with_db(db).await;
+        let response = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "SAMPLE-A",
+                "target_kind": "sample-kind",
+                "timestamp": "2026-06-02T00:00:00Z",
+                "timestamp_start": "2026-06-01T00:00:00Z",
+                "price_start": 120.5,
+                "text": "sample text",
+            }))
+            .await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "price_start requires timestamp_start and price" }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn get_annotation_returns_not_found_for_missing_id(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
         let missing_id = Uuid::nil();
@@ -223,6 +310,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -266,6 +354,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -310,6 +399,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -351,6 +441,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -395,6 +486,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -460,6 +552,7 @@ mod tests {
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
                         "timestamp_start": null,
+                        "price_start": null,
                         "execution_step_id": null,
                         "execution_task_id": null,
                     }),
@@ -479,6 +572,7 @@ mod tests {
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
                         "timestamp_start": null,
+                        "price_start": null,
                         "execution_step_id": null,
                         "execution_task_id": null,
                     }),
@@ -522,6 +616,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),
@@ -566,6 +661,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": execution_step_id,
                     "execution_task_id": null,
                 }),
@@ -620,6 +716,7 @@ mod tests {
                 "created_at": "<created_at>",
                 "updated_at": "<updated_at>",
                 "timestamp_start": null,
+                "price_start": null,
                 "execution_step_id": execution_step_id,
                 "execution_task_id": null,
                 }),
@@ -673,6 +770,7 @@ mod tests {
                         "created_at": "<created_at>",
                         "updated_at": "<updated_at>",
                         "timestamp_start": null,
+                        "price_start": null,
                         "execution_step_id": execution_step_id,
                         "execution_task_id": null,
                     }),

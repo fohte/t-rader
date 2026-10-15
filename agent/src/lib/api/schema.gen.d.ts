@@ -1578,6 +1578,8 @@ export interface components {
       linked_note_id?: string | null
       /** Format: double */
       price?: number | null
+      /** Format: double */
+      price_start?: number | null
       status: string
       target_kind: string
       target_symbol: string
@@ -1702,6 +1704,8 @@ export interface components {
       linked_note_id?: string | null
       /** Format: double */
       price?: number | null
+      /** Format: double */
+      price_start?: number | null
       /** @description 省略時は `created_by_kind` が "human" なら "approved"、"llm" なら "unread"。 */
       status?: string | null
       target_kind: string
@@ -1709,6 +1713,8 @@ export interface components {
       text: string
       /** Format: date-time */
       timestamp: string
+      /** Format: date-time */
+      timestamp_start?: string | null
     }
     CreateCommentRequest: {
       anchor_side?: null | components['schemas']['CommentAnchorSide']
@@ -4127,9 +4133,9 @@ export interface operations {
         instrument_id: string
         /** @description 時間足 (デフォルト: "1d") */
         timeframe?: string
-        /** @description 取得開始日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive) */
+        /** @description 取得開始日時。日足と週足は YYYY-MM-DD、それ以外は RFC 3339 datetime (inclusive) */
         from?: string
-        /** @description 取得終了日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive) */
+        /** @description 取得終了日時。日足と週足は YYYY-MM-DD、それ以外は RFC 3339 datetime (inclusive) */
         to?: string
       }
       header?: never

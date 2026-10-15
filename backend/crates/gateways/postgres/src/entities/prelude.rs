@@ -10,6 +10,7 @@ pub use super::checkpoint::Entity as Checkpoint;
 pub use super::comment::Entity as Comment;
 pub use super::cross_shareholding_documents::Entity as CrossShareholdingDocuments;
 pub use super::custom_indicator::Entity as CustomIndicator;
+pub use super::custom_indicator_evaluation::Entity as CustomIndicatorEvaluation;
 pub use super::earnings_schedule_ingested_date::Entity as EarningsScheduleIngestedDate;
 pub use super::financial_summary::Entity as FinancialSummary;
 pub use super::group_axis::Entity as GroupAxis;

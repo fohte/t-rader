@@ -26,6 +26,13 @@ export const OneMinute: Story = {
   },
 }
 
+export const OneWeek: Story = {
+  name: 'shows the weekly interval as the selected timeframe.',
+  args: {
+    value: '1w',
+  },
+}
+
 export const Compact: Story = {
   name: 'the compact selector shows 1h and 1D while keeping the remaining intervals in a menu.',
   args: {

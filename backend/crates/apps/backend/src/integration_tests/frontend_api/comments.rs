@@ -407,6 +407,7 @@ mod tests {
                     "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
                     "timestamp_start": null,
+                    "price_start": null,
                     "execution_step_id": null,
                     "execution_task_id": null,
                 }),

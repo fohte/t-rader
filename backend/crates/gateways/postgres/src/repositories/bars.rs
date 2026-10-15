@@ -47,8 +47,33 @@ const FIND_AGGREGATED_MINUTE_BARS_SQL: &str = r#"
     ORDER BY instrument_id ASC, timestamp ASC
 "#;
 
+const FIND_AGGREGATED_DAILY_BARS_SQL: &str = r#"
+    WITH aggregated AS (
+        SELECT
+            instrument_id,
+            time_bucket($1::interval, timestamp) AS timestamp,
+            first(open, timestamp) AS open,
+            MAX(high) AS high,
+            MIN(low) AS low,
+            last(close, timestamp) AS close,
+            SUM(volume)::bigint AS volume
+        FROM bars
+        WHERE instrument_id IN ({instrument_ids})
+          AND timeframe = '1d'
+          AND (${from}::timestamptz IS NULL OR timestamp >= time_bucket($1::interval, ${from}::timestamptz))
+          -- to が属する週の全 OHLCV を集計する。
+          AND (${to}::timestamptz IS NULL OR timestamp < ${to} + $1::interval)
+        GROUP BY instrument_id, time_bucket($1::interval, timestamp)
+    )
+    SELECT instrument_id, timestamp, open, high, low, close, volume
+    FROM aggregated
+    WHERE (${from}::timestamptz IS NULL OR timestamp >= time_bucket($1::interval, ${from}::timestamptz))
+      AND (${to}::timestamptz IS NULL OR timestamp <= ${to})
+    ORDER BY instrument_id ASC, timestamp ASC
+"#;
+
 #[derive(Debug, FromQueryResult)]
-struct MinuteBarRow {
+struct AggregatedBarRow {
     instrument_id: String,
     timestamp: DateTime<FixedOffset>,
     open: Decimal,
@@ -211,11 +236,12 @@ pub async fn find_intraday_bars(
         .await
 }
 
-/// 複数銘柄について 1 分足、または 1 分足から集計した intraday bars を取得する。
-pub async fn find_intraday_bars_by_instruments(
+async fn find_bars_with_sql_template(
     db: &impl ConnectionTrait,
-    instrument_ids: &[String],
+    sql_template: &str,
+    interval: Option<&str>,
     timeframe: Timeframe,
+    instrument_ids: &[String],
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
 ) -> Result<Vec<Bar>, DbErr> {
@@ -223,12 +249,7 @@ pub async fn find_intraday_bars_by_instruments(
         return Ok(Vec::new());
     }
 
-    let interval = timeframe.bucket_interval();
-    let (sql_template, first_instrument_index) = match (timeframe, interval) {
-        (Timeframe::Minute, None) => (FIND_ONE_MINUTE_BARS_SQL, 1),
-        (_, Some(_)) => (FIND_AGGREGATED_MINUTE_BARS_SQL, 2),
-        _ => return Ok(Vec::new()),
-    };
+    let first_instrument_index = if interval.is_some() { 2 } else { 1 };
     let instrument_placeholders = (first_instrument_index
         ..first_instrument_index + instrument_ids.len())
         .map(|index| format!("${index}"))
@@ -259,7 +280,7 @@ pub async fn find_intraday_bars_by_instruments(
 
     rows.iter()
         .map(|row| {
-            let row = MinuteBarRow::from_query_result(row, "")?;
+            let row = AggregatedBarRow::from_query_result(row, "")?;
             Ok(Bar {
                 instrument_id: row.instrument_id,
                 timeframe,
@@ -273,6 +294,53 @@ pub async fn find_intraday_bars_by_instruments(
             })
         })
         .collect()
+}
+
+/// 複数銘柄について 1 分足、または 1 分足から集計した intraday bars を取得する。
+pub async fn find_intraday_bars_by_instruments(
+    db: &impl ConnectionTrait,
+    instrument_ids: &[String],
+    timeframe: Timeframe,
+    from: Option<DateTime<FixedOffset>>,
+    to: Option<DateTime<FixedOffset>>,
+) -> Result<Vec<Bar>, DbErr> {
+    let (sql_template, interval) = match timeframe {
+        Timeframe::Minute => (FIND_ONE_MINUTE_BARS_SQL, None),
+        _ => match timeframe.bucket_interval() {
+            Some(interval) => (FIND_AGGREGATED_MINUTE_BARS_SQL, Some(interval)),
+            None => return Ok(Vec::new()),
+        },
+    };
+
+    find_bars_with_sql_template(
+        db,
+        sql_template,
+        interval,
+        timeframe,
+        instrument_ids,
+        from,
+        to,
+    )
+    .await
+}
+
+/// 日足から週足を集計して取得する。
+pub async fn find_weekly_bars_by_instruments(
+    db: &impl ConnectionTrait,
+    instrument_ids: &[String],
+    from: Option<DateTime<FixedOffset>>,
+    to: Option<DateTime<FixedOffset>>,
+) -> Result<Vec<Bar>, DbErr> {
+    find_bars_with_sql_template(
+        db,
+        FIND_AGGREGATED_DAILY_BARS_SQL,
+        Some("1 week"),
+        Timeframe::Weekly,
+        instrument_ids,
+        from,
+        to,
+    )
+    .await
 }
 
 /// 複数銘柄に一致するバーデータをまとめて取得する。日付範囲は全銘柄共通の条件として扱う。

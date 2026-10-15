@@ -96,6 +96,7 @@ pub(crate) fn strategy_server_dependencies(
         comment_reads: use_cases.comment_reads(),
         comments: use_cases.comments(),
         custom_indicators: use_cases.custom_indicators(),
+        custom_indicator_evaluations: use_cases.custom_indicator_evaluations(),
         daily_bar_source,
         financial_summaries: use_cases.financial_summaries(),
         indicator_observations: use_cases.indicator_observations(),

@@ -6,6 +6,7 @@ use core_application::bars::BarsUseCases;
 use core_application::calendar::read_use_cases::CalendarEventReadUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
+use core_application::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::financial_summary::FinancialSummaryUseCases;
 use core_application::indicator_observation::IndicatorObservationUseCases;
@@ -45,6 +46,7 @@ pub struct StrategyServerDependencies {
     pub comment_reads: CommentReadUseCases,
     pub comments: CommentUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
+    pub custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
     pub daily_bar_source: Option<SharedDailyBarSource>,
     pub financial_summaries: FinancialSummaryUseCases,
     pub indicator_observations: IndicatorObservationUseCases,

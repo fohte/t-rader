@@ -57,6 +57,7 @@ fn annotation(id: Uuid, step_id: Uuid, task_id: &str) -> Annotation {
         timestamp: fixed_timestamp(),
         timestamp_start: None,
         price: None,
+        price_start: None,
         text: "sample text".into(),
         status: "unread".into(),
         linked_note_id: None,
@@ -99,6 +100,7 @@ fn create_command() -> CreateAnnotationCommand {
         timestamp: fixed_timestamp(),
         timestamp_start: None,
         price: None,
+        price_start: None,
         text: "sample text".into(),
         status: Some("unread".into()),
         linked_note_id: None,
@@ -424,6 +426,42 @@ async fn create_rejects_timestamp_start_after_timestamp_before_opening_transacti
 }
 
 #[rstest]
+#[case::missing_timestamp_start(None, Some(AnnotationPriceInput::Value(Decimal::new(1234, 2))), Err("price_start requires timestamp_start and price".into()))]
+#[case::missing_price(Some(fixed_timestamp()), None, Err("price_start requires timestamp_start and price".into()))]
+#[case::complete(Some(fixed_timestamp()), Some(AnnotationPriceInput::Value(Decimal::new(1234, 2))), Ok((Some(fixed_timestamp()), Some(Decimal::new(1180, 2)))))]
+#[tokio::test]
+async fn create_requires_timestamp_start_and_price_when_price_start_is_set(
+    #[case] timestamp_start: Option<DateTime<FixedOffset>>,
+    #[case] price: Option<AnnotationPriceInput>,
+    #[case] expected: Result<(Option<DateTime<FixedOffset>>, Option<Decimal>), String>,
+) {
+    let (use_cases, unit_of_work, repository, _) = build_use_cases();
+    let expected_rows = usize::from(expected.is_ok());
+    let mut command = create_command();
+    command.timestamp_start = timestamp_start;
+    command.price = price;
+    command.price_start = Some(Decimal::new(1180, 2));
+
+    let result = use_cases
+        .create(command)
+        .await
+        .map(|annotation| (annotation.timestamp_start, annotation.price_start))
+        .map_err(|error| match error {
+            AnnotationUseCaseError::Validation(message) => message,
+            _ => "unexpected error".into(),
+        });
+
+    assert_eq!(
+        (
+            result,
+            unit_of_work.begun.lock().await.len(),
+            repository.annotations.lock().await.len(),
+        ),
+        (expected, expected_rows, expected_rows),
+    );
+}
+
+#[rstest]
 #[case::matches_query_data_range_start(Some("1970-01-01"), true, true)]
 #[case::different_from_query_data_range_start(Some("1970-01-02"), true, false)]
 #[case::missing_query_data_range_start(None, true, false)]
@@ -659,6 +697,7 @@ async fn change_status_does_not_update_or_record_history_when_status_is_unchange
         timestamp: fixed_timestamp(),
         timestamp_start: None,
         price: None,
+        price_start: None,
         text: "sample text".into(),
         status: "approved".into(),
         linked_note_id: None,

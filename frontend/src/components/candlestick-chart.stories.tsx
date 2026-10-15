@@ -211,6 +211,25 @@ export const Default: Story = {
   },
 }
 
+export const WithPriceIndicators: Story = {
+  name: 'shows moving averages and Bollinger bands over the candles.',
+  args: {
+    bars: generateSampleBars(120),
+    indicators: [
+      { id: 'sample-sma', kind: 'sma', period: 25, color: '#f97316' },
+      { id: 'sample-ema', kind: 'ema', period: 25, color: '#38bdf8' },
+      {
+        id: 'sample-bollinger',
+        kind: 'bollinger',
+        period: 20,
+        deviation: 2,
+        color: '#34d399',
+      },
+    ],
+    className: 'h-full w-full',
+  },
+}
+
 export const FewBars: Story = {
   name: 'shows a candlestick chart with a short price history.',
   args: {
