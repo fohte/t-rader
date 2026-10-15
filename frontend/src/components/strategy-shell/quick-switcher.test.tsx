@@ -209,22 +209,16 @@ function getNavigationOutput(router: ReturnType<typeof createStoryRouter>) {
   }
 }
 
-function getStrategyNavigationOutput(
-  router: ReturnType<typeof createStoryRouter>,
-) {
-  return {
-    ...getNavigationOutput(router),
-    requests: getRequestOutput(),
-  }
-}
-
 function getStrategyFilteringOutput(
   matchingResults: string[],
   router: ReturnType<typeof createStoryRouter>,
 ) {
   return {
     matchingResults,
-    navigation: getStrategyNavigationOutput(router),
+    navigation: getNavigationOutput(router),
+    strategyRequests: getRequestOutput().filter(
+      ({ path }) => path === '/api/strategies',
+    ),
   }
 }
 
@@ -319,9 +313,9 @@ describe('QuickSwitcher', () => {
           pathname: '/strategies/demo-strategy/performance',
           search: {},
         },
-        requests: [{ path: '/api/strategies', query: null }],
         closed: true,
       },
+      strategyRequests: [{ path: '/api/strategies', query: null }],
     })
   })
 
