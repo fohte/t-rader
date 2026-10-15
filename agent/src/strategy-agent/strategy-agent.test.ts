@@ -718,7 +718,7 @@ describe('createStrategyAgentDeps', () => {
     return model
   }
 
-  it('bakes the strategy and execution ids into the MCP client headers at construction', () => {
+  it('sets the tool timeout and strategy headers when creating an MCP client', () => {
     createStrategyAgentDeps(baseConfig).createMcpClient(
       'strategy-1',
       'task-1:step-1',
@@ -726,6 +726,7 @@ describe('createStrategyAgentDeps', () => {
     )
 
     expect(capturedMcpClientConfig).toEqual({
+      defaultToolTimeout: 150_000,
       mcpServers: {
         strategy: {
           url: 'http://t-rader-backend/mcp/strategy',
