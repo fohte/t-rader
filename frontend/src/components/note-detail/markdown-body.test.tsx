@@ -21,6 +21,28 @@ vi.mock('#components/candlestick-chart', () => ({
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
 })
+
+const emptyRangeComments = {
+  comments: [],
+  activeCommentAnchor: null,
+  activeCommentKey: null,
+  replyingCommentId: null,
+  isCreating: false,
+  isReplying: false,
+  resolvingCommentId: null,
+  hasCreateError: false,
+  hasReplyError: false,
+  isCommentsPending: false,
+  hasCommentsError: false,
+  onStartComment: () => {},
+  onCancelComment: () => {},
+  onCreateComment: () => {},
+  onStartReply: () => {},
+  onCancelReply: () => {},
+  onReply: () => {},
+  onToggleResolved: () => {},
+}
+
 function QueryClientWrapper({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -123,6 +145,55 @@ describe('MarkdownBody', () => {
     await user.click(screen.getByRole('button', { name: /demo-code/ }))
     expect(onRef.mock.calls).toEqual([
       ['stock:demo-code', { kind: 'stock', id: 'demo-code', name: null }],
+    ])
+  })
+
+  it('keeps reference chip clicks separate from range comments', async () => {
+    const user = userEvent.setup()
+    const onRef = vi.fn()
+    render(
+      <MarkdownBody
+        source="[[stock:demo-code]]"
+        onRef={onRef}
+        rangeComments={emptyRangeComments}
+      />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    await user.click(screen.getByRole('button', { name: /demo-code/ }))
+
+    const getClickResult = () => ({
+      onRefCalls: onRef.mock.calls,
+      hasCommentComposer:
+        screen.queryByRole('textbox', { name: '行コメント' }) != null,
+    })
+
+    expect(getClickResult()).toEqual({
+      onRefCalls: [
+        ['stock:demo-code', { kind: 'stock', id: 'demo-code', name: null }],
+      ],
+      hasCommentComposer: false,
+    })
+  })
+
+  it('assigns a source range to each nested list item', () => {
+    const { container } = render(
+      <MarkdownBody
+        source={'- top\n    - nested\n'}
+        rangeComments={emptyRangeComments}
+      />,
+    )
+
+    const ranges = [
+      ...container.querySelectorAll('[data-source-block="true"]'),
+    ].map((block) => [
+      block.getAttribute('data-source-start-line'),
+      block.getAttribute('data-source-end-line'),
+    ])
+
+    expect(ranges).toEqual([
+      ['1', '2'],
+      ['2', '2'],
     ])
   })
 

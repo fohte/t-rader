@@ -6,6 +6,7 @@ import {
   type DiffCommentAnchor,
   NoteVersionDiffView,
 } from '#components/note-detail/note-version-diff-view'
+import { getDiffCommentAnchorKey } from '#components/note-detail/note-version-line-comment-group'
 import { $api } from '#lib/api/client'
 import type {
   NoteVersion,
@@ -59,7 +60,7 @@ export function NoteVersionDiffPanel({
           anchor_text: anchor.text,
           anchor_side: anchor.side,
           start_line: anchor.lineNumber,
-          end_line: anchor.lineNumber,
+          end_line: anchor.endLineNumber ?? anchor.lineNumber,
         },
       },
       {
@@ -127,7 +128,7 @@ export function NoteVersionDiffPanel({
         createComment.reset()
         replyComment.reset()
         setReplyingCommentId(null)
-        setActiveCommentKey(`${anchor.side}:${String(anchor.lineNumber)}`)
+        setActiveCommentKey(getDiffCommentAnchorKey(anchor))
       }}
       onCancelComment={() => {
         setActiveCommentKey(null)

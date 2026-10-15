@@ -36,6 +36,15 @@ const comment: NoteVersionComment = {
   created_at: '2026-01-12T03:00:00Z',
 }
 
+const rangeComment: NoteVersionComment = {
+  ...comment,
+  id: 'fake-range-comment-a',
+  body: 'この範囲の集計条件を補足してください。',
+  anchor_text: '観測期間は 6 週間です。\n集計結果を再確認する。',
+  start_line: 3,
+  end_line: 4,
+}
+
 const replies: NoteVersionComment[] = [
   comment,
   {
@@ -131,6 +140,13 @@ export const ThreadAndReply: Story = {
   name: 'shows a line anchored comment thread and its reply beside the diff.',
   args: {
     comments: replies,
+  },
+}
+
+export const RangeComment: Story = {
+  name: 'marks each line in a comment range and shows its thread at the end.',
+  args: {
+    comments: [rangeComment],
   },
 }
 

@@ -5,6 +5,8 @@ import { http, HttpResponse } from 'msw'
 
 import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
+import { getDiffCommentAnchorKey } from '#components/note-detail/note-version-line-comment-group'
+import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { components } from '#lib/api/schema.gen'
 import { mockResolveRef } from '#storybook/mock-resolve-ref'
 import { createStoryRouter } from '#storybook/story-router'
@@ -68,6 +70,43 @@ const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
     title: 'サンプル環境の記録',
   },
 ]
+
+const rangeComment: NoteVersionComment = {
+  id: 'sample-range-comment',
+  target_kind: 'note_version',
+  target_id: 'sample-version',
+  parent_id: null,
+  body: 'この段落の根拠を補足してください。',
+  author_kind: 'human',
+  author_label: 'レビュー担当者',
+  resolved: false,
+  anchor_text: '段落の内容です。',
+  anchor_side: 'new',
+  start_line: 3,
+  end_line: 4,
+  created_at: '2026-01-12T03:00:00Z',
+}
+
+const rangeCommentProps = {
+  comments: [rangeComment],
+  activeCommentAnchor: null,
+  activeCommentKey: null,
+  replyingCommentId: null,
+  isCreating: false,
+  isReplying: false,
+  resolvingCommentId: null,
+  hasCreateError: false,
+  hasReplyError: false,
+  isCommentsPending: false,
+  hasCommentsError: false,
+  onStartComment: () => {},
+  onCancelComment: () => {},
+  onCreateComment: () => {},
+  onStartReply: () => {},
+  onCancelReply: () => {},
+  onReply: () => {},
+  onToggleResolved: () => {},
+}
 
 const meta = {
   title: 'NoteDetail/MarkdownBody',
@@ -133,6 +172,37 @@ export const WithUnresolvedDatedReferences: Story = {
   args: {
     source:
       '未解決の valuation [[valuation:demo-code@2030-01-04:per]] と indicator [[indicator:demo-indicator@2030-01-04]] は保存値がありません。日付なしの [[indicator:demo-indicator]] は参照リンクです。',
+  },
+}
+
+export const WithRangeCommentThread: Story = {
+  name: 'shows a comment thread below the final block in its range.',
+  args: {
+    source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
+    rangeComments: rangeCommentProps,
+  },
+}
+
+export const WithCommentComposer: Story = {
+  name: 'shows a comment composer below the selected source block.',
+  args: {
+    source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
+    rangeComments: {
+      ...rangeCommentProps,
+      activeCommentAnchor: {
+        side: 'new',
+        lineNumber: 3,
+        endLineNumber: 4,
+        text: '段落の内容です。\n次の行に続きます。',
+      },
+      activeCommentKey: getDiffCommentAnchorKey({
+        side: 'new',
+        lineNumber: 3,
+        endLineNumber: 4,
+        text: '',
+      }),
+      comments: [],
+    },
   },
 }
 
