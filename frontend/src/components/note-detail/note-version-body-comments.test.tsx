@@ -104,26 +104,34 @@ function renderNoteBodyComments(source: string) {
   )
 }
 
+function selectParagraphText(text: string): HTMLElement {
+  const paragraph = screen.getByText((content) => content.includes(text))
+  const textNode = paragraph.firstChild
+  if (textNode == null) {
+    throw new Error('本文の段落にテキストがありません')
+  }
+  const range = document.createRange()
+  range.setStart(textNode, 0)
+  range.setEnd(textNode, text.length)
+  Object.defineProperty(range, 'getBoundingClientRect', {
+    value: () => new DOMRect(20, 100, 140, 20),
+  })
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  return paragraph
+}
+
 describe('NoteVersionBodyComments', () => {
   it('sends the selected quote and source range to the current version', async () => {
     const user = userEvent.setup()
-    const source = '# サンプル見出し\n\n対象の段落です。\n次の行です。'
+    const source = `# サンプル見出し
+
+対象の段落です。
+次の行です。`
     renderNoteBodyComments(source)
 
-    const paragraph = screen.getByText(/対象の段落です。/)
-    const textNode = paragraph.firstChild
-    if (textNode == null) {
-      throw new Error('本文の段落にテキストがありません')
-    }
-    const range = document.createRange()
-    range.setStart(textNode, 0)
-    range.setEnd(textNode, '対象の段落です。'.length)
-    Object.defineProperty(range, 'getBoundingClientRect', {
-      value: () => new DOMRect(20, 100, 140, 20),
-    })
-    const selection = window.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
+    const paragraph = selectParagraphText('対象の段落です。')
     fireEvent.mouseUp(paragraph)
     fireEvent(document, new Event('selectionchange'))
 
@@ -155,23 +163,12 @@ describe('NoteVersionBodyComments', () => {
 
   it('shows the comment action for a text selection after touch ends', async () => {
     const user = userEvent.setup()
-    const source = '# サンプル見出し\n\n対象のタッチ段落です。'
+    const source = `# サンプル見出し
+
+対象のタッチ段落です。`
     renderNoteBodyComments(source)
 
-    const paragraph = screen.getByText('対象のタッチ段落です。')
-    const textNode = paragraph.firstChild
-    if (textNode == null) {
-      throw new Error('本文の段落にテキストがありません')
-    }
-    const range = document.createRange()
-    range.setStart(textNode, 0)
-    range.setEnd(textNode, '対象のタッチ段落です。'.length)
-    Object.defineProperty(range, 'getBoundingClientRect', {
-      value: () => new DOMRect(20, 100, 140, 20),
-    })
-    const selection = window.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
+    const paragraph = selectParagraphText('対象のタッチ段落です。')
     fireEvent.touchEnd(paragraph)
 
     await user.click(
