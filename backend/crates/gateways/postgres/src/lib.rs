@@ -27,6 +27,7 @@ mod event_dispatch_job_queue;
 mod financial_summary;
 mod group_axis;
 mod group_movers;
+mod group_query_sql;
 mod indicator_observation;
 mod ingest_run_log;
 mod ingest_status;

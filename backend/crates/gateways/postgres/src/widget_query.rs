@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_application::widget::{
@@ -8,6 +10,7 @@ use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 
 use crate::DatabaseHandle;
+use crate::group_query_sql::with_shared_market_ctes;
 use crate::persistence::persistence_error;
 
 const RESOLVE_AS_OF_SQL: &str = r#"
@@ -18,104 +21,111 @@ const RESOLVE_AS_OF_SQL: &str = r#"
            OR timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC'))
 "#;
 
-const QUERY_WIDGET_SQL: &str = r#"
-    WITH stock_values AS (
-        SELECT stock.id,
-               stock.name,
-               prices.latest_close,
-               prices.period_close,
-               valuations.mkt_cap,
-               CASE $3::text
-                   WHEN 'change' THEN
-                       prices.latest_close / NULLIF(prices.period_close, 0) - 1
-                   WHEN 'mkt_cap' THEN valuations.mkt_cap
-               END AS value
-        FROM stock
-        LEFT JOIN LATERAL (
-            SELECT MAX(recent.close) FILTER (WHERE recent.ordinal = 1) AS latest_close,
-                   MAX(recent.close) FILTER (WHERE recent.ordinal = $2::bigint + 1)
-                       AS period_close
-            FROM (
-                SELECT bars.close,
-                       ROW_NUMBER() OVER (ORDER BY bars.timestamp DESC) AS ordinal
-                FROM bars
-                WHERE bars.instrument_id = stock.id
-                  AND bars.timeframe = '1d'
-                  AND bars.timestamp < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
-                ORDER BY bars.timestamp DESC
-                LIMIT 61
-            ) AS recent
-        ) AS prices ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT valuation.mkt_cap
-            FROM valuation
-            WHERE LEFT(valuation.code, 4) = stock.id
-              AND valuation.date <= $1::date
-              AND valuation.mkt_cap IS NOT NULL
-            ORDER BY valuation.date DESC, valuation.code DESC
-            LIMIT 1
-        ) AS valuations ON TRUE
-        WHERE (cardinality($9::text[]) = 0 OR stock.id = ANY($9::text[]))
-          AND (
-              $7::text IS NULL
-              OR EXISTS (
-                  SELECT 1
-                  FROM stock_group_member AS universe_member
-                  JOIN stock_group AS universe_group
-                    ON universe_group.id = universe_member.group_id
-                  JOIN group_axis AS universe_axis
-                    ON universe_axis.id = universe_group.axis_id
-                  WHERE universe_member.stock_id = stock.id
-                    AND universe_axis.key = $7::text
-                    AND universe_group.key = $8::text
-              )
-          )
-    ),
-    grouped_values AS (
-        SELECT CASE $4::text
-                   WHEN 'market' THEN 'market'
-                   WHEN 'stock' THEN stock_values.id
-                   WHEN 'group' THEN query_group.key
-               END AS row_key,
-               CASE $4::text
-                   WHEN 'market' THEN '全体'
-                   WHEN 'stock' THEN stock_values.name
-                   WHEN 'group' THEN query_group.name
-               END AS row_name,
-               stock_values.value,
-               stock_values.mkt_cap
-        FROM stock_values
-        LEFT JOIN group_axis AS query_axis
-          ON query_axis.key = $6::text
-         AND $4::text = 'group'
-        LEFT JOIN stock_group_member AS query_member
-          ON query_member.stock_id = stock_values.id
-         AND $4::text = 'group'
-        LEFT JOIN stock_group AS query_group
-          ON query_group.id = query_member.group_id
-         AND query_group.axis_id = query_axis.id
-    ),
-    aggregated_values AS (
-        SELECT row_key,
-               row_name,
-               CASE
-                   WHEN $4::text = 'stock' THEN MAX(value)
-                   WHEN $5::text = 'mean' THEN AVG(value)
-                   WHEN $5::text = 'sum' THEN SUM(value)
-                   WHEN $5::text = 'count' THEN COUNT(value)::numeric
-                   WHEN $5::text = 'mkt_cap_weighted' THEN
-                       SUM(value * mkt_cap)
-                           / NULLIF(SUM(mkt_cap) FILTER (WHERE value IS NOT NULL), 0)
-               END AS value
-        FROM grouped_values
-        GROUP BY row_key, row_name
+static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
+    with_shared_market_ctes(
+        r#"
+            SELECT $6::text AS axis_key WHERE $6::text IS NOT NULL
+            UNION
+            SELECT $7::text AS axis_key WHERE $7::text IS NOT NULL
+        "#,
+        r#"
+            candidate_stocks AS (
+                SELECT stock.id, stock.name
+                FROM stock
+                WHERE (cardinality($9::text[]) = 0 OR stock.id = ANY($9::text[]))
+                  AND (
+                      $7::text IS NULL
+                      OR EXISTS (
+                          SELECT 1
+                          FROM group_members AS universe_member
+                          WHERE universe_member.stock_id = stock.id
+                            AND universe_member.axis_key = $7::text
+                            AND universe_member.group_key = $8::text
+                      )
+                  )
+            ),
+            stock_change_windows AS (
+                SELECT candidate_stocks.id AS stock_id,
+                       period_start.start_at,
+                       (($1::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
+                FROM candidate_stocks
+                CROSS JOIN LATERAL (
+                    SELECT bars.timestamp AS start_at
+                    FROM bars
+                    WHERE bars.instrument_id = candidate_stocks.id
+                      AND bars.timeframe = '1d'
+                      AND bars.timestamp
+                          < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+                    ORDER BY bars.timestamp DESC
+                    OFFSET ($2::bigint - 1)
+                    LIMIT 1
+                ) AS period_start
+            )
+        "#,
+        r#"
+            stock_values AS (
+                SELECT candidate_stocks.id,
+                       candidate_stocks.name,
+                       valuations.mkt_cap,
+                       CASE $3::text
+                           WHEN 'change' THEN stock_changes.change_rate
+                           WHEN 'mkt_cap' THEN valuations.mkt_cap
+                       END AS value
+                FROM candidate_stocks
+                LEFT JOIN stock_changes
+                  ON stock_changes.stock_id = candidate_stocks.id
+                LEFT JOIN LATERAL (
+                    SELECT valuation.mkt_cap
+                    FROM valuation
+                    WHERE LEFT(valuation.code, 4) = candidate_stocks.id
+                      AND valuation.date <= $1::date
+                      AND valuation.mkt_cap IS NOT NULL
+                    ORDER BY valuation.date DESC, valuation.code DESC
+                    LIMIT 1
+                ) AS valuations ON TRUE
+            ),
+            grouped_values AS (
+                SELECT CASE $4::text
+                           WHEN 'market' THEN 'market'
+                           WHEN 'stock' THEN stock_values.id
+                           WHEN 'group' THEN query_group.group_key
+                       END AS row_key,
+                       CASE $4::text
+                           WHEN 'market' THEN '全体'
+                           WHEN 'stock' THEN stock_values.name
+                           WHEN 'group' THEN query_group.group_name
+                       END AS row_name,
+                       stock_values.value,
+                       stock_values.mkt_cap
+                FROM stock_values
+                LEFT JOIN group_members AS query_group
+                  ON query_group.stock_id = stock_values.id
+                 AND query_group.axis_key = $6::text
+                 AND $4::text = 'group'
+            ),
+            aggregated_values AS (
+                SELECT row_key,
+                       row_name,
+                       CASE
+                           WHEN $4::text = 'stock' THEN MAX(value)
+                           WHEN $5::text = 'mean' THEN AVG(value)
+                           WHEN $5::text = 'sum' THEN SUM(value)
+                           WHEN $5::text = 'count' THEN COUNT(value)::numeric
+                           WHEN $5::text = 'mkt_cap_weighted' THEN
+                               SUM(value * mkt_cap)
+                                   / NULLIF(SUM(mkt_cap) FILTER (WHERE value IS NOT NULL), 0)
+                       END AS value
+                FROM grouped_values
+                GROUP BY row_key, row_name
+            )
+            SELECT row_key, row_name, value
+            FROM aggregated_values
+            WHERE row_key IS NOT NULL
+              AND value IS NOT NULL
+            ORDER BY row_key
+        "#,
     )
-    SELECT row_key, row_name, value
-    FROM aggregated_values
-    WHERE row_key IS NOT NULL
-      AND value IS NOT NULL
-    ORDER BY row_key
-"#;
+});
 
 #[derive(Debug, FromQueryResult)]
 struct AsOfRow {
@@ -191,7 +201,7 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
             .db
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                QUERY_WIDGET_SQL,
+                QUERY_WIDGET_SQL.as_str(),
                 [
                     as_of.into(),
                     period.into(),
@@ -244,9 +254,10 @@ fn query_error(error: sea_orm::DbErr) -> WidgetQueryError {
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, TimeZone};
+    use core_application::group_movers::{GroupMoversQuery, GroupMoversQuerySource};
     use core_application::widget::{
-        WidgetAggregation, WidgetBy, WidgetMetric, WidgetPeriod, WidgetQuery, WidgetQuerySource,
-        WidgetRowKey, WidgetUniverse,
+        WidgetAggregation, WidgetBy, WidgetMetric, WidgetPeriod, WidgetQuery, WidgetQueryRow,
+        WidgetQuerySource, WidgetRowKey, WidgetUniverse,
     };
     use rust_decimal::Decimal;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
@@ -255,6 +266,7 @@ mod tests {
     use super::PostgresWidgetQuerySource;
     use crate::DatabaseHandle;
     use crate::entities::{bars, group_axis, instruments, stock, stock_group, stock_group_member};
+    use crate::group_movers::PostgresGroupMoversQuerySource;
 
     fn date(day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(2098, 1, day).expect("valid test date")
@@ -397,6 +409,94 @@ mod tests {
                 name: "Group Alpha".to_string(),
                 value: Decimal::new(-5, 2),
             }],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn widget_change_matches_group_movers_for_the_same_date_window(db: DatabaseHandle) {
+        insert_stock(&db, "D004", "Stock Delta").await;
+        for (day, close) in [(2, 100), (3, 110), (4, 120), (5, 130), (6, 140), (7, 150)] {
+            insert_bar(&db, "D004", day, close).await;
+        }
+
+        let axis_id = Uuid::new_v4();
+        group_axis::ActiveModel {
+            id: Set(axis_id),
+            key: Set("demo-axis".to_string()),
+            name: Set("Demo Axis".to_string()),
+            description: Set("Demo group axis".to_string()),
+            derive_from: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert widget group axis");
+        let group_id = Uuid::new_v4();
+        stock_group::ActiveModel {
+            id: Set(group_id),
+            axis_id: Set(axis_id),
+            key: Set("group-delta".to_string()),
+            name: Set("Group Delta".to_string()),
+            description: Set(None),
+            code: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert widget group");
+        stock_group_member::ActiveModel {
+            stock_id: Set("D004".to_string()),
+            group_id: Set(group_id),
+            created_at: Default::default(),
+        }
+        .insert(&db)
+        .await
+        .expect("insert widget group member");
+
+        let widget_query = WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::FiveDays),
+            by: WidgetBy::Stock,
+            axis: None,
+            indicator: None,
+            universe: None,
+            agg: None,
+        };
+        let widget_result = PostgresWidgetQuerySource::new(db.clone())
+            .query(date(7), &widget_query)
+            .await
+            .expect("query widget stock change");
+        let group_result = PostgresGroupMoversQuerySource::new(db)
+            .list_group_movers(GroupMoversQuery {
+                axis_key: "demo-axis".to_string(),
+                from: date(3),
+                to: date(7),
+                min_avg_turnover: Decimal::ZERO,
+            })
+            .await
+            .expect("query group movers");
+
+        assert_eq!(
+            (widget_result, group_result),
+            (
+                vec![WidgetQueryRow {
+                    key: WidgetRowKey::Stock("D004".to_string()),
+                    name: "Stock Delta".to_string(),
+                    value: Decimal::new(5, 1),
+                }],
+                vec![core_application::group_movers::GroupMover {
+                    group_key: "group-delta".to_string(),
+                    name: "Group Delta".to_string(),
+                    constituent_count: 1,
+                    median_change_rate: Some(Decimal::new(5, 1)),
+                    turnover_weighted_change_rate: Some(Decimal::new(5, 1)),
+                    total_avg_turnover: Decimal::from(13_000),
+                    top_stocks: vec![core_application::group_movers::GroupMoverStock {
+                        stock_id: "D004".to_string(),
+                        name: "Stock Delta".to_string(),
+                        change_rate: Decimal::new(5, 1),
+                        avg_turnover: Decimal::from(13_000),
+                    }],
+                }],
+            ),
         );
     }
 
