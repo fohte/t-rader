@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import type { NoteVersion } from '#lib/api/note-version-types'
 import { createStoryRouter } from '#storybook/story-router'
+import { executionOriginLinkName } from '#test/execution-origin-link-name'
 
 const version: NoteVersion = {
   id: 'fake-version-a',
@@ -31,7 +32,7 @@ function getHeaderOutput() {
     kindLabel: screen.getByText('架空の種別表示名').textContent,
     title: screen.getByRole('heading', { level: 1 }).textContent,
     originLinks: screen
-      .queryAllByRole('link', { name: /^(架空戦略|実行詳細 →)$/ })
+      .queryAllByRole('link', { name: executionOriginLinkName })
       .map((link) => ({
         name: link.textContent,
         href: link.getAttribute('href'),
@@ -92,9 +93,7 @@ describe('NoteVersionHeader', () => {
 
     await screen.findByRole('heading', { name: version.title })
     expect(
-      screen.queryAllByRole('link', {
-        name: /^(架空戦略|実行詳細 →)$/,
-      }),
+      screen.queryAllByRole('link', { name: executionOriginLinkName }),
     ).toEqual([])
   })
 

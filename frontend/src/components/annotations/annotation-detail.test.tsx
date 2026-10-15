@@ -8,6 +8,7 @@ import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import type { components } from '#lib/api/schema.gen'
 import type { ExecutionOrigin } from '#lib/execution-origin'
 import { createStoryRouter } from '#storybook/story-router'
+import { executionOriginLinkName } from '#test/execution-origin-link-name'
 
 type Annotation = components['schemas']['Annotation']
 
@@ -25,6 +26,12 @@ const annotation: Annotation = {
   execution_task_id: null,
   created_at: '2026-10-15T01:00:00Z',
   updated_at: '2026-10-15T01:00:00Z',
+}
+
+const executionOrigin: ExecutionOrigin = {
+  strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  strategyName: '架空戦略',
+  taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
 }
 
 afterEach(cleanup)
@@ -159,11 +166,7 @@ describe('AnnotationDetail', () => {
         ...annotation,
         execution_step_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
-      {
-        strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        strategyName: '架空戦略',
-        taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      },
+      executionOrigin,
     )
 
     const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
@@ -172,32 +175,26 @@ describe('AnnotationDetail', () => {
     )
   })
 
-  it('does not show a generation origin for an annotation written by a user', async () => {
-    renderAnnotationDetail(
-      { ...annotation, created_by_kind: 'human' },
-      {
-        strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        strategyName: '架空戦略',
-        taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      },
-    )
+  it.each([
+    {
+      state: 'the annotation was written by a user',
+      currentAnnotation: { ...annotation, created_by_kind: 'human' },
+      origin: executionOrigin,
+    },
+    {
+      state: 'the generation origin cannot be resolved',
+      currentAnnotation: annotation,
+      origin: null,
+    },
+  ])(
+    'omits origin links when $state',
+    async ({ currentAnnotation, origin }) => {
+      renderAnnotationDetail(currentAnnotation, origin)
 
-    await screen.findByText(annotation.text)
-    expect(
-      screen.queryAllByRole('link', {
-        name: /^(架空戦略|実行詳細 →)$/,
-      }),
-    ).toEqual([])
-  })
-
-  it('does not show a generation origin when one cannot be resolved', async () => {
-    renderAnnotationDetail(annotation, null)
-
-    await screen.findByText(annotation.text)
-    expect(
-      screen.queryAllByRole('link', {
-        name: /^(架空戦略|実行詳細 →)$/,
-      }),
-    ).toEqual([])
-  })
+      await screen.findByText(annotation.text)
+      expect(
+        screen.queryAllByRole('link', { name: executionOriginLinkName }),
+      ).toEqual([])
+    },
+  )
 })
