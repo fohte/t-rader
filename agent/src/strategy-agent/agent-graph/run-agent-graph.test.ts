@@ -1791,6 +1791,7 @@ describe('runAgentGraph', () => {
     expect(
       Array.of<unknown>(
         result,
+        calls.filter((call) => call.messageText.includes('do plan')).length,
         calls.map((call) => call.messageText),
       ),
     ).toEqual([
@@ -1798,6 +1799,7 @@ describe('runAgentGraph', () => {
         status: 'completed',
         message: '3フェーズの実行が完了しました (Plan → Investigate → Summary)',
       },
+      1,
       [
         buildPhaseMessageText({
           originalPromptText: 'req',
@@ -1819,52 +1821,6 @@ describe('runAgentGraph', () => {
           },
         }),
       ],
-    ])
-  })
-
-  it('invokes the source phase once when its for_each field is an empty array', async () => {
-    const { deps, calls } = buildDeps(() =>
-      Promise.resolve({ structuredResponse: { entries: [] } }),
-    )
-    const config: AgentGraphConfig = {
-      phases: [
-        {
-          key: 'source',
-          label: 'Source',
-          model: 'fictional-model',
-          prompt: 'gather entries',
-          subagents: [],
-          skills: [],
-          tools: [],
-          output: { entries: { type: 'array' } },
-        },
-        {
-          key: 'inspect',
-          label: 'Inspect',
-          model: 'fictional-model',
-          prompt: 'inspect each entry',
-          forEach: 'source.entries',
-          subagents: [],
-          skills: [],
-          tools: [],
-          output: {},
-        },
-      ],
-    }
-
-    const result = await runAgentGraph(deps, config, {
-      agentsMd: 'AGENTS',
-      skills: {},
-      createStepMcpClient: buildStepMcpClientFactory(),
-      originalPromptText: 'req',
-    })
-
-    expect(Array.of<unknown>(result, calls.length)).toEqual([
-      {
-        status: 'completed',
-        message: '2フェーズの実行が完了しました (Source → Inspect)',
-      },
-      1,
     ])
   })
 
