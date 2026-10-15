@@ -11,7 +11,8 @@ use super::super::us_stock_source::{
 };
 use super::super::use_cases::BarsUseCases;
 use super::{
-    MINUTE_HISTORY_MONTHS, SYMBOLS_PER_REQUEST, UsStockBarTimeframe, UsStockSplitHistoryRange,
+    MINUTE_HISTORY_MONTHS, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange,
+    UsStockBarTimeframe, UsStockSplitHistoryRange,
 };
 
 impl BarsUseCases {
@@ -21,10 +22,11 @@ impl BarsUseCases {
         targets: &[UsStockBarTarget],
         from: NaiveDate,
         to: DateTime<Utc>,
+        budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
-    ) -> Result<(), BarsUseCaseError> {
+    ) -> Result<bool, BarsUseCaseError> {
         if targets.is_empty() {
-            return Ok(());
+            return Ok(true);
         }
 
         let instrument_ids = targets
@@ -34,14 +36,30 @@ impl BarsUseCases {
         let target_ids = instrument_ids.iter().cloned().collect::<HashSet<_>>();
         let mut splits_by_instrument: HashMap<String, Vec<UsStockSplit>> = HashMap::new();
         for instrument_ids in instrument_ids.chunks(SYMBOLS_PER_REQUEST) {
+            let max_requests = budget.remaining();
+            if max_requests == 0 {
+                return Ok(false);
+            }
             let batch = source
-                .fetch_splits(&UsStockSplitQuery {
-                    instrument_ids: instrument_ids.to_vec(),
-                    from,
-                    to: to.date_naive(),
-                })
+                .fetch_splits(
+                    &UsStockSplitQuery {
+                        instrument_ids: instrument_ids.to_vec(),
+                        from,
+                        to: to.date_naive(),
+                    },
+                    max_requests,
+                )
                 .await?;
+            if !budget.take(batch.requests_attempted) {
+                return Err(UsStockBarSourceError::Failed(
+                    "source exceeded the request budget".to_owned(),
+                )
+                .into());
+            }
             stats.requests_attempted += batch.requests_attempted;
+            if batch.has_more {
+                return Ok(false);
+            }
             for split in batch.splits {
                 if target_ids.contains(&split.instrument_id) && split.ex_date <= to.date_naive() {
                     splits_by_instrument
@@ -77,7 +95,7 @@ impl BarsUseCases {
             if pending_splits.is_empty() {
                 continue;
             }
-            if let Err(error) = self
+            match self
                 .refetch_split_history(
                     source,
                     target,
@@ -91,19 +109,24 @@ impl BarsUseCases {
                             .unwrap_or(minute_history_start),
                         to,
                     },
+                    budget,
                     stats,
                 )
                 .await
             {
-                tracing::error!(
-                    instrument_id = %target.instrument_id,
-                    error = %error,
-                    "米国株の分割後履歴を再取得できませんでした"
-                );
+                Ok(true) => {}
+                Ok(false) => return Ok(false),
+                Err(error) => {
+                    tracing::error!(
+                        instrument_id = %target.instrument_id,
+                        error = %error,
+                        "米国株の分割後履歴を再取得できませんでした"
+                    );
+                }
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     async fn find_pending_splits(
@@ -168,19 +191,26 @@ impl BarsUseCases {
         target: &UsStockBarTarget,
         split_factors: &BTreeMap<NaiveDate, Decimal>,
         range: UsStockSplitHistoryRange,
+        budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
-    ) -> Result<(), BarsUseCaseError> {
+    ) -> Result<bool, BarsUseCaseError> {
         let instrument_ids = std::slice::from_ref(&target.instrument_id);
-        let mut daily_pages = self
+        let Some(mut daily_pages) = self
             .fetch_batch_pages(
                 source,
                 instrument_ids,
                 UsStockBarTimeframe::Daily,
-                range.daily_from,
-                range.to,
+                UsStockBarRange {
+                    from: range.daily_from,
+                    to: range.to,
+                },
+                budget,
                 stats,
             )
-            .await?;
+            .await?
+        else {
+            return Ok(false);
+        };
         let mut split_bars = Vec::new();
         for page in &mut daily_pages {
             self.preserve_adjustment_factors(page).await?;
@@ -197,20 +227,28 @@ impl BarsUseCases {
             *page = regular_bars;
         }
 
-        self.ingest_batch(
-            source,
-            instrument_ids,
-            UsStockBarTimeframe::Minute,
-            range.minute_from,
-            range.to,
-            stats,
-        )
-        .await?;
+        let minute_history_complete = self
+            .ingest_batch(
+                source,
+                instrument_ids,
+                UsStockBarTimeframe::Minute,
+                UsStockBarRange {
+                    from: range.minute_from,
+                    to: range.to,
+                },
+                budget,
+                stats,
+            )
+            .await?;
+        if !minute_history_complete {
+            return Ok(false);
+        }
 
         self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
             .await?;
         self.persist_bars(split_bars, UsStockBarTimeframe::Daily, stats)
-            .await
+            .await?;
+        Ok(true)
     }
 }
 
