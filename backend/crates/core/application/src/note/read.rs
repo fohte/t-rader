@@ -162,7 +162,7 @@ impl NoteReadUseCases {
         Ok(self.query.find_note_ids_for_versions(version_ids).await?)
     }
 
-    async fn require_note(&self, note_id: Uuid) -> Result<Note, NoteReadUseCaseError> {
+    pub(crate) async fn require_note(&self, note_id: Uuid) -> Result<Note, NoteReadUseCaseError> {
         self.query
             .find_note(note_id)
             .await?
