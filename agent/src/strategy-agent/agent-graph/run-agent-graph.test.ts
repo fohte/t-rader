@@ -1614,21 +1614,21 @@ describe('runAgentGraph', () => {
 
   it.each([
     {
-      name: 'is missing',
-      output: { items: { type: 'array' } },
-      forEach: 'source.items',
-      response: {},
-      field: 'items',
+      name: 'never becomes an array',
+      output: { value: { type: 'string' } },
+      forEach: 'plan.value',
+      response: { value: 'not-an-array' },
+      field: 'value',
     },
     {
-      name: 'is not an array',
-      output: { items: { type: 'array' } },
-      forEach: 'source.items',
-      response: { items: 'invalid' },
-      field: 'items',
+      name: 'is missing',
+      output: { hypotheses: { type: 'array' } },
+      forEach: 'plan.hypotheses',
+      response: {},
+      field: 'hypotheses',
     },
   ])(
-    'retries and then fails the source phase when for_each references a field that $name',
+    'retries and then fails the plan phase when for_each references a field that $name',
     async ({ output, forEach, response, field }) => {
       let attempts = 0
       const { deps } = buildDeps(() => {
@@ -1638,20 +1638,20 @@ describe('runAgentGraph', () => {
       const config: AgentGraphConfig = {
         phases: [
           {
-            key: 'source',
-            label: 'Source',
-            model: 'fictional-model',
-            prompt: 'gather entries',
+            key: 'plan',
+            label: 'Plan',
+            model: 'm',
+            prompt: 'do plan',
             subagents: [],
             skills: [],
             tools: [],
             output,
           },
           {
-            key: 'inspect',
-            label: 'Inspect',
-            model: 'fictional-model',
-            prompt: 'inspect each entry',
+            key: 'investigate',
+            label: 'Investigate',
+            model: 'm',
+            prompt: 'do investigate',
             forEach,
             subagents: [],
             skills: [],
@@ -1673,7 +1673,7 @@ describe('runAgentGraph', () => {
       expect(Array.of<unknown>(result, attempts, warnCalls)).toEqual([
         {
           status: 'failed',
-          message: `フェーズ「Source」(source) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to an array: ${field}`,
+          message: `フェーズ「Plan」(plan) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to an array: ${field}`,
           errorKind: 'agent_error',
         },
         3,
@@ -1684,7 +1684,7 @@ describe('runAgentGraph', () => {
               attemptNumber: 1,
               reason: 'missing_required_array_fields',
             },
-            'phase "source" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
+            'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
           ],
           [
             {
@@ -1692,7 +1692,7 @@ describe('runAgentGraph', () => {
               attemptNumber: 2,
               reason: 'missing_required_array_fields',
             },
-            'phase "source" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+            'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
           ],
         ],
       ])
@@ -1740,29 +1740,29 @@ describe('runAgentGraph', () => {
   it('passes an empty for_each result to the following phase without invoking an item', async () => {
     const { deps, calls } = buildDeps((call) =>
       Promise.resolve(
-        call.messageText.includes('gather entries')
-          ? { structuredResponse: { entries: [] } }
+        call.messageText.includes('do plan')
+          ? { structuredResponse: { items: [] } }
           : { structuredResponse: { summary: 'no entries' } },
       ),
     )
     const config: AgentGraphConfig = {
       phases: [
         {
-          key: 'source',
-          label: 'Source',
-          model: 'fictional-model',
-          prompt: 'gather entries',
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
           subagents: [],
           skills: [],
           tools: [],
-          output: { entries: { type: 'array' } },
+          output: { items: { type: 'array' } },
         },
         {
-          key: 'inspect',
-          label: 'Inspect',
-          model: 'fictional-model',
-          prompt: 'inspect each entry',
-          forEach: 'source.entries',
+          key: 'investigate',
+          label: 'Investigate',
+          model: 'm',
+          prompt: 'do investigate',
+          forEach: 'plan.items',
           subagents: [],
           skills: [],
           tools: [],
@@ -1796,29 +1796,75 @@ describe('runAgentGraph', () => {
     ).toEqual([
       {
         status: 'completed',
-        message: '3フェーズの実行が完了しました (Source → Inspect → Summary)',
+        message: '3フェーズの実行が完了しました (Plan → Investigate → Summary)',
       },
       [
         buildPhaseMessageText({
           originalPromptText: 'req',
-          phaseKeys: ['source', 'inspect', 'summary'],
-          phaseKey: 'source',
-          phasePrompt: 'gather entries',
+          phaseKeys: ['plan', 'investigate', 'summary'],
+          phaseKey: 'plan',
+          phasePrompt: 'do plan',
           item: undefined,
           priorResults: {},
         }),
         buildPhaseMessageText({
           originalPromptText: 'req',
-          phaseKeys: ['source', 'inspect', 'summary'],
+          phaseKeys: ['plan', 'investigate', 'summary'],
           phaseKey: 'summary',
           phasePrompt: 'write summary',
           item: undefined,
           priorResults: {
-            source: { entries: [] },
-            inspect: [],
+            plan: { items: [] },
+            investigate: [],
           },
         }),
       ],
+    ])
+  })
+
+  it('invokes the source phase once when its for_each field is an empty array', async () => {
+    const { deps, calls } = buildDeps(() =>
+      Promise.resolve({ structuredResponse: { entries: [] } }),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'source',
+          label: 'Source',
+          model: 'fictional-model',
+          prompt: 'gather entries',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { entries: { type: 'array' } },
+        },
+        {
+          key: 'inspect',
+          label: 'Inspect',
+          model: 'fictional-model',
+          prompt: 'inspect each entry',
+          forEach: 'source.entries',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+    })
+
+    expect(Array.of<unknown>(result, calls.length)).toEqual([
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Source → Inspect)',
+      },
+      1,
     ])
   })
 

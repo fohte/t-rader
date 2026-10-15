@@ -685,24 +685,24 @@ describe('parseAgentGraphPhases', () => {
   it('extracts key/label/model from valid YAML', () => {
     const yaml = [
       'phases:',
-      '  - key: source',
-      '    label: Source',
-      '    model: fictional-model',
+      '  - key: plan',
+      '    label: 調査計画',
+      '    model: claude-opus-4',
       '    prompt: p',
-      '  - key: inspect',
-      '    label: Inspect',
-      '    model: fictional-model',
+      '  - key: investigate',
+      '    label: 調査',
+      '    model: deepseek-v4-flash',
       '    prompt: p',
-      '    for_each: source.entries',
+      '    for_each: plan.items',
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'source', label: 'Source', model: 'fictional-model' },
+      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
       {
-        key: 'inspect',
-        label: 'Inspect',
-        model: 'fictional-model',
-        forEach: 'source.entries',
+        key: 'investigate',
+        label: '調査',
+        model: 'deepseek-v4-flash',
+        forEach: 'plan.items',
       },
     ])
   })
