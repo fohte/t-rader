@@ -1628,7 +1628,7 @@ describe('runAgentGraph', () => {
       field: 'hypotheses',
     },
   ])(
-    'retries and then fails the plan phase when for_each references a field that $name',
+    'retries and then fails the source phase when for_each references a field that $name',
     async ({ output, forEach, response, field }) => {
       let attempts = 0
       const { deps } = buildDeps(() => {
