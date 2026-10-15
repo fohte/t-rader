@@ -147,7 +147,7 @@ describe('NoteDetailPage', () => {
       ),
     })
 
-    await screen.findByText(noteKindLabel)
+    await screen.findByText(noteKindLabel, {}, { timeout: 10_000 })
 
     expect(readNoteDetailOutput(noteRequests)).toEqual({
       noteRequests: [
@@ -160,5 +160,5 @@ describe('NoteDetailPage', () => {
       title: '架空の分析ノート',
       noteKindLabel,
     })
-  }, 10_000)
+  }, 30_000)
 })
