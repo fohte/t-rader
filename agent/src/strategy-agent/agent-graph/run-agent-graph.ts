@@ -230,10 +230,7 @@ const runForEachItems = async (
   const runWorker = async (): Promise<boolean> => {
     let isFirstItem = true
     while (nextIndex < items.length) {
-      if (
-        (!isFirstItem || context.phaseTimeout !== undefined) &&
-        isExecutionAborted(context)
-      ) {
+      if (!isFirstItem && isExecutionAborted(context)) {
         return true
       }
       const index = nextIndex
@@ -382,7 +379,10 @@ export const runAgentGraph = async (
       return buildPhaseTimeoutResult(phaseTimeout)
     }
     if (phaseResult.isErr()) {
-      if (isExecutionAborted(phaseExecution.context)) {
+      if (
+        phaseExecution.context.phaseTimeout !== undefined &&
+        isExecutionAborted(phaseExecution.context)
+      ) {
         return buildFailureResult(
           phase,
           new Error(getExecutionAbortMessage(phaseExecution.context)),
