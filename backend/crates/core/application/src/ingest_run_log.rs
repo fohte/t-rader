@@ -99,7 +99,7 @@ impl IngestRunLogUseCases {
             .repository
             .finish(&transaction, run_id, status, stats.clone(), error.clone())
             .await?;
-        let should_enqueue_dispatch = job.is_some();
+        let should_dispatch = job.is_some();
         if let Some(job) = job {
             self.event_repository
                 .create(
@@ -123,7 +123,7 @@ impl IngestRunLogUseCases {
             .await
             .map_err(|error| PersistenceError::Database(error.to_string()))?;
 
-        if !should_enqueue_dispatch {
+        if !should_dispatch {
             tracing::warn!(
                 %run_id,
                 attempted_status = status,
@@ -136,7 +136,7 @@ impl IngestRunLogUseCases {
             tracing::warn!(
                 %run_id,
                 %error,
-                "failed to enqueue event dispatch; periodic dispatch will retry"
+                "failed to dispatch event immediately; periodic dispatch will retry"
             );
         }
 

@@ -152,7 +152,7 @@ async fn submitted_tasks(fake: &FakeAgentTaskClient) -> Vec<(Uuid, String, Optio
 }
 
 #[backend_test_macros::database_test]
-async fn dispatches_matching_triggers_and_expands_payload(db: DatabaseHandle) {
+async fn inline_dispatch_runs_matching_triggers_and_expands_payload(db: DatabaseHandle) {
     let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
     testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await
@@ -182,8 +182,10 @@ async fn dispatches_matching_triggers_and_expands_payload(db: DatabaseHandle) {
     .await;
 
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases(db.clone()).event_dispatch();
-    let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
+    let dispatch = build_use_cases(db.clone())
+        .with_agent_task_client(fake.clone())
+        .event_dispatch_job();
+    let outcome = dispatch.enqueue_dispatch().await;
 
     assert_eq!(
         (
@@ -193,7 +195,7 @@ async fn dispatches_matching_triggers_and_expands_payload(db: DatabaseHandle) {
             submitted_tasks(&fake).await,
         ),
         (
-            Ok((1, 0)),
+            Ok(()),
             vec![task_shape(strategy_id, "value=synthetic")],
             vec![matching_trigger_id],
             vec![(

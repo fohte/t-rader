@@ -33,6 +33,7 @@ pub fn router(
     web_search_client: Option<SharedWebSearchClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
+    let use_cases = use_cases.with_agent_task_client(agent_client.clone());
     let mgmt_dependencies = mgmt_dependencies(&use_cases, agent_client);
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_dependencies.clone())),

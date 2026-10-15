@@ -3838,7 +3838,7 @@ export interface operations {
       }
     }
     responses: {
-      /** @description 受理 (戦略タスク照合 job を投入) */
+      /** @description 受理 (戦略タスクの状態同期をバックグラウンドで開始) */
       204: {
         headers: {
           [name: string]: unknown

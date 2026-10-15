@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use axum_test::TestServer;
 use chrono::{DateTime, TimeZone, Utc};
 use sea_orm::ActiveModelTrait;
@@ -13,6 +14,10 @@ use crate::{
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_application::kata_exec::SharedKataExecutor;
+use core_application::persistence::PersistenceError;
+use core_application::strategy_task::{
+    StrategyTaskReconcileLock, StrategyTaskReconcileLockGuard, StrategyTaskReconcileLockUseCases,
+};
 use core_domain::bar::Bar;
 use core_domain::instrument::Instrument;
 use entrypoint_frontend_api::FrontendApiState;
@@ -44,13 +49,43 @@ struct TestRouterState {
 }
 
 fn base_state(db: DatabaseHandle, agent_task_client: SharedAgentTaskClient) -> TestRouterState {
-    let use_cases = crate::services::use_cases::build_use_cases(db);
+    let use_cases = crate::services::use_cases::build_use_cases(db)
+        .with_agent_task_client(agent_task_client.clone());
     let app_state = build_http_state(&use_cases, agent_task_client.clone(), None, None);
+    let strategy_task_reconcile_use_cases =
+        use_cases.strategy_task_reconcile(test_strategy_task_reconcile_lock());
     TestRouterState {
-        agent_webhook_state: build_agent_webhook_state(&use_cases, TEST_AGENT_WEBHOOK_TOKEN),
+        agent_webhook_state: build_agent_webhook_state(
+            strategy_task_reconcile_use_cases,
+            TEST_AGENT_WEBHOOK_TOKEN,
+        ),
         external_webhook_state: build_external_webhook_state(&use_cases, agent_task_client),
         use_cases,
         app_state,
+    }
+}
+
+struct TestStrategyTaskReconcileLock;
+
+struct TestStrategyTaskReconcileLockGuard;
+
+pub fn test_strategy_task_reconcile_lock() -> StrategyTaskReconcileLockUseCases {
+    StrategyTaskReconcileLockUseCases::new(Arc::new(TestStrategyTaskReconcileLock))
+}
+
+#[async_trait]
+impl StrategyTaskReconcileLock for TestStrategyTaskReconcileLock {
+    async fn try_acquire(
+        &self,
+    ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {
+        Ok(Some(Box::new(TestStrategyTaskReconcileLockGuard)))
+    }
+}
+
+#[async_trait]
+impl StrategyTaskReconcileLockGuard for TestStrategyTaskReconcileLockGuard {
+    async fn release(self: Box<Self>) -> Result<(), PersistenceError> {
+        Ok(())
     }
 }
 
@@ -412,17 +447,6 @@ pub async fn create_test_server_with_db_and_agent_client(
     let router = create_test_router(states, db.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (db, server)
-}
-
-/// Graphile Worker の schema を準備して TestServer を作成する。
-pub async fn create_test_server_with_graphile_worker(db: DatabaseHandle) -> TestServer {
-    let pool = gateway_postgres::test_support::create_test_pool().await;
-    crate::migrations::migrate_graphile_worker_schema(pool)
-        .await
-        .expect("migrate Graphile Worker schema");
-    let states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
-    let router = create_test_router(states, db);
-    TestServer::new(router).expect("failed to create test server")
 }
 
 /// テスト用のモックデータプロバイダー

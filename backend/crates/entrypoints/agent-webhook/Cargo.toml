@@ -10,6 +10,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
 utoipa = { workspace = true }
 utoipa-axum = { workspace = true }
 

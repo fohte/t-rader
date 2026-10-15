@@ -19,6 +19,7 @@ use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
+use core_application::strategy_task::StrategyTaskReconcileUseCases;
 use core_application::web_search::SharedWebSearchClient;
 use entrypoint_frontend_api::{AppError, ErrorResponse, FrontendApiState};
 use gateway_postgres::DatabaseHandle;
@@ -34,6 +35,9 @@ pub fn build_http_state(
     kata_executor: Option<SharedKataExecutor>,
     llm_gateway_client: Option<SharedLlmClient>,
 ) -> FrontendApiState {
+    let use_cases = use_cases
+        .clone()
+        .with_agent_task_client(agent_task_client.clone());
     let agent_tool_summaries = mcp::StrategyServer::list_tool_summaries();
     let trigger_use_cases = use_cases.triggers();
     FrontendApiState {
@@ -81,11 +85,11 @@ pub fn build_http_state(
 }
 
 pub fn build_agent_webhook_state(
-    use_cases: &crate::services::use_cases::UseCases,
+    strategy_task_reconcile_use_cases: StrategyTaskReconcileUseCases,
     webhook_token: impl Into<Arc<str>>,
 ) -> entrypoint_agent_webhook::AgentWebhookState {
     entrypoint_agent_webhook::AgentWebhookState {
-        strategy_task_reconcile_job_use_cases: use_cases.strategy_task_reconcile_job(),
+        strategy_task_reconcile_use_cases,
         webhook_token: webhook_token.into(),
     }
 }

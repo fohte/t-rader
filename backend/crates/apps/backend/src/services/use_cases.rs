@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use core_application::agent_task_client::{DisabledAgentTaskClient, SharedAgentTaskClient};
 use core_application::change_history::SharedChangeHistoryPort;
 use core_application::strategy_existence::SharedStrategyExistence;
 use core_application::unit_of_work::SharedUnitOfWork;
@@ -15,6 +16,7 @@ pub struct UseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) strategy_existence: SharedStrategyExistence,
     pub(super) change_history: SharedChangeHistoryPort,
+    pub(super) agent_task_client: SharedAgentTaskClient,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
@@ -28,5 +30,13 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         unit_of_work,
         strategy_existence,
         change_history,
+        agent_task_client: Arc::new(DisabledAgentTaskClient),
+    }
+}
+
+impl UseCases {
+    pub fn with_agent_task_client(mut self, agent_task_client: SharedAgentTaskClient) -> Self {
+        self.agent_task_client = agent_task_client;
+        self
     }
 }

@@ -8,10 +8,11 @@ pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
 where
     C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
 {
-    let strategy_tasks = crate::services::use_cases::build_use_cases(db.clone()).strategy_tasks();
-    match entrypoint_scheduler::reconcile_in_flight_tasks(&strategy_tasks, agent_client.as_ref())
-        .await
-    {
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone())
+        .with_agent_task_client(agent_client.clone());
+    let reconcile =
+        use_cases.strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
+    match reconcile.reconcile().await {
         Ok(updated) => updated,
         Err(error) => {
             tracing::warn!(%error, "strategy task reconciliation failed");
@@ -32,7 +33,7 @@ mod tests {
     };
     use core_application::event::{EventRepository, NewEvent};
     use core_application::event_dispatch_job::{
-        EventDispatchJobQueue, EventDispatchJobQueueError, EventDispatchJobUseCases,
+        EventDispatchJobError, EventDispatchJobExecutor, EventDispatchJobUseCases,
     };
     use core_application::strategy_task::{
         StrategyTaskRepository, StrategyTaskUseCases, TaskSource,
@@ -52,8 +53,7 @@ mod tests {
     use sea_orm::{
         ActiveModelTrait,
         ActiveValue::{NotSet, Set},
-        ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, QueryOrder,
-        Statement,
+        ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
     };
     use serde_json::{Value, json};
     use uuid::Uuid;
@@ -201,28 +201,6 @@ mod tests {
         unit_of_work.commit(transaction).await.unwrap();
     }
 
-    async fn ensure_event_dispatch_job_schema() {
-        let pool = gateway_postgres::test_support::create_test_pool().await;
-        crate::migrations::migrate_graphile_worker_schema(pool)
-            .await
-            .expect("migrate Graphile Worker schema");
-    }
-
-    async fn event_dispatch_job_count(db: &impl ConnectionTrait) -> i64 {
-        let statement = Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT count(*) AS job_count FROM graphile_worker._private_jobs WHERE key = $1"
-                .to_string(),
-            ["event_dispatch".into()],
-        );
-        db.query_one_raw(statement)
-            .await
-            .unwrap()
-            .unwrap()
-            .try_get("", "job_count")
-            .unwrap()
-    }
-
     async fn fetch_events(db: &impl ConnectionTrait, event_types: &[&str]) -> Vec<Value> {
         event_entity::Entity::find()
             .filter(event_entity::Column::EventType.is_in(event_types.iter().copied()))
@@ -296,16 +274,16 @@ mod tests {
     const PAST: chrono::Duration = chrono::Duration::seconds(-1);
 
     #[derive(Default)]
-    struct FailingEventDispatchJobQueue {
-        enqueue_calls: AtomicUsize,
+    struct FailingEventDispatchJobExecutor {
+        dispatch_calls: AtomicUsize,
     }
 
     #[async_trait::async_trait]
-    impl EventDispatchJobQueue for FailingEventDispatchJobQueue {
-        async fn enqueue_dispatch(&self) -> Result<(), EventDispatchJobQueueError> {
-            self.enqueue_calls.fetch_add(1, Ordering::SeqCst);
-            Err(EventDispatchJobQueueError::new(
-                "simulated queue failure".to_string(),
+    impl EventDispatchJobExecutor for FailingEventDispatchJobExecutor {
+        async fn dispatch_pending_events(&self) -> Result<(), EventDispatchJobError> {
+            self.dispatch_calls.fetch_add(1, Ordering::SeqCst);
+            Err(EventDispatchJobError::new(
+                "simulated dispatch failure".to_string(),
             ))
         }
     }
@@ -341,7 +319,6 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reconciles_completed_running_and_failed_states(db: gateway_postgres::DatabaseHandle) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy_with_id(&db, Uuid::from_u128(0x100)).await;
         let completed_id = insert_task_with_id_and_purpose(
             &db,
@@ -483,7 +460,6 @@ mod tests {
             (failed.phase, failed.result_text, failed.error_summary),
             (running.phase, running.result_text, running.error_summary),
             events,
-            event_dispatch_job_count(&db).await,
         );
 
         assert_eq!(
@@ -502,16 +478,14 @@ mod tests {
                 ),
                 (StrategyTaskPhase::Running, None, None),
                 expected_events,
-                1,
             ),
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_failure_emits_event_and_enqueues_dispatch(
+    async fn submit_failure_emits_event_and_dispatches_inline(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         insert_agent_config(&db, "demo-purpose").await;
         let fake = FakeAgentTaskClient::new();
@@ -545,7 +519,6 @@ mod tests {
                 ),
                 row.phase,
                 events,
-                event_dispatch_job_count(&db).await,
             ),
             (
                 true,
@@ -561,16 +534,14 @@ mod tests {
                     },
                     "chain_depth": 0,
                 })],
-                1,
             ),
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_submission_failure_emits_event_and_enqueues_dispatch(
+    async fn resume_submission_failure_emits_event_and_dispatches_inline(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -601,7 +572,6 @@ mod tests {
                 row.phase,
                 row.error_summary,
                 events,
-                event_dispatch_job_count(&db).await,
             ),
             (
                 true,
@@ -621,7 +591,6 @@ mod tests {
                     },
                     "chain_depth": 0,
                 })],
-                1,
             ),
         );
     }
@@ -630,7 +599,6 @@ mod tests {
     async fn resume_claim_refreshes_deadline_before_agent_submission(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -648,7 +616,7 @@ mod tests {
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
-            EventDispatchJobUseCases::new(Arc::new(FailingEventDispatchJobQueue::default())),
+            EventDispatchJobUseCases::new(Arc::new(FailingEventDispatchJobExecutor::default())),
         );
         let resume_client = client.clone();
         let resume =
@@ -1548,14 +1516,14 @@ mod tests {
         .await;
         fake.set_next_task_id("agent-task-resumed").await;
         let repository = Arc::new(PostgresStrategyTaskRepository::new(db.clone()));
-        let dispatch_queue = Arc::new(FailingEventDispatchJobQueue::default());
+        let dispatch_executor = Arc::new(FailingEventDispatchJobExecutor::default());
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             repository.clone(),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
-            EventDispatchJobUseCases::new(dispatch_queue.clone()),
+            EventDispatchJobUseCases::new(dispatch_executor.clone()),
         );
         let task = repository.find_by_id(task_id).await.unwrap().unwrap();
 
@@ -1595,7 +1563,7 @@ mod tests {
             stale_reconcile_updated,
             fake.submitted.lock().await.len(),
             events,
-            dispatch_queue.enqueue_calls.load(Ordering::SeqCst),
+            dispatch_executor.dispatch_calls.load(Ordering::SeqCst),
         );
         assert_eq!(actual, (true, false, 1, vec![], 0),);
     }
@@ -1637,12 +1605,12 @@ mod tests {
             },
         )
         .await;
-        let dispatch_queue = Arc::new(FailingEventDispatchJobQueue::default());
+        let dispatch_executor = Arc::new(FailingEventDispatchJobExecutor::default());
         let strategy_tasks =
             StrategyTaskUseCases::new(Arc::new(PostgresUnitOfWork::new(db.clone())), repository)
                 .with_completion_events(
                     Arc::new(PostgresEventRepository::new(db.clone())),
-                    EventDispatchJobUseCases::new(dispatch_queue.clone()),
+                    EventDispatchJobUseCases::new(dispatch_executor.clone()),
                 );
 
         let updated = strategy_tasks
@@ -1658,7 +1626,7 @@ mod tests {
                 row.phase,
                 fake.submitted.lock().await.len(),
                 events,
-                dispatch_queue.enqueue_calls.load(Ordering::SeqCst),
+                dispatch_executor.dispatch_calls.load(Ordering::SeqCst),
             ),
             (
                 true,
@@ -1826,7 +1794,6 @@ mod tests {
     async fn concurrent_reconcile_emits_one_completion_event(
         _database: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let pool = gateway_postgres::test_support::create_test_pool_with_max_connections(4).await;
         let connection = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
         let db = gateway_postgres::DatabaseHandle::from(connection);
@@ -1887,12 +1854,7 @@ mod tests {
                 })
             })
             .collect::<Vec<_>>();
-        let actual = (
-            changed,
-            event_output,
-            fetch_task(&db, task_id).await.phase,
-            event_dispatch_job_count(&db).await,
-        );
+        let actual = (changed, event_output, fetch_task(&db, task_id).await.phase);
 
         for event_id in event_ids {
             event_entity::Entity::delete_by_id(event_id)
@@ -1900,11 +1862,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        db.execute_unprepared(
-            "DELETE FROM graphile_worker._private_jobs WHERE key = 'event_dispatch'",
-        )
-        .await
-        .unwrap();
         strategy_task::Entity::delete_by_id(task_id)
             .exec(&db)
             .await
@@ -1924,7 +1881,6 @@ mod tests {
                     "chain_depth": 0,
                 })],
                 StrategyTaskPhase::Completed,
-                1,
             ),
         );
     }
@@ -1933,7 +1889,6 @@ mod tests {
     async fn execution_lost_auto_resume_submission_failure_emits_one_failed_event(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1969,7 +1924,6 @@ mod tests {
                 row.error_summary,
                 row.auto_resumed_at.is_some(),
                 events,
-                event_dispatch_job_count(&db).await,
             ),
             (
                 1,
@@ -1990,13 +1944,12 @@ mod tests {
                     },
                     "chain_depth": 0,
                 })],
-                1,
             ),
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn dispatch_enqueue_failure_keeps_failed_transition_and_event(
+    async fn dispatch_failure_keeps_failed_transition_and_event(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
@@ -2021,14 +1974,14 @@ mod tests {
         )
         .await;
         let repository = Arc::new(PostgresStrategyTaskRepository::new(db.clone()));
-        let dispatch_queue = Arc::new(FailingEventDispatchJobQueue::default());
+        let dispatch_executor = Arc::new(FailingEventDispatchJobExecutor::default());
         let strategy_tasks = StrategyTaskUseCases::new(
             Arc::new(PostgresUnitOfWork::new(db.clone())),
             repository.clone(),
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(db.clone())),
-            EventDispatchJobUseCases::new(dispatch_queue.clone()),
+            EventDispatchJobUseCases::new(dispatch_executor.clone()),
         );
         let task = repository.find_by_id(task_id).await.unwrap().unwrap();
 
@@ -2043,7 +1996,7 @@ mod tests {
                 updated,
                 fetch_task(&db, task_id).await.phase,
                 events,
-                dispatch_queue.enqueue_calls.load(Ordering::SeqCst),
+                dispatch_executor.dispatch_calls.load(Ordering::SeqCst),
             ),
             (
                 true,

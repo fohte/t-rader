@@ -5,10 +5,10 @@ mod resume;
 mod submit;
 
 mod error;
-mod reconcile_job_queue;
-mod reconcile_job_use_cases;
+mod reconcile_job;
 mod reconcile_lock;
 mod reconcile_lock_use_cases;
+mod reconcile_use_cases;
 mod repository;
 mod types;
 
@@ -22,16 +22,14 @@ mod tests;
 pub use error::{
     GetTaskError, ListTasksError, ReconcileTaskError, ResumeTaskError, SubmitTaskError,
 };
-pub use reconcile_job_queue::{
+pub use reconcile_job::{
     STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
-    SharedStrategyTaskReconcileJobQueue, StrategyTaskReconcileJobQueue,
-    StrategyTaskReconcileJobQueueError,
 };
-pub use reconcile_job_use_cases::StrategyTaskReconcileJobUseCases;
 pub use reconcile_lock::{
     SharedStrategyTaskReconcileLock, StrategyTaskReconcileLock, StrategyTaskReconcileLockGuard,
 };
 pub use reconcile_lock_use_cases::StrategyTaskReconcileLockUseCases;
+pub use reconcile_use_cases::StrategyTaskReconcileUseCases;
 pub use repository::{
     SharedStrategyTaskRepository, StrategyTaskApplyResult, StrategyTaskRepository,
     StrategyTaskRepositoryError,
