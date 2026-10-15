@@ -16,6 +16,7 @@ use crate::entities::subagent_definition;
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
+// 定義の削除と agent_graph 保存が同時に走って参照切れを作らないため。
 const AGENT_GRAPH_REFERENCE_LOCK_QUERY: &str = concat!(
     "SELECT pg_advisory_xact_lock(",
     "hashtextextended('t-rader:agent-graph-subagent-references', 0))",

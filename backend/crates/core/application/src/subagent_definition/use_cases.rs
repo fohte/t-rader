@@ -163,6 +163,12 @@ fn validate(
     if !is_valid_slug(key) {
         return Err(SubagentDefinitionUseCaseError::InvalidKey(key.to_string()));
     }
+    if fields.model.trim().is_empty() {
+        return Err(SubagentDefinitionUseCaseError::EmptyModel);
+    }
+    if fields.prompt.trim().is_empty() {
+        return Err(SubagentDefinitionUseCaseError::EmptyPrompt);
+    }
     if fields.tools.iter().any(|tool| tool == "run_subagent") {
         return Err(SubagentDefinitionUseCaseError::RunSubagentToolNotAllowed);
     }
@@ -183,6 +189,15 @@ fn validate(
             tool: tool.clone(),
             value: *value,
         });
+    }
+    if let Some(tool) = fields
+        .tool_limits
+        .keys()
+        .find(|tool| !fields.tools.iter().any(|declared| declared == *tool))
+    {
+        return Err(SubagentDefinitionUseCaseError::UndeclaredToolLimit(
+            tool.clone(),
+        ));
     }
     Ok(())
 }

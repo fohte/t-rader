@@ -1,10 +1,13 @@
 use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset};
 use core_application::agent_config::{
     AgentConfig, AgentConfigRepository, AgentConfigRepositoryError, NewAgentConfig,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use serde_json::Value;
+use uuid::Uuid;
 
 use crate::DatabaseHandle;
 use crate::entities::agent_config;
@@ -94,20 +97,61 @@ impl AgentConfigRepository for PostgresAgentConfigRepository {
             .map_err(repository_error)
     }
 
-    async fn update(
+    async fn update_agents_md(
         &self,
         transaction: &UnitOfWorkTransaction,
-        agent_config: AgentConfig,
+        agent_config_id: Uuid,
+        agents_md: String,
+        updated_at: DateTime<FixedOffset>,
     ) -> Result<AgentConfig, AgentConfigRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         let model = agent_config::ActiveModel {
-            id: Unchanged(agent_config.id),
-            purpose: Unchanged(agent_config.purpose),
-            agents_md: Set(agent_config.agents_md),
-            skills: Set(agent_config.skills),
-            agent_graph: Set(agent_config.agent_graph),
-            created_at: Unchanged(agent_config.created_at),
-            updated_at: Set(agent_config.updated_at),
+            id: Unchanged(agent_config_id),
+            agents_md: Set(agents_md),
+            updated_at: Set(updated_at),
+            ..Default::default()
+        };
+        model
+            .update(transaction)
+            .await
+            .map(to_domain)
+            .map_err(repository_error)
+    }
+
+    async fn update_skills(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        skills: Value,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let model = agent_config::ActiveModel {
+            id: Unchanged(agent_config_id),
+            skills: Set(skills),
+            updated_at: Set(updated_at),
+            ..Default::default()
+        };
+        model
+            .update(transaction)
+            .await
+            .map(to_domain)
+            .map_err(repository_error)
+    }
+
+    async fn update_agent_graph(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        agent_graph: String,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let model = agent_config::ActiveModel {
+            id: Unchanged(agent_config_id),
+            agent_graph: Set(agent_graph),
+            updated_at: Set(updated_at),
+            ..Default::default()
         };
         model
             .update(transaction)

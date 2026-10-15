@@ -85,14 +85,17 @@ impl AgentConfigUseCases {
         purpose: &str,
         content: String,
     ) -> Result<String, AgentConfigUseCaseError> {
-        let transaction = self.begin_reference_update().await?;
-        let mut agent_config = self.find_in_transaction(&transaction, purpose).await?;
+        let transaction = self.unit_of_work.begin().await?;
+        let agent_config = self.find_in_transaction(&transaction, purpose).await?;
         let from_len = agent_config.agents_md.len();
-        agent_config.agents_md = content;
-        agent_config.updated_at = Utc::now().fixed_offset();
         let saved = self
             .repository
-            .update(&transaction, agent_config)
+            .update_agents_md(
+                &transaction,
+                agent_config.id,
+                content,
+                Utc::now().fixed_offset(),
+            )
             .await
             .map_err(|error| map_update_error(error, purpose))?;
         self.unit_of_work.commit(transaction).await?;
@@ -113,7 +116,7 @@ impl AgentConfigUseCases {
         for name in skills.keys() {
             validate_skill_name(name)?;
         }
-        let transaction = self.begin_reference_update().await?;
+        let transaction = self.unit_of_work.begin().await?;
         let current = self.find_in_transaction(&transaction, purpose).await?;
         let map = skills
             .into_iter()
@@ -130,7 +133,7 @@ impl AgentConfigUseCases {
         content: String,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         validate_skill_name(name)?;
-        let transaction = self.begin_reference_update().await?;
+        let transaction = self.unit_of_work.begin().await?;
         let current = self.find_in_transaction(&transaction, purpose).await?;
         let mut patch = Map::new();
         patch.insert(name.to_string(), Value::String(content));
@@ -144,7 +147,7 @@ impl AgentConfigUseCases {
         purpose: &str,
         name: &str,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
-        let transaction = self.begin_reference_update().await?;
+        let transaction = self.unit_of_work.begin().await?;
         let current = self.find_in_transaction(&transaction, purpose).await?;
         let mut skills = skills_object(&current.skills);
         if skills.remove(name).is_none() {
@@ -160,7 +163,10 @@ impl AgentConfigUseCases {
         content: &str,
     ) -> Result<String, AgentConfigUseCaseError> {
         let graph = parse_agent_graph(content)?;
-        let transaction = self.begin_reference_update().await?;
+        let transaction = self.unit_of_work.begin().await?;
+        self.subagent_definition_repository
+            .acquire_agent_graph_reference_lock(&transaction)
+            .await?;
 
         if let Some(graph) = graph {
             let keys: std::collections::BTreeSet<_> = self
@@ -182,13 +188,16 @@ impl AgentConfigUseCases {
             }
         }
 
-        let mut agent_config = self.find_in_transaction(&transaction, purpose).await?;
+        let agent_config = self.find_in_transaction(&transaction, purpose).await?;
         let from_len = agent_config.agent_graph.len();
-        agent_config.agent_graph = content.to_string();
-        agent_config.updated_at = Utc::now().fixed_offset();
         let saved = self
             .repository
-            .update(&transaction, agent_config)
+            .update_agent_graph(
+                &transaction,
+                agent_config.id,
+                content.to_string(),
+                Utc::now().fixed_offset(),
+            )
             .await
             .map_err(|error| map_update_error(error, purpose))?;
         self.unit_of_work.commit(transaction).await?;
@@ -199,16 +208,6 @@ impl AgentConfigUseCases {
             "updated agent_config agent_graph"
         );
         Ok(saved.agent_graph)
-    }
-
-    async fn begin_reference_update(
-        &self,
-    ) -> Result<UnitOfWorkTransaction, AgentConfigUseCaseError> {
-        let transaction = self.unit_of_work.begin().await?;
-        self.subagent_definition_repository
-            .acquire_agent_graph_reference_lock(&transaction)
-            .await?;
-        Ok(transaction)
     }
 
     async fn find_in_transaction(
@@ -225,17 +224,16 @@ impl AgentConfigUseCases {
     async fn save_skills(
         &self,
         transaction: UnitOfWorkTransaction,
-        mut current: AgentConfig,
+        current: AgentConfig,
         skills: Value,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         let purpose = current.purpose.clone();
         let from: Vec<String> = current.skills_as_btree().into_keys().collect();
         let to: Vec<String> = skills_as_btree(&skills).into_keys().collect();
-        current.skills = skills;
-        current.updated_at = Utc::now().fixed_offset();
+        let updated_at = Utc::now().fixed_offset();
         let saved = self
             .repository
-            .update(&transaction, current)
+            .update_skills(&transaction, current.id, skills, updated_at)
             .await
             .map_err(|error| map_update_error(error, &purpose))?;
         self.unit_of_work.commit(transaction).await?;

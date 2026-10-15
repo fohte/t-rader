@@ -1,4 +1,7 @@
 use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset};
+use serde_json::Value;
+use uuid::Uuid;
 
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -31,10 +34,28 @@ pub trait AgentConfigRepository: Send + Sync {
         agent_config: NewAgentConfig,
     ) -> Result<AgentConfig, AgentConfigRepositoryError>;
 
-    async fn update(
+    async fn update_agents_md(
         &self,
         transaction: &UnitOfWorkTransaction,
-        agent_config: AgentConfig,
+        agent_config_id: Uuid,
+        agents_md: String,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError>;
+
+    async fn update_skills(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        skills: Value,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError>;
+
+    async fn update_agent_graph(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        agent_graph: String,
+        updated_at: DateTime<FixedOffset>,
     ) -> Result<AgentConfig, AgentConfigRepositoryError>;
 
     async fn delete(

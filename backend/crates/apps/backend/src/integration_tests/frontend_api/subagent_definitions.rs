@@ -126,29 +126,21 @@ mod tests {
         );
     }
 
-    #[backend_test_macros::database_test]
-    async fn definition_cannot_include_run_subagent_tool(db: gateway_postgres::DatabaseHandle) {
-        let server = create_test_server(db).await;
-        let mut body = create_body();
-        body["tools"] = json!(["run_subagent"]);
-
-        let response = server.post("/api/subagent-definitions").json(&body).await;
-        assert_response_eq(
-            &response,
-            StatusCode::BAD_REQUEST,
-            Some(json!({
-                "error": "subagent definition tools must not include 'run_subagent'"
-            })),
-        );
-    }
-
     #[rstest]
     #[case::invalid_key(false, "key", json!("Researcher"), "subagent definition key must match ^[a-z0-9][a-z0-9_-]*$ (got 'Researcher')")]
+    #[case::empty_model(false, "model", json!(""), "subagent definition model must not be empty")]
+    #[case::update_rejects_empty_model(true, "model", json!(""), "subagent definition model must not be empty")]
+    #[case::empty_prompt(false, "prompt", json!(""), "subagent definition prompt must not be empty")]
+    #[case::update_rejects_empty_prompt(true, "prompt", json!(""), "subagent definition prompt must not be empty")]
+    #[case::run_subagent_tool(false, "tools", json!(["run_subagent"]), "subagent definition tools must not include 'run_subagent'")]
+    #[case::update_rejects_run_subagent_tool(true, "tools", json!(["run_subagent"]), "subagent definition tools must not include 'run_subagent'")]
     #[case::timeout_below_minimum(false, "timeout_minutes", json!(0), "subagent definition timeout_minutes must be between 1 and 360, got 0")]
     #[case::timeout_above_maximum(false, "timeout_minutes", json!(361), "subagent definition timeout_minutes must be between 1 and 360, got 361")]
     #[case::non_positive_model_calls(false, "max_model_calls", json!(0), "subagent definition max_model_calls must be greater than 0, got 0")]
     #[case::negative_tool_limit(false, "tool_limits", json!({ "search_web": -1 }), "subagent definition tool_limits must be non-negative (got search_web = -1)")]
     #[case::update_rejects_negative_tool_limit(true, "tool_limits", json!({ "search_web": -1 }), "subagent definition tool_limits must be non-negative (got search_web = -1)")]
+    #[case::undeclared_tool_limit(false, "tool_limits", json!({ "unknown_tool": 1 }), "subagent definition tool_limits references undeclared tool 'unknown_tool'")]
+    #[case::update_rejects_undeclared_tool_limit(true, "tool_limits", json!({ "unknown_tool": 1 }), "subagent definition tool_limits references undeclared tool 'unknown_tool'")]
     #[tokio::test]
     async fn rejects_invalid_subagent_definition_fields(
         #[future] subagent_validation_server: axum_test::TestServer,

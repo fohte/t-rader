@@ -27,6 +27,10 @@ pub enum SubagentDefinitionUseCaseError {
     DuplicateKey(String),
     #[error("subagent definition '{0}' not found")]
     NotFound(String),
+    #[error("subagent definition model must not be empty")]
+    EmptyModel,
+    #[error("subagent definition prompt must not be empty")]
+    EmptyPrompt,
     #[error(
         "subagent definition '{key}' is referenced by agent_config '{purpose}' phase '{phase}'"
     )]
@@ -43,6 +47,8 @@ pub enum SubagentDefinitionUseCaseError {
     MaxModelCallsOutOfRange(i64),
     #[error("subagent definition tool_limits must be non-negative (got {tool} = {value})")]
     ToolLimitOutOfRange { tool: String, value: i64 },
+    #[error("subagent definition tool_limits references undeclared tool '{0}'")]
+    UndeclaredToolLimit(String),
     #[error(transparent)]
     InvalidAgentGraph(#[from] AgentGraphError),
     #[error(transparent)]

@@ -17,10 +17,13 @@ use core_application::unit_of_work::UnitOfWorkError;
 fn map_err(error: SubagentDefinitionUseCaseError) -> AppError {
     match error {
         SubagentDefinitionUseCaseError::InvalidKey(_)
+        | SubagentDefinitionUseCaseError::EmptyModel
+        | SubagentDefinitionUseCaseError::EmptyPrompt
         | SubagentDefinitionUseCaseError::RunSubagentToolNotAllowed
         | SubagentDefinitionUseCaseError::TimeoutMinutesOutOfRange { .. }
         | SubagentDefinitionUseCaseError::MaxModelCallsOutOfRange(_)
-        | SubagentDefinitionUseCaseError::ToolLimitOutOfRange { .. } => {
+        | SubagentDefinitionUseCaseError::ToolLimitOutOfRange { .. }
+        | SubagentDefinitionUseCaseError::UndeclaredToolLimit(_) => {
             AppError::Validation(error.to_string())
         }
         SubagentDefinitionUseCaseError::InvalidAgentGraph(_) => {
