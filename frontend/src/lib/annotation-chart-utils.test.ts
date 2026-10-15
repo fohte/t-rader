@@ -1,15 +1,81 @@
 import { describe, expect, it } from 'vitest'
 
+import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import {
   bucketAnnotationPeriod,
   bucketAnnotationTimestamp,
   clipAnnotationBandSegment,
+  findNearestHumanHorizontalLineId,
   getAnnotationPeriodLineRange,
   groupAnnotationBandTargets,
+  isAnnotationBandAnnotation,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
+
+describe('human horizontal line chart behavior', () => {
+  it('keeps human horizontal lines out of the band and selects the nearest one', () => {
+    const annotations: ChartAnnotation[] = [
+      {
+        id: 'human-line',
+        created_by_kind: 'human',
+        target_kind: 'sample-kind',
+        timestamp: '2025-01-02T00:00:00.000Z',
+        timestamp_start: null,
+        price: 100,
+        price_start: null,
+        status: 'approved',
+        text: '保存した水平線です。',
+      },
+      {
+        id: 'agent-line',
+        created_by_kind: 'llm',
+        target_kind: 'sample-kind',
+        timestamp: '2025-01-02T00:00:00.000Z',
+        timestamp_start: null,
+        price: 105,
+        price_start: null,
+        status: 'unread',
+        text: '既存の価格注釈です。',
+      },
+      {
+        id: 'human-period',
+        created_by_kind: 'human',
+        target_kind: 'sample-kind',
+        timestamp: '2025-01-03T00:00:00.000Z',
+        timestamp_start: '2025-01-02T00:00:00.000Z',
+        price: 110,
+        price_start: 95,
+        status: 'approved',
+        text: '期間注釈です。',
+      },
+    ]
+    const coordinates = new Map([
+      [100, 20],
+      [105, 22],
+      [110, 40],
+    ])
+
+    function readChartBehavior() {
+      return {
+        nearestLineId: findNearestHumanHorizontalLineId(
+          annotations,
+          (price) => coordinates.get(price) ?? null,
+          23,
+        ),
+        bandAnnotationIds: annotations
+          .filter(isAnnotationBandAnnotation)
+          .map(({ id }) => id),
+      }
+    }
+
+    expect(readChartBehavior()).toEqual({
+      nearestLineId: 'human-line',
+      bandAnnotationIds: ['agent-line', 'human-period'],
+    })
+  })
+})
 
 describe('bucketAnnotationTimestamp', () => {
   it('maps a JST midnight annotation to the bar for that date', () => {

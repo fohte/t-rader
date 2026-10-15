@@ -5,22 +5,34 @@ import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 
 const periodAnnotation: ChartAnnotation = {
   id: 'annotation-b',
+  created_by_kind: 'llm',
   target_kind: 'sample-kind',
   timestamp_start: '2025-01-02T00:00:00.000Z',
   timestamp: '2025-01-04T00:00:00.000Z',
   price: null,
+  price_start: null,
   text: '価格線を持たないサンプル注釈です。',
   status: 'approved',
+}
+
+const humanPeriodAnnotation: ChartAnnotation = {
+  ...periodAnnotation,
+  id: 'annotation-c',
+  created_by_kind: 'human',
+  text: '架空の期間注釈です。',
 }
 
 const annotations: ChartAnnotation[] = [
   {
     id: 'annotation-a',
+    created_by_kind: 'human',
     target_kind: 'sample-kind',
     timestamp: '2025-01-03T00:00:00.000Z',
     price: 1250,
+    price_start: null,
+    timestamp_start: null,
     text: '値動きの節目を示すサンプル注釈です。',
-    status: 'unread',
+    status: 'approved',
   },
   periodAnnotation,
 ]
@@ -32,6 +44,7 @@ const meta = {
     annotations,
     selectedAnnotationId: 'annotation-a',
     onSelectAnnotation: () => undefined,
+    onDeleteAnnotation: () => undefined,
   },
   decorators: [
     (Story) => (
@@ -57,6 +70,14 @@ export const WithPeriodAnnotation: Story = {
   },
 }
 
+export const WithDeletableHumanPeriodAnnotation: Story = {
+  name: 'shows deletion for a selected human period annotation.',
+  args: {
+    annotations: [humanPeriodAnnotation],
+    selectedAnnotationId: 'annotation-c',
+  },
+}
+
 export const Empty: Story = {
   name: 'shows the empty state when there are no annotations.',
   args: { annotations: [], selectedAnnotationId: null },
@@ -65,4 +86,14 @@ export const Empty: Story = {
 export const Loading: Story = {
   name: 'shows a loading state while annotations are fetched.',
   args: { isLoading: true },
+}
+
+export const DeletingSelectedLine: Story = {
+  name: 'disables deletion while the selected horizontal line is being deleted.',
+  args: { isDeleting: true },
+}
+
+export const DeleteFailed: Story = {
+  name: 'shows an error when deleting the selected horizontal line fails.',
+  args: { deleteError: '削除に失敗しました' },
 }

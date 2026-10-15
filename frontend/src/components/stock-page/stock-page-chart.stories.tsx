@@ -46,8 +46,10 @@ const bars: Bar[] = [
 const annotations: ChartAnnotation[] = [
   {
     id: 'demo-annotation',
+    created_by_kind: 'human',
     price: 3110,
-    status: 'unread',
+    price_start: null,
+    status: 'approved',
     target_kind: 'stock',
     text: '価格帯の上抜けを確認するデモ用アノテーションです。',
     timestamp: '2030-04-02T06:00:00Z',

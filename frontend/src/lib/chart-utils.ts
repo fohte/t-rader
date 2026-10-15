@@ -46,8 +46,8 @@ export function getChartCurrency(
   return undefined
 }
 
-/** ISO 8601 タイムスタンプを Unix タイムスタンプ (秒) に変換する */
-function toUTCTimestamp(isoTimestamp: string): UTCTimestamp {
+/** ISO 8601 タイムスタンプをチャート用の Unix タイムスタンプ (秒) に変換する */
+export function toChartTimestamp(isoTimestamp: string): UTCTimestamp {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- UTCTimestamp はブランド型で as が唯一の変換手段
   return Math.floor(new Date(isoTimestamp).getTime() / 1000) as UTCTimestamp
 }
@@ -55,7 +55,7 @@ function toUTCTimestamp(isoTimestamp: string): UTCTimestamp {
 /** API レスポンスの Bar をローソク足データに変換する */
 export function toCandlestickData(bars: Bar[]): CandlestickData[] {
   return bars.map((bar) => ({
-    time: toUTCTimestamp(bar.timestamp),
+    time: toChartTimestamp(bar.timestamp),
     open: bar.open,
     high: bar.high,
     low: bar.low,
@@ -66,7 +66,7 @@ export function toCandlestickData(bars: Bar[]): CandlestickData[] {
 /** API レスポンスの Bar を出来高ヒストグラムデータに変換する */
 export function toVolumeData(bars: Bar[]): HistogramData[] {
   return bars.map((bar) => ({
-    time: toUTCTimestamp(bar.timestamp),
+    time: toChartTimestamp(bar.timestamp),
     value: bar.volume,
     // 陽線は緑系、陰線は赤系
     color:
@@ -91,7 +91,7 @@ export function toTradeMarkers(
     const date = new Date(milliseconds).toISOString().slice(0, 10)
     if (firstBarByDate.has(date)) continue
 
-    firstBarByDate.set(date, toUTCTimestamp(bar.timestamp))
+    firstBarByDate.set(date, toChartTimestamp(bar.timestamp))
   }
 
   return trades

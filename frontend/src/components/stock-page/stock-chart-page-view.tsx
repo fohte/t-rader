@@ -7,17 +7,23 @@ import {
 } from '@fohte/ui/tooltip'
 import { Link } from '@tanstack/react-router'
 import { Columns2Icon } from 'lucide-react'
+import { useEffect } from 'react'
 
 import { ChartAnnotationList } from '#components/annotations/chart-annotation-list'
 import { CandlestickChart } from '#components/candlestick-chart'
 import { ChartIndicatorControl } from '#components/chart-indicator-control'
 import { ChartMarketDepthPanel } from '#components/chart-market-depth-panel'
+import { HorizontalLineEditor } from '#components/stock-page/horizontal-line-editor'
 import {
   type Timeframe,
   TimeframeSelector,
 } from '#components/timeframe-selector'
 import { Skeleton } from '#components/ui/skeleton'
-import type { ChartAnnotation } from '#lib/annotation-chart-utils'
+import type {
+  ChartAnnotation,
+  HorizontalLineAnnotationDraft,
+  HorizontalLinePoint,
+} from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
   addChartIndicator,
@@ -46,6 +52,17 @@ export function StockChartPageView({
   onToggleMarketDepth,
   selectedAnnotationId,
   onSelectAnnotation,
+  horizontalLineDrawingEnabled,
+  pendingHorizontalLine,
+  isSavingHorizontalLine,
+  horizontalLineSaveError,
+  onToggleHorizontalLineDrawing,
+  onPlaceHorizontalLine,
+  onSaveHorizontalLine,
+  onCancelHorizontalLine,
+  isDeletingAnnotation,
+  annotationDeleteError,
+  onDeleteAnnotation,
   currency,
   isLoading,
   hasError,
@@ -63,6 +80,17 @@ export function StockChartPageView({
   onToggleMarketDepth: () => void
   selectedAnnotationId: string | null
   onSelectAnnotation: (id: string) => void
+  horizontalLineDrawingEnabled: boolean
+  pendingHorizontalLine: HorizontalLinePoint | null
+  isSavingHorizontalLine: boolean
+  horizontalLineSaveError: string | null
+  onToggleHorizontalLineDrawing: () => void
+  onPlaceHorizontalLine: (line: HorizontalLinePoint) => void
+  onSaveHorizontalLine: (draft: HorizontalLineAnnotationDraft) => void
+  onCancelHorizontalLine: () => void
+  isDeletingAnnotation: boolean
+  annotationDeleteError: string | null
+  onDeleteAnnotation: (id: string) => void
   currency?: ChartCurrency
   isLoading: boolean
   hasError: boolean
@@ -77,7 +105,36 @@ export function StockChartPageView({
       lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT
     ).toString()}px)`,
   }
+  const targetKinds = [
+    ...new Set(annotations.map((annotation) => annotation.target_kind)),
+  ]
 
+  useEffect(() => {
+    if (!horizontalLineDrawingEnabled && pendingHorizontalLine == null) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        isSavingHorizontalLine
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      onCancelHorizontalLine()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [
+    horizontalLineDrawingEnabled,
+    isSavingHorizontalLine,
+    onCancelHorizontalLine,
+    pendingHorizontalLine,
+  ])
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
@@ -100,6 +157,23 @@ export function StockChartPageView({
             onUpdateDeviation={updateChartIndicatorDeviation}
             onRemove={removeChartIndicator}
           />
+          <Button
+            variant={horizontalLineDrawingEnabled ? 'default' : 'outline'}
+            size="icon-sm"
+            className="sm:w-auto sm:gap-1 sm:px-2.5"
+            aria-label="水平線"
+            aria-pressed={horizontalLineDrawingEnabled}
+            disabled={pendingHorizontalLine != null}
+            title="水平線"
+            onClick={() => {
+              onToggleHorizontalLineDrawing()
+            }}
+          >
+            <span aria-hidden="true">─</span>
+            <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+              水平線
+            </span>
+          </Button>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger
@@ -120,7 +194,7 @@ export function StockChartPageView({
           </TooltipProvider>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 gap-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
         {isLoading ? (
           <Skeleton className="w-full" style={chartHeightStyle} />
         ) : hasError ? (
@@ -139,18 +213,40 @@ export function StockChartPageView({
               annotations={annotations}
               onSelectAnnotation={onSelectAnnotation}
               selectedAnnotationId={selectedAnnotationId}
+              horizontalLineDrawingEnabled={horizontalLineDrawingEnabled}
+              pendingHorizontalLine={pendingHorizontalLine}
+              onPlaceHorizontalLine={onPlaceHorizontalLine}
               currency={currency}
               intraday={timeframe !== '1d' && timeframe !== '1w'}
               className="min-w-0 flex-1"
               style={chartHeightStyle}
             />
-            <ChartAnnotationList
-              annotations={annotations}
-              selectedAnnotationId={selectedAnnotationId}
-              isLoading={isAnnotationsLoading}
+            <div
+              className="flex min-h-0 w-full flex-col gap-3 sm:w-72 sm:shrink-0"
               style={chartHeightStyle}
-              onSelectAnnotation={onSelectAnnotation}
-            />
+            >
+              {pendingHorizontalLine != null && (
+                <HorizontalLineEditor
+                  timestamp={pendingHorizontalLine.timestamp}
+                  price={pendingHorizontalLine.price}
+                  targetKinds={targetKinds}
+                  isSaving={isSavingHorizontalLine}
+                  errorMessage={horizontalLineSaveError}
+                  onSave={onSaveHorizontalLine}
+                  onCancel={onCancelHorizontalLine}
+                />
+              )}
+              <ChartAnnotationList
+                annotations={annotations}
+                selectedAnnotationId={selectedAnnotationId}
+                isLoading={isAnnotationsLoading}
+                isDeleting={isDeletingAnnotation}
+                deleteError={annotationDeleteError}
+                className="min-h-0 flex-1 sm:h-0"
+                onSelectAnnotation={onSelectAnnotation}
+                onDeleteAnnotation={onDeleteAnnotation}
+              />
+            </div>
           </>
         )}
         <ChartMarketDepthPanel

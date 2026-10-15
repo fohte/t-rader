@@ -1,6 +1,8 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import type {
   CreatePriceLineOptions,
+  MouseEventParams,
+  Point,
   SeriesMarker,
   Time,
   UTCTimestamp,
@@ -10,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CandlestickChart } from '#components/candlestick-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import { toChartTimestamp } from '#lib/chart-utils'
 
 const chartMocks = vi.hoisted(() => {
   const candlePriceScale = { applyOptions: vi.fn() }
@@ -41,7 +44,9 @@ const chartMocks = vi.hoisted(() => {
     createPriceLine: vi.fn<(options: CreatePriceLineOptions) => object>(
       () => ({}),
     ),
+    coordinateToPrice: vi.fn<(coordinate: number) => number | null>(() => 100),
     priceScale: vi.fn(() => candlePriceScale),
+    priceToCoordinate: vi.fn<(price: number) => number | null>(() => 30),
     removePriceLine: vi.fn(),
     setData: vi.fn(),
   }
@@ -92,7 +97,11 @@ const chartMocks = vi.hoisted(() => {
     }),
     removeSeries: vi.fn(),
     remove: vi.fn(),
+    subscribeClick:
+      vi.fn<(handler: (param: MouseEventParams) => void) => void>(),
     timeScale: vi.fn(() => timeScale),
+    unsubscribeClick:
+      vi.fn<(handler: (param: MouseEventParams) => void) => void>(),
   }
   chart.addSeries.mockImplementation((_series, _options, paneIndex = 0) => {
     while (paneApis.length <= paneIndex) paneApis.push(createPane())
@@ -162,11 +171,14 @@ function makeTrade(overrides: Partial<Trade> = {}): Trade {
 
 const pointAnnotation: ChartAnnotation = {
   id: 'annotation-a',
+  created_by_kind: 'llm',
   price: 100,
+  price_start: null,
   status: 'unread',
   target_kind: '架空分類',
   text: '架空の注釈',
   timestamp: '2025-04-10T00:00:00.000Z',
+  timestamp_start: null,
 }
 
 const annotations: ChartAnnotation[] = [pointAnnotation]
@@ -219,6 +231,11 @@ class TestResizeObserver implements ResizeObserver {
     resizeObserverCallbacks.splice(0)
     resizeObservers.splice(0)
   }
+}
+
+function createChartPoint(x: number, y: number): Point {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Lightweight Charts は座標をブランド型で受け取る
+  return { x, y } as Point
 }
 
 beforeEach(() => {
@@ -455,6 +472,114 @@ describe('CandlestickChart', () => {
     render(<CandlestickChart bars={bars} />)
 
     expect(chartMocks.seriesMarkers.setMarkers.mock.calls).toEqual([[[]]])
+  })
+
+  it('places a horizontal line at the clicked bar and price', () => {
+    const onPlaceHorizontalLine = vi.fn()
+    chartMocks.candlestickSeries.coordinateToPrice.mockReturnValue(123.5)
+
+    render(
+      <CandlestickChart
+        bars={bars}
+        horizontalLineDrawingEnabled
+        onPlaceHorizontalLine={onPlaceHorizontalLine}
+      />,
+    )
+    const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
+    clickHandler?.({
+      point: createChartPoint(36, 18),
+      time: toChartTimestamp(firstBar.timestamp),
+      seriesData: new Map(),
+    })
+
+    expect(onPlaceHorizontalLine.mock.calls).toEqual([
+      [{ timestamp: firstBar.timestamp, price: 123.5 }],
+    ])
+  })
+
+  it('draws human horizontal annotations even when none is selected', () => {
+    render(
+      <CandlestickChart
+        bars={bars}
+        annotations={[{ ...pointAnnotation, created_by_kind: 'human' }]}
+        selectedAnnotationId={null}
+      />,
+    )
+
+    function readRenderedState() {
+      return {
+        priceLines: chartMocks.candlestickSeries.createPriceLine.mock.calls,
+        annotationBand: screen.queryByRole('group', {
+          name: 'チャートのアノテーション',
+        }),
+        volumeScaleOptions: chartMocks.volumePriceScale.applyOptions.mock.calls,
+      }
+    }
+
+    expect(readRenderedState()).toEqual({
+      priceLines: [
+        [
+          {
+            price: 100,
+            color: '#ffffff',
+            lineWidth: 2,
+            lineStyle: 0,
+            lineVisible: true,
+            axisLabelVisible: true,
+            title: '架空分類',
+            axisLabelColor: '#ffffff',
+            axisLabelTextColor: '#111827',
+          },
+        ],
+      ],
+      annotationBand: null,
+      volumeScaleOptions: [[{ scaleMargins: { top: 0.8, bottom: 0 } }]],
+    })
+  })
+
+  it('lets chart removal dispose of horizontal price lines on unmount', () => {
+    const { unmount } = render(
+      <CandlestickChart
+        bars={bars}
+        annotations={[{ ...pointAnnotation, created_by_kind: 'human' }]}
+      />,
+    )
+
+    unmount()
+
+    function readRemovalState() {
+      return {
+        chartRemovalCalls: chartMocks.chart.remove.mock.calls,
+        priceLineRemovalCalls:
+          chartMocks.candlestickSeries.removePriceLine.mock.calls,
+      }
+    }
+
+    expect(readRemovalState()).toEqual({
+      chartRemovalCalls: [[]],
+      priceLineRemovalCalls: [],
+    })
+  })
+
+  it('selects a human horizontal annotation when its chart line is clicked', () => {
+    const onSelectAnnotation = vi.fn()
+    const humanLine = { ...pointAnnotation, created_by_kind: 'human' }
+
+    render(
+      <CandlestickChart
+        bars={bars}
+        annotations={[humanLine]}
+        onSelectAnnotation={onSelectAnnotation}
+      />,
+    )
+    const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
+    clickHandler?.({
+      point: createChartPoint(36, 35),
+      time: toChartTimestamp(firstBar.timestamp),
+      seriesData: new Map(),
+    })
+
+    expect(onSelectAnnotation.mock.calls).toEqual([['annotation-a']])
   })
 
   it.each([

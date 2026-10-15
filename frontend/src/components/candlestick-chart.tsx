@@ -9,6 +9,7 @@ import {
   type ISeriesMarkersPluginApi,
   LineSeries,
   LineStyle,
+  type MouseEventParams,
   type SeriesType,
   type Time,
 } from 'lightweight-charts'
@@ -17,7 +18,12 @@ import { type CSSProperties, useEffect, useRef, useState } from 'react'
 import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
 import { useAnnotationOverlays } from '#components/candlestick-chart/use-annotation-overlays'
 import { ChartIndicatorLegend } from '#components/chart-indicator-legend'
-import type { ChartAnnotation } from '#lib/annotation-chart-utils'
+import {
+  type ChartAnnotation,
+  findNearestHumanHorizontalLineId,
+  type HorizontalLinePoint,
+  isAnnotationBandAnnotation,
+} from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import { calculateChartIndicatorLines } from '#lib/chart-indicator-calculations'
 import {
@@ -35,6 +41,7 @@ import {
 import {
   type ChartCurrency,
   toCandlestickData,
+  toChartTimestamp,
   toTradeMarkers,
   toVolumeData,
   type TradeMarker,
@@ -53,6 +60,9 @@ interface CandlestickChartProps {
   displayRangeStart?: string
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
+  horizontalLineDrawingEnabled?: boolean
+  pendingHorizontalLine?: HorizontalLinePoint | null
+  onPlaceHorizontalLine?: (line: HorizontalLinePoint) => void
   currency?: ChartCurrency
   priceScaleTopMargin?: number
   intraday?: boolean
@@ -70,6 +80,9 @@ export function CandlestickChart({
   displayRangeStart,
   onSelectAnnotation,
   selectedAnnotationId,
+  horizontalLineDrawingEnabled = false,
+  pendingHorizontalLine,
+  onPlaceHorizontalLine,
   currency,
   priceScaleTopMargin = 0.05,
   intraday = false,
@@ -92,7 +105,8 @@ export function CandlestickChart({
   const priceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
   const previousDisplayRangeRef = useRef<string | undefined>(undefined)
-  const hasAnnotations = (annotations?.length ?? 0) > 0
+  const hasAnnotationBand =
+    annotations?.some(isAnnotationBandAnnotation) ?? false
 
   // チャートの初期化 (マウント時のみ)
   useEffect(() => {
@@ -223,6 +237,60 @@ export function CandlestickChart({
   }, [])
 
   useEffect(() => {
+    const chart = chartRef.current
+    const series = candlestickSeriesRef.current
+    if (chart == null || series == null) return
+
+    function handleChartClick(param: MouseEventParams) {
+      const activeChart = chartRef.current
+      const activeSeries = candlestickSeriesRef.current
+      if (activeChart == null || activeSeries == null) return
+
+      const point = param.point
+      if (point == null || point.x < 0 || point.y < 0) return
+      if (point.x > activeChart.timeScale().width()) return
+
+      if (horizontalLineDrawingEnabled) {
+        if (onPlaceHorizontalLine == null || typeof param.time !== 'number') {
+          return
+        }
+
+        const bar = bars.find(
+          (item) => toChartTimestamp(item.timestamp) === param.time,
+        )
+        const price = activeSeries.coordinateToPrice(point.y)
+        if (bar == null || price == null || !Number.isFinite(price)) return
+
+        onPlaceHorizontalLine({ timestamp: bar.timestamp, price })
+        return
+      }
+
+      if (onSelectAnnotation == null) return
+
+      const nearestLineId = findNearestHumanHorizontalLineId(
+        annotations ?? [],
+        (price) => activeSeries.priceToCoordinate(price),
+        point.y,
+      )
+
+      if (nearestLineId != null) {
+        onSelectAnnotation(nearestLineId)
+      }
+    }
+
+    chart.subscribeClick(handleChartClick)
+    return () => {
+      chart.unsubscribeClick(handleChartClick)
+    }
+  }, [
+    annotations,
+    bars,
+    horizontalLineDrawingEnabled,
+    onPlaceHorizontalLine,
+    onSelectAnnotation,
+  ])
+
+  useEffect(() => {
     const series = candlestickSeriesRef.current
     if (series == null) return
 
@@ -242,9 +310,9 @@ export function CandlestickChart({
     if (series == null) return
 
     series.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: hasAnnotations ? 0.06 : 0 },
+      scaleMargins: { top: 0.8, bottom: hasAnnotationBand ? 0.06 : 0 },
     })
-  }, [hasAnnotations])
+  }, [hasAnnotationBand])
 
   useEffect(() => {
     const series = candlestickSeriesRef.current
@@ -431,12 +499,19 @@ export function CandlestickChart({
       bars,
       annotations,
       selectedAnnotationId,
+      pendingHorizontalLine,
       highlightedTimestamp,
     })
 
   return (
     <div className={cn('relative min-w-0', className)} style={style}>
-      <div ref={containerRef} className="absolute inset-0" />
+      <div
+        ref={containerRef}
+        className={cn(
+          'absolute inset-0',
+          horizontalLineDrawingEnabled && 'cursor-crosshair',
+        )}
+      />
       {dateMarkerLayout != null && (
         <span
           aria-label={`${dateMarkerLayout.date} のチャート上の位置`}
