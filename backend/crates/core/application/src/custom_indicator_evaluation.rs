@@ -42,6 +42,14 @@ pub enum CustomIndicatorEvaluationUseCaseError {
     Repository(#[from] CustomIndicatorEvaluationRepositoryError),
 }
 
+pub struct RecordCustomIndicatorEvaluationCommand {
+    pub indicator_id: Uuid,
+    pub indicator_name: String,
+    pub code: String,
+    pub args: JsonValue,
+    pub output: JsonValue,
+}
+
 #[derive(Clone)]
 pub struct CustomIndicatorEvaluationUseCases {
     repository: SharedCustomIndicatorEvaluationRepository,
@@ -54,19 +62,15 @@ impl CustomIndicatorEvaluationUseCases {
 
     pub async fn record(
         &self,
-        indicator_id: Uuid,
-        indicator_name: String,
-        code: String,
-        args: JsonValue,
-        output: JsonValue,
+        command: RecordCustomIndicatorEvaluationCommand,
     ) -> Result<Uuid, CustomIndicatorEvaluationUseCaseError> {
         let evaluation = CustomIndicatorEvaluation {
             id: Uuid::new_v4(),
-            indicator_id,
-            indicator_name,
-            code,
-            args,
-            output,
+            indicator_id: command.indicator_id,
+            indicator_name: command.indicator_name,
+            code: command.code,
+            args: command.args,
+            output: command.output,
             evaluated_at: Utc::now().fixed_offset(),
         };
         let id = evaluation.id;

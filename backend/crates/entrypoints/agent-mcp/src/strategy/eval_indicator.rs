@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use core_application::custom_indicator::CustomIndicator;
+use core_application::custom_indicator_evaluation::RecordCustomIndicatorEvaluationCommand;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
@@ -111,15 +112,16 @@ impl StrategyServer {
             Some(output) => Some(
                 self.dependencies
                     .custom_indicator_evaluations
-                    .record(
-                        indicator.indicator_id,
-                        indicator.name.clone(),
-                        indicator.code.clone(),
+                    .record(RecordCustomIndicatorEvaluationCommand {
+                        indicator_id: indicator.indicator_id,
+                        indicator_name: indicator.name.clone(),
+                        code: indicator.code.clone(),
                         args,
-                        output.clone(),
-                    )
+                        output: output.clone(),
+                    })
                     .await
                     .map_err(|e| {
+                        // 記録 ID がない成功結果を返すと、後から値を参照できない。
                         internal_error(format!("failed to record indicator evaluation: {e}"))
                     })?,
             ),

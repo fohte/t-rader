@@ -365,7 +365,7 @@ async fn eval_indicator_rejects_invalid_output(db: gateway_postgres::DatabaseHan
 #[backend_test_macros::database_test]
 async fn eval_indicator_rejects_output_schema_mismatch(db: gateway_postgres::DatabaseHandle) {
     let sid = insert_strategy(&db, "s").await;
-    insert_indicator(
+    let ind = insert_indicator(
         &db,
         SCOPE_GLOBAL,
         None,
@@ -384,18 +384,28 @@ async fn eval_indicator_rejects_output_schema_mismatch(db: gateway_postgres::Dat
             exit_code: 0,
         }))
         .await;
-    let (server, _shared) = build_server(db, executor.clone());
+    let (server, _shared) = build_server(db.clone(), executor.clone());
 
     let err = server
         .eval_indicator(sid, params("rsi", json!({})))
         .await
         .expect_err("expected output schema mismatch");
     assert_eq!(
-        err,
-        rmcp::ErrorData::invalid_params(
-            "output does not match output_schema of indicator 'rsi': \
-                \"value\" is a required property at ",
-            None,
+        (
+            err,
+            custom_indicator_evaluation::Entity::find()
+                .filter(custom_indicator_evaluation::Column::IndicatorId.eq(ind.indicator_id))
+                .all(&db)
+                .await
+                .expect("query evaluations"),
+        ),
+        (
+            rmcp::ErrorData::invalid_params(
+                "output does not match output_schema of indicator 'rsi': \
+                    \"value\" is a required property at ",
+                None,
+            ),
+            Vec::new(),
         ),
     );
 }
