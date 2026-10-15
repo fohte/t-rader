@@ -132,18 +132,28 @@ mod tests {
         .await;
         let second_open =
             seed_comment(&db, "note_version", second_version_id, None, "second open").await;
+        let second_resolved = seed_comment(
+            &db,
+            "note_version",
+            second_version_id,
+            None,
+            "second resolved",
+        )
+        .await;
         let annotation_id = seed_annotation(&db).await;
         seed_comment(&db, "annotation", annotation_id, None, "annotation comment").await;
-        server
-            .resolve_comment(
-                strategy_id,
-                ResolveCommentParams {
-                    comment_id: first_resolved,
-                    resolved: true,
-                },
-            )
-            .await
-            .expect("resolve_comment");
+        for comment_id in [first_resolved, second_resolved] {
+            server
+                .resolve_comment(
+                    strategy_id,
+                    ResolveCommentParams {
+                        comment_id,
+                        resolved: true,
+                    },
+                )
+                .await
+                .expect("resolve_comment");
+        }
         let first_opened_at = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset();
         for (id, created_at) in [
             (first_open, first_opened_at),
@@ -152,6 +162,10 @@ mod tests {
                 first_opened_at + chrono::Duration::seconds(1),
             ),
             (second_open, first_opened_at + chrono::Duration::seconds(2)),
+            (
+                second_resolved,
+                first_opened_at + chrono::Duration::seconds(3),
+            ),
         ] {
             comment::ActiveModel {
                 id: Set(id),
@@ -203,6 +217,55 @@ mod tests {
                         author_kind: "human".into(),
                         author_label: "user".into(),
                         resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                ],
+            },
+        );
+
+        let resolved = server
+            .read_comments(
+                strategy_id,
+                ReadCommentsParams {
+                    target_kind: None,
+                    target_id: None,
+                    resolved: Some(true),
+                },
+            )
+            .await
+            .expect("read resolved comments without target");
+        assert_eq!(
+            normalize_read_comments(resolved),
+            ReadCommentsResult {
+                comments: vec![
+                    CommentDto {
+                        comment_id: first_resolved,
+                        target_kind: "note_version".into(),
+                        target_id: first_version_id,
+                        parent_id: None,
+                        body: "first resolved".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: true,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                    CommentDto {
+                        comment_id: second_resolved,
+                        target_kind: "note_version".into(),
+                        target_id: second_version_id,
+                        parent_id: None,
+                        body: "second resolved".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: true,
                         created_at: ts_sentinel(),
                         anchor_text: None,
                         anchor_side: None,
