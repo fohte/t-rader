@@ -1,16 +1,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Outlet, RouterProvider } from '@tanstack/react-router'
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { QuickSwitcher } from '#components/strategy-shell/quick-switcher'
 import { fetchClient } from '#lib/api/client'
@@ -251,11 +253,22 @@ function getReferenceSearchOutput<T>(
   return { beforeDebounce, firstSearch, whileNextSearchIsPending }
 }
 
+async function advanceFakeTimersBy(milliseconds: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(milliseconds)
+  })
+  await act(async () => {
+    // Query 更新後に登録される 0 ms timer も実行し、request 開始まで進める。
+    await vi.advanceTimersByTimeAsync(0)
+  })
+}
+
 afterEach(() => {
   cleanup()
   activeMiddleware?.resolveDeferredQueries()
   activeMiddleware?.eject()
   activeMiddleware = null
+  vi.useRealTimers()
 })
 
 describe('QuickSwitcher', () => {
@@ -330,9 +343,10 @@ describe('QuickSwitcher', () => {
       name: '画面・戦略・銘柄・指標を検索',
     })
 
+    vi.useFakeTimers()
     fireEvent.change(input, { target: { value: 'デ' } })
     fireEvent.change(input, { target: { value: 'デモ' } })
-    await new Promise((resolve) => window.setTimeout(resolve, 150))
+    await advanceFakeTimersBy(150)
     const beforeDebounce = {
       referenceRequests: getRequestOutput().filter(({ path }) =>
         path.startsWith('/api/refs/'),
@@ -340,6 +354,8 @@ describe('QuickSwitcher', () => {
       results: getPaletteResultLabels(),
     }
 
+    await advanceFakeTimersBy(50)
+    vi.useRealTimers()
     await screen.findByText('デモ商事')
     const firstSearch = {
       referenceRequests: getRequestOutput().filter(({ path }) =>
@@ -348,14 +364,10 @@ describe('QuickSwitcher', () => {
       results: getPaletteResultLabels(),
     }
 
+    vi.useFakeTimers()
     fireEvent.change(input, { target: { value: 'デモX' } })
-    await new Promise((resolve) => window.setTimeout(resolve, 220))
-    const whileNextSearchIsPending = {
-      referenceRequests: getRequestOutput().filter(({ path }) =>
-        path.startsWith('/api/refs/'),
-      ),
-      results: getPaletteResultLabels(),
-    }
+    await advanceFakeTimersBy(200)
+    vi.useRealTimers()
 
     const expected = {
       beforeDebounce: {
@@ -380,13 +392,22 @@ describe('QuickSwitcher', () => {
       },
     }
 
-    expect(
-      getReferenceSearchOutput(
-        beforeDebounce,
-        firstSearch,
-        whileNextSearchIsPending,
-      ),
-    ).toEqual(expected)
+    await waitFor(() => {
+      const whileNextSearchIsPending = {
+        referenceRequests: getRequestOutput().filter(({ path }) =>
+          path.startsWith('/api/refs/'),
+        ),
+        results: getPaletteResultLabels(),
+      }
+
+      expect(
+        getReferenceSearchOutput(
+          beforeDebounce,
+          firstSearch,
+          whileNextSearchIsPending,
+        ),
+      ).toEqual(expected)
+    })
   })
 
   it.each([
