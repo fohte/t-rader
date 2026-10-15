@@ -16,6 +16,7 @@ import { cn } from '#lib/utils'
 interface TaskExecutionTreeProps {
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
+  taskCompleted?: boolean
   /** トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
   traceUrlTemplate?: string
   /**
@@ -52,6 +53,7 @@ interface RenderRow {
   last: boolean
   content:
     | { kind: 'pending'; label: string; model: string }
+    | { kind: 'empty'; label: string; model: string }
     | { kind: 'step'; step: TaskStep; outputSchema?: AgentGraphOutputSchema }
 }
 
@@ -59,13 +61,13 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
   const rows: RenderRow[] = []
   nodes.forEach((node, groupIndex) => {
     const connectorBefore = groupIndex > 0
-    if (node.kind === 'pending') {
+    if (node.kind === 'pending' || node.kind === 'empty') {
       rows.push({
         key: node.key,
         connectorBefore,
         indent: false,
         last: false,
-        content: { kind: 'pending', label: node.label, model: node.model },
+        content: { kind: node.kind, label: node.label, model: node.model },
       })
     } else if (node.kind === 'single') {
       rows.push({
@@ -99,13 +101,14 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
 export function TaskExecutionTree({
   steps,
   configPhases,
+  taskCompleted = false,
   traceUrlTemplate,
   detailPlacement = 'inline',
   onSelectStep,
 }: TaskExecutionTreeProps): React.ReactElement | null {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
-  const rows = toRows(buildPhaseNodes(configPhases, steps))
+  const rows = toRows(buildPhaseNodes(configPhases, steps, taskCompleted))
 
   // polling で選択中の step の中身 (status/output 等) が更新されても選択行 (key) は
   // 変わらないため、クリック時だけでなく steps 更新時にも最新の内容で呼び直す。
@@ -173,6 +176,19 @@ function TreeRow({
   onToggle: () => void
 }): React.ReactElement {
   const prefix = row.indent ? (row.last ? '└─ ' : '├─ ') : ''
+
+  if (row.content.kind === 'empty') {
+    return (
+      <div className="flex items-baseline gap-2 py-1 text-muted-foreground">
+        <span>{prefix}○</span>
+        <span className="flex-1 truncate">{row.content.label}</span>
+        <span className="text-2xs text-muted-foreground">
+          {row.content.model}
+        </span>
+        <span className="text-2xs">対象なし</span>
+      </div>
+    )
+  }
 
   if (row.content.kind === 'pending') {
     return (

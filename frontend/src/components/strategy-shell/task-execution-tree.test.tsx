@@ -685,20 +685,25 @@ describe('parseAgentGraphPhases', () => {
   it('extracts key/label/model from valid YAML', () => {
     const yaml = [
       'phases:',
-      '  - key: plan',
-      '    label: 調査計画',
-      '    model: claude-opus-4',
+      '  - key: source',
+      '    label: Source',
+      '    model: fictional-model',
       '    prompt: p',
-      '  - key: investigate',
-      '    label: 調査',
-      '    model: deepseek-v4-flash',
+      '  - key: inspect',
+      '    label: Inspect',
+      '    model: fictional-model',
       '    prompt: p',
-      '    for_each: plan.items',
+      '    for_each: source.entries',
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
-      { key: 'investigate', label: '調査', model: 'deepseek-v4-flash' },
+      { key: 'source', label: 'Source', model: 'fictional-model' },
+      {
+        key: 'inspect',
+        label: 'Inspect',
+        model: 'fictional-model',
+        forEach: 'source.entries',
+      },
     ])
   })
 
@@ -724,6 +729,25 @@ describe('parseAgentGraphPhases', () => {
           verdict: { enum: ['supported', 'rejected'] },
           summary: { type: 'string' },
         },
+      },
+    ])
+  })
+
+  it('extracts for_each references from configured phases', () => {
+    const yaml = [
+      'phases:',
+      '  - key: inspect',
+      '    label: Inspect',
+      '    model: fictional-model',
+      '    for_each: source.entries',
+    ].join('\n')
+
+    expect(parseAgentGraphPhases(yaml)).toEqual([
+      {
+        key: 'inspect',
+        label: 'Inspect',
+        model: 'fictional-model',
+        forEach: 'source.entries',
       },
     ])
   })
@@ -778,6 +802,57 @@ describe('buildPhaseNodes', () => {
       },
     ])
   })
+
+  const configPhases = [
+    { key: 'source', label: 'Source', model: 'fictional-model' },
+    {
+      key: 'inspect',
+      label: 'Inspect',
+      model: 'fictional-model',
+      forEach: 'source.entries',
+    },
+    { key: 'summary', label: 'Summary', model: 'fictional-model' },
+  ]
+  const steps = [
+    makeStep({ phase_key: 'source' }),
+    makeStep({ phase_key: 'summary' }),
+  ]
+
+  it.each([
+    {
+      taskCompleted: false,
+      expected: [
+        { kind: 'single', key: 'source', step: steps[0] },
+        {
+          kind: 'pending',
+          key: 'inspect',
+          label: 'Inspect',
+          model: 'fictional-model',
+        },
+        { kind: 'single', key: 'summary', step: steps[1] },
+      ],
+    },
+    {
+      taskCompleted: true,
+      expected: [
+        { kind: 'single', key: 'source', step: steps[0] },
+        {
+          kind: 'empty',
+          key: 'inspect',
+          label: 'Inspect',
+          model: 'fictional-model',
+        },
+        { kind: 'single', key: 'summary', step: steps[1] },
+      ],
+    },
+  ])(
+    'renders empty for_each phase correctly when taskCompleted=$taskCompleted',
+    ({ taskCompleted, expected }) => {
+      expect(buildPhaseNodes(configPhases, steps, taskCompleted)).toEqual(
+        expected,
+      )
+    },
+  )
 
   it('groups steps carrying an item into a branch node', () => {
     const configPhases = [
