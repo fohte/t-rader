@@ -330,6 +330,12 @@ mod tests {
             Err(database_error())
         }
 
+        async fn find_us_stock_daily_bar_targets(
+            &self,
+        ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
         async fn mark_us_stock_hourly_bar_history_completed(
             &self,
             _: &[String],

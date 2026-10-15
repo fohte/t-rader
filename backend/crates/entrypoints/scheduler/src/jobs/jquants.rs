@@ -12,22 +12,32 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct ShortRatioIngest;
 
 impl TaskHandler for ShortRatioIngest {
-    const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_RATIO_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.short_selling_source,
-                    "J-Quants short-selling source",
-                )?;
-                ingest_short_ratio(&state.dependencies.short_ratios, source.as_ref()).await
-            },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for ShortRatioIngest {
+    const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_RATIO_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.short_selling_source,
+                        "J-Quants short-selling source",
+                    )?;
+                    ingest_short_ratio(&state.dependencies.short_ratios, source.as_ref()).await
+                },
+            )
+            .await
+        })
     }
 }
 
@@ -51,23 +61,36 @@ async fn ingest_short_ratio(
 pub struct ShortSaleReportIngest;
 
 impl TaskHandler for ShortSaleReportIngest {
-    const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_SALE_REPORT_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.short_selling_source,
-                    "J-Quants short-selling source",
-                )?;
-                ingest_short_sale_reports(&state.dependencies.short_sale_reports, source.as_ref())
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for ShortSaleReportIngest {
+    const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_SALE_REPORT_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.short_selling_source,
+                        "J-Quants short-selling source",
+                    )?;
+                    ingest_short_sale_reports(
+                        &state.dependencies.short_sale_reports,
+                        source.as_ref(),
+                    )
                     .await
-            },
-        )
-        .await
+                },
+            )
+            .await
+        })
     }
 }
 
@@ -97,20 +120,30 @@ struct MarginIngestStats {
 }
 
 impl TaskHandler for MarginIngest {
-    const IDENTIFIER: &'static str = core_application::ingest_status::MARGIN_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source =
-                    require_source(state.dependencies.margin_source, "J-Quants margin source")?;
-                ingest_margin(&state.dependencies.margins, source.as_ref()).await
-            },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for MarginIngest {
+    const IDENTIFIER: &'static str = core_application::ingest_status::MARGIN_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source =
+                        require_source(state.dependencies.margin_source, "J-Quants margin source")?;
+                    ingest_margin(&state.dependencies.margins, source.as_ref()).await
+                },
+            )
+            .await
+        })
     }
 }
 

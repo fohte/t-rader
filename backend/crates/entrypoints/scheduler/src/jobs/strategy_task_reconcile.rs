@@ -1,7 +1,10 @@
-use std::panic::AssertUnwindSafe;
+use std::{future::Future, panic::AssertUnwindSafe};
 
 use chrono::Utc;
-use core_application::{agent_task_client::AgentTaskClient, strategy_task::StrategyTaskUseCases};
+use core_application::{
+    agent_task_client::AgentTaskClient,
+    strategy_task::{StrategyTaskReconcileLockUseCases, StrategyTaskUseCases},
+};
 use futures_util::{FutureExt, StreamExt, stream};
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
@@ -28,26 +31,86 @@ impl From<Option<EmptyObject>> for StrategyTaskReconcile {
 }
 
 impl TaskHandler for StrategyTaskReconcile {
-    const IDENTIFIER: &'static str = STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let updated = reconcile_in_flight_tasks(
-                    &state.dependencies.strategy_tasks,
-                    state.dependencies.agent_task_client.as_ref(),
-                )
-                .await?;
-                if updated > 0 {
-                    tracing::info!(updated, "strategy task phases reconciled");
-                }
-                Ok(())
-            },
-        )
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for StrategyTaskReconcile {
+    const IDENTIFIER: &'static str = STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let lock = state.dependencies.strategy_task_reconcile_lock.clone();
+                    run_with_reconcile_lock(&lock, move || async move {
+                        let reconcile_result = reconcile_in_flight_tasks(
+                            &state.dependencies.strategy_tasks,
+                            state.dependencies.agent_task_client.as_ref(),
+                        )
+                        .await
+                        .map(|updated| {
+                            if updated > 0 {
+                                tracing::info!(updated, "strategy task phases reconciled");
+                            }
+                        });
+                        let dispatch_result =
+                            super::event_dispatch::dispatch_pending_events(&state)
+                                .await
+                                .map_err(|error| {
+                                    format!("failed to dispatch pending events: {error}")
+                                });
+
+                        combine_task_results(reconcile_result, dispatch_result)
+                    })
+                    .await
+                },
+            )
+            .await
+        })
+    }
+}
+
+async fn run_with_reconcile_lock<F, Fut>(
+    lock: &StrategyTaskReconcileLockUseCases,
+    work: F,
+) -> Result<(), String>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    let guard = lock
+        .try_acquire()
         .await
+        .map_err(|error| format!("failed to acquire strategy task reconcile lock: {error}"))?;
+    let Some(guard) = guard else {
+        tracing::info!("strategy task reconciliation skipped because another run holds the lock");
+        return Ok(());
+    };
+
+    let work_result = work().await;
+    let release_result = guard
+        .release()
+        .await
+        .map_err(|error| format!("failed to release strategy task reconcile lock: {error}"));
+
+    combine_task_results(work_result, release_result)
+}
+
+fn combine_task_results(
+    first_result: Result<(), String>,
+    second_result: Result<(), String>,
+) -> Result<(), String> {
+    match (first_result, second_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(first_error), Err(second_error)) => Err(format!("{first_error}; {second_error}")),
     }
 }
 
@@ -108,7 +171,10 @@ pub async fn reconcile_in_flight_tasks(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
 
     use async_trait::async_trait;
     use chrono::{Duration, Utc};
@@ -116,9 +182,10 @@ mod tests {
         agent_task_client::{AgentTaskState, AgentTaskStatus, FakeAgentTaskClient},
         persistence::PersistenceError,
         strategy_task::{
-            StrategyTask, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskRepository,
-            StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskUpdate,
-            StrategyTaskUseCases, TaskListQuery,
+            StrategyTask, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskReconcileLock,
+            StrategyTaskReconcileLockGuard, StrategyTaskReconcileLockUseCases,
+            StrategyTaskRepository, StrategyTaskRepositoryError, StrategyTaskStep,
+            StrategyTaskUpdate, StrategyTaskUseCases, TaskListQuery,
         },
         unit_of_work::FakeUnitOfWork,
     };
@@ -126,7 +193,7 @@ mod tests {
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
-    use super::{StrategyTaskReconcile, reconcile_in_flight_tasks};
+    use super::{StrategyTaskReconcile, reconcile_in_flight_tasks, run_with_reconcile_lock};
 
     #[rstest]
     #[case::cron_payload_null(serde_json::Value::Null, Ok(()))]
@@ -141,6 +208,103 @@ mod tests {
                 .map(|_| ())
                 .map_err(|_| ()),
             expected,
+        );
+    }
+
+    struct FakeReconcileLock {
+        available: bool,
+        acquired: Arc<AtomicUsize>,
+        released: Arc<AtomicUsize>,
+        held: Arc<AtomicBool>,
+    }
+
+    struct FakeReconcileLockGuard {
+        released: Arc<AtomicUsize>,
+        held: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl StrategyTaskReconcileLock for FakeReconcileLock {
+        async fn try_acquire(
+            &self,
+        ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {
+            self.acquired.fetch_add(1, Ordering::SeqCst);
+            Ok(self.available.then(|| {
+                self.held.store(true, Ordering::SeqCst);
+                Box::new(FakeReconcileLockGuard {
+                    released: Arc::clone(&self.released),
+                    held: Arc::clone(&self.held),
+                }) as Box<dyn StrategyTaskReconcileLockGuard>
+            }))
+        }
+    }
+
+    #[async_trait]
+    impl StrategyTaskReconcileLockGuard for FakeReconcileLockGuard {
+        async fn release(self: Box<Self>) -> Result<(), PersistenceError> {
+            self.held.store(false, Ordering::SeqCst);
+            self.released.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[rstest]
+    #[case::lock_busy(false, Ok(()), Ok(()), 0)]
+    #[case::lock_acquired(true, Ok(()), Ok(()), 1)]
+    #[case::work_failed(
+        true,
+        Err("reconciliation failed".to_string()),
+        Err("reconciliation failed".to_string()),
+        1,
+    )]
+    #[tokio::test]
+    async fn runs_work_only_while_holding_the_reconcile_lock(
+        #[case] available: bool,
+        #[case] work_result: Result<(), String>,
+        #[case] expected_result: Result<(), String>,
+        #[case] expected_work_runs: usize,
+    ) {
+        let acquired = Arc::new(AtomicUsize::new(0));
+        let released = Arc::new(AtomicUsize::new(0));
+        let work_runs = Arc::new(AtomicUsize::new(0));
+        let held = Arc::new(AtomicBool::new(false));
+        let held_during_work = Arc::new(AtomicBool::new(false));
+        let lock = StrategyTaskReconcileLockUseCases::new(Arc::new(FakeReconcileLock {
+            available,
+            acquired: Arc::clone(&acquired),
+            released: Arc::clone(&released),
+            held: Arc::clone(&held),
+        }));
+        let work_runs_in_future = Arc::clone(&work_runs);
+        let held_in_future = Arc::clone(&held);
+        let held_during_work_in_future = Arc::clone(&held_during_work);
+        let work_result_in_future = work_result.clone();
+
+        let result = run_with_reconcile_lock(&lock, move || async move {
+            work_runs_in_future.fetch_add(1, Ordering::SeqCst);
+            held_during_work_in_future
+                .store(held_in_future.load(Ordering::SeqCst), Ordering::SeqCst);
+            work_result_in_future
+        })
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                acquired.load(Ordering::SeqCst),
+                released.load(Ordering::SeqCst),
+                work_runs.load(Ordering::SeqCst),
+                held_during_work.load(Ordering::SeqCst),
+                held.load(Ordering::SeqCst),
+            ),
+            (
+                expected_result,
+                1,
+                expected_work_runs,
+                expected_work_runs,
+                available,
+                false,
+            ),
         );
     }
 

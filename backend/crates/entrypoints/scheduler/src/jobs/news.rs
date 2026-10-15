@@ -8,22 +8,32 @@ use super::{DAILY_TIMEOUT, run_with_ingest_run_log_state};
 pub struct NewsAggregation;
 
 impl TaskHandler for NewsAggregation {
-    const IDENTIFIER: &'static str = core_application::ingest_status::NEWS_AGGREGATION_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                aggregate_news(
-                    &state.dependencies.news,
-                    state.dependencies.news_aggregator.as_ref(),
-                )
-                .await
-            },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for NewsAggregation {
+    const IDENTIFIER: &'static str = core_application::ingest_status::NEWS_AGGREGATION_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    aggregate_news(
+                        &state.dependencies.news,
+                        state.dependencies.news_aggregator.as_ref(),
+                    )
+                    .await
+                },
+            )
+            .await
+        })
     }
 }
 

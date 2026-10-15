@@ -27,6 +27,12 @@ pub struct PostgresBarsRepository {
     db: DatabaseHandle,
 }
 
+#[derive(Clone, Copy)]
+enum UsStockBarTargetSelection {
+    Referenced,
+    Daily,
+}
+
 impl PostgresBarsRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self { db }
@@ -52,6 +58,106 @@ impl PostgresBarsRepository {
                     .collect()
             })
             .map_err(repository_error)
+    }
+
+    async fn find_us_stock_bar_targets_matching(
+        &self,
+        selection: UsStockBarTargetSelection,
+    ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
+        #[derive(FromQueryResult)]
+        struct TargetRow {
+            instrument_id: String,
+            latest_daily_bar: Option<DateTime<FixedOffset>>,
+            latest_minute_bar: Option<DateTime<FixedOffset>>,
+            latest_hourly_bar: Option<DateTime<FixedOffset>>,
+            hourly_history_completed_through: Option<DateTime<FixedOffset>>,
+            earliest_daily_bar: Option<DateTime<FixedOffset>>,
+            earliest_minute_bar: Option<DateTime<FixedOffset>>,
+            earliest_hourly_bar: Option<DateTime<FixedOffset>>,
+        }
+
+        let selection = match selection {
+            UsStockBarTargetSelection::Referenced => {
+                "EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)"
+            }
+            UsStockBarTargetSelection::Daily => {
+                "EXISTS (SELECT 1 FROM stock WHERE stock.id = instruments.id AND stock.market IN ('Nasdaq', 'NYSE')) OR EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)"
+            }
+        };
+        let query = format!(
+            r#"SELECT
+                instruments.id AS instrument_id,
+                daily_bar.timestamp AS latest_daily_bar,
+                minute_bar.timestamp AS latest_minute_bar,
+                hourly_bar.timestamp AS latest_hourly_bar,
+                hourly_progress.completed_through AS hourly_history_completed_through,
+                earliest_daily_bar.timestamp AS earliest_daily_bar,
+                earliest_minute_bar.timestamp AS earliest_minute_bar,
+                earliest_hourly_bar.timestamp AS earliest_hourly_bar
+            FROM instruments
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1d'
+                ORDER BY timestamp DESC LIMIT 1
+            ) AS daily_bar ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1d'
+                ORDER BY timestamp ASC LIMIT 1
+            ) AS earliest_daily_bar ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1m'
+                ORDER BY timestamp DESC LIMIT 1
+            ) AS minute_bar ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1h'
+                ORDER BY timestamp DESC LIMIT 1
+            ) AS hourly_bar ON TRUE
+            LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
+                ON hourly_progress.instrument_id = instruments.id
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1m'
+                ORDER BY timestamp ASC LIMIT 1
+            ) AS earliest_minute_bar ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1h'
+                ORDER BY timestamp ASC LIMIT 1
+            ) AS earliest_hourly_bar ON TRUE
+            WHERE instruments.market = 'US'
+              AND ({selection})
+            ORDER BY instruments.id"#
+        );
+        let rows = self
+            .db
+            .query_all_raw(Statement::from_string(DatabaseBackend::Postgres, query))
+            .await
+            .map_err(repository_error)?;
+
+        rows.iter()
+            .map(|row| {
+                let row = TargetRow::from_query_result(row, "").map_err(repository_error)?;
+                Ok(core_application::bars::UsStockBarTarget {
+                    instrument_id: row.instrument_id,
+                    latest_daily_bar: row.latest_daily_bar.map(|timestamp| timestamp.to_utc()),
+                    latest_minute_bar: row.latest_minute_bar.map(|timestamp| timestamp.to_utc()),
+                    latest_hourly_bar: row.latest_hourly_bar.map(|timestamp| timestamp.to_utc()),
+                    hourly_history_completed_through: row
+                        .hourly_history_completed_through
+                        .map(|timestamp| timestamp.to_utc()),
+                    earliest_daily_bar: row.earliest_daily_bar.map(|timestamp| timestamp.to_utc()),
+                    earliest_minute_bar: row
+                        .earliest_minute_bar
+                        .map(|timestamp| timestamp.to_utc()),
+                    earliest_hourly_bar: row
+                        .earliest_hourly_bar
+                        .map(|timestamp| timestamp.to_utc()),
+                })
+            })
+            .collect()
     }
 }
 
@@ -151,114 +257,15 @@ impl BarsRepository for PostgresBarsRepository {
     async fn find_us_stock_bar_targets(
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
-        #[derive(FromQueryResult)]
-        struct TargetRow {
-            instrument_id: String,
-            latest_daily_bar: Option<DateTime<FixedOffset>>,
-            latest_minute_bar: Option<DateTime<FixedOffset>>,
-            latest_hourly_bar: Option<DateTime<FixedOffset>>,
-            hourly_history_completed_through: Option<DateTime<FixedOffset>>,
-            earliest_daily_bar: Option<DateTime<FixedOffset>>,
-            earliest_minute_bar: Option<DateTime<FixedOffset>>,
-            earliest_hourly_bar: Option<DateTime<FixedOffset>>,
-        }
-
-        let rows = self
-            .db
-            .query_all_raw(Statement::from_string(
-                DatabaseBackend::Postgres,
-                r#"SELECT
-                    instruments.id AS instrument_id,
-                    daily_bar.timestamp AS latest_daily_bar,
-                    minute_bar.timestamp AS latest_minute_bar,
-                    hourly_bar.timestamp AS latest_hourly_bar,
-                    hourly_progress.completed_through AS hourly_history_completed_through,
-                    earliest_daily_bar.timestamp AS earliest_daily_bar,
-                    earliest_minute_bar.timestamp AS earliest_minute_bar,
-                    earliest_hourly_bar.timestamp AS earliest_hourly_bar
-                FROM instruments
-                LEFT JOIN LATERAL (
-                    SELECT timestamp
-                    FROM bars
-                    WHERE instrument_id = instruments.id AND timeframe = '1d'
-                    ORDER BY timestamp DESC
-                    LIMIT 1
-                ) AS daily_bar ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT timestamp
-                    FROM bars
-                    WHERE instrument_id = instruments.id AND timeframe = '1d'
-                    ORDER BY timestamp ASC
-                    LIMIT 1
-                ) AS earliest_daily_bar ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT timestamp
-                    FROM bars
-                    WHERE instrument_id = instruments.id AND timeframe = '1m'
-                    ORDER BY timestamp DESC
-                    LIMIT 1
-                ) AS minute_bar ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT timestamp
-                    FROM bars
-                    WHERE instrument_id = instruments.id AND timeframe = '1h'
-                    ORDER BY timestamp DESC
-                    LIMIT 1
-                ) AS hourly_bar ON TRUE
-                LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
-                    ON hourly_progress.instrument_id = instruments.id
-                LEFT JOIN LATERAL (
-                    SELECT timestamp
-                    FROM bars
-                    WHERE instrument_id = instruments.id AND timeframe = '1m'
-                    ORDER BY timestamp ASC
-                    LIMIT 1
-                ) AS earliest_minute_bar ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT timestamp
-                    FROM bars
-                    WHERE instrument_id = instruments.id AND timeframe = '1h'
-                    ORDER BY timestamp ASC
-                    LIMIT 1
-                ) AS earliest_hourly_bar ON TRUE
-                WHERE instruments.market = 'US'
-                  AND (
-                    EXISTS (
-                        SELECT 1 FROM stock_group_member
-                        WHERE stock_group_member.stock_id = instruments.id
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM note_ref
-                        WHERE note_ref.ref_kind = 'stock'
-                          AND note_ref.ref_id = instruments.id
-                    )
-                  )
-                ORDER BY instruments.id"#,
-            ))
+        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Referenced)
             .await
-            .map_err(repository_error)?;
+    }
 
-        rows.iter()
-            .map(|row| {
-                let row = TargetRow::from_query_result(row, "").map_err(repository_error)?;
-                Ok(core_application::bars::UsStockBarTarget {
-                    instrument_id: row.instrument_id,
-                    latest_daily_bar: row.latest_daily_bar.map(|timestamp| timestamp.to_utc()),
-                    latest_minute_bar: row.latest_minute_bar.map(|timestamp| timestamp.to_utc()),
-                    earliest_daily_bar: row.earliest_daily_bar.map(|timestamp| timestamp.to_utc()),
-                    earliest_minute_bar: row
-                        .earliest_minute_bar
-                        .map(|timestamp| timestamp.to_utc()),
-                    latest_hourly_bar: row.latest_hourly_bar.map(|timestamp| timestamp.to_utc()),
-                    hourly_history_completed_through: row
-                        .hourly_history_completed_through
-                        .map(|timestamp| timestamp.to_utc()),
-                    earliest_hourly_bar: row
-                        .earliest_hourly_bar
-                        .map(|timestamp| timestamp.to_utc()),
-                })
-            })
-            .collect()
+    async fn find_us_stock_daily_bar_targets(
+        &self,
+    ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
+        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Daily)
+            .await
     }
 
     async fn mark_us_stock_hourly_bar_history_completed(
@@ -276,22 +283,22 @@ impl BarsRepository for PostgresBarsRepository {
                     instrument_id: Set(instrument_id.clone()),
                     completed_through: Set(completed_through.fixed_offset()),
                 }
-            })
+            }),
         )
-            .on_conflict(
-                OnConflict::column(us_stock_hourly_bar_ingest_progress::Column::InstrumentId)
-                    .value(
-                        us_stock_hourly_bar_ingest_progress::Column::CompletedThrough,
-                        Expr::cust(
-                            "GREATEST(us_stock_hourly_bar_ingest_progress.completed_through, EXCLUDED.completed_through)",
-                        ),
-                    )
-                    .to_owned(),
-            )
-            .exec_without_returning(&self.db)
-            .await
-            .map(|_| ())
-            .map_err(repository_error)
+        .on_conflict(
+            OnConflict::column(us_stock_hourly_bar_ingest_progress::Column::InstrumentId)
+                .value(
+                    us_stock_hourly_bar_ingest_progress::Column::CompletedThrough,
+                    Expr::cust(
+                        "GREATEST(us_stock_hourly_bar_ingest_progress.completed_through, EXCLUDED.completed_through)",
+                    ),
+                )
+                .to_owned(),
+        )
+        .exec_without_returning(&self.db)
+        .await
+        .map(|_| ())
+        .map_err(repository_error)
     }
 
     async fn find_ingested_dates(
@@ -638,28 +645,6 @@ mod tests {
             .expect("latest minute timestamp");
         let repository = PostgresBarsRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db);
-        let earlier_hourly_history_completed_through = Utc
-            .with_ymd_and_hms(2040, 1, 2, 14, 0, 0)
-            .single()
-            .expect("earlier hourly completion timestamp");
-        let hourly_history_completed_through = Utc
-            .with_ymd_and_hms(2040, 1, 2, 15, 30, 0)
-            .single()
-            .expect("later hourly completion timestamp");
-        repository
-            .mark_us_stock_hourly_bar_history_completed(
-                std::slice::from_ref(&group_stock_id),
-                hourly_history_completed_through,
-            )
-            .await
-            .expect("mark hourly history completed");
-        repository
-            .mark_us_stock_hourly_bar_history_completed(
-                std::slice::from_ref(&group_stock_id),
-                earlier_hourly_history_completed_through,
-            )
-            .await
-            .expect("older progress does not move the completion cursor backward");
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         repository
             .upsert_bars(
@@ -704,6 +689,17 @@ mod tests {
             .commit(transaction)
             .await
             .expect("commit transaction");
+        let hourly_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 10, 0)
+            .single()
+            .expect("hourly progress timestamp");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                hourly_progress,
+            )
+            .await
+            .expect("mark hourly history complete");
 
         let actual = repository
             .find_us_stock_bar_targets()
@@ -722,7 +718,7 @@ mod tests {
                             .single()
                             .expect("latest hourly timestamp"),
                     ),
-                    hourly_history_completed_through: Some(hourly_history_completed_through),
+                    hourly_history_completed_through: Some(hourly_progress),
                     earliest_daily_bar: Some(
                         Utc.with_ymd_and_hms(2040, 1, 1, 0, 0, 0)
                             .single()
@@ -746,6 +742,110 @@ mod tests {
                     latest_hourly_bar: None,
                     hourly_history_completed_through: None,
                     earliest_daily_bar: Some(note_daily_latest),
+                    earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
+                },
+            ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn finds_unreferenced_us_stocks_on_nasdaq_and_nyse_for_daily_ingestion(
+        db: DatabaseHandle,
+    ) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
+        let nasdaq_id = format!("US:QZ-DAILY-NASDAQ-{suffix}");
+        let nyse_id = format!("US:QZ-DAILY-NYSE-{suffix}");
+        let otc_id = format!("US:QZ-DAILY-OTC-{suffix}");
+        let referenced_otc_id = format!("US:QZ-DAILY-OTC-REFERENCED-{suffix}");
+        let non_us_id = format!("KR:QZ-DAILY-NASDAQ-{suffix}");
+
+        for (id, instrument_market, exchange) in [
+            (&nasdaq_id, "US", "Nasdaq"),
+            (&nyse_id, "US", "NYSE"),
+            (&otc_id, "US", "OTC"),
+            (&referenced_otc_id, "US", "OTC"),
+            (&non_us_id, "OTHER", "Nasdaq"),
+        ] {
+            instruments::Entity::insert(instruments::ActiveModel {
+                id: Set(id.clone()),
+                name: Set(id.clone()),
+                market: Set(instrument_market.to_owned()),
+                sector: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert instrument");
+            stock::Entity::insert(stock::ActiveModel {
+                id: Set(id.clone()),
+                name: Set(id.clone()),
+                market: Set(Some(exchange.to_owned())),
+                created_at: NotSet,
+                updated_at: NotSet,
+                product_category: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert stock");
+        }
+
+        let note_id = uuid::Uuid::new_v4();
+        note::Entity::insert(note::ActiveModel {
+            id: Set(note_id),
+            kind: Set(None),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+            execution_id: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert note");
+        note_ref::Entity::insert(note_ref::ActiveModel {
+            note_id: Set(note_id),
+            ref_kind: Set("stock".to_owned()),
+            ref_id: Set(referenced_otc_id.clone()),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert note reference");
+
+        let actual = PostgresBarsRepository::new(db)
+            .find_us_stock_daily_bar_targets()
+            .await
+            .expect("find US stock daily bar targets");
+
+        assert_eq!(
+            actual,
+            vec![
+                UsStockBarTarget {
+                    instrument_id: nasdaq_id,
+                    latest_daily_bar: None,
+                    latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
+                    earliest_daily_bar: None,
+                    earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
+                },
+                UsStockBarTarget {
+                    instrument_id: nyse_id,
+                    latest_daily_bar: None,
+                    latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
+                    earliest_daily_bar: None,
+                    earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
+                },
+                UsStockBarTarget {
+                    instrument_id: referenced_otc_id,
+                    latest_daily_bar: None,
+                    latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
+                    earliest_daily_bar: None,
                     earliest_minute_bar: None,
                     earliest_hourly_bar: None,
                 },

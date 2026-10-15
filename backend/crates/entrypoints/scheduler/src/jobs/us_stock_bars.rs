@@ -15,85 +15,115 @@ pub struct UsStockMinuteBarsIngest;
 pub struct UsStockHourlyBarsIngest;
 
 impl TaskHandler for UsStockBarsIngest {
-    const IDENTIFIER: &'static str = core_application::ingest_status::US_STOCK_BARS_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.us_stock_bar_source,
-                    "Alpaca US stock bar source",
-                )?;
-                log_ingest_stats(
-                    "1d",
-                    state
-                        .dependencies
-                        .bars
-                        .ingest_us_stock_daily_bars(source.as_ref(), Utc::now())
-                        .await,
-                )
-            },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for UsStockBarsIngest {
+    const IDENTIFIER: &'static str = core_application::ingest_status::US_STOCK_BARS_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.us_stock_bar_source,
+                        "Alpaca US stock bar source",
+                    )?;
+                    log_ingest_stats(
+                        "1d",
+                        state
+                            .dependencies
+                            .bars
+                            .ingest_us_stock_daily_bars(source.as_ref(), Utc::now())
+                            .await,
+                    )
+                },
+            )
+            .await
+        })
     }
 }
 
 impl TaskHandler for UsStockMinuteBarsIngest {
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
+
+    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for UsStockMinuteBarsIngest {
     const IDENTIFIER: &'static str =
         core_application::ingest_status::US_STOCK_MINUTE_BARS_INGEST_JOB;
 
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.us_stock_bar_source,
-                    "Alpaca US stock bar source",
-                )?;
-                log_ingest_stats(
-                    "1m",
-                    state
-                        .dependencies
-                        .bars
-                        .ingest_us_stock_minute_bars(source.as_ref(), Utc::now())
-                        .await,
-                )
-            },
-        )
-        .await
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.us_stock_bar_source,
+                        "Alpaca US stock bar source",
+                    )?;
+                    log_ingest_stats(
+                        "1m",
+                        state
+                            .dependencies
+                            .bars
+                            .ingest_us_stock_minute_bars(source.as_ref(), Utc::now())
+                            .await,
+                    )
+                },
+            )
+            .await
+        })
     }
 }
 
 impl TaskHandler for UsStockHourlyBarsIngest {
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
+
+    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for UsStockHourlyBarsIngest {
     const IDENTIFIER: &'static str =
         core_application::ingest_status::US_STOCK_HOURLY_BARS_INGEST_JOB;
 
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.us_stock_bar_source,
-                    "Alpaca US stock bar source",
-                )?;
-                log_ingest_stats(
-                    "1h",
-                    state
-                        .dependencies
-                        .bars
-                        .ingest_us_stock_hourly_bars(source.as_ref(), Utc::now())
-                        .await,
-                )
-            },
-        )
-        .await
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.us_stock_bar_source,
+                        "Alpaca US stock bar source",
+                    )?;
+                    log_ingest_stats(
+                        "1h",
+                        state
+                            .dependencies
+                            .bars
+                            .ingest_us_stock_hourly_bars(source.as_ref(), Utc::now())
+                            .await,
+                    )
+                },
+            )
+            .await
+        })
     }
 }
 
@@ -109,6 +139,7 @@ fn log_ingest_stats(
         daily_bars_upserted = stats.daily_bars_upserted,
         minute_bars_upserted = stats.minute_bars_upserted,
         hourly_bars_upserted = stats.hourly_bars_upserted,
+        skipped_instruments = stats.skipped_instruments.len(),
         interrupted_reason = ?stats.interrupted_reason,
         "US stock bar ingest cycle finished"
     );

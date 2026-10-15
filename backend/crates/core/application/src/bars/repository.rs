@@ -42,6 +42,10 @@ pub trait BarsRepository: Send + Sync {
     async fn find_us_stock_bar_targets(&self)
     -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
 
+    async fn find_us_stock_daily_bar_targets(
+        &self,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+
     async fn mark_us_stock_hourly_bar_history_completed(
         &self,
         instrument_ids: &[String],

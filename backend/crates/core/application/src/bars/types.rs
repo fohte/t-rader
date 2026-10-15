@@ -51,6 +51,7 @@ pub struct UsStockBarsIngestStats {
     pub daily_bars_upserted: usize,
     pub minute_bars_upserted: usize,
     pub hourly_bars_upserted: usize,
+    pub skipped_instruments: Vec<super::us_stock_source::SkippedUsStockInstrument>,
     pub interrupted_reason: Option<String>,
 }
 

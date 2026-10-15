@@ -12,7 +12,7 @@ use super::super::us_stock_source::{
 use super::super::use_cases::BarsUseCases;
 use super::{
     RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
-    UsStockSplitHistoryRange,
+    UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
 };
 
 impl BarsUseCases {
@@ -35,31 +35,20 @@ impl BarsUseCases {
         let target_ids = instrument_ids.iter().cloned().collect::<HashSet<_>>();
         let mut splits_by_instrument: HashMap<String, Vec<UsStockSplit>> = HashMap::new();
         for instrument_ids in instrument_ids.chunks(SYMBOLS_PER_REQUEST) {
-            let max_requests = budget.remaining();
-            if max_requests == 0 {
-                return Ok(false);
-            }
-            let batch = source
-                .fetch_splits(
-                    &UsStockSplitQuery {
-                        instrument_ids: instrument_ids.to_vec(),
-                        from: history_range.daily_from.date_naive(),
-                        to: history_range.to.date_naive(),
-                    },
-                    max_requests,
+            let Some(batch_splits) = self
+                .fetch_split_batch(
+                    source,
+                    instrument_ids,
+                    history_range.daily_from.date_naive(),
+                    history_range.to.date_naive(),
+                    budget,
+                    stats,
                 )
-                .await?;
-            if !budget.take(batch.requests_attempted) {
-                return Err(UsStockBarSourceError::Failed(
-                    "source exceeded the request budget".to_owned(),
-                )
-                .into());
-            }
-            stats.requests_attempted += batch.requests_attempted;
-            if batch.has_more {
+                .await?
+            else {
                 return Ok(false);
-            }
-            for split in batch.splits {
+            };
+            for split in batch_splits {
                 if target_ids.contains(&split.instrument_id)
                     && split.ex_date <= history_range.to.date_naive()
                 {
@@ -100,10 +89,14 @@ impl BarsUseCases {
                     UsStockSplitHistoryRange {
                         daily_from: UsStockBarTimeframe::Daily
                             .earliest_bar(target)
-                            .unwrap_or(history_range.daily_from),
+                            .unwrap_or_else(|| {
+                                UsStockBarTimeframe::Daily.history_start(history_range.to)
+                            }),
                         minute_from: UsStockBarTimeframe::Minute
                             .earliest_bar(target)
-                            .unwrap_or(history_range.minute_from),
+                            .unwrap_or_else(|| {
+                                UsStockBarTimeframe::Minute.history_start(history_range.to)
+                            }),
                         hourly_from: UsStockBarTimeframe::Hourly
                             .earliest_bar(target)
                             .unwrap_or(history_range.hourly_from),
@@ -128,6 +121,74 @@ impl BarsUseCases {
         }
 
         Ok(true)
+    }
+
+    async fn fetch_split_batch(
+        &self,
+        source: &dyn UsStockBarSource,
+        instrument_ids: &[String],
+        from: NaiveDate,
+        to: NaiveDate,
+        budget: &mut RequestBudget,
+        stats: &mut UsStockBarsIngestStats,
+    ) -> Result<Option<Vec<UsStockSplit>>, BarsUseCaseError> {
+        let max_requests = budget.remaining();
+        if max_requests == 0 {
+            return Ok(None);
+        }
+        let result = source
+            .fetch_splits(
+                &UsStockSplitQuery {
+                    instrument_ids: instrument_ids.to_vec(),
+                    from,
+                    to,
+                },
+                max_requests,
+            )
+            .await;
+        match result {
+            Ok(batch) => {
+                if !budget.take(batch.requests_attempted) {
+                    return Err(UsStockBarSourceError::Failed(
+                        "source exceeded the request budget".to_owned(),
+                    )
+                    .into());
+                }
+                stats.requests_attempted += batch.requests_attempted;
+                for skipped in batch.skipped_instruments {
+                    record_skipped_instrument(stats, skipped.instrument_id, skipped.reason);
+                }
+                if batch.has_more {
+                    return Ok(None);
+                }
+                Ok(Some(batch.splits))
+            }
+            Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
+                if !budget.take(1) {
+                    return Ok(None);
+                }
+                stats.requests_attempted += 1;
+                let Some((first, second)) = split_rejected_batch(instrument_ids, reason, stats)
+                else {
+                    return Ok(Some(Vec::new()));
+                };
+                let Some(mut first_splits) =
+                    Box::pin(self.fetch_split_batch(source, first, from, to, budget, stats))
+                        .await?
+                else {
+                    return Ok(None);
+                };
+                let Some(second_splits) =
+                    Box::pin(self.fetch_split_batch(source, second, from, to, budget, stats))
+                        .await?
+                else {
+                    return Ok(None);
+                };
+                first_splits.extend(second_splits);
+                Ok(Some(first_splits))
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 
     async fn find_pending_splits(
@@ -228,8 +289,8 @@ impl BarsUseCases {
             *page = regular_bars;
         }
 
-        let minute_history_complete = self
-            .ingest_batch(
+        let minute_history_complete = if target.earliest_minute_bar.is_some() {
+            self.ingest_batch(
                 source,
                 instrument_ids,
                 UsStockBarTimeframe::Minute,
@@ -240,33 +301,39 @@ impl BarsUseCases {
                 budget,
                 stats,
             )
-            .await?;
+            .await?
+        } else {
+            true
+        };
         if !minute_history_complete {
             return Ok(false);
         }
 
-        let Some(hourly_pages) = self
-            .fetch_batch_pages(
-                source,
-                instrument_ids,
-                UsStockBarTimeframe::Hourly,
-                UsStockBarRange {
-                    from: range.hourly_from,
-                    to: range.hourly_to,
-                },
-                budget,
-                stats,
-            )
-            .await?
-        else {
-            return Ok(false);
-        };
+        if target.hourly_history_completed_through.is_some() || target.earliest_hourly_bar.is_some()
+        {
+            let Some(hourly_pages) = self
+                .fetch_batch_pages(
+                    source,
+                    instrument_ids,
+                    UsStockBarTimeframe::Hourly,
+                    UsStockBarRange {
+                        from: range.hourly_from,
+                        to: range.hourly_to,
+                    },
+                    budget,
+                    stats,
+                )
+                .await?
+            else {
+                return Ok(false);
+            };
+            self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
+                .await?;
+            self.repository
+                .mark_us_stock_hourly_bar_history_completed(instrument_ids, range.hourly_to)
+                .await?;
+        }
 
-        self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
-            .await?;
-        self.repository
-            .mark_us_stock_hourly_bar_history_completed(instrument_ids, range.hourly_to)
-            .await?;
         self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
             .await?;
         self.persist_bars(split_bars, UsStockBarTimeframe::Daily, stats)
