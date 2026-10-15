@@ -40,6 +40,7 @@ pub mod prediction;
 pub mod prediction_grade;
 pub mod ref_term;
 pub mod rss_feed;
+pub mod saved_screen;
 pub mod sea_orm_active_enums;
 pub mod short_ratio;
 pub mod short_sale_report;

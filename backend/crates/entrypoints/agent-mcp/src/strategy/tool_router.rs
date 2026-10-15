@@ -8,6 +8,7 @@ mod movers;
 mod news;
 mod paper_trade;
 mod predictions;
+mod saved_screens;
 mod stock_groups;
 mod stock_registration;
 mod strategy_earnings_targets;
@@ -492,6 +493,7 @@ impl StrategyServer {
             + Self::strategy_earnings_targets_tool_router()
             + Self::calendar_tool_router()
             + Self::movers_tool_router()
+            + Self::saved_screens_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::paper_trade_tool_router()
@@ -589,6 +591,7 @@ mod tests {
                 ("list_note_kinds", Some(true)),
                 ("list_movers", Some(true)),
                 ("list_notes", Some(true)),
+                ("list_saved_screens", Some(true)),
                 ("list_predictions", Some(true)),
                 ("list_stock_group_members", Some(true)),
                 ("query_data", Some(true)),

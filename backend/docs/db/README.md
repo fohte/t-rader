@@ -58,6 +58,7 @@
 | [public.paper_account](public.paper_account.md)                                             | 9       | 戦略と agent 設定ごとの仮想取引口座を保持する。                                                        | BASE TABLE |
 | [public.paper_order](public.paper_order.md)                                                 | 7       | 仮想口座に対して記録した不変の売買注文を保持する。                                                     | BASE TABLE |
 | [public.paper_order_result](public.paper_order_result.md)                                   | 6       | 仮想注文を約定または却下した結果を保持する。                                                           | BASE TABLE |
+| [public.saved_screen](public.saved_screen.md)                                               | 6       | スクリーナーで保存した名前付き条件と並び順を保持する。                                                 | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -768,6 +769,14 @@ erDiagram
   numeric fill_price
   text reject_reason
   timestamp_with_time_zone decided_at
+}
+"public.saved_screen" {
+  uuid id
+  text name
+  jsonb filters
+  jsonb sort
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 
