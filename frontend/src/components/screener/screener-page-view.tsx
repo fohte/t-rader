@@ -222,7 +222,10 @@ export function ScreenerPageView({
     setMobileFiltersOpen(false)
   }
 
-  function renderFilterFields(layout: 'desktop' | 'mobile') {
+  function renderFilterFields(
+    layout: 'desktop' | 'mobile',
+    includeApplyAction = true,
+  ) {
     const isDesktop = layout === 'desktop'
     return (
       <>
@@ -315,25 +318,27 @@ export function ScreenerPageView({
             ),
           )}
         </div>
-        <div
-          className={
-            isDesktop
-              ? 'mt-4 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between'
-              : 'mt-5 space-y-2'
-          }
-        >
-          {validationError != null && (
-            <p role="alert" className="text-2xs text-destructive">
-              {validationError}
-            </p>
-          )}
-          <button
-            type="submit"
-            className={`border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 ${isDesktop ? 'w-full sm:w-auto' : 'w-full'}`}
+        {includeApplyAction && (
+          <div
+            className={
+              isDesktop
+                ? 'mt-4 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between'
+                : 'mt-5 space-y-2'
+            }
           >
-            この条件で絞り込む
-          </button>
-        </div>
+            {validationError != null && (
+              <p role="alert" className="text-2xs text-destructive">
+                {validationError}
+              </p>
+            )}
+            <button
+              type="submit"
+              className={`border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 ${isDesktop ? 'w-full sm:w-auto' : 'w-full'}`}
+            >
+              この条件で絞り込む
+            </button>
+          </div>
+        )}
       </>
     )
   }
@@ -450,30 +455,45 @@ export function ScreenerPageView({
               className="flex min-h-0 flex-1 flex-col"
             >
               <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-                {renderFilterFields('mobile')}
+                {renderFilterFields('mobile', false)}
+              </div>
+              <div
+                role="group"
+                aria-label="条件の操作"
+                className="mt-4 shrink-0 space-y-2 border-t border-border pt-4"
+              >
+                {validationError != null && (
+                  <p role="alert" className="text-2xs text-destructive">
+                    {validationError}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  className="w-full border border-primary bg-primary px-3 py-3 font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  この条件で絞り込む
+                </button>
+                {onAskAgent != null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filters = readDraft(draft)
+                      const error = getScreenerRangeError(filters)
+                      setValidationError(error)
+                      if (error != null) return
+                      setMobileFiltersOpen(false)
+                      onAskAgent({ ...search, ...filters })
+                    }}
+                    className="flex w-full items-center justify-center gap-1 border border-primary bg-background px-3 py-3 font-semibold text-primary hover:bg-primary/10"
+                  >
+                    <span aria-hidden="true" className="font-bold">
+                      &gt;_
+                    </span>
+                    この条件でエージェントに頼む
+                  </button>
+                )}
               </div>
             </form>
-            {onAskAgent != null && (
-              <div className="mt-4 border-t border-border pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const filters = readDraft(draft)
-                    const error = getScreenerRangeError(filters)
-                    setValidationError(error)
-                    if (error != null) return
-                    setMobileFiltersOpen(false)
-                    onAskAgent({ ...search, ...filters })
-                  }}
-                  className="flex w-full items-center justify-center gap-1 border border-primary bg-primary px-3 py-3 font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  <span aria-hidden="true" className="font-bold">
-                    &gt;_
-                  </span>
-                  この条件でエージェントに頼む
-                </button>
-              </div>
-            )}
           </section>
         </div>
       )}

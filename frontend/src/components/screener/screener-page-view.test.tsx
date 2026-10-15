@@ -26,8 +26,18 @@ function readMobileAskOutput(
   calls: unknown[][],
   dialog: HTMLElement | null,
   validationError: string | null = null,
+  actionLayout?: {
+    order: string[]
+    types: (string | null)[]
+    outsideScrollableArea: boolean[]
+  },
 ) {
-  return { calls, conditionPanelVisible: dialog != null, validationError }
+  const output = {
+    calls,
+    conditionPanelVisible: dialog != null,
+    validationError,
+  }
+  return actionLayout == null ? output : { ...output, actionLayout }
 }
 
 const savedScreen: SavedScreen = {
@@ -85,7 +95,7 @@ describe('ScreenerPageView', () => {
     expect(onAskAgent.mock.calls).toEqual([[search]])
   })
 
-  it('passes mobile filter edits to the agent and closes the condition panel', async () => {
+  it('keeps mobile actions outside the scroll area and passes filter edits to the agent', async () => {
     const user = userEvent.setup()
     const onAskAgent = vi.fn()
     const args = {
@@ -112,20 +122,40 @@ describe('ScreenerPageView', () => {
 
     render(<ScreenerPageView {...args} />)
     const dialog = screen.getByRole('dialog')
+    const actions = within(dialog).getByRole('group', { name: '条件の操作' })
+    const applyButton = within(actions).getByRole('button', {
+      name: 'この条件で絞り込む',
+    })
+    const askAgentButton = within(actions).getByRole('button', {
+      name: 'この条件でエージェントに頼む',
+    })
+    const actionButtons = within(actions).getAllByRole('button')
+    const actionLayout = {
+      order: actionButtons.map((button) => {
+        if (button === applyButton) return 'apply'
+        if (button === askAgentButton) return 'ask-agent'
+        return 'unexpected'
+      }),
+      types: actionButtons.map((button) => button.getAttribute('type')),
+      outsideScrollableArea: actionButtons.map(
+        (button) => button.closest('.overflow-y-auto') === null,
+      ),
+    }
     const perUpperBound = within(dialog).getByRole<HTMLInputElement>(
       'spinbutton',
       { name: 'PER 上限' },
     )
     await user.clear(perUpperBound)
     await user.type(perUpperBound, '10')
-    await user.click(
-      within(dialog).getByRole('button', {
-        name: 'この条件でエージェントに頼む',
-      }),
-    )
+    await user.click(askAgentButton)
 
     expect(
-      readMobileAskOutput(onAskAgent.mock.calls, screen.queryByRole('dialog')),
+      readMobileAskOutput(
+        onAskAgent.mock.calls,
+        screen.queryByRole('dialog'),
+        null,
+        actionLayout,
+      ),
     ).toEqual({
       calls: [
         [
@@ -150,6 +180,11 @@ describe('ScreenerPageView', () => {
       ],
       conditionPanelVisible: false,
       validationError: null,
+      actionLayout: {
+        order: ['apply', 'ask-agent'],
+        types: ['submit', 'button'],
+        outsideScrollableArea: [true, true],
+      },
     })
   })
 
