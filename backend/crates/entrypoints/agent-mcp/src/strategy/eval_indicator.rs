@@ -72,7 +72,8 @@ impl StrategyServer {
 
         let executor = self.kata_executor()?;
 
-        let stdin = serde_json::to_string(&serde_json::json!({ "args": params.args }))
+        let args = params.args;
+        let stdin = serde_json::to_string(&serde_json::json!({ "args": args.clone() }))
             .map_err(|e| internal_error(format!("failed to serialize args: {e}")))?;
         if stdin.len() > EXEC_MAX_STDIN_BYTES {
             return Err(invalid_params(format!(
@@ -106,9 +107,29 @@ impl StrategyServer {
             None
         };
 
+        let evaluation_id = match output.as_ref() {
+            Some(output) => Some(
+                self.dependencies
+                    .custom_indicator_evaluations
+                    .record(
+                        indicator.indicator_id,
+                        indicator.name.clone(),
+                        indicator.code.clone(),
+                        args,
+                        output.clone(),
+                    )
+                    .await
+                    .map_err(|e| {
+                        internal_error(format!("failed to record indicator evaluation: {e}"))
+                    })?,
+            ),
+            None => None,
+        };
+
         Ok(EvalIndicatorResult {
             indicator_id: indicator.indicator_id,
             scope: indicator.scope,
+            evaluation_id,
             output,
             stdout: result.stdout,
             stderr: result.stderr,

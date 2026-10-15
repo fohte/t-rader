@@ -58,6 +58,7 @@
 | [public.paper_account](public.paper_account.md)                                             | 9       | 戦略と agent 設定ごとの仮想取引口座を保持する。                                                        | BASE TABLE |
 | [public.paper_order](public.paper_order.md)                                                 | 7       | 仮想口座に対して記録した不変の売買注文を保持する。                                                     | BASE TABLE |
 | [public.paper_order_result](public.paper_order_result.md)                                   | 6       | 仮想注文を約定または却下した結果を保持する。                                                           | BASE TABLE |
+| [public.custom_indicator_evaluation](public.custom_indicator_evaluation.md)                 | 7       | 自作指標の成功した計算結果を、実行時点の定義とともに保持する。                                         | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -768,6 +769,15 @@ erDiagram
   numeric fill_price
   text reject_reason
   timestamp_with_time_zone decided_at
+}
+"public.custom_indicator_evaluation" {
+  uuid id
+  uuid indicator_id
+  text indicator_name
+  text code
+  jsonb args
+  jsonb output
+  timestamp_with_time_zone evaluated_at
 }
 ```
 

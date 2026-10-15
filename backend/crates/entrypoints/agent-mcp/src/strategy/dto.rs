@@ -326,6 +326,8 @@ pub struct EvalIndicatorResult {
     pub indicator_id: Uuid,
     /// 解決された scope (`global` / `strategy`)。
     pub scope: String,
+    /// 成功した評価の記録 ID。exec Pod が失敗した場合は `null`。
+    pub evaluation_id: Option<Uuid>,
     /// stdout 最終行を JSON parse し output_schema で validation 済みの値。
     /// exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を見ること)。
     /// stdout 最終行が JSON として parse できない / output_schema に合致しない場合は
