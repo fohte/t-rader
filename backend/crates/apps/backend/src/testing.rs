@@ -49,8 +49,7 @@ struct TestRouterState {
 }
 
 fn base_state(db: DatabaseHandle, agent_task_client: SharedAgentTaskClient) -> TestRouterState {
-    let use_cases = crate::services::use_cases::build_use_cases(db)
-        .with_agent_task_client(agent_task_client.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db, agent_task_client.clone());
     let app_state = build_http_state(&use_cases, agent_task_client.clone(), None, None);
     let strategy_task_reconcile_use_cases =
         use_cases.strategy_task_reconcile(test_strategy_task_reconcile_lock());
@@ -65,12 +64,24 @@ fn base_state(db: DatabaseHandle, agent_task_client: SharedAgentTaskClient) -> T
     }
 }
 
-struct TestStrategyTaskReconcileLock;
+struct TestStrategyTaskReconcileLock {
+    available: bool,
+}
 
 struct TestStrategyTaskReconcileLockGuard;
 
 pub fn test_strategy_task_reconcile_lock() -> StrategyTaskReconcileLockUseCases {
-    StrategyTaskReconcileLockUseCases::new(Arc::new(TestStrategyTaskReconcileLock))
+    test_strategy_task_reconcile_lock_with_availability(true)
+}
+
+pub fn test_strategy_task_reconcile_lock_unavailable() -> StrategyTaskReconcileLockUseCases {
+    test_strategy_task_reconcile_lock_with_availability(false)
+}
+
+fn test_strategy_task_reconcile_lock_with_availability(
+    available: bool,
+) -> StrategyTaskReconcileLockUseCases {
+    StrategyTaskReconcileLockUseCases::new(Arc::new(TestStrategyTaskReconcileLock { available }))
 }
 
 #[async_trait]
@@ -78,7 +89,9 @@ impl StrategyTaskReconcileLock for TestStrategyTaskReconcileLock {
     async fn try_acquire(
         &self,
     ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {
-        Ok(Some(Box::new(TestStrategyTaskReconcileLockGuard)))
+        Ok(self.available.then(|| {
+            Box::new(TestStrategyTaskReconcileLockGuard) as Box<dyn StrategyTaskReconcileLockGuard>
+        }))
     }
 }
 
@@ -117,7 +130,7 @@ pub mod agent_config {
         db: &DatabaseHandle,
         purpose: String,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
-        crate::services::use_cases::build_use_cases(db.clone())
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
             .agent_configs()
             .create(purpose)
             .await

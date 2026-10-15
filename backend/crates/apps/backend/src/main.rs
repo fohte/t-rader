@@ -258,8 +258,8 @@ async fn main() -> Result<(), StartupError> {
         Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
             StartupError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
-    let use_cases = backend::services::use_cases::build_use_cases(db.clone())
-        .with_agent_task_client(agent_task_client.clone());
+    let use_cases =
+        backend::services::use_cases::build_use_cases(db.clone(), agent_task_client.clone());
     let strategy_task_reconcile =
         use_cases.strategy_task_reconcile(StrategyTaskReconcileLockUseCases::new(Arc::new(
             PostgresStrategyTaskReconcileLock::new(db.get_postgres_connection_pool().clone()),

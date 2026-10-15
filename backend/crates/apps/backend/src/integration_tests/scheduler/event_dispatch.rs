@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use core_application::{
-    agent_task_client::{FakeAgentTaskClient, SubmitAgentTask},
+    agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask},
     event::{EventRepository, NewEvent},
     strategy_task::DEFAULT_PURPOSE,
     trigger::{NewTrigger, TriggerKind, TriggerRepository},
@@ -18,7 +18,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::{services::use_cases::build_use_cases, testing};
+use crate::{services::use_cases::build_use_cases_without_agent_task_client, testing};
 use core_application::event_dispatch::MAX_EVENT_CHAIN_DEPTH;
 
 async fn create_event(
@@ -142,6 +142,29 @@ async fn event_dispatch_state(db: &DatabaseHandle, event_id: Uuid) -> (Uuid, boo
     (event.event_id, event.dispatched_at.is_some())
 }
 
+async fn failed_event_shapes(db: &DatabaseHandle) -> Vec<Value> {
+    event_entity::Entity::find()
+        .filter(event_entity::Column::EventType.eq("strategy_task.failed"))
+        .all(db)
+        .await
+        .expect("list failure events")
+        .into_iter()
+        .map(|event| {
+            let mut payload = event.payload;
+            if let Some(payload) = payload.as_object_mut() {
+                payload.insert("task_id".to_string(), json!("dynamic-task-id"));
+                payload.insert("strategy_id".to_string(), json!("dynamic-strategy-id"));
+            }
+            json!({
+                "event_type": event.event_type,
+                "payload": payload,
+                "chain_depth": event.chain_depth,
+                "dispatched": event.dispatched_at.is_some(),
+            })
+        })
+        .collect()
+}
+
 async fn submitted_tasks(fake: &FakeAgentTaskClient) -> Vec<(Uuid, String, Option<String>)> {
     fake.submitted
         .lock()
@@ -182,9 +205,8 @@ async fn inline_dispatch_runs_matching_triggers_and_expands_payload(db: Database
     .await;
 
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases(db.clone())
-        .with_agent_task_client(fake.clone())
-        .event_dispatch_job();
+    let dispatch =
+        crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
     let outcome = dispatch.enqueue_dispatch().await;
 
     assert_eq!(
@@ -223,7 +245,7 @@ async fn repeated_dispatch_submits_each_event_trigger_once(db: DatabaseHandle) {
     )
     .await;
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases(db.clone()).event_dispatch();
+    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
 
     let first = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
     let second = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
@@ -247,6 +269,81 @@ async fn repeated_dispatch_submits_each_event_trigger_once(db: DatabaseHandle) {
 }
 
 #[backend_test_macros::database_test]
+async fn inline_dispatch_preserves_failure_events_for_event_triggered_tasks(db: DatabaseHandle) {
+    let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
+    testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        .await
+        .expect("insert test agent configuration");
+    let source_event_id = create_event(&db, "sample_process.finished", json!({}), 0).await;
+    let trigger_id = create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.finished",
+        None,
+        "synthetic prompt",
+    )
+    .await;
+    let fake = Arc::new(FakeAgentTaskClient::new());
+    fake.set_submit_error(AgentTaskError::NotConfigured).await;
+    let dispatch =
+        crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
+
+    let outcome = dispatch.enqueue_dispatch().await;
+    let task = strategy_task::Entity::find()
+        .one(&db)
+        .await
+        .expect("read event-triggered task")
+        .expect("event-triggered task exists");
+
+    assert_eq!(
+        (
+            outcome.map_err(|error| error.to_string()),
+            event_dispatch_state(&db, source_event_id).await,
+            (
+                task.strategy_id,
+                task.source,
+                task.prompt,
+                task.phase,
+                task.error_summary,
+            ),
+            failed_event_shapes(&db).await,
+            firing_trigger_ids(&db).await,
+            submitted_tasks(&fake).await,
+        ),
+        (
+            Err(
+                "failed to dispatch pending events: failed to process 1 event trigger(s)"
+                    .to_string()
+            ),
+            (source_event_id, true),
+            (
+                strategy_id,
+                "event".to_string(),
+                "synthetic prompt".to_string(),
+                StrategyTaskPhase::Failed,
+                Some(
+                    "agent task submission failed: agent task client is not configured".to_string()
+                ),
+            ),
+            vec![json!({
+                "event_type": "strategy_task.failed",
+                "payload": {
+                    "task_id": "dynamic-task-id",
+                    "strategy_id": "dynamic-strategy-id",
+                    "purpose": DEFAULT_PURPOSE,
+                    "result_text": null,
+                    "error_summary": "agent task submission failed: agent task client is not configured",
+                },
+                "chain_depth": 1,
+                "dispatched": true,
+            })],
+            vec![trigger_id],
+            Vec::<(Uuid, String, Option<String>)>::new(),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn invalid_trigger_configuration_does_not_block_later_events(db: DatabaseHandle) {
     let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
     testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
@@ -264,7 +361,7 @@ async fn invalid_trigger_configuration_does_not_block_later_events(db: DatabaseH
     )
     .await;
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases(db.clone()).event_dispatch();
+    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
 
     let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
 
@@ -330,7 +427,7 @@ async fn dispatches_at_the_limit_and_skips_events_above_it(db: DatabaseHandle) {
     )
     .await;
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases(db.clone()).event_dispatch();
+    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
 
     let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
 
@@ -372,7 +469,7 @@ async fn deletes_events_older_than_the_retention_period(db: DatabaseHandle) {
         .await
         .expect("set old event time");
     let fake = Arc::new(FakeAgentTaskClient::new());
-    let dispatch = build_use_cases(db.clone()).event_dispatch();
+    let dispatch = build_use_cases_without_agent_task_client(db.clone()).event_dispatch();
 
     let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
     let event_exists = event_entity::Entity::find_by_id(event_id)

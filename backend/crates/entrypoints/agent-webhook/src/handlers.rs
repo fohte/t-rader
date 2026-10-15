@@ -49,8 +49,17 @@ async fn receive_agent_task_notification(
     }
     let reconcile_use_cases = state.strategy_task_reconcile_use_cases.clone();
     tokio::spawn(async move {
-        if let Err(error) = reconcile_use_cases.reconcile().await {
-            tracing::warn!(%error, "agent task notification reconciliation failed");
+        match reconcile_use_cases.reconcile().await {
+            Ok(updated) if updated > 0 => {
+                tracing::info!(
+                    updated,
+                    "strategy task phases reconciled after agent notification"
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(%error, "agent task notification reconciliation failed");
+            }
         }
     });
     Ok(StatusCode::NO_CONTENT)

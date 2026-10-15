@@ -8,8 +8,7 @@ pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
 where
     C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
 {
-    let use_cases = crate::services::use_cases::build_use_cases(db.clone())
-        .with_agent_task_client(agent_client.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
     let reconcile =
         use_cases.strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
     match reconcile.reconcile().await {
@@ -294,6 +293,11 @@ mod tests {
         release_submit: tokio::sync::Notify,
     }
 
+    struct FailingStatusAgentTaskClient {
+        fake: FakeAgentTaskClient,
+        failing_task_id: String,
+    }
+
     impl BlockingSubmitAgentTaskClient {
         fn new() -> Self {
             Self {
@@ -313,6 +317,20 @@ mod tests {
         }
 
         async fn get(&self, task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+            self.fake.get(task_id).await
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl AgentTaskClient for FailingStatusAgentTaskClient {
+        async fn submit(&self, request: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
+            self.fake.submit(request).await
+        }
+
+        async fn get(&self, task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+            if task_id == self.failing_task_id {
+                std::panic::panic_any("synthetic status failure");
+            }
             self.fake.get(task_id).await
         }
     }
@@ -483,6 +501,96 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn skips_reconciliation_when_another_run_holds_the_lock(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic task"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "synthetic task",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("finished".to_string()),
+                error_message: None,
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake;
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client);
+        let reconcile = use_cases.strategy_task_reconcile(
+            crate::testing::test_strategy_task_reconcile_lock_unavailable(),
+        );
+
+        let result = reconcile.reconcile().await;
+        let task = fetch_task(&db, task_id).await;
+
+        assert_eq!((result, task.phase), (Ok(0), StrategyTaskPhase::Running));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn continues_reconciling_after_one_task_fails(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db).await;
+        let failed_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic failing task"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let completed_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic completed task"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = FakeAgentTaskClient::new();
+        fake.set_status(
+            "synthetic completed task",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("finished".to_string()),
+                error_message: None,
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = Arc::new(FailingStatusAgentTaskClient {
+            fake,
+            failing_task_id: "synthetic failing task".to_string(),
+        });
+        let reconcile = crate::services::use_cases::build_use_cases(db.clone(), agent_client)
+            .strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
+
+        let result = reconcile.reconcile().await;
+        let failed = fetch_task(&db, failed_id).await;
+        let completed = fetch_task(&db, completed_id).await;
+
+        assert_eq!(
+            (result, failed.phase, completed.phase, completed.result_text,),
+            (
+                Err("strategy task reconciliation failed for 1 task(s)".to_string()),
+                StrategyTaskPhase::Running,
+                StrategyTaskPhase::Completed,
+                Some("finished".to_string()),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn submit_failure_emits_event_and_dispatches_inline(
         db: gateway_postgres::DatabaseHandle,
     ) {
@@ -491,16 +599,17 @@ mod tests {
         let fake = FakeAgentTaskClient::new();
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
 
-        let result = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .submit_task(
-                &fake,
-                strategy_id,
-                "sample prompt",
-                TaskSource::Review,
-                Some("demo-purpose".to_string()),
-            )
-            .await;
+        let result =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .submit_task(
+                    &fake,
+                    strategy_id,
+                    "sample prompt",
+                    TaskSource::Review,
+                    Some("demo-purpose".to_string()),
+                )
+                .await;
         let row = strategy_task::Entity::find()
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
             .one(&db)
@@ -554,10 +663,11 @@ mod tests {
         let fake = FakeAgentTaskClient::new();
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
 
-        let result = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .resume(&fake, task_id)
-            .await;
+        let result =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .resume(&fake, task_id)
+                .await;
         let row = fetch_task(&db, task_id).await;
         let events = fetch_events(&db, &["strategy_task.failed"]).await;
 
@@ -1289,11 +1399,12 @@ mod tests {
             },
         )
         .await;
-        let updated = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
-            .await
-            .unwrap();
+        let updated =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
+                .await
+                .unwrap();
 
         assert_eq!(
             (
@@ -1395,11 +1506,12 @@ mod tests {
             },
         )
         .await;
-        let updated = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
-            .await
-            .unwrap();
+        let updated =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
+                .await
+                .unwrap();
         let row = fetch_task(&db, task_id).await;
 
         assert_eq!(
@@ -1812,7 +1924,8 @@ mod tests {
             .unwrap()
             .unwrap();
         let strategy_tasks =
-            crate::services::use_cases::build_use_cases(db.clone()).strategy_tasks();
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks();
         let client = Arc::new(BarrierAgentTaskClient {
             barrier: tokio::sync::Barrier::new(2),
             status: AgentTaskStatus {

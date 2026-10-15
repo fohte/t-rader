@@ -35,9 +35,7 @@ pub fn build_http_state(
     kata_executor: Option<SharedKataExecutor>,
     llm_gateway_client: Option<SharedLlmClient>,
 ) -> FrontendApiState {
-    let use_cases = use_cases
-        .clone()
-        .with_agent_task_client(agent_task_client.clone());
+    let use_cases = use_cases.clone();
     let agent_tool_summaries = mcp::StrategyServer::list_tool_summaries();
     let trigger_use_cases = use_cases.triggers();
     FrontendApiState {

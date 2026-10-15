@@ -10,7 +10,7 @@ impl UseCases {
         self.triggers_with_strategy_tasks(self.strategy_tasks())
     }
 
-    fn triggers_with_strategy_tasks(
+    pub(super) fn triggers_with_strategy_tasks(
         &self,
         strategy_tasks: core_application::strategy_task::StrategyTaskUseCases,
     ) -> TriggerUseCases {

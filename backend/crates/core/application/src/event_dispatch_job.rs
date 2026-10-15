@@ -35,6 +35,7 @@ impl EventDispatchJobUseCases {
         Self { executor }
     }
 
+    /// 現在の executor で未 dispatch のイベントを同期的に処理する。
     pub async fn enqueue_dispatch(&self) -> Result<(), EventDispatchJobError> {
         self.executor.dispatch_pending_events().await
     }

@@ -19,7 +19,10 @@ pub struct UseCases {
     pub(super) agent_task_client: SharedAgentTaskClient,
 }
 
-pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
+pub fn build_use_cases(
+    db: impl Into<DatabaseHandle>,
+    agent_task_client: SharedAgentTaskClient,
+) -> UseCases {
     let db = db.into();
     let unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
@@ -30,13 +33,10 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         unit_of_work,
         strategy_existence,
         change_history,
-        agent_task_client: Arc::new(DisabledAgentTaskClient),
+        agent_task_client,
     }
 }
 
-impl UseCases {
-    pub fn with_agent_task_client(mut self, agent_task_client: SharedAgentTaskClient) -> Self {
-        self.agent_task_client = agent_task_client;
-        self
-    }
+pub fn build_use_cases_without_agent_task_client(db: impl Into<DatabaseHandle>) -> UseCases {
+    build_use_cases(db, Arc::new(DisabledAgentTaskClient))
 }
