@@ -158,14 +158,6 @@ function StockChartPage() {
         setHorizontalLineSaveError(null)
         setTrendLineSaveError(null)
       },
-      onError: (_, variables) => {
-        if (variables.body.price_start != null) {
-          setTrendLineSaveError('トレンドラインの保存に失敗しました')
-          return
-        }
-
-        setHorizontalLineSaveError('水平線の保存に失敗しました')
-      },
     },
   )
   const deleteAnnotationMutation = $api.useMutation(
@@ -242,7 +234,13 @@ function StockChartPage() {
     if (createAnnotationMutation.isPending) return
 
     saveHorizontalLineAnnotation(
-      createAnnotationMutation.mutate,
+      (variables) => {
+        createAnnotationMutation.mutate(variables, {
+          onError: () => {
+            setHorizontalLineSaveError('水平線の保存に失敗しました')
+          },
+        })
+      },
       stockId,
       draft,
     )
@@ -251,7 +249,17 @@ function StockChartPage() {
   function saveTrendLine(draft: TrendLineAnnotationDraft) {
     if (createAnnotationMutation.isPending) return
 
-    saveTrendLineAnnotation(createAnnotationMutation.mutate, stockId, draft)
+    saveTrendLineAnnotation(
+      (variables) => {
+        createAnnotationMutation.mutate(variables, {
+          onError: () => {
+            setTrendLineSaveError('トレンドラインの保存に失敗しました')
+          },
+        })
+      },
+      stockId,
+      draft,
+    )
   }
 
   function deleteAnnotation(id: string) {

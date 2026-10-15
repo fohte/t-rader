@@ -19,11 +19,15 @@ import {
   isAnnotationBandAnnotation,
   isHumanHorizontalLine,
   isHumanTrendLine,
-  orderTrendLinePoints,
   type TrendLinePoint,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
-import { getChartBarDate, toCandlestickData } from '#lib/chart-utils'
+import {
+  getChartBarDate,
+  toCandlestickData,
+  toChartTimestamp,
+} from '#lib/chart-utils'
+import { getVisibleTrendLine } from '#lib/trend-line-chart-utils'
 
 type Bar = components['schemas']['Bar']
 type BucketedAnnotation =
@@ -87,10 +91,37 @@ export function useAnnotationOverlays({
     [],
   )
   const [bandPeriods, setBandPeriods] = useState<AnnotationBandPeriod[]>([])
-  const bandAnnotations = useMemo(
-    () => (annotations ?? []).filter(isAnnotationBandAnnotation),
-    [annotations],
-  )
+  const bandAnnotations = useMemo(() => {
+    const allAnnotations = annotations ?? []
+    const fallbackTrendLines = allAnnotations.flatMap<ChartAnnotation>(
+      (annotation) => {
+        if (!isHumanTrendLine(annotation)) return []
+
+        const visibleTrendLine = getVisibleTrendLine(
+          {
+            timestamp: annotation.timestamp_start,
+            price: annotation.price_start,
+          },
+          { timestamp: annotation.timestamp, price: annotation.price },
+          bars,
+        )
+        if (visibleTrendLine == null || !visibleTrendLine.isCollapsed) return []
+
+        const bar = bars.find(
+          (item) =>
+            toChartTimestamp(item.timestamp) === visibleTrendLine.data[0].time,
+        )
+        return bar == null
+          ? []
+          : [{ ...annotation, timestamp_start: null, timestamp: bar.timestamp }]
+      },
+    )
+
+    return [
+      ...allAnnotations.filter(isAnnotationBandAnnotation),
+      ...fallbackTrendLines,
+    ]
+  }, [annotations, bars])
   const hasAnnotations = bandAnnotations.length > 0
 
   useEffect(() => {
@@ -133,7 +164,7 @@ export function useAnnotationOverlays({
     for (const annotation of annotations ?? []) {
       if (!isHumanTrendLine(annotation)) continue
 
-      const data = toTrendLineSeriesData(
+      const visibleTrendLine = getVisibleTrendLine(
         {
           timestamp: annotation.timestamp_start,
           price: annotation.price_start,
@@ -141,7 +172,7 @@ export function useAnnotationOverlays({
         { timestamp: annotation.timestamp, price: annotation.price },
         bars,
       )
-      if (data.length === 0) continue
+      if (visibleTrendLine == null || visibleTrendLine.isCollapsed) continue
 
       const series = chart.addSeries(LineSeries, {
         color: '#ffffff',
@@ -154,7 +185,7 @@ export function useAnnotationOverlays({
         pointMarkersVisible: false,
         autoscaleInfoProvider: () => null,
       })
-      series.setData(data)
+      series.setData(visibleTrendLine.data)
       lineSeries.push(series)
     }
 
@@ -180,8 +211,15 @@ export function useAnnotationOverlays({
       return
     }
 
+    const visibleTrendLine = getVisibleTrendLine(
+      pendingTrendLineStart,
+      previewPoint,
+      bars,
+    )
     series.setData(
-      toTrendLineSeriesData(pendingTrendLineStart, previewPoint, bars),
+      visibleTrendLine == null || visibleTrendLine.isCollapsed
+        ? []
+        : visibleTrendLine.data,
     )
     return () => {
       if (chartRef.current === chart) series.setData([])
@@ -397,20 +435,4 @@ export function useAnnotationOverlays({
   ])
 
   return { bandLayout, bandMarkers, bandPeriods, dateMarkerLayout }
-}
-
-function toTrendLineSeriesData(
-  start: TrendLinePoint,
-  end: TrendLinePoint,
-  bars: Bar[],
-) {
-  const [orderedStart, orderedEnd] = orderTrendLinePoints(start, end)
-  const startTime = bucketAnnotationTimestamp(orderedStart.timestamp, bars)
-  const endTime = bucketAnnotationTimestamp(orderedEnd.timestamp, bars)
-  if (startTime == null || endTime == null || startTime >= endTime) return []
-
-  return [
-    { time: startTime, value: orderedStart.price },
-    { time: endTime, value: orderedEnd.price },
-  ]
 }

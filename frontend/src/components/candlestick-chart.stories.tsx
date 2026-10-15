@@ -244,6 +244,16 @@ const trendLineAnnotation: ChartAnnotation = {
   price: trendLineEndBar?.low ?? 0,
   text: '架空の上値抵抗を記録するサンプル注釈です。',
 }
+const weeklyTrendLineBars = trendLineBars.slice(0, 5).map((bar, index) => ({
+  ...bar,
+  timeframe: '1w' as const,
+  timestamp: new Date(Date.UTC(2030, 3, 1 + index * 7)).toISOString(),
+}))
+const weeklyTrendLineAnnotation: ChartAnnotation = {
+  ...trendLineAnnotation,
+  timestamp_start: '2030-04-09T06:00:00Z',
+  timestamp: '2030-04-10T06:00:00Z',
+}
 
 export const Default: Story = {
   name: 'shows a candlestick chart with a full price history.',
@@ -437,6 +447,15 @@ export const PreviewingTrendLine: Story = {
       timestamp: trendLineEndBar?.timestamp ?? '',
       price: trendLineEndBar?.low ?? 0,
     },
+    className: 'h-full w-full',
+  },
+}
+
+export const WithCollapsedWeeklyTrendLine: Story = {
+  name: 'shows a band marker when both endpoints share one weekly bar.',
+  args: {
+    bars: weeklyTrendLineBars,
+    annotations: [weeklyTrendLineAnnotation],
     className: 'h-full w-full',
   },
 }

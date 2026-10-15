@@ -7,7 +7,6 @@ import type {
 import { useEffect, useState } from 'react'
 
 import {
-  bucketAnnotationTimestamp,
   type ChartAnnotation,
   findNearestHumanHorizontalLineId,
   findNearestHumanTrendLineId,
@@ -16,6 +15,7 @@ import {
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import { toChartTimestamp } from '#lib/chart-utils'
+import { getVisibleTrendLine } from '#lib/trend-line-chart-utils'
 
 type Bar = components['schemas']['Bar']
 
@@ -64,24 +64,19 @@ export function useChartInteractions({
       if (point.x > activeChart.timeScale().width()) return
 
       if (horizontalLineDrawingEnabled) {
-        if (onPlaceHorizontalLine == null || typeof param.time !== 'number') {
-          return
-        }
+        if (onPlaceHorizontalLine == null) return
 
-        const bar = bars.find(
-          (item) => toChartTimestamp(item.timestamp) === param.time,
-        )
-        const price = activeSeries.coordinateToPrice(point.y)
-        if (bar == null || price == null || !Number.isFinite(price)) return
+        const chartPoint = getChartPricePoint(param, activeSeries, bars)
+        if (chartPoint == null) return
 
-        onPlaceHorizontalLine({ timestamp: bar.timestamp, price })
+        onPlaceHorizontalLine(chartPoint)
         return
       }
 
       if (trendLineDrawingEnabled) {
         if (onPlaceTrendLinePoint == null) return
 
-        const point = getTrendLinePoint(param, activeSeries, bars)
+        const point = getChartPricePoint(param, activeSeries, bars)
         if (point == null) return
 
         onPlaceTrendLinePoint(point)
@@ -104,13 +99,39 @@ export function useChartInteractions({
 
       const nearestTrendLineId = findNearestHumanTrendLineId(
         annotations ?? [],
-        (timestamp, price) => {
-          const time = bucketAnnotationTimestamp(timestamp, bars)
-          if (time == null) return null
+        (annotation) => {
+          const visibleTrendLine = getVisibleTrendLine(
+            {
+              timestamp: annotation.timestamp_start,
+              price: annotation.price_start,
+            },
+            { timestamp: annotation.timestamp, price: annotation.price },
+            bars,
+          )
+          if (visibleTrendLine == null || visibleTrendLine.isCollapsed) {
+            return null
+          }
 
-          const x = activeChart.timeScale().timeToCoordinate(time)
-          const y = activeSeries.priceToCoordinate(price)
-          return x == null || y == null ? null : { x, y }
+          const [startPoint, endPoint] = visibleTrendLine.data
+          const startX = activeChart
+            .timeScale()
+            .timeToCoordinate(startPoint.time)
+          const startY = activeSeries.priceToCoordinate(startPoint.value)
+          const endX = activeChart.timeScale().timeToCoordinate(endPoint.time)
+          const endY = activeSeries.priceToCoordinate(endPoint.value)
+          if (
+            startX == null ||
+            startY == null ||
+            endX == null ||
+            endY == null
+          ) {
+            return null
+          }
+
+          return {
+            start: { x: startX, y: startY },
+            end: { x: endX, y: endY },
+          }
         },
         point.x,
         point.y,
@@ -130,7 +151,6 @@ export function useChartInteractions({
     bars,
     horizontalLineDrawingEnabled,
     trendLineDrawingEnabled,
-    pendingTrendLineStart,
     onPlaceHorizontalLine,
     onPlaceTrendLinePoint,
     onSelectAnnotation,
@@ -150,7 +170,7 @@ export function useChartInteractions({
       setTrendLineCursorPoint(
         activeSeries == null
           ? null
-          : getTrendLinePoint(param, activeSeries, bars),
+          : getChartPricePoint(param, activeSeries, bars),
       )
     }
 
@@ -169,7 +189,7 @@ export function useChartInteractions({
   return { trendLineCursorPoint }
 }
 
-function getTrendLinePoint(
+function getChartPricePoint(
   param: MouseEventParams,
   series: ISeriesApi<SeriesType>,
   bars: Bar[],

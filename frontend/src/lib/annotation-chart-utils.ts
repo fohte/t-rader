@@ -126,10 +126,16 @@ export function addTrendLinePoint(
 
 export function findNearestHumanTrendLineId(
   annotations: ChartAnnotation[],
-  toCoordinate: (
-    timestamp: string,
-    price: number,
-  ) => { x: number; y: number } | null,
+  toCoordinates: (
+    annotation: ChartAnnotation & {
+      timestamp_start: string
+      price_start: number
+      price: number
+    },
+  ) => {
+    start: { x: number; y: number }
+    end: { x: number; y: number }
+  } | null,
   clickX: number,
   clickY: number,
   tolerance = 8,
@@ -139,12 +145,9 @@ export function findNearestHumanTrendLineId(
   for (const annotation of annotations) {
     if (!isHumanTrendLine(annotation)) continue
 
-    const start = toCoordinate(
-      annotation.timestamp_start,
-      annotation.price_start,
-    )
-    const end = toCoordinate(annotation.timestamp, annotation.price)
-    if (start == null || end == null) continue
+    const coordinates = toCoordinates(annotation)
+    if (coordinates == null) continue
+    const { start, end } = coordinates
     if (
       !Number.isFinite(start.x) ||
       !Number.isFinite(start.y) ||

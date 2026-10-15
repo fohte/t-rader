@@ -701,6 +701,104 @@ describe('CandlestickChart', () => {
     })
   })
 
+  it('clips and selects the visible part of a saved human trendline', () => {
+    const trendLine: ChartAnnotation = {
+      id: 'annotation-clipped-trendline',
+      created_by_kind: 'human',
+      target_kind: 'sample-kind',
+      timestamp_start: '2025-04-09T00:00:00.000Z',
+      price_start: 90,
+      timestamp: '2025-04-12T00:00:00.000Z',
+      price: 150,
+      status: 'approved',
+      text: '架空の傾きを記録する',
+    }
+    const onSelectAnnotation = vi.fn()
+    const startTime = toChartTimestamp(firstBar.timestamp)
+    const endTime = toChartTimestamp(secondBar.timestamp)
+    chartMocks.timeScale.timeToCoordinate.mockImplementation((time) =>
+      time === startTime ? 20 : 80,
+    )
+    chartMocks.candlestickSeries.priceToCoordinate.mockImplementation(
+      (price) => (price === 110 ? 60 : 20),
+    )
+
+    render(
+      <CandlestickChart
+        bars={[firstBar, secondBar]}
+        annotations={[trendLine]}
+        onSelectAnnotation={onSelectAnnotation}
+      />,
+    )
+    const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
+
+    act(() => {
+      clickHandler?.({
+        point: createChartPoint(50, 40),
+        time: endTime,
+        seriesData: new Map(),
+      })
+    })
+
+    function readClippedTrendLineState() {
+      return {
+        lineData: chartMocks.indicatorSeries.setData.mock.calls.map(
+          ([data]) => data,
+        ),
+        selectedAnnotationIds: onSelectAnnotation.mock.calls,
+      }
+    }
+
+    expect(readClippedTrendLineState()).toEqual({
+      lineData: [
+        [
+          { time: startTime, value: 110 },
+          { time: endTime, value: 130 },
+        ],
+      ],
+      selectedAnnotationIds: [['annotation-clipped-trendline']],
+    })
+  })
+
+  it('shows a band marker when a weekly bar collapses a human trendline', () => {
+    const weeklyBar = {
+      ...firstBar,
+      timeframe: '1w' as const,
+      timestamp: '2030-04-01T00:00:00Z',
+    }
+    const trendLine: ChartAnnotation = {
+      id: 'annotation-weekly-trendline',
+      created_by_kind: 'human',
+      target_kind: 'sample-kind',
+      timestamp_start: '2030-04-02T06:00:00Z',
+      price_start: 3390,
+      timestamp: '2030-04-03T06:00:00Z',
+      price: 3120,
+      status: 'approved',
+      text: '架空の傾きを記録する',
+    }
+
+    render(<CandlestickChart bars={[weeklyBar]} annotations={[trendLine]} />)
+
+    function readCollapsedTrendLineState() {
+      return {
+        annotationBand: screen
+          .queryByRole('group', { name: 'チャートのアノテーション' })
+          ?.getAttribute('aria-label'),
+        markerButton: screen
+          .queryByRole('button', { name: 'アノテーションを選択' })
+          ?.getAttribute('aria-label'),
+        lineCalls: chartMocks.indicatorSeries.setData.mock.calls,
+      }
+    }
+
+    expect(readCollapsedTrendLineState()).toEqual({
+      annotationBand: 'チャートのアノテーション',
+      markerButton: 'アノテーションを選択',
+      lineCalls: [],
+    })
+  })
+
   it('lets chart removal dispose of horizontal price lines on unmount', () => {
     const { unmount } = render(
       <CandlestickChart

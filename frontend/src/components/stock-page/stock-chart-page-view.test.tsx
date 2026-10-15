@@ -160,4 +160,25 @@ describe('StockChartPageView', () => {
 
     expect(onCancelHorizontalLine.mock.calls).toEqual([])
   })
+
+  it('トレンドラインの保存中は Esc で取り消さない', async () => {
+    const user = userEvent.setup()
+    const { onCancelTrendLine } = renderChartPage({
+      pendingTrendLine: {
+        start: {
+          timestamp: '2030-04-01T06:00:00Z',
+          price: 3390,
+        },
+        end: {
+          timestamp: '2030-04-02T06:00:00Z',
+          price: 3120,
+        },
+      },
+      isSavingTrendLine: true,
+    })
+
+    await user.keyboard('{Escape}')
+
+    expect(onCancelTrendLine.mock.calls).toEqual([])
+  })
 })
