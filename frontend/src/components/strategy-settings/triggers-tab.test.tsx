@@ -274,9 +274,11 @@ describe('TriggersTab', () => {
 
     const list = await screen.findByTestId('trigger-list')
     expect(
-      within(list).getByText('demo_record.changed', { exact: true })
-        .textContent,
-    ).toBe('demo_record.changed')
+      within(list)
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-label') == null)
+        .map((button) => button.textContent),
+    ).toEqual(['eventdemo_record.changed'])
   })
 
   it('初期表示で先頭の trigger を選択しフォームに反映する', async () => {
