@@ -1,6 +1,6 @@
 use core_domain::bar::Bar;
 
-use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
+use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::BarsUseCaseError;
 use super::repository::SharedBarsRepository;
@@ -22,17 +22,6 @@ impl BarsUseCases {
 
     pub async fn find_bars(&self, query: BarsQuery) -> Result<Vec<Bar>, BarsUseCaseError> {
         self.repository.find_bars(query).await.map_err(Into::into)
-    }
-
-    pub async fn find_bars_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        query: BarsQuery,
-    ) -> Result<Vec<Bar>, BarsUseCaseError> {
-        self.repository
-            .find_bars_in_transaction(transaction, query)
-            .await
-            .map_err(Into::into)
     }
 
     pub async fn find_bars_by_instruments(

@@ -357,7 +357,7 @@ type Note struct {
 	IsCurrent       bool                      `json:"is_current"`
 	Kind            nullable.Nullable[string] `json:"kind,omitempty"`
 
-	// ResolvedPriceReferencesJson 本文中の参照ごとの解決値を格納する。価格・変化率参照は bars の日足から解決する。
+	// ResolvedPriceReferencesJson 本文中の価格リンクを key、実行データから解決した値を value とする。
 	ResolvedPriceReferencesJson Value                     `json:"resolved_price_references_json"`
 	Status                      string                    `json:"status"`
 	Tags                        []string                  `json:"tags"`

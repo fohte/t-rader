@@ -6,8 +6,6 @@ use crate::persistence::PersistenceError;
 pub enum IndicatorObservationRepositoryError {
     #[error(transparent)]
     Persistence(#[from] PersistenceError),
-    #[error("transaction has an unexpected type")]
-    InvalidTransaction,
 }
 
 #[derive(Debug, Error)]

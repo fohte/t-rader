@@ -98,7 +98,7 @@ impl NoteUseCases {
                 .unwrap_or_else(|| Value::Object(Map::new()))
         } else {
             Value::Object(
-                self.resolve_market_data_references(transaction, &references)
+                self.resolve_market_data_references(&content.body_md)
                     .await?,
             )
         };

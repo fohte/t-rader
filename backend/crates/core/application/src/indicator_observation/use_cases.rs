@@ -11,7 +11,6 @@ use super::types::{
 };
 use crate::indicator_observation_batch_source::IndicatorObservationBatchSource;
 use crate::indicator_observation_source::IndicatorObservationSource;
-use crate::unit_of_work::UnitOfWorkTransaction;
 
 const LOOKBACK_DAYS: i64 = 10;
 
@@ -253,22 +252,6 @@ impl IndicatorObservationUseCases {
         &self,
         query: IndicatorObservationQuery,
     ) -> Result<IndicatorObservationReadResult, IndicatorObservationUseCaseError> {
-        self.read_with_transaction(query, None).await
-    }
-
-    pub async fn read_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        query: IndicatorObservationQuery,
-    ) -> Result<IndicatorObservationReadResult, IndicatorObservationUseCaseError> {
-        self.read_with_transaction(query, Some(transaction)).await
-    }
-
-    async fn read_with_transaction(
-        &self,
-        query: IndicatorObservationQuery,
-        transaction: Option<&UnitOfWorkTransaction>,
-    ) -> Result<IndicatorObservationReadResult, IndicatorObservationUseCaseError> {
         let indicator_id = query.indicator_id.trim().to_string();
         if indicator_id.is_empty() {
             return Err(IndicatorObservationUseCaseError::Validation(
@@ -283,18 +266,14 @@ impl IndicatorObservationUseCases {
             ));
         }
 
-        let query = IndicatorObservationQuery {
-            indicator_id: indicator_id.clone(),
-            from: query.from,
-            to: query.to,
-        };
-        let observations = if let Some(transaction) = transaction {
-            self.repository
-                .find_observations_in_transaction(transaction, query)
-                .await?
-        } else {
-            self.repository.find_observations(query).await?
-        };
+        let observations = self
+            .repository
+            .find_observations(IndicatorObservationQuery {
+                indicator_id: indicator_id.clone(),
+                from: query.from,
+                to: query.to,
+            })
+            .await?;
 
         Ok(IndicatorObservationReadResult {
             indicator_id,

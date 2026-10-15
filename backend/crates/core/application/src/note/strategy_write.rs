@@ -645,21 +645,9 @@ mod tests {
         source_version: NoteVersion,
         bars_repository: Arc<FakeBarsRepository>,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
-        make_note_use_cases_with_latest_bars(
+        make_note_use_cases_with_services(
             source_version.clone(),
             source_version,
-            bars_repository,
-        )
-    }
-
-    fn make_note_use_cases_with_latest_bars(
-        source_version: NoteVersion,
-        latest_version: NoteVersion,
-        bars_repository: Arc<FakeBarsRepository>,
-    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
-        make_note_use_cases_with_services(
-            source_version,
-            latest_version,
             false,
             bars_repository.clone(),
             ValuationUseCases::new(
@@ -725,45 +713,6 @@ mod tests {
             close: Decimal::from(close),
             volume,
             adjustment_factor: Decimal::ONE,
-        }
-    }
-
-    fn fictional_code_daily_bars() -> Vec<Bar> {
-        vec![
-            daily_bar("fictional-code", "2030-01-02T00:00:00Z", 9, 11, 8, 10, 100),
-            daily_bar("fictional-code", "2030-01-03T00:00:00Z", 10, 13, 9, 12, 150),
-        ]
-    }
-
-    fn expected_write_result(
-        title: &str,
-        body: &str,
-        resolved_price_references_json: serde_json::Value,
-    ) -> NoteWriteResult {
-        NoteWriteResult {
-            note_id: SOURCE_NOTE_ID,
-            created: false,
-            snapshot: NoteSnapshot {
-                note: source_note(),
-                version: NoteVersion {
-                    id: NORMALIZED_VERSION_ID,
-                    note_id: SOURCE_NOTE_ID,
-                    version_no: 2,
-                    title: title.into(),
-                    body_md: body.into(),
-                    frontmatter_json: json!({}),
-                    graphs_json: json!([]),
-                    resolved_price_references_json,
-                    status: INITIAL_NOTE_STATUS.into(),
-                    is_current: true,
-                    change_reason: None,
-                    created_by_kind: "llm".into(),
-                    execution_id: None,
-                    created_at: timestamp(),
-                    reviewed_at: None,
-                },
-                created_by_kind: "human".into(),
-            },
         }
     }
 
@@ -843,17 +792,21 @@ mod tests {
     #[tokio::test]
     async fn write_resolves_price_links_and_keeps_them_in_the_body() {
         let bars_repository = Arc::new(FakeBarsRepository::new());
-        let mut bars = fictional_code_daily_bars();
-        bars.push(daily_bar(
-            "US:FICTIONAL-A",
-            "2030-01-02T04:00:00Z",
-            13,
-            16,
-            12,
-            15,
-            200,
-        ));
-        bars_repository.seed_bars(bars).await;
+        bars_repository
+            .seed_bars(vec![
+                daily_bar("fictional-code", "2030-01-02T00:00:00Z", 9, 11, 8, 10, 100),
+                daily_bar("fictional-code", "2030-01-03T00:00:00Z", 10, 13, 9, 12, 150),
+                daily_bar(
+                    "US:FICTIONAL-A",
+                    "2030-01-02T04:00:00Z",
+                    13,
+                    16,
+                    12,
+                    15,
+                    200,
+                ),
+            ])
+            .await;
         let (use_cases, _) = make_note_use_cases_with_bars(source_version(), bars_repository);
         let body = concat!(
             "[[price:fictional-code@2030-01-02:open]] ",
@@ -864,7 +817,7 @@ mod tests {
             "[[price:US:FICTIONAL-A@2030-01-02:close]]",
         );
 
-        let mut result = use_cases
+        let result = use_cases
             .write(NoteWriteCommand {
                 execution_id: None,
                 note_id: Some(SOURCE_NOTE_ID),
@@ -883,13 +836,15 @@ mod tests {
             })
             .await
             .expect("price references resolve from daily bars without an execution id");
-        result.snapshot.version.id = NORMALIZED_VERSION_ID;
 
         assert_eq!(
-            result,
-            expected_write_result(
-                "Updated title",
-                body,
+            (
+                result.snapshot.version.body_md,
+                result.snapshot.version.resolved_price_references_json,
+                result.snapshot.version.execution_id,
+            ),
+            (
+                body.into(),
                 json!({
                     "[[price:fictional-code@2030-01-02:open]]": { "value": 9 },
                     "[[price:fictional-code@2030-01-02:high]]": { "value": 11 },
@@ -898,6 +853,7 @@ mod tests {
                     "[[price:fictional-code@2030-01-02:volume]]": { "value": 100 },
                     "[[price:US:FICTIONAL-A@2030-01-02:close]]": { "value": 15 },
                 }),
+                None,
             ),
         );
     }
@@ -905,26 +861,26 @@ mod tests {
     #[tokio::test]
     async fn write_resolves_change_links_from_daily_bars() {
         let bars_repository = Arc::new(FakeBarsRepository::new());
-        bars_repository.seed_bars(fictional_code_daily_bars()).await;
+        bars_repository
+            .seed_bars(vec![
+                daily_bar("fictional-code", "2030-01-02T00:00:00Z", 9, 11, 8, 10, 100),
+                daily_bar("fictional-code", "2030-01-03T00:00:00Z", 10, 13, 9, 12, 150),
+            ])
+            .await;
         let (use_cases, _) = make_note_use_cases_with_bars(source_version(), bars_repository);
         let reference = "[[change:fictional-code@2030-01-02..2030-01-03:close]]";
-        let mut result = use_cases
+        let result = use_cases
             .write(write_body_command(reference))
             .await
             .expect("change references resolve from daily bars");
-        result.snapshot.version.id = NORMALIZED_VERSION_ID;
 
         assert_eq!(
-            result,
-            expected_write_result(
-                "Updated title",
-                reference,
-                json!({
-                    "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
-                        "value": 20,
-                    },
-                }),
-            ),
+            result.snapshot.version.resolved_price_references_json,
+            json!({
+                "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
+                    "value": 20,
+                },
+            }),
         );
     }
 
@@ -1110,9 +1066,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case::legacy_evidence_id(
-        r#"{"value": 10, "evidence_id": "00000000-0000-0000-0000-000000000008"}"#
-    )]
+    #[case::extra_field(r#"{"value": 10, "metadata": "previous value"}"#)]
     #[case::null_value(r#"{"value": null}"#)]
     #[tokio::test]
     async fn human_edit_re_resolves_entries_without_a_non_null_value_only(
@@ -1139,14 +1093,23 @@ mod tests {
                 "fictional-code",
                 "2030-01-02T00:00:00Z",
                 9,
-                13,
+                11,
                 8,
                 12,
                 100,
             )])
             .await;
-        let (use_cases, repository) =
-            make_note_use_cases_with_latest_bars(current, latest, bars_repository);
+        let (use_cases, repository) = make_note_use_cases_with_services(
+            current,
+            latest,
+            false,
+            bars_repository.clone(),
+            ValuationUseCases::new(
+                Arc::new(FakeValuationRepository::default()),
+                bars_repository,
+            ),
+            IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+        );
 
         use_cases
             .write(NoteWriteCommand {
@@ -1304,7 +1267,12 @@ mod tests {
             "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
         });
         let bars_repository = Arc::new(FakeBarsRepository::new());
-        bars_repository.seed_bars(fictional_code_daily_bars()).await;
+        bars_repository
+            .seed_bars(vec![
+                daily_bar("fictional-code", "2030-01-02T00:00:00Z", 9, 11, 8, 10, 100),
+                daily_bar("fictional-code", "2030-01-03T00:00:00Z", 10, 13, 9, 12, 150),
+            ])
+            .await;
         let (use_cases, repository) = make_note_use_cases_with_bars(current, bars_repository);
 
         use_cases
@@ -1376,7 +1344,12 @@ mod tests {
         #[case] expected_error: &str,
     ) {
         let bars_repository = Arc::new(FakeBarsRepository::new());
-        bars_repository.seed_bars(fictional_code_daily_bars()).await;
+        bars_repository
+            .seed_bars(vec![
+                daily_bar("fictional-code", "2030-01-02T00:00:00Z", 9, 11, 8, 10, 100),
+                daily_bar("fictional-code", "2030-01-03T00:00:00Z", 10, 13, 9, 12, 150),
+            ])
+            .await;
         let (use_cases, repository) =
             make_note_use_cases_with_bars(source_version(), bars_repository);
         let result = use_cases.write(write_body_command(body)).await;

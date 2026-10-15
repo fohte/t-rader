@@ -22,14 +22,6 @@ pub enum BarsRepositoryError {
 pub trait BarsRepository: Send + Sync {
     async fn find_bars(&self, query: BarsQuery) -> Result<Vec<Bar>, BarsRepositoryError>;
 
-    async fn find_bars_in_transaction(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        query: BarsQuery,
-    ) -> Result<Vec<Bar>, BarsRepositoryError> {
-        self.find_bars(query).await
-    }
-
     async fn find_bars_by_instruments(
         &self,
         query: BarsByInstrumentsQuery,
@@ -46,16 +38,6 @@ pub trait BarsRepository: Send + Sync {
         instrument_id: &str,
         from: NaiveDate,
     ) -> Result<Vec<DailyBarAdjustmentFactor>, BarsRepositoryError>;
-
-    async fn find_daily_adjustment_factors_from_in_transaction(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        instrument_id: &str,
-        from: NaiveDate,
-    ) -> Result<Vec<DailyBarAdjustmentFactor>, BarsRepositoryError> {
-        self.find_daily_adjustment_factors_from(instrument_id, from)
-            .await
-    }
 
     async fn find_us_stock_bar_targets(&self)
     -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;

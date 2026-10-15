@@ -7,7 +7,6 @@ use serde::Serialize;
 
 use crate::bars::{DailyBarAdjustmentFactor, SharedBarsRepository};
 use crate::daily_bar_source::DateRange;
-use crate::unit_of_work::UnitOfWorkTransaction;
 use crate::valuation_source::ValuationSource;
 
 use super::error::ValuationUseCaseError;
@@ -103,27 +102,6 @@ impl ValuationUseCases {
         let adjustment_factors = self
             .bars_repository
             .find_daily_adjustment_factors_from(symbol, from)
-            .await?;
-
-        apply_daily_bar_adjustment_factors(&mut valuations, &adjustment_factors);
-        Ok(valuations)
-    }
-
-    pub async fn find_for_symbol_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        symbol: &str,
-        from: NaiveDate,
-        to: NaiveDate,
-    ) -> Result<Vec<Valuation>, ValuationUseCaseError> {
-        let mut valuations = self
-            .repository
-            .find_by_symbol_date_range_in_transaction(transaction, symbol, from, to)
-            .await
-            .map_err(ValuationUseCaseError::from)?;
-        let adjustment_factors = self
-            .bars_repository
-            .find_daily_adjustment_factors_from_in_transaction(transaction, symbol, from)
             .await?;
 
         apply_daily_bar_adjustment_factors(&mut valuations, &adjustment_factors);

@@ -12,14 +12,6 @@ use serde_json::{Map, Value, json};
 use crate::bars::BarsQuery;
 use crate::indicator_observation::IndicatorObservationQuery;
 use crate::note::{NoteUseCaseError, NoteUseCases};
-use crate::unit_of_work::UnitOfWorkTransaction;
-
-struct ReferenceLookup<'a> {
-    transaction: &'a UnitOfWorkTransaction,
-    valuations: BTreeMap<(String, NaiveDate), Option<Valuation>>,
-    observations: BTreeMap<(String, NaiveDate), Option<Decimal>>,
-    daily_bars: BTreeMap<(String, NaiveDate), Option<Bar>>,
-}
 
 pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReferenceToken]) -> bool {
     let Some(resolved) = resolved.as_object() else {
@@ -41,20 +33,23 @@ pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReference
 }
 
 impl NoteUseCases {
-    pub(super) async fn resolve_market_data_references(
+    pub(in crate::note) async fn resolve_market_data_references(
         &self,
-        transaction: &UnitOfWorkTransaction,
-        references: &[NotePriceReferenceToken],
+        body_md: &str,
     ) -> Result<Map<String, Value>, NoteUseCaseError> {
-        let mut lookup = ReferenceLookup {
-            transaction,
-            valuations: BTreeMap::new(),
-            observations: BTreeMap::new(),
-            daily_bars: BTreeMap::new(),
-        };
+        let references = core_domain::note_price_reference::extract_note_price_references(body_md)
+            .map_err(|errors| {
+                NoteUseCaseError::Validation(core_domain::note_reference::format_note_token_errors(
+                    &errors,
+                ))
+            })?;
+        let mut valuations_by_symbol_date =
+            BTreeMap::<(String, NaiveDate), Option<Valuation>>::new();
+        let mut observations_by_id_date = BTreeMap::<(String, NaiveDate), Option<Decimal>>::new();
+        let mut daily_bars_by_instrument_date = BTreeMap::<(String, NaiveDate), Option<Bar>>::new();
         let mut values = Map::new();
 
-        for token in references {
+        for token in &references {
             match &token.reference {
                 NotePriceReference::Valuation {
                     symbol,
@@ -66,7 +61,7 @@ impl NoteUseCases {
                         symbol,
                         *date,
                         *field,
-                        &mut lookup,
+                        &mut valuations_by_symbol_date,
                         &mut values,
                     )
                     .await?;
@@ -76,44 +71,18 @@ impl NoteUseCases {
                         token,
                         indicator_id,
                         *date,
-                        &mut lookup,
+                        &mut observations_by_id_date,
                         &mut values,
                     )
                     .await?;
                 }
-                NotePriceReference::Price {
-                    instrument_id,
-                    date,
-                    field,
-                } => {
-                    let value = self
-                        .resolve_price_reference(token, instrument_id, *date, *field, &mut lookup)
-                        .await?;
-                    values.insert(
-                        token.token.clone(),
-                        json!({ "value": serde_json::to_value(value)? }),
-                    );
-                }
-                NotePriceReference::Change {
-                    instrument_id,
-                    start,
-                    end,
-                    field,
-                } => {
-                    let value = self
-                        .resolve_change_reference(
-                            token,
-                            instrument_id,
-                            *start,
-                            *end,
-                            *field,
-                            &mut lookup,
-                        )
-                        .await?;
-                    values.insert(
-                        token.token.clone(),
-                        json!({ "value": serde_json::to_value(value)? }),
-                    );
+                NotePriceReference::Price { .. } | NotePriceReference::Change { .. } => {
+                    self.resolve_bar_reference(
+                        token,
+                        &mut daily_bars_by_instrument_date,
+                        &mut values,
+                    )
+                    .await?;
                 }
             }
         }
@@ -127,29 +96,25 @@ impl NoteUseCases {
         symbol: &str,
         date: NaiveDate,
         field: ValuationReferenceField,
-        lookup: &mut ReferenceLookup<'_>,
+        cache: &mut BTreeMap<(String, NaiveDate), Option<Valuation>>,
         values: &mut Map<String, Value>,
     ) -> Result<(), NoteUseCaseError> {
         let key = (symbol.to_string(), date);
-        if !lookup.valuations.contains_key(&key) {
+        if !cache.contains_key(&key) {
             let valuation = self
                 .valuations
-                .find_for_symbol_in_transaction(lookup.transaction, symbol, date, date)
+                .find_for_symbol(symbol, date, date)
                 .await?
                 .into_iter()
                 .find(|valuation| valuation.date == date);
-            lookup.valuations.insert(key.clone(), valuation);
+            cache.insert(key.clone(), valuation);
         }
-        let valuation = lookup
-            .valuations
-            .get(&key)
-            .and_then(Option::as_ref)
-            .ok_or_else(|| {
-                NoteUseCaseError::Validation(format!(
-                    "valuation 参照 {0} を指定日のデータから解決できません",
-                    token.token
-                ))
-            })?;
+        let valuation = cache.get(&key).and_then(Option::as_ref).ok_or_else(|| {
+            NoteUseCaseError::Validation(format!(
+                "valuation 参照 {0} を指定日のデータから解決できません",
+                token.token
+            ))
+        })?;
         let value = valuation_field_value(valuation, field).ok_or_else(|| {
             NoteUseCaseError::Validation(format!(
                 "valuation 参照 {0} の項目は記録されていません",
@@ -168,38 +133,31 @@ impl NoteUseCases {
         token: &NotePriceReferenceToken,
         indicator_id: &str,
         date: NaiveDate,
-        lookup: &mut ReferenceLookup<'_>,
+        cache: &mut BTreeMap<(String, NaiveDate), Option<Decimal>>,
         values: &mut Map<String, Value>,
     ) -> Result<(), NoteUseCaseError> {
         let key = (indicator_id.to_string(), date);
-        if !lookup.observations.contains_key(&key) {
+        if !cache.contains_key(&key) {
             let observation = self
                 .indicator_observations
-                .read_in_transaction(
-                    lookup.transaction,
-                    IndicatorObservationQuery {
-                        indicator_id: indicator_id.to_string(),
-                        from: Some(date),
-                        to: Some(date),
-                    },
-                )
+                .read(IndicatorObservationQuery {
+                    indicator_id: indicator_id.to_string(),
+                    from: Some(date),
+                    to: Some(date),
+                })
                 .await?
                 .observations
                 .into_iter()
                 .find(|observation| observation.date == date)
                 .map(|observation| observation.value);
-            lookup.observations.insert(key.clone(), observation);
+            cache.insert(key.clone(), observation);
         }
-        let value = lookup
-            .observations
-            .get(&key)
-            .and_then(|value| *value)
-            .ok_or_else(|| {
-                NoteUseCaseError::Validation(format!(
-                    "indicator 参照 {0} を指定日のデータから解決できません",
-                    token.token
-                ))
-            })?;
+        let value = cache.get(&key).and_then(|value| *value).ok_or_else(|| {
+            NoteUseCaseError::Validation(format!(
+                "indicator 参照 {0} を指定日のデータから解決できません",
+                token.token
+            ))
+        })?;
         values.insert(
             token.token.clone(),
             json!({ "value": serde_json::to_value(value)? }),
@@ -207,65 +165,78 @@ impl NoteUseCases {
         Ok(())
     }
 
-    async fn resolve_price_reference(
+    async fn resolve_bar_reference(
         &self,
         token: &NotePriceReferenceToken,
-        instrument_id: &str,
-        date: NaiveDate,
-        field: PriceReferenceField,
-        lookup: &mut ReferenceLookup<'_>,
-    ) -> Result<Decimal, NoteUseCaseError> {
-        let bar = self
-            .find_daily_bar(token, instrument_id, date, lookup)
-            .await?
-            .ok_or_else(|| unresolved_price_reference(token))?;
-        Ok(bar_field_value(&bar, field))
-    }
-
-    async fn resolve_change_reference(
-        &self,
-        token: &NotePriceReferenceToken,
-        instrument_id: &str,
-        start_date: NaiveDate,
-        end_date: NaiveDate,
-        field: PriceReferenceField,
-        lookup: &mut ReferenceLookup<'_>,
-    ) -> Result<Decimal, NoteUseCaseError> {
-        let start_bar = self
-            .find_daily_bar(token, instrument_id, start_date, lookup)
-            .await?
-            .ok_or_else(|| unresolved_price_reference(token))?;
-        let end_bar = self
-            .find_daily_bar(token, instrument_id, end_date, lookup)
-            .await?
-            .ok_or_else(|| unresolved_price_reference(token))?;
-        let start = bar_field_value(&start_bar, field);
-        if start == Decimal::ZERO {
-            return Err(NoteUseCaseError::Validation(format!(
-                "価格参照 {} の開始値は 0 です",
-                token.token
-            )));
-        }
-        bar_field_value(&end_bar, field)
-            .checked_sub(start)
-            .and_then(|difference| difference.checked_div(start))
-            .and_then(|ratio| ratio.checked_mul(Decimal::from(100)))
-            .map(|value| value.normalize())
-            .ok_or_else(|| unresolved_price_reference(token))
+        cache: &mut BTreeMap<(String, NaiveDate), Option<Bar>>,
+        values: &mut Map<String, Value>,
+    ) -> Result<(), NoteUseCaseError> {
+        let value = match &token.reference {
+            NotePriceReference::Price {
+                instrument_id,
+                date,
+                field,
+            } => {
+                let bar = self
+                    .find_daily_bar(instrument_id, *date, cache)
+                    .await?
+                    .ok_or_else(|| unresolved_price_reference(token))?;
+                bar_field_value(&bar, *field)
+            }
+            NotePriceReference::Change {
+                instrument_id,
+                start,
+                end,
+                field,
+            } => {
+                let start_bar = self
+                    .find_daily_bar(instrument_id, *start, cache)
+                    .await?
+                    .ok_or_else(|| unresolved_price_reference(token))?;
+                let end_bar = self
+                    .find_daily_bar(instrument_id, *end, cache)
+                    .await?
+                    .ok_or_else(|| unresolved_price_reference(token))?;
+                let start_value = bar_field_value(&start_bar, *field);
+                if start_value == Decimal::ZERO {
+                    return Err(NoteUseCaseError::Validation(format!(
+                        "価格参照 {} の開始値は 0 です",
+                        token.token
+                    )));
+                }
+                bar_field_value(&end_bar, *field)
+                    .checked_sub(start_value)
+                    .and_then(|difference| difference.checked_div(start_value))
+                    .and_then(|ratio| ratio.checked_mul(Decimal::from(100)))
+                    .ok_or_else(|| unresolved_price_reference(token))?
+                    .normalize()
+            }
+            _ => {
+                return Err(NoteUseCaseError::Validation(format!(
+                    "価格参照 {} は bars から解決できません",
+                    token.token
+                )));
+            }
+        };
+        let value = serde_json::to_value(value)?;
+        values.insert(token.token.clone(), json!({ "value": value }));
+        Ok(())
     }
 
     async fn find_daily_bar(
         &self,
-        token: &NotePriceReferenceToken,
         instrument_id: &str,
         date: NaiveDate,
-        lookup: &mut ReferenceLookup<'_>,
+        cache: &mut BTreeMap<(String, NaiveDate), Option<Bar>>,
     ) -> Result<Option<Bar>, NoteUseCaseError> {
         let key = (instrument_id.to_string(), date);
-        if !lookup.daily_bars.contains_key(&key) {
-            let next_date = date
-                .succ_opt()
-                .ok_or_else(|| unresolved_price_reference(token))?;
+        if !cache.contains_key(&key) {
+            let next_date = date.succ_opt().ok_or_else(|| {
+                NoteUseCaseError::Validation(format!(
+                    "価格参照 {} の日付が範囲外です",
+                    instrument_id
+                ))
+            })?;
             let from =
                 DateTime::<Utc>::from_naive_utc_and_offset(date.and_time(NaiveTime::MIN), Utc)
                     .fixed_offset();
@@ -274,21 +245,18 @@ impl NoteUseCases {
                     .fixed_offset();
             let bar = self
                 .bars
-                .find_bars_in_transaction(
-                    lookup.transaction,
-                    BarsQuery {
-                        instrument_id: instrument_id.to_string(),
-                        timeframe: Timeframe::Daily.to_string(),
-                        from: Some(from),
-                        to: Some(to),
-                    },
-                )
+                .find_bars(BarsQuery {
+                    instrument_id: instrument_id.to_string(),
+                    timeframe: Timeframe::Daily.to_string(),
+                    from: Some(from),
+                    to: Some(to),
+                })
                 .await?
                 .into_iter()
                 .find(|bar| bar.timestamp.date_naive() == date);
-            lookup.daily_bars.insert(key.clone(), bar);
+            cache.insert(key.clone(), bar);
         }
-        Ok(lookup.daily_bars.get(&key).cloned().flatten())
+        Ok(cache.get(&key).cloned().flatten())
     }
 }
 
