@@ -47,8 +47,33 @@ const FIND_AGGREGATED_MINUTE_BARS_SQL: &str = r#"
     ORDER BY instrument_id ASC, timestamp ASC
 "#;
 
+const FIND_AGGREGATED_DAILY_BARS_SQL: &str = r#"
+    WITH aggregated AS (
+        SELECT
+            instrument_id,
+            time_bucket($1::interval, timestamp) AS timestamp,
+            first(open, timestamp) AS open,
+            MAX(high) AS high,
+            MIN(low) AS low,
+            last(close, timestamp) AS close,
+            SUM(volume)::bigint AS volume
+        FROM bars
+        WHERE instrument_id IN ({instrument_ids})
+          AND timeframe = '1d'
+          AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
+          -- to が属する週の全 OHLCV を集計する。
+          AND (${to}::timestamptz IS NULL OR timestamp < ${to} + $1::interval)
+        GROUP BY instrument_id, time_bucket($1::interval, timestamp)
+    )
+    SELECT instrument_id, timestamp, open, high, low, close, volume
+    FROM aggregated
+    WHERE (${from}::timestamptz IS NULL OR timestamp >= ${from})
+      AND (${to}::timestamptz IS NULL OR timestamp <= ${to})
+    ORDER BY instrument_id ASC, timestamp ASC
+"#;
+
 #[derive(Debug, FromQueryResult)]
-struct MinuteBarRow {
+struct AggregatedBarRow {
     instrument_id: String,
     timestamp: DateTime<FixedOffset>,
     open: Decimal,
@@ -259,10 +284,63 @@ pub async fn find_intraday_bars_by_instruments(
 
     rows.iter()
         .map(|row| {
-            let row = MinuteBarRow::from_query_result(row, "")?;
+            let row = AggregatedBarRow::from_query_result(row, "")?;
             Ok(Bar {
                 instrument_id: row.instrument_id,
                 timeframe,
+                timestamp: row.timestamp.to_utc(),
+                open: row.open,
+                high: row.high,
+                low: row.low,
+                close: row.close,
+                volume: row.volume,
+                adjustment_factor: Decimal::ONE,
+            })
+        })
+        .collect()
+}
+
+/// 日足から週足を集計して取得する。
+pub async fn find_weekly_bars_by_instruments(
+    db: &impl ConnectionTrait,
+    instrument_ids: &[String],
+    from: Option<DateTime<FixedOffset>>,
+    to: Option<DateTime<FixedOffset>>,
+) -> Result<Vec<Bar>, DbErr> {
+    if instrument_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let instrument_placeholders = (2..2 + instrument_ids.len())
+        .map(|index| format!("${index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let from_index = 2 + instrument_ids.len();
+    let to_index = from_index + 1;
+    let sql = FIND_AGGREGATED_DAILY_BARS_SQL
+        .replace("{instrument_ids}", &instrument_placeholders)
+        .replace("{from}", &from_index.to_string())
+        .replace("{to}", &to_index.to_string());
+    let mut values = Vec::with_capacity(to_index);
+    values.push("1 week".into());
+    values.extend(instrument_ids.iter().cloned().map(Into::into));
+    values.push(from.into());
+    values.push(to.into());
+
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            values,
+        ))
+        .await?;
+
+    rows.iter()
+        .map(|row| {
+            let row = AggregatedBarRow::from_query_result(row, "")?;
+            Ok(Bar {
+                instrument_id: row.instrument_id,
+                timeframe: Timeframe::Weekly,
                 timestamp: row.timestamp.to_utc(),
                 open: row.open,
                 high: row.high,

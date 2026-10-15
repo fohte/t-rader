@@ -3982,9 +3982,9 @@ export interface operations {
         instrument_id: string
         /** @description 時間足 (デフォルト: "1d") */
         timeframe?: string
-        /** @description 取得開始日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive) */
+        /** @description 取得開始日時。日足と週足は YYYY-MM-DD、それ以外は RFC 3339 datetime (inclusive) */
         from?: string
-        /** @description 取得終了日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive) */
+        /** @description 取得終了日時。日足と週足は YYYY-MM-DD、それ以外は RFC 3339 datetime (inclusive) */
         to?: string
       }
       header?: never

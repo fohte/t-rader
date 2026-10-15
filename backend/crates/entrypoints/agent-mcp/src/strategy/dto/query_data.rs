@@ -17,6 +17,8 @@ pub enum QueryDataTimeframe {
     #[serde(rename = "1d")]
     #[default]
     Daily,
+    #[serde(rename = "1w")]
+    Weekly,
 }
 
 impl From<QueryDataTimeframe> for core_domain::bar::Timeframe {
@@ -28,6 +30,7 @@ impl From<QueryDataTimeframe> for core_domain::bar::Timeframe {
             QueryDataTimeframe::Hourly => Self::Hourly,
             QueryDataTimeframe::FourHours => Self::FourHours,
             QueryDataTimeframe::Daily => Self::Daily,
+            QueryDataTimeframe::Weekly => Self::Weekly,
         }
     }
 }
@@ -40,7 +43,7 @@ pub struct QueryDataParams {
     pub from: NaiveDate,
     /// 取得終了日 (YYYY-MM-DD, inclusive)
     pub to: NaiveDate,
-    /// 取得する時間足。省略時は日足 (`1d`)。分足の推定バー数は 1 回あたり 50,000 件まで
+    /// 取得する時間足。省略時は日足 (`1d`)。週足 (`1w`) は日足から集計し、分足の推定バー数は 1 回あたり 50,000 件まで
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeframe: Option<QueryDataTimeframe>,
 }
