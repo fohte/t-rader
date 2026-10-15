@@ -36,8 +36,3 @@ export const Available: Story = {
   name: 'links to the screener when the note has a saved screen id.',
   args: { screenId: 'fake-screen-a' },
 }
-
-export const Unavailable: Story = {
-  name: 'shows no link when the note has no saved screen id.',
-  args: { screenId: undefined },
-}
