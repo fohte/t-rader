@@ -81,19 +81,36 @@ describe('NoteEvaluationEvidenceReference', () => {
       { wrapper: QueryClientWrapper },
     )
 
-    await user.click(screen.getByRole('button', { name: '42.5 の根拠を開く' }))
-    await screen.findByText('デモ指標 · result')
+    const requestsBeforeOpen = getEvaluation.mock.calls.map(
+      ([path, options]) => ({
+        path,
+        params: options.params,
+      }),
+    )
 
-    const requests = getEvaluation.mock.calls.map(([path, options]) => ({
-      path,
-      params: options.params,
-    }))
-    expect(requests).toEqual([
-      {
-        path: '/api/custom-indicator-evaluations/{evaluation_id}',
-        params: { path: { evaluation_id: evaluationId } },
-      },
+    await user.click(screen.getByRole('button', { name: '42.5 の根拠を開く' }))
+    const heading = await screen.findByText('デモ指標 · result')
+
+    const requestsAfterOpen = getEvaluation.mock.calls.map(
+      ([path, options]) => ({
+        path,
+        params: options.params,
+      }),
+    )
+    const expectedRequestHistory = JSON.stringify([
+      [],
+      [
+        '/api/custom-indicator-evaluations/{evaluation_id}',
+        { path: { evaluation_id: evaluationId } },
+      ],
+      'デモ指標 · result',
     ])
+    const requestHistory = JSON.stringify([
+      requestsBeforeOpen,
+      requestsAfterOpen.flatMap(({ path, params }) => [path, params]),
+      heading.textContent,
+    ])
+    expect(requestHistory).toBe(expectedRequestHistory)
   })
 
   it('shows a missing-record message for a 404 response', async () => {
@@ -116,5 +133,27 @@ describe('NoteEvaluationEvidenceReference', () => {
 
     const status = await screen.findByRole('status')
     expect(status.textContent).toBe('実行記録が見つかりません')
+  })
+
+  it('shows an error message for a non-404 response', async () => {
+    const user = userEvent.setup()
+    getEvaluation.mockResolvedValue({
+      response: { status: 500, ok: false },
+      data: undefined,
+    })
+
+    render(
+      <NoteEvaluationEvidenceReference
+        evaluationId="00000000-0000-0000-0000-000000000101"
+        outputName="result"
+        value="42.5"
+      />,
+      { wrapper: QueryClientWrapper },
+    )
+
+    await user.click(screen.getByRole('button', { name: '42.5 の根拠を開く' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe('実行記録を取得できませんでした')
   })
 })

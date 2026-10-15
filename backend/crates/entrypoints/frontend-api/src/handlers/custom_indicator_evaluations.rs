@@ -56,18 +56,30 @@ mod tests {
         CustomIndicatorEvaluation, CustomIndicatorEvaluationUseCases,
         FakeCustomIndicatorEvaluationRepository,
     };
+    use indoc::indoc;
+    use rstest::{fixture, rstest};
     use serde_json::json;
 
     use super::get_custom_indicator_evaluation;
     use crate::extractors::JsonPath;
     use crate::models::CustomIndicatorEvaluationResponse;
 
+    const INDICATOR_CODE: &str = indoc! {r#"
+        def calculate(args):
+            return {"value": args["value"]}
+    "#};
+
+    #[fixture]
+    fn evaluation_repository() -> Arc<FakeCustomIndicatorEvaluationRepository> {
+        Arc::new(FakeCustomIndicatorEvaluationRepository::new())
+    }
+
     fn evaluation(id: uuid::Uuid) -> CustomIndicatorEvaluation {
         CustomIndicatorEvaluation {
             id,
             indicator_id: uuid::Uuid::from_u128(1),
             indicator_name: "デモ指標".to_owned(),
-            code: "def calculate(args):\n    return {\"value\": args[\"value\"]}".to_owned(),
+            code: INDICATOR_CODE.to_owned(),
             args: json!({ "value": 12 }),
             output: json!({ "value": 12 }),
             evaluated_at: DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
@@ -75,20 +87,14 @@ mod tests {
         }
     }
 
-    fn use_cases(
-        evaluation: Option<CustomIndicatorEvaluation>,
-    ) -> CustomIndicatorEvaluationUseCases {
-        let repository = Arc::new(FakeCustomIndicatorEvaluationRepository::new());
-        if let Some(evaluation) = evaluation {
-            repository.seed(evaluation);
-        }
-        CustomIndicatorEvaluationUseCases::new(repository)
-    }
-
+    #[rstest]
     #[tokio::test]
-    async fn get_returns_the_evaluation_fields_used_by_the_evidence_card() {
+    async fn get_returns_the_evaluation_fields_used_by_the_evidence_card(
+        evaluation_repository: Arc<FakeCustomIndicatorEvaluationRepository>,
+    ) {
         let id = uuid::Uuid::from_u128(2);
-        let use_cases = use_cases(Some(evaluation(id)));
+        evaluation_repository.seed(evaluation(id));
+        let use_cases = CustomIndicatorEvaluationUseCases::new(evaluation_repository);
 
         let response =
             get_custom_indicator_evaluation(axum::extract::State(use_cases), JsonPath(id))
@@ -100,7 +106,7 @@ mod tests {
             CustomIndicatorEvaluationResponse {
                 id,
                 indicator_name: "デモ指標".to_owned(),
-                code: "def calculate(args):\n    return {\"value\": args[\"value\"]}".to_owned(),
+                code: INDICATOR_CODE.to_owned(),
                 args: json!({ "value": 12 }),
                 output: json!({ "value": 12 }),
                 evaluated_at: DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
@@ -109,10 +115,13 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn get_returns_not_found_when_the_evaluation_is_missing() {
+    async fn get_returns_not_found_when_the_evaluation_is_missing(
+        evaluation_repository: Arc<FakeCustomIndicatorEvaluationRepository>,
+    ) {
         let id = uuid::Uuid::from_u128(3);
-        let use_cases = use_cases(None);
+        let use_cases = CustomIndicatorEvaluationUseCases::new(evaluation_repository);
         let error = get_custom_indicator_evaluation(axum::extract::State(use_cases), JsonPath(id))
             .await
             .expect_err("missing evaluation should return an error");
