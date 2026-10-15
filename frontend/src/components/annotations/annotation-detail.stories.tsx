@@ -192,15 +192,6 @@ export const NotFound: Story = {
 
 export const UnreadWithoutRelatedItems: Story = {
   name: 'shows an unread annotation without comments or a linked note.',
-  args: {
-    annotation: generatedAnnotation,
-    reviewNavigationState: {
-      navigation: null,
-      isPending: false,
-      isError: false,
-    },
-    executionOrigin,
-  },
 }
 
 export const GeneratedByStrategy: Story = {
@@ -214,7 +205,10 @@ export const GeneratedByStrategy: Story = {
 export const NoGenerationOrigin: Story = {
   name: 'shows an annotation without a resolvable generation origin.',
   args: {
-    annotation: unreadAnnotation,
+    annotation: {
+      ...generatedAnnotation,
+      text: '生成元を特定できない注釈本文です。',
+    },
     executionOrigin: null,
   },
 }

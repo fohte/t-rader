@@ -8,6 +8,7 @@ import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import type { components } from '#lib/api/schema.gen'
 import type { ExecutionOrigin } from '#lib/execution-origin'
 import { createStoryRouter } from '#storybook/story-router'
+import { getExecutionOriginLinks } from '#test/execution-origin-links.test-helper'
 
 type Annotation = components['schemas']['Annotation']
 
@@ -122,13 +123,6 @@ function renderAnnotationDetail(
     },
   )
   render(<RouterProvider router={router} />)
-}
-
-function getExecutionOriginLinks() {
-  return [
-    ...screen.queryAllByRole('link', { name: '架空戦略' }),
-    ...screen.queryAllByRole('link', { name: '実行詳細 →' }),
-  ]
 }
 
 describe('AnnotationDetail', () => {

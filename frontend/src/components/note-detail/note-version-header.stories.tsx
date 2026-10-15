@@ -63,14 +63,7 @@ type Story = StoryObj<typeof meta>
 
 export const PendingReview: Story = {
   name: 'shows the metadata and change reason for a version awaiting review.',
-  args: {
-    version: {
-      ...baseVersion,
-      execution_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    },
-    noteKindLabel: null,
-    executionOrigin,
-  },
+  args: { version: baseVersion },
 }
 
 export const GeneratedByStrategy: Story = {
@@ -86,7 +79,14 @@ export const GeneratedByStrategy: Story = {
 
 export const NoGenerationOrigin: Story = {
   name: 'shows a version without a resolvable generation origin.',
-  args: { version: baseVersion, executionOrigin: null },
+  args: {
+    version: {
+      ...baseVersion,
+      title: '生成元を特定できない確認メモ',
+      execution_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    },
+    executionOrigin: null,
+  },
 }
 
 export const HumanCreated: Story = {

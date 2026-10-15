@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import type { NoteVersion } from '#lib/api/note-version-types'
 import { createStoryRouter } from '#storybook/story-router'
+import { getExecutionOriginLinks } from '#test/execution-origin-links.test-helper'
 
 const version: NoteVersion = {
   id: 'fake-version-a',
@@ -25,13 +26,6 @@ const version: NoteVersion = {
 }
 
 afterEach(cleanup)
-
-function getExecutionOriginLinks() {
-  return [
-    ...screen.queryAllByRole('link', { name: '架空戦略' }),
-    ...screen.queryAllByRole('link', { name: '実行詳細 →' }),
-  ]
-}
 
 function getHeaderOutput() {
   return {
