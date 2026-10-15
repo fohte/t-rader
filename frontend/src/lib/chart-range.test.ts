@@ -38,6 +38,13 @@ describe('getBarsRange', () => {
     })
   })
 
+  it('extends intraday history by enough calendar days for the requested bars', () => {
+    expect(extendBarsRange(getBarsRange('5m', now), '5m', 25)).toEqual({
+      from: '2026-09-26T03:34:56.000Z',
+      to: '2026-10-04T03:34:56.000Z',
+    })
+  })
+
   it('leaves the range unchanged when no indicator bars are needed', () => {
     const range = getBarsRange('5m', now)
 

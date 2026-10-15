@@ -41,7 +41,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function isValidPeriod(value: unknown): value is number {
+export function isValidChartIndicatorPeriod(value: unknown): value is number {
   return (
     typeof value === 'number' &&
     Number.isInteger(value) &&
@@ -50,8 +50,16 @@ function isValidPeriod(value: unknown): value is number {
   )
 }
 
-function isValidDeviation(value: unknown): value is number {
+export function isValidChartIndicatorDeviation(
+  value: unknown,
+): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+export function getChartIndicatorName(indicator: ChartIndicatorConfig): string {
+  if (indicator.kind === 'sma') return 'SMA'
+  if (indicator.kind === 'ema') return 'EMA'
+  return 'ボリンジャー'
 }
 
 function isChartIndicator(value: unknown): value is ChartIndicatorConfig {
@@ -60,13 +68,16 @@ function isChartIndicator(value: unknown): value is ChartIndicatorConfig {
   const hasBaseValues =
     typeof value.id === 'string' &&
     value.id.length > 0 &&
-    isValidPeriod(value.period) &&
+    isValidChartIndicatorPeriod(value.period) &&
     typeof value.color === 'string' &&
     /^#[\da-f]{6}$/i.test(value.color)
 
   if (!hasBaseValues) return false
   if (value.kind === 'sma' || value.kind === 'ema') return true
-  return value.kind === 'bollinger' && isValidDeviation(value.deviation)
+  return (
+    value.kind === 'bollinger' &&
+    isValidChartIndicatorDeviation(value.deviation)
+  )
 }
 
 function parseStoredIndicators(value: string | null): ChartIndicatorConfig[] {
@@ -159,7 +170,7 @@ export function addChartIndicator(kind: ChartIndicatorKind): string {
 }
 
 export function updateChartIndicatorPeriod(id: string, period: number): void {
-  if (!isValidPeriod(period)) return
+  if (!isValidChartIndicatorPeriod(period)) return
 
   const next = snapshot.map((indicator) =>
     indicator.id === id ? { ...indicator, period } : indicator,
@@ -173,7 +184,7 @@ export function updateChartIndicatorDeviation(
   id: string,
   deviation: number,
 ): void {
-  if (!isValidDeviation(deviation)) return
+  if (!isValidChartIndicatorDeviation(deviation)) return
 
   const next = snapshot.map((indicator) =>
     indicator.id === id && indicator.kind === 'bollinger'

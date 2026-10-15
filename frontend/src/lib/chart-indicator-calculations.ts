@@ -1,3 +1,5 @@
+import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
+
 export interface ChartIndicatorBar<Time> {
   time: Time
   close: number
@@ -12,6 +14,11 @@ export interface BollingerBands<Time> {
   middle: ChartIndicatorPoint<Time>[]
   upper: ChartIndicatorPoint<Time>[]
   lower: ChartIndicatorPoint<Time>[]
+}
+
+export interface ChartIndicatorLine<Time> {
+  variant: 'main' | 'band'
+  points: ChartIndicatorPoint<Time>[]
 }
 
 function isValidPeriod(period: number): boolean {
@@ -118,4 +125,38 @@ export function calculateBollingerBands<Time>(
   }
 
   return { middle, upper, lower }
+}
+
+export function calculateChartIndicatorLines<Time>(
+  indicator: ChartIndicatorConfig,
+  bars: readonly ChartIndicatorBar<Time>[],
+): ChartIndicatorLine<Time>[] {
+  switch (indicator.kind) {
+    case 'sma':
+      return [
+        {
+          variant: 'main',
+          points: calculateSimpleMovingAverage(bars, indicator.period),
+        },
+      ]
+    case 'ema':
+      return [
+        {
+          variant: 'main',
+          points: calculateExponentialMovingAverage(bars, indicator.period),
+        },
+      ]
+    case 'bollinger': {
+      const bands = calculateBollingerBands(
+        bars,
+        indicator.period,
+        indicator.deviation,
+      )
+      return [
+        { variant: 'main', points: bands.middle },
+        { variant: 'band', points: bands.upper },
+        { variant: 'band', points: bands.lower },
+      ]
+    }
+  }
 }

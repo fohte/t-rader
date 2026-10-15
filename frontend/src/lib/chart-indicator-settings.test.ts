@@ -1,5 +1,5 @@
-import { act, renderHook } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
   addChartIndicator,
@@ -13,76 +13,164 @@ import {
 const STORAGE_KEY = 't-rader:chart-indicators'
 
 function normalizeIds(indicators: ChartIndicatorConfig[]) {
-  return indicators.map((indicator) => ({ ...indicator, id: 'indicator-id' }))
+  return indicators.map((indicator, index) => ({
+    ...indicator,
+    id: `indicator-${index.toString()}`,
+  }))
 }
 
 beforeEach(() => {
   window.localStorage.clear()
 })
 
+afterEach(() => {
+  cleanup()
+})
+
 describe('chart indicator settings', () => {
-  it('persists defaults and updates while removing selected indicators', () => {
+  it('adds and persists a default simple moving average', () => {
     const { result } = renderHook(() => useChartIndicators())
+    let indicatorId = ''
     act(() => {
-      window.dispatchEvent(new StorageEvent('storage', { key: null }))
-    })
-
-    let bollingerId = ''
-    let smaId = ''
-    act(() => {
-      bollingerId = addChartIndicator('bollinger')
-    })
-    const afterAdd = result.current
-
-    act(() => {
-      smaId = addChartIndicator('sma')
-    })
-    act(() => {
-      updateChartIndicatorPeriod(bollingerId, 18)
-      updateChartIndicatorDeviation(bollingerId, 2.5)
-      updateChartIndicatorPeriod(bollingerId, 501)
-      removeChartIndicator(smaId)
+      indicatorId = addChartIndicator('sma')
     })
 
     const persisted = (window.localStorage.getItem(STORAGE_KEY) ?? '').replace(
-      bollingerId,
-      'indicator-id',
+      indicatorId,
+      'indicator-0',
     )
-
     const readSettingsState = () => ({
-      afterAdd: normalizeIds(afterAdd),
       current: normalizeIds(result.current),
       persisted,
     })
 
     expect(readSettingsState()).toEqual({
-      afterAdd: [
-        {
-          id: 'indicator-id',
-          kind: 'bollinger',
-          period: 20,
-          deviation: 2,
-          color: '#f97316',
-        },
-      ],
       current: [
         {
-          id: 'indicator-id',
-          kind: 'bollinger',
-          period: 18,
-          deviation: 2.5,
+          id: 'indicator-0',
+          kind: 'sma',
+          period: 25,
           color: '#f97316',
         },
       ],
       persisted: JSON.stringify([
         {
-          id: 'indicator-id',
-          kind: 'bollinger',
-          period: 18,
-          deviation: 2.5,
+          id: 'indicator-0',
+          kind: 'sma',
+          period: 25,
           color: '#f97316',
         },
       ]),
     })
+  })
+
+  it('updates the period of the selected indicator', () => {
+    const { result } = renderHook(() => useChartIndicators())
+    let indicatorId = ''
+    act(() => {
+      indicatorId = addChartIndicator('ema')
+    })
+    act(() => {
+      updateChartIndicatorPeriod(indicatorId, 18)
+    })
+
+    expect(normalizeIds(result.current)).toEqual([
+      {
+        id: 'indicator-0',
+        kind: 'ema',
+        period: 18,
+        color: '#f97316',
+      },
+    ])
+  })
+
+  it('keeps the current period when an invalid period is submitted', () => {
+    const { result } = renderHook(() => useChartIndicators())
+    let indicatorId = ''
+    act(() => {
+      indicatorId = addChartIndicator('sma')
+    })
+    act(() => {
+      updateChartIndicatorPeriod(indicatorId, 501)
+    })
+
+    expect(normalizeIds(result.current)).toEqual([
+      {
+        id: 'indicator-0',
+        kind: 'sma',
+        period: 25,
+        color: '#f97316',
+      },
+    ])
+  })
+
+  it('updates the deviation of a Bollinger band', () => {
+    const { result } = renderHook(() => useChartIndicators())
+    let indicatorId = ''
+    act(() => {
+      indicatorId = addChartIndicator('bollinger')
+    })
+    act(() => {
+      updateChartIndicatorDeviation(indicatorId, 2.5)
+    })
+
+    expect(normalizeIds(result.current)).toEqual([
+      {
+        id: 'indicator-0',
+        kind: 'bollinger',
+        period: 20,
+        deviation: 2.5,
+        color: '#f97316',
+      },
+    ])
+  })
+
+  it('removes only the selected indicator', () => {
+    const { result } = renderHook(() => useChartIndicators())
+    let firstId = ''
+    act(() => {
+      firstId = addChartIndicator('sma')
+      addChartIndicator('ema')
+    })
+    act(() => {
+      removeChartIndicator(firstId)
+    })
+
+    expect(normalizeIds(result.current)).toEqual([
+      {
+        id: 'indicator-0',
+        kind: 'ema',
+        period: 25,
+        color: '#38bdf8',
+      },
+    ])
+  })
+
+  it('accepts indicator settings written by another tab', () => {
+    const { result } = renderHook(() => useChartIndicators())
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: STORAGE_KEY,
+          newValue: JSON.stringify([
+            {
+              id: 'indicator-external',
+              kind: 'ema',
+              period: 12,
+              color: '#38bdf8',
+            },
+          ]),
+        }),
+      )
+    })
+
+    expect(result.current).toEqual([
+      {
+        id: 'indicator-external',
+        kind: 'ema',
+        period: 12,
+        color: '#38bdf8',
+      },
+    ])
   })
 })

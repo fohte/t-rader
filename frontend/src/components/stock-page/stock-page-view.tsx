@@ -28,7 +28,6 @@ export function StockPageView({
   quoteError,
   bars,
   displayRangeStart,
-  lookbackBars,
   annotations,
   notes,
   trades,
@@ -65,7 +64,6 @@ export function StockPageView({
   quoteError: boolean
   bars: components['schemas']['Bar'][]
   displayRangeStart?: string
-  lookbackBars?: number
   annotations: Annotation[]
   notes: Note[]
   trades: Trade[]
@@ -114,7 +112,6 @@ export function StockPageView({
             stockId={stock.id}
             bars={bars}
             displayRangeStart={displayRangeStart}
-            lookbackBars={lookbackBars}
             trades={trades}
             annotations={annotations}
             selectedAnnotationId={selectedAnnotationId}

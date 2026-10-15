@@ -1,9 +1,14 @@
-import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
+import {
+  type ChartIndicatorConfig,
+  getChartIndicatorName,
+} from '#lib/chart-indicator-settings'
 
 function getIndicatorLabel(indicator: ChartIndicatorConfig): string {
-  if (indicator.kind === 'sma') return `SMA ${indicator.period.toString()}`
-  if (indicator.kind === 'ema') return `EMA ${indicator.period.toString()}`
-  return `ボリンジャー ${indicator.period.toString()} ${indicator.deviation.toString()}σ`
+  const name = getChartIndicatorName(indicator)
+  if (indicator.kind === 'bollinger') {
+    return `${name} ${indicator.period.toString()} ${indicator.deviation.toString()}σ`
+  }
+  return `${name} ${indicator.period.toString()}`
 }
 
 export function ChartIndicatorLegend({

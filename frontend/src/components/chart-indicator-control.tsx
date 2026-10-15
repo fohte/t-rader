@@ -12,6 +12,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
 import {
   type ChartIndicatorConfig,
   type ChartIndicatorKind,
+  getChartIndicatorName,
+  isValidChartIndicatorDeviation,
+  isValidChartIndicatorPeriod,
   MAX_CHART_INDICATOR_PERIOD,
 } from '#lib/chart-indicator-settings'
 
@@ -58,24 +61,6 @@ function useIsMobileViewport(): boolean {
     getIsMobileViewport,
     () => false,
   )
-}
-
-function isValidPeriod(period: number): boolean {
-  return (
-    Number.isInteger(period) &&
-    period >= 1 &&
-    period <= MAX_CHART_INDICATOR_PERIOD
-  )
-}
-
-function isValidDeviation(deviation: number): boolean {
-  return Number.isFinite(deviation) && deviation > 0
-}
-
-function getIndicatorName(indicator: ChartIndicatorConfig): string {
-  if (indicator.kind === 'sma') return 'SMA'
-  if (indicator.kind === 'ema') return 'EMA'
-  return 'ボリンジャー'
 }
 
 export function ChartIndicatorControl({
@@ -162,7 +147,7 @@ function ChartIndicatorMenu({
         ) : (
           <ul className="space-y-2">
             {indicators.map((indicator) => {
-              const name = getIndicatorName(indicator)
+              const name = getChartIndicatorName(indicator)
               const label = `${name} ${indicator.period.toString()}`
 
               return (
@@ -185,15 +170,14 @@ function ChartIndicatorMenu({
                     min={1}
                     onBlur={(event) => {
                       const period = Number(event.currentTarget.value)
-                      if (!isValidPeriod(period)) {
+                      if (!isValidChartIndicatorPeriod(period)) {
                         event.currentTarget.value = String(indicator.period)
-                      }
-                    }}
-                    onChange={(event) => {
-                      const period = Number(event.currentTarget.value)
-                      if (isValidPeriod(period)) {
+                      } else {
                         onUpdatePeriod(indicator.id, period)
                       }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') event.currentTarget.blur()
                     }}
                     step={1}
                     type="number"
@@ -208,7 +192,7 @@ function ChartIndicatorMenu({
                         min={0.1}
                         onBlur={(event) => {
                           const deviation = Number(event.currentTarget.value)
-                          if (!isValidDeviation(deviation)) {
+                          if (!isValidChartIndicatorDeviation(deviation)) {
                             event.currentTarget.value = String(
                               indicator.deviation,
                             )
@@ -216,7 +200,7 @@ function ChartIndicatorMenu({
                         }}
                         onChange={(event) => {
                           const deviation = Number(event.currentTarget.value)
-                          if (isValidDeviation(deviation)) {
+                          if (isValidChartIndicatorDeviation(deviation)) {
                             onUpdateDeviation(indicator.id, deviation)
                           }
                         }}

@@ -55,7 +55,6 @@ export function StockPageChart({
   stockId,
   bars,
   displayRangeStart,
-  lookbackBars,
   trades,
   annotations,
   selectedAnnotationId,
@@ -73,7 +72,6 @@ export function StockPageChart({
   stockId: string
   bars: Bar[]
   displayRangeStart?: string
-  lookbackBars?: number
   trades: Trade[]
   annotations: ChartAnnotation[]
   selectedAnnotationId: string | null
@@ -141,7 +139,6 @@ export function StockPageChart({
           bars={bars}
           indicators={indicators}
           displayRangeStart={displayRangeStart}
-          lookbackBars={lookbackBars}
           trades={trades}
           annotations={annotations}
           onSelectAnnotation={onSelectAnnotation}

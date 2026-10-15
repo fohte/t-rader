@@ -43,8 +43,15 @@ const chartMocks = vi.hoisted(() => {
   }
   const timeScale = {
     fitContent: vi.fn(),
+    getVisibleRange: vi.fn<
+      () => {
+        from: string
+        to: string
+      } | null
+    >(() => null),
     height: vi.fn(() => 24),
     setVisibleLogicalRange: vi.fn(),
+    setVisibleRange: vi.fn(),
     subscribeSizeChange: vi.fn(),
     subscribeVisibleTimeRangeChange: vi.fn(),
     timeToCoordinate: vi.fn<(time: UTCTimestamp) => number>(() => 36),
@@ -157,7 +164,6 @@ describe('CandlestickChart', () => {
           { id: 'indicator-sma', kind: 'sma', period: 2, color: '#f97316' },
         ]}
         displayRangeStart="2025-04-12"
-        lookbackBars={2}
       />,
     )
 
@@ -180,6 +186,45 @@ describe('CandlestickChart', () => {
       ],
       visibleRanges: [[{ from: 1.5, to: 3.5 }]],
       legend: 'SMA 2',
+    })
+  })
+
+  it('keeps the visible time range when extended bars arrive', () => {
+    const viewport = {
+      from: '2025-04-10',
+      to: '2025-04-10',
+    }
+    const extendedBars = [
+      { ...firstBar, timestamp: '2025-04-09T00:00:00.000Z' },
+      firstBar,
+    ]
+    const { rerender } = render(
+      <CandlestickChart bars={[firstBar]} displayRangeStart="2025-04-10" />,
+    )
+
+    chartMocks.timeScale.getVisibleRange.mockReturnValue(viewport)
+    rerender(
+      <CandlestickChart bars={extendedBars} displayRangeStart="2025-04-10" />,
+    )
+
+    const readUpdatedViewport = () => ({
+      restoredRanges: chartMocks.timeScale.setVisibleRange.mock.calls,
+      capturedBeforeDataUpdate: (() => {
+        const rangeReadOrder =
+          chartMocks.timeScale.getVisibleRange.mock.invocationCallOrder[1]
+        const dataUpdateOrder =
+          chartMocks.candlestickSeries.setData.mock.invocationCallOrder[1]
+        return (
+          rangeReadOrder != null &&
+          dataUpdateOrder != null &&
+          rangeReadOrder < dataUpdateOrder
+        )
+      })(),
+    })
+
+    expect(readUpdatedViewport()).toEqual({
+      restoredRanges: [[viewport]],
+      capturedBeforeDataUpdate: true,
     })
   })
 

@@ -19,11 +19,7 @@ import { useAnnotationOverlays } from '#components/candlestick-chart/use-annotat
 import { ChartIndicatorLegend } from '#components/chart-indicator-legend'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
-import {
-  calculateBollingerBands,
-  calculateExponentialMovingAverage,
-  calculateSimpleMovingAverage,
-} from '#lib/chart-indicator-calculations'
+import { calculateChartIndicatorLines } from '#lib/chart-indicator-calculations'
 import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
 import {
   getChartThemeColors,
@@ -50,7 +46,6 @@ interface CandlestickChartProps {
   annotations?: ChartAnnotation[]
   indicators?: ChartIndicatorConfig[]
   displayRangeStart?: string
-  lookbackBars?: number
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
   currency?: ChartCurrency
@@ -67,7 +62,6 @@ export function CandlestickChart({
   annotations,
   indicators = EMPTY_INDICATORS,
   displayRangeStart,
-  lookbackBars = 0,
   onSelectAnnotation,
   selectedAnnotationId,
   currency,
@@ -87,10 +81,7 @@ export function CandlestickChart({
   )
   const priceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
-  const previousDisplayRangeRef = useRef<{
-    displayRangeStart?: string
-    lookbackBars: number
-  } | null>(null)
+  const previousDisplayRangeRef = useRef<string | undefined>(undefined)
   const hasAnnotations = (annotations?.length ?? 0) > 0
 
   // チャートの初期化 (マウント時のみ)
@@ -226,15 +217,14 @@ export function CandlestickChart({
     if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return
     if (bars.length === 0) return
 
+    const timeScale = chartRef.current?.timeScale()
+    const visibleRange = timeScale?.getVisibleRange()
     candlestickSeriesRef.current.setData(toCandlestickData(bars))
     volumeSeriesRef.current.setData(toVolumeData(bars))
 
-    const previousDisplayRange = previousDisplayRangeRef.current
     const shouldResetVisibleRange =
       isInitialDataRef.current ||
-      previousDisplayRange == null ||
-      previousDisplayRange.displayRangeStart !== displayRangeStart ||
-      previousDisplayRange.lookbackBars !== lookbackBars
+      previousDisplayRangeRef.current !== displayRangeStart
 
     if (shouldResetVisibleRange) {
       const firstVisibleIndex =
@@ -244,8 +234,6 @@ export function CandlestickChart({
               (bar) =>
                 Date.parse(bar.timestamp) >= Date.parse(displayRangeStart),
             )
-      const timeScale = chartRef.current?.timeScale()
-
       if (firstVisibleIndex > 0 && timeScale != null) {
         timeScale.setVisibleLogicalRange({
           from: firstVisibleIndex - 0.5,
@@ -255,10 +243,12 @@ export function CandlestickChart({
         timeScale?.fitContent()
       }
       isInitialDataRef.current = false
+    } else if (visibleRange != null) {
+      timeScale?.setVisibleRange(visibleRange)
     }
 
-    previousDisplayRangeRef.current = { displayRangeStart, lookbackBars }
-  }, [bars, displayRangeStart, lookbackBars])
+    previousDisplayRangeRef.current = displayRangeStart
+  }, [bars, displayRangeStart])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -275,47 +265,12 @@ export function CandlestickChart({
     }))
 
     for (const indicator of indicators) {
-      const lines =
-        indicator.kind === 'sma'
-          ? [
-              {
-                name: 'sma',
-                points: calculateSimpleMovingAverage(
-                  indicatorBars,
-                  indicator.period,
-                ),
-              },
-            ]
-          : indicator.kind === 'ema'
-            ? [
-                {
-                  name: 'ema',
-                  points: calculateExponentialMovingAverage(
-                    indicatorBars,
-                    indicator.period,
-                  ),
-                },
-              ]
-            : (() => {
-                const bands = calculateBollingerBands(
-                  indicatorBars,
-                  indicator.period,
-                  indicator.deviation,
-                )
-                return [
-                  { name: 'middle', points: bands.middle },
-                  { name: 'upper', points: bands.upper },
-                  { name: 'lower', points: bands.lower },
-                ]
-              })()
-      const series = lines.map(({ name, points }) => {
+      const lines = calculateChartIndicatorLines(indicator, indicatorBars)
+      const series = lines.map(({ variant, points }) => {
         const lineSeries = chart.addSeries(LineSeries, {
           color: indicator.color,
-          lineWidth: name === 'upper' || name === 'lower' ? 1 : 2,
-          lineStyle:
-            name === 'upper' || name === 'lower'
-              ? LineStyle.Dashed
-              : LineStyle.Solid,
+          lineWidth: variant === 'band' ? 1 : 2,
+          lineStyle: variant === 'band' ? LineStyle.Dashed : LineStyle.Solid,
           priceScaleId: 'right',
           priceLineVisible: false,
           lastValueVisible: false,

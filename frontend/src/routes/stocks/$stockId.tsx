@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import type { ComponentProps } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { StockPageState } from '#components/stock-page/stock-page-state'
 import { StockPageView } from '#components/stock-page/stock-page-view'
 import { useChatContext } from '#components/strategy-shell/floating-chat-store'
 import { type Timeframe } from '#components/timeframe-selector'
 import { $api, fetchClient } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 import {
   getChartIndicatorLookbackBars,
   useChartIndicators,
@@ -29,6 +30,8 @@ export const Route = createFileRoute('/stocks/$stockId')({
   validateSearch: validateStockPageSearch,
   component: StockPage,
 })
+
+type Bar = components['schemas']['Bar']
 
 function StockPage() {
   const { stockId } = Route.useParams()
@@ -53,6 +56,16 @@ function StockPage() {
     () => extendBarsRange(displayChartRange, timeframe, lookbackBars),
     [displayChartRange, lookbackBars, timeframe],
   )
+  const chartBarsKey = JSON.stringify([
+    stockId,
+    timeframe,
+    displayChartRange.from,
+    displayChartRange.to,
+  ])
+  const [cachedChartBars, setCachedChartBars] = useState<{
+    key: string
+    bars: Bar[]
+  } | null>(null)
   const dailyRange = useMemo(() => getBarsRange('1d'), [])
   const selectedDateRange = useMemo(
     () =>
@@ -92,6 +105,13 @@ function StockPage() {
       },
     },
   })
+  useEffect(() => {
+    if (chartBarsQuery.data == null) return
+    setCachedChartBars({ key: chartBarsKey, bars: chartBarsQuery.data })
+  }, [chartBarsKey, chartBarsQuery.data])
+  const chartBars =
+    chartBarsQuery.data ??
+    (cachedChartBars?.key === chartBarsKey ? cachedChartBars.bars : undefined)
   const dailyBarsQuery = $api.useQuery('get', '/api/bars', {
     params: {
       query: {
@@ -148,12 +168,10 @@ function StockPage() {
       requestedDate == null
         ? null
         : findDailyBarForDate(
-            (timeframe === '1d'
-              ? chartBarsQuery.data
-              : selectedDateBarsQuery.data) ?? [],
+            (timeframe === '1d' ? chartBars : selectedDateBarsQuery.data) ?? [],
             requestedDate,
           ),
-    [chartBarsQuery.data, requestedDate, selectedDateBarsQuery.data, timeframe],
+    [chartBars, requestedDate, selectedDateBarsQuery.data, timeframe],
   )
   const selectedDateLoading =
     requestedDate != null &&
@@ -186,9 +204,8 @@ function StockPage() {
       quote={quote}
       quoteLoading={dailyBarsQuery.isPending}
       quoteError={dailyBarsQuery.isError}
-      bars={chartBarsQuery.data ?? []}
+      bars={chartBars ?? []}
       displayRangeStart={displayChartRange.from}
-      lookbackBars={lookbackBars}
       annotations={annotationsQuery.data ?? []}
       notes={notesQuery.data ?? []}
       trades={tradesQuery.data ?? []}
@@ -209,8 +226,8 @@ function StockPage() {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       currency={getChartCurrency(stock.market)}
-      chartLoading={chartBarsQuery.isPending}
-      chartError={chartBarsQuery.isError}
+      chartLoading={chartBarsQuery.isPending && chartBars == null}
+      chartError={chartBarsQuery.isError && chartBars == null}
       selectedDate={requestedDate}
       selectedDateLoading={selectedDateLoading}
       selectedDateError={selectedDateError}

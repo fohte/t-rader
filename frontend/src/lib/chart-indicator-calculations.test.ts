@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   calculateBollingerBands,
+  calculateChartIndicatorLines,
   calculateExponentialMovingAverage,
   calculateSimpleMovingAverage,
   type ChartIndicatorBar,
@@ -57,6 +58,87 @@ describe('calculateBollingerBands', () => {
         { time: '2026-01-05', value: 15 },
       ],
     })
+  })
+})
+
+describe('calculateChartIndicatorLines', () => {
+  it('maps a simple moving average to a main chart line', () => {
+    expect(
+      calculateChartIndicatorLines(
+        { id: 'indicator-sma', kind: 'sma', period: 3, color: '#f97316' },
+        bars,
+      ),
+    ).toEqual([
+      {
+        variant: 'main',
+        points: [
+          { time: '2026-01-03', value: 12 },
+          { time: '2026-01-04', value: 14 },
+          { time: '2026-01-05', value: 16 },
+        ],
+      },
+    ])
+  })
+
+  it('maps an exponential moving average to a main chart line', () => {
+    expect(
+      calculateChartIndicatorLines(
+        { id: 'indicator-ema', kind: 'ema', period: 3, color: '#38bdf8' },
+        bars,
+      ),
+    ).toEqual([
+      {
+        variant: 'main',
+        points: [
+          { time: '2026-01-03', value: 12 },
+          { time: '2026-01-04', value: 14 },
+          { time: '2026-01-05', value: 16 },
+        ],
+      },
+    ])
+  })
+
+  it('maps Bollinger bands to a main line and two band lines', () => {
+    expect(
+      calculateChartIndicatorLines(
+        {
+          id: 'indicator-bollinger',
+          kind: 'bollinger',
+          period: 2,
+          deviation: 2,
+          color: '#34d399',
+        },
+        bars,
+      ),
+    ).toEqual([
+      {
+        variant: 'main',
+        points: [
+          { time: '2026-01-02', value: 11 },
+          { time: '2026-01-03', value: 13 },
+          { time: '2026-01-04', value: 15 },
+          { time: '2026-01-05', value: 17 },
+        ],
+      },
+      {
+        variant: 'band',
+        points: [
+          { time: '2026-01-02', value: 13 },
+          { time: '2026-01-03', value: 15 },
+          { time: '2026-01-04', value: 17 },
+          { time: '2026-01-05', value: 19 },
+        ],
+      },
+      {
+        variant: 'band',
+        points: [
+          { time: '2026-01-02', value: 9 },
+          { time: '2026-01-03', value: 11 },
+          { time: '2026-01-04', value: 13 },
+          { time: '2026-01-05', value: 15 },
+        ],
+      },
+    ])
   })
 })
 

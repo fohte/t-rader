@@ -35,7 +35,6 @@ export function StockChartPageView({
   stockName,
   bars,
   displayRangeStart,
-  lookbackBars,
   annotations,
   timeframe,
   onTimeframeChange,
@@ -52,7 +51,6 @@ export function StockChartPageView({
   stockName: string
   bars: Bar[]
   displayRangeStart?: string
-  lookbackBars?: number
   annotations: ChartAnnotation[]
   timeframe: Timeframe
   onTimeframeChange: (timeframe: Timeframe) => void
@@ -119,7 +117,6 @@ export function StockChartPageView({
               bars={bars}
               indicators={indicators}
               displayRangeStart={displayRangeStart}
-              lookbackBars={lookbackBars}
               annotations={annotations}
               onSelectAnnotation={onSelectAnnotation}
               selectedAnnotationId={selectedAnnotationId}
