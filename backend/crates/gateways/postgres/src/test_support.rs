@@ -15,7 +15,11 @@ use sqlx::{
 use crate::DatabaseHandle;
 
 pub async fn create_test_pool() -> sqlx::PgPool {
-    connect_test_database_or_initialize()
+    create_test_pool_with_max_connections(1).await
+}
+
+pub async fn create_test_pool_with_max_connections(max_connections: u32) -> sqlx::PgPool {
+    connect_test_database_or_initialize(max_connections)
         .await
         .expect("connect to shared test database")
 }
@@ -34,23 +38,28 @@ pub async fn create_test_transaction() -> DatabaseHandle {
     transaction
 }
 
-async fn connect_test_database() -> Result<sqlx::PgPool, sqlx::Error> {
-    connect_pool(test_database_options()).await
+async fn connect_test_database(max_connections: u32) -> Result<sqlx::PgPool, sqlx::Error> {
+    connect_pool(test_database_options(), max_connections).await
 }
 
-async fn connect_pool(options: PgConnectOptions) -> Result<sqlx::PgPool, sqlx::Error> {
+async fn connect_pool(
+    options: PgConnectOptions,
+    max_connections: u32,
+) -> Result<sqlx::PgPool, sqlx::Error> {
     PgPoolOptions::new()
-        .max_connections(1)
+        .max_connections(max_connections)
         .connect_with(options)
         .await
 }
 
-async fn connect_test_database_or_initialize() -> Result<sqlx::PgPool, sqlx::Error> {
-    match connect_test_database().await {
+async fn connect_test_database_or_initialize(
+    max_connections: u32,
+) -> Result<sqlx::PgPool, sqlx::Error> {
+    match connect_test_database(max_connections).await {
         Ok(pool) => Ok(pool),
         Err(error) if is_missing_database(&error) => {
             initialize_test_database().await;
-            connect_test_database().await
+            connect_test_database(max_connections).await
         }
         Err(error) => Err(error),
     }
@@ -125,7 +134,7 @@ async fn create_and_publish_test_database(
     .await
     .expect("create shared test database for migrations");
 
-    let pool = connect_pool(base_options.database(initializing_database))
+    let pool = connect_pool(base_options.database(initializing_database), 1)
         .await
         .expect("connect to shared test database for migrations");
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);

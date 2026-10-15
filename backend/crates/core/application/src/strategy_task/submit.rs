@@ -2,11 +2,12 @@ use chrono::SubsecRound;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskClient, SubmitAgentTask};
+use crate::unit_of_work::UnitOfWorkTransaction;
 
 use super::error::SubmitTaskError;
 use super::types::{
-    StrategyTask, StrategyTaskContext, StrategyTaskPhase, StrategyTaskUpdate, SubmittedTask,
-    TaskSource,
+    PreparedStrategyTaskSubmission, StrategyTask, StrategyTaskContext, StrategyTaskPhase,
+    StrategyTaskUpdate, SubmittedTask, TaskSource,
 };
 use super::{DEFAULT_PURPOSE, StrategyTaskUseCases, deadline_duration_from_agent_graph};
 
@@ -39,6 +40,25 @@ impl StrategyTaskUseCases {
         purpose: Option<String>,
         context: Option<StrategyTaskContext>,
     ) -> Result<SubmittedTask, SubmitTaskError> {
+        let prepared = self
+            .prepare_submission(strategy_id, prompt, source, purpose, context)
+            .await?;
+        let transaction = self.unit_of_work.begin().await?;
+        self.insert_prepared_submission(&transaction, &prepared)
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
+        self.submit_prepared_submission(agent_client, prepared)
+            .await
+    }
+
+    pub(crate) async fn prepare_submission(
+        &self,
+        strategy_id: Uuid,
+        prompt: &str,
+        source: TaskSource,
+        purpose: Option<String>,
+        context: Option<StrategyTaskContext>,
+    ) -> Result<PreparedStrategyTaskSubmission, SubmitTaskError> {
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() {
             return Err(SubmitTaskError::EmptyPrompt);
@@ -76,26 +96,42 @@ impl StrategyTaskUseCases {
             created_at: now,
             updated_at: now,
         };
-        let transaction = self.unit_of_work.begin().await?;
-        self.repository.insert(&transaction, task).await?;
-        self.unit_of_work.commit(transaction).await?;
-
-        let agent_ref = match agent_client
-            .submit(SubmitAgentTask {
+        Ok(PreparedStrategyTaskSubmission {
+            task,
+            request: SubmitAgentTask {
                 strategy_id,
                 prompt,
                 purpose: Some(purpose),
                 resume_steps: None,
                 deadline_at,
                 as_of: Some(as_of),
-            })
-            .await
-        {
+            },
+        })
+    }
+
+    pub(crate) async fn insert_prepared_submission(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        prepared: &PreparedStrategyTaskSubmission,
+    ) -> Result<(), SubmitTaskError> {
+        self.repository
+            .insert(transaction, prepared.task.clone())
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn submit_prepared_submission(
+        &self,
+        agent_client: &dyn AgentTaskClient,
+        prepared: PreparedStrategyTaskSubmission,
+    ) -> Result<SubmittedTask, SubmitTaskError> {
+        let task_id = prepared.task.task_id;
+        let agent_ref = match agent_client.submit(prepared.request).await {
             Ok(agent_ref) => agent_ref,
             Err(error) => {
                 tracing::warn!(
                     error = %error,
-                    strategy_id = %strategy_id,
+                    strategy_id = %prepared.task.strategy_id,
                     task_id = %task_id,
                     "agent task submission failed",
                 );

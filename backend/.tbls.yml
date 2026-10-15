@@ -25,6 +25,19 @@ comments:
       agents_md: 'エージェントに渡す方針・制約を記述した Markdown。'
       skills: 'エージェントが利用する skill 名と内容の対応を表す JSON。'
       agent_graph: 'エージェントの実行グラフを記述した YAML。'
+  - table: subagent_definition
+    tableComment: '戦略設定から独立したサブエージェント定義を保持する。'
+    columnComments:
+      key: '定義を参照するための一意なキー。'
+      description: '定義の用途を説明するテキスト。'
+      model: '子エージェントが使用するモデル名。'
+      reasoning_effort: '子エージェントの推論 effort。'
+      prompt: '子エージェントに渡す指示。'
+      tools: '子エージェントに許可する tool 名の配列。'
+      timeout_minutes: '子エージェント 1 回の実行時間上限。'
+      max_model_calls: '子エージェント 1 回の実行に許可するモデル呼び出し上限。'
+      tool_limits: '子エージェントごとの tool 呼び出し上限。'
+      output: '子エージェントが返す JSON Schema。'
   - table: annotation
     tableComment: '銘柄などの対象へ付与したテキスト注釈を保持する。'
     columnComments:

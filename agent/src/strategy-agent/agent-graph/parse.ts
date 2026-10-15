@@ -27,6 +27,8 @@ const agentGraphPhaseSchema = z.object({
   max_parallel: z.number().optional(),
   timeout_minutes: timeoutMinutesSchema.optional(),
   skills: z.array(z.string()).default([]),
+  subagents: z.array(z.string()).default([]),
+  max_subagent_runs: z.number().int().min(0).max(4_294_967_295).optional(),
   // 省略 (undefined) と明示的な空配列を区別するため .default([]) は付けない。
   tools: z.array(z.string()).optional(),
   output: z.record(z.string(), z.unknown()).default({}),
@@ -55,6 +57,10 @@ const toAgentGraphPhase = (
     ? { timeoutMinutes: raw.timeout_minutes }
     : {}),
   skills: raw.skills,
+  subagents: raw.subagents,
+  ...(raw.max_subagent_runs !== undefined
+    ? { maxSubagentRuns: raw.max_subagent_runs }
+    : {}),
   ...(raw.tools !== undefined ? { tools: raw.tools } : {}),
   output: raw.output,
 })

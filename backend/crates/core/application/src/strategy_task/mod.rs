@@ -28,6 +28,7 @@ pub use reconcile_job_use_cases::StrategyTaskReconcileJobUseCases;
 pub use repository::{
     SharedStrategyTaskRepository, StrategyTaskRepository, StrategyTaskRepositoryError,
 };
+pub(crate) use types::PreparedStrategyTaskSubmission;
 pub use types::{
     StrategyTask, StrategyTaskContext, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskStep,
     StrategyTaskStepStatus, StrategyTaskUpdate, SubmittedTask, TaskListQuery, TaskSource,

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -8,6 +9,10 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
+use crate::subagent_definition::{
+    SharedSubagentDefinitionRepository, SubagentDefinition, SubagentDefinitionRepository,
+    SubagentDefinitionRepositoryError,
+};
 use crate::unit_of_work::{FakeUnitOfWork, UnitOfWorkTransaction};
 
 use super::super::error::{AgentConfigRepositoryError, AgentConfigUseCaseError};
@@ -18,6 +23,73 @@ use super::AgentConfigUseCases;
 #[derive(Default)]
 struct FakeAgentConfigRepository {
     configs: Mutex<BTreeMap<String, AgentConfig>>,
+}
+
+#[derive(Default)]
+struct EmptySubagentDefinitionRepository {
+    reference_lock_acquisitions: AtomicUsize,
+}
+
+#[async_trait]
+impl SubagentDefinitionRepository for EmptySubagentDefinitionRepository {
+    async fn list(&self) -> Result<Vec<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn list_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn acquire_agent_graph_reference_lock(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+    ) -> Result<(), SubagentDefinitionRepositoryError> {
+        self.reference_lock_acquisitions
+            .fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    async fn find_by_key(
+        &self,
+        _key: &str,
+    ) -> Result<Option<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(None)
+    }
+
+    async fn find_by_key_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _key: &str,
+    ) -> Result<Option<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(None)
+    }
+
+    async fn insert(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _definition: SubagentDefinition,
+    ) -> Result<SubagentDefinition, SubagentDefinitionRepositoryError> {
+        Err(SubagentDefinitionRepositoryError::InvalidTransaction)
+    }
+
+    async fn update(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _definition: SubagentDefinition,
+    ) -> Result<SubagentDefinition, SubagentDefinitionRepositoryError> {
+        Err(SubagentDefinitionRepositoryError::InvalidTransaction)
+    }
+
+    async fn delete(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _key: &str,
+    ) -> Result<bool, SubagentDefinitionRepositoryError> {
+        Err(SubagentDefinitionRepositoryError::InvalidTransaction)
+    }
 }
 
 impl FakeAgentConfigRepository {
@@ -32,6 +104,13 @@ impl FakeAgentConfigRepository {
 impl AgentConfigRepository for FakeAgentConfigRepository {
     async fn list(&self) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError> {
         Ok(self.configs().values().cloned().collect())
+    }
+
+    async fn list_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError> {
+        self.list().await
     }
 
     async fn find_by_purpose(
@@ -71,19 +150,67 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
         Ok(created)
     }
 
-    async fn update(
+    async fn update_agents_md(
         &self,
         _transaction: &UnitOfWorkTransaction,
-        agent_config: AgentConfig,
+        agent_config_id: Uuid,
+        agents_md: String,
+        updated_at: DateTime<FixedOffset>,
     ) -> Result<AgentConfig, AgentConfigRepositoryError> {
         let mut configs = self.configs();
-        if !configs.contains_key(&agent_config.purpose) {
+        let Some(current) = configs
+            .values_mut()
+            .find(|config| config.id == agent_config_id)
+        else {
             return Err(
                 PersistenceError::RecordNotUpdated("agent_config disappeared".into()).into(),
             );
-        }
-        configs.insert(agent_config.purpose.clone(), agent_config.clone());
-        Ok(agent_config)
+        };
+        current.agents_md = agents_md;
+        current.updated_at = updated_at;
+        Ok(current.clone())
+    }
+
+    async fn update_skills(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        skills: serde_json::Value,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError> {
+        let mut configs = self.configs();
+        let Some(current) = configs
+            .values_mut()
+            .find(|config| config.id == agent_config_id)
+        else {
+            return Err(
+                PersistenceError::RecordNotUpdated("agent_config disappeared".into()).into(),
+            );
+        };
+        current.skills = skills;
+        current.updated_at = updated_at;
+        Ok(current.clone())
+    }
+
+    async fn update_agent_graph(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        agent_config_id: Uuid,
+        agent_graph: String,
+        updated_at: DateTime<FixedOffset>,
+    ) -> Result<AgentConfig, AgentConfigRepositoryError> {
+        let mut configs = self.configs();
+        let Some(current) = configs
+            .values_mut()
+            .find(|config| config.id == agent_config_id)
+        else {
+            return Err(
+                PersistenceError::RecordNotUpdated("agent_config disappeared".into()).into(),
+            );
+        };
+        current.agent_graph = agent_graph;
+        current.updated_at = updated_at;
+        Ok(current.clone())
     }
 
     async fn delete(
@@ -98,15 +225,24 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
 struct Fixture {
     use_cases: AgentConfigUseCases,
     unit_of_work: Arc<FakeUnitOfWork>,
+    subagent_definition_repository: Arc<EmptySubagentDefinitionRepository>,
 }
 
 #[fixture]
 fn fixture() -> Fixture {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeAgentConfigRepository::default());
+    let subagent_definition_repository = Arc::new(EmptySubagentDefinitionRepository::default());
+    let shared_subagent_definition_repository: SharedSubagentDefinitionRepository =
+        subagent_definition_repository.clone();
     Fixture {
-        use_cases: AgentConfigUseCases::new(unit_of_work.clone(), repository),
+        use_cases: AgentConfigUseCases::new(
+            unit_of_work.clone(),
+            repository,
+            shared_subagent_definition_repository,
+        ),
         unit_of_work,
+        subagent_definition_repository,
     }
 }
 
@@ -469,6 +605,72 @@ async fn delete_skill_returns_not_found_for_unknown_skill(fixture: Fixture) {
         .expect_err("unknown skill should be rejected");
 
     assert_eq!(error.to_string(), "skill 'missing_skill' not found");
+}
+
+#[rstest]
+#[tokio::test]
+async fn only_agent_graph_updates_acquire_the_reference_lock(fixture: Fixture) {
+    fixture
+        .use_cases
+        .create("example-purpose".to_string())
+        .await
+        .expect("create config");
+    fixture
+        .use_cases
+        .save_agents_md("example-purpose", "instructions".to_string())
+        .await
+        .expect("save agents_md");
+    fixture
+        .use_cases
+        .put_skills(
+            "example-purpose",
+            BTreeMap::from([("sample_skill".to_string(), "skill content".to_string())]),
+        )
+        .await
+        .expect("replace skills");
+    fixture
+        .use_cases
+        .put_skill(
+            "example-purpose",
+            "sample_skill",
+            "updated skill content".to_string(),
+        )
+        .await
+        .expect("upsert skill");
+    fixture
+        .use_cases
+        .delete_skill("example-purpose", "sample_skill")
+        .await
+        .expect("delete skill");
+    let acquisitions_before_graph_update = fixture
+        .subagent_definition_repository
+        .reference_lock_acquisitions
+        .load(Ordering::Relaxed);
+
+    let yaml = indoc::indoc! {"
+        phases:
+          - key: sample_phase
+            label: Sample phase
+            model: sample-model-plan
+            prompt: Sample prompt
+    "};
+    fixture
+        .use_cases
+        .save_agent_graph("example-purpose", yaml)
+        .await
+        .expect("save graph");
+    let acquisitions_after_graph_update = fixture
+        .subagent_definition_repository
+        .reference_lock_acquisitions
+        .load(Ordering::Relaxed);
+
+    assert_eq!(
+        (
+            acquisitions_before_graph_update,
+            acquisitions_after_graph_update,
+        ),
+        (0, 1),
+    );
 }
 
 #[rstest]
