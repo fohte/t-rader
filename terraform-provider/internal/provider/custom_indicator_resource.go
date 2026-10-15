@@ -181,10 +181,10 @@ func (r *customIndicatorResource) Read(ctx context.Context, req resource.ReadReq
 		resp.Diagnostics.AddError("Error reading custom indicator", err.Error())
 		return
 	}
-	if customIndicatorSchemaMatches(ctx, state.InputSchema, indicator.InputSchema) {
+	if jsonObjectMatchesPrior(ctx, state.InputSchema, indicator.InputSchema) {
 		model.InputSchema = state.InputSchema
 	}
-	if customIndicatorSchemaMatches(ctx, state.OutputSchema, indicator.OutputSchema) {
+	if jsonObjectMatchesPrior(ctx, state.OutputSchema, indicator.OutputSchema) {
 		model.OutputSchema = state.OutputSchema
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
@@ -263,11 +263,11 @@ func (r *customIndicatorResource) configuredClient(diagnostics *diag.Diagnostics
 }
 
 func modelFromCustomIndicator(indicator traderapigen.CustomIndicator) (customIndicatorModel, error) {
-	inputSchema, err := customIndicatorDynamic(indicator.InputSchema)
+	inputSchema, err := dynamicFromJSON(indicator.InputSchema)
 	if err != nil {
 		return customIndicatorModel{}, fmt.Errorf("decode input_schema: %w", err)
 	}
-	outputSchema, err := customIndicatorDynamic(indicator.OutputSchema)
+	outputSchema, err := dynamicFromJSON(indicator.OutputSchema)
 	if err != nil {
 		return customIndicatorModel{}, fmt.Errorf("decode output_schema: %w", err)
 	}
