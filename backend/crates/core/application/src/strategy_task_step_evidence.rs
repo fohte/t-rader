@@ -104,11 +104,6 @@ pub trait StrategyTaskStepEvidenceRepository: Send + Sync {
         execution_step_id: Uuid,
         instrument_id: &str,
     ) -> Result<Vec<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>;
-    async fn find_query_data_by_evidence_id(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        evidence_id: Uuid,
-    ) -> Result<Option<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError>;
 }
 
 #[cfg(test)]
@@ -164,19 +159,6 @@ impl StrategyTaskStepEvidenceRepository for FakeStrategyTaskStepEvidenceReposito
                 })
                 .cloned()
                 .collect()
-        }))
-    }
-
-    async fn find_query_data_by_evidence_id(
-        &self,
-        _transaction: &UnitOfWorkTransaction,
-        evidence_id: Uuid,
-    ) -> Result<Option<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError> {
-        Ok(self.with_records(|records| {
-            records
-                .iter()
-                .find(|evidence| evidence.id == evidence_id && evidence.source == "query_data")
-                .cloned()
         }))
     }
 }

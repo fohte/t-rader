@@ -17,9 +17,9 @@ impl NoteUseCases {
         command: UpdateNoteCommand,
     ) -> Result<NoteSnapshot, NoteUseCaseError> {
         let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
-            self.resolve_market_data_references(body_md).await?
+            Some(self.resolve_market_data_references(body_md).await)
         } else {
-            serde_json::Map::new()
+            None
         };
         let transaction = self.unit_of_work.begin().await?;
         let current_note = self.require_note(&transaction, note_id).await?;

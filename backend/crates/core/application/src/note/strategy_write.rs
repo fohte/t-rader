@@ -1,5 +1,5 @@
 use chrono::Utc;
-use serde_json::json;
+use serde_json::{Map, json};
 use uuid::Uuid;
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
@@ -7,7 +7,7 @@ use crate::note::types::{
     NewNote, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand, NoteWriteResult,
 };
 use crate::note::use_cases::ensure_frontmatter_object;
-use crate::note::version_write::{AppendVersionCommand, ResolvedMarketDataReferences};
+use crate::note::version_write::AppendVersionCommand;
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -32,11 +32,10 @@ impl NoteUseCases {
                 .map_err(|error| NoteUseCaseError::Validation(error.to_string()))?;
         }
         let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
-            self.resolve_market_data_references(body_md).await?
+            Some(self.resolve_market_data_references(body_md).await)
         } else {
-            serde_json::Map::new()
+            None
         };
-
         if let Some(note_id) = command.note_id {
             let transaction = self.unit_of_work.begin().await?;
             let note = self.require_note(&transaction, note_id).await?;
@@ -205,7 +204,7 @@ impl NoteUseCases {
         transaction: &UnitOfWorkTransaction,
         note: crate::note::types::Note,
         command: NoteWriteCommand,
-        resolved_market_data: ResolvedMarketDataReferences,
+        resolved_market_data: Option<Result<Map<String, serde_json::Value>, NoteUseCaseError>>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -318,6 +317,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+    use core_domain::bar::{Bar, Timeframe};
     use core_domain::valuation::Valuation;
     use indoc::indoc;
     use rstest::rstest;
@@ -326,7 +326,7 @@ mod tests {
     use tokio::sync::Mutex;
 
     use super::*;
-    use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository};
+    use crate::bars::{BarsUseCases, DailyBarAdjustmentFactor, FakeBarsRepository};
     use crate::change_history::{Actor, FakeChangeHistory};
     use crate::custom_indicator_evaluation::{
         CustomIndicatorEvaluation, CustomIndicatorEvaluationUseCases,
@@ -338,10 +338,7 @@ mod tests {
     use crate::note::repository::{NoteRepository, NoteRepositoryError};
     use crate::note::types::{
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
-        NoteVersionUpdate,
-    };
-    use crate::strategy_task_step_evidence::{
-        FakeStrategyTaskStepEvidenceRepository, StrategyTaskStepEvidence,
+        NoteVersionUpdate, UpdateNoteCommand,
     };
     use crate::unit_of_work::FakeUnitOfWork;
     use crate::valuation::{FakeValuationRepository, ValuationUseCases};
@@ -642,52 +639,84 @@ mod tests {
         }
     }
 
-    fn make_note_use_cases(
-        source_version: NoteVersion,
-        evidence: Vec<StrategyTaskStepEvidence>,
-    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
-        make_note_use_cases_with_latest(source_version.clone(), source_version, evidence)
+    fn make_note_use_cases(source_version: NoteVersion) -> (NoteUseCases, Arc<LinkNoteRepository>) {
+        make_note_use_cases_with_latest(source_version.clone(), source_version)
     }
 
     fn make_note_use_cases_with_latest(
         source_version: NoteVersion,
         latest_version: NoteVersion,
-        evidence: Vec<StrategyTaskStepEvidence>,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
-        make_note_use_cases_with_options(source_version, latest_version, evidence, false)
+        make_note_use_cases_with_options(source_version, latest_version, false)
     }
 
     fn make_approval_note_use_cases(
         source_version: NoteVersion,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
-        make_note_use_cases_with_options(source_version.clone(), source_version, vec![], true)
+        make_note_use_cases_with_options(source_version.clone(), source_version, true)
     }
 
     fn make_note_use_cases_with_options(
         source_version: NoteVersion,
         latest_version: NoteVersion,
-        evidence: Vec<StrategyTaskStepEvidence>,
         requires_approval: bool,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let valuations = ValuationUseCases::new(
+            Arc::new(FakeValuationRepository::default()),
+            bars_repository.clone(),
+        );
         make_note_use_cases_with_services(
             source_version,
             latest_version,
-            evidence,
             requires_approval,
+            bars_repository,
+            valuations,
+            IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+        )
+    }
+
+    fn make_note_use_cases_with_bars(
+        source_version: NoteVersion,
+        bars_repository: Arc<FakeBarsRepository>,
+    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
+        make_note_use_cases_with_services(
+            source_version.clone(),
+            source_version,
+            false,
+            bars_repository.clone(),
             ValuationUseCases::new(
                 Arc::new(FakeValuationRepository::default()),
-                Arc::new(FakeBarsRepository::new()),
+                bars_repository,
             ),
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
-            custom_indicator_evaluation_use_cases([]),
         )
     }
 
     fn make_note_use_cases_with_services(
         source_version: NoteVersion,
         latest_version: NoteVersion,
-        evidence: Vec<StrategyTaskStepEvidence>,
         requires_approval: bool,
+        bars_repository: Arc<FakeBarsRepository>,
+        valuations: ValuationUseCases,
+        indicator_observations: IndicatorObservationUseCases,
+    ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
+        make_note_use_cases_with_all_services(
+            source_version,
+            latest_version,
+            requires_approval,
+            bars_repository,
+            valuations,
+            indicator_observations,
+            custom_indicator_evaluation_use_cases([]),
+        )
+    }
+
+    fn make_note_use_cases_with_all_services(
+        source_version: NoteVersion,
+        latest_version: NoteVersion,
+        requires_approval: bool,
+        bars_repository: Arc<FakeBarsRepository>,
         valuations: ValuationUseCases,
         indicator_observations: IndicatorObservationUseCases,
         custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
@@ -705,12 +734,12 @@ mod tests {
             inserted_versions: Mutex::new(Vec::new()),
             reference_replacements: Mutex::new(Vec::new()),
         });
-        let evidence_repository = FakeStrategyTaskStepEvidenceRepository::new(evidence);
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let use_cases = NoteUseCases::new(
-            Arc::new(FakeUnitOfWork::new()),
+            unit_of_work.clone(),
             repository.clone(),
             Arc::new(FakeChangeHistory::new()),
-            Arc::new(evidence_repository),
+            BarsUseCases::new(unit_of_work, bars_repository),
             valuations,
             indicator_observations,
             custom_indicator_evaluations,
@@ -718,42 +747,73 @@ mod tests {
         (use_cases, repository)
     }
 
-    fn query_data_evidence() -> StrategyTaskStepEvidence {
-        StrategyTaskStepEvidence {
-            id: Uuid::from_u128(8),
-            execution_step_id: EXECUTION_STEP_ID,
-            source: "query_data".into(),
-            source_ref: "fictional-code".into(),
-            observed_at: timestamp(),
-            published_at: None,
-            effective_at: None,
-            snapshot: json!({
-                "instrument_id": "fictional-code",
-                "bars": [
-                    {
-                        "timestamp": "2030-01-02T00:00:00Z",
-                        "open": 9.0,
-                        "high": 11.0,
-                        "low": 8.0,
-                        "close": 10.0,
-                        "volume": 100,
-                    },
-                    {
-                        "timestamp": "2030-01-03T00:00:00Z",
-                        "open": 10.0,
-                        "high": 13.0,
-                        "low": 9.0,
-                        "close": 12.0,
-                        "volume": 150,
-                    },
-                ],
-            }),
+    #[expect(clippy::expect_used, reason = "テスト用の固定日時を構築するため")]
+    fn daily_bar(
+        instrument_id: &str,
+        timestamp: &str,
+        open: i64,
+        high: i64,
+        low: i64,
+        close: i64,
+        volume: i64,
+    ) -> Bar {
+        Bar {
+            instrument_id: instrument_id.into(),
+            timeframe: Timeframe::Daily,
+            timestamp: DateTime::parse_from_rfc3339(timestamp)
+                .expect("valid bar timestamp")
+                .with_timezone(&Utc),
+            open: Decimal::from(open),
+            high: Decimal::from(high),
+            low: Decimal::from(low),
+            close: Decimal::from(close),
+            volume,
+            adjustment_factor: Decimal::ONE,
+        }
+    }
+
+    fn fictional_code_daily_bars() -> Vec<Bar> {
+        vec![
+            daily_bar("fictional-code", "2030-01-02T00:00:00Z", 9, 11, 8, 10, 100),
+            daily_bar("fictional-code", "2030-01-03T00:00:00Z", 10, 13, 9, 12, 150),
+        ]
+    }
+
+    fn expected_write_result(
+        title: &str,
+        body: &str,
+        resolved_price_references_json: serde_json::Value,
+    ) -> NoteWriteResult {
+        NoteWriteResult {
+            note_id: SOURCE_NOTE_ID,
+            created: false,
+            snapshot: NoteSnapshot {
+                note: source_note(),
+                version: NoteVersion {
+                    id: NORMALIZED_VERSION_ID,
+                    note_id: SOURCE_NOTE_ID,
+                    version_no: 2,
+                    title: title.into(),
+                    body_md: body.into(),
+                    frontmatter_json: json!({}),
+                    graphs_json: json!([]),
+                    resolved_price_references_json,
+                    status: INITIAL_NOTE_STATUS.into(),
+                    is_current: true,
+                    change_reason: None,
+                    created_by_kind: "llm".into(),
+                    execution_id: None,
+                    created_at: timestamp(),
+                    reviewed_at: None,
+                },
+                created_by_kind: "human".into(),
+            },
         }
     }
 
     #[tokio::test]
     async fn write_updates_a_note_and_links_another_note() {
-        let (use_cases, repository) = make_note_use_cases(source_version(), vec![]);
+        let (use_cases, repository) = make_note_use_cases(source_version());
 
         let mut result = use_cases
             .write(NoteWriteCommand {
@@ -826,21 +886,31 @@ mod tests {
 
     #[tokio::test]
     async fn write_resolves_price_links_and_keeps_them_in_the_body() {
-        let mut source_version = source_version();
-        source_version.execution_id = Some(EXECUTION_STEP_ID.to_string());
-        let (use_cases, _) = make_note_use_cases(source_version, vec![query_data_evidence()]);
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let mut bars = fictional_code_daily_bars();
+        bars.push(daily_bar(
+            "US:FICTIONAL-A",
+            "2030-01-02T04:00:00Z",
+            13,
+            16,
+            12,
+            15,
+            200,
+        ));
+        bars_repository.seed_bars(bars).await;
+        let (use_cases, _) = make_note_use_cases_with_bars(source_version(), bars_repository);
         let body = concat!(
             "[[price:fictional-code@2030-01-02:open]] ",
             "[[price:fictional-code@2030-01-02:high]] ",
             "[[price:fictional-code@2030-01-02:low]] ",
             "[[price:fictional-code@2030-01-02:close]] ",
             "[[price:fictional-code@2030-01-02:volume]] ",
-            "[[change:fictional-code@2030-01-02..2030-01-03:close]]",
+            "[[price:US:FICTIONAL-A@2030-01-02:close]]",
         );
 
         let mut result = use_cases
             .write(NoteWriteCommand {
-                execution_id: Some(EXECUTION_STEP_ID.to_string()),
+                execution_id: None,
                 note_id: Some(SOURCE_NOTE_ID),
                 title: Some("Updated title".into()),
                 body_md: Some(body.into()),
@@ -856,61 +926,49 @@ mod tests {
                 change_diff: None,
             })
             .await
-            .expect("price links resolve from the execution evidence");
-        result.snapshot.version.id = NORMALIZED_VERSION_ID;
+            .expect("price references resolve from daily bars without an execution id");
 
+        result.snapshot.version.id = NORMALIZED_VERSION_ID;
         assert_eq!(
             result,
-            NoteWriteResult {
-                note_id: SOURCE_NOTE_ID,
-                created: false,
-                snapshot: NoteSnapshot {
-                    note: source_note(),
-                    version: NoteVersion {
-                        id: NORMALIZED_VERSION_ID,
-                        note_id: SOURCE_NOTE_ID,
-                        version_no: 2,
-                        title: "Updated title".into(),
-                        body_md: body.into(),
-                        frontmatter_json: json!({}),
-                        graphs_json: json!([]),
-                        resolved_price_references_json: json!({
-                            "[[price:fictional-code@2030-01-02:open]]": {
-                                "value": 9.0,
-                                "evidence_id": Uuid::from_u128(8).to_string(),
-                            },
-                            "[[price:fictional-code@2030-01-02:high]]": {
-                                "value": 11.0,
-                                "evidence_id": Uuid::from_u128(8).to_string(),
-                            },
-                            "[[price:fictional-code@2030-01-02:low]]": {
-                                "value": 8.0,
-                                "evidence_id": Uuid::from_u128(8).to_string(),
-                            },
-                            "[[price:fictional-code@2030-01-02:close]]": {
-                                "value": 10.0,
-                                "evidence_id": Uuid::from_u128(8).to_string(),
-                            },
-                            "[[price:fictional-code@2030-01-02:volume]]": {
-                                "value": 100,
-                                "evidence_id": Uuid::from_u128(8).to_string(),
-                            },
-                            "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
-                                "value": 20.0,
-                                "evidence_id": Uuid::from_u128(8).to_string(),
-                            },
-                        }),
-                        status: INITIAL_NOTE_STATUS.into(),
-                        is_current: true,
-                        change_reason: None,
-                        created_by_kind: "llm".into(),
-                        execution_id: Some(EXECUTION_STEP_ID.to_string()),
-                        created_at: timestamp(),
-                        reviewed_at: None,
+            expected_write_result(
+                "Updated title",
+                body,
+                json!({
+                    "[[price:fictional-code@2030-01-02:open]]": { "value": 9 },
+                    "[[price:fictional-code@2030-01-02:high]]": { "value": 11 },
+                    "[[price:fictional-code@2030-01-02:low]]": { "value": 8 },
+                    "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
+                    "[[price:fictional-code@2030-01-02:volume]]": { "value": 100 },
+                    "[[price:US:FICTIONAL-A@2030-01-02:close]]": { "value": 15 },
+                }),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn write_resolves_change_links_from_daily_bars() {
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository.seed_bars(fictional_code_daily_bars()).await;
+        let (use_cases, _) = make_note_use_cases_with_bars(source_version(), bars_repository);
+        let reference = "[[change:fictional-code@2030-01-02..2030-01-03:close]]";
+        let mut result = use_cases
+            .write(write_body_command(reference))
+            .await
+            .expect("change references resolve from daily bars");
+
+        result.snapshot.version.id = NORMALIZED_VERSION_ID;
+        assert_eq!(
+            result,
+            expected_write_result(
+                "Updated title",
+                reference,
+                json!({
+                    "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
+                        "value": 20,
                     },
-                    created_by_kind: "human".into(),
-                },
-            },
+                }),
+            ),
         );
     }
 
@@ -969,11 +1027,11 @@ mod tests {
         let valuations =
             ValuationUseCases::new(valuation_repository.clone(), bars_repository.clone());
         let indicator_observations = IndicatorObservationUseCases::new(indicator_repository);
-        let (use_cases, _) = make_note_use_cases_with_services(
+        let (use_cases, _) = make_note_use_cases_with_all_services(
             source_version(),
             source_version(),
-            vec![],
             false,
+            bars_repository.clone(),
             valuations,
             indicator_observations,
             custom_indicator_evaluation_use_cases([custom_indicator_evaluation(
@@ -990,8 +1048,8 @@ mod tests {
             "[[valuation:fictional-code@2030-01-02:eps]] ",
             "[[valuation:fictional-code@2030-01-02:fwd_eps]] ",
             "[[valuation:fictional-code@2030-01-02:bps]] ",
-            "[[indicator:demo-indicator@2030-01-02]]",
-            " [[eval:00000000-0000-0000-0000-000000000101:result]]",
+            "[[indicator:demo-indicator@2030-01-02]] ",
+            "[[eval:00000000-0000-0000-0000-000000000101:result]]",
         );
 
         let result = use_cases
@@ -1058,27 +1116,27 @@ mod tests {
             }
             None => custom_indicator_evaluation_use_cases([]),
         };
-        let (use_cases, _) = make_note_use_cases_with_services(
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let (use_cases, _) = make_note_use_cases_with_all_services(
             source_version(),
             source_version(),
-            vec![],
             false,
+            bars_repository.clone(),
             ValuationUseCases::new(
                 Arc::new(FakeValuationRepository::default()),
-                Arc::new(FakeBarsRepository::new()),
+                bars_repository,
             ),
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
             evaluation_use_cases,
         );
         let token = "[[eval:00000000-0000-0000-0000-000000000101:result]]";
 
-        let error = use_cases
-            .write(write_body_command(token))
-            .await
-            .err()
-            .map(|error| error.to_string());
+        let result = use_cases.write(write_body_command(token)).await;
 
-        assert_eq!(error, Some(format!("eval 参照 {token} の{reason}")));
+        assert_eq!(
+            result.map_err(|error| error.to_string()),
+            Err(format!("eval 参照 {token} の{reason}")),
+        );
     }
 
     #[rstest]
@@ -1095,7 +1153,7 @@ mod tests {
         #[case] token: &str,
         #[case] expected_error: &str,
     ) {
-        let (use_cases, _) = make_note_use_cases(source_version(), vec![]);
+        let (use_cases, _) = make_note_use_cases(source_version());
 
         let result = use_cases.write(write_body_command(token)).await;
 
@@ -1126,16 +1184,15 @@ mod tests {
             .lock()
             .expect("lock")
             .push(valuation);
-        let valuations =
-            ValuationUseCases::new(valuation_repository, Arc::new(FakeBarsRepository::new()));
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let valuations = ValuationUseCases::new(valuation_repository, bars_repository.clone());
         let (use_cases, _) = make_note_use_cases_with_services(
             source_version(),
             source_version(),
-            vec![],
             false,
+            bars_repository,
             valuations,
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
-            custom_indicator_evaluation_use_cases([]),
         );
 
         let result = use_cases
@@ -1150,12 +1207,21 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::extra_field(r#"{"value": 10, "metadata": "previous value"}"#)]
+    #[case::null_value(r#"{"value": null}"#)]
     #[tokio::test]
-    async fn human_edit_uses_current_version_evidence_without_inheriting_execution_id() {
+    async fn human_edit_re_resolves_entries_without_a_non_null_value_only(
+        #[case] saved_entry: &str,
+    ) {
         let link = "[[price:fictional-code@2030-01-02:close]]";
         let mut current = source_version();
         current.body_md = link.into();
         current.execution_id = Some(EXECUTION_STEP_ID.to_string());
+        current.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-02:close]]":
+                serde_json::from_str::<serde_json::Value>(saved_entry).expect("valid fixture"),
+        });
         let mut latest = current.clone();
         latest.id = Uuid::from_u128(12);
         latest.version_no = 2;
@@ -1163,8 +1229,29 @@ mod tests {
         latest.execution_id = Some(Uuid::from_u128(13).to_string());
         latest.status = "unread".into();
         latest.is_current = false;
-        let (use_cases, repository) =
-            make_note_use_cases_with_latest(current, latest, vec![query_data_evidence()]);
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository
+            .seed_bars(vec![daily_bar(
+                "fictional-code",
+                "2030-01-02T00:00:00Z",
+                9,
+                11,
+                8,
+                12,
+                100,
+            )])
+            .await;
+        let (use_cases, repository) = make_note_use_cases_with_services(
+            current,
+            latest,
+            false,
+            bars_repository.clone(),
+            ValuationUseCases::new(
+                Arc::new(FakeValuationRepository::default()),
+                bars_repository,
+            ),
+            IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+        );
 
         use_cases
             .write(NoteWriteCommand {
@@ -1184,7 +1271,7 @@ mod tests {
                 change_diff: None,
             })
             .await
-            .expect("current version evidence resolves the link");
+            .expect("current version resolves the link from daily bars");
 
         let mut actual = repository
             .inserted_versions
@@ -1205,10 +1292,7 @@ mod tests {
                 frontmatter_json: json!({}),
                 graphs_json: json!([]),
                 resolved_price_references_json: json!({
-                    "[[price:fictional-code@2030-01-02:close]]": {
-                        "value": 10.0,
-                        "evidence_id": Uuid::from_u128(8).to_string(),
-                    },
+                    "[[price:fictional-code@2030-01-02:close]]": { "value": 12 },
                 }),
                 status: "approved".into(),
                 is_current: true,
@@ -1220,37 +1304,233 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn human_edit_preserves_resolutions_when_body_is_unchanged() {
-        let body = concat!(
-            "[[valuation:fictional-code@2030-01-02:per]] ",
-            "[[indicator:demo-indicator@2030-01-02]] ",
-            "[[eval:00000000-0000-0000-0000-000000000101:result]]",
-        );
+    async fn human_edit_keeps_valid_resolutions_when_the_same_body_is_provided() {
+        let link = "[[price:fictional-code@2030-01-02:close]]";
         let mut current = source_version();
-        current.body_md = body.into();
+        current.body_md = link.into();
+        current.execution_id = Some(EXECUTION_STEP_ID.to_string());
         current.resolved_price_references_json = json!({
-            "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
-            "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
-            "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
+            "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
         });
-        let valuation_repository = Arc::new(FakeValuationRepository::default());
-        let indicator_repository = Arc::new(FakeIndicatorObservationRepository::new());
-        let (use_cases, repository) = make_note_use_cases_with_services(
-            current.clone(),
-            current,
-            vec![],
-            false,
-            ValuationUseCases::new(
-                valuation_repository.clone(),
-                Arc::new(FakeBarsRepository::new()),
-            ),
-            IndicatorObservationUseCases::new(indicator_repository.clone()),
-            custom_indicator_evaluation_use_cases([]),
+        let (use_cases, repository) = make_note_use_cases(current);
+
+        use_cases
+            .write(NoteWriteCommand {
+                execution_id: Some(EXECUTION_STEP_ID.to_string()),
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Human title edit".into()),
+                body_md: Some(link.into()),
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "human".into(),
+                change_reason: None,
+                actor: Actor::Human,
+                change_diff: None,
+            })
+            .await
+            .expect("a saved value remains stable when the same body is provided without its bar");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the human edit creates a version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 2,
+                title: "Human title edit".into(),
+                body_md: link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: json!({
+                    "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
+                }),
+                status: "approved".into(),
+                is_current: true,
+                change_reason: None,
+                created_by_kind: "human".into(),
+                execution_id: Some(EXECUTION_STEP_ID.to_string()),
+            },
         );
+    }
+
+    #[rstest]
+    #[case::extra_field(r#"{"value": 10, "metadata": "previous value"}"#)]
+    #[case::null_value(r#"{"value": null}"#)]
+    #[case::legacy_evidence_id(
+        r#"{"value": 10, "evidence_id": "00000000-0000-0000-0000-000000000008"}"#
+    )]
+    #[tokio::test]
+    async fn human_title_edit_preserves_invalid_saved_values_when_body_is_omitted(
+        #[case] saved_entry: &str,
+    ) {
+        let link = "[[price:fictional-code@2030-01-02:close]]";
+        let mut current = source_version();
+        current.body_md = link.into();
+        current.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-02:close]]":
+                serde_json::from_str::<serde_json::Value>(saved_entry).expect("valid fixture"),
+        });
+        let previous_resolutions = current.resolved_price_references_json.clone();
+        let (use_cases, repository) = make_note_use_cases(current);
+
+        use_cases
+            .update(
+                SOURCE_NOTE_ID,
+                UpdateNoteCommand {
+                    title: Some("Human title edit".into()),
+                    body_md: None,
+                    frontmatter_json: None,
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                },
+            )
+            .await
+            .expect("the unchanged body keeps its saved resolutions when the body is omitted");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the human edit creates a version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 2,
+                title: "Human title edit".into(),
+                body_md: link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: previous_resolutions,
+                status: "approved".into(),
+                is_current: true,
+                change_reason: None,
+                created_by_kind: "human".into(),
+                execution_id: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn title_only_write_keeps_resolutions_for_the_latest_pending_body() {
+        let current_link = "[[price:fictional-code@2030-01-02:close]]";
+        let pending_link = "[[price:fictional-code@2030-01-03:close]]";
+        let mut current = source_version();
+        current.body_md = current_link.into();
+        current.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
+        });
+        let mut latest = current.clone();
+        latest.id = Uuid::from_u128(12);
+        latest.version_no = 2;
+        latest.body_md = pending_link.into();
+        latest.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-03:close]]": { "value": 20 },
+        });
+        latest.status = "unread".into();
+        latest.is_current = false;
+        let (use_cases, repository) = make_note_use_cases_with_options(current, latest, true);
 
         use_cases
             .write(NoteWriteCommand {
                 execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: None,
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: Some("Update title".into()),
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await
+            .expect("a title-only write preserves values for the latest pending body");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the write creates a pending version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 3,
+                title: "Updated title".into(),
+                body_md: pending_link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: json!({
+                    "[[price:fictional-code@2030-01-03:close]]": { "value": 20 },
+                }),
+                status: INITIAL_NOTE_STATUS.into(),
+                is_current: false,
+                change_reason: Some("Update title".into()),
+                created_by_kind: "llm".into(),
+                execution_id: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn human_edit_preserves_resolutions_when_body_is_unchanged() {
+        let body = concat!(
+            "[[valuation:fictional-code@2030-01-02:per]] ",
+            "[[indicator:demo-indicator@2030-01-02]] ",
+            "[[price:fictional-code@2030-01-02:close]] ",
+            "[[change:fictional-code@2030-01-02..2030-01-03:close]] ",
+            "[[eval:00000000-0000-0000-0000-000000000101:result]]",
+        );
+        let mut current = source_version();
+        current.body_md = body.into();
+        current.execution_id = Some(EXECUTION_STEP_ID.to_string());
+        current.resolved_price_references_json = json!({
+            "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
+            "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
+            "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
+            "[[change:fictional-code@2030-01-02..2030-01-03:close]]": { "value": 20 },
+            "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
+        });
+        let valuation_repository = Arc::new(FakeValuationRepository::default());
+        let indicator_repository = Arc::new(FakeIndicatorObservationRepository::new());
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let (use_cases, repository) = make_note_use_cases_with_services(
+            current.clone(),
+            current,
+            false,
+            bars_repository.clone(),
+            ValuationUseCases::new(valuation_repository.clone(), bars_repository),
+            IndicatorObservationUseCases::new(indicator_repository.clone()),
+        );
+
+        use_cases
+            .write(NoteWriteCommand {
+                execution_id: Some(EXECUTION_STEP_ID.to_string()),
                 note_id: Some(SOURCE_NOTE_ID),
                 title: Some("Human title edit".into()),
                 body_md: None,
@@ -1300,13 +1580,15 @@ mod tests {
                     resolved_price_references_json: json!({
                         "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
                         "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
+                        "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
+                        "[[change:fictional-code@2030-01-02..2030-01-03:close]]": { "value": 20 },
                         "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
                     }),
                     status: "approved".into(),
                     is_current: true,
                     change_reason: None,
                     created_by_kind: "human".into(),
-                    execution_id: None,
+                    execution_id: Some(EXECUTION_STEP_ID.to_string()),
                 },
                 vec![],
                 vec![],
@@ -1315,18 +1597,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn human_body_edit_recovers_execution_context_from_saved_evidence() {
+    async fn human_body_edit_resolves_new_price_reference_from_bars() {
         let previous_link = "[[price:fictional-code@2030-01-02:close]]";
         let updated_link = "[[price:fictional-code@2030-01-03:close]]";
         let mut current = source_version();
         current.body_md = previous_link.into();
         current.resolved_price_references_json = json!({
-            "[[price:fictional-code@2030-01-02:close]]": {
-                "value": 10.0,
-                "evidence_id": Uuid::from_u128(8).to_string(),
-            },
+            "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
         });
-        let (use_cases, repository) = make_note_use_cases(current, vec![query_data_evidence()]);
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository.seed_bars(fictional_code_daily_bars()).await;
+        let (use_cases, repository) = make_note_use_cases_with_bars(current, bars_repository);
 
         use_cases
             .write(NoteWriteCommand {
@@ -1346,7 +1627,7 @@ mod tests {
                 change_diff: None,
             })
             .await
-            .expect("saved evidence identifies the original execution");
+            .expect("a changed body resolves its new date from daily bars");
 
         let mut actual = repository
             .inserted_versions
@@ -1367,10 +1648,7 @@ mod tests {
                 frontmatter_json: json!({}),
                 graphs_json: json!([]),
                 resolved_price_references_json: json!({
-                    "[[price:fictional-code@2030-01-03:close]]": {
-                        "value": 12.0,
-                        "evidence_id": Uuid::from_u128(8).to_string(),
-                    },
+                    "[[price:fictional-code@2030-01-03:close]]": { "value": 12 },
                 }),
                 status: "approved".into(),
                 is_current: true,
@@ -1382,42 +1660,28 @@ mod tests {
     }
 
     #[rstest]
-    #[case::missing_execution(
-        None,
-        "[[price:fictional-code@2030-01-02:close]]",
-        "価格参照の解決には実行ステップの query_data が必要です"
+    #[case::missing_instrument(
+        "[[price:fictional-other@2030-01-02:close]]",
+        "価格参照 [[price:fictional-other@2030-01-02:close]] を指定日の bars から解決できません"
     )]
-    #[case::missing_instrument(Some(EXECUTION_STEP_ID.to_string()), "[[price:fictional-other@2030-01-02:close]]", "価格参照 [[price:fictional-other@2030-01-02:close]] を実行ステップの query_data から解決できません")]
-    #[case::missing_date(Some(EXECUTION_STEP_ID.to_string()), "[[price:fictional-code@2030-01-04:close]]", "価格参照 [[price:fictional-code@2030-01-04:close]] を実行ステップの query_data から解決できません")]
-    #[case::missing_change_endpoint(Some(EXECUTION_STEP_ID.to_string()), "[[change:fictional-code@2030-01-02..2030-01-04:close]]", "価格参照 [[change:fictional-code@2030-01-02..2030-01-04:close]] を実行ステップの query_data から解決できません")]
+    #[case::missing_date(
+        "[[price:fictional-code@2030-01-04:close]]",
+        "価格参照 [[price:fictional-code@2030-01-04:close]] を指定日の bars から解決できません"
+    )]
+    #[case::missing_change_endpoint(
+        "[[change:fictional-code@2030-01-02..2030-01-04:close]]",
+        "価格参照 [[change:fictional-code@2030-01-02..2030-01-04:close]] を指定日の bars から解決できません"
+    )]
     #[tokio::test]
     async fn write_rejects_unresolved_price_links_before_inserting_a_version(
-        #[case] source_execution_id: Option<String>,
         #[case] body: &str,
         #[case] expected_error: &str,
     ) {
-        let mut source_version = source_version();
-        source_version.execution_id = source_execution_id;
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository.seed_bars(fictional_code_daily_bars()).await;
         let (use_cases, repository) =
-            make_note_use_cases(source_version, vec![query_data_evidence()]);
-        let result = use_cases
-            .write(NoteWriteCommand {
-                execution_id: None,
-                note_id: Some(SOURCE_NOTE_ID),
-                title: Some("Updated title".into()),
-                body_md: Some(body.into()),
-                frontmatter_json: None,
-                graphs_json: None,
-                kind: None,
-                status: None,
-                trigger: None,
-                trigger_label: None,
-                created_by_kind: "llm".into(),
-                change_reason: None,
-                actor: Actor::Llm { label: "analyst" },
-                change_diff: None,
-            })
-            .await;
+            make_note_use_cases_with_bars(source_version(), bars_repository);
+        let result = use_cases.write(write_body_command(body)).await;
         let inserted_version_count = repository.inserted_versions.lock().await.len();
 
         assert_eq!(
@@ -1426,6 +1690,39 @@ mod tests {
                 inserted_version_count,
             ),
             (Some(expected_error.into()), 0),
+        );
+    }
+
+    #[tokio::test]
+    async fn write_rejects_change_when_start_value_is_zero() {
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        bars_repository
+            .seed_bars(vec![
+                daily_bar("fictional-code", "2030-01-02T00:00:00Z", 0, 11, 0, 0, 100),
+                fictional_code_daily_bars()[1].clone(),
+            ])
+            .await;
+        let (use_cases, repository) =
+            make_note_use_cases_with_bars(source_version(), bars_repository);
+        let result = use_cases
+            .write(write_body_command(
+                "[[change:fictional-code@2030-01-02..2030-01-03:close]]",
+            ))
+            .await;
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                inserted_version_count,
+            ),
+            (
+                Some(
+                    "価格参照 [[change:fictional-code@2030-01-02..2030-01-03:close]] の開始値は 0 です"
+                        .into(),
+                ),
+                0,
+            ),
         );
     }
 

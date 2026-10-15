@@ -299,11 +299,9 @@ describe('MarkdownBody', () => {
         resolvedPriceReferences={{
           '[[price:fictional-code@2030-01-02:close]]': {
             value: 1234.5,
-            evidence_id: '00000000-0000-0000-0000-000000000001',
           },
           '[[change:fictional-code@2030-01-02..2030-01-03:close]]': {
             value: -14.910858995137763,
-            evidence_id: '00000000-0000-0000-0000-000000000002',
           },
         }}
       />,

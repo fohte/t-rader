@@ -7,12 +7,10 @@ use uuid::Uuid;
 use crate::change_history::{Actor, Op};
 use crate::note::types::{NewNoteLink, NewNoteVersion, Note, NoteVersion, NoteVersionUpdate};
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
-use crate::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCaseError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 mod references;
-pub(in crate::note) use references::ResolvedMarketDataReferences;
-use references::{has_resolutions, requires_query_data};
+use references::has_resolutions;
 
 const APPROVED_NOTE_STATUS: &str = "approved";
 const HUMAN_CREATED_BY_KIND: &str = "human";
@@ -27,7 +25,7 @@ pub(super) struct AppendVersionCommand {
     pub change_reason: Option<String>,
     pub change_diff: Option<Value>,
     pub actor: Actor,
-    pub resolved_market_data: ResolvedMarketDataReferences,
+    pub resolved_market_data: Option<Result<Map<String, Value>, NoteUseCaseError>>,
 }
 
 impl NoteUseCases {
@@ -89,39 +87,25 @@ impl NoteUseCases {
                 core_domain::note_reference::BodyTokenPolicy::Validate,
             )?;
         }
-        let resolved_price_references_json = if references.is_empty() {
-            Value::Object(Map::new())
-        } else if content.execution_id.is_none()
-            && !body_changed
-            && previous_content.is_some_and(|previous| {
-                has_resolutions(&previous.resolved_price_references_json, &references)
-            })
-        {
-            previous_content
-                .map(|previous| previous.resolved_price_references_json.clone())
-                .unwrap_or_else(|| Value::Object(Map::new()))
-        } else {
-            let evidence_execution_id = if !requires_query_data(&references) {
-                None
-            } else {
-                let stored_execution_id = content.execution_id.as_deref().or_else(|| {
-                    previous_content.and_then(|previous| previous.execution_id.as_deref())
-                });
-                if let Some(execution_id) = stored_execution_id {
-                    Some(execution_id.to_string())
-                } else {
-                    self.infer_price_reference_execution_id(transaction, previous_content)
-                        .await?
+        let previous_reference_version = current
+            .as_ref()
+            .filter(|version| version.body_md == content.body_md)
+            .or_else(|| {
+                latest
+                    .as_ref()
+                    .filter(|version| version.body_md == content.body_md)
+            });
+        let resolved_price_references_json =
+            match (previous_reference_version, content.resolved_market_data) {
+                (Some(previous), _)
+                    if has_resolutions(&previous.resolved_price_references_json, &references) =>
+                {
+                    previous.resolved_price_references_json.clone()
                 }
+                (Some(previous), None) => previous.resolved_price_references_json.clone(),
+                (_, Some(resolved_market_data)) => Value::Object(resolved_market_data?),
+                (None, None) => Value::Object(Map::new()),
             };
-            self.resolve_price_references(
-                transaction,
-                &references,
-                evidence_execution_id.as_deref(),
-                content.resolved_market_data,
-            )
-            .await?
-        };
 
         let becomes_current = !requires_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
@@ -231,29 +215,6 @@ impl NoteUseCases {
         .await?;
 
         Ok(version)
-    }
-
-    async fn infer_price_reference_execution_id(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        previous_version: Option<&NoteVersion>,
-    ) -> Result<Option<String>, NoteUseCaseError> {
-        let evidence_id = previous_version.and_then(|version| {
-            version
-                .resolved_price_references_json
-                .as_object()?
-                .values()
-                .find_map(|value| value.get("evidence_id")?.as_str()?.parse::<Uuid>().ok())
-        });
-        let Some(evidence_id) = evidence_id else {
-            return Ok(None);
-        };
-        let evidence = self
-            .strategy_task_step_evidence
-            .find_query_data_by_evidence_id(transaction, evidence_id)
-            .await
-            .map_err(StrategyTaskStepEvidenceUseCaseError::from)?;
-        Ok(evidence.map(|evidence| evidence.execution_step_id.to_string()))
     }
 
     pub(super) async fn sync_note_references(

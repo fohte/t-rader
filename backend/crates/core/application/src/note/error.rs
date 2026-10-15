@@ -1,10 +1,10 @@
 use thiserror::Error;
 
+use crate::bars::BarsUseCaseError;
 use crate::change_history::ChangeHistoryError;
 use crate::custom_indicator_evaluation::CustomIndicatorEvaluationUseCaseError;
 use crate::indicator_observation::IndicatorObservationUseCaseError;
 use crate::note::repository::NoteRepositoryError;
-use crate::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCaseError;
 use crate::unit_of_work::UnitOfWorkError;
 use crate::valuation::ValuationUseCaseError;
 
@@ -27,7 +27,7 @@ pub enum NoteUseCaseError {
     #[error(transparent)]
     ChangeHistory(#[from] ChangeHistoryError),
     #[error(transparent)]
-    StrategyTaskStepEvidence(#[from] StrategyTaskStepEvidenceUseCaseError),
+    Bars(#[from] BarsUseCaseError),
     #[error(transparent)]
     Valuation(#[from] ValuationUseCaseError),
     #[error(transparent)]
