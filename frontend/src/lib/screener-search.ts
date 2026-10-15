@@ -217,6 +217,34 @@ export function toScreenerSearch(savedScreen: SavedScreen): ScreenerSearch {
   }
 }
 
+export function isSavedScreenSelectionOnly(search: ScreenerSearch): boolean {
+  return (
+    search.screen != null &&
+    (search.markets?.length ?? 0) === 0 &&
+    (search.sectors?.length ?? 0) === 0 &&
+    SCREENER_RANGE_FIELDS.every(
+      ({ minField, maxField }) =>
+        search[minField] == null && search[maxField] == null,
+    ) &&
+    search.sort_by == null &&
+    search.sort_order == null
+  )
+}
+
+export function restoreSavedScreenSearch(
+  search: ScreenerSearch,
+  savedScreens: SavedScreen[],
+): ScreenerSearch | undefined {
+  if (!isSavedScreenSelectionOnly(search)) return undefined
+
+  const savedScreen = savedScreens.find(
+    (candidate) => candidate.id === search.screen,
+  )
+  if (savedScreen == null) return undefined
+
+  return { ...toScreenerSearch(savedScreen), screen: savedScreen.id }
+}
+
 export function savedScreenHasSearchChanges(
   savedScreen: SavedScreen,
   search: ScreenerSearch,
@@ -233,6 +261,71 @@ export function savedScreenHasSearchChanges(
     JSON.stringify(savedConditions.sort) !==
       JSON.stringify(currentConditions.sort)
   )
+}
+
+export function buildScreenerAgentRequest(
+  search: ScreenerSearch,
+  savedScreen?: SavedScreen,
+  sectorOptions: ScreenerSectorOption[] = [],
+): string {
+  if (
+    savedScreen != null &&
+    search.screen === savedScreen.id &&
+    !savedScreenHasSearchChanges(savedScreen, search)
+  ) {
+    return `保存した条件「${savedScreen.name}」(screen_id: ${savedScreen.id}) で銘柄候補を探してください。`
+  }
+
+  const markets = search.markets ?? []
+  const sectors = search.sectors ?? []
+  const conditions = [
+    ...(markets.length > 0 ? [`市場: ${markets.join('、')}`] : []),
+    ...(sectors.length > 0
+      ? [
+          `業種: ${sectors
+            .map(
+              (key) =>
+                sectorOptions.find((option) => option.key === key)?.name ?? key,
+            )
+            .join('、')}`,
+        ]
+      : []),
+    ...SCREENER_RANGE_FIELDS.flatMap(({ label, unit, minField, maxField }) => {
+      const min = search[minField]
+      const max = search[maxField]
+      if (min == null && max == null) return []
+      let range: string
+      if (min == null) {
+        if (max == null) return []
+        range = `${String(max)}以下`
+      } else if (max == null) {
+        range = `${String(min)}以上`
+      } else {
+        range = `${String(min)}〜${String(max)}`
+      }
+      return [`${label}: ${range}${unit}`]
+    }),
+  ]
+  const sortLabels: Record<ScreenerSortBy, string> = {
+    id: '銘柄コード',
+    name: '銘柄',
+    market: '市場',
+    sector: '業種',
+    close: '終値',
+    per: 'PER',
+    pbr: 'PBR',
+    roe: 'ROE',
+    dividend_yield: '配当利回り',
+    market_cap: '時価総額',
+  }
+  const sortBy = search.sort_by ?? DEFAULT_SCREENER_SORT.sort_by
+  const sortOrder = search.sort_order ?? DEFAULT_SCREENER_SORT.sort_order
+
+  return [
+    '次の条件と並び順で銘柄候補を探してください。',
+    `条件: ${conditions.length === 0 ? 'なし (全銘柄)' : conditions.join('、')}`,
+    `並び順: ${sortLabels[sortBy]} (${sortOrder === 'asc' ? '昇順' : '降順'})`,
+  ].join('\n')
 }
 
 export function clearSavedScreenSelectionSearch(

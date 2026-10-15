@@ -67,6 +67,11 @@ export const Results: Story = {
   args,
 }
 
+export const AgentRequest: Story = {
+  name: '結果見出しから現在の条件でエージェントに依頼できます。',
+  args: { ...args, onAskAgent: () => {} },
+}
+
 export const Empty: Story = {
   name: '一致する銘柄がないときに条件の見直しを促します。',
   args: {

@@ -106,6 +106,11 @@ export const Results: Story = {
   args: { ...args, search: { max_per: 15 } },
 }
 
+export const AgentRequest: Story = {
+  name: '結果見出しから現在の条件でエージェントに依頼できます。',
+  args: { ...args, onAskAgent: () => {} },
+}
+
 export const MobileResults: Story = {
   name: 'スマートフォンでは銘柄をカードで表示します。',
   args,
@@ -157,6 +162,24 @@ export const AdditionalPageError: Story = {
 export const MobileFilters: Story = {
   name: 'スマートフォン向けの全画面条件パネルを表示します。',
   args: { ...args, mobileFiltersOpen: true, search: { markets: ['プライム'] } },
+  globals: { viewport: { value: 'mobileScreener' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileScreener: {
+          name: 'Mobile screener',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: { viewport: { width: 390, height: 700 } },
+  },
+}
+
+export const MobileAgentRequest: Story = {
+  name: 'スマートフォンの条件画面下部からエージェントに依頼できます。',
+  args: { ...args, mobileFiltersOpen: true, onAskAgent: () => {} },
   globals: { viewport: { value: 'mobileScreener' } },
   parameters: {
     viewport: {

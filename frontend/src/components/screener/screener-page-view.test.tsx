@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ScreenerPageView } from '#components/screener/screener-page-view'
 import type { components } from '#lib/api/schema.gen'
-import type { SavedScreen } from '#lib/screener-search'
+import type { SavedScreen, ScreenerSearch } from '#lib/screener-search'
 
 type ScreenerResponse = components['schemas']['ScreenerResponse']
 
@@ -20,6 +20,10 @@ const data: ScreenerResponse = {
   total_count: 0,
   as_of: '2099-06-18',
   page: 1,
+}
+
+function readMobileAskOutput(calls: unknown[][], dialog: HTMLElement | null) {
+  return { calls, conditionPanelVisible: dialog != null }
 }
 
 const savedScreen: SavedScreen = {
@@ -42,6 +46,108 @@ const savedScreen: SavedScreen = {
 afterEach(cleanup)
 
 describe('ScreenerPageView', () => {
+  it('passes the applied search to the desktop agent request action', async () => {
+    const user = userEvent.setup()
+    const onAskAgent = vi.fn()
+    const search: ScreenerSearch = {
+      markets: ['プライム'],
+      max_per: 12,
+      sort_by: 'per',
+      sort_order: 'asc',
+    }
+    const args = {
+      search,
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      onAskAgent,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    await user.click(
+      screen.getByRole('button', {
+        name: 'この条件でエージェントに頼む',
+      }),
+    )
+
+    expect(onAskAgent.mock.calls).toEqual([[search]])
+  })
+
+  it('passes mobile filter edits to the agent and closes the condition panel', async () => {
+    const user = userEvent.setup()
+    const onAskAgent = vi.fn()
+    const args = {
+      search: {
+        screen: 'fake-screen-a',
+        max_per: 12,
+        sort_by: 'per',
+        sort_order: 'asc',
+      },
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      mobileFiltersOpen: true,
+      onAskAgent,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    const dialog = screen.getByRole('dialog')
+    const perUpperBound = within(dialog).getByRole<HTMLInputElement>(
+      'spinbutton',
+      { name: 'PER 上限' },
+    )
+    await user.clear(perUpperBound)
+    await user.type(perUpperBound, '10')
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'この条件でエージェントに頼む',
+      }),
+    )
+
+    expect(
+      readMobileAskOutput(onAskAgent.mock.calls, screen.queryByRole('dialog')),
+    ).toEqual({
+      calls: [
+        [
+          {
+            screen: 'fake-screen-a',
+            max_per: 10,
+            markets: undefined,
+            sectors: undefined,
+            min_per: undefined,
+            min_pbr: undefined,
+            max_pbr: undefined,
+            min_roe: undefined,
+            max_roe: undefined,
+            min_dividend_yield: undefined,
+            max_dividend_yield: undefined,
+            min_market_cap: undefined,
+            max_market_cap: undefined,
+            sort_by: 'per',
+            sort_order: 'asc',
+          },
+        ],
+      ],
+      conditionPanelVisible: false,
+    })
+  })
+
   it('applies all selected screener conditions together', () => {
     const onApplyFilters = vi.fn()
     const args = {

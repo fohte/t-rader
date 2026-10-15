@@ -1,16 +1,20 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 import { ScreenerPageView } from '#components/screener/screener-page-view'
 import { useSavedScreens } from '#components/screener/use-saved-screens'
+import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
 import { $api } from '#lib/api/client'
-import type { SavedScreen } from '#lib/screener-search'
 import {
+  buildScreenerAgentRequest,
   clearSavedScreenSelectionSearch,
   getScreenerRangeError,
   getScreenerSearchAfterSortBy,
   getScreenerSearchAfterSortOrder,
+  isSavedScreenSelectionOnly,
+  restoreSavedScreenSearch,
+  type SavedScreen,
   toScreenerApiQuery,
   toScreenerSearch,
   validateScreenerSearch,
@@ -39,9 +43,22 @@ function ScreenerRoute() {
     },
     onClearSelection: clearSavedScreenSelection,
   })
+  const searchToRestore = useMemo(
+    () => restoreSavedScreenSearch(search, savedScreens.savedScreens),
+    [savedScreens.savedScreens, search],
+  )
+  const isRestoringSavedScreen =
+    isSavedScreenSelectionOnly(search) &&
+    (savedScreens.savedScreensPending || searchToRestore != null)
+
+  useEffect(() => {
+    if (searchToRestore == null) return
+    void navigate({ search: searchToRestore, replace: true })
+  }, [navigate, searchToRestore])
+
   const pages = useQueries({
     queries:
-      rangeError == null
+      rangeError == null && !isRestoringSavedScreen
         ? Array.from({ length: page }, (_, index) =>
             $api.queryOptions('get', '/api/screener', {
               params: { query: toScreenerApiQuery(search, index + 1) },
@@ -63,15 +80,17 @@ function ScreenerRoute() {
   const status =
     rangeError != null
       ? 'error'
-      : firstPage != null
-        ? 'results'
-        : firstPageQuery?.isPending === true
-          ? 'loading'
-          : 'error'
+      : isRestoringSavedScreen
+        ? 'loading'
+        : firstPage != null
+          ? 'results'
+          : firstPageQuery?.isPending === true
+            ? 'loading'
+            : 'error'
   const sectorOptions = sectorsQuery.data
   const errorMessage =
     rangeError ??
-    (firstPage == null
+    (firstPage == null && !isRestoringSavedScreen
       ? '銘柄の取得に失敗しました。もう一度お試しください。'
       : undefined)
 
@@ -115,6 +134,18 @@ function ScreenerRoute() {
       }}
       onRetryLoadMore={() => {
         if (failedLaterQuery != null) void failedLaterQuery.refetch()
+      }}
+      onAskAgent={(currentSearch) => {
+        const selectedScreen = savedScreens.savedScreens.find(
+          (savedScreen) => savedScreen.id === currentSearch.screen,
+        )
+        openFloatingChat(
+          buildScreenerAgentRequest(
+            currentSearch,
+            selectedScreen,
+            sectorOptions ?? [],
+          ),
+        )
       }}
       savedScreens={savedScreens.savedScreens}
       savedScreensPending={savedScreens.savedScreensPending}

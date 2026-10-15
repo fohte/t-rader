@@ -98,6 +98,7 @@ export function ScreenerPageView({
   onSortOrder,
   onLoadMore,
   onRetryLoadMore,
+  onAskAgent,
   onSelectSavedScreen = () => {},
   onSavedScreenDialogChange = () => {},
   onSaveSavedScreen = () => {},
@@ -127,6 +128,7 @@ export function ScreenerPageView({
   onSortOrder: (order: ScreenerSortOrder) => void
   onLoadMore: () => void
   onRetryLoadMore: () => void
+  onAskAgent?: (search: ScreenerSearch) => void
   onSelectSavedScreen?: (savedScreen: SavedScreen) => void
   onSavedScreenDialogChange?: (dialog: SavedScreenDialogState | null) => void
   onSaveSavedScreen?: (
@@ -407,6 +409,13 @@ export function ScreenerPageView({
         onSortOrder={onSortOrder}
         onLoadMore={onLoadMore}
         onRetryLoadMore={onRetryLoadMore}
+        onAskAgent={
+          onAskAgent == null
+            ? undefined
+            : () => {
+                onAskAgent(search)
+              }
+        }
       />
 
       {mobileFiltersOpen && (
@@ -444,6 +453,23 @@ export function ScreenerPageView({
                 {renderFilterFields('mobile')}
               </div>
             </form>
+            {onAskAgent != null && (
+              <div className="mt-4 border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileFiltersOpen(false)
+                    onAskAgent({ ...search, ...readDraft(draft) })
+                  }}
+                  className="flex w-full items-center justify-center gap-1 border border-primary bg-primary px-3 py-3 font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  <span aria-hidden="true" className="font-bold">
+                    &gt;_
+                  </span>
+                  この条件でエージェントに頼む
+                </button>
+              </div>
+            )}
           </section>
         </div>
       )}

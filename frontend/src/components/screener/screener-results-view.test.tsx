@@ -68,6 +68,20 @@ function renderResultsView(
 afterEach(cleanup)
 
 describe('ScreenerResultsView', () => {
+  it('opens an agent request from the result summary', async () => {
+    const user = userEvent.setup()
+    const onAskAgent = vi.fn()
+    renderResultsView({ onAskAgent })
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'この条件でエージェントに頼む',
+      }),
+    )
+
+    expect(onAskAgent.mock.calls).toEqual([[]])
+  })
+
   it('shows the as-of date as month and day', async () => {
     renderResultsView()
 

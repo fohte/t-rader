@@ -92,6 +92,7 @@ export function ScreenerResultsView({
   onSortOrder,
   onLoadMore,
   onRetryLoadMore,
+  onAskAgent,
 }: {
   search: Pick<ScreenerSearch, 'sort_by' | 'sort_order'>
   data: ScreenerResponse | undefined
@@ -104,6 +105,7 @@ export function ScreenerResultsView({
   onSortOrder: (order: ScreenerSortOrder) => void
   onLoadMore: () => void
   onRetryLoadMore: () => void
+  onAskAgent?: () => void
 }) {
   const sortField = search.sort_by ?? DEFAULT_SCREENER_SORT.sort_by
   const sortOrder = search.sort_order ?? DEFAULT_SCREENER_SORT.sort_order
@@ -124,11 +126,27 @@ export function ScreenerResultsView({
               ? '銘柄を検索しています...'
               : '検索結果'}
         </span>
-        {status === 'results' && data != null && (
-          <span className="text-muted-foreground">
-            {formatAsOf(data.as_of)} 時点
-          </span>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {status === 'results' && data != null && (
+            <span className="text-muted-foreground">
+              {formatAsOf(data.as_of)} 時点
+            </span>
+          )}
+          {onAskAgent != null && (
+            <button
+              type="button"
+              onClick={() => {
+                onAskAgent()
+              }}
+              className="hidden items-center gap-1 border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 md:inline-flex"
+            >
+              <span aria-hidden="true" className="font-bold">
+                &gt;_
+              </span>
+              この条件でエージェントに頼む
+            </button>
+          )}
+        </div>
       </div>
 
       {status === 'results' && (

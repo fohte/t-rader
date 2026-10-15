@@ -9,6 +9,10 @@ import { NoteHistoryPanel } from '#components/note-detail/note-history-panel'
 import { NoteLinkedTradesPanel } from '#components/note-detail/note-linked-trades-panel'
 import { NoteLinksPanelView } from '#components/note-detail/note-links-panel'
 import {
+  getScreenerIdFromFrontmatter,
+  NoteScreenerLink,
+} from '#components/note-detail/note-screener-link'
+import {
   type NoteVersionContentTab,
   NoteVersionContentTabs,
   resolveNoteVersionContentTab,
@@ -168,6 +172,9 @@ function NoteDetailPage() {
       onAnno={noteBodyNavigation.onAnno}
     />
   )
+  const screenId = getScreenerIdFromFrontmatter(
+    selectedVersion.frontmatter_json,
+  )
 
   return (
     <div
@@ -210,6 +217,7 @@ function NoteDetailPage() {
               )}
             </>
           )}
+          <NoteScreenerLink screenId={screenId} />
           {showInlineReview && (
             <NoteVersionReviewPanel
               key={selectedVersion.id}

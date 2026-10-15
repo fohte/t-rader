@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildScreenerAgentRequest,
   clearSavedScreenSelectionSearch,
   countActiveScreenerFilters,
   getScreenerRangeError,
   getScreenerSearchAfterSortBy,
   getScreenerSearchAfterSortOrder,
+  isSavedScreenSelectionOnly,
+  restoreSavedScreenSearch,
   type SavedScreen,
   savedScreenHasSearchChanges,
   toSavedScreenRequest,
@@ -177,6 +180,23 @@ describe('saved screen search conversion', () => {
     })
   })
 
+  it('restores a saved screen selection with its filters and sort order', () => {
+    expect(
+      restoreSavedScreenSearch({ screen: savedScreen.id }, [savedScreen]),
+    ).toEqual({
+      ...toScreenerSearch(savedScreen),
+      screen: savedScreen.id,
+    })
+  })
+
+  it('does not replace an explicit search with saved screen values', () => {
+    expect(
+      restoreSavedScreenSearch({ screen: savedScreen.id, max_per: 10 }, [
+        savedScreen,
+      ]),
+    ).toEqual(undefined)
+  })
+
   it('treats reordered filters and omitted defaults as the saved conditions', () => {
     const savedSearch = toScreenerSearch(savedScreen)
 
@@ -196,6 +216,86 @@ describe('saved screen search conversion', () => {
     ['sort values', { ...toScreenerSearch(savedScreen), sort_order: 'desc' }],
   ] as const)('detects changed %s', (_name, search) => {
     expect(savedScreenHasSearchChanges(savedScreen, search)).toEqual(true)
+  })
+})
+
+describe('saved screen selection URL', () => {
+  it('recognizes a URL that contains only a saved screen id', () => {
+    expect(
+      isSavedScreenSelectionOnly({ screen: 'saved-screen-a', page: 2 }),
+    ).toEqual(true)
+  })
+})
+
+describe('buildScreenerAgentRequest', () => {
+  it('references an unchanged saved screen by name and id', () => {
+    const savedScreen: SavedScreen = {
+      id: 'fake-screen-a',
+      name: '架空条件',
+      created_at: '2099-01-01T00:00:00Z',
+      updated_at: '2099-01-02T00:00:00Z',
+      filters: {
+        markets: ['プライム'],
+        sectors: [],
+        per: { min: null, max: 12 },
+        pbr: null,
+        roe: null,
+        dividend_yield: null,
+        market_cap: null,
+      },
+      sort: { field: 'per', direction: 'asc' },
+    }
+
+    expect(
+      buildScreenerAgentRequest(
+        {
+          screen: savedScreen.id,
+          markets: ['プライム'],
+          max_per: 12,
+          sort_by: 'per',
+          sort_order: 'asc',
+        },
+        savedScreen,
+      ),
+    ).toEqual(
+      '保存した条件「架空条件」(screen_id: fake-screen-a) で銘柄候補を探してください。',
+    )
+  })
+
+  it('writes current filters, units, and sort order when the selection changed', () => {
+    expect(
+      buildScreenerAgentRequest(
+        {
+          markets: ['プライム'],
+          sectors: ['sector-a'],
+          min_per: 8,
+          max_pbr: 1,
+          min_roe: 6,
+          min_dividend_yield: 3,
+          max_market_cap: 1200,
+          sort_by: 'per',
+          sort_order: 'asc',
+        },
+        undefined,
+        [{ key: 'sector-a', name: '架空業種' }],
+      ),
+    ).toEqual(
+      [
+        '次の条件と並び順で銘柄候補を探してください。',
+        '条件: 市場: プライム、業種: 架空業種、PER: 8以上倍、PBR: 1以下倍、ROE: 6以上%、配当利回り (予): 3以上%、時価総額: 1200以下億円',
+        '並び順: PER (昇順)',
+      ].join('\n'),
+    )
+  })
+
+  it('writes an unrestricted search and default sort when no filters are set', () => {
+    expect(buildScreenerAgentRequest({})).toEqual(
+      [
+        '次の条件と並び順で銘柄候補を探してください。',
+        '条件: なし (全銘柄)',
+        '並び順: 時価総額 (降順)',
+      ].join('\n'),
+    )
   })
 })
 
