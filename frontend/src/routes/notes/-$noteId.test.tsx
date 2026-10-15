@@ -5,18 +5,14 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import type { components } from '#lib/api/schema.gen'
+import { resetFetch, stubFetch } from '#test/stub-fetch'
 
 type Note = components['schemas']['Note']
 type NoteVersion = components['schemas']['NoteVersion']
 type NoteKind = components['schemas']['NoteKind']
-type FetchHandler = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>
-
 const noteId = 'fake-note'
 const versionId = 'fake-note-version'
 const noteKindKey = 'fabricated-kind-key'
@@ -63,34 +59,15 @@ const noteKind: NoteKind = {
   sort_order: 0,
 }
 
-let fetchHandler: FetchHandler | null = null
-
-function activeFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  return (
-    fetchHandler?.(input, init) ??
-    Promise.resolve(new Response(null, { status: 500 }))
-  )
-}
-
-function stubFetch(handler: FetchHandler): void {
-  fetchHandler = handler
-  vi.stubGlobal('fetch', activeFetch)
-}
-
 function readNoteDetailOutput(
   noteRequests: Array<{
     method: string
     path: string
     versionId: string | null
   }>,
-  unexpectedRequests: string[],
 ) {
   return {
     noteRequests,
-    unexpectedRequests,
     title: screen.getByRole('heading', { level: 1 }).textContent,
     noteKindLabel: screen.getByText(noteKindLabel).textContent,
   }
@@ -98,8 +75,7 @@ function readNoteDetailOutput(
 
 afterEach(() => {
   cleanup()
-  vi.unstubAllGlobals()
-  fetchHandler = null
+  resetFetch()
 })
 
 describe('NoteDetailPage', () => {
@@ -109,9 +85,7 @@ describe('NoteDetailPage', () => {
       path: string
       versionId: string | null
     }> = []
-    const unexpectedRequests: string[] = []
-
-    stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+    stubFetch((input, init) => {
       const request =
         input instanceof Request ? input : new Request(input, init)
       const url = new URL(request.url)
@@ -154,7 +128,6 @@ describe('NoteDetailPage', () => {
       ) {
         return Promise.resolve(Response.json([]))
       }
-      unexpectedRequests.push(`${request.method} ${url.pathname}`)
       return Promise.resolve(Response.json({}, { status: 404 }))
     })
 
@@ -176,7 +149,7 @@ describe('NoteDetailPage', () => {
 
     await screen.findByText(noteKindLabel)
 
-    expect(readNoteDetailOutput(noteRequests, unexpectedRequests)).toEqual({
+    expect(readNoteDetailOutput(noteRequests)).toEqual({
       noteRequests: [
         {
           method: 'GET',
@@ -184,7 +157,6 @@ describe('NoteDetailPage', () => {
           versionId,
         },
       ],
-      unexpectedRequests: [],
       title: '架空の分析ノート',
       noteKindLabel,
     })
