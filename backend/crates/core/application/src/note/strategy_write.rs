@@ -1154,6 +1154,55 @@ mod tests {
     }
 
     #[rstest]
+    #[case::missing_evaluation(None, "評価記録が見つかりません")]
+    #[case::output_is_not_an_object(Some(json!(256.75)), "出力名を解決できません")]
+    #[case::output_name_is_missing(
+        Some(json!({ "other": 256.75 })),
+        "出力名を解決できません"
+    )]
+    #[case::output_is_a_string(
+        Some(json!({ "result": "256.75" })),
+        "出力は数値ではありません"
+    )]
+    #[case::output_is_an_array(
+        Some(json!({ "result": [256.75] })),
+        "出力は数値ではありません"
+    )]
+    #[tokio::test]
+    async fn write_rejects_unresolvable_custom_indicator_evaluations(
+        #[case] output: Option<serde_json::Value>,
+        #[case] reason: &str,
+    ) {
+        let evaluation_use_cases = match output {
+            Some(output) => {
+                custom_indicator_evaluation_use_cases([custom_indicator_evaluation(output)])
+            }
+            None => custom_indicator_evaluation_use_cases([]),
+        };
+        let bars_repository = Arc::new(FakeBarsRepository::new());
+        let (use_cases, _) = make_note_use_cases_with_all_services(
+            source_version(),
+            source_version(),
+            false,
+            bars_repository.clone(),
+            ValuationUseCases::new(
+                Arc::new(FakeValuationRepository::default()),
+                bars_repository,
+            ),
+            IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+            evaluation_use_cases,
+        );
+        let token = "[[eval:00000000-0000-0000-0000-000000000101:result]]";
+
+        let result = use_cases.write(write_body_command(token)).await;
+
+        assert_eq!(
+            result.map_err(|error| error.to_string()),
+            Err(format!("eval 参照 {token} の{reason}")),
+        );
+    }
+
+    #[rstest]
     #[case::missing_valuation_row(
         "[[valuation:fictional-code@2030-01-02:per]]",
         "valuation 参照 [[valuation:fictional-code@2030-01-02:per]] を指定日のデータから解決できません"
