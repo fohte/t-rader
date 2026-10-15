@@ -119,7 +119,7 @@ impl WidgetBy {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum WidgetUniverse {
     Group { group: String },
     Stocks { stocks: Vec<String> },
@@ -197,4 +197,107 @@ pub struct WidgetTime {
     pub as_of: Option<NaiveDate>,
     #[serde(default)]
     pub range: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use indoc::indoc;
+    use rstest::rstest;
+
+    use super::WidgetDefinition;
+
+    #[rstest]
+    #[case::group(indoc! {r#"
+        {
+          "queries": {
+            "sample": {
+              "metric": "change",
+              "period": "1d",
+              "by": "group",
+              "axis": "demo-axis",
+              "universe": {
+                "group": "demo-axis/demo-group",
+                "unexpected": "value"
+              },
+              "agg": "mean"
+            }
+          },
+          "viz": {
+            "type": "treemap",
+            "size": "sample",
+            "color": "sample"
+          }
+        }
+    "#})]
+    #[case::stocks(indoc! {r#"
+        {
+          "queries": {
+            "sample": {
+              "metric": "change",
+              "period": "1d",
+              "by": "stock",
+              "universe": {
+                "stocks": ["demo-code"],
+                "unexpected": "value"
+              },
+              "agg": "mean"
+            }
+          },
+          "viz": {
+            "type": "treemap",
+            "size": "sample",
+            "color": "sample"
+          }
+        }
+    "#})]
+    fn json_rejects_unknown_universe_fields(#[case] input: &str) {
+        assert_eq!(
+            WidgetDefinition::from_json(input)
+                .map(|_| ())
+                .map_err(|_| ()),
+            Err(())
+        );
+    }
+
+    #[rstest]
+    #[case::group(indoc! {"
+        queries:
+          sample:
+            metric: change
+            period: 1d
+            by: group
+            axis: demo-axis
+            universe:
+              group: demo-axis/demo-group
+              unexpected: value
+            agg: mean
+        viz:
+          type: treemap
+          size: sample
+          color: sample
+    "})]
+    #[case::stocks(indoc! {"
+        queries:
+          sample:
+            metric: change
+            period: 1d
+            by: stock
+            universe:
+              stocks:
+                - demo-code
+              unexpected: value
+            agg: mean
+        viz:
+          type: treemap
+          size: sample
+          color: sample
+    "})]
+    fn yaml_rejects_unknown_universe_fields(#[case] input: &str) {
+        assert_eq!(
+            WidgetDefinition::from_yaml(input)
+                .map(|_| ())
+                .map_err(|_| ()),
+            Err(())
+        );
+    }
 }

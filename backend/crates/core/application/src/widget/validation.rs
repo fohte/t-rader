@@ -423,6 +423,113 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
+    enum SemanticValidationCase {
+        Valid,
+        UnsupportedMetric,
+        UnsupportedRange,
+        UnknownVisualizationValue,
+        GroupAxisMissing,
+        GroupAggregationMissing,
+        MarketAggregationMissing,
+        StockAggregationForbidden,
+        MarketCapWeightedOnMarketCap,
+        InvalidGroupUniverse,
+        ZeroToplistLimit,
+        MismatchedRowDimensions,
+        FormulaQueryNameCollision,
+    }
+
+    fn semantic_validation_input(case: SemanticValidationCase) -> String {
+        let mut widget = definition();
+        match case {
+            SemanticValidationCase::Valid => {}
+            SemanticValidationCase::UnsupportedMetric => {
+                let query = widget.queries.get_mut("market").expect("market query");
+                query.metric = WidgetMetric::Per;
+                query.agg = Some(WidgetAggregation::Count);
+            }
+            SemanticValidationCase::UnsupportedRange => {
+                widget.time.range = Some("1y".to_string());
+            }
+            SemanticValidationCase::UnknownVisualizationValue => {
+                widget.viz = WidgetVisualization::Treemap {
+                    size: "fictional-missing-query".to_string(),
+                    color: "relative".to_string(),
+                };
+            }
+            SemanticValidationCase::GroupAxisMissing => {
+                widget.queries.get_mut("sector").expect("sector query").axis = None;
+            }
+            SemanticValidationCase::GroupAggregationMissing => {
+                widget.queries.get_mut("sector").expect("sector query").agg = None;
+            }
+            SemanticValidationCase::MarketAggregationMissing => {
+                widget.queries.get_mut("market").expect("market query").agg = None;
+            }
+            SemanticValidationCase::StockAggregationForbidden => {
+                widget.queries.get_mut("market").expect("market query").by = WidgetBy::Stock;
+                widget
+                    .formulas
+                    .insert("relative".to_string(), "market".to_string());
+            }
+            SemanticValidationCase::MarketCapWeightedOnMarketCap => {
+                let query = widget.queries.get_mut("market").expect("market query");
+                query.metric = WidgetMetric::MktCap;
+                query.period = None;
+            }
+            SemanticValidationCase::InvalidGroupUniverse => {
+                widget
+                    .queries
+                    .get_mut("sector")
+                    .expect("sector query")
+                    .universe = Some(WidgetUniverse::Group {
+                    group: "fictional-axis".to_string(),
+                });
+            }
+            SemanticValidationCase::ZeroToplistLimit => {
+                widget.viz = WidgetVisualization::Toplist {
+                    value: "market".to_string(),
+                    order: WidgetVisualizationOrder::Desc,
+                    limit: 0,
+                };
+            }
+            SemanticValidationCase::MismatchedRowDimensions => {
+                let mut stock_query = widget.queries.get("market").expect("market query").clone();
+                stock_query.by = WidgetBy::Stock;
+                stock_query.agg = None;
+                widget.queries.insert("stock".to_string(), stock_query);
+                widget.viz = WidgetVisualization::Treemap {
+                    size: "sector".to_string(),
+                    color: "stock".to_string(),
+                };
+            }
+            SemanticValidationCase::FormulaQueryNameCollision => {
+                let market_query = widget.queries.get("market").expect("market query").clone();
+                widget.queries.insert("relative".to_string(), market_query);
+                widget.viz = WidgetVisualization::Treemap {
+                    size: "market".to_string(),
+                    color: "market".to_string(),
+                };
+            }
+        }
+
+        let serialized = serde_json::to_value(widget).expect("serialize widget definition");
+        serde_json::to_string(&serialized).expect("serialize widget input")
+    }
+
+    fn validate_json_input(input: &str) -> Result<(), String> {
+        WidgetDefinition::from_json(input)
+            .map_err(|error| {
+                let error = error.to_string();
+                match error.split_once(" at line ") {
+                    Some((message, _)) => message.to_string(),
+                    None => error,
+                }
+            })
+            .and_then(|widget| widget.validate().map_err(|errors| errors.to_string()))
+    }
+
     #[rstest]
     #[case::yaml(
         indoc! {"
@@ -474,15 +581,61 @@ mod tests {
     }
 
     #[rstest]
-    #[case::valid(definition(), None)]
-    #[case::unsupported_metric({ let mut value = definition(); let query = value.queries.get_mut("market").expect("query"); query.metric = WidgetMetric::Per; query.agg = Some(WidgetAggregation::Count); value }, Some("queries.market.metric: metric `per` is not supported yet"))]
-    #[case::unsupported_range({ let mut value = definition(); value.time.range = Some("1y".to_string()); value }, Some("time.range: time ranges are not supported yet"))]
-    #[case::unknown_viz_value({ let mut value = definition(); value.viz = WidgetVisualization::Treemap { size: "missing".to_string(), color: "relative".to_string() }; value }, Some("viz.size: unknown query or formula name: `missing`"))]
+    #[case::valid(SemanticValidationCase::Valid, None)]
+    #[case::unsupported_metric(
+        SemanticValidationCase::UnsupportedMetric,
+        Some("queries.market.metric: metric `per` is not supported yet")
+    )]
+    #[case::unsupported_range(
+        SemanticValidationCase::UnsupportedRange,
+        Some("time.range: time ranges are not supported yet")
+    )]
+    #[case::unknown_viz_value(
+        SemanticValidationCase::UnknownVisualizationValue,
+        Some("viz.size: unknown query or formula name: `fictional-missing-query`")
+    )]
+    #[case::group_axis_is_required(
+        SemanticValidationCase::GroupAxisMissing,
+        Some("queries.sector.axis: axis is required when by is group")
+    )]
+    #[case::group_aggregation_is_required(
+        SemanticValidationCase::GroupAggregationMissing,
+        Some("queries.sector.agg: agg is required when by is none or group")
+    )]
+    #[case::market_aggregation_is_required(
+        SemanticValidationCase::MarketAggregationMissing,
+        Some("queries.market.agg: agg is required when by is none or group")
+    )]
+    #[case::stock_aggregation_is_forbidden(
+        SemanticValidationCase::StockAggregationForbidden,
+        Some("queries.market.agg: agg is not valid when by is stock")
+    )]
+    #[case::market_cap_weighted_requires_change(
+        SemanticValidationCase::MarketCapWeightedOnMarketCap,
+        Some("queries.market.agg: mkt_cap_weighted is only valid for change metrics")
+    )]
+    #[case::group_universe_requires_axis_and_key(
+        SemanticValidationCase::InvalidGroupUniverse,
+        Some("queries.sector.universe.group: group must use the `<axis>/<key>` format")
+    )]
+    #[case::toplist_limit_must_be_positive(
+        SemanticValidationCase::ZeroToplistLimit,
+        Some("viz.limit: limit must be greater than zero")
+    )]
+    #[case::row_dimensions_must_match(
+        SemanticValidationCase::MismatchedRowDimensions,
+        Some("viz: values must use the same row dimension")
+    )]
+    #[case::formula_name_must_not_match_query_name(
+        SemanticValidationCase::FormulaQueryNameCollision,
+        Some("formulas.relative: formula name conflicts with a query name")
+    )]
     fn validates_widget_semantics(
-        #[case] widget: WidgetDefinition,
+        #[case] case: SemanticValidationCase,
         #[case] expected_error: Option<&str>,
     ) {
-        let actual = widget.validate().map_err(|errors| errors.to_string());
+        let input = semantic_validation_input(case);
+        let actual = validate_json_input(&input);
         assert_eq!(
             actual,
             expected_error.map_or(Ok(()), |error| Err(error.to_string()))

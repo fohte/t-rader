@@ -138,7 +138,7 @@ impl From<WidgetByRequest> for WidgetBy {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-#[serde(untagged)]
+#[serde(untagged, deny_unknown_fields)]
 pub enum WidgetUniverseRequest {
     Group { group: String },
     Stocks { stocks: Vec<String> },
@@ -286,5 +286,46 @@ impl From<core_application::widget::WidgetValueRow> for WidgetQueryResultRow {
                 .map(|(name, value)| (name, value.map(|value| value.normalize())))
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use core_application::widget::WidgetUniverse;
+
+    use super::WidgetUniverseRequest;
+
+    #[rstest]
+    #[case::group(
+        r#"{"group":"demo-axis/demo-group"}"#,
+        Ok(WidgetUniverse::Group {
+            group: "demo-axis/demo-group".to_string(),
+        })
+    )]
+    #[case::stocks(
+        r#"{"stocks":["demo-code"]}"#,
+        Ok(WidgetUniverse::Stocks {
+            stocks: vec!["demo-code".to_string()],
+        })
+    )]
+    #[case::group_rejects_unknown_field(
+        r#"{"group":"demo-axis/demo-group","unexpected":"value"}"#,
+        Err(())
+    )]
+    #[case::stocks_rejects_unknown_field(
+        r#"{"stocks":["demo-code"],"unexpected":"value"}"#,
+        Err(())
+    )]
+    fn universe_request_deserializes_exact_shape(
+        #[case] input: &str,
+        #[case] expected: Result<WidgetUniverse, ()>,
+    ) {
+        let actual = serde_json::from_str::<WidgetUniverseRequest>(input)
+            .map(WidgetUniverse::from)
+            .map_err(|_| ());
+
+        assert_eq!(actual, expected);
     }
 }
