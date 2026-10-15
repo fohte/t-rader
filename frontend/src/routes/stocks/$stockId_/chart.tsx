@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -25,6 +25,12 @@ export const Route = createFileRoute('/stocks/$stockId_/chart')({
 const emptyAnnotations: ChartAnnotation[] = []
 type Bar = components['schemas']['Bar']
 
+interface HorizontalLineDrawingState {
+  stockId: string
+  enabled: boolean
+  pending: HorizontalLinePoint | null
+}
+
 function StockChartPage() {
   const { stockId } = Route.useParams()
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
@@ -32,10 +38,12 @@ function StockChartPage() {
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null)
-  const [horizontalLineDrawingEnabled, setHorizontalLineDrawingEnabled] =
-    useState(false)
-  const [pendingHorizontalLine, setPendingHorizontalLine] =
-    useState<HorizontalLinePoint | null>(null)
+  const [horizontalLineState, setHorizontalLineState] =
+    useState<HorizontalLineDrawingState>(() => ({
+      stockId,
+      enabled: false,
+      pending: null,
+    }))
   const [horizontalLineSaveError, setHorizontalLineSaveError] = useState<
     string | null
   >(null)
@@ -77,19 +85,22 @@ function StockChartPage() {
   const chartBars =
     data ??
     (cachedChartBars?.key === chartBarsKey ? cachedChartBars.bars : undefined)
+  const isCurrentDrawingStock = horizontalLineState.stockId === stockId
+  const horizontalLineDrawingEnabled =
+    isCurrentDrawingStock && horizontalLineState.enabled
+  const pendingHorizontalLine = isCurrentDrawingStock
+    ? horizontalLineState.pending
+    : null
   const { data: stock } = $api.useQuery('get', '/api/refs/stocks/{id}', {
     params: { path: { id: stockId } },
   })
-  const { data: annotations, isPending: isAnnotationsPending } = $api.useQuery(
-    'get',
-    '/api/annotations',
-    {
-      params: { query: { target_symbol: stockId } },
-    },
-  )
-  const annotationQueryKey = $api.queryOptions('get', '/api/annotations', {
+  const annotationQueryOptions = $api.queryOptions('get', '/api/annotations', {
     params: { query: { target_symbol: stockId } },
-  }).queryKey
+  })
+  const { data: annotations, isPending: isAnnotationsPending } = useQuery(
+    annotationQueryOptions,
+  )
+  const annotationQueryKey = annotationQueryOptions.queryKey
   const createAnnotationMutation = $api.useMutation(
     'post',
     '/api/annotations',
@@ -101,7 +112,11 @@ function StockChartPage() {
         )
         void queryClient.invalidateQueries({ queryKey: annotationQueryKey })
         setSelectedAnnotationId(annotation.id)
-        setPendingHorizontalLine(null)
+        setHorizontalLineState((current) =>
+          current.stockId === stockId
+            ? { ...current, enabled: false, pending: null }
+            : current,
+        )
         setHorizontalLineSaveError(null)
       },
       onError: () => {
@@ -131,18 +146,20 @@ function StockChartPage() {
 
   function toggleHorizontalLineDrawing() {
     setHorizontalLineSaveError(null)
-    setHorizontalLineDrawingEnabled((enabled) => !enabled)
+    setHorizontalLineState((current) => ({
+      stockId,
+      enabled: current.stockId === stockId ? !current.enabled : true,
+      pending: current.stockId === stockId ? current.pending : null,
+    }))
   }
 
   function cancelHorizontalLine() {
-    setHorizontalLineDrawingEnabled(false)
-    setPendingHorizontalLine(null)
+    setHorizontalLineState({ stockId, enabled: false, pending: null })
     setHorizontalLineSaveError(null)
   }
 
   function placeHorizontalLine(line: HorizontalLinePoint) {
-    setHorizontalLineDrawingEnabled(false)
-    setPendingHorizontalLine(line)
+    setHorizontalLineState({ stockId, enabled: false, pending: line })
     setHorizontalLineSaveError(null)
   }
 

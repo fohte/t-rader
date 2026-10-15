@@ -8,7 +8,7 @@ const meta = {
   args: {
     timestamp: '2030-04-02T06:00:00Z',
     price: 3110,
-    targetKinds: ['sample-level', 'sample-breakout'],
+    targetKinds: ['sample-kind', 'sample-kind-2'],
     onSave: () => undefined,
     onCancel: () => undefined,
   },

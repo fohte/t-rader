@@ -106,7 +106,7 @@ export function HorizontalLineEditor({
             onCancel()
           }}
         >
-          取消 (Esc)
+          取消
         </Button>
         <Button type="submit" size="sm" disabled={isSaving}>
           {isSaving ? '保存中' : '保存'}

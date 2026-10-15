@@ -81,4 +81,37 @@ describe('StockChartPageView', () => {
 
     expect(onCancelHorizontalLine.mock.calls).toEqual([[]])
   })
+
+  it('Esc で入力欄にフォーカス中の水平線を取り消さない', async () => {
+    const user = userEvent.setup()
+    const { onCancelHorizontalLine } = renderChartPage({
+      pendingHorizontalLine: {
+        timestamp: '2030-04-02T06:00:00Z',
+        price: 3110,
+      },
+    })
+    const input = document.createElement('input')
+    document.body.append(input)
+    input.focus()
+
+    await user.keyboard('{Escape}')
+    input.remove()
+
+    expect(onCancelHorizontalLine.mock.calls).toEqual([])
+  })
+
+  it('保存中は Esc で水平線を取り消さない', async () => {
+    const user = userEvent.setup()
+    const { onCancelHorizontalLine } = renderChartPage({
+      pendingHorizontalLine: {
+        timestamp: '2030-04-02T06:00:00Z',
+        price: 3110,
+      },
+      isSavingHorizontalLine: true,
+    })
+
+    await user.keyboard('{Escape}')
+
+    expect(onCancelHorizontalLine.mock.calls).toEqual([])
+  })
 })

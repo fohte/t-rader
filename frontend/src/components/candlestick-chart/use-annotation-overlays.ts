@@ -15,6 +15,7 @@ import {
   clipAnnotationBandSegment,
   getAnnotationPeriodLineRange,
   type HorizontalLinePoint,
+  isAnnotationBandAnnotation,
   isHumanHorizontalLine,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
@@ -51,8 +52,6 @@ export function useAnnotationOverlays({
   candlestickSeriesRef,
   annotationPriceSeriesRef,
   priceLineRef,
-  humanPriceLinesRef,
-  pendingPriceLineRef,
   bars,
   annotations,
   selectedAnnotationId,
@@ -63,8 +62,6 @@ export function useAnnotationOverlays({
   candlestickSeriesRef: ChartRef<ISeriesApi<SeriesType>>
   annotationPriceSeriesRef: ChartRef<ISeriesApi<'Line'>>
   priceLineRef: ChartRef<IPriceLine>
-  humanPriceLinesRef: { current: Map<string, IPriceLine> }
-  pendingPriceLineRef: ChartRef<IPriceLine>
   bars: Bar[]
   annotations?: ChartAnnotation[]
   selectedAnnotationId?: string | null
@@ -79,28 +76,22 @@ export function useAnnotationOverlays({
   )
   const [bandPeriods, setBandPeriods] = useState<AnnotationBandPeriod[]>([])
   const bandAnnotations = useMemo(
-    () =>
-      (annotations ?? []).filter(
-        (annotation) => !isHumanHorizontalLine(annotation),
-      ),
+    () => (annotations ?? []).filter(isAnnotationBandAnnotation),
     [annotations],
   )
   const hasAnnotations = bandAnnotations.length > 0
 
   useEffect(() => {
+    const chart = chartRef.current
     const series = candlestickSeriesRef.current
-    if (series == null) return
+    if (chart == null || series == null) return
 
-    for (const line of humanPriceLinesRef.current.values()) {
-      series.removePriceLine(line)
-    }
-    humanPriceLinesRef.current.clear()
+    const lines: IPriceLine[] = []
 
     for (const annotation of annotations ?? []) {
       if (!isHumanHorizontalLine(annotation)) continue
 
-      humanPriceLinesRef.current.set(
-        annotation.id,
+      lines.push(
         series.createPriceLine({
           price: annotation.price,
           color: '#ffffff',
@@ -114,21 +105,22 @@ export function useAnnotationOverlays({
         }),
       )
     }
-  }, [annotations, candlestickSeriesRef, humanPriceLinesRef])
+
+    return () => {
+      if (chartRef.current !== chart) return
+
+      for (const line of lines) series.removePriceLine(line)
+    }
+  }, [annotations, candlestickSeriesRef, chartRef])
 
   useEffect(() => {
+    const chart = chartRef.current
     const series = candlestickSeriesRef.current
-    if (series == null) return
-
-    const previousLine = pendingPriceLineRef.current
-    if (previousLine != null) {
-      series.removePriceLine(previousLine)
-      pendingPriceLineRef.current = null
-    }
+    if (chart == null || series == null) return
 
     if (pendingHorizontalLine == null) return
 
-    pendingPriceLineRef.current = series.createPriceLine({
+    const line = series.createPriceLine({
       price: pendingHorizontalLine.price,
       color: '#facc15',
       lineWidth: 2,
@@ -139,7 +131,12 @@ export function useAnnotationOverlays({
       axisLabelColor: '#facc15',
       axisLabelTextColor: '#111827',
     })
-  }, [candlestickSeriesRef, pendingHorizontalLine, pendingPriceLineRef])
+    return () => {
+      if (chartRef.current !== chart) return
+
+      series.removePriceLine(line)
+    }
+  }, [candlestickSeriesRef, chartRef, pendingHorizontalLine])
 
   useEffect(() => {
     const chart = chartRef.current

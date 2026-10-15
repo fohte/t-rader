@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CandlestickChart } from '#components/candlestick-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
-import { toCandlestickData } from '#lib/chart-utils'
+import { toChartTimestamp } from '#lib/chart-utils'
 
 const chartMocks = vi.hoisted(() => {
   const candlePriceScale = { applyOptions: vi.fn() }
@@ -343,11 +343,9 @@ describe('CandlestickChart', () => {
       />,
     )
     const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
-    const clickedBar = toCandlestickData(bars)[0]
-    if (clickedBar == null) return
     clickHandler?.({
       point: createChartPoint(36, 18),
-      time: clickedBar.time,
+      time: toChartTimestamp(firstBar.timestamp),
       seriesData: new Map(),
     })
 
@@ -396,6 +394,30 @@ describe('CandlestickChart', () => {
     })
   })
 
+  it('lets chart removal dispose of horizontal price lines on unmount', () => {
+    const { unmount } = render(
+      <CandlestickChart
+        bars={bars}
+        annotations={[{ ...pointAnnotation, created_by_kind: 'human' }]}
+      />,
+    )
+
+    unmount()
+
+    function readRemovalState() {
+      return {
+        chartRemovalCalls: chartMocks.chart.remove.mock.calls,
+        priceLineRemovalCalls:
+          chartMocks.candlestickSeries.removePriceLine.mock.calls,
+      }
+    }
+
+    expect(readRemovalState()).toEqual({
+      chartRemovalCalls: [[]],
+      priceLineRemovalCalls: [],
+    })
+  })
+
   it('selects a human horizontal annotation when its chart line is clicked', () => {
     const onSelectAnnotation = vi.fn()
     const humanLine = { ...pointAnnotation, created_by_kind: 'human' }
@@ -408,11 +430,9 @@ describe('CandlestickChart', () => {
       />,
     )
     const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
-    const clickedBar = toCandlestickData(bars)[0]
-    if (clickedBar == null) return
     clickHandler?.({
       point: createChartPoint(36, 35),
-      time: clickedBar.time,
+      time: toChartTimestamp(firstBar.timestamp),
       seriesData: new Map(),
     })
 

@@ -114,7 +114,7 @@ export const EditingHorizontalLine: Story = {
         price: 3110,
         price_start: null,
         status: 'approved',
-        target_kind: 'sample-level',
+        target_kind: 'sample-kind',
         text: '過去の値動きで反応した水準を確認する。',
         timestamp: '2030-04-02T06:00:00Z',
         timestamp_start: null,

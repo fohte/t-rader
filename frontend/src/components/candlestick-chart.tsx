@@ -20,8 +20,9 @@ import { useAnnotationOverlays } from '#components/candlestick-chart/use-annotat
 import { ChartIndicatorLegend } from '#components/chart-indicator-legend'
 import {
   type ChartAnnotation,
+  findNearestHumanHorizontalLineId,
   type HorizontalLinePoint,
-  isHumanHorizontalLine,
+  isAnnotationBandAnnotation,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import { calculateChartIndicatorLines } from '#lib/chart-indicator-calculations'
@@ -35,6 +36,7 @@ import {
 import {
   type ChartCurrency,
   toCandlestickData,
+  toChartTimestamp,
   toTradeMarkers,
   toVolumeData,
   type TradeMarker,
@@ -91,13 +93,10 @@ export function CandlestickChart({
     new Map(),
   )
   const priceLineRef = useRef<IPriceLine | null>(null)
-  const humanPriceLinesRef = useRef<Map<string, IPriceLine>>(new Map())
-  const pendingPriceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
   const previousDisplayRangeRef = useRef<string | undefined>(undefined)
   const hasAnnotationBand =
-    annotations?.some((annotation) => !isHumanHorizontalLine(annotation)) ??
-    false
+    annotations?.some(isAnnotationBandAnnotation) ?? false
 
   // チャートの初期化 (マウント時のみ)
   useEffect(() => {
@@ -168,18 +167,6 @@ export function CandlestickChart({
       disconnectResizeObserver()
       tradeMarkersRef.current?.detach()
       tradeMarkersRef.current = null
-      if (candlestickSeriesRef.current != null) {
-        for (const line of humanPriceLinesRef.current.values()) {
-          candlestickSeriesRef.current.removePriceLine(line)
-        }
-        humanPriceLinesRef.current.clear()
-        if (pendingPriceLineRef.current != null) {
-          candlestickSeriesRef.current.removePriceLine(
-            pendingPriceLineRef.current,
-          )
-          pendingPriceLineRef.current = null
-        }
-      }
       chart.remove()
       chartRef.current = null
       candlestickSeriesRef.current = null
@@ -210,8 +197,7 @@ export function CandlestickChart({
         }
 
         const bar = bars.find(
-          (item) =>
-            Math.floor(Date.parse(item.timestamp) / 1000) === param.time,
+          (item) => toChartTimestamp(item.timestamp) === param.time,
         )
         const price = activeSeries.coordinateToPrice(point.y)
         if (bar == null || price == null || !Number.isFinite(price)) return
@@ -222,25 +208,14 @@ export function CandlestickChart({
 
       if (onSelectAnnotation == null) return
 
-      const nearestLine = (annotations ?? [])
-        .filter(isHumanHorizontalLine)
-        .map((annotation) => ({
-          id: annotation.id,
-          distance: Math.abs(
-            (activeSeries.priceToCoordinate(annotation.price) ??
-              Number.POSITIVE_INFINITY) - point.y,
-          ),
-        }))
-        .reduce<{ id: string; distance: number } | null>(
-          (nearest, candidate) =>
-            nearest == null || candidate.distance < nearest.distance
-              ? candidate
-              : nearest,
-          null,
-        )
+      const nearestLineId = findNearestHumanHorizontalLineId(
+        annotations ?? [],
+        (price) => activeSeries.priceToCoordinate(price),
+        point.y,
+      )
 
-      if (nearestLine != null && nearestLine.distance <= 8) {
-        onSelectAnnotation(nearestLine.id)
+      if (nearestLineId != null) {
+        onSelectAnnotation(nearestLineId)
       }
     }
 
@@ -389,8 +364,6 @@ export function CandlestickChart({
       candlestickSeriesRef,
       annotationPriceSeriesRef,
       priceLineRef,
-      humanPriceLinesRef,
-      pendingPriceLineRef,
       bars,
       annotations,
       selectedAnnotationId,

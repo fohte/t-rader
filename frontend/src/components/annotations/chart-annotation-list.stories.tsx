@@ -72,3 +72,13 @@ export const Loading: Story = {
   name: 'shows a loading state while annotations are fetched.',
   args: { isLoading: true },
 }
+
+export const DeletingSelectedLine: Story = {
+  name: 'disables deletion while the selected horizontal line is being deleted.',
+  args: { isDeleting: true },
+}
+
+export const DeleteFailed: Story = {
+  name: 'shows an error when deleting the selected horizontal line fails.',
+  args: { deleteError: '削除に失敗しました' },
+}

@@ -100,7 +100,23 @@ export function StockChartPageView({
     if (!horizontalLineDrawingEnabled && pendingHorizontalLine == null) return
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        isSavingHorizontalLine
+      ) {
+        return
+      }
+
+      if (
+        pendingHorizontalLine != null &&
+        (event.target instanceof HTMLInputElement ||
+          event.target instanceof HTMLTextAreaElement ||
+          event.target instanceof HTMLSelectElement)
+      ) {
+        return
+      }
+
       event.preventDefault()
       onCancelHorizontalLine()
     }
@@ -111,6 +127,7 @@ export function StockChartPageView({
     }
   }, [
     horizontalLineDrawingEnabled,
+    isSavingHorizontalLine,
     onCancelHorizontalLine,
     pendingHorizontalLine,
   ])

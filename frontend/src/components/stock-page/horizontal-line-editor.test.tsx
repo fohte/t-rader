@@ -15,7 +15,7 @@ describe('HorizontalLineEditor', () => {
       <HorizontalLineEditor
         timestamp="2030-04-02T06:00:00Z"
         price={3110}
-        targetKinds={['sample-level']}
+        targetKinds={['sample-kind']}
         onSave={onSave}
         onCancel={() => undefined}
       />,
@@ -23,7 +23,7 @@ describe('HorizontalLineEditor', () => {
 
     await user.type(
       screen.getByRole('combobox', { name: '種別キー' }),
-      'sample-level',
+      'sample-kind',
     )
     await user.type(
       screen.getByRole('textbox', { name: 'メモ' }),
@@ -34,7 +34,7 @@ describe('HorizontalLineEditor', () => {
     expect(onSave.mock.calls).toEqual([
       [
         {
-          target_kind: 'sample-level',
+          target_kind: 'sample-kind',
           text: '支持線として確認する',
           timestamp: '2030-04-02T06:00:00Z',
           price: 3110,
@@ -57,8 +57,39 @@ describe('HorizontalLineEditor', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '取消 (Esc)' }))
+    await user.click(screen.getByRole('button', { name: '取消' }))
 
     expect(onCancel.mock.calls).toEqual([[]])
+  })
+
+  it('does not save whitespace-only kind and note values', async () => {
+    const onSave = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <HorizontalLineEditor
+        timestamp="2030-04-02T06:00:00Z"
+        price={3110}
+        targetKinds={[]}
+        onSave={onSave}
+        onCancel={() => undefined}
+      />,
+    )
+
+    await user.type(screen.getByRole('combobox', { name: '種別キー' }), '   ')
+    await user.type(screen.getByRole('textbox', { name: 'メモ' }), '   ')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    function readFormResult() {
+      return {
+        saveCalls: onSave.mock.calls,
+        error: screen.getByRole('alert').textContent,
+      }
+    }
+
+    expect(readFormResult()).toEqual({
+      saveCalls: [],
+      error: '種別キーとメモを入力してください',
+    })
   })
 })

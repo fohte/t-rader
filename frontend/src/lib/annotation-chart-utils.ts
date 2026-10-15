@@ -40,6 +40,33 @@ export function isHumanHorizontalLine(
   )
 }
 
+export function isAnnotationBandAnnotation(annotation: ChartAnnotation) {
+  return !isHumanHorizontalLine(annotation)
+}
+
+export function findNearestHumanHorizontalLineId(
+  annotations: ChartAnnotation[],
+  priceToY: (price: number) => number | null,
+  clickY: number,
+  tolerance = 8,
+): string | null {
+  let nearest: { id: string; distance: number } | null = null
+
+  for (const annotation of annotations) {
+    if (!isHumanHorizontalLine(annotation)) continue
+
+    const coordinate = priceToY(annotation.price)
+    if (coordinate == null || !Number.isFinite(coordinate)) continue
+
+    const distance = Math.abs(coordinate - clickY)
+    if (nearest == null || distance < nearest.distance) {
+      nearest = { id: annotation.id, distance }
+    }
+  }
+
+  return nearest != null && nearest.distance <= tolerance ? nearest.id : null
+}
+
 export interface AnnotationBandMarker {
   id: string
   x: number

@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ChartAnnotationList } from '#components/annotations/chart-annotation-list'
+
+afterEach(cleanup)
 
 describe('ChartAnnotationList', () => {
   it('selects the annotation whose row is clicked', async () => {
@@ -70,7 +72,7 @@ describe('ChartAnnotationList', () => {
           {
             id: 'annotation-human',
             created_by_kind: 'human',
-            target_kind: 'sample-level',
+            target_kind: 'sample-kind',
             timestamp: '2025-01-03T00:00:00.000Z',
             timestamp_start: null,
             price: 1250,
@@ -81,7 +83,7 @@ describe('ChartAnnotationList', () => {
           {
             id: 'annotation-agent',
             created_by_kind: 'llm',
-            target_kind: 'sample-signal',
+            target_kind: 'sample-kind',
             timestamp: '2025-01-02T00:00:00.000Z',
             timestamp_start: null,
             price: null,
@@ -98,14 +100,14 @@ describe('ChartAnnotationList', () => {
 
     await user.click(
       screen.getByRole('button', {
-        name: 'sample-level のアノテーションを削除',
+        name: 'sample-kind のアノテーションを削除',
       }),
     )
 
     const readDeletedAnnotationState = () => ({
       owner: screen.getByText('自分').textContent,
       deleteButton: screen.getByRole('button', {
-        name: 'sample-level のアノテーションを削除',
+        name: 'sample-kind のアノテーションを削除',
       }).textContent,
       calls: onDeleteAnnotation.mock.calls,
     })
@@ -114,6 +116,47 @@ describe('ChartAnnotationList', () => {
       owner: '自分',
       deleteButton: '削除',
       calls: [['annotation-human']],
+    })
+  })
+
+  it('does not offer deletion for a selected LLM horizontal annotation', () => {
+    const onDeleteAnnotation = vi.fn()
+
+    render(
+      <ChartAnnotationList
+        annotations={[
+          {
+            id: 'annotation-agent-line',
+            created_by_kind: 'llm',
+            target_kind: 'sample-kind',
+            timestamp: '2025-01-03T00:00:00.000Z',
+            timestamp_start: null,
+            price: 1250,
+            price_start: null,
+            status: 'unread',
+            text: 'エージェントの水平注釈です。',
+          },
+        ]}
+        selectedAnnotationId="annotation-agent-line"
+        onSelectAnnotation={() => undefined}
+        onDeleteAnnotation={onDeleteAnnotation}
+      />,
+    )
+
+    function readSelectedAnnotationState() {
+      return {
+        owner: screen.queryByText('自分')?.textContent ?? null,
+        deleteButton: screen.queryByRole('button', {
+          name: 'sample-kind のアノテーションを削除',
+        }),
+        deleteCalls: onDeleteAnnotation.mock.calls,
+      }
+    }
+
+    expect(readSelectedAnnotationState()).toEqual({
+      owner: null,
+      deleteButton: null,
+      deleteCalls: [],
     })
   })
 })
