@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use chrono::{DateTime, FixedOffset, NaiveDate};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
 };
@@ -154,8 +154,11 @@ impl BarsRepository for PostgresBarsRepository {
             instrument_id: String,
             latest_daily_bar: Option<DateTime<FixedOffset>>,
             latest_minute_bar: Option<DateTime<FixedOffset>>,
+            latest_hourly_bar: Option<DateTime<FixedOffset>>,
+            hourly_history_completed_through: Option<DateTime<FixedOffset>>,
             earliest_daily_bar: Option<DateTime<FixedOffset>>,
             earliest_minute_bar: Option<DateTime<FixedOffset>>,
+            earliest_hourly_bar: Option<DateTime<FixedOffset>>,
         }
 
         let rows = self
@@ -166,8 +169,11 @@ impl BarsRepository for PostgresBarsRepository {
                     instruments.id AS instrument_id,
                     daily_bar.timestamp AS latest_daily_bar,
                     minute_bar.timestamp AS latest_minute_bar,
+                    hourly_bar.timestamp AS latest_hourly_bar,
+                    hourly_progress.completed_through AS hourly_history_completed_through,
                     earliest_daily_bar.timestamp AS earliest_daily_bar,
-                    earliest_minute_bar.timestamp AS earliest_minute_bar
+                    earliest_minute_bar.timestamp AS earliest_minute_bar,
+                    earliest_hourly_bar.timestamp AS earliest_hourly_bar
                 FROM instruments
                 LEFT JOIN LATERAL (
                     SELECT timestamp
@@ -193,10 +199,26 @@ impl BarsRepository for PostgresBarsRepository {
                 LEFT JOIN LATERAL (
                     SELECT timestamp
                     FROM bars
+                    WHERE instrument_id = instruments.id AND timeframe = '1h'
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ) AS hourly_bar ON TRUE
+                LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
+                    ON hourly_progress.instrument_id = instruments.id
+                LEFT JOIN LATERAL (
+                    SELECT timestamp
+                    FROM bars
                     WHERE instrument_id = instruments.id AND timeframe = '1m'
                     ORDER BY timestamp ASC
                     LIMIT 1
                 ) AS earliest_minute_bar ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT timestamp
+                    FROM bars
+                    WHERE instrument_id = instruments.id AND timeframe = '1h'
+                    ORDER BY timestamp ASC
+                    LIMIT 1
+                ) AS earliest_hourly_bar ON TRUE
                 WHERE instruments.market = 'US'
                   AND (
                     EXISTS (
@@ -225,9 +247,63 @@ impl BarsRepository for PostgresBarsRepository {
                     earliest_minute_bar: row
                         .earliest_minute_bar
                         .map(|timestamp| timestamp.to_utc()),
+                    latest_hourly_bar: row.latest_hourly_bar.map(|timestamp| timestamp.to_utc()),
+                    hourly_history_completed_through: row
+                        .hourly_history_completed_through
+                        .map(|timestamp| timestamp.to_utc()),
+                    earliest_hourly_bar: row
+                        .earliest_hourly_bar
+                        .map(|timestamp| timestamp.to_utc()),
                 })
             })
             .collect()
+    }
+
+    async fn mark_us_stock_hourly_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        if instrument_ids.is_empty() {
+            return Ok(());
+        }
+
+        let values = instrument_ids
+            .iter()
+            .flat_map(|instrument_id| {
+                [
+                    instrument_id.clone().into(),
+                    completed_through.fixed_offset().into(),
+                ]
+            })
+            .collect::<Vec<sea_orm::Value>>();
+        let rows = instrument_ids
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                let instrument_parameter = index * 2 + 1;
+                let timestamp_parameter = instrument_parameter + 1;
+                format!("(${instrument_parameter}, ${timestamp_parameter})")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.db
+            .execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!(
+                    "INSERT INTO us_stock_hourly_bar_ingest_progress \
+                     (instrument_id, completed_through) VALUES {rows} \
+                     ON CONFLICT (instrument_id) DO UPDATE \
+                     SET completed_through = GREATEST( \
+                         us_stock_hourly_bar_ingest_progress.completed_through, \
+                         EXCLUDED.completed_through \
+                     )"
+                ),
+                values,
+            ))
+            .await
+            .map(|_| ())
+            .map_err(repository_error)
     }
 
     async fn find_ingested_dates(
@@ -574,6 +650,17 @@ mod tests {
             .expect("latest minute timestamp");
         let repository = PostgresBarsRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db);
+        let hourly_history_completed_through = Utc
+            .with_ymd_and_hms(2040, 1, 2, 14, 0, 0)
+            .single()
+            .expect("hourly completion timestamp");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                hourly_history_completed_through,
+            )
+            .await
+            .expect("mark hourly history completed");
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         repository
             .upsert_bars(
@@ -631,6 +718,12 @@ mod tests {
                     instrument_id: group_stock_id,
                     latest_daily_bar: Some(daily_latest),
                     latest_minute_bar: Some(minute_latest),
+                    latest_hourly_bar: Some(
+                        Utc.with_ymd_and_hms(2040, 1, 2, 15, 5, 0)
+                            .single()
+                            .expect("latest hourly timestamp"),
+                    ),
+                    hourly_history_completed_through: Some(hourly_history_completed_through),
                     earliest_daily_bar: Some(
                         Utc.with_ymd_and_hms(2040, 1, 1, 0, 0, 0)
                             .single()
@@ -641,13 +734,21 @@ mod tests {
                             .single()
                             .expect("earliest minute timestamp"),
                     ),
+                    earliest_hourly_bar: Some(
+                        Utc.with_ymd_and_hms(2040, 1, 2, 15, 2, 0)
+                            .single()
+                            .expect("earliest hourly timestamp"),
+                    ),
                 },
                 UsStockBarTarget {
                     instrument_id: note_stock_id,
                     latest_daily_bar: Some(note_daily_latest),
                     latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
                     earliest_daily_bar: Some(note_daily_latest),
                     earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
                 },
             ],
         );

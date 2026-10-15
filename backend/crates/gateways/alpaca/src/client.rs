@@ -353,6 +353,7 @@ fn request_params(query: &UsStockBarQuery) -> Result<Vec<(&'static str, String)>
     let timeframe = match query.timeframe {
         Timeframe::Daily => "1Day",
         Timeframe::Minute => "1Min",
+        Timeframe::Hourly => "1Hour",
         timeframe => {
             return Err(AlpacaError::Config(format!(
                 "unsupported bar timeframe: {timeframe}"
@@ -567,6 +568,64 @@ mod tests {
                     adjustment_factor: Decimal::ONE,
                 }],
                 next_page_token: Some("synthetic-page".to_owned()),
+            },
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn fetches_hourly_bars_using_the_hourly_timeframe() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v2/stocks/bars"))
+            .and(query_param("symbols", "QZ7"))
+            .and(query_param("timeframe", "1Hour"))
+            .and(query_param("start", "2016-01-01T00:00:00+00:00"))
+            .and(query_param("end", "2039-01-02T12:00:00+00:00"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "bars": {
+                    "QZ7": [{
+                        "t": "2039-01-02T12:00:00Z",
+                        "o": 12.34,
+                        "h": 14.56,
+                        "l": 11.12,
+                        "c": 13.45,
+                        "v": 25
+                    }]
+                },
+                "next_page_token": null
+            })))
+            .mount(&server)
+            .await;
+        let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
+            .expect("test client is configured");
+
+        let page = client
+            .fetch_page(&UsStockBarQuery {
+                instrument_ids: vec!["US:QZ7".to_owned()],
+                timeframe: Timeframe::Hourly,
+                from: date("2016-01-01T00:00:00Z"),
+                to: date("2039-01-02T12:00:00Z"),
+                page_token: None,
+            })
+            .await
+            .expect("hourly bars response is valid");
+
+        assert_eq!(
+            page,
+            core_application::bars::UsStockBarPage {
+                bars: vec![Bar {
+                    instrument_id: "US:QZ7".to_owned(),
+                    timeframe: Timeframe::Hourly,
+                    timestamp: date("2039-01-02T12:00:00Z"),
+                    open: Decimal::new(1234, 2),
+                    high: Decimal::new(1456, 2),
+                    low: Decimal::new(1112, 2),
+                    close: Decimal::new(1345, 2),
+                    volume: 25,
+                    adjustment_factor: Decimal::ONE,
+                }],
+                next_page_token: None,
             },
         );
     }

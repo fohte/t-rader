@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use core_domain::bar::Timeframe;
 use rust_decimal::Decimal;
 
@@ -20,8 +20,7 @@ impl BarsUseCases {
         &self,
         source: &dyn UsStockBarSource,
         targets: &[UsStockBarTarget],
-        from: NaiveDate,
-        to: DateTime<Utc>,
+        history_range: UsStockSplitHistoryRange,
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<bool, BarsUseCaseError> {
@@ -44,8 +43,8 @@ impl BarsUseCases {
                 .fetch_splits(
                     &UsStockSplitQuery {
                         instrument_ids: instrument_ids.to_vec(),
-                        from,
-                        to: to.date_naive(),
+                        from: history_range.daily_from.date_naive(),
+                        to: history_range.daily_to.date_naive(),
                     },
                     max_requests,
                 )
@@ -61,7 +60,9 @@ impl BarsUseCases {
                 return Ok(false);
             }
             for split in batch.splits {
-                if target_ids.contains(&split.instrument_id) && split.ex_date <= to.date_naive() {
+                if target_ids.contains(&split.instrument_id)
+                    && split.ex_date <= history_range.daily_to.date_naive()
+                {
                     splits_by_instrument
                         .entry(split.instrument_id.clone())
                         .or_default()
@@ -99,11 +100,16 @@ impl BarsUseCases {
                     UsStockSplitHistoryRange {
                         daily_from: UsStockBarTimeframe::Daily
                             .earliest_bar(target)
-                            .unwrap_or_else(|| UsStockBarTimeframe::Daily.history_start(to)),
+                            .unwrap_or(history_range.daily_from),
                         minute_from: UsStockBarTimeframe::Minute
                             .earliest_bar(target)
-                            .unwrap_or_else(|| UsStockBarTimeframe::Minute.history_start(to)),
-                        to,
+                            .unwrap_or(history_range.minute_from),
+                        hourly_from: UsStockBarTimeframe::Hourly
+                            .earliest_bar(target)
+                            .unwrap_or(history_range.hourly_from),
+                        daily_to: history_range.daily_to,
+                        minute_to: history_range.minute_to,
+                        hourly_to: history_range.hourly_to,
                     },
                     budget,
                     stats,
@@ -198,7 +204,7 @@ impl BarsUseCases {
                 UsStockBarTimeframe::Daily,
                 UsStockBarRange {
                     from: range.daily_from,
-                    to: range.to,
+                    to: range.daily_to,
                 },
                 budget,
                 stats,
@@ -230,7 +236,7 @@ impl BarsUseCases {
                 UsStockBarTimeframe::Minute,
                 UsStockBarRange {
                     from: range.minute_from,
-                    to: range.to,
+                    to: range.minute_to,
                 },
                 budget,
                 stats,
@@ -240,9 +246,31 @@ impl BarsUseCases {
             return Ok(false);
         }
 
+        let Some(hourly_pages) = self
+            .fetch_batch_pages(
+                source,
+                instrument_ids,
+                UsStockBarTimeframe::Hourly,
+                UsStockBarRange {
+                    from: range.hourly_from,
+                    to: range.hourly_to,
+                },
+                budget,
+                stats,
+            )
+            .await?
+        else {
+            return Ok(false);
+        };
+
         self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
             .await?;
         self.persist_bars(split_bars, UsStockBarTimeframe::Daily, stats)
+            .await?;
+        self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
+            .await?;
+        self.repository
+            .mark_us_stock_hourly_bar_history_completed(instrument_ids, range.hourly_to)
             .await?;
         Ok(true)
     }

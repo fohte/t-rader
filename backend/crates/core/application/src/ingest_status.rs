@@ -20,6 +20,7 @@ pub const EQUITY_MASTER_INGEST_JOB: &str = "equity_master_ingest";
 pub const US_STOCK_MASTER_INGEST_JOB: &str = "us_stock_master_ingest";
 pub const US_STOCK_BARS_INGEST_JOB: &str = "us_stock_bars_ingest";
 pub const US_STOCK_MINUTE_BARS_INGEST_JOB: &str = "us_stock_minute_bars_ingest";
+pub const US_STOCK_HOURLY_BARS_INGEST_JOB: &str = "us_stock_hourly_bars_ingest";
 pub const SHAREHOLDING_STRUCTURE_INGEST_JOB: &str = "shareholding_structure_ingest";
 pub const FRED_INGEST_JOB: &str = "fred_ingest";
 pub const EODDATA_KOSPI_INGEST_JOB: &str = "eoddata_kospi_ingest";

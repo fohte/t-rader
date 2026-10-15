@@ -37,8 +37,11 @@ pub struct UsStockBarTarget {
     pub instrument_id: String,
     pub latest_daily_bar: Option<DateTime<Utc>>,
     pub latest_minute_bar: Option<DateTime<Utc>>,
+    pub latest_hourly_bar: Option<DateTime<Utc>>,
+    pub hourly_history_completed_through: Option<DateTime<Utc>>,
     pub earliest_daily_bar: Option<DateTime<Utc>>,
     pub earliest_minute_bar: Option<DateTime<Utc>>,
+    pub earliest_hourly_bar: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
@@ -47,6 +50,7 @@ pub struct UsStockBarsIngestStats {
     pub requests_attempted: usize,
     pub daily_bars_upserted: usize,
     pub minute_bars_upserted: usize,
+    pub hourly_bars_upserted: usize,
     pub interrupted_reason: Option<String>,
 }
 

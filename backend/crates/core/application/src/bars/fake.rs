@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use core_domain::bar::{Bar, Timeframe};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -17,6 +17,7 @@ pub struct FakeBarsRepository {
     pub ingested_dates: Mutex<HashSet<NaiveDate>>,
     pub instruments: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
+    pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
@@ -137,6 +138,10 @@ impl BarsRepository for FakeBarsRepository {
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
         let target_ids = self.us_stock_targets.lock().await.clone();
         let bars = self.bars.lock().await;
+        let hourly_progress = self
+            .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await;
         let mut targets = target_ids
             .into_iter()
             .map(|instrument_id| UsStockBarTarget {
@@ -154,6 +159,14 @@ impl BarsRepository for FakeBarsRepository {
                     })
                     .max_by_key(|bar| bar.timestamp)
                     .map(|bar| bar.timestamp),
+                latest_hourly_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Hourly
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                hourly_history_completed_through: hourly_progress.get(&instrument_id).copied(),
                 earliest_daily_bar: bars
                     .iter()
                     .filter(|bar| {
@@ -165,6 +178,13 @@ impl BarsRepository for FakeBarsRepository {
                     .iter()
                     .filter(|bar| {
                         bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
+                    })
+                    .min_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                earliest_hourly_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Hourly
                     })
                     .min_by_key(|bar| bar.timestamp)
                     .map(|bar| bar.timestamp),
@@ -187,6 +207,24 @@ impl BarsRepository for FakeBarsRepository {
             .filter(|date| **date >= from)
             .copied()
             .collect())
+    }
+
+    async fn mark_us_stock_hourly_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        let mut progress = self
+            .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await;
+        for instrument_id in instrument_ids {
+            progress
+                .entry(instrument_id.clone())
+                .and_modify(|existing| *existing = (*existing).max(completed_through))
+                .or_insert(completed_through);
+        }
+        Ok(())
     }
 
     async fn ensure_instruments_exist(

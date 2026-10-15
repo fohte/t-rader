@@ -62,6 +62,7 @@
 | [public.event](public.event.md)                                                             | 6       | システム内で発生したイベントと dispatch 状態を保持する。                                               | BASE TABLE |
 | [public.event_firing](public.event_firing.md)                                               | 3       | event と trigger の発火、および投入した task の対応を保持する。                                        | BASE TABLE |
 | [public.subagent_definition](public.subagent_definition.md)                                 | 13      | 戦略設定から独立したサブエージェント定義を保持する。                                                   | BASE TABLE |
+| [public.us_stock_hourly_bar_ingest_progress](public.us_stock_hourly_bar_ingest_progress.md) | 2       | 米国株の 1 時間足を取得済みの終端時刻を保持する。                                                      | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -225,6 +226,7 @@ erDiagram
 "public.event_firing" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id)"
 "public.event_firing" }o--|| "public.trigger" : "FOREIGN KEY (trigger_id) REFERENCES trigger(trigger_id) ON DELETE CASCADE"
 "public.event_firing" }o--|| "public.event" : "FOREIGN KEY (event_id) REFERENCES event(event_id) ON DELETE CASCADE"
+"public.us_stock_hourly_bar_ingest_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -242,6 +244,10 @@ erDiagram
   numeric close
   bigint volume
   numeric adjustment_factor
+}
+"public.us_stock_hourly_bar_ingest_progress" {
+  text instrument_id FK
+  timestamp_with_time_zone completed_through
 }
 "public.strategy" {
   uuid id

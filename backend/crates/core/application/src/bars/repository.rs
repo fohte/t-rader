@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use core_domain::bar::Bar;
 use thiserror::Error;
 
@@ -41,6 +41,12 @@ pub trait BarsRepository: Send + Sync {
 
     async fn find_us_stock_bar_targets(&self)
     -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+
+    async fn mark_us_stock_hourly_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError>;
 
     async fn find_ingested_dates(
         &self,
