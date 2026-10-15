@@ -33,6 +33,10 @@ fn normalize_result(mut result: Value) -> Value {
     result
 }
 
+fn per_for_index(index: u32) -> Option<Decimal> {
+    (index != 1).then(|| Decimal::from(index))
+}
+
 fn expected_page(indices: impl Iterator<Item = u32>, page: u32) -> Value {
     let items = indices
         .map(|index| {
@@ -42,7 +46,9 @@ fn expected_page(indices: impl Iterator<Item = u32>, page: u32) -> Value {
                 "market": "market-a",
                 "sector": null,
                 "close": null,
-                "per": if index == 1 { Value::Null } else { json!(index) },
+                "per": per_for_index(index)
+                    .map(|per| json!(per))
+                    .unwrap_or(Value::Null),
                 "pbr": 1,
                 "roe": 1,
                 "dividend_yield": null,
@@ -532,7 +538,7 @@ async fn screener_endpoint_sorts_and_returns_one_hundred_rows_per_page(
         valuations.push(valuation(
             &id,
             3,
-            (index != 1).then(|| Decimal::from(index)),
+            per_for_index(index),
             Some(Decimal::ONE),
             Some(Decimal::new(1, 2)),
             Some(Decimal::from(100_000 + index * 100)),
