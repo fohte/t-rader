@@ -10,6 +10,7 @@ import { Columns2Icon } from 'lucide-react'
 
 import { ChartAnnotationList } from '#components/annotations/chart-annotation-list'
 import { CandlestickChart } from '#components/candlestick-chart'
+import { ChartIndicatorControl } from '#components/chart-indicator-control'
 import { ChartMarketDepthPanel } from '#components/chart-market-depth-panel'
 import {
   type Timeframe,
@@ -18,6 +19,13 @@ import {
 import { Skeleton } from '#components/ui/skeleton'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import {
+  addChartIndicator,
+  removeChartIndicator,
+  updateChartIndicatorDeviation,
+  updateChartIndicatorPeriod,
+  useChartIndicators,
+} from '#lib/chart-indicator-settings'
 import type { ChartCurrency } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
@@ -26,6 +34,8 @@ export function StockChartPageView({
   stockId,
   stockName,
   bars,
+  displayRangeStart,
+  lookbackBars,
   annotations,
   timeframe,
   onTimeframeChange,
@@ -41,6 +51,8 @@ export function StockChartPageView({
   stockId: string
   stockName: string
   bars: Bar[]
+  displayRangeStart?: string
+  lookbackBars?: number
   annotations: ChartAnnotation[]
   timeframe: Timeframe
   onTimeframeChange: (timeframe: Timeframe) => void
@@ -53,6 +65,8 @@ export function StockChartPageView({
   hasError: boolean
   isAnnotationsLoading: boolean
 }) {
+  const indicators = useChartIndicators()
+
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
@@ -67,6 +81,13 @@ export function StockChartPageView({
         </h1>
         <div className="flex shrink-0 items-center gap-2">
           <TimeframeSelector value={timeframe} onChange={onTimeframeChange} />
+          <ChartIndicatorControl
+            indicators={indicators}
+            onAdd={addChartIndicator}
+            onUpdatePeriod={updateChartIndicatorPeriod}
+            onUpdateDeviation={updateChartIndicatorDeviation}
+            onRemove={removeChartIndicator}
+          />
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger
@@ -96,6 +117,9 @@ export function StockChartPageView({
           <>
             <CandlestickChart
               bars={bars}
+              indicators={indicators}
+              displayRangeStart={displayRangeStart}
+              lookbackBars={lookbackBars}
               annotations={annotations}
               onSelectAnnotation={onSelectAnnotation}
               selectedAnnotationId={selectedAnnotationId}

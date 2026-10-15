@@ -5,7 +5,11 @@ import { StockChartPageView } from '#components/stock-page/stock-chart-page-view
 import { type Timeframe } from '#components/timeframe-selector'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import { $api } from '#lib/api/client'
-import { getBarsRange } from '#lib/chart-range'
+import {
+  getChartIndicatorLookbackBars,
+  useChartIndicators,
+} from '#lib/chart-indicator-settings'
+import { extendBarsRange, getBarsRange } from '#lib/chart-range'
 import { getChartCurrency } from '#lib/chart-utils'
 
 export const Route = createFileRoute('/stocks/$stockId_/chart')({
@@ -21,15 +25,20 @@ function StockChartPage() {
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null)
-  const { from, to } = useMemo(() => getBarsRange(timeframe), [timeframe])
+  const indicators = useChartIndicators()
+  const lookbackBars = getChartIndicatorLookbackBars(indicators)
+  const displayRange = useMemo(() => getBarsRange(timeframe), [timeframe])
+  const chartRange = useMemo(
+    () => extendBarsRange(displayRange, timeframe, lookbackBars),
+    [displayRange, lookbackBars, timeframe],
+  )
 
   const { data, isLoading, error } = $api.useQuery('get', '/api/bars', {
     params: {
       query: {
         instrument_id: stockId,
         timeframe,
-        from,
-        to,
+        ...chartRange,
       },
     },
   })
@@ -49,6 +58,8 @@ function StockChartPage() {
       stockId={stockId}
       stockName={stock?.name ?? stockId}
       bars={data ?? []}
+      displayRangeStart={displayRange.from}
+      lookbackBars={lookbackBars}
       annotations={annotations ?? emptyAnnotations}
       timeframe={timeframe}
       onTimeframeChange={setTimeframe}

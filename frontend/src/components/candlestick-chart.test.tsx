@@ -31,6 +31,7 @@ const chartMocks = vi.hoisted(() => {
   const annotationPriceSeries = {
     setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
   }
+  const indicatorSeries = { setData: vi.fn() }
   const seriesMarkers = {
     detach: vi.fn(),
     markers: vi.fn(),
@@ -43,6 +44,7 @@ const chartMocks = vi.hoisted(() => {
   const timeScale = {
     fitContent: vi.fn(),
     height: vi.fn(() => 24),
+    setVisibleLogicalRange: vi.fn(),
     subscribeSizeChange: vi.fn(),
     subscribeVisibleTimeRangeChange: vi.fn(),
     timeToCoordinate: vi.fn<(time: UTCTimestamp) => number>(() => 36),
@@ -53,6 +55,7 @@ const chartMocks = vi.hoisted(() => {
   const chart = {
     addSeries: vi.fn((): unknown => null),
     applyOptions: vi.fn(),
+    removeSeries: vi.fn(),
     remove: vi.fn(),
     timeScale: vi.fn(() => timeScale),
   }
@@ -60,7 +63,8 @@ const chartMocks = vi.hoisted(() => {
     const index = chart.addSeries.mock.calls.length
     if (index === 1) return candlestickSeries
     if (index === 2) return annotationPriceSeries
-    return volumeSeries
+    if (index === 3) return volumeSeries
+    return indicatorSeries
   })
 
   return {
@@ -68,6 +72,7 @@ const chartMocks = vi.hoisted(() => {
     candlePriceScale,
     candlestickSeries,
     annotationPriceSeries,
+    indicatorSeries,
     volumePriceScale,
     timeScale,
     seriesMarkers,
@@ -81,7 +86,7 @@ vi.mock('lightweight-charts', () => ({
   createSeriesMarkers: vi.fn(() => chartMocks.seriesMarkers),
   HistogramSeries: {},
   LineSeries: {},
-  LineStyle: { Dashed: 2 },
+  LineStyle: { Dashed: 2, Solid: 0 },
 }))
 
 const firstBar: components['schemas']['Bar'] = {
@@ -137,6 +142,47 @@ afterEach(() => {
 })
 
 describe('CandlestickChart', () => {
+  it('draws a price overlay from lookback bars without widening the initial view', () => {
+    const indicatorBars = [
+      { ...firstBar, timestamp: '2025-04-10T00:00:00.000Z', close: 10 },
+      { ...firstBar, timestamp: '2025-04-11T00:00:00.000Z', close: 20 },
+      { ...firstBar, timestamp: '2025-04-12T00:00:00.000Z', close: 30 },
+      { ...firstBar, timestamp: '2025-04-13T00:00:00.000Z', close: 40 },
+    ]
+
+    render(
+      <CandlestickChart
+        bars={indicatorBars}
+        indicators={[
+          { id: 'indicator-sma', kind: 'sma', period: 2, color: '#f97316' },
+        ]}
+        displayRangeStart="2025-04-12"
+        lookbackBars={2}
+      />,
+    )
+
+    const readRenderedState = () => ({
+      lineData: chartMocks.indicatorSeries.setData.mock.calls,
+      visibleRanges: chartMocks.timeScale.setVisibleLogicalRange.mock.calls,
+      legend: screen.getByRole('list', { name: '表示中のチャート指標' })
+        .textContent,
+    })
+
+    expect(readRenderedState()).toEqual({
+      lineData: [
+        [
+          [
+            { time: 1744329600, value: 15 },
+            { time: 1744416000, value: 25 },
+            { time: 1744502400, value: 35 },
+          ],
+        ],
+      ],
+      visibleRanges: [[{ from: 1.5, to: 3.5 }]],
+      legend: 'SMA 2',
+    })
+  })
+
   it('places a marker at the selected daily bar', () => {
     render(
       <CandlestickChart

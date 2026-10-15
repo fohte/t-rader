@@ -16,8 +16,15 @@ import { useEffect, useRef } from 'react'
 
 import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
 import { useAnnotationOverlays } from '#components/candlestick-chart/use-annotation-overlays'
+import { ChartIndicatorLegend } from '#components/chart-indicator-legend'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import {
+  calculateBollingerBands,
+  calculateExponentialMovingAverage,
+  calculateSimpleMovingAverage,
+} from '#lib/chart-indicator-calculations'
+import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
 import {
   getChartThemeColors,
   getChartThemeOptions,
@@ -34,12 +41,16 @@ import {
 import { cn } from '#lib/utils'
 
 type Bar = components['schemas']['Bar']
+const EMPTY_INDICATORS: ChartIndicatorConfig[] = []
 
 interface CandlestickChartProps {
   bars: Bar[]
   trades?: TradeMarker[]
   selectedTradeId?: string
   annotations?: ChartAnnotation[]
+  indicators?: ChartIndicatorConfig[]
+  displayRangeStart?: string
+  lookbackBars?: number
   onSelectAnnotation?: (id: string) => void
   selectedAnnotationId?: string | null
   currency?: ChartCurrency
@@ -54,6 +65,9 @@ export function CandlestickChart({
   trades,
   selectedTradeId,
   annotations,
+  indicators = EMPTY_INDICATORS,
+  displayRangeStart,
+  lookbackBars = 0,
   onSelectAnnotation,
   selectedAnnotationId,
   currency,
@@ -68,8 +82,15 @@ export function CandlestickChart({
   const tradeMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const annotationPriceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
+  const indicatorSeriesRef = useRef<Map<string, ISeriesApi<'Line'>[]>>(
+    new Map(),
+  )
   const priceLineRef = useRef<IPriceLine | null>(null)
   const isInitialDataRef = useRef(true)
+  const previousDisplayRangeRef = useRef<{
+    displayRangeStart?: string
+    lookbackBars: number
+  } | null>(null)
   const hasAnnotations = (annotations?.length ?? 0) > 0
 
   // チャートの初期化 (マウント時のみ)
@@ -146,6 +167,7 @@ export function CandlestickChart({
       candlestickSeriesRef.current = null
       annotationPriceSeriesRef.current = null
       volumeSeriesRef.current = null
+      indicatorSeriesRef.current.clear()
       priceLineRef.current = null
     }
   }, [])
@@ -202,16 +224,110 @@ export function CandlestickChart({
   // データ更新 (bars 変更時にシリーズのデータのみ差し替え)
   useEffect(() => {
     if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return
+    if (bars.length === 0) return
 
     candlestickSeriesRef.current.setData(toCandlestickData(bars))
     volumeSeriesRef.current.setData(toVolumeData(bars))
 
-    // 初回データ設定時のみ fitContent でコンテンツ全体を表示
-    if (isInitialDataRef.current) {
-      chartRef.current?.timeScale().fitContent()
+    const previousDisplayRange = previousDisplayRangeRef.current
+    const shouldResetVisibleRange =
+      isInitialDataRef.current ||
+      previousDisplayRange == null ||
+      previousDisplayRange.displayRangeStart !== displayRangeStart ||
+      previousDisplayRange.lookbackBars !== lookbackBars
+
+    if (shouldResetVisibleRange) {
+      const firstVisibleIndex =
+        displayRangeStart == null
+          ? -1
+          : bars.findIndex(
+              (bar) =>
+                Date.parse(bar.timestamp) >= Date.parse(displayRangeStart),
+            )
+      const timeScale = chartRef.current?.timeScale()
+
+      if (firstVisibleIndex > 0 && timeScale != null) {
+        timeScale.setVisibleLogicalRange({
+          from: firstVisibleIndex - 0.5,
+          to: bars.length - 0.5,
+        })
+      } else {
+        timeScale?.fitContent()
+      }
       isInitialDataRef.current = false
     }
-  }, [bars])
+
+    previousDisplayRangeRef.current = { displayRangeStart, lookbackBars }
+  }, [bars, displayRangeStart, lookbackBars])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (chart == null) return
+
+    for (const series of indicatorSeriesRef.current.values()) {
+      for (const lineSeries of series) chart.removeSeries(lineSeries)
+    }
+    indicatorSeriesRef.current.clear()
+
+    const indicatorBars = toCandlestickData(bars).map(({ time, close }) => ({
+      time,
+      close,
+    }))
+
+    for (const indicator of indicators) {
+      const lines =
+        indicator.kind === 'sma'
+          ? [
+              {
+                name: 'sma',
+                points: calculateSimpleMovingAverage(
+                  indicatorBars,
+                  indicator.period,
+                ),
+              },
+            ]
+          : indicator.kind === 'ema'
+            ? [
+                {
+                  name: 'ema',
+                  points: calculateExponentialMovingAverage(
+                    indicatorBars,
+                    indicator.period,
+                  ),
+                },
+              ]
+            : (() => {
+                const bands = calculateBollingerBands(
+                  indicatorBars,
+                  indicator.period,
+                  indicator.deviation,
+                )
+                return [
+                  { name: 'middle', points: bands.middle },
+                  { name: 'upper', points: bands.upper },
+                  { name: 'lower', points: bands.lower },
+                ]
+              })()
+      const series = lines.map(({ name, points }) => {
+        const lineSeries = chart.addSeries(LineSeries, {
+          color: indicator.color,
+          lineWidth: name === 'upper' || name === 'lower' ? 1 : 2,
+          lineStyle:
+            name === 'upper' || name === 'lower'
+              ? LineStyle.Dashed
+              : LineStyle.Solid,
+          priceScaleId: 'right',
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+          pointMarkersVisible: false,
+        })
+        lineSeries.setData(points)
+        return lineSeries
+      })
+      indicatorSeriesRef.current.set(indicator.id, series)
+    }
+  }, [bars, indicators])
 
   useEffect(() => {
     tradeMarkersRef.current?.setMarkers(
@@ -252,6 +368,7 @@ export function CandlestickChart({
           onSelectAnnotation={onSelectAnnotation}
         />
       )}
+      <ChartIndicatorLegend indicators={indicators} />
     </div>
   )
 }

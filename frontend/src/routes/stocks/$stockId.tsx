@@ -8,7 +8,11 @@ import { StockPageView } from '#components/stock-page/stock-page-view'
 import { useChatContext } from '#components/strategy-shell/floating-chat-store'
 import { type Timeframe } from '#components/timeframe-selector'
 import { $api, fetchClient } from '#lib/api/client'
-import { getBarsRange } from '#lib/chart-range'
+import {
+  getChartIndicatorLookbackBars,
+  useChartIndicators,
+} from '#lib/chart-indicator-settings'
+import { extendBarsRange, getBarsRange } from '#lib/chart-range'
 import { getChartCurrency } from '#lib/chart-utils'
 import {
   findDailyBarForDate,
@@ -35,7 +39,9 @@ function StockPage() {
   >(null)
   const [activeTab, setActiveTab] =
     useState<ComponentProps<typeof StockPageView>['activeTab']>('annotations')
-  const chartRange = useMemo(() => {
+  const chartIndicators = useChartIndicators()
+  const lookbackBars = getChartIndicatorLookbackBars(chartIndicators)
+  const displayChartRange = useMemo(() => {
     if (timeframe === '1d' && requestedDate != null) {
       return (
         getDailyBarsRangeAroundDate(requestedDate) ?? getBarsRange(timeframe)
@@ -43,6 +49,10 @@ function StockPage() {
     }
     return getBarsRange(timeframe)
   }, [requestedDate, timeframe])
+  const chartRange = useMemo(
+    () => extendBarsRange(displayChartRange, timeframe, lookbackBars),
+    [displayChartRange, lookbackBars, timeframe],
+  )
   const dailyRange = useMemo(() => getBarsRange('1d'), [])
   const selectedDateRange = useMemo(
     () =>
@@ -177,6 +187,8 @@ function StockPage() {
       quoteLoading={dailyBarsQuery.isPending}
       quoteError={dailyBarsQuery.isError}
       bars={chartBarsQuery.data ?? []}
+      displayRangeStart={displayChartRange.from}
+      lookbackBars={lookbackBars}
       annotations={annotationsQuery.data ?? []}
       notes={notesQuery.data ?? []}
       trades={tradesQuery.data ?? []}

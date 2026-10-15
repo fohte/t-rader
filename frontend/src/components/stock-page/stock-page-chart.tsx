@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import { CandlestickChart } from '#components/candlestick-chart'
+import { ChartIndicatorControl } from '#components/chart-indicator-control'
 import {
   type Timeframe,
   TimeframeSelector,
@@ -8,6 +9,13 @@ import {
 import { Skeleton } from '#components/ui/skeleton'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import {
+  addChartIndicator,
+  removeChartIndicator,
+  updateChartIndicatorDeviation,
+  updateChartIndicatorPeriod,
+  useChartIndicators,
+} from '#lib/chart-indicator-settings'
 import type { ChartCurrency } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
@@ -46,6 +54,8 @@ function getSelectedDateStatus(
 export function StockPageChart({
   stockId,
   bars,
+  displayRangeStart,
+  lookbackBars,
   trades,
   annotations,
   selectedAnnotationId,
@@ -62,6 +72,8 @@ export function StockPageChart({
 }: {
   stockId: string
   bars: Bar[]
+  displayRangeStart?: string
+  lookbackBars?: number
   trades: Trade[]
   annotations: ChartAnnotation[]
   selectedAnnotationId: string | null
@@ -76,6 +88,7 @@ export function StockPageChart({
   selectedDateError?: boolean
   selectedDateBar?: Bar | null
 }) {
+  const indicators = useChartIndicators()
   const selectedDateStatus = getSelectedDateStatus(
     selectedDate,
     selectedDateBar,
@@ -101,6 +114,13 @@ export function StockPageChart({
           variant="compact"
           className="sm:hidden"
         />
+        <ChartIndicatorControl
+          indicators={indicators}
+          onAdd={addChartIndicator}
+          onUpdatePeriod={updateChartIndicatorPeriod}
+          onUpdateDeviation={updateChartIndicatorDeviation}
+          onRemove={removeChartIndicator}
+        />
         <Link
           to="/stocks/$stockId/chart"
           params={{ stockId }}
@@ -119,6 +139,9 @@ export function StockPageChart({
       ) : (
         <CandlestickChart
           bars={bars}
+          indicators={indicators}
+          displayRangeStart={displayRangeStart}
+          lookbackBars={lookbackBars}
           trades={trades}
           annotations={annotations}
           onSelectAnnotation={onSelectAnnotation}
