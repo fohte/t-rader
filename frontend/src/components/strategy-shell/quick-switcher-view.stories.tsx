@@ -96,6 +96,21 @@ export const NoResults: Story = {
   },
 }
 
+export const PartialResultsWithSearchError: Story = {
+  name: 'shows matching screens when reference searches fail.',
+  args: {
+    value: '設定',
+    groups: [
+      {
+        id: 'screens',
+        title: '画面',
+        items: [item('settings', '全体の設定')],
+      },
+    ],
+    emptyMessage: '一部の検索に失敗しました。',
+  },
+}
+
 export const SearchButtonOnMobile: Story = {
   name: 'shows only the search icon in the mobile header.',
   args: { open: false },

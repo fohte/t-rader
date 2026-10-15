@@ -24,6 +24,15 @@ const strategy: Strategy = {
   updated_at: '2026-01-01T00:00:00Z',
 }
 
+const otherStrategy: Strategy = {
+  id: 'demo-other-strategy',
+  name: '別のデモ戦略',
+  description: null,
+  sort_order: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
+
 const stock: Stock = {
   id: 'demo-code',
   name: 'デモ商事',
@@ -37,7 +46,7 @@ const indicator: Indicator = {
   name: 'デモ指標',
 }
 
-function installQuickSwitcherMiddleware() {
+function installQuickSwitcherMiddleware(failingPath?: string) {
   const requests: { path: string; query: string | null }[] = []
   const middleware: Middleware = {
     onRequest({ request }) {
@@ -45,9 +54,15 @@ function installQuickSwitcherMiddleware() {
       const path = url.pathname
       const query = url.searchParams.get('q')
       requests.push({ path, query })
+      if (path === failingPath) {
+        return new Response(JSON.stringify({ error: '検索に失敗しました。' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
       const body =
         path === '/api/strategies'
-          ? [strategy]
+          ? [strategy, otherStrategy]
           : path === '/api/refs/stocks' && query === 'デモ'
             ? [stock]
             : path === '/api/refs/indicators' && query === 'デモ'
@@ -78,9 +93,13 @@ function setPlatform(platform: string) {
   })
 }
 
-function renderQuickSwitcher(initialPath = '/portfolio', platform = 'Linux') {
+function renderQuickSwitcher(
+  initialPath = '/portfolio',
+  platform = 'Linux',
+  failingPath?: string,
+) {
   activeMiddleware?.eject()
-  activeMiddleware = installQuickSwitcherMiddleware()
+  activeMiddleware = installQuickSwitcherMiddleware(failingPath)
   setPlatform(platform)
 
   const queryClient = new QueryClient({
@@ -126,6 +145,12 @@ function getRequestOutput() {
     .sort((left, right) => left.path.localeCompare(right.path))
 }
 
+function getPaletteResultLabels() {
+  return screen
+    .queryAllByRole('option')
+    .map((option) => option.querySelector('span')?.textContent ?? '')
+}
+
 function getDefaultPaletteOutput(dialog: HTMLElement) {
   return {
     groups: ['画面', '戦略'].filter((title) =>
@@ -167,6 +192,16 @@ function getStrategyNavigationOutput(
   }
 }
 
+function getStrategyFilteringOutput(
+  matchingResults: string[],
+  router: ReturnType<typeof createStoryRouter>,
+) {
+  return {
+    matchingResults,
+    navigation: getStrategyNavigationOutput(router),
+  }
+}
+
 function getReferenceNavigationOutput(
   router: ReturnType<typeof createStoryRouter>,
 ) {
@@ -176,6 +211,14 @@ function getReferenceNavigationOutput(
       path.startsWith('/api/refs/'),
     ),
     closed: screen.queryByRole('dialog') == null,
+  }
+}
+
+function getSearchFailureOutput(message: string) {
+  return {
+    message: screen.getByText(message).textContent,
+    results: getPaletteResultLabels(),
+    requests: getRequestOutput(),
   }
 }
 
@@ -210,7 +253,7 @@ describe('QuickSwitcher', () => {
       expect(getShortcutOutput(defaultOutput)).toEqual({
         defaultOutput: {
           groups: ['画面', '戦略'],
-          resultCount: 17,
+          resultCount: 18,
           shortcut: `探す ${label}`,
         },
         requestPaths: ['/api/strategies'],
@@ -229,22 +272,71 @@ describe('QuickSwitcher', () => {
     })
     await user.click(input)
     await user.paste('demo-strategy')
-    await user.click(await screen.findByText('デモ戦略'))
+    await screen.findByText('デモ戦略')
+    const matchingResults = getPaletteResultLabels()
+    await user.click(screen.getByText('デモ戦略'))
     await screen.findByText('戦略画面')
 
-    expect(getStrategyNavigationOutput(router)).toEqual({
-      location: {
-        pathname: '/strategies/demo-strategy/performance',
-        search: {},
+    expect(getStrategyFilteringOutput(matchingResults, router)).toEqual({
+      matchingResults: ['デモ戦略'],
+      navigation: {
+        location: {
+          pathname: '/strategies/demo-strategy/performance',
+          search: {},
+        },
+        requests: [
+          { path: '/api/refs/indicators', query: 'demo-strategy' },
+          { path: '/api/refs/stocks', query: 'demo-strategy' },
+          { path: '/api/strategies', query: null },
+        ],
+        closed: true,
       },
-      requests: [
-        { path: '/api/refs/indicators', query: 'demo-strategy' },
-        { path: '/api/refs/stocks', query: 'demo-strategy' },
-        { path: '/api/strategies', query: null },
-      ],
-      closed: true,
     })
   })
+
+  it.each([
+    {
+      query: '設定',
+      expectedMessage: '一部の検索に失敗しました。',
+      expectedResults: [
+        '全体の設定',
+        'Agent 設定',
+        'RSS フィード',
+        '取り込み状況',
+        'リスク上限',
+        '自作指標',
+      ],
+    },
+    {
+      query: '架空検索語',
+      expectedMessage: '検索に失敗しました。',
+      expectedResults: [],
+    },
+  ])(
+    'shows an error when reference search fails for $query',
+    async ({ query, expectedMessage, expectedResults }) => {
+      const user = userEvent.setup()
+      renderQuickSwitcher('/portfolio', 'Linux', '/api/refs/stocks')
+
+      await user.click(await screen.findByRole('button', { name: '探す' }))
+      const input = await screen.findByRole('textbox', {
+        name: '画面・戦略・銘柄・指標を検索',
+      })
+      await user.click(input)
+      await user.paste(query)
+      await screen.findByText(expectedMessage)
+
+      expect(getSearchFailureOutput(expectedMessage)).toEqual({
+        message: expectedMessage,
+        results: expectedResults,
+        requests: [
+          { path: '/api/refs/indicators', query },
+          { path: '/api/refs/stocks', query },
+          { path: '/api/strategies', query: null },
+        ],
+      })
+    },
+  )
 
   it.each([
     {

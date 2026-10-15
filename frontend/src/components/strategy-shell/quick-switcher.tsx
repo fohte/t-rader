@@ -312,8 +312,9 @@ export function QuickSwitcher() {
       (hasQuery && (stocksQuery.isFetching || indicatorsQuery.isFetching)))
   const noResults = open && hasQuery && groups.length === 0 && !isLoading
   const searchFailed =
-    noResults &&
-    (strategiesQuery.isError || stocksQuery.isError || indicatorsQuery.isError)
+    open &&
+    (strategiesQuery.isError ||
+      (hasQuery && (stocksQuery.isError || indicatorsQuery.isError)))
 
   return (
     <QuickSwitcherView
@@ -325,11 +326,13 @@ export function QuickSwitcher() {
       groups={groups}
       loading={isLoading}
       emptyMessage={
-        noResults
-          ? searchFailed
-            ? '検索に失敗しました。'
-            : '該当する項目はありません。'
-          : undefined
+        searchFailed
+          ? groups.length > 0
+            ? '一部の検索に失敗しました。'
+            : '検索に失敗しました。'
+          : noResults
+            ? '該当する項目はありません。'
+            : undefined
       }
     />
   )
