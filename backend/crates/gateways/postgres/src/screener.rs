@@ -49,10 +49,12 @@ const SCREEN_STOCKS_SQL: &str = r#"
             bars.instrument_id,
             bars.close
         FROM bars
-        CROSS JOIN latest_data
         WHERE bars.timeframe = '1d'
-          AND bars.timestamp >= latest_data.timestamp
-              - latest_data.lookback_days * INTERVAL '1 day'
+          AND bars.timestamp >= (
+              SELECT latest_data.timestamp
+                  - latest_data.lookback_days * INTERVAL '1 day'
+              FROM latest_data
+          )
         ORDER BY bars.instrument_id, bars.timestamp DESC
     ),
     latest_valuation_date AS (
