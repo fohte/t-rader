@@ -571,10 +571,12 @@ async fn screener_endpoint_limits_latest_metrics_to_thirty_days(
     for id in ["D901", "D902", "D903"] {
         seed_instrument(&db, id).await;
     }
+    seed_instrument(&db, "DEMO-INDEX").await;
     seed_daily_bar_at(&db, "D901", date(3), 1200).await;
     seed_minute_bar_at(&db, "D901", date(3), 0, 1, 1250).await;
     seed_daily_bar_at(&db, "D902", days_before_latest(30), 2400).await;
     seed_daily_bar_at(&db, "D903", days_before_latest(31), 3600).await;
+    seed_daily_bar_at(&db, "DEMO-INDEX", date(4), 9000).await;
     PostgresValuationRepository::new(db.clone())
         .upsert(vec![
             valuation_at(

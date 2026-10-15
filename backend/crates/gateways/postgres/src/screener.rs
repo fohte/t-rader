@@ -17,9 +17,14 @@ const SCREEN_STOCKS_SQL: &str = r#"
         JOIN stock ON stock.id = LEFT(valuation.code, 4)
     ),
     latest_daily_timestamp AS (
-        SELECT MAX(timestamp) AS timestamp
-        FROM bars
-        WHERE timeframe = '1d'
+        SELECT (
+            SELECT bars.timestamp
+            FROM bars
+            JOIN stock ON stock.id = bars.instrument_id
+            WHERE bars.timeframe = '1d'
+            ORDER BY bars.timestamp DESC
+            LIMIT 1
+        ) AS timestamp
     ),
     latest_data AS (
         SELECT latest_daily_timestamp.timestamp,
@@ -49,6 +54,7 @@ const SCREEN_STOCKS_SQL: &str = r#"
             bars.instrument_id,
             bars.close
         FROM bars
+        JOIN stock ON stock.id = bars.instrument_id
         WHERE bars.timeframe = '1d'
           AND bars.timestamp >= (
               SELECT latest_data.timestamp
