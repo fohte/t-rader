@@ -30,6 +30,11 @@ const unreadAnnotation: Annotation = {
   updated_at: '2026-01-14T01:24:00Z',
 }
 
+const generatedAnnotation: Annotation = {
+  ...unreadAnnotation,
+  execution_step_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+}
+
 const approvedAnnotation: Annotation = {
   ...unreadAnnotation,
   id: '00000000-0000-0000-0000-000000000012',
@@ -144,6 +149,7 @@ const meta = {
     },
     comments: [],
     history: [],
+    executionOrigin: null,
     stockName: 'サンプル銘柄',
     commentDraft: '',
     rejectionReason: '',
@@ -178,6 +184,25 @@ export const NotFound: Story = {
 
 export const UnreadWithoutRelatedItems: Story = {
   name: 'shows an unread annotation without comments or a linked note.',
+}
+
+export const GeneratedByStrategy: Story = {
+  name: 'shows the strategy and run that generated the annotation.',
+  args: {
+    annotation: generatedAnnotation,
+    executionOrigin: {
+      strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      strategyName: '架空戦略',
+      taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    },
+  },
+}
+
+export const HumanCreated: Story = {
+  name: 'shows an annotation written by a user without a generation origin.',
+  args: {
+    annotation: { ...unreadAnnotation, created_by_kind: 'human' },
+  },
 }
 
 export const ApprovalPending: Story = {

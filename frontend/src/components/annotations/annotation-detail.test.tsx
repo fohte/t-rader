@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import type { components } from '#lib/api/schema.gen'
+import type { ExecutionOrigin } from '#lib/execution-origin'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Annotation = components['schemas']['Annotation']
@@ -46,6 +47,7 @@ function StatefulAnnotationDetail({
       }}
       comments={[]}
       history={[]}
+      executionOrigin={null}
       stockName="サンプル銘柄"
       commentDraft=""
       rejectionReason={rejectionReason}
@@ -69,6 +71,66 @@ function StatefulAnnotationDetail({
   )
 }
 
+function renderAnnotationDetail(
+  currentAnnotation: Annotation,
+  executionOrigin: ExecutionOrigin | null,
+) {
+  const router = createStoryRouter(
+    () => (
+      <AnnotationDetail
+        annotation={currentAnnotation}
+        isPending={false}
+        reviewNavigationState={{
+          navigation: null,
+          isPending: false,
+          isError: false,
+        }}
+        comments={[]}
+        history={[]}
+        executionOrigin={executionOrigin}
+        stockName={null}
+        commentDraft=""
+        rejectionReason=""
+        isApprovalPending={false}
+        isRejectionPending={false}
+        isCommentPending={false}
+        approvalError={null}
+        rejectionError={null}
+        commentError={null}
+        onApprove={() => {}}
+        onReject={() => {}}
+        onRejectionReasonChange={() => {}}
+        onAddComment={(event) => {
+          event.preventDefault()
+        }}
+        onCommentDraftChange={() => {}}
+      />
+    ),
+    {
+      paths: [
+        '/annotations/$annoId',
+        '/strategies/$id',
+        '/strategies/$id/runs/$taskId',
+      ],
+      initialPath: '/annotations/sample-annotation-01',
+    },
+  )
+  render(<RouterProvider router={router} />)
+}
+
+async function readGenerationLinks() {
+  const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
+  const runLink = await screen.findByRole('link', { name: '実行詳細 →' })
+
+  return [
+    {
+      text: strategyLink.textContent,
+      href: strategyLink.getAttribute('href'),
+    },
+    { text: runLink.textContent, href: runLink.getAttribute('href') },
+  ]
+}
+
 describe('AnnotationDetail', () => {
   it('passes the rejection reason input to its change callback', async () => {
     const user = userEvent.setup()
@@ -80,7 +142,13 @@ describe('AnnotationDetail', () => {
         />
       ),
       {
-        paths: ['/annotations/$annoId', '/notes', '/stocks/$stockId'],
+        paths: [
+          '/annotations/$annoId',
+          '/notes',
+          '/stocks/$stockId',
+          '/strategies/$id',
+          '/strategies/$id/runs/$taskId',
+        ],
         initialPath: '/annotations/sample-annotation-01',
       },
     )
@@ -96,5 +164,44 @@ describe('AnnotationDetail', () => {
       'ab',
       'abc',
     ])
+  })
+
+  it('links the strategy and run that generated the annotation', async () => {
+    renderAnnotationDetail(
+      {
+        ...annotation,
+        execution_step_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
+      {
+        strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        strategyName: '架空戦略',
+        taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      },
+    )
+
+    expect(await readGenerationLinks()).toEqual([
+      {
+        text: '架空戦略',
+        href: '/strategies/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      },
+      {
+        text: '実行詳細 →',
+        href: '/strategies/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/runs/cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      },
+    ])
+  })
+
+  it('does not show a generation origin for an annotation written by a user', async () => {
+    renderAnnotationDetail(
+      { ...annotation, created_by_kind: 'human' },
+      {
+        strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        strategyName: '架空戦略',
+        taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      },
+    )
+
+    await screen.findByText(annotation.text)
+    expect(screen.queryByText('生成元')).toBeNull()
   })
 })

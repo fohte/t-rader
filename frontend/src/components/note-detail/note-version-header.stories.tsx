@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import type { NoteVersion } from '#lib/api/note-version-types'
+import { createStoryRouter } from '#storybook/story-router'
 
 const baseVersion: NoteVersion = {
   id: 'fake-version-a',
@@ -28,13 +30,24 @@ const meta = {
   args: {
     noteKind: '架空の種別',
     hasNoteError: false,
+    executionOrigin: null,
     onAsk: () => {},
   },
   decorators: [
     (Story) => (
-      <div className="max-w-3xl border border-border bg-card p-5 text-foreground">
-        <Story />
-      </div>
+      <RouterProvider
+        router={createStoryRouter(
+          () => (
+            <div className="max-w-3xl border border-border bg-card p-5 text-foreground">
+              <Story />
+            </div>
+          ),
+          {
+            paths: ['/strategies/$id', '/strategies/$id/runs/$taskId'],
+            initialPath: '/strategies/sample-strategy',
+          },
+        )}
+      />
     ),
   ],
 } satisfies Meta<typeof NoteVersionHeader>
@@ -45,6 +58,28 @@ type Story = StoryObj<typeof meta>
 export const PendingReview: Story = {
   name: 'shows the metadata and change reason for a version awaiting review.',
   args: { version: baseVersion },
+}
+
+export const GeneratedByStrategy: Story = {
+  name: 'shows the strategy and run that generated this version.',
+  args: {
+    version: {
+      ...baseVersion,
+      execution_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    },
+    executionOrigin: {
+      strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      strategyName: '架空戦略',
+      taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    },
+  },
+}
+
+export const HumanCreated: Story = {
+  name: 'shows the header for a version written by a user.',
+  args: {
+    version: { ...baseVersion, created_by_kind: 'human', execution_id: null },
+  },
 }
 
 export const FirstVersion: Story = {

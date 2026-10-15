@@ -31,6 +31,7 @@ import {
   useChatContext,
 } from '#components/strategy-shell/floating-chat-store'
 import { $api } from '#lib/api/client'
+import { type ExecutionOrigin, toExecutionStepId } from '#lib/execution-origin'
 
 export const Route = createFileRoute('/notes/$noteId')({
   validateSearch: (
@@ -143,6 +144,35 @@ function NoteDetailPage() {
     },
     { enabled: selectedVersion != null },
   )
+  const executionStepId =
+    selectedVersion?.created_by_kind === 'llm'
+      ? toExecutionStepId(selectedVersion.execution_id)
+      : undefined
+  const executionOriginQuery = $api.useQuery(
+    'get',
+    '/api/strategy-task-steps/{step_id}',
+    {
+      params: { path: { step_id: executionStepId ?? '' } },
+    },
+    { enabled: executionStepId != null },
+  )
+  const { data: strategies = [] } = $api.useQuery(
+    'get',
+    '/api/strategies',
+    undefined,
+    { enabled: executionOriginQuery.data != null },
+  )
+  const originStrategy = strategies.find(
+    (strategy) => strategy.id === executionOriginQuery.data?.strategy_id,
+  )
+  const executionOrigin: ExecutionOrigin | null =
+    executionOriginQuery.data == null || originStrategy == null
+      ? null
+      : {
+          strategyId: originStrategy.id,
+          strategyName: originStrategy.name,
+          taskId: executionOriginQuery.data.task_id,
+        }
 
   if (areVersionsPending || hasVersionsError || selectedVersion == null) {
     const fallbackState = areVersionsPending
@@ -194,6 +224,7 @@ function NoteDetailPage() {
             version={selectedVersion}
             noteKind={note?.kind ?? null}
             hasNoteError={hasNoteError}
+            executionOrigin={executionOrigin}
             onAsk={(title) => {
               openFloatingChat('「' + title + '」について補足して')
             }}

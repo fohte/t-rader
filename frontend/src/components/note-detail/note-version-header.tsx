@@ -1,12 +1,16 @@
+import { Link } from '@tanstack/react-router'
+
 import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NoteVersion } from '#lib/api/note-version-types'
+import type { ExecutionOrigin } from '#lib/execution-origin'
 import { formatRelative } from '#lib/note-utils'
 
 interface NoteVersionHeaderProps {
   version: NoteVersion
   noteKind: string | null
   hasNoteError: boolean
+  executionOrigin: ExecutionOrigin | null
   onAsk: (title: string) => void
 }
 
@@ -14,6 +18,7 @@ export function NoteVersionHeader({
   version,
   noteKind,
   hasNoteError,
+  executionOrigin,
   onAsk,
 }: NoteVersionHeaderProps) {
   return (
@@ -23,6 +28,29 @@ export function NoteVersionHeader({
           <span>
             {version.created_by_kind === 'llm' ? 'エージェント' : 'ユーザー'}
           </span>
+          {version.created_by_kind === 'llm' && executionOrigin != null && (
+            <>
+              <span>·</span>
+              <Link
+                to="/strategies/$id"
+                params={{ id: executionOrigin.strategyId }}
+                className="hover:underline"
+              >
+                {executionOrigin.strategyName}
+              </Link>
+              <span>·</span>
+              <Link
+                to="/strategies/$id/runs/$taskId"
+                params={{
+                  id: executionOrigin.strategyId,
+                  taskId: executionOrigin.taskId,
+                }}
+                className="text-primary hover:underline"
+              >
+                実行詳細 →
+              </Link>
+            </>
+          )}
           <span>
             {hasNoteError
               ? '種別を読み込めませんでした'
