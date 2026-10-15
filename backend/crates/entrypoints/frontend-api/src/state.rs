@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::extract::FromRef;
 use core_application::account_risk_policy::AccountRiskPolicyUseCases;
 use core_application::agent_config::AgentConfigUseCases;
 use core_application::agent_task_client::{
@@ -11,6 +12,7 @@ use core_application::calendar::read_use_cases::CalendarEventReadUseCases;
 use core_application::change_history::ChangeHistoryUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
+use core_application::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
 use core_application::financial_summary::FinancialSummaryUseCases;
 use core_application::group_axis::GroupAxisUseCases;
 use core_application::indicator_observation::IndicatorObservationUseCases;
@@ -47,6 +49,7 @@ pub struct FrontendApiState {
     pub comment_read_use_cases: CommentReadUseCases,
     pub comment_use_cases: CommentUseCases,
     pub custom_indicator_use_cases: CustomIndicatorUseCases,
+    pub custom_indicator_evaluation_use_cases: CustomIndicatorEvaluationUseCases,
     pub financial_summary_use_cases: FinancialSummaryUseCases,
     pub group_axis_use_cases: GroupAxisUseCases,
     pub indicator_observation_use_cases: IndicatorObservationUseCases,
@@ -75,6 +78,12 @@ pub struct FrontendApiState {
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_gateway_client: Option<SharedLlmClient>,
     pub agent_tool_summaries: Vec<(String, Option<String>)>,
+}
+
+impl FromRef<FrontendApiState> for CustomIndicatorEvaluationUseCases {
+    fn from_ref(state: &FrontendApiState) -> Self {
+        state.custom_indicator_evaluation_use_cases.clone()
+    }
 }
 
 impl FrontendApiState {

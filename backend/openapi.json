@@ -2122,6 +2122,69 @@
         }
       }
     },
+    "/api/custom-indicator-evaluations/{evaluation_id}": {
+      "get": {
+        "tags": [
+          "custom_indicators"
+        ],
+        "summary": "自作指標の実行記録を取得",
+        "operationId": "get_custom_indicator_evaluation",
+        "parameters": [
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "description": "自作指標の実行記録 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomIndicatorEvaluationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/group-axes": {
       "get": {
         "tags": [
@@ -9885,6 +9948,35 @@
             "type": "string",
             "format": "date-time"
           }
+        }
+      },
+      "CustomIndicatorEvaluationResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "indicator_name",
+          "code",
+          "args",
+          "output",
+          "evaluated_at"
+        ],
+        "properties": {
+          "args": {},
+          "code": {
+            "type": "string"
+          },
+          "evaluated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "indicator_name": {
+            "type": "string"
+          },
+          "output": {}
         }
       },
       "ErrorResponse": {

@@ -24,6 +24,8 @@ const ANNO_RE = /^anno:([A-Za-z0-9][\w-]*)$/
 const GRAPH_TOKEN_RE = /^\[\[graph:([A-Za-z][\w-]*)\]\]$/
 const NOTE_TOKEN_RE =
   /^note:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(@current)?$/i
+const EVALUATION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface NoteToken extends Node {
   type: 'noteToken'
@@ -112,6 +114,24 @@ function resolvedEvidenceToken(
   return value == null
     ? false
     : noteToken(hName, { ...reference, value: String(value) })
+}
+
+function parseEvaluationReference(
+  inner: string,
+): { evaluationId: string; outputName: string } | undefined {
+  if (!inner.startsWith('eval:')) return undefined
+
+  const reference = inner.slice('eval:'.length)
+  const separator = reference.indexOf(':')
+  if (separator < 0) return undefined
+
+  const evaluationId = reference.slice(0, separator)
+  const outputName = reference.slice(separator + 1)
+  if (!EVALUATION_ID_RE.test(evaluationId) || outputName === '') {
+    return undefined
+  }
+
+  return { evaluationId, outputName }
 }
 
 // `[[graph:g1]]` は図 (ブロック要素) を指す。<p> の子には div を置けないため、
@@ -206,13 +226,19 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
         }
 
         if (inner.startsWith('eval:')) {
+          const reference = parseEvaluationReference(inner)
+          if (reference == null) return false
+
           const value = resolvedPriceReferenceValue(
             resolvedPriceReferences,
             token,
           )
           return value == null
             ? false
-            : noteToken('note-eval-reference', { value: String(value) })
+            : noteToken('note-eval-reference', {
+                ...reference,
+                value: String(value),
+              })
         }
 
         if (inner.startsWith('valuation:')) {

@@ -1,8 +1,14 @@
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { useChangeReferenceBars } from '#components/note-detail/change-reference-figure'
+import {
+  NoteEvaluationEvidenceCardView,
+  type NoteEvaluationEvidenceState,
+} from '#components/note-detail/note-evaluation-evidence-card-view'
 import { NoteEvidenceCardView } from '#components/note-detail/note-evidence-card-view'
 import { useResolveRef } from '#hooks/use-resolve-ref'
+import { fetchClient } from '#lib/api/client'
 import {
   formatNoteEvidencePercentage,
   formatNoteEvidencePrice,
@@ -106,6 +112,54 @@ export function NoteIndicatorObservationReference({
         indicatorName: indicator.name,
         indicatorId: indicator.id,
       }}
+    />
+  )
+}
+
+export function NoteEvaluationEvidenceReference({
+  evaluationId,
+  outputName,
+  value,
+}: {
+  evaluationId: string
+  outputName: string
+  value: string
+}) {
+  const [open, setOpen] = useState(false)
+  const evaluationQuery = useQuery({
+    queryKey: ['custom-indicator-evaluation', evaluationId],
+    queryFn: async ({ signal }) => {
+      const result = await fetchClient.GET(
+        '/api/custom-indicator-evaluations/{evaluation_id}',
+        {
+          params: { path: { evaluation_id: evaluationId } },
+          signal,
+        },
+      )
+      if (result.response.status === 404)
+        return { status: 'not-found' as const }
+      if (!result.response.ok || result.data == null) {
+        return { status: 'error' as const }
+      }
+      return { status: 'ready' as const, evaluation: result.data }
+    },
+    enabled: open,
+    retry: false,
+  })
+
+  const state: NoteEvaluationEvidenceState = evaluationQuery.isPending
+    ? { status: 'loading' as const }
+    : evaluationQuery.isError
+      ? { status: 'error' as const }
+      : evaluationQuery.data
+
+  return (
+    <NoteEvaluationEvidenceCardView
+      open={open}
+      onOpenChange={setOpen}
+      displayValue={formatNoteEvidencePrice(Number(value))}
+      outputName={outputName}
+      state={state}
     />
   )
 }
