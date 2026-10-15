@@ -295,6 +295,44 @@ describe('MarkdownBody', () => {
     ).toEqual(['2'])
   })
 
+  it.each([
+    { name: 'a blockquote', source: '> 引用文', line: 1 },
+    { name: 'a loose list item', source: '- 親項目\n\n- 次の項目', line: 1 },
+  ])('keeps comments visible on $name', ({ source, line }) => {
+    const comment: NoteVersionComment = {
+      id: 'nested-block-comment',
+      target_kind: 'note_version',
+      target_id: 'sample-version',
+      parent_id: null,
+      body: 'このブロックへのコメントです。',
+      author_kind: 'human',
+      author_label: 'レビュー担当者',
+      resolved: false,
+      anchor_text: '対象テキスト',
+      anchor_side: 'new',
+      start_line: line,
+      end_line: line,
+      created_at: '2026-01-12T03:00:00Z',
+    }
+    render(
+      <MarkdownBody
+        source={source}
+        rangeComments={{ ...emptyRangeComments, comments: [comment] }}
+      />,
+    )
+
+    expect(
+      screen
+        .queryAllByText(comment.body)
+        .map(
+          (renderedComment) =>
+            renderedComment
+              .closest('[data-source-block="true"]')
+              ?.getAttribute('data-source-start-line') ?? null,
+        ),
+    ).toEqual([String(line)])
+  })
+
   it('keeps gutter controls inside nested list items', () => {
     const { container } = render(
       <MarkdownBody

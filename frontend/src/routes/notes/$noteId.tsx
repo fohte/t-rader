@@ -3,10 +3,7 @@ import { useState } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
-import {
-  NOTE_BODY_GUTTER_CARD_BLEED_REM,
-  NOTE_BODY_GUTTER_CARD_PADDING_REM,
-} from '#components/note-detail/markdown-body-range-comment-context'
+import { NoteBodyCard } from '#components/note-detail/note-body-card'
 import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
 import { NoteHistoryPanel } from '#components/note-detail/note-history-panel'
 import { NoteLinkedTradesPanel } from '#components/note-detail/note-linked-trades-panel'
@@ -202,13 +199,7 @@ function NoteDetailPage() {
         <ReviewNavigationBand isPending />
       ) : null}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
-        <article
-          className="space-y-4 border border-border bg-card px-5 py-5"
-          style={{
-            marginLeft: `-${String(NOTE_BODY_GUTTER_CARD_BLEED_REM)}rem`,
-            paddingLeft: `${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem`,
-          }}
-        >
+        <NoteBodyCard>
           <NoteVersionHeader
             version={selectedVersion}
             noteKindLabel={resolveNoteKindLabel(
@@ -255,7 +246,7 @@ function NoteDetailPage() {
               }}
             />
           )}
-        </article>
+        </NoteBodyCard>
         <aside className="space-y-4">
           <NoteHistoryPanel
             versions={orderedVersions}

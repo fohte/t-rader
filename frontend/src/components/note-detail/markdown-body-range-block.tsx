@@ -14,10 +14,10 @@ import {
   type MarkdownBodyRangeCommentProps,
   MarkdownBodySourceBlockContext,
   MarkdownBodyTableCellGutterContext,
-  NOTE_BODY_GUTTER_CARD_PADDING_REM,
   NOTE_BODY_GUTTER_GAP_REM,
   NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
+import { NOTE_BODY_GUTTER_CARD_PADDING_REM } from '#components/note-detail/note-body-card'
 import {
   commentsForThreads,
   type DiffCommentAnchor,
@@ -59,20 +59,6 @@ interface MarkdownNodeElementProps {
   children?: ReactNode
 }
 
-const SOURCE_BLOCK_TAGS = new Set([
-  'blockquote',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'li',
-  'p',
-  'pre',
-  'tr',
-])
-
 function sourceLineRange(
   node: MarkdownNode | undefined,
 ): SourceLineRange | null {
@@ -83,31 +69,44 @@ function sourceLineRange(
   }
 }
 
-function descendantSourceBlockRanges(content: ReactNode): SourceLineRange[] {
+function descendantSourceBlockRanges(
+  content: ReactNode,
+  isInsideListItem: boolean,
+): SourceLineRange[] {
   const ranges: SourceLineRange[] = []
-  const visit = (node: ReactNode): void => {
+  const visit = (node: ReactNode, isInsideList: boolean): void => {
     for (const child of Children.toArray(node)) {
       if (!isValidElement<MarkdownBodyRangeBlockProps>(child)) continue
       if (child.type === MarkdownBodyRangeBlock) {
         const childProps = child.props
-        const range = sourceLineRange(childProps.node)
+        const isThreadOwnerListItem =
+          childProps.node?.tagName === 'li' && isInsideList
+        const range = isThreadOwnerListItem
+          ? sourceLineRange(childProps.node)
+          : null
         if (range != null) ranges.push(range)
-        visit(childProps.element)
-        visit(childProps.children)
+        visit(childProps.element, isThreadOwnerListItem)
+        visit(childProps.children, isThreadOwnerListItem)
         continue
       }
       const childProps = child.props as MarkdownNodeElementProps
-      if (
-        childProps.node?.tagName != null &&
-        SOURCE_BLOCK_TAGS.has(childProps.node.tagName)
-      ) {
+      const tagName = childProps.node?.tagName
+      const isThreadOwnerListItem = tagName === 'li' && isInsideList
+      if (isThreadOwnerListItem) {
         const range = sourceLineRange(childProps.node)
         if (range != null) ranges.push(range)
       }
-      visit(childProps.children)
+      visit(
+        childProps.children,
+        tagName === 'li'
+          ? isThreadOwnerListItem
+          : tagName == null || tagName === 'ul' || tagName === 'ol'
+            ? isInsideList
+            : false,
+      )
     }
   }
-  visit(content)
+  visit(content, isInsideListItem)
   return ranges
 }
 
@@ -286,7 +285,10 @@ export function MarkdownBodyRangeBlock({
     )
   }
 
-  const childRanges = descendantSourceBlockRanges(content)
+  const childRanges = descendantSourceBlockRanges(
+    content,
+    sourceBlockTag === 'li',
+  )
   const presentation = commentBlockPresentation(range, context, childRanges)
   const { props } = context
   const showThread = presentation.isActive || presentation.comments.length > 0
