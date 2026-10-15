@@ -138,17 +138,33 @@ impl From<WidgetByRequest> for WidgetBy {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-#[serde(untagged, deny_unknown_fields)]
+#[serde(untagged)]
 pub enum WidgetUniverseRequest {
-    Group { group: String },
-    Stocks { stocks: Vec<String> },
+    Group(WidgetUniverseGroupRequest),
+    Stocks(WidgetUniverseStocksRequest),
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetUniverseGroupRequest {
+    pub group: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WidgetUniverseStocksRequest {
+    pub stocks: Vec<String>,
 }
 
 impl From<WidgetUniverseRequest> for WidgetUniverse {
     fn from(universe: WidgetUniverseRequest) -> Self {
         match universe {
-            WidgetUniverseRequest::Group { group } => Self::Group { group },
-            WidgetUniverseRequest::Stocks { stocks } => Self::Stocks { stocks },
+            WidgetUniverseRequest::Group(request) => Self::Group {
+                group: request.group,
+            },
+            WidgetUniverseRequest::Stocks(request) => Self::Stocks {
+                stocks: request.stocks,
+            },
         }
     }
 }

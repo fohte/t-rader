@@ -3159,13 +3159,15 @@ export interface components {
       /** @description 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。 */
       range?: string | null
     }
+    WidgetUniverseGroupRequest: {
+      group: string
+    }
     WidgetUniverseRequest:
-      | {
-          group: string
-        }
-      | {
-          stocks: string[]
-        }
+      | components['schemas']['WidgetUniverseGroupRequest']
+      | components['schemas']['WidgetUniverseStocksRequest']
+    WidgetUniverseStocksRequest: {
+      stocks: string[]
+    }
     /** @enum {string} */
     WidgetVisualizationOrderRequest: 'asc' | 'desc'
     /** @description スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。 */

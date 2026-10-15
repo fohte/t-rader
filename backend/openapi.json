@@ -14255,34 +14255,42 @@
         },
         "additionalProperties": false
       },
+      "WidgetUniverseGroupRequest": {
+        "type": "object",
+        "required": [
+          "group"
+        ],
+        "properties": {
+          "group": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "WidgetUniverseRequest": {
         "oneOf": [
           {
-            "type": "object",
-            "required": [
-              "group"
-            ],
-            "properties": {
-              "group": {
-                "type": "string"
-              }
-            }
+            "$ref": "#/components/schemas/WidgetUniverseGroupRequest"
           },
           {
-            "type": "object",
-            "required": [
-              "stocks"
-            ],
-            "properties": {
-              "stocks": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
+            "$ref": "#/components/schemas/WidgetUniverseStocksRequest"
           }
         ]
+      },
+      "WidgetUniverseStocksRequest": {
+        "type": "object",
+        "required": [
+          "stocks"
+        ],
+        "properties": {
+          "stocks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "WidgetVisualizationOrderRequest": {
         "type": "string",
