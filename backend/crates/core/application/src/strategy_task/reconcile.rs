@@ -1,12 +1,11 @@
-use chrono::{DateTime, FixedOffset};
-
 use crate::agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
 };
+use chrono::{DateTime, FixedOffset};
 
 use super::StrategyTaskUseCases;
 use super::error::ReconcileTaskError;
-use super::types::{StrategyTask, StrategyTaskPhase, StrategyTaskUpdate};
+use super::types::{StrategyTask, StrategyTaskPhase};
 
 impl StrategyTaskUseCases {
     pub async fn reconcile_task(
@@ -27,23 +26,32 @@ impl StrategyTaskUseCases {
         match agent_client.get(&a2a_task_id).await {
             Ok(status) => {
                 let auto_resume_eligible = is_auto_resume_eligible(&task, &status, now);
-                let task_id = task.task_id;
-                let updated = self.apply_status(task, status, now).await?;
-                if updated && auto_resume_eligible {
-                    match self.auto_resume(agent_client, task_id).await {
-                        Ok(submitted) => tracing::info!(
-                            task_id = %task_id,
-                            a2a_task_id = submitted.a2a_task_id,
-                            "auto-resumed strategy task lost to agent pod churn",
-                        ),
-                        Err(error) => tracing::warn!(
-                            error = %error,
-                            task_id = %task_id,
-                            "auto-resume of execution_lost strategy task failed; leaving it failed",
-                        ),
-                    }
+                if auto_resume_eligible {
+                    let task_id = task.task_id;
+                    let new_error = error_summary_for(&status, StrategyTaskPhase::Failed);
+                    let new_result_text = status.result_text.or_else(|| task.result_text.clone());
+                    return match self
+                        .auto_resume_execution_lost(
+                            agent_client,
+                            task,
+                            new_error,
+                            new_result_text,
+                            status.steps,
+                        )
+                        .await
+                    {
+                        Ok(updated) => Ok(updated),
+                        Err(error) => {
+                            tracing::warn!(
+                                error = %error,
+                                task_id = %task_id,
+                                "failed to claim auto-resume for execution_lost strategy task; will retry on next tick",
+                            );
+                            Ok(false)
+                        }
+                    };
                 }
-                Ok(updated)
+                self.apply_status(task, status, now).await
             }
             Err(error) => {
                 if now > task.deadline_at {
@@ -87,8 +95,17 @@ impl StrategyTaskUseCases {
             (new_phase, new_error)
         };
         let new_result_text = status.result_text.or_else(|| task.result_text.clone());
-        self.apply_phase(task, new_phase, new_error, new_result_text, status.steps)
-            .await
+        self.apply_phase(
+            &task,
+            new_phase,
+            new_error,
+            new_result_text,
+            status.steps,
+            true,
+        )
+        .await
+        .map(|result| result.changed())
+        .map_err(Into::into)
     }
 
     async fn apply_failed(
@@ -96,39 +113,17 @@ impl StrategyTaskUseCases {
         task: StrategyTask,
         message: String,
     ) -> Result<bool, ReconcileTaskError> {
-        self.apply_phase(task, StrategyTaskPhase::Failed, Some(message), None, None)
-            .await
-    }
-
-    async fn apply_phase(
-        &self,
-        task: StrategyTask,
-        new_phase: StrategyTaskPhase,
-        new_error: Option<String>,
-        new_result_text: Option<String>,
-        new_steps: Option<serde_json::Value>,
-    ) -> Result<bool, ReconcileTaskError> {
-        let row_changed = new_phase != task.phase
-            || new_error != task.error_summary
-            || new_result_text != task.result_text;
-        let task_update = row_changed.then(|| StrategyTaskUpdate {
-            task_id: task.task_id,
-            a2a_task_id: None,
-            phase: Some(new_phase),
-            error_summary: Some(new_error),
-            result_text: Some(new_result_text),
-            deadline_at: None,
-            auto_resumed_at: None,
-            updated_at: chrono::Utc::now().fixed_offset(),
-        });
-
-        let transaction = self.unit_of_work.begin().await?;
-        let updated = self
-            .repository
-            .apply_status_and_steps(&transaction, task.task_id, task_update, new_steps)
-            .await?;
-        self.unit_of_work.commit(transaction).await?;
-        Ok(updated)
+        self.apply_phase(
+            &task,
+            StrategyTaskPhase::Failed,
+            Some(message),
+            None,
+            None,
+            true,
+        )
+        .await
+        .map(|result| result.changed())
+        .map_err(Into::into)
     }
 }
 
