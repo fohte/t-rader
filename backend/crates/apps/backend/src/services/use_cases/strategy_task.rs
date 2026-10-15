@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use core_application::strategy_task::StrategyTaskUseCases;
-use core_application::event_dispatch_job::EventDispatchJobUseCases;
-use gateway_postgres::{
-    PostgresEventDispatchJobQueue, PostgresEventRepository, PostgresStrategyTaskRepository,
-};
+use gateway_postgres::{PostgresEventRepository, PostgresStrategyTaskRepository};
 
 use super::UseCases;
 
@@ -16,9 +13,7 @@ impl UseCases {
         )
         .with_completion_events(
             Arc::new(PostgresEventRepository::new(self.db.clone())),
-            EventDispatchJobUseCases::new(Arc::new(PostgresEventDispatchJobQueue::new(
-                self.db.clone(),
-            ))),
+            self.event_dispatch_job(),
         )
     }
 }

@@ -61,6 +61,4 @@ pub enum ReconcileTaskError {
     AgentTask(#[from] crate::agent_task_client::AgentTaskError),
     #[error(transparent)]
     EventRepository(#[from] crate::event::EventRepositoryError),
-    #[error(transparent)]
-    EventDispatchJobQueue(#[from] crate::event_dispatch_job::EventDispatchJobQueueError),
 }

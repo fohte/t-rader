@@ -30,7 +30,10 @@ mod tests {
         EXECUTION_LOST_ERROR_KIND, FakeAgentTaskClient, SharedAgentTaskClient,
     };
     use core_application::event::{EventRepository, NewEvent};
-    use core_application::strategy_task::StrategyTaskRepository;
+    use core_application::event_dispatch_job::{
+        EventDispatchJobQueue, EventDispatchJobQueueError, EventDispatchJobUseCases,
+    };
+    use core_application::strategy_task::{StrategyTaskRepository, StrategyTaskUseCases};
     use core_application::trigger::{NewTrigger, TriggerKind, TriggerRepository};
     use core_application::unit_of_work::UnitOfWork;
     use gateway_postgres::entities::sea_orm_active_enums::{
@@ -101,6 +104,27 @@ mod tests {
         phase: StrategyTaskPhase,
         deadline_offset: chrono::Duration,
     ) -> Uuid {
+        insert_task_with_id_and_purpose(
+            db,
+            task_id,
+            strategy_id,
+            a2a_task_id,
+            phase,
+            deadline_offset,
+            None,
+        )
+        .await
+    }
+
+    async fn insert_task_with_id_and_purpose(
+        db: &impl sea_orm::ConnectionTrait,
+        task_id: Uuid,
+        strategy_id: Uuid,
+        a2a_task_id: Option<&str>,
+        phase: StrategyTaskPhase,
+        deadline_offset: chrono::Duration,
+        purpose: Option<&str>,
+    ) -> Uuid {
         let now = Utc::now().fixed_offset();
         strategy_task::ActiveModel {
             task_id: Set(task_id),
@@ -112,7 +136,7 @@ mod tests {
             error_summary: Set(None),
             result_text: Set(None),
             deadline_at: Set(now + deadline_offset),
-            purpose: NotSet,
+            purpose: Set(purpose.map(str::to_string)),
             as_of: NotSet,
             context_kind: NotSet,
             context_id: NotSet,
@@ -236,17 +260,29 @@ mod tests {
     const FAR_FUTURE: chrono::Duration = chrono::Duration::minutes(15);
     const PAST: chrono::Duration = chrono::Duration::seconds(-1);
 
+    struct FailingEventDispatchJobQueue;
+
+    #[async_trait::async_trait]
+    impl EventDispatchJobQueue for FailingEventDispatchJobQueue {
+        async fn enqueue_dispatch(&self) -> Result<(), EventDispatchJobQueueError> {
+            Err(EventDispatchJobQueueError::new(
+                "simulated queue failure".to_string(),
+            ))
+        }
+    }
+
     #[backend_test_macros::database_test]
     async fn reconciles_completed_running_and_failed_states(db: gateway_postgres::DatabaseHandle) {
         ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy_with_id(&db, Uuid::from_u128(0x100)).await;
-        let completed_id = insert_task_with_id(
+        let completed_id = insert_task_with_id_and_purpose(
             &db,
             Uuid::from_u128(0x101),
             strategy_id,
             Some("t-completed"),
             StrategyTaskPhase::Running,
             FAR_FUTURE,
+            Some("demo-purpose"),
         )
         .await;
         let failed_id = insert_task_with_id(
@@ -354,7 +390,7 @@ mod tests {
                 "payload": {
                     "task_id": completed_id,
                     "strategy_id": strategy_id,
-                    "purpose": null,
+                    "purpose": "demo-purpose",
                     "result_text": "all good",
                     "error_summary": null,
                 },
@@ -1027,7 +1063,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn execution_lost_failure_triggers_auto_resume(db: gateway_postgres::DatabaseHandle) {
+    async fn execution_lost_failure_emits_event_and_auto_resume_survives_enqueue_failure(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1051,10 +1089,21 @@ mod tests {
         )
         .await;
         fake.set_next_task_id("agent-task-resumed").await;
-        let agent_client: SharedAgentTaskClient = fake.clone();
+        let repository = Arc::new(PostgresStrategyTaskRepository::new(db.clone()));
+        let strategy_tasks = StrategyTaskUseCases::new(
+            Arc::new(PostgresUnitOfWork::new(db.clone())),
+            repository.clone(),
+        )
+        .with_completion_events(
+            Arc::new(PostgresEventRepository::new(db.clone())),
+            EventDispatchJobUseCases::new(Arc::new(FailingEventDispatchJobQueue)),
+        );
+        let task = repository.find_by_id(task_id).await.unwrap().unwrap();
 
-        let updated = run_once(&db, &agent_client).await;
-        assert_eq!(updated, 1);
+        let updated = strategy_tasks
+            .reconcile_task(fake.as_ref(), task, Utc::now().fixed_offset())
+            .await
+            .unwrap();
 
         let row = fetch_task(&db, task_id).await;
 
@@ -1077,7 +1126,39 @@ mod tests {
                 auto_resumed_at_is_set: true,
             },
         );
-        assert_eq!(fake.submitted.lock().await.len(), 1);
+        let events = event_entity::Entity::find()
+            .filter(event_entity::Column::EventType.eq("strategy_task.failed"))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| {
+                json!({
+                    "event_type": event.event_type,
+                    "payload": event.payload,
+                    "chain_depth": event.chain_depth,
+                })
+            })
+            .collect::<Vec<_>>();
+        let actual = (updated, fake.submitted.lock().await.len(), events);
+        assert_eq!(
+            actual,
+            (
+                true,
+                1,
+                vec![json!({
+                    "event_type": "strategy_task.failed",
+                    "payload": {
+                        "task_id": task_id,
+                        "strategy_id": strategy_id,
+                        "purpose": null,
+                        "result_text": null,
+                        "error_summary": EXECUTION_LOST_ERROR_KIND,
+                    },
+                    "chain_depth": 0,
+                })],
+            ),
+        );
     }
 
     #[backend_test_macros::database_test]

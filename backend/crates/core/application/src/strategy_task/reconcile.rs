@@ -5,11 +5,12 @@ use crate::agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
 };
 
-use super::StrategyTaskUseCases;
 use super::error::ReconcileTaskError;
 use super::repository::StrategyTaskApplyResult;
 use super::types::{StrategyTask, StrategyTaskPhase, StrategyTaskUpdate};
+use super::{CompletionEventDependencies, StrategyTaskUseCases};
 use crate::event::NewEvent;
+use crate::unit_of_work::UnitOfWorkTransaction;
 
 impl StrategyTaskUseCases {
     pub async fn reconcile_task(
@@ -131,45 +132,74 @@ impl StrategyTaskUseCases {
             .apply_status_and_steps(&transaction, task.task_id, task_update, new_steps)
             .await?;
 
-        let event_type = event_type_for_phase(new_phase);
-        let event_created = if result.task_updated
-            && let (Some(event_type), Some(completion_events)) =
-                (event_type, self.completion_events.as_ref())
-        {
-            let source_chain_depth = completion_events
-                .repository
-                .find_chain_depth_for_task(&transaction, task.task_id)
-                .await?;
-            completion_events
-                .repository
-                .create(
-                    &transaction,
-                    NewEvent {
-                        event_type: event_type.to_string(),
-                        payload: json!({
-                            "task_id": task.task_id,
-                            "strategy_id": task.strategy_id,
-                            "purpose": task.purpose,
-                            "result_text": new_result_text,
-                            "error_summary": new_error,
-                        }),
-                        chain_depth: Some(
-                            source_chain_depth.map_or(0, |depth| depth.saturating_add(1)),
-                        ),
-                    },
-                )
-                .await?;
-            true
-        } else {
-            false
-        };
+        let completion_events = self
+            .create_completion_event(
+                &transaction,
+                &task,
+                new_phase,
+                result.task_updated,
+                &new_error,
+                &new_result_text,
+            )
+            .await?;
 
         self.unit_of_work.commit(transaction).await?;
-        if event_created && let Some(completion_events) = self.completion_events.as_ref() {
-            completion_events.dispatch_job.enqueue_dispatch().await?;
+        if let Some(completion_events) = completion_events
+            && let Err(error) = completion_events.dispatch_job.enqueue_dispatch().await
+        {
+            tracing::warn!(
+                error = %error,
+                task_id = %task.task_id,
+                "failed to enqueue event dispatch; periodic dispatch will pick up the committed event",
+            );
         }
 
         Ok(result.changed())
+    }
+
+    async fn create_completion_event<'a>(
+        &'a self,
+        transaction: &UnitOfWorkTransaction,
+        task: &StrategyTask,
+        new_phase: StrategyTaskPhase,
+        task_updated: bool,
+        new_error: &Option<String>,
+        new_result_text: &Option<String>,
+    ) -> Result<Option<&'a CompletionEventDependencies>, ReconcileTaskError> {
+        if !task_updated {
+            return Ok(None);
+        }
+        let Some(event_type) = event_type_for_phase(new_phase) else {
+            return Ok(None);
+        };
+        let Some(completion_events) = self.completion_events.as_ref() else {
+            return Ok(None);
+        };
+
+        let source_chain_depth = completion_events
+            .repository
+            .find_chain_depth_for_task(transaction, task.task_id)
+            .await?;
+        completion_events
+            .repository
+            .create(
+                transaction,
+                NewEvent {
+                    event_type: event_type.to_string(),
+                    payload: json!({
+                        "task_id": task.task_id,
+                        "strategy_id": task.strategy_id,
+                        "purpose": task.purpose,
+                        "result_text": new_result_text,
+                        "error_summary": new_error,
+                    }),
+                    chain_depth: Some(
+                        source_chain_depth.map_or(0, |depth| depth.saturating_add(1)),
+                    ),
+                },
+            )
+            .await?;
+        Ok(Some(completion_events))
     }
 }
 
