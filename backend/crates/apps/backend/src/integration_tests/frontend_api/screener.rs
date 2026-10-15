@@ -3,8 +3,7 @@ use core_application::valuation::ValuationRepository;
 use core_domain::valuation::Valuation;
 use gateway_postgres::PostgresValuationRepository;
 use gateway_postgres::entities::{
-    bars, financial_summary, group_axis, instruments, minute_bars, stock, stock_group,
-    stock_group_member,
+    bars, financial_summary, group_axis, instruments, stock, stock_group, stock_group_member,
 };
 use rust_decimal::Decimal;
 use sea_orm::ActiveModelTrait;
@@ -143,14 +142,16 @@ async fn seed_minute_bar_at(
     close: i64,
 ) {
     let close = Decimal::from(close);
-    minute_bars::Entity::insert(minute_bars::ActiveModel {
+    bars::Entity::insert(bars::ActiveModel {
         instrument_id: Set(id.to_string()),
+        timeframe: Set("1m".to_string()),
         timestamp: Set(timestamp_at(day, hour, minute)),
         open: Set(close),
         high: Set(close),
         low: Set(close),
         close: Set(close),
         volume: Set(100),
+        adjustment_factor: Set(Decimal::ONE),
     })
     .exec_without_returning(db)
     .await
