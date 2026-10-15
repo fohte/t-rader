@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	testTriggerID       = "00000000-0000-4000-8000-000000000002"
-	testTriggerResponse = `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":"synthetic-purpose","kind":"cron","schedule":"0 9 * * 1-5","hook_slug":null,"event_match":{"status":"ready"},"prompt_template":"synthetic prompt","enabled":true,"business_days_only":true,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
+	testTriggerID        = "00000000-0000-4000-8000-000000000002"
+	testTriggerEventType = "synthetic.operation.completed"
+	testTriggerResponse  = `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":"synthetic-purpose","kind":"cron","schedule":"0 9 * * 1-5","hook_slug":null,"event_match":{"status":"ready"},"prompt_template":"synthetic prompt","enabled":true,"business_days_only":true,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
 )
 
 type triggerTestRequest struct {
@@ -81,6 +82,7 @@ func TestStrategyTriggerResourceCreate(t *testing.T) {
 		Kind:             types.StringValue("hook"),
 		Schedule:         types.StringNull(),
 		HookSlug:         types.StringValue("synthetic-hook"),
+		EventType:        types.StringNull(),
 		EventMatch:       eventMatch,
 		PromptTemplate:   types.StringValue("synthetic prompt"),
 		Enabled:          types.BoolValue(true),
@@ -114,6 +116,7 @@ func TestStrategyTriggerResourceCreate(t *testing.T) {
 			Kind:             types.StringValue("hook"),
 			Schedule:         types.StringNull(),
 			HookSlug:         types.StringValue("synthetic-hook"),
+			EventType:        types.StringNull(),
 			EventMatch:       eventMatch,
 			PromptTemplate:   types.StringValue("synthetic prompt"),
 			Enabled:          types.BoolValue(true),
@@ -125,6 +128,74 @@ func TestStrategyTriggerResourceCreate(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("create output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestStrategyTriggerResourceCreateEvent(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var observed triggerTestRequest
+	createResponse := `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":null,"kind":"event","schedule":null,"hook_slug":null,"event_type":"synthetic.operation.completed","event_match":null,"prompt_template":"synthetic prompt","enabled":true,"business_days_only":false,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
+	client := newStrategyTriggerTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		observed = readTriggerTestRequest(t, r)
+		writeTriggerTestResponse(t, w, http.StatusCreated, createResponse)
+	})
+	resourceSchema := strategyTriggerTestSchema(t)
+	plan := tfsdk.Plan{Schema: resourceSchema}
+	if diagnostics := plan.Set(ctx, strategyTriggerModel{
+		ID:               types.StringUnknown(),
+		StrategyID:       types.StringValue(testStrategyID),
+		Purpose:          types.StringNull(),
+		Kind:             types.StringValue("event"),
+		Schedule:         types.StringNull(),
+		HookSlug:         types.StringNull(),
+		EventType:        types.StringValue(testTriggerEventType),
+		EventMatch:       types.DynamicNull(),
+		PromptTemplate:   types.StringValue("synthetic prompt"),
+		Enabled:          types.BoolNull(),
+		BusinessDaysOnly: types.BoolNull(),
+		CreatedAt:        types.StringUnknown(),
+		UpdatedAt:        types.StringUnknown(),
+	}); diagnostics.HasError() {
+		t.Fatalf("build create plan: %v", diagnostics)
+	}
+	response := resource.CreateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: resourceSchema}}
+	(&strategyTriggerResource{client: client}).Create(ctx, resource.CreateRequest{Plan: plan}, &response)
+	var state strategyTriggerModel
+	response.Diagnostics.Append(response.State.Get(ctx, &state)...)
+
+	type output struct {
+		Request     triggerTestRequest
+		State       strategyTriggerModel
+		Diagnostics []triggerTestDiagnostic
+	}
+	got := output{Request: observed, State: state, Diagnostics: triggerTestDiagnostics(response.Diagnostics)}
+	want := output{
+		Request: triggerTestRequest{
+			Method: http.MethodPost,
+			Path:   "/api/strategies/" + testStrategyID + "/triggers",
+			Body:   `{"event_type":"synthetic.operation.completed","kind":"event","prompt_template":"synthetic prompt"}`,
+		},
+		State: strategyTriggerModel{
+			ID:               types.StringValue(testTriggerID),
+			StrategyID:       types.StringValue(testStrategyID),
+			Purpose:          types.StringNull(),
+			Kind:             types.StringValue("event"),
+			Schedule:         types.StringNull(),
+			HookSlug:         types.StringNull(),
+			EventType:        types.StringValue(testTriggerEventType),
+			EventMatch:       types.DynamicNull(),
+			PromptTemplate:   types.StringValue("synthetic prompt"),
+			Enabled:          types.BoolValue(true),
+			BusinessDaysOnly: types.BoolValue(false),
+			CreatedAt:        types.StringValue("2026-01-01T00:00:00Z"),
+			UpdatedAt:        types.StringValue("2026-01-02T00:00:00Z"),
+		},
+		Diagnostics: []triggerTestDiagnostic{},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("event create output mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -147,6 +218,7 @@ func TestStrategyTriggerResourceCreateBusinessDaysOnly(t *testing.T) {
 		Kind:             types.StringValue("cron"),
 		Schedule:         types.StringValue("0 9 * * 1-5"),
 		HookSlug:         types.StringNull(),
+		EventType:        types.StringNull(),
 		EventMatch:       types.DynamicNull(),
 		PromptTemplate:   types.StringValue("synthetic prompt"),
 		Enabled:          types.BoolNull(),
@@ -180,6 +252,7 @@ func TestStrategyTriggerResourceCreateBusinessDaysOnly(t *testing.T) {
 			Kind:             types.StringValue("cron"),
 			Schedule:         types.StringValue("0 9 * * 1-5"),
 			HookSlug:         types.StringNull(),
+			EventType:        types.StringNull(),
 			EventMatch:       types.DynamicNull(),
 			PromptTemplate:   types.StringValue("synthetic prompt"),
 			Enabled:          types.BoolValue(true),
@@ -232,6 +305,7 @@ func TestStrategyTriggerResourceRead(t *testing.T) {
 			Kind:             types.StringValue("cron"),
 			Schedule:         types.StringValue("0 9 * * 1-5"),
 			HookSlug:         types.StringNull(),
+			EventType:        types.StringNull(),
 			EventMatch:       eventMatch,
 			PromptTemplate:   types.StringValue("synthetic prompt"),
 			Enabled:          types.BoolValue(true),
@@ -266,6 +340,7 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 		Kind:             types.StringValue("hook"),
 		Schedule:         types.StringNull(),
 		HookSlug:         types.StringValue("synthetic-hook"),
+		EventType:        types.StringNull(),
 		EventMatch:       priorEventMatch,
 		PromptTemplate:   types.StringValue("synthetic prompt"),
 		Enabled:          types.BoolValue(true),
@@ -283,6 +358,7 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 		Kind:             types.StringValue("hook"),
 		Schedule:         types.StringNull(),
 		HookSlug:         types.StringValue("synthetic-hook"),
+		EventType:        types.StringNull(),
 		EventMatch:       types.DynamicNull(),
 		PromptTemplate:   types.StringValue("updated synthetic prompt"),
 		Enabled:          types.BoolValue(false),
@@ -316,6 +392,7 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 			Kind:             types.StringValue("hook"),
 			Schedule:         types.StringNull(),
 			HookSlug:         types.StringValue("synthetic-hook"),
+			EventType:        types.StringNull(),
 			EventMatch:       types.DynamicNull(),
 			PromptTemplate:   types.StringValue("updated synthetic prompt"),
 			Enabled:          types.BoolValue(false),
@@ -327,6 +404,93 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("update output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestStrategyTriggerResourceUpdateEventType(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	var observed triggerTestRequest
+	updatedEventType := "synthetic.operation.finished"
+	updatedResponse := `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":null,"kind":"event","schedule":null,"hook_slug":null,"event_type":"synthetic.operation.finished","event_match":null,"prompt_template":"updated synthetic prompt","enabled":true,"business_days_only":false,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-03T00:00:00Z"}`
+	client := newStrategyTriggerTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		observed = readTriggerTestRequest(t, r)
+		writeTriggerTestResponse(t, w, http.StatusOK, updatedResponse)
+	})
+	resourceSchema := strategyTriggerTestSchema(t)
+	priorState := tfsdk.State{Schema: resourceSchema}
+	if diagnostics := priorState.Set(ctx, strategyTriggerModel{
+		ID:               types.StringValue(testTriggerID),
+		StrategyID:       types.StringValue(testStrategyID),
+		Purpose:          types.StringNull(),
+		Kind:             types.StringValue("event"),
+		Schedule:         types.StringNull(),
+		HookSlug:         types.StringNull(),
+		EventType:        types.StringValue(testTriggerEventType),
+		EventMatch:       types.DynamicNull(),
+		PromptTemplate:   types.StringValue("synthetic prompt"),
+		Enabled:          types.BoolValue(true),
+		BusinessDaysOnly: types.BoolValue(false),
+		CreatedAt:        types.StringValue("2026-01-01T00:00:00Z"),
+		UpdatedAt:        types.StringValue("2026-01-02T00:00:00Z"),
+	}); diagnostics.HasError() {
+		t.Fatalf("build prior state: %v", diagnostics)
+	}
+	plan := tfsdk.Plan{Schema: resourceSchema}
+	if diagnostics := plan.Set(ctx, strategyTriggerModel{
+		ID:               types.StringUnknown(),
+		StrategyID:       types.StringValue(testStrategyID),
+		Purpose:          types.StringNull(),
+		Kind:             types.StringValue("event"),
+		Schedule:         types.StringNull(),
+		HookSlug:         types.StringNull(),
+		EventType:        types.StringValue(updatedEventType),
+		EventMatch:       types.DynamicNull(),
+		PromptTemplate:   types.StringValue("updated synthetic prompt"),
+		Enabled:          types.BoolValue(true),
+		BusinessDaysOnly: types.BoolNull(),
+		CreatedAt:        types.StringUnknown(),
+		UpdatedAt:        types.StringUnknown(),
+	}); diagnostics.HasError() {
+		t.Fatalf("build update plan: %v", diagnostics)
+	}
+	response := resource.UpdateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: resourceSchema}}
+	(&strategyTriggerResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: priorState}, &response)
+	var state strategyTriggerModel
+	response.Diagnostics.Append(response.State.Get(ctx, &state)...)
+
+	type output struct {
+		Request     triggerTestRequest
+		State       strategyTriggerModel
+		Diagnostics []triggerTestDiagnostic
+	}
+	got := output{Request: observed, State: state, Diagnostics: triggerTestDiagnostics(response.Diagnostics)}
+	want := output{
+		Request: triggerTestRequest{
+			Method: http.MethodPut,
+			Path:   "/api/triggers/" + testTriggerID,
+			Body:   `{"enabled":true,"event_match":null,"event_type":"synthetic.operation.finished","hook_slug":null,"prompt_template":"updated synthetic prompt","purpose":null,"schedule":null}`,
+		},
+		State: strategyTriggerModel{
+			ID:               types.StringValue(testTriggerID),
+			StrategyID:       types.StringValue(testStrategyID),
+			Purpose:          types.StringNull(),
+			Kind:             types.StringValue("event"),
+			Schedule:         types.StringNull(),
+			HookSlug:         types.StringNull(),
+			EventType:        types.StringValue(updatedEventType),
+			EventMatch:       types.DynamicNull(),
+			PromptTemplate:   types.StringValue("updated synthetic prompt"),
+			Enabled:          types.BoolValue(true),
+			BusinessDaysOnly: types.BoolValue(false),
+			CreatedAt:        types.StringValue("2026-01-01T00:00:00Z"),
+			UpdatedAt:        types.StringValue("2026-01-03T00:00:00Z"),
+		},
+		Diagnostics: []triggerTestDiagnostic{},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("event update output mismatch: got=%#v want=%#v", got, want)
 	}
 }
 
@@ -349,6 +513,7 @@ func TestStrategyTriggerResourceUpdateEnablesBusinessDaysOnly(t *testing.T) {
 		Kind:             types.StringValue("cron"),
 		Schedule:         types.StringValue("0 9 * * 1-5"),
 		HookSlug:         types.StringNull(),
+		EventType:        types.StringNull(),
 		EventMatch:       types.DynamicNull(),
 		PromptTemplate:   types.StringValue("synthetic prompt"),
 		Enabled:          types.BoolValue(true),
@@ -366,6 +531,7 @@ func TestStrategyTriggerResourceUpdateEnablesBusinessDaysOnly(t *testing.T) {
 		Kind:             types.StringValue("cron"),
 		Schedule:         types.StringValue("0 9 * * 1-5"),
 		HookSlug:         types.StringNull(),
+		EventType:        types.StringNull(),
 		EventMatch:       types.DynamicNull(),
 		PromptTemplate:   types.StringValue("updated synthetic prompt"),
 		Enabled:          types.BoolValue(true),
@@ -399,6 +565,7 @@ func TestStrategyTriggerResourceUpdateEnablesBusinessDaysOnly(t *testing.T) {
 			Kind:             types.StringValue("cron"),
 			Schedule:         types.StringValue("0 9 * * 1-5"),
 			HookSlug:         types.StringNull(),
+			EventType:        types.StringNull(),
 			EventMatch:       types.DynamicNull(),
 			PromptTemplate:   types.StringValue("updated synthetic prompt"),
 			Enabled:          types.BoolValue(true),
@@ -451,6 +618,13 @@ func TestStrategyTriggerResourceImportState(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+	var observed triggerTestRequest
+	importResponse := `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":null,"kind":"event","schedule":null,"hook_slug":null,"event_type":"synthetic.operation.completed","event_match":null,"prompt_template":"synthetic prompt","enabled":true,"business_days_only":false,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
+	client := newStrategyTriggerTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		observed = readTriggerTestRequest(t, r)
+		writeTriggerTestResponse(t, w, http.StatusOK, importResponse)
+	})
+	resourceInstance := &strategyTriggerResource{client: client}
 	resourceSchema := strategyTriggerTestSchema(t)
 	response := resource.ImportStateResponse{State: tfsdk.State{Schema: resourceSchema}}
 	initialState := triggerTestStateModel()
@@ -458,16 +632,38 @@ func TestStrategyTriggerResourceImportState(t *testing.T) {
 	if diagnostics := response.State.Set(ctx, initialState); diagnostics.HasError() {
 		t.Fatalf("initialize import state: %v", diagnostics)
 	}
-	(&strategyTriggerResource{}).ImportState(ctx, resource.ImportStateRequest{ID: testTriggerID}, &response)
-	var importedID types.String
-	response.Diagnostics.Append(response.State.GetAttribute(ctx, path.Root("id"), &importedID)...)
+	resourceInstance.ImportState(ctx, resource.ImportStateRequest{ID: testTriggerID}, &response)
+	readResponse := resource.ReadResponse{State: response.State}
+	resourceInstance.Read(ctx, resource.ReadRequest{State: response.State}, &readResponse)
+	var imported strategyTriggerModel
+	readResponse.Diagnostics.Append(readResponse.State.Get(ctx, &imported)...)
+	response.Diagnostics.Append(readResponse.Diagnostics...)
 
 	type output struct {
-		ID          types.String
+		Request     triggerTestRequest
+		State       strategyTriggerModel
 		Diagnostics []triggerTestDiagnostic
 	}
-	got := output{ID: importedID, Diagnostics: triggerTestDiagnostics(response.Diagnostics)}
-	want := output{ID: types.StringValue(testTriggerID), Diagnostics: []triggerTestDiagnostic{}}
+	got := output{Request: observed, State: imported, Diagnostics: triggerTestDiagnostics(response.Diagnostics)}
+	want := output{
+		Request: triggerTestRequest{Method: http.MethodGet, Path: "/api/triggers/" + testTriggerID},
+		State: strategyTriggerModel{
+			ID:               types.StringValue(testTriggerID),
+			StrategyID:       types.StringValue(testStrategyID),
+			Purpose:          types.StringNull(),
+			Kind:             types.StringValue("event"),
+			Schedule:         types.StringNull(),
+			HookSlug:         types.StringNull(),
+			EventType:        types.StringValue(testTriggerEventType),
+			EventMatch:       types.DynamicNull(),
+			PromptTemplate:   types.StringValue("synthetic prompt"),
+			Enabled:          types.BoolValue(true),
+			BusinessDaysOnly: types.BoolValue(false),
+			CreatedAt:        types.StringValue("2026-01-01T00:00:00Z"),
+			UpdatedAt:        types.StringValue("2026-01-02T00:00:00Z"),
+		},
+		Diagnostics: []triggerTestDiagnostic{},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("import output mismatch: got=%#v want=%#v", got, want)
 	}
@@ -484,6 +680,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 		kind       string
 		schedule   types.String
 		hookSlug   types.String
+		eventType  types.String
 		eventMatch types.Dynamic
 		want       triggerValidationOutput
 	}{
@@ -492,6 +689,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "cron",
 			schedule:   types.StringValue("0 0 * * *"),
 			hookSlug:   types.StringNull(),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicNull(),
 			want:       triggerValidationOutput{Kind: []triggerTestDiagnostic{}, Config: []triggerTestDiagnostic{}},
 		},
@@ -500,6 +698,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "cron",
 			schedule:   types.StringNull(),
 			hookSlug:   types.StringNull(),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicNull(),
 			want: triggerValidationOutput{
 				Kind:   []triggerTestDiagnostic{},
@@ -511,6 +710,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "cron",
 			schedule:   types.StringValue("0 0 * * *"),
 			hookSlug:   types.StringValue("synthetic-hook"),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicNull(),
 			want: triggerValidationOutput{
 				Kind:   []triggerTestDiagnostic{},
@@ -522,6 +722,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "hook",
 			schedule:   types.StringNull(),
 			hookSlug:   types.StringValue("synthetic-hook"),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicNull(),
 			want:       triggerValidationOutput{Kind: []triggerTestDiagnostic{}, Config: []triggerTestDiagnostic{}},
 		},
@@ -530,6 +731,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "hook",
 			schedule:   types.StringNull(),
 			hookSlug:   types.StringNull(),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicNull(),
 			want: triggerValidationOutput{
 				Kind:   []triggerTestDiagnostic{},
@@ -541,6 +743,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "hook",
 			schedule:   types.StringValue("0 0 * * *"),
 			hookSlug:   types.StringValue("synthetic-hook"),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicNull(),
 			want: triggerValidationOutput{
 				Kind:   []triggerTestDiagnostic{},
@@ -552,9 +755,10 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "other",
 			schedule:   types.StringNull(),
 			hookSlug:   types.StringNull(),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicNull(),
 			want: triggerValidationOutput{
-				Kind:   attributeError("Invalid trigger kind", "kind は cron または hook にしてください。"),
+				Kind:   attributeError("Invalid trigger kind", "kind は cron、hook、event のいずれかにしてください。"),
 				Config: []triggerTestDiagnostic{},
 			},
 		},
@@ -563,6 +767,7 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "hook",
 			schedule:   types.StringNull(),
 			hookSlug:   types.StringValue("synthetic-hook"),
+			eventType:  types.StringNull(),
 			eventMatch: triggerTestObject(t, map[string]attr.Type{"status": types.StringType}, map[string]attr.Value{"status": types.StringValue("ready")}),
 			want:       triggerValidationOutput{Kind: []triggerTestDiagnostic{}, Config: []triggerTestDiagnostic{}},
 		},
@@ -571,17 +776,75 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 			kind:       "hook",
 			schedule:   types.StringNull(),
 			hookSlug:   types.StringValue("synthetic-hook"),
+			eventType:  types.StringNull(),
 			eventMatch: types.DynamicValue(types.StringValue("synthetic value")),
 			want: triggerValidationOutput{
 				Kind:   []triggerTestDiagnostic{},
 				Config: attributeError("Invalid event_match", "event_match には object を指定してください。"),
 			},
 		},
+		{
+			name:       "event requires only event type",
+			kind:       "event",
+			schedule:   types.StringNull(),
+			hookSlug:   types.StringNull(),
+			eventType:  types.StringValue(testTriggerEventType),
+			eventMatch: types.DynamicNull(),
+			want:       triggerValidationOutput{Kind: []triggerTestDiagnostic{}, Config: []triggerTestDiagnostic{}},
+		},
+		{
+			name:       "event without event type fails",
+			kind:       "event",
+			schedule:   types.StringNull(),
+			hookSlug:   types.StringNull(),
+			eventType:  types.StringNull(),
+			eventMatch: types.DynamicNull(),
+			want: triggerValidationOutput{
+				Kind:   []triggerTestDiagnostic{},
+				Config: attributeError("Missing event_type", "kind が event の場合は event_type を指定してください。"),
+			},
+		},
+		{
+			name:       "event with schedule fails",
+			kind:       "event",
+			schedule:   types.StringValue("0 0 * * *"),
+			hookSlug:   types.StringNull(),
+			eventType:  types.StringValue(testTriggerEventType),
+			eventMatch: types.DynamicNull(),
+			want: triggerValidationOutput{
+				Kind:   []triggerTestDiagnostic{},
+				Config: attributeError("Unexpected schedule", "kind が event の場合は schedule を省略してください。"),
+			},
+		},
+		{
+			name:       "event with hook slug fails",
+			kind:       "event",
+			schedule:   types.StringNull(),
+			hookSlug:   types.StringValue("synthetic-hook"),
+			eventType:  types.StringValue(testTriggerEventType),
+			eventMatch: types.DynamicNull(),
+			want: triggerValidationOutput{
+				Kind:   []triggerTestDiagnostic{},
+				Config: attributeError("Unexpected hook_slug", "kind が event の場合は hook_slug を省略してください。"),
+			},
+		},
+		{
+			name:       "cron with event type fails",
+			kind:       "cron",
+			schedule:   types.StringValue("0 0 * * *"),
+			hookSlug:   types.StringNull(),
+			eventType:  types.StringValue(testTriggerEventType),
+			eventMatch: types.DynamicNull(),
+			want: triggerValidationOutput{
+				Kind:   []triggerTestDiagnostic{},
+				Config: attributeError("Unexpected event_type", "kind が cron または hook の場合は event_type を省略してください。"),
+			},
+		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			got := validateStrategyTriggerConfig(t, testCase.kind, testCase.schedule, testCase.hookSlug, testCase.eventMatch)
+			got := validateStrategyTriggerConfig(t, testCase.kind, testCase.schedule, testCase.hookSlug, testCase.eventType, testCase.eventMatch)
 			if !reflect.DeepEqual(got, testCase.want) {
 				t.Fatalf("validation output mismatch: got=%#v want=%#v", got, testCase.want)
 			}
@@ -644,14 +907,24 @@ func TestStrategyTriggerKindAndStrategyIDRequireReplacement(t *testing.T) {
 	}
 }
 
-func validateStrategyTriggerConfig(t *testing.T, kind string, schedule, hookSlug types.String, eventMatch types.Dynamic) triggerValidationOutput {
-	return validateStrategyTriggerConfigWithBusinessDaysOnly(t, kind, schedule, hookSlug, eventMatch, types.BoolNull())
+func validateStrategyTriggerConfig(t *testing.T, kind string, schedule, hookSlug, eventType types.String, eventMatch types.Dynamic) triggerValidationOutput {
+	return validateStrategyTriggerConfigWithEventTypeAndBusinessDaysOnly(t, kind, schedule, hookSlug, eventType, eventMatch, types.BoolNull())
 }
 
 func validateStrategyTriggerConfigWithBusinessDaysOnly(
 	t *testing.T,
 	kind string,
 	schedule, hookSlug types.String,
+	eventMatch types.Dynamic,
+	businessDaysOnly types.Bool,
+) triggerValidationOutput {
+	return validateStrategyTriggerConfigWithEventTypeAndBusinessDaysOnly(t, kind, schedule, hookSlug, types.StringNull(), eventMatch, businessDaysOnly)
+}
+
+func validateStrategyTriggerConfigWithEventTypeAndBusinessDaysOnly(
+	t *testing.T,
+	kind string,
+	schedule, hookSlug, eventType types.String,
 	eventMatch types.Dynamic,
 	businessDaysOnly types.Bool,
 ) triggerValidationOutput {
@@ -666,6 +939,7 @@ func validateStrategyTriggerConfigWithBusinessDaysOnly(
 		Kind:             types.StringValue(kind),
 		Schedule:         schedule,
 		HookSlug:         hookSlug,
+		EventType:        eventType,
 		EventMatch:       eventMatch,
 		PromptTemplate:   types.StringValue("synthetic prompt"),
 		Enabled:          types.BoolUnknown(),
@@ -724,6 +998,7 @@ func triggerTestStateModel() strategyTriggerModel {
 		Kind:             types.StringValue("hook"),
 		Schedule:         types.StringNull(),
 		HookSlug:         types.StringValue("synthetic-hook"),
+		EventType:        types.StringNull(),
 		EventMatch:       types.DynamicNull(),
 		PromptTemplate:   types.StringValue("synthetic prompt"),
 		Enabled:          types.BoolValue(true),

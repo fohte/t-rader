@@ -38,6 +38,7 @@ type strategyTriggerModel struct {
 	Kind             types.String  `tfsdk:"kind"`
 	Schedule         types.String  `tfsdk:"schedule"`
 	HookSlug         types.String  `tfsdk:"hook_slug"`
+	EventType        types.String  `tfsdk:"event_type"`
 	EventMatch       types.Dynamic `tfsdk:"event_match"`
 	PromptTemplate   types.String  `tfsdk:"prompt_template"`
 	Enabled          types.Bool    `tfsdk:"enabled"`
@@ -76,7 +77,7 @@ func (r *strategyTriggerResource) Schema(_ context.Context, _ resource.SchemaReq
 				Required:            true,
 				Validators:          []validator.String{triggerKindValidator{}},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				MarkdownDescription: "trigger の種別 (`cron` または `hook`)。変更時は trigger を再作成します。",
+				MarkdownDescription: "trigger の種別 (`cron`、`hook`、`event`)。変更時は trigger を再作成します。",
 			},
 			"schedule": schema.StringAttribute{
 				Optional:            true,
@@ -86,9 +87,13 @@ func (r *strategyTriggerResource) Schema(_ context.Context, _ resource.SchemaReq
 				Optional:            true,
 				MarkdownDescription: "`kind = \"hook\"` の場合に必要な hook slug。",
 			},
+			"event_type": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "`kind = \"event\"` の場合に必要な event type。",
+			},
 			"event_match": schema.DynamicAttribute{
 				Optional:            true,
-				MarkdownDescription: "hook payload の照合条件。更新時に設定から外すと条件を解除します。",
+				MarkdownDescription: "hook または event payload の照合条件。更新時に設定から外すと条件を解除します。",
 			},
 			"prompt_template": schema.StringAttribute{
 				Required:            true,
@@ -150,6 +155,7 @@ func (r *strategyTriggerResource) Create(ctx context.Context, req resource.Creat
 	created, err := client.CreateStrategyTrigger(ctx, plan.StrategyID.ValueString(), traderapigen.CreateTriggerRequest{
 		Enabled:          boolAttributeNullable(plan.Enabled),
 		EventMatch:       eventMatch,
+		EventType:        stringAttributeNullable(plan.EventType),
 		HookSlug:         stringAttributeNullable(plan.HookSlug),
 		Kind:             traderapigen.TriggerKind(plan.Kind.ValueString()),
 		Purpose:          stringAttributeNullable(plan.Purpose),
@@ -220,6 +226,7 @@ func (r *strategyTriggerResource) Update(ctx context.Context, req resource.Updat
 	updated, err := client.UpdateTrigger(ctx, state.ID.ValueString(), traderapigen.UpdateTriggerRequest{
 		Enabled:          boolAttributeNullable(plan.Enabled),
 		EventMatch:       eventMatch,
+		EventType:        stringAttributeNullable(plan.EventType),
 		HookSlug:         stringAttributeUpdateNullable(plan.HookSlug),
 		Purpose:          stringAttributeUpdateNullable(plan.Purpose),
 		PromptTemplate:   stringAttributeUpdateNullable(plan.PromptTemplate),
@@ -281,6 +288,7 @@ func modelFromStrategyTrigger(ctx context.Context, trigger traderapigen.Trigger)
 		Kind:             types.StringValue(trigger.Kind),
 		Schedule:         stringNullableAttribute(trigger.Schedule),
 		HookSlug:         stringNullableAttribute(trigger.HookSlug),
+		EventType:        stringNullableAttribute(trigger.EventType),
 		EventMatch:       eventMatch,
 		PromptTemplate:   types.StringValue(trigger.PromptTemplate),
 		Enabled:          types.BoolValue(trigger.Enabled),
@@ -307,7 +315,7 @@ func uuidNullableAttribute(value nullable.Nullable[openapi_types.UUID]) types.St
 type triggerKindValidator struct{}
 
 func (triggerKindValidator) Description(context.Context) string {
-	return "kind は cron または hook にしてください。"
+	return "kind は cron、hook、event のいずれかにしてください。"
 }
 
 func (triggerKindValidator) MarkdownDescription(ctx context.Context) string {
@@ -319,17 +327,17 @@ func (triggerKindValidator) ValidateString(_ context.Context, req validator.Stri
 		return
 	}
 	switch req.ConfigValue.ValueString() {
-	case "cron", "hook":
+	case "cron", "hook", "event":
 		return
 	default:
-		resp.Diagnostics.AddAttributeError(req.Path, "Invalid trigger kind", "kind は cron または hook にしてください。")
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid trigger kind", "kind は cron、hook、event のいずれかにしてください。")
 	}
 }
 
 type strategyTriggerConfigValidator struct{}
 
 func (strategyTriggerConfigValidator) Description(context.Context) string {
-	return "kind に応じて schedule または hook_slug のいずれかを指定してください。"
+	return "kind に応じて schedule、hook_slug、event_type のいずれかを指定してください。"
 }
 
 func (strategyTriggerConfigValidator) MarkdownDescription(ctx context.Context) string {
@@ -363,7 +371,8 @@ func (strategyTriggerConfigValidator) ValidateResource(ctx context.Context, req 
 
 	scheduleUnknown := config.Schedule.IsUnknown()
 	hookSlugUnknown := config.HookSlug.IsUnknown()
-	if scheduleUnknown || hookSlugUnknown {
+	eventTypeUnknown := config.EventType.IsUnknown()
+	if scheduleUnknown || hookSlugUnknown || eventTypeUnknown {
 		return
 	}
 	switch config.Kind.ValueString() {
@@ -374,12 +383,28 @@ func (strategyTriggerConfigValidator) ValidateResource(ctx context.Context, req 
 		if !config.HookSlug.IsNull() {
 			resp.Diagnostics.AddAttributeError(path.Root("hook_slug"), "Unexpected hook_slug", "kind が cron の場合は hook_slug を省略してください。")
 		}
+		if !config.EventType.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("event_type"), "Unexpected event_type", "kind が cron または hook の場合は event_type を省略してください。")
+		}
 	case "hook":
 		if config.HookSlug.IsNull() {
 			resp.Diagnostics.AddAttributeError(path.Root("hook_slug"), "Missing hook_slug", "kind が hook の場合は hook_slug を指定してください。")
 		}
 		if !config.Schedule.IsNull() {
 			resp.Diagnostics.AddAttributeError(path.Root("schedule"), "Unexpected schedule", "kind が hook の場合は schedule を省略してください。")
+		}
+		if !config.EventType.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("event_type"), "Unexpected event_type", "kind が cron または hook の場合は event_type を省略してください。")
+		}
+	case "event":
+		if config.EventType.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("event_type"), "Missing event_type", "kind が event の場合は event_type を指定してください。")
+		}
+		if !config.Schedule.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("schedule"), "Unexpected schedule", "kind が event の場合は schedule を省略してください。")
+		}
+		if !config.HookSlug.IsNull() {
+			resp.Diagnostics.AddAttributeError(path.Root("hook_slug"), "Unexpected hook_slug", "kind が event の場合は hook_slug を省略してください。")
 		}
 	}
 }
