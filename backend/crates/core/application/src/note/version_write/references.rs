@@ -13,6 +13,8 @@ use crate::bars::BarsQuery;
 use crate::indicator_observation::IndicatorObservationQuery;
 use crate::note::{NoteUseCaseError, NoteUseCases};
 
+pub(in crate::note) type ResolvedMarketDataReferences = Map<String, Value>;
+
 pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReferenceToken]) -> bool {
     let Some(resolved) = resolved.as_object() else {
         return false;
@@ -178,7 +180,7 @@ impl NoteUseCases {
                 field,
             } => {
                 let bar = self
-                    .find_daily_bar(instrument_id, *date, cache)
+                    .find_daily_bar(token, instrument_id, *date, cache)
                     .await?
                     .ok_or_else(|| unresolved_price_reference(token))?;
                 bar_field_value(&bar, *field)
@@ -190,11 +192,11 @@ impl NoteUseCases {
                 field,
             } => {
                 let start_bar = self
-                    .find_daily_bar(instrument_id, *start, cache)
+                    .find_daily_bar(token, instrument_id, *start, cache)
                     .await?
                     .ok_or_else(|| unresolved_price_reference(token))?;
                 let end_bar = self
-                    .find_daily_bar(instrument_id, *end, cache)
+                    .find_daily_bar(token, instrument_id, *end, cache)
                     .await?
                     .ok_or_else(|| unresolved_price_reference(token))?;
                 let start_value = bar_field_value(&start_bar, *field);
@@ -225,18 +227,16 @@ impl NoteUseCases {
 
     async fn find_daily_bar(
         &self,
+        token: &NotePriceReferenceToken,
         instrument_id: &str,
         date: NaiveDate,
         cache: &mut BTreeMap<(String, NaiveDate), Option<Bar>>,
     ) -> Result<Option<Bar>, NoteUseCaseError> {
         let key = (instrument_id.to_string(), date);
         if !cache.contains_key(&key) {
-            let next_date = date.succ_opt().ok_or_else(|| {
-                NoteUseCaseError::Validation(format!(
-                    "価格参照 {} の日付が範囲外です",
-                    instrument_id
-                ))
-            })?;
+            let next_date = date
+                .succ_opt()
+                .ok_or_else(|| unresolved_price_reference(token))?;
             let from =
                 DateTime::<Utc>::from_naive_utc_and_offset(date.and_time(NaiveTime::MIN), Utc)
                     .fixed_offset();

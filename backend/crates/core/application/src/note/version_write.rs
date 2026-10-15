@@ -10,6 +10,7 @@ use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 mod references;
+pub(in crate::note) use references::ResolvedMarketDataReferences;
 use references::has_resolutions;
 
 const APPROVED_NOTE_STATUS: &str = "approved";
@@ -25,6 +26,7 @@ pub(super) struct AppendVersionCommand {
     pub change_reason: Option<String>,
     pub change_diff: Option<Value>,
     pub actor: Actor,
+    pub resolved_market_data: ResolvedMarketDataReferences,
 }
 
 impl NoteUseCases {
@@ -97,10 +99,7 @@ impl NoteUseCases {
                 .map(|previous| previous.resolved_price_references_json.clone())
                 .unwrap_or_else(|| Value::Object(Map::new()))
         } else {
-            Value::Object(
-                self.resolve_market_data_references(&content.body_md)
-                    .await?,
-            )
+            Value::Object(content.resolved_market_data)
         };
 
         let becomes_current = !requires_approval;

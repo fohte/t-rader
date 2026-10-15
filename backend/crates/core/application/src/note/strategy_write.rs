@@ -1,5 +1,5 @@
 use chrono::Utc;
-use serde_json::json;
+use serde_json::{Map, json};
 use uuid::Uuid;
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
@@ -7,7 +7,7 @@ use crate::note::types::{
     NewNote, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand, NoteWriteResult,
 };
 use crate::note::use_cases::ensure_frontmatter_object;
-use crate::note::version_write::AppendVersionCommand;
+use crate::note::version_write::{AppendVersionCommand, ResolvedMarketDataReferences};
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -31,11 +31,16 @@ impl NoteUseCases {
             core_domain::note_graph::validate_graphs(&graphs)
                 .map_err(|error| NoteUseCaseError::Validation(error.to_string()))?;
         }
+        let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
+            self.resolve_market_data_references(body_md).await?
+        } else {
+            Map::new()
+        };
         if let Some(note_id) = command.note_id {
             let transaction = self.unit_of_work.begin().await?;
             let note = self.require_note(&transaction, note_id).await?;
             let result = self
-                .update_strategy_note(&transaction, note, command)
+                .update_strategy_note(&transaction, note, command, resolved_market_data)
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -49,7 +54,7 @@ impl NoteUseCases {
                 .await?
         {
             let result = self
-                .update_strategy_note(&transaction, note, command)
+                .update_strategy_note(&transaction, note, command, resolved_market_data)
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -102,7 +107,7 @@ impl NoteUseCases {
                     )
                 })?;
             let result = self
-                .update_strategy_note(&transaction, note, command)
+                .update_strategy_note(&transaction, note, command, resolved_market_data)
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -131,6 +136,7 @@ impl NoteUseCases {
                     change_reason: command.change_reason,
                     change_diff: command.change_diff,
                     actor: command.actor,
+                    resolved_market_data,
                 },
             )
             .await?;
@@ -198,6 +204,7 @@ impl NoteUseCases {
         transaction: &UnitOfWorkTransaction,
         note: crate::note::types::Note,
         command: NoteWriteCommand,
+        resolved_market_data: ResolvedMarketDataReferences,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -269,6 +276,7 @@ impl NoteUseCases {
                     change_reason: command.change_reason,
                     change_diff: None,
                     actor: command.actor,
+                    resolved_market_data,
                 },
             )
             .await?;
@@ -837,24 +845,42 @@ mod tests {
             .await
             .expect("price references resolve from daily bars without an execution id");
 
+        let mut result = result;
+        result.snapshot.version.id = Uuid::nil();
         assert_eq!(
-            (
-                result.snapshot.version.body_md,
-                result.snapshot.version.resolved_price_references_json,
-                result.snapshot.version.execution_id,
-            ),
-            (
-                body.into(),
-                json!({
-                    "[[price:fictional-code@2030-01-02:open]]": { "value": 9 },
-                    "[[price:fictional-code@2030-01-02:high]]": { "value": 11 },
-                    "[[price:fictional-code@2030-01-02:low]]": { "value": 8 },
-                    "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
-                    "[[price:fictional-code@2030-01-02:volume]]": { "value": 100 },
-                    "[[price:US:FICTIONAL-A@2030-01-02:close]]": { "value": 15 },
-                }),
-                None,
-            ),
+            result,
+            NoteWriteResult {
+                note_id: SOURCE_NOTE_ID,
+                created: false,
+                snapshot: NoteSnapshot {
+                    note: source_note(),
+                    version: NoteVersion {
+                        id: Uuid::nil(),
+                        note_id: SOURCE_NOTE_ID,
+                        version_no: 2,
+                        title: "Updated title".into(),
+                        body_md: body.into(),
+                        frontmatter_json: json!({}),
+                        graphs_json: json!([]),
+                        resolved_price_references_json: json!({
+                            "[[price:fictional-code@2030-01-02:open]]": { "value": 9 },
+                            "[[price:fictional-code@2030-01-02:high]]": { "value": 11 },
+                            "[[price:fictional-code@2030-01-02:low]]": { "value": 8 },
+                            "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
+                            "[[price:fictional-code@2030-01-02:volume]]": { "value": 100 },
+                            "[[price:US:FICTIONAL-A@2030-01-02:close]]": { "value": 15 },
+                        }),
+                        status: INITIAL_NOTE_STATUS.into(),
+                        is_current: true,
+                        change_reason: None,
+                        created_by_kind: "llm".into(),
+                        execution_id: None,
+                        created_at: timestamp(),
+                        reviewed_at: None,
+                    },
+                    created_by_kind: "human".into(),
+                },
+            },
         );
     }
 
@@ -874,13 +900,39 @@ mod tests {
             .await
             .expect("change references resolve from daily bars");
 
+        let mut result = result;
+        result.snapshot.version.id = Uuid::nil();
         assert_eq!(
-            result.snapshot.version.resolved_price_references_json,
-            json!({
-                "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
-                    "value": 20,
+            result,
+            NoteWriteResult {
+                note_id: SOURCE_NOTE_ID,
+                created: false,
+                snapshot: NoteSnapshot {
+                    note: source_note(),
+                    version: NoteVersion {
+                        id: Uuid::nil(),
+                        note_id: SOURCE_NOTE_ID,
+                        version_no: 2,
+                        title: "Updated title".into(),
+                        body_md: reference.into(),
+                        frontmatter_json: json!({}),
+                        graphs_json: json!([]),
+                        resolved_price_references_json: json!({
+                            "[[change:fictional-code@2030-01-02..2030-01-03:close]]": {
+                                "value": 20,
+                            },
+                        }),
+                        status: INITIAL_NOTE_STATUS.into(),
+                        is_current: true,
+                        change_reason: None,
+                        created_by_kind: "llm".into(),
+                        execution_id: None,
+                        created_at: timestamp(),
+                        reviewed_at: None,
+                    },
+                    created_by_kind: "human".into(),
                 },
-            }),
+            },
         );
     }
 
