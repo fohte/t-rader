@@ -52,9 +52,20 @@ export const MenuOpen: Story = {
   args: { ...args, menuOpen: true },
 }
 
+export const ModifiedMenuOpen: Story = {
+  name: '変更した条件を上書き保存できるメニューを表示します。',
+  args: { ...args, menuOpen: true, selectedScreenHasChanges: true },
+}
+
 export const Loading: Story = {
   name: '保存した条件を読み込んでいます。',
-  args: { ...args, menuOpen: true, listPending: true },
+  args: {
+    ...args,
+    savedScreens: [],
+    selectedScreenId: savedScreen.id,
+    menuOpen: true,
+    listPending: true,
+  },
 }
 
 export const ListError: Story = {

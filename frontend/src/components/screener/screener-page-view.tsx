@@ -16,6 +16,7 @@ import {
   countActiveScreenerFilters,
   getScreenerRangeError,
   type SavedScreen,
+  savedScreenHasSearchChanges,
   SCREENER_MARKETS,
   SCREENER_RANGE_FIELDS,
   type ScreenerMarket,
@@ -145,6 +146,12 @@ export function ScreenerPageView({
     savedScreensMenuInitiallyOpen,
   )
   const conditionCount = countActiveScreenerFilters(search)
+  const selectedSavedScreen = savedScreens.find(
+    (savedScreen) => savedScreen.id === search.screen,
+  )
+  const selectedScreenHasChanges =
+    selectedSavedScreen != null &&
+    savedScreenHasSearchChanges(selectedSavedScreen, search)
   const appliedFilterKey = JSON.stringify(createDraft(search))
   const previousAppliedFilterKey = useRef(appliedFilterKey)
 
@@ -354,6 +361,7 @@ export function ScreenerPageView({
             <SavedScreensControlView
               savedScreens={savedScreens}
               selectedScreenId={search.screen}
+              selectedScreenHasChanges={selectedScreenHasChanges}
               menuOpen={savedScreensMenuOpen}
               dialog={savedScreenDialog}
               isPending={savedScreenMutationPending}

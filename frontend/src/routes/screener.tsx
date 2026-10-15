@@ -1,11 +1,13 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { useCallback } from 'react'
 
 import { ScreenerPageView } from '#components/screener/screener-page-view'
 import { useSavedScreens } from '#components/screener/use-saved-screens'
 import { $api } from '#lib/api/client'
 import type { SavedScreen } from '#lib/screener-search'
 import {
+  clearSavedScreenSelectionSearch,
   getScreenerRangeError,
   getScreenerSearchAfterSortBy,
   getScreenerSearchAfterSortOrder,
@@ -22,6 +24,11 @@ export const Route = createFileRoute('/screener')({
 function ScreenerRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
+  const clearSavedScreenSelection = useCallback(() => {
+    void navigate({
+      search: (previous) => clearSavedScreenSelectionSearch(previous),
+    })
+  }, [navigate])
   const page = search.page ?? 1
   const rangeError = getScreenerRangeError(search)
   const savedScreens = useSavedScreens({
@@ -29,11 +36,7 @@ function ScreenerRoute() {
     onSelect: (savedScreen) => {
       void navigateToSavedScreen(savedScreen)
     },
-    onClearSelection: () => {
-      void navigate({
-        search: (previous) => ({ ...previous, screen: undefined }),
-      })
-    },
+    onClearSelection: clearSavedScreenSelection,
   })
   const pages = useQueries({
     queries:

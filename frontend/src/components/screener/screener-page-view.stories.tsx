@@ -257,3 +257,19 @@ export const MobileSavedScreensMenuOpen: Story = {
   globals: { viewport: { value: 'mobileScreener' } },
   parameters: MobileSavedScreen.parameters,
 }
+
+export const MobileEditedSavedScreensMenuOpen: Story = {
+  name: 'スマートフォンで変更した条件を上書き保存できます。',
+  args: {
+    ...MobileSavedScreen.args,
+    savedScreensMenuOpen: true,
+    search: {
+      ...MobileSavedScreen.args.search,
+      max_per: 10,
+      sort_by: 'per',
+      sort_order: 'asc',
+    },
+  },
+  globals: { viewport: { value: 'mobileScreener' } },
+  parameters: MobileSavedScreen.parameters,
+}

@@ -217,6 +217,30 @@ export function toScreenerSearch(savedScreen: SavedScreen): ScreenerSearch {
   }
 }
 
+export function savedScreenHasSearchChanges(
+  savedScreen: SavedScreen,
+  search: ScreenerSearch,
+): boolean {
+  const savedConditions = toSavedScreenRequest(
+    savedScreen.name,
+    toScreenerSearch(savedScreen),
+  )
+  const currentConditions = toSavedScreenRequest(savedScreen.name, search)
+
+  return (
+    JSON.stringify(savedConditions.filters) !==
+      JSON.stringify(currentConditions.filters) ||
+    JSON.stringify(savedConditions.sort) !==
+      JSON.stringify(currentConditions.sort)
+  )
+}
+
+export function clearSavedScreenSelectionSearch(
+  search: ScreenerSearch,
+): ScreenerSearch {
+  return { ...search, screen: undefined }
+}
+
 export function getScreenerRangeError(
   search: Pick<ScreenerSearch, ScreenerRangeSearchKey>,
 ): string | undefined {

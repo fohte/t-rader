@@ -27,6 +27,7 @@ export type SaveDialogState = Extract<
 export function SavedScreensControlView({
   savedScreens,
   selectedScreenId,
+  selectedScreenHasChanges = false,
   menuOpen,
   dialog,
   isPending = false,
@@ -42,6 +43,7 @@ export function SavedScreensControlView({
 }: {
   savedScreens: SavedScreen[]
   selectedScreenId?: string
+  selectedScreenHasChanges?: boolean
   menuOpen: boolean
   dialog: SavedScreenDialogState | null
   isPending?: boolean
@@ -60,6 +62,7 @@ export function SavedScreensControlView({
   )
   const saveDialog =
     dialog?.type === 'save' || dialog?.type === 'rename' ? dialog : null
+  const saveActionDisabled = isPending || listPending
   const [name, setName] = useState('')
 
   useEffect(() => {
@@ -80,10 +83,10 @@ export function SavedScreensControlView({
   function renderSaveActions() {
     return (
       <div className="flex flex-col gap-1 border-t border-border pt-2">
-        {selectedScreen != null && (
+        {selectedScreen != null && selectedScreenHasChanges && (
           <button
             type="button"
-            disabled={isPending}
+            disabled={saveActionDisabled}
             onClick={() => {
               onOverwrite()
               onMenuOpenChange(false)
@@ -95,14 +98,18 @@ export function SavedScreensControlView({
         )}
         <button
           type="button"
-          disabled={isPending}
+          disabled={saveActionDisabled}
           onClick={() => {
             onDialogChange({ type: 'save' })
             onMenuOpenChange(false)
           }}
           className="w-full px-2 py-2 text-left text-2xs text-muted-foreground-strong hover:bg-surface-strong hover:text-foreground disabled:opacity-50"
         >
-          {selectedScreen == null ? 'この条件を保存' : '名前を付けて保存'}
+          {listPending
+            ? '読み込み中...'
+            : selectedScreen == null
+              ? 'この条件を保存'
+              : '名前を付けて保存'}
         </button>
       </div>
     )
@@ -119,14 +126,20 @@ export function SavedScreensControlView({
                   type="button"
                   aria-label={
                     selectedScreen == null
-                      ? '保存した条件を選ぶ'
+                      ? listPending && selectedScreenId != null
+                        ? '保存した条件を読み込み中'
+                        : '保存した条件を選ぶ'
                       : `保存した条件: ${selectedScreen.name}`
                   }
                   className="inline-flex min-w-0 items-center gap-1.5 border border-border bg-background px-2.5 py-2 text-left text-2xs text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground"
                 >
                   <span className="min-w-0 truncate">
                     {selectedScreen == null ? (
-                      '保存した条件'
+                      listPending && selectedScreenId != null ? (
+                        '読み込み中...'
+                      ) : (
+                        '保存した条件'
+                      )
                     ) : (
                       <>
                         <span className="hidden md:inline">保存した条件: </span>
@@ -214,11 +227,12 @@ export function SavedScreensControlView({
             </PopoverContent>
           </Popover>
           <div className="hidden shrink-0 items-center gap-2 md:flex">
-            {selectedScreen != null && (
+            {selectedScreen != null && selectedScreenHasChanges && (
               <Button
                 type="button"
                 variant="outline"
-                disabled={isPending}
+                className="text-2xs"
+                disabled={saveActionDisabled}
                 onClick={onOverwrite}
               >
                 上書き保存
@@ -227,12 +241,17 @@ export function SavedScreensControlView({
             <Button
               type="button"
               variant="outline"
-              disabled={isPending}
+              className="text-2xs"
+              disabled={saveActionDisabled}
               onClick={() => {
                 onDialogChange({ type: 'save' })
               }}
             >
-              {selectedScreen == null ? '保存' : '名前を付けて保存'}
+              {listPending
+                ? '読み込み中...'
+                : selectedScreen == null
+                  ? '保存'
+                  : '名前を付けて保存'}
             </Button>
           </div>
         </div>

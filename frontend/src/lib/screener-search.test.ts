@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clearSavedScreenSelectionSearch,
   countActiveScreenerFilters,
   getScreenerRangeError,
   getScreenerSearchAfterSortBy,
   getScreenerSearchAfterSortOrder,
   type SavedScreen,
+  savedScreenHasSearchChanges,
   toSavedScreenRequest,
   toScreenerApiQuery,
   toScreenerSearch,
@@ -172,6 +174,51 @@ describe('saved screen search conversion', () => {
         market_cap: { min: 100, max: undefined },
       },
       sort: { field: 'per', direction: 'asc' },
+    })
+  })
+
+  it('treats reordered filters and omitted defaults as the saved conditions', () => {
+    const savedSearch = toScreenerSearch(savedScreen)
+
+    expect(
+      savedScreenHasSearchChanges(savedScreen, {
+        ...savedSearch,
+        screen: savedScreen.id,
+        markets: [...(savedSearch.markets ?? [])].reverse(),
+        sectors: [...(savedSearch.sectors ?? [])].reverse(),
+        page: 2,
+      }),
+    ).toEqual(false)
+  })
+
+  it.each([
+    ['filter values', { ...toScreenerSearch(savedScreen), max_per: 11 }],
+    ['sort values', { ...toScreenerSearch(savedScreen), sort_order: 'desc' }],
+  ] as const)('detects changed %s', (_name, search) => {
+    expect(savedScreenHasSearchChanges(savedScreen, search)).toEqual(true)
+  })
+})
+
+describe('saved screen URL selection', () => {
+  it('clears only the selected screen while keeping the current search', () => {
+    expect(
+      clearSavedScreenSelectionSearch({
+        screen: 'missing-screen',
+        markets: ['プライム'],
+        sectors: ['sector-a'],
+        max_per: 12,
+        sort_by: 'per',
+        sort_order: 'asc',
+        page: 2,
+      }),
+    ).toEqual({
+      screen: undefined,
+      markets: ['プライム'],
+      sectors: ['sector-a'],
+      max_per: 12,
+      sort_by: 'per',
+      sort_order: 'asc',
+      page: 2,
     })
   })
 })

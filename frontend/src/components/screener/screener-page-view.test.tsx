@@ -209,6 +209,89 @@ describe('ScreenerPageView', () => {
     expect(onSelectSavedScreen.mock.calls).toEqual([[savedScreen]])
   })
 
+  it('shows overwrite only after the URL conditions differ from the saved screen', async () => {
+    const user = userEvent.setup()
+    const search: ComponentProps<typeof ScreenerPageView>['search'] = {
+      screen: savedScreen.id,
+      markets: ['プライム'],
+      max_per: 12,
+      sort_by: 'per',
+      sort_order: 'asc',
+    }
+    const args = {
+      search,
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      savedScreens: [savedScreen],
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+    const { container, rerender } = render(<ScreenerPageView {...args} />)
+    const readSaveActions = () =>
+      Array.from(container.querySelectorAll('button'))
+        .filter((button) => button.getAttribute('aria-label') == null)
+        .map((button) => button.textContent.trim())
+        .filter((label) =>
+          ['保存', '名前を付けて保存', '上書き保存'].includes(label),
+        )
+
+    await user.clear(screen.getByRole('spinbutton', { name: 'PER 上限' }))
+    await user.type(screen.getByRole('spinbutton', { name: 'PER 上限' }), '10')
+    const beforeApply = readSaveActions()
+
+    rerender(<ScreenerPageView {...args} search={{ ...search, max_per: 10 }} />)
+    const afterApply = readSaveActions()
+
+    const actual = JSON.stringify({ beforeApply, afterApply })
+    const expected = JSON.stringify({
+      beforeApply: ['名前を付けて保存'],
+      afterApply: ['上書き保存', '名前を付けて保存'],
+    })
+    expect(actual).toBe(expected)
+  })
+
+  it('shows a disabled loading action while saved screens are unresolved', () => {
+    const args = {
+      search: { screen: 'missing-screen' },
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      savedScreensPending: true,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    const { container } = render(<ScreenerPageView {...args} />)
+
+    const saveActions = Array.from(container.querySelectorAll('button'))
+      .filter(
+        (button) =>
+          button.getAttribute('aria-label') == null &&
+          ['保存', '読み込み中...', '名前を付けて保存', '上書き保存'].includes(
+            button.textContent.trim(),
+          ),
+      )
+      .map((button) => ({
+        label: button.textContent.trim(),
+        disabled: button.disabled,
+      }))
+
+    expect(saveActions).toEqual([{ label: '読み込み中...', disabled: true }])
+  })
+
   it('saves the current filter draft with the requested name', async () => {
     const user = userEvent.setup()
     const onSaveSavedScreen = vi.fn()

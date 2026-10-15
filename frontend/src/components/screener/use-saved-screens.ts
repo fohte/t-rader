@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type {
   SaveDialogState,
@@ -29,11 +29,55 @@ export function useSavedScreens({
   const deleteMutation = $api.useMutation('delete', '/api/saved-screens/{id}')
   const [dialog, setDialog] = useState<SavedScreenDialogState | null>(null)
   const [error, setError] = useState<string>()
+  const clearedScreenId = useRef<string | undefined>(undefined)
   const savedScreens = listQuery.data ?? []
+  const selectedScreenExists = savedScreens.some(
+    (savedScreen) => savedScreen.id === search.screen,
+  )
+  const listPending =
+    listQuery.isPending ||
+    (search.screen != null &&
+      !selectedScreenExists &&
+      (!listQuery.isError || listQuery.isFetching))
   const isPending =
     createMutation.isPending ||
     updateMutation.isPending ||
     deleteMutation.isPending
+  const clearSelection = useCallback(() => {
+    if (search.screen == null || clearedScreenId.current === search.screen) {
+      return
+    }
+
+    clearedScreenId.current = search.screen
+    onClearSelection()
+  }, [onClearSelection, search.screen])
+
+  useEffect(() => {
+    if (clearedScreenId.current !== search.screen) {
+      clearedScreenId.current = undefined
+    }
+  }, [search.screen])
+
+  useEffect(() => {
+    if (
+      search.screen == null ||
+      listQuery.data == null ||
+      listQuery.isFetching ||
+      listQuery.isError ||
+      selectedScreenExists
+    ) {
+      return
+    }
+
+    clearSelection()
+  }, [
+    clearSelection,
+    listQuery.data,
+    listQuery.isError,
+    listQuery.isFetching,
+    search.screen,
+    selectedScreenExists,
+  ])
 
   function invalidateList() {
     void queryClient.invalidateQueries({
@@ -147,7 +191,7 @@ export function useSavedScreens({
         onSuccess: () => {
           invalidateList()
           setDialog(null)
-          if (search.screen === savedScreen.id) onClearSelection()
+          if (search.screen === savedScreen.id) clearSelection()
         },
         onError: (mutationError: unknown) => {
           setError(
@@ -163,7 +207,7 @@ export function useSavedScreens({
 
   return {
     savedScreens,
-    listPending: listQuery.isPending,
+    listPending,
     listError: listQuery.isError,
     dialog,
     isPending,

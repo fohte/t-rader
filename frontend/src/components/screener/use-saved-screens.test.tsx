@@ -265,6 +265,53 @@ describe('useSavedScreens', () => {
     })
   })
 
+  it('clears a selected screen after the loaded list does not contain it', async () => {
+    const { result, onClearSelection } = setup({
+      screen: 'missing-screen',
+      markets: ['プライム'],
+      max_per: 12,
+    })
+    const initialListPending = result.current.listPending
+
+    await waitFor(() => {
+      const actual = JSON.stringify({
+        clearSelectionCalls: onClearSelection.mock.calls,
+        initialListPending,
+        listPending: result.current.listPending,
+        savedScreens: result.current.savedScreens,
+      })
+      const expected = JSON.stringify({
+        clearSelectionCalls: [[]],
+        initialListPending: true,
+        listPending: true,
+        savedScreens: [],
+      })
+      expect(actual).toBe(expected)
+    })
+  })
+
+  it('keeps a selected screen when the list cannot be loaded', async () => {
+    const { result, onClearSelection } = setup(
+      { screen: 'missing-screen' },
+      [],
+      { get: { status: 500, message: '一覧を取得できません。' } },
+    )
+
+    await waitFor(() => {
+      const actual = JSON.stringify({
+        clearSelectionCalls: onClearSelection.mock.calls,
+        listError: result.current.listError,
+        listPending: result.current.listPending,
+      })
+      const expected = JSON.stringify({
+        clearSelectionCalls: [],
+        listError: true,
+        listPending: false,
+      })
+      expect(actual).toBe(expected)
+    })
+  })
+
   it('creates a saved screen from the current filters and selects the response', async () => {
     const { result, onSelect } = setup()
     await waitFor(() => {
