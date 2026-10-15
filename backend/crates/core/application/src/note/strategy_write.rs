@@ -1,5 +1,5 @@
 use chrono::Utc;
-use serde_json::json;
+use serde_json::{Map, json};
 use uuid::Uuid;
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
@@ -7,17 +7,12 @@ use crate::note::types::{
     NewNote, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand, NoteWriteResult,
 };
 use crate::note::use_cases::ensure_frontmatter_object;
-use crate::note::version_write::{AppendVersionCommand, ResolvedMarketDataReferences};
+use crate::note::version_write::AppendVersionCommand;
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
-
-struct NoteWriteReferenceContext {
-    body_md: String,
-    previous: Option<NoteVersion>,
-}
 
 impl NoteUseCases {
     pub async fn write(
@@ -36,19 +31,11 @@ impl NoteUseCases {
             core_domain::note_graph::validate_graphs(&graphs)
                 .map_err(|error| NoteUseCaseError::Validation(error.to_string()))?;
         }
-        let reference_context = self
-            .note_write_reference_context(
-                command.note_id,
-                command.execution_id.as_deref(),
-                command.body_md.as_deref(),
-            )
-            .await?;
-        let resolved_market_data = self
-            .resolve_market_data_references(
-                &reference_context.body_md,
-                reference_context.previous.as_ref(),
-            )
-            .await?;
+        let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
+            Some(self.resolve_market_data_references(body_md).await?)
+        } else {
+            None
+        };
         if let Some(note_id) = command.note_id {
             let transaction = self.unit_of_work.begin().await?;
             let note = self.require_note(&transaction, note_id).await?;
@@ -185,56 +172,6 @@ impl NoteUseCases {
         Ok(result)
     }
 
-    async fn note_write_reference_context(
-        &self,
-        note_id: Option<Uuid>,
-        execution_id: Option<&str>,
-        requested_body_md: Option<&str>,
-    ) -> Result<NoteWriteReferenceContext, NoteUseCaseError> {
-        if note_id.is_none() && execution_id.is_none() {
-            return Ok(NoteWriteReferenceContext {
-                body_md: requested_body_md.unwrap_or_default().to_string(),
-                previous: None,
-            });
-        }
-
-        let transaction = self.unit_of_work.begin().await?;
-        let note = if let Some(note_id) = note_id {
-            Some(self.require_note(&transaction, note_id).await?)
-        } else if let Some(execution_id) = execution_id {
-            self.repository
-                .find_note_by_execution_id(&transaction, execution_id)
-                .await?
-        } else {
-            None
-        };
-        let (current, latest) = if let Some(note) = note {
-            (
-                self.repository
-                    .find_current_version(&transaction, note.id)
-                    .await?,
-                self.repository
-                    .find_latest_version(&transaction, note.id)
-                    .await?,
-            )
-        } else {
-            (None, None)
-        };
-        self.unit_of_work.commit(transaction).await?;
-
-        let body_md = requested_body_md
-            .map(str::to_owned)
-            .or_else(|| {
-                latest
-                    .as_ref()
-                    .or(current.as_ref())
-                    .map(|version| version.body_md.clone())
-            })
-            .unwrap_or_default();
-        let previous = current.or(latest);
-        Ok(NoteWriteReferenceContext { body_md, previous })
-    }
-
     fn validate_create_command(&self, command: &NoteWriteCommand) -> Result<(), NoteUseCaseError> {
         if !ALLOWED_CREATED_BY.contains(&command.created_by_kind.as_str()) {
             return Err(NoteUseCaseError::Validation(format!(
@@ -267,7 +204,7 @@ impl NoteUseCases {
         transaction: &UnitOfWorkTransaction,
         note: crate::note::types::Note,
         command: NoteWriteCommand,
-        resolved_market_data: Option<ResolvedMarketDataReferences>,
+        resolved_market_data: Option<Map<String, serde_json::Value>>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -401,7 +338,7 @@ mod tests {
     use crate::note::repository::{NoteRepository, NoteRepositoryError};
     use crate::note::types::{
         NewNoteLink, NewNoteVersion, Note, NoteLinkTarget, NoteMetadataUpdate, NoteVersion,
-        NoteVersionUpdate,
+        NoteVersionUpdate, UpdateNoteCommand,
     };
     use crate::unit_of_work::FakeUnitOfWork;
     use crate::valuation::{FakeValuationRepository, ValuationUseCases};
@@ -1366,22 +1303,14 @@ mod tests {
         );
     }
 
-    #[rstest]
-    #[case::extra_field(r#"{"value": 10, "metadata": "previous value"}"#)]
-    #[case::null_value(r#"{"value": null}"#)]
-    #[case::legacy_evidence_id(
-        r#"{"value": 10, "evidence_id": "00000000-0000-0000-0000-000000000008"}"#
-    )]
     #[tokio::test]
-    async fn human_title_edit_resolves_invalid_saved_values_when_body_is_omitted(
-        #[case] saved_entry: &str,
-    ) {
+    async fn human_edit_keeps_valid_resolutions_when_the_same_body_is_provided() {
         let link = "[[price:fictional-code@2030-01-02:close]]";
         let mut current = source_version();
         current.body_md = link.into();
+        current.execution_id = Some(EXECUTION_STEP_ID.to_string());
         current.resolved_price_references_json = json!({
-            "[[price:fictional-code@2030-01-02:close]]":
-                serde_json::from_str::<serde_json::Value>(saved_entry).expect("valid fixture"),
+            "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
         });
         let bars_repository = Arc::new(FakeBarsRepository::new());
         bars_repository
@@ -1399,10 +1328,10 @@ mod tests {
 
         use_cases
             .write(NoteWriteCommand {
-                execution_id: None,
+                execution_id: Some(EXECUTION_STEP_ID.to_string()),
                 note_id: Some(SOURCE_NOTE_ID),
                 title: Some("Human title edit".into()),
-                body_md: None,
+                body_md: Some(link.into()),
                 frontmatter_json: None,
                 graphs_json: None,
                 kind: None,
@@ -1415,7 +1344,7 @@ mod tests {
                 change_diff: None,
             })
             .await
-            .expect("the unchanged body resolves missing saved values from daily bars");
+            .expect("a valid saved value remains stable when the same body is provided");
 
         let mut actual = repository
             .inserted_versions
@@ -1436,8 +1365,71 @@ mod tests {
                 frontmatter_json: json!({}),
                 graphs_json: json!([]),
                 resolved_price_references_json: json!({
-                    "[[price:fictional-code@2030-01-02:close]]": { "value": 12 },
+                    "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
                 }),
+                status: "approved".into(),
+                is_current: true,
+                change_reason: None,
+                created_by_kind: "human".into(),
+                execution_id: Some(EXECUTION_STEP_ID.to_string()),
+            },
+        );
+    }
+
+    #[rstest]
+    #[case::extra_field(r#"{"value": 10, "metadata": "previous value"}"#)]
+    #[case::null_value(r#"{"value": null}"#)]
+    #[case::legacy_evidence_id(
+        r#"{"value": 10, "evidence_id": "00000000-0000-0000-0000-000000000008"}"#
+    )]
+    #[tokio::test]
+    async fn human_title_edit_preserves_invalid_saved_values_when_body_is_omitted(
+        #[case] saved_entry: &str,
+    ) {
+        let link = "[[price:fictional-code@2030-01-02:close]]";
+        let mut current = source_version();
+        current.body_md = link.into();
+        current.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-02:close]]":
+                serde_json::from_str::<serde_json::Value>(saved_entry).expect("valid fixture"),
+        });
+        let previous_resolutions = current.resolved_price_references_json.clone();
+        let (use_cases, repository) = make_note_use_cases(current);
+
+        use_cases
+            .update(
+                SOURCE_NOTE_ID,
+                UpdateNoteCommand {
+                    title: Some("Human title edit".into()),
+                    body_md: None,
+                    frontmatter_json: None,
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                },
+            )
+            .await
+            .expect("the unchanged body keeps its saved resolutions when the body is omitted");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the human edit creates a version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 2,
+                title: "Human title edit".into(),
+                body_md: link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: previous_resolutions,
                 status: "approved".into(),
                 is_current: true,
                 change_reason: None,
