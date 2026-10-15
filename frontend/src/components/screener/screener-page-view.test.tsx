@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -55,7 +55,10 @@ describe('ScreenerPageView', () => {
       ['時価総額 上限', '10000'],
     ] as const
     for (const [label, value] of ranges) {
-      await user.type(screen.getByRole('spinbutton', { name: label }), value)
+      fireEvent.change(
+        screen.getByRole<HTMLInputElement>('spinbutton', { name: label }),
+        { target: { value } },
+      )
     }
 
     await user.click(screen.getByRole('button', { name: 'この条件で絞り込む' }))
