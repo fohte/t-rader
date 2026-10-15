@@ -26,13 +26,14 @@ export type SaveDialogState = Extract<
 
 export function SavedScreensControlView({
   savedScreens,
+  selectedScreen,
   selectedScreenId,
   selectedScreenHasChanges = false,
   menuOpen,
   dialog,
   isPending = false,
   error,
-  listPending = false,
+  savedScreensPending = false,
   listError = false,
   onMenuOpenChange,
   onDialogChange,
@@ -42,13 +43,14 @@ export function SavedScreensControlView({
   onDelete,
 }: {
   savedScreens: SavedScreen[]
+  selectedScreen: SavedScreen | undefined
   selectedScreenId?: string
   selectedScreenHasChanges?: boolean
   menuOpen: boolean
   dialog: SavedScreenDialogState | null
   isPending?: boolean
   error?: string
-  listPending?: boolean
+  savedScreensPending?: boolean
   listError?: boolean
   onMenuOpenChange: (open: boolean) => void
   onDialogChange: (dialog: SavedScreenDialogState | null) => void
@@ -57,12 +59,9 @@ export function SavedScreensControlView({
   onOverwrite: () => void
   onDelete: (savedScreen: SavedScreen) => void
 }) {
-  const selectedScreen = savedScreens.find(
-    (savedScreen) => savedScreen.id === selectedScreenId,
-  )
   const saveDialog =
     dialog?.type === 'save' || dialog?.type === 'rename' ? dialog : null
-  const saveActionDisabled = isPending || listPending
+  const saveActionDisabled = isPending || savedScreensPending
   const [name, setName] = useState('')
 
   useEffect(() => {
@@ -105,7 +104,7 @@ export function SavedScreensControlView({
           }}
           className="w-full px-2 py-2 text-left text-2xs text-muted-foreground-strong hover:bg-surface-strong hover:text-foreground disabled:opacity-50"
         >
-          {listPending
+          {savedScreensPending
             ? '読み込み中...'
             : selectedScreen == null
               ? 'この条件を保存'
@@ -126,7 +125,7 @@ export function SavedScreensControlView({
                   type="button"
                   aria-label={
                     selectedScreen == null
-                      ? listPending && selectedScreenId != null
+                      ? savedScreensPending && selectedScreenId != null
                         ? '保存した条件を読み込み中'
                         : '保存した条件を選ぶ'
                       : `保存した条件: ${selectedScreen.name}`
@@ -135,7 +134,7 @@ export function SavedScreensControlView({
                 >
                   <span className="min-w-0 truncate">
                     {selectedScreen == null ? (
-                      listPending && selectedScreenId != null ? (
+                      savedScreensPending && selectedScreenId != null ? (
                         '読み込み中...'
                       ) : (
                         '保存した条件'
@@ -163,7 +162,7 @@ export function SavedScreensControlView({
               <h3 className="px-2 py-1 font-mono text-2xs font-semibold text-muted-foreground">
                 保存した条件
               </h3>
-              {listPending ? (
+              {savedScreensPending ? (
                 <p className="px-2 py-3 text-2xs text-muted-foreground">
                   読み込み中...
                 </p>
@@ -247,7 +246,7 @@ export function SavedScreensControlView({
                 onDialogChange({ type: 'save' })
               }}
             >
-              {listPending
+              {savedScreensPending
                 ? '読み込み中...'
                 : selectedScreen == null
                   ? '保存'

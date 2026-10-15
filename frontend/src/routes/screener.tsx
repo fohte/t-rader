@@ -27,6 +27,7 @@ function ScreenerRoute() {
   const clearSavedScreenSelection = useCallback(() => {
     void navigate({
       search: (previous) => clearSavedScreenSelectionSearch(previous),
+      replace: true,
     })
   }, [navigate])
   const page = search.page ?? 1
@@ -116,7 +117,7 @@ function ScreenerRoute() {
         if (failedLaterQuery != null) void failedLaterQuery.refetch()
       }}
       savedScreens={savedScreens.savedScreens}
-      savedScreensPending={savedScreens.listPending}
+      savedScreensPending={savedScreens.savedScreensPending}
       savedScreensError={savedScreens.listError}
       savedScreenDialog={savedScreens.dialog}
       savedScreenMutationPending={savedScreens.isPending}

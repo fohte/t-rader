@@ -217,12 +217,12 @@ function setup(
 function readListState(
   state: Pick<
     ReturnType<typeof useSavedScreens>,
-    'listError' | 'listPending' | 'savedScreens'
+    'listError' | 'savedScreensPending' | 'savedScreens'
   >,
 ) {
   return {
     listError: state.listError,
-    listPending: state.listPending,
+    savedScreensPending: state.savedScreensPending,
     savedScreens: state.savedScreens,
   }
 }
@@ -259,7 +259,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: true,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [],
       })
     })
@@ -271,20 +271,41 @@ describe('useSavedScreens', () => {
       markets: ['プライム'],
       max_per: 12,
     })
-    const initialListPending = result.current.listPending
+    const initialListPending = result.current.savedScreensPending
 
     await waitFor(() => {
       const actual = JSON.stringify({
         clearSelectionCalls: onClearSelection.mock.calls,
         initialListPending,
-        listPending: result.current.listPending,
+        savedScreensPending: result.current.savedScreensPending,
         savedScreens: result.current.savedScreens,
       })
       const expected = JSON.stringify({
         clearSelectionCalls: [[]],
         initialListPending: true,
-        listPending: true,
+        savedScreensPending: true,
         savedScreens: [],
+      })
+      expect(actual).toBe(expected)
+    })
+  })
+
+  it('keeps a selected screen that exists in the loaded list', async () => {
+    const savedScreen = makeSavedScreen()
+    const { result, onClearSelection } = setup({ screen: savedScreen.id }, [
+      savedScreen,
+    ])
+
+    await waitFor(() => {
+      const actual = JSON.stringify({
+        ...readListState(result.current),
+        clearSelectionCalls: onClearSelection.mock.calls,
+      })
+      const expected = JSON.stringify({
+        listError: false,
+        savedScreensPending: false,
+        savedScreens: [savedScreen],
+        clearSelectionCalls: [],
       })
       expect(actual).toBe(expected)
     })
@@ -301,12 +322,12 @@ describe('useSavedScreens', () => {
       const actual = JSON.stringify({
         clearSelectionCalls: onClearSelection.mock.calls,
         listError: result.current.listError,
-        listPending: result.current.listPending,
+        savedScreensPending: result.current.savedScreensPending,
       })
       const expected = JSON.stringify({
         clearSelectionCalls: [],
         listError: true,
-        listPending: false,
+        savedScreensPending: false,
       })
       expect(actual).toBe(expected)
     })
@@ -317,7 +338,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [],
       })
     })
@@ -378,7 +399,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [savedScreen],
       })
     })
@@ -433,7 +454,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [savedScreen],
       })
     })
@@ -476,7 +497,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [savedScreen],
       })
     })
@@ -510,7 +531,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [savedScreen],
       })
     })
@@ -542,7 +563,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [savedScreen],
       })
     })
@@ -578,7 +599,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [],
       })
     })
@@ -598,7 +619,7 @@ describe('useSavedScreens', () => {
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
         listError: false,
-        listPending: false,
+        savedScreensPending: false,
         savedScreens: [],
       })
     })

@@ -31,10 +31,11 @@ export function useSavedScreens({
   const [error, setError] = useState<string>()
   const clearedScreenId = useRef<string | undefined>(undefined)
   const savedScreens = listQuery.data ?? []
-  const selectedScreenExists = savedScreens.some(
+  const selectedScreen = savedScreens.find(
     (savedScreen) => savedScreen.id === search.screen,
   )
-  const listPending =
+  const selectedScreenExists = selectedScreen != null
+  const savedScreensPending =
     listQuery.isPending ||
     (search.screen != null &&
       !selectedScreenExists &&
@@ -151,7 +152,7 @@ export function useSavedScreens({
   }
 
   function onOverwrite(filters: ScreenerSearch) {
-    const savedScreen = savedScreens.find((item) => item.id === search.screen)
+    const savedScreen = selectedScreen
     if (savedScreen == null) return
     setError(undefined)
     const rangeError = getScreenerRangeError(filters)
@@ -207,7 +208,7 @@ export function useSavedScreens({
 
   return {
     savedScreens,
-    listPending,
+    savedScreensPending,
     listError: listQuery.isError,
     dialog,
     isPending,

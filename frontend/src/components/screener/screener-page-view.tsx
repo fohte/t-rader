@@ -360,13 +360,14 @@ export function ScreenerPageView({
           <div className="flex min-w-0 flex-1 items-center justify-between gap-2 md:flex-none md:justify-end">
             <SavedScreensControlView
               savedScreens={savedScreens}
+              selectedScreen={selectedSavedScreen}
               selectedScreenId={search.screen}
               selectedScreenHasChanges={selectedScreenHasChanges}
               menuOpen={savedScreensMenuOpen}
               dialog={savedScreenDialog}
               isPending={savedScreenMutationPending}
               error={savedScreenMutationError}
-              listPending={savedScreensPending}
+              savedScreensPending={savedScreensPending}
               listError={savedScreensError}
               onMenuOpenChange={setSavedScreensMenuOpen}
               onDialogChange={onSavedScreenDialogChange}

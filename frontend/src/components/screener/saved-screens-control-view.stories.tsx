@@ -22,6 +22,7 @@ const savedScreen: SavedScreen = {
 
 const args = {
   savedScreens: [savedScreen],
+  selectedScreen: savedScreen,
   selectedScreenId: savedScreen.id,
   menuOpen: false,
   dialog: null,
@@ -44,7 +45,12 @@ type Story = StoryObj<typeof meta>
 
 export const Closed: Story = {
   name: '保存した条件を選ぶメニューを閉じています。',
-  args: { ...args, selectedScreenId: undefined, savedScreens: [] },
+  args: {
+    ...args,
+    selectedScreen: undefined,
+    selectedScreenId: undefined,
+    savedScreens: [],
+  },
 }
 
 export const MenuOpen: Story = {
@@ -61,10 +67,11 @@ export const Loading: Story = {
   name: '保存した条件を読み込んでいます。',
   args: {
     ...args,
+    selectedScreen: undefined,
     savedScreens: [],
     selectedScreenId: savedScreen.id,
     menuOpen: true,
-    listPending: true,
+    savedScreensPending: true,
   },
 }
 
@@ -77,6 +84,7 @@ export const EmptyMenu: Story = {
   name: '保存した条件がないことをメニュー内に表示します。',
   args: {
     ...args,
+    selectedScreen: undefined,
     selectedScreenId: undefined,
     savedScreens: [],
     menuOpen: true,
