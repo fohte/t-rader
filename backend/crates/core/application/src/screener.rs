@@ -123,6 +123,12 @@ pub struct ScreenerStock {
     pub market_cap: Option<Decimal>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScreenerSector {
+    pub key: String,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScreenerPage {
     pub items: Vec<ScreenerStock>,
@@ -140,6 +146,7 @@ pub enum ScreenerQueryError {
 #[async_trait]
 pub trait ScreenerQuerySource: Send + Sync {
     async fn screen(&self, query: ScreenerQuery) -> Result<ScreenerPage, ScreenerQueryError>;
+    async fn list_sectors(&self) -> Result<Vec<ScreenerSector>, ScreenerQueryError>;
 }
 
 pub type SharedScreenerQuerySource = Arc<dyn ScreenerQuerySource + Send + Sync>;
@@ -171,5 +178,9 @@ impl ScreenerUseCases {
         }
 
         self.query.screen(query).await.map_err(Into::into)
+    }
+
+    pub async fn list_sectors(&self) -> Result<Vec<ScreenerSector>, ScreenerUseCaseError> {
+        self.query.list_sectors().await.map_err(Into::into)
     }
 }

@@ -11,20 +11,30 @@ import {
 } from '#lib/note-change-evidence'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
 import type { ParsedNotePriceReference } from '#lib/note-price-reference'
+import type {
+  ParsedNoteIndicatorObservationReference,
+  ParsedNoteValuationReference,
+} from '#lib/note-valuation-indicator-reference'
 
-interface ResolvedNoteEvidenceReferenceProps {
+type StockEvidence =
+  | (NoteEvidenceDetails & { field: ParsedNotePriceReference['field'] })
+  | {
+      kind: 'valuation'
+      date: string
+      field: ParsedNoteValuationReference['field']
+    }
+
+interface ResolvedStockEvidenceReferenceProps {
   instrumentId: string
-  field: ParsedNotePriceReference['field']
   displayValue: string
-  evidence: NoteEvidenceDetails
+  evidence: StockEvidence
 }
 
-function ResolvedNoteEvidenceReference({
+function ResolvedStockEvidenceReference({
   instrumentId,
-  field,
   displayValue,
   evidence,
-}: ResolvedNoteEvidenceReferenceProps) {
+}: ResolvedStockEvidenceReferenceProps) {
   const [open, setOpen] = useState(false)
   const stock = useResolveRef(`stock:${instrumentId}`)
 
@@ -32,11 +42,12 @@ function ResolvedNoteEvidenceReference({
     <NoteEvidenceCardView
       open={open}
       onOpenChange={setOpen}
-      stockName={stock.name}
-      stockId={stock.id}
-      field={field}
       displayValue={displayValue}
-      evidence={evidence}
+      reference={{
+        ...evidence,
+        stockName: stock.name,
+        stockId: stock.id,
+      }}
     />
   )
 }
@@ -49,11 +60,52 @@ export function NotePriceReference({
 }: ParsedNotePriceReference & { value: string }) {
   const numericValue = Number(value)
   return (
-    <ResolvedNoteEvidenceReference
+    <ResolvedStockEvidenceReference
       instrumentId={instrumentId}
-      field={field}
       displayValue={formatNoteEvidencePrice(numericValue)}
-      evidence={{ kind: 'price', date }}
+      evidence={{ kind: 'price', date, field }}
+    />
+  )
+}
+
+export function NoteValuationReference({
+  instrumentId,
+  date,
+  field,
+  value,
+}: ParsedNoteValuationReference & { value: string }) {
+  return (
+    <ResolvedStockEvidenceReference
+      instrumentId={instrumentId}
+      displayValue={formatNoteEvidencePrice(Number(value))}
+      evidence={{
+        kind: 'valuation',
+        date,
+        field,
+      }}
+    />
+  )
+}
+
+export function NoteIndicatorObservationReference({
+  indicatorId,
+  date,
+  value,
+}: ParsedNoteIndicatorObservationReference & { value: string }) {
+  const [open, setOpen] = useState(false)
+  const indicator = useResolveRef(`indicator:${indicatorId}`)
+
+  return (
+    <NoteEvidenceCardView
+      open={open}
+      onOpenChange={setOpen}
+      displayValue={formatNoteEvidencePrice(Number(value))}
+      reference={{
+        kind: 'indicator',
+        date,
+        indicatorName: indicator.name,
+        indicatorId: indicator.id,
+      }}
     />
   )
 }
@@ -110,11 +162,10 @@ function ResolvedNoteChangeReference({
         : { status: 'ready' as const, evidence: calculatedEvidence }
 
   return (
-    <ResolvedNoteEvidenceReference
+    <ResolvedStockEvidenceReference
       instrumentId={instrumentId}
-      field={field}
       displayValue={`${formatNoteEvidencePercentage(numericValue, 0)}%`}
-      evidence={{ kind: 'change', start, end, barsState }}
+      evidence={{ kind: 'change', start, end, barsState, field }}
     />
   )
 }

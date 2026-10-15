@@ -10,11 +10,14 @@ const meta = {
   args: {
     open: true,
     onOpenChange: () => undefined,
-    stockName: 'デモ商事',
-    stockId: '0000',
-    field: 'close',
     displayValue: '3,150',
-    evidence: { kind: 'price', date: '2030-01-03' },
+    reference: {
+      kind: 'price',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'close',
+      date: '2030-01-03',
+    },
   },
   decorators: [
     (Story) => (
@@ -24,7 +27,7 @@ const meta = {
             <Story />
           ),
           {
-            paths: ['/stocks/$stockId'],
+            paths: ['/stocks/$stockId', '/indicators/$indicatorId'],
           },
         )}
       />
@@ -38,15 +41,17 @@ type Story = StoryObj<typeof meta>
 
 export const Price: Story = {
   name: 'shows the date and source for a price reference.',
-  args: { evidence: { kind: 'price', date: '2030-01-03' } },
 }
 
 export const Change: Story = {
   name: 'shows the date range and calculation for a change reference.',
   args: {
     displayValue: '+8.62%',
-    evidence: {
+    reference: {
       kind: 'change',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'close',
       start: '2030-01-02',
       end: '2030-01-03',
       barsState: {
@@ -66,8 +71,11 @@ export const ChangeWithDifferentSavedValue: Story = {
   name: 'explains when the saved value differs from current daily bars.',
   args: {
     displayValue: '+7.5%',
-    evidence: {
+    reference: {
       kind: 'change',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'close',
       start: '2030-01-02',
       end: '2030-01-03',
       barsState: {
@@ -87,8 +95,11 @@ export const LoadingBars: Story = {
   name: 'shows a loading state while daily bars are requested.',
   args: {
     displayValue: '+8.62%',
-    evidence: {
+    reference: {
       kind: 'change',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'close',
       start: '2030-01-02',
       end: '2030-01-03',
       barsState: { status: 'loading' },
@@ -100,8 +111,11 @@ export const FailedBars: Story = {
   name: 'shows an error when daily bars cannot be retrieved.',
   args: {
     displayValue: '+8.62%',
-    evidence: {
+    reference: {
       kind: 'change',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'close',
       start: '2030-01-02',
       end: '2030-01-03',
       barsState: { status: 'error' },
@@ -113,11 +127,68 @@ export const MissingEndpointBars: Story = {
   name: 'shows a message when either date has no daily bar.',
   args: {
     displayValue: '+8.62%',
-    evidence: {
+    reference: {
       kind: 'change',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'close',
       start: '2030-01-02',
       end: '2030-01-03',
       barsState: { status: 'empty' },
+    },
+  },
+}
+
+export const Valuation: Story = {
+  name: 'shows an unadjusted valuation and its stock page destination.',
+  args: {
+    displayValue: '18.4',
+    reference: {
+      kind: 'valuation',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'per',
+      date: '2030-01-03',
+    },
+  },
+}
+
+export const SplitAdjustedValuation: Story = {
+  name: 'shows split adjustment in the valuation source.',
+  args: {
+    displayValue: '125',
+    reference: {
+      kind: 'valuation',
+      stockName: 'デモ商事',
+      stockId: '0000',
+      field: 'eps',
+      date: '2030-01-03',
+    },
+  },
+}
+
+export const Indicator: Story = {
+  name: 'shows a dated macro indicator with its resolved name.',
+  args: {
+    displayValue: '142.5',
+    reference: {
+      kind: 'indicator',
+      indicatorName: 'デモ指標',
+      indicatorId: 'demo-indicator',
+      date: '2030-01-03',
+    },
+  },
+}
+
+export const IndicatorNameUnavailable: Story = {
+  name: 'falls back to the indicator ID when its name is unavailable.',
+  args: {
+    displayValue: '142.5',
+    reference: {
+      kind: 'indicator',
+      indicatorName: null,
+      indicatorId: 'demo-indicator',
+      date: '2030-01-03',
     },
   },
 }

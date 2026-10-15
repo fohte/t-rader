@@ -509,6 +509,12 @@ comments:
       url: 'RSS フィードの URL。'
       enabled: 'フィードを取り込み対象とするかどうか。'
       content_source: '本文の取得元。none / feed / crawl のいずれか。'
+  - table: saved_screen
+    tableComment: 'スクリーナーで保存した名前付き条件と並び順を保持する。'
+    columnComments:
+      name: '保存条件を識別する一意な名前。'
+      filters: 'ScreenerFilters 形式の絞り込み条件。'
+      sort: 'ScreenerSort 形式の並び順。'
   - table: short_ratio
     tableComment: '33 業種ごとの売買代金を日付別に保持する。'
     columnComments:

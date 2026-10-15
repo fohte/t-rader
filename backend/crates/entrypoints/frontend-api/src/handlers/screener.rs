@@ -5,13 +5,13 @@ use core_application::screener::{
     ScreenerSortField, ScreenerUseCaseError,
 };
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::FrontendApiState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
-use crate::models::ScreenerResponse;
+use crate::models::{ScreenerResponse, ScreenerSectorResponse};
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -49,7 +49,7 @@ pub struct ScreenerQueryParams {
     pub page: Option<u32>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScreenerSortBy {
     Id,
@@ -81,7 +81,24 @@ impl From<ScreenerSortBy> for ScreenerSortField {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+impl From<ScreenerSortField> for ScreenerSortBy {
+    fn from(value: ScreenerSortField) -> Self {
+        match value {
+            ScreenerSortField::Id => Self::Id,
+            ScreenerSortField::Name => Self::Name,
+            ScreenerSortField::Market => Self::Market,
+            ScreenerSortField::Sector => Self::Sector,
+            ScreenerSortField::Close => Self::Close,
+            ScreenerSortField::Per => Self::Per,
+            ScreenerSortField::Pbr => Self::Pbr,
+            ScreenerSortField::Roe => Self::Roe,
+            ScreenerSortField::DividendYield => Self::DividendYield,
+            ScreenerSortField::MarketCap => Self::MarketCap,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScreenerSortOrder {
     Asc,
@@ -93,6 +110,15 @@ impl From<ScreenerSortOrder> for ScreenerSortDirection {
         match value {
             ScreenerSortOrder::Asc => Self::Asc,
             ScreenerSortOrder::Desc => Self::Desc,
+        }
+    }
+}
+
+impl From<ScreenerSortDirection> for ScreenerSortOrder {
+    fn from(value: ScreenerSortDirection) -> Self {
+        match value {
+            ScreenerSortDirection::Asc => Self::Asc,
+            ScreenerSortDirection::Desc => Self::Desc,
         }
     }
 }
@@ -145,6 +171,28 @@ pub async fn screen_stocks(
         .map_err(map_screener_error)?;
 
     Ok(Json(result.into()))
+}
+
+/// スクリーナーで選択できる東証 33 業種を一覧する
+#[utoipa::path(
+    get,
+    path = "/api/screener/sectors",
+    tag = "screener",
+    responses(
+        (status = 200, description = "東証 33 業種の key と名前", body = Vec<ScreenerSectorResponse>),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_sector_options(
+    State(state): State<FrontendApiState>,
+) -> Result<Json<Vec<ScreenerSectorResponse>>, AppError> {
+    let sectors = state
+        .screener_use_cases
+        .list_sectors()
+        .await
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+
+    Ok(Json(sectors.into_iter().map(Into::into).collect()))
 }
 
 fn range(min: Option<Decimal>, max: Option<Decimal>) -> Option<ScreenerRange> {

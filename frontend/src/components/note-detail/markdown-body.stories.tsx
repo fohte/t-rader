@@ -130,6 +130,14 @@ export const WithResolvedPriceReferences: Story = {
   },
 }
 
+export const WithUnresolvedDatedReferences: Story = {
+  name: 'keeps dated value tokens visible when their values are unavailable.',
+  args: {
+    source:
+      '未解決の valuation [[valuation:demo-code@2030-01-04:per]] と indicator [[indicator:demo-indicator@2030-01-04]] は保存値がありません。日付なしの [[indicator:demo-indicator]] は参照リンクです。',
+  },
+}
+
 // 以下のノード/ティッカーはすべて架空のもの。実在の企業・銘柄コードとは無関係
 const GRAPH_SAMPLE = `# 架空エコシステムの業界構造メモ
 

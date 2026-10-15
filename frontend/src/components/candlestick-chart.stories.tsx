@@ -3,6 +3,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { CandlestickChart } from '#components/candlestick-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import {
+  CHART_INDICATOR_PANE_HEIGHT,
+  type ChartIndicatorConfig,
+  getChartIndicatorPaneCount,
+} from '#lib/chart-indicator-settings'
 
 type Bar = components['schemas']['Bar']
 type Trade = components['schemas']['TradeListItem']
@@ -120,11 +125,23 @@ const meta = {
     currency: 'JPY',
   },
   decorators: [
-    (Story) => (
-      <div style={{ width: '100%', height: '600px' }}>
-        <Story />
-      </div>
-    ),
+    (Story, { args }) => {
+      const paneCount = getChartIndicatorPaneCount(args.indicators ?? [])
+
+      return (
+        <div
+          style={{
+            width: '100%',
+            height: `${(
+              600 +
+              paneCount * CHART_INDICATOR_PANE_HEIGHT
+            ).toString()}px`,
+          }}
+        >
+          <Story />
+        </div>
+      )
+    },
   ],
 } satisfies Meta<typeof CandlestickChart>
 
@@ -226,6 +243,25 @@ export const WithPriceIndicators: Story = {
         color: '#34d399',
       },
     ],
+    className: 'h-full w-full',
+  },
+}
+
+export const WithLowerPaneIndicators: Story = {
+  name: 'shows RSI and MACD in separate lower panes.',
+  args: {
+    bars: generateSampleBars(120),
+    indicators: [
+      { id: 'indicator-rsi', kind: 'rsi', period: 14, color: '#38bdf8' },
+      {
+        id: 'indicator-macd',
+        kind: 'macd',
+        fastPeriod: 12,
+        slowPeriod: 26,
+        signalPeriod: 9,
+        color: '#34d399',
+      },
+    ] satisfies ChartIndicatorConfig[],
     className: 'h-full w-full',
   },
 }
