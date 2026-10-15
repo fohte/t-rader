@@ -111,6 +111,7 @@ pub(crate) fn strategy_server_dependencies(
         paper_trades: use_cases.paper_trade(),
         predictions: use_cases.predictions(),
         refs: use_cases.refs(),
+        screener: use_cases.screener(),
         shareholding_structures: use_cases.shareholding_structures(),
         short_ratios: use_cases.short_ratios(),
         short_sale_reports: use_cases.short_sale_reports(),
