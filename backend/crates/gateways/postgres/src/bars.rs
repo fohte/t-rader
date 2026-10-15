@@ -99,17 +99,6 @@ impl BarsRepository for PostgresBarsRepository {
             return Ok(Vec::new());
         };
 
-        if timeframe == Timeframe::Weekly {
-            return bar_queries::find_weekly_bars_by_instruments(
-                &self.db,
-                &query.instrument_ids,
-                query.from,
-                query.to,
-            )
-            .await
-            .map_err(repository_error);
-        }
-
         if timeframe != Timeframe::Daily {
             let us_instrument_ids = self.us_instrument_ids(&query.instrument_ids).await?;
 
