@@ -25,7 +25,7 @@ pub(super) struct AppendVersionCommand {
     pub change_reason: Option<String>,
     pub change_diff: Option<Value>,
     pub actor: Actor,
-    pub resolved_market_data: Option<Map<String, Value>>,
+    pub resolved_market_data: Option<Result<Map<String, Value>, NoteUseCaseError>>,
 }
 
 impl NoteUseCases {
@@ -87,20 +87,25 @@ impl NoteUseCases {
                 core_domain::note_reference::BodyTokenPolicy::Validate,
             )?;
         }
-        let resolved_price_references_json = if !body_changed
-            && previous_content.as_ref().is_some_and(|previous| {
-                has_resolutions(&previous.resolved_price_references_json, &references)
-            }) {
-            previous_content
-                .map(|previous| previous.resolved_price_references_json.clone())
-                .unwrap_or_else(|| Value::Object(Map::new()))
-        } else if let Some(resolved_market_data) = content.resolved_market_data {
-            Value::Object(resolved_market_data)
-        } else {
-            previous_content
-                .map(|previous| previous.resolved_price_references_json.clone())
-                .unwrap_or_else(|| Value::Object(Map::new()))
-        };
+        let previous_reference_version = current
+            .as_ref()
+            .filter(|version| version.body_md == content.body_md)
+            .or_else(|| {
+                latest
+                    .as_ref()
+                    .filter(|version| version.body_md == content.body_md)
+            });
+        let resolved_price_references_json =
+            match (previous_reference_version, content.resolved_market_data) {
+                (Some(previous), _)
+                    if has_resolutions(&previous.resolved_price_references_json, &references) =>
+                {
+                    previous.resolved_price_references_json.clone()
+                }
+                (Some(previous), None) => previous.resolved_price_references_json.clone(),
+                (_, Some(resolved_market_data)) => Value::Object(resolved_market_data?),
+                (None, None) => Value::Object(Map::new()),
+            };
 
         let becomes_current = !requires_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {

@@ -32,7 +32,7 @@ impl NoteUseCases {
                 .map_err(|error| NoteUseCaseError::Validation(error.to_string()))?;
         }
         let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
-            Some(self.resolve_market_data_references(body_md).await?)
+            Some(self.resolve_market_data_references(body_md).await)
         } else {
             None
         };
@@ -204,7 +204,7 @@ impl NoteUseCases {
         transaction: &UnitOfWorkTransaction,
         note: crate::note::types::Note,
         command: NoteWriteCommand,
-        resolved_market_data: Option<Map<String, serde_json::Value>>,
+        resolved_market_data: Option<Result<Map<String, serde_json::Value>, NoteUseCaseError>>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -1312,19 +1312,7 @@ mod tests {
         current.resolved_price_references_json = json!({
             "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
         });
-        let bars_repository = Arc::new(FakeBarsRepository::new());
-        bars_repository
-            .seed_bars(vec![daily_bar(
-                "fictional-code",
-                "2030-01-02T00:00:00Z",
-                9,
-                11,
-                8,
-                12,
-                100,
-            )])
-            .await;
-        let (use_cases, repository) = make_note_use_cases_with_bars(current, bars_repository);
+        let (use_cases, repository) = make_note_use_cases(current);
 
         use_cases
             .write(NoteWriteCommand {
@@ -1344,7 +1332,7 @@ mod tests {
                 change_diff: None,
             })
             .await
-            .expect("a valid saved value remains stable when the same body is provided");
+            .expect("a saved value remains stable when the same body is provided without its bar");
 
         let mut actual = repository
             .inserted_versions
@@ -1434,6 +1422,76 @@ mod tests {
                 is_current: true,
                 change_reason: None,
                 created_by_kind: "human".into(),
+                execution_id: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn title_only_write_keeps_resolutions_for_the_latest_pending_body() {
+        let current_link = "[[price:fictional-code@2030-01-02:close]]";
+        let pending_link = "[[price:fictional-code@2030-01-03:close]]";
+        let mut current = source_version();
+        current.body_md = current_link.into();
+        current.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-02:close]]": { "value": 10 },
+        });
+        let mut latest = current.clone();
+        latest.id = Uuid::from_u128(12);
+        latest.version_no = 2;
+        latest.body_md = pending_link.into();
+        latest.resolved_price_references_json = json!({
+            "[[price:fictional-code@2030-01-03:close]]": { "value": 20 },
+        });
+        latest.status = "unread".into();
+        latest.is_current = false;
+        let (use_cases, repository) = make_note_use_cases_with_options(current, latest, true);
+
+        use_cases
+            .write(NoteWriteCommand {
+                execution_id: None,
+                note_id: Some(SOURCE_NOTE_ID),
+                title: Some("Updated title".into()),
+                body_md: None,
+                frontmatter_json: None,
+                graphs_json: None,
+                kind: None,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: "llm".into(),
+                change_reason: Some("Update title".into()),
+                actor: Actor::Llm { label: "analyst" },
+                change_diff: None,
+            })
+            .await
+            .expect("a title-only write preserves values for the latest pending body");
+
+        let mut actual = repository
+            .inserted_versions
+            .lock()
+            .await
+            .last()
+            .cloned()
+            .expect("the write creates a pending version");
+        actual.id = Uuid::nil();
+        assert_eq!(
+            actual,
+            NewNoteVersion {
+                id: Uuid::nil(),
+                note_id: SOURCE_NOTE_ID,
+                version_no: 3,
+                title: "Updated title".into(),
+                body_md: pending_link.into(),
+                frontmatter_json: json!({}),
+                graphs_json: json!([]),
+                resolved_price_references_json: json!({
+                    "[[price:fictional-code@2030-01-03:close]]": { "value": 20 },
+                }),
+                status: INITIAL_NOTE_STATUS.into(),
+                is_current: false,
+                change_reason: Some("Update title".into()),
+                created_by_kind: "llm".into(),
                 execution_id: None,
             },
         );
