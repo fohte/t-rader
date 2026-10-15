@@ -8,6 +8,12 @@ use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
 
+#[cfg(any(test, feature = "test-support"))]
+mod fake;
+
+#[cfg(any(test, feature = "test-support"))]
+pub use fake::FakeCustomIndicatorEvaluationRepository;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomIndicatorEvaluation {
     pub id: Uuid,

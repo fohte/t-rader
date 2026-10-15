@@ -314,7 +314,6 @@ impl NoteUseCases {
 
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
-    use std::collections::HashMap;
     use std::sync::Arc;
 
     use async_trait::async_trait;
@@ -330,8 +329,8 @@ mod tests {
     use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository};
     use crate::change_history::{Actor, FakeChangeHistory};
     use crate::custom_indicator_evaluation::{
-        CustomIndicatorEvaluation, CustomIndicatorEvaluationRepository,
-        CustomIndicatorEvaluationRepositoryError, CustomIndicatorEvaluationUseCases,
+        CustomIndicatorEvaluation, CustomIndicatorEvaluationUseCases,
+        FakeCustomIndicatorEvaluationRepository,
     };
     use crate::indicator_observation::{
         FakeIndicatorObservationRepository, IndicatorObservationUseCases,
@@ -355,45 +354,14 @@ mod tests {
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
     const EVALUATION_ID: Uuid = Uuid::from_u128(0x101);
 
-    #[derive(Default)]
-    struct FakeCustomIndicatorEvaluationRepository {
-        evaluations: Mutex<HashMap<Uuid, CustomIndicatorEvaluation>>,
-    }
-
-    #[async_trait]
-    impl CustomIndicatorEvaluationRepository for FakeCustomIndicatorEvaluationRepository {
-        async fn insert(
-            &self,
-            evaluation: CustomIndicatorEvaluation,
-        ) -> Result<(), CustomIndicatorEvaluationRepositoryError> {
-            self.evaluations
-                .lock()
-                .await
-                .insert(evaluation.id, evaluation);
-            Ok(())
-        }
-
-        async fn find_by_id(
-            &self,
-            id: Uuid,
-        ) -> Result<Option<CustomIndicatorEvaluation>, CustomIndicatorEvaluationRepositoryError>
-        {
-            Ok(self.evaluations.lock().await.get(&id).cloned())
-        }
-    }
-
     fn custom_indicator_evaluation_use_cases(
         evaluations: impl IntoIterator<Item = CustomIndicatorEvaluation>,
     ) -> CustomIndicatorEvaluationUseCases {
-        let repository = FakeCustomIndicatorEvaluationRepository {
-            evaluations: Mutex::new(
-                evaluations
-                    .into_iter()
-                    .map(|evaluation| (evaluation.id, evaluation))
-                    .collect(),
-            ),
-        };
-        CustomIndicatorEvaluationUseCases::new(Arc::new(repository))
+        let repository = Arc::new(FakeCustomIndicatorEvaluationRepository::new());
+        for evaluation in evaluations {
+            repository.seed(evaluation);
+        }
+        CustomIndicatorEvaluationUseCases::new(repository)
     }
 
     fn custom_indicator_evaluation(output: serde_json::Value) -> CustomIndicatorEvaluation {
@@ -1071,6 +1039,14 @@ mod tests {
         Some(json!({ "other": 256.75 })),
         "出力名を解決できません"
     )]
+    #[case::output_is_a_string(
+        Some(json!({ "result": "256.75" })),
+        "出力は数値ではありません"
+    )]
+    #[case::output_is_an_array(
+        Some(json!({ "result": [256.75] })),
+        "出力は数値ではありません"
+    )]
     #[tokio::test]
     async fn write_rejects_unresolvable_custom_indicator_evaluations(
         #[case] output: Option<serde_json::Value>,
@@ -1488,7 +1464,7 @@ mod tests {
                 Some(indoc! {"
                     ノートのトークンに問題があります:
                     - 本文のトークン \"[[graph:missing-chart]]\": 対応する graphs[].id がありません
-                    許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。
+                    許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。
                 "}
                 .trim_end()
                 .to_string()),

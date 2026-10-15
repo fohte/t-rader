@@ -233,6 +233,12 @@ impl NoteUseCases {
                     token.token
                 ))
             })?;
+        if !value.is_number() {
+            return Err(NoteUseCaseError::Validation(format!(
+                "eval 参照 {} の出力は数値ではありません",
+                token.token
+            )));
+        }
         values.insert(token.token.clone(), json!({ "value": value }));
         Ok(())
     }
