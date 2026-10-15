@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Utc};
 use core_application::valuation::ValuationRepository;
 use core_domain::valuation::Valuation;
 use gateway_postgres::PostgresValuationRepository;
@@ -74,6 +74,13 @@ fn days_before_latest(days: i64) -> NaiveDate {
     date(3) - chrono::Duration::days(days)
 }
 
+fn timestamp_at(day: NaiveDate, hour: u32, minute: u32) -> DateTime<FixedOffset> {
+    let datetime = day
+        .and_hms_opt(hour, minute, 0)
+        .expect("valid test timestamp");
+    Utc.from_utc_datetime(&datetime).fixed_offset()
+}
+
 async fn seed_stock(db: &gateway_postgres::DatabaseHandle, id: &str, name: &str, market: &str) {
     stock::ActiveModel {
         id: Set(id.to_string()),
@@ -110,15 +117,11 @@ async fn seed_daily_bar_at(
     day: NaiveDate,
     close: i64,
 ) {
-    let timestamp = day
-        .and_hms_opt(0, 0, 0)
-        .map(|datetime| Utc.from_utc_datetime(&datetime).fixed_offset())
-        .expect("valid test timestamp");
     let close = Decimal::from(close);
     bars::Entity::insert(bars::ActiveModel {
         instrument_id: Set(id.to_string()),
         timeframe: Set("1d".to_string()),
-        timestamp: Set(timestamp),
+        timestamp: Set(timestamp_at(day, 0, 0)),
         open: Set(close),
         high: Set(close),
         low: Set(close),
@@ -129,6 +132,29 @@ async fn seed_daily_bar_at(
     .exec_without_returning(db)
     .await
     .expect("insert screener daily bar");
+}
+
+async fn seed_minute_bar_at(
+    db: &gateway_postgres::DatabaseHandle,
+    id: &str,
+    day: NaiveDate,
+    hour: u32,
+    minute: u32,
+    close: i64,
+) {
+    let close = Decimal::from(close);
+    minute_bars::Entity::insert(minute_bars::ActiveModel {
+        instrument_id: Set(id.to_string()),
+        timestamp: Set(timestamp_at(day, hour, minute)),
+        open: Set(close),
+        high: Set(close),
+        low: Set(close),
+        close: Set(close),
+        volume: Set(100),
+    })
+    .exec_without_returning(db)
+    .await
+    .expect("insert screener minute bar");
 }
 
 async fn seed_financial_summary(
@@ -546,22 +572,7 @@ async fn screener_endpoint_limits_latest_metrics_to_thirty_days(
         seed_instrument(&db, id).await;
     }
     seed_daily_bar_at(&db, "D901", date(3), 1200).await;
-    let latest_intraday_timestamp = date(3)
-        .and_hms_opt(0, 1, 0)
-        .map(|datetime| Utc.from_utc_datetime(&datetime).fixed_offset())
-        .expect("valid test timestamp");
-    minute_bars::Entity::insert(minute_bars::ActiveModel {
-        instrument_id: Set("D901".to_string()),
-        timestamp: Set(latest_intraday_timestamp),
-        open: Set(Decimal::from(1200)),
-        high: Set(Decimal::from(1250)),
-        low: Set(Decimal::from(1190)),
-        close: Set(Decimal::from(1250)),
-        volume: Set(100),
-    })
-    .exec_without_returning(&db)
-    .await
-    .expect("insert screener minute bar");
+    seed_minute_bar_at(&db, "D901", date(3), 0, 1, 1250).await;
     seed_daily_bar_at(&db, "D902", days_before_latest(30), 2400).await;
     seed_daily_bar_at(&db, "D903", days_before_latest(31), 3600).await;
     PostgresValuationRepository::new(db.clone())
