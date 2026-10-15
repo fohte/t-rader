@@ -16,6 +16,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(ingest_status::get_ingest_status))
         .routes(routes!(bars::list_bars))
         .routes(routes!(screener::screen_stocks))
+        .routes(routes!(screener::list_sector_options))
         .routes(routes!(calendar::list_calendar_events))
         .routes(routes!(calendar::list_other_earnings))
         .routes(routes!(stock_info::list_stock_groups))

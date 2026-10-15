@@ -297,6 +297,50 @@ async fn seed_screener_data(db: &gateway_postgres::DatabaseHandle) {
 }
 
 #[backend_test_macros::database_test]
+async fn screener_sector_options_only_include_tse_sector33_groups(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    seed_screener_data(&db).await;
+
+    let axis_id = Uuid::new_v4();
+    group_axis::ActiveModel {
+        id: Set(axis_id),
+        key: Set("demo-custom-axis".to_string()),
+        name: Set("Demo custom groups".to_string()),
+        description: Set("Custom axis".to_string()),
+        derive_from: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("insert unrelated group axis");
+    stock_group::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        axis_id: Set(axis_id),
+        key: Set("unrelated-group".to_string()),
+        name: Set("Unrelated Group".to_string()),
+        description: Set(None),
+        code: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("insert unrelated group");
+
+    let server = create_test_server(db).await;
+    let response = server.get("/api/screener/sectors").await;
+
+    assert_eq!(
+        (response.status_code(), response.json::<Value>()),
+        (
+            axum::http::StatusCode::OK,
+            json!([
+                { "key": "sector-alpha", "name": "Sector Alpha" },
+                { "key": "sector-beta", "name": "Sector Beta" },
+            ]),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn screener_endpoint_filters_markets_sectors_and_metric_ranges(
     db: gateway_postgres::DatabaseHandle,
 ) {

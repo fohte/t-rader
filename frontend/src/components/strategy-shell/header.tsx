@@ -26,6 +26,7 @@ const MENU_ITEMS = [
     label: 'ペーパートレード',
     matches: ['/paper-trading'],
   },
+  { to: '/screener', label: 'スクリーナー', matches: ['/screener'] },
   { to: '/calendar', label: 'カレンダー', matches: ['/calendar'] },
   { to: '/settings', label: '全体の設定', matches: ['/settings'] },
 ] as const

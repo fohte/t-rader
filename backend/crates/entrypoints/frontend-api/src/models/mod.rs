@@ -68,7 +68,7 @@ pub use risk_policy::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
 };
-pub use screener::ScreenerResponse;
+pub use screener::{ScreenerResponse, ScreenerSectorResponse};
 pub use stock_info::{
     StockFinancialSummaryResponse, StockGroupMembershipResponse, StockNextEarningsResponse,
     StockValuationResponse,
