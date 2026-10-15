@@ -223,8 +223,8 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
             (
                 "review".to_string(),
                 format!(
-                    "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。付いているコメントを確認し、指摘を反映してください。",
-                    version.version_no, version.id,
+                    "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。このタスクの `strategy_id` と `target_kind=note_version`、`target_id={}`、`resolved=false` を指定して `read_comments` を呼び出し、未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。",
+                    version.version_no, version.id, version.id,
                 ),
                 StrategyTaskPhase::Running
             ),
@@ -248,8 +248,8 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
             "from hook".to_string(),
             "from mgmt".to_string(),
             format!(
-                "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。付いているコメントを確認し、指摘を反映してください。",
-                version.version_no, version.id,
+                "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。このタスクの `strategy_id` と `target_kind=note_version`、`target_id={}`、`resolved=false` を指定して `read_comments` を呼び出し、未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。",
+                version.version_no, version.id, version.id,
             ),
         ],
     );
