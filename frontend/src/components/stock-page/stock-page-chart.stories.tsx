@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 
+import { lowerPaneIndicatorBars } from '#components/stock-page/stock-chart.fixtures'
 import { StockPageChart } from '#components/stock-page/stock-page-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
@@ -54,24 +55,6 @@ const annotations: ChartAnnotation[] = [
   },
 ]
 
-const indicatorCloses = [
-  3000, 3020, 3040, 3015, 3055, 3025, 3065, 3030, 3070, 3040, 3080, 3045,
-]
-
-const indicatorBars: Bar[] = indicatorCloses.map((close, index) => {
-  const open = indicatorCloses[index - 1] ?? close - 8
-  return {
-    instrument_id: 'demo-code',
-    timeframe: '1d',
-    timestamp: new Date(Date.UTC(2030, 3, index + 1, 6)).toISOString(),
-    open,
-    high: Math.max(open, close) + 16,
-    low: Math.min(open, close) - 18,
-    close,
-    volume: 10000 + index * 100,
-  }
-})
-
 const lowerPaneIndicators: ChartIndicatorConfig[] = [
   { id: 'indicator-rsi', kind: 'rsi', period: 3, color: '#38bdf8' },
   {
@@ -123,7 +106,7 @@ export const DailyWithSelectedAnnotation: Story = {
 
 export const WithLowerPaneIndicators: Story = {
   name: 'RSI と MACD の下段を追加した銘柄チャートを表示する。',
-  args: { bars: indicatorBars, chartIndicators: lowerPaneIndicators },
+  args: { bars: lowerPaneIndicatorBars, chartIndicators: lowerPaneIndicators },
 }
 
 export const DateSelected: Story = {
