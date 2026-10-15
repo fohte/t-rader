@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 use crate::change_history::ChangeHistoryError;
+use crate::custom_indicator_evaluation::CustomIndicatorEvaluationUseCaseError;
 use crate::indicator_observation::IndicatorObservationUseCaseError;
 use crate::note::repository::NoteRepositoryError;
 use crate::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCaseError;
@@ -31,6 +32,8 @@ pub enum NoteUseCaseError {
     Valuation(#[from] ValuationUseCaseError),
     #[error(transparent)]
     IndicatorObservation(#[from] IndicatorObservationUseCaseError),
+    #[error(transparent)]
+    CustomIndicatorEvaluation(#[from] CustomIndicatorEvaluationUseCaseError),
     #[error(transparent)]
     Serialization(#[from] serde_json::Error),
 }

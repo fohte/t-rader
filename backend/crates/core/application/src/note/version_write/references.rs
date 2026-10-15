@@ -9,6 +9,7 @@ use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
+use crate::custom_indicator_evaluation::CustomIndicatorEvaluation;
 use crate::indicator_observation::IndicatorObservationQuery;
 use crate::note::{NoteUseCaseError, NoteUseCases};
 use crate::strategy_task_step_evidence::{
@@ -50,7 +51,8 @@ pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReference
                                 .and_then(|id| Uuid::parse_str(id).ok())
                                 .is_some(),
                             NotePriceReference::Valuation { .. }
-                            | NotePriceReference::Indicator { .. } => {
+                            | NotePriceReference::Indicator { .. }
+                            | NotePriceReference::CustomIndicatorEvaluation { .. } => {
                                 entry.len() == 1 && !entry.contains_key("evidence_id")
                             }
                         }
@@ -72,6 +74,7 @@ impl NoteUseCases {
         let mut valuations_by_symbol_date =
             BTreeMap::<(String, NaiveDate), Option<Valuation>>::new();
         let mut observations_by_id_date = BTreeMap::<(String, NaiveDate), Option<Decimal>>::new();
+        let mut evaluations_by_id = BTreeMap::<Uuid, Option<CustomIndicatorEvaluation>>::new();
         let mut values = Map::new();
 
         for token in &references {
@@ -97,6 +100,19 @@ impl NoteUseCases {
                         indicator_id,
                         *date,
                         &mut observations_by_id_date,
+                        &mut values,
+                    )
+                    .await?;
+                }
+                NotePriceReference::CustomIndicatorEvaluation {
+                    evaluation_id,
+                    output_name,
+                } => {
+                    self.resolve_custom_indicator_evaluation_reference(
+                        token,
+                        *evaluation_id,
+                        output_name,
+                        &mut evaluations_by_id,
                         &mut values,
                     )
                     .await?;
@@ -183,6 +199,44 @@ impl NoteUseCases {
         Ok(())
     }
 
+    async fn resolve_custom_indicator_evaluation_reference(
+        &self,
+        token: &NotePriceReferenceToken,
+        evaluation_id: Uuid,
+        output_name: &str,
+        cache: &mut BTreeMap<Uuid, Option<CustomIndicatorEvaluation>>,
+        values: &mut Map<String, Value>,
+    ) -> Result<(), NoteUseCaseError> {
+        if let std::collections::btree_map::Entry::Vacant(entry) = cache.entry(evaluation_id) {
+            let evaluation = self
+                .custom_indicator_evaluations
+                .find_by_id(evaluation_id)
+                .await?;
+            entry.insert(evaluation);
+        }
+        let evaluation = cache
+            .get(&evaluation_id)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| {
+                NoteUseCaseError::Validation(format!(
+                    "eval 参照 {0} の評価記録が見つかりません",
+                    token.token
+                ))
+            })?;
+        let value = evaluation
+            .output
+            .as_object()
+            .and_then(|output| output.get(output_name))
+            .ok_or_else(|| {
+                NoteUseCaseError::Validation(format!(
+                    "eval 参照 {0} の出力名を解決できません",
+                    token.token
+                ))
+            })?;
+        values.insert(token.token.clone(), json!({ "value": value }));
+        Ok(())
+    }
+
     pub(super) async fn resolve_price_references(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -226,9 +280,9 @@ impl NoteUseCases {
             let instrument_id = match &token.reference {
                 NotePriceReference::Price { instrument_id, .. }
                 | NotePriceReference::Change { instrument_id, .. } => instrument_id,
-                NotePriceReference::Valuation { .. } | NotePriceReference::Indicator { .. } => {
-                    continue;
-                }
+                NotePriceReference::Valuation { .. }
+                | NotePriceReference::Indicator { .. }
+                | NotePriceReference::CustomIndicatorEvaluation { .. } => continue,
             };
             if !evidence_by_instrument.contains_key(instrument_id) {
                 let evidence = self
@@ -297,6 +351,8 @@ fn resolve_evidence_reference(
             serde_json::Number::from_f64((end - start) / start * 100.0)
                 .map(|value| (Value::Number(value), snapshot.id))
         }),
-        NotePriceReference::Valuation { .. } | NotePriceReference::Indicator { .. } => None,
+        NotePriceReference::Valuation { .. }
+        | NotePriceReference::Indicator { .. }
+        | NotePriceReference::CustomIndicatorEvaluation { .. } => None,
     }
 }
