@@ -687,21 +687,21 @@ describe('parseAgentGraphPhases', () => {
       'phases:',
       '  - key: plan',
       '    label: 調査計画',
-      '    model: claude-opus-4',
+      '    model: fictional-model',
       '    prompt: p',
       '  - key: investigate',
       '    label: 調査',
-      '    model: deepseek-v4-flash',
+      '    model: fictional-model',
       '    prompt: p',
       '    for_each: plan.items',
     ].join('\n')
 
     expect(parseAgentGraphPhases(yaml)).toEqual([
-      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+      { key: 'plan', label: '調査計画', model: 'fictional-model' },
       {
         key: 'investigate',
         label: '調査',
-        model: 'deepseek-v4-flash',
+        model: 'fictional-model',
         forEach: 'plan.items',
       },
     ])
