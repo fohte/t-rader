@@ -10,9 +10,9 @@ use crate::persistence::PersistenceError;
 use super::{
     formula::parse_formula,
     types::{
-        WidgetBy, WidgetDefinition, WidgetQuery, WidgetValidationErrors, WidgetVisualization,
-        WidgetVisualizationOrder,
+        WidgetBy, WidgetDefinition, WidgetQuery, WidgetVisualization, WidgetVisualizationOrder,
     },
+    validation::WidgetValidationErrors,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
