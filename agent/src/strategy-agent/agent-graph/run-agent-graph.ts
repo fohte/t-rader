@@ -118,6 +118,7 @@ const runForEachItems = async (
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
   priorResults: Readonly<Record<string, unknown>>,
+  phaseKeys: readonly string[],
   items: readonly unknown[],
   recorder: StepRecorder,
   requiredArrayFields: ReadonlySet<string>,
@@ -146,6 +147,8 @@ const runForEachItems = async (
     }
     const messageText = buildPhaseMessageText({
       originalPromptText: context.originalPromptText,
+      phaseKeys,
+      phaseKey: phase.key,
       phasePrompt: phase.prompt,
       item,
       priorResults,
@@ -227,6 +230,7 @@ const runPhase = async (
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
   priorResults: Readonly<Record<string, unknown>>,
+  phaseKeys: readonly string[],
   recorder: StepRecorder,
   requiredArrayFieldsByPhase: ReadonlyMap<string, ReadonlySet<string>>,
   reuseCompleted: boolean,
@@ -247,6 +251,8 @@ const runPhase = async (
 
     const messageText = buildPhaseMessageText({
       originalPromptText: context.originalPromptText,
+      phaseKeys,
+      phaseKey: phase.key,
       phasePrompt: phase.prompt,
       item: undefined,
       priorResults,
@@ -277,6 +283,7 @@ const runPhase = async (
     phase,
     context,
     priorResults,
+    phaseKeys,
     itemsResult.value,
     recorder,
     requiredArrayFields,
@@ -292,6 +299,7 @@ export const runAgentGraph = async (
 ): Promise<StrategyAgentResult> => {
   const results: Record<string, unknown> = {}
   const recorder = createStepRecorder(context.onStepsChanged)
+  const phaseKeys = config.phases.map((phase) => phase.key)
   const requiredArrayFieldsByPhase = collectRequiredArrayFields(config.phases)
 
   // for_each は 1 件でも成功すればフェーズ成功として返すため、部分失敗したタスクは
@@ -311,6 +319,7 @@ export const runAgentGraph = async (
       phase,
       context,
       results,
+      phaseKeys,
       recorder,
       requiredArrayFieldsByPhase,
       firstIncompleteIndex === -1 || index <= firstIncompleteIndex,

@@ -165,12 +165,15 @@ const createDeferred = <T>() => {
 const findAssignedItem = <T extends string>(
   messageText: string,
   items: readonly T[],
+  phaseKeys: readonly string[],
 ): T | undefined =>
   items.find(
     (item) =>
       messageText ===
       buildPhaseMessageText({
         originalPromptText: 'req',
+        phaseKeys,
+        phaseKey: 'work',
         phasePrompt: 'do work',
         item,
         priorResults: { plan: { items } },
@@ -225,6 +228,8 @@ describe('runAgentGraph', () => {
         systemPrompt: 'AGENTS',
         messageText: buildPhaseMessageText({
           originalPromptText: 'original request',
+          phaseKeys: ['stepA', 'stepB'],
+          phaseKey: 'stepA',
           phasePrompt: 'do A',
           item: undefined,
           priorResults: {},
@@ -235,6 +240,8 @@ describe('runAgentGraph', () => {
         systemPrompt: 'AGENTS',
         messageText: buildPhaseMessageText({
           originalPromptText: 'original request',
+          phaseKeys: ['stepA', 'stepB'],
+          phaseKey: 'stepB',
           phasePrompt: 'do B',
           item: undefined,
           priorResults: { stepA: { value: 'A-OUT' } },
@@ -336,6 +343,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'work'],
+            phaseKey: 'plan',
             phasePrompt: 'do plan',
             item: undefined,
             priorResults: {},
@@ -346,6 +355,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'work'],
+            phaseKey: 'work',
             phasePrompt: 'do work',
             item: 'a',
             priorResults: { plan: { items: ['a', 'b', 'c', 'd'] } },
@@ -356,6 +367,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'work'],
+            phaseKey: 'work',
             phasePrompt: 'do work',
             item: 'b',
             priorResults: { plan: { items: ['a', 'b', 'c', 'd'] } },
@@ -582,7 +595,7 @@ describe('runAgentGraph', () => {
       if (call.messageText.includes('do plan')) {
         return Promise.resolve({ structuredResponse: { items } })
       }
-      const item = findAssignedItem(call.messageText, items)
+      const item = findAssignedItem(call.messageText, items, ['plan', 'work'])
       if (item === undefined) {
         return Promise.resolve({ structuredResponse: {} })
       }
@@ -675,7 +688,11 @@ describe('runAgentGraph', () => {
         return Promise.resolve({ structuredResponse: { items } })
       }
       if (call.messageText.includes('do work')) {
-        const item = findAssignedItem(call.messageText, items)
+        const item = findAssignedItem(call.messageText, items, [
+          'plan',
+          'work',
+          'summary',
+        ])
         if (item === undefined) {
           return Promise.resolve({ structuredResponse: {} })
         }
@@ -739,6 +756,8 @@ describe('runAgentGraph', () => {
         systemPrompt: 'AGENTS',
         messageText: buildPhaseMessageText({
           originalPromptText: 'req',
+          phaseKeys: ['plan', 'work', 'summary'],
+          phaseKey: 'summary',
           phasePrompt: 'summarize',
           item: undefined,
           priorResults: {
@@ -815,6 +834,8 @@ describe('runAgentGraph', () => {
 
     const basePrompt = buildPhaseMessageText({
       originalPromptText: 'req',
+      phaseKeys: ['p'],
+      phaseKey: 'p',
       phasePrompt: 'do p',
       item: undefined,
       priorResults: {},
@@ -895,6 +916,8 @@ describe('runAgentGraph', () => {
 
       const basePrompt = buildPhaseMessageText({
         originalPromptText: 'req',
+        phaseKeys: ['plan', 'work'],
+        phaseKey: 'plan',
         phasePrompt: 'do plan',
         item: undefined,
         priorResults: {},
@@ -1441,6 +1464,8 @@ describe('runAgentGraph', () => {
     const messageTextForWorkItem = (item: unknown): string =>
       buildPhaseMessageText({
         originalPromptText: 'req',
+        phaseKeys: ['plan', 'work', 'summarize'],
+        phaseKey: 'work',
         phasePrompt: 'do work',
         item,
         priorResults: { plan: { items: ['a', 'b'] } },
@@ -1508,6 +1533,8 @@ describe('runAgentGraph', () => {
       systemPrompt: 'AGENTS',
       messageText: buildPhaseMessageText({
         originalPromptText: 'req',
+        phaseKeys: ['plan', 'work', 'summarize'],
+        phaseKey: 'summarize',
         phasePrompt: 'do summarize',
         item: undefined,
         priorResults: {
@@ -1578,6 +1605,8 @@ describe('runAgentGraph', () => {
     const messageTextForWorkItem = (item: unknown): string =>
       buildPhaseMessageText({
         originalPromptText: 'req',
+        phaseKeys: ['plan', 'work'],
+        phaseKey: 'work',
         phasePrompt: 'do work',
         item,
         priorResults: { plan: { items: ['x', 'y'] } },
@@ -1776,6 +1805,8 @@ describe('runAgentGraph', () => {
         systemPrompt: 'AGENTS',
         messageText: buildPhaseMessageText({
           originalPromptText: 'req',
+          phaseKeys: ['stepA', 'stepB'],
+          phaseKey: 'stepB',
           phasePrompt: 'do B',
           item: undefined,
           priorResults: { stepA: { value: 'PREV-A-OUT' } },
@@ -1858,6 +1889,8 @@ describe('runAgentGraph', () => {
         systemPrompt: 'AGENTS',
         messageText: buildPhaseMessageText({
           originalPromptText: 'req',
+          phaseKeys: ['stepA'],
+          phaseKey: 'stepA',
           phasePrompt: 'do A',
           item: undefined,
           priorResults: {},
@@ -1933,6 +1966,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate'],
+            phaseKey: 'plan',
             phasePrompt: 'do plan',
             item: undefined,
             priorResults: {},
@@ -2011,6 +2046,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate'],
+            phaseKey: 'plan',
             phasePrompt: 'do plan',
             item: undefined,
             priorResults: {},
@@ -2021,6 +2058,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate'],
+            phaseKey: 'investigate',
             phasePrompt: 'do investigate',
             item: { title: 'H2' },
             priorResults: { plan: { hypotheses: [{ title: 'H2' }] } },
@@ -2066,6 +2105,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate'],
+            phaseKey: 'plan',
             phasePrompt: 'do plan',
             item: undefined,
             priorResults: {},
@@ -2076,6 +2117,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate'],
+            phaseKey: 'investigate',
             phasePrompt: 'do investigate',
             item: { title: 'H3' },
             priorResults: { plan: { hypotheses: [{ title: 'H3' }] } },
@@ -2198,6 +2241,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate', 'summarize'],
+            phaseKey: 'investigate',
             phasePrompt: 'do investigate',
             item: { title: 'H2' },
             priorResults: {
@@ -2210,6 +2255,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate', 'summarize'],
+            phaseKey: 'summarize',
             phasePrompt: 'do summarize',
             item: undefined,
             priorResults: {
@@ -2339,6 +2386,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate', 'review'],
+            phaseKey: 'investigate',
             phasePrompt: 'do investigate',
             item: { title: 'H2' },
             priorResults: {
@@ -2351,6 +2400,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate', 'review'],
+            phaseKey: 'review',
             phasePrompt: 'do review',
             item: { title: 'H1' },
             priorResults,
@@ -2361,6 +2412,8 @@ describe('runAgentGraph', () => {
           systemPrompt: 'AGENTS',
           messageText: buildPhaseMessageText({
             originalPromptText: 'req',
+            phaseKeys: ['plan', 'investigate', 'review'],
+            phaseKey: 'review',
             phasePrompt: 'do review',
             item: { title: 'H2' },
             priorResults,
@@ -2377,6 +2430,8 @@ describe('buildPhaseMessageText', () => {
     expect(
       buildPhaseMessageText({
         originalPromptText: 'original request',
+        phaseKeys: ['phase-a', 'phase-b'],
+        phaseKey: 'phase-b',
         phasePrompt: 'do the thing',
         item: { title: 'hypothesis 1' },
         priorResults: { plan: { hypotheses: [{ title: 'hypothesis 1' }] } },
@@ -2384,6 +2439,7 @@ describe('buildPhaseMessageText', () => {
     ).toBe(
       [
         'original request',
+        'この巡回は phase-a → phase-b の順に進む。あなたは phase-b を担当する。依頼のうち他の phase の担当分は、後の phase が行う',
         'do the thing',
         '割り当てられた対象:\n```json\n{\n  "title": "hypothesis 1"\n}\n```',
         'これまでのフェーズの結果:\n```json\n{\n  "plan": {\n    "hypotheses": [\n      {\n        "title": "hypothesis 1"\n      }\n    ]\n  }\n}\n```',
@@ -2395,10 +2451,18 @@ describe('buildPhaseMessageText', () => {
     expect(
       buildPhaseMessageText({
         originalPromptText: 'original request',
+        phaseKeys: ['phase-a', 'phase-b'],
+        phaseKey: 'phase-a',
         phasePrompt: 'do the thing',
         item: undefined,
         priorResults: {},
       }),
-    ).toBe('original request\n\n---\n\ndo the thing')
+    ).toBe(
+      [
+        'original request',
+        'この巡回は phase-a → phase-b の順に進む。あなたは phase-a を担当する。依頼のうち他の phase の担当分は、後の phase が行う',
+        'do the thing',
+      ].join('\n\n---\n\n'),
+    )
   })
 })
