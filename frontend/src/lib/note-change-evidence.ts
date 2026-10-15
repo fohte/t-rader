@@ -11,7 +11,7 @@ export interface NoteChangeEvidence {
   matchesSavedValue: boolean
 }
 
-export type NoteChangeEvidenceState =
+type NoteChangeEvidenceState =
   | { status: 'loading' }
   | { status: 'error' }
   | { status: 'empty' }
