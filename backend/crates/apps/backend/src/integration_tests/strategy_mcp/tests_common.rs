@@ -312,6 +312,7 @@ pub(super) async fn seed_annotation(db: &impl sea_orm::ConnectionTrait) -> Uuid 
         timestamp: Set("2026-06-01T00:00:00Z".parse().expect("ts")),
         timestamp_start: Set(None),
         price: Set(None),
+        price_start: Set(None),
         text: Set("breakout".into()),
         status: Set(super::DEFAULT_ANNOTATION_STATUS.into()),
         linked_note_id: Set(None),

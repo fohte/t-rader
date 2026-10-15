@@ -7,7 +7,7 @@ use crate::handlers::{
     agent_config, agent_options, annotations, bars, calendar, comments, config, custom_indicators,
     group_axes, history, imports, ingest_status, note_kinds, note_links, note_predictions,
     note_versions, notes, paper_accounts, portfolio_history, refs, risk_policy, rss_feeds,
-    stock_info, strategies, tasks, trade_notes, trades, triggers,
+    screener, stock_info, strategies, tasks, trade_notes, trades, triggers,
 };
 use crate::state::FrontendApiState;
 
@@ -15,6 +15,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(ingest_status::get_ingest_status))
         .routes(routes!(bars::list_bars))
+        .routes(routes!(screener::screen_stocks))
         .routes(routes!(calendar::list_calendar_events))
         .routes(routes!(calendar::list_other_earnings))
         .routes(routes!(stock_info::list_stock_groups))

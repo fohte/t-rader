@@ -23,6 +23,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub execution_task_id: Option<String>,
     pub timestamp_start: Option<DateTimeWithTimeZone>,
+    pub price_start: Option<Decimal>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
