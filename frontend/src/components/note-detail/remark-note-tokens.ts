@@ -215,7 +215,6 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
             : noteToken('note-eval-reference', { value: String(value) })
         }
 
-        // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
         if (inner.startsWith('valuation:')) {
           return resolvedEvidenceToken(
             token,

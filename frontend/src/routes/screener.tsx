@@ -92,7 +92,7 @@ function ScreenerRoute() {
       }}
       onLoadMore={() => {
         void navigate({
-          search: (previous) => ({ ...previous, page: Number(page) + 1 }),
+          search: (previous) => ({ ...previous, page: page + 1 }),
         })
       }}
       onRetryLoadMore={() => {
