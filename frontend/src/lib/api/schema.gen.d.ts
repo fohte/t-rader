@@ -1058,6 +1058,23 @@ export interface paths {
     patch: operations['update_rss_feed']
     trace?: never
   }
+  '/api/screener': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 条件に一致する銘柄を一覧する */
+    get: operations['screen_stocks']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/stocks/{stock_id}/financial-summaries': {
     parameters: {
       query?: never
@@ -2369,6 +2386,47 @@ export interface components {
       side: string
       stock_name: string
       symbol: string
+    }
+    ScreenerResponse: {
+      /** Format: date */
+      as_of?: string | null
+      items: components['schemas']['ScreenerStockResponse'][]
+      /** Format: int32 */
+      page: number
+      /** Format: int64 */
+      total_count: number
+    }
+    /** @enum {string} */
+    ScreenerSortBy:
+      | 'id'
+      | 'name'
+      | 'market'
+      | 'sector'
+      | 'close'
+      | 'per'
+      | 'pbr'
+      | 'roe'
+      | 'dividend_yield'
+      | 'market_cap'
+    /** @enum {string} */
+    ScreenerSortOrder: 'asc' | 'desc'
+    ScreenerStockResponse: {
+      /** Format: double */
+      close?: number | null
+      /** Format: double */
+      dividend_yield?: number | null
+      id: string
+      market?: string | null
+      /** Format: double */
+      market_cap?: number | null
+      name: string
+      /** Format: double */
+      pbr?: number | null
+      /** Format: double */
+      per?: number | null
+      /** Format: double */
+      roe?: number | null
+      sector?: string | null
     }
     SkillBody: {
       content: string
@@ -6943,6 +7001,74 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  screen_stocks: {
+    parameters: {
+      query?: {
+        /** @description 絞り込む市場。複数指定はカンマ区切り */
+        markets?: string
+        /** @description 東証 33 業種グループの key。複数指定はカンマ区切り */
+        sectors?: string
+        /** @description PER の下限 */
+        min_per?: number
+        /** @description PER の上限 */
+        max_per?: number
+        /** @description PBR の下限 */
+        min_pbr?: number
+        /** @description PBR の上限 */
+        max_pbr?: number
+        /** @description ROE (パーセント) の下限 */
+        min_roe?: number
+        /** @description ROE (パーセント) の上限 */
+        max_roe?: number
+        /** @description 予想配当利回り (パーセント) の下限 */
+        min_dividend_yield?: number
+        /** @description 予想配当利回り (パーセント) の上限 */
+        max_dividend_yield?: number
+        /** @description 時価総額 (億円) の下限 */
+        min_market_cap?: number
+        /** @description 時価総額 (億円) の上限 */
+        max_market_cap?: number
+        /** @description 並び替える列。省略時は market_cap */
+        sort_by?: components['schemas']['ScreenerSortBy']
+        /** @description 並び順。省略時は desc */
+        sort_order?: components['schemas']['ScreenerSortOrder']
+        /** @description 1 始まりのページ番号 */
+        page?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 条件に一致する銘柄 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ScreenerResponse']
+        }
+      }
+      /** @description 検索条件が不正 */
+      400: {
         headers: {
           [name: string]: unknown
         }
