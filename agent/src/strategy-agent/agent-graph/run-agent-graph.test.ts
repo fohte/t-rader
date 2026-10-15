@@ -1367,11 +1367,11 @@ describe('runAgentGraph', () => {
       reasonText: 'agent did not return a structured response',
     },
     {
-      name: 'empty required array field',
-      firstAttemptResult: { structuredResponse: { ok: [] } },
+      name: 'missing required array field',
+      firstAttemptResult: { structuredResponse: {} },
       reason: 'missing_required_array_fields',
       reasonText:
-        "agent's structured response did not resolve required for_each field(s) to a non-empty array: ok",
+        "agent's structured response did not resolve required for_each field(s) to an array: ok",
     },
   ])(
     'feeds back the rejection reason and a write-tool warning on retry ($name)',
@@ -1580,18 +1580,18 @@ describe('runAgentGraph', () => {
 
   it.each([
     {
-      name: 'never becomes an array',
-      output: { value: { type: 'string' } },
-      forEach: 'plan.value',
-      response: { value: 'not-an-array' },
-      field: 'value',
+      name: 'is missing',
+      output: { items: { type: 'array' } },
+      forEach: 'source.items',
+      response: {},
+      field: 'items',
     },
     {
-      name: 'stays an empty array',
-      output: { hypotheses: { type: 'array' } },
-      forEach: 'plan.hypotheses',
-      response: { hypotheses: [] },
-      field: 'hypotheses',
+      name: 'is not an array',
+      output: { items: { type: 'array' } },
+      forEach: 'source.items',
+      response: { items: 'invalid' },
+      field: 'items',
     },
   ])(
     'retries and then fails the source phase when for_each references a field that $name',
@@ -1604,19 +1604,19 @@ describe('runAgentGraph', () => {
       const config: AgentGraphConfig = {
         phases: [
           {
-            key: 'plan',
-            label: 'Plan',
-            model: 'm',
-            prompt: 'do plan',
+            key: 'source',
+            label: 'Source',
+            model: 'fictional-model',
+            prompt: 'gather entries',
             skills: [],
             tools: [],
             output,
           },
           {
-            key: 'investigate',
-            label: 'Investigate',
-            model: 'm',
-            prompt: 'do investigate',
+            key: 'inspect',
+            label: 'Inspect',
+            model: 'fictional-model',
+            prompt: 'inspect each entry',
             forEach,
             skills: [],
             tools: [],
@@ -1634,28 +1634,30 @@ describe('runAgentGraph', () => {
         }),
       )
 
-      expect(result).toEqual({
-        status: 'failed',
-        message: `フェーズ「Plan」(plan) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to a non-empty array: ${field}`,
-        errorKind: 'agent_error',
-      })
-      expect(attempts).toBe(3)
-      expect(warnCalls).toEqual([
+      expect(Array.of<unknown>(result, attempts, warnCalls)).toEqual([
+        {
+          status: 'failed',
+          message: `フェーズ「Source」(source) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to an array: ${field}`,
+          errorKind: 'agent_error',
+        },
+        3,
         [
-          {
-            executionStepId: '<execution-step-id>',
-            attemptNumber: 1,
-            reason: 'missing_required_array_fields',
-          },
-          'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
-        ],
-        [
-          {
-            executionStepId: '<execution-step-id>',
-            attemptNumber: 2,
-            reason: 'missing_required_array_fields',
-          },
-          'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+          [
+            {
+              executionStepId: '<execution-step-id>',
+              attemptNumber: 1,
+              reason: 'missing_required_array_fields',
+            },
+            'phase "source" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
+          ],
+          [
+            {
+              executionStepId: '<execution-step-id>',
+              attemptNumber: 2,
+              reason: 'missing_required_array_fields',
+            },
+            'phase "source" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+          ],
         ],
       ])
     },
@@ -1698,73 +1700,84 @@ describe('runAgentGraph', () => {
     expect(attempts).toBe(0)
   })
 
-  it('retries the source phase until for_each resolves to a non-empty array, then runs the dependent phase', async () => {
-    let planAttempts = 0
-    const { deps } = buildDeps((call) => {
-      if (call.messageText.includes('do plan')) {
-        planAttempts++
-        return Promise.resolve(
-          planAttempts < 3
-            ? { structuredResponse: { hypotheses: [] } }
-            : { structuredResponse: { hypotheses: [{ title: 'H1' }] } },
-        )
-      }
-      return Promise.resolve({ structuredResponse: {} })
-    })
+  it('passes an empty for_each result to the following phase without invoking an item', async () => {
+    const { deps, calls } = buildDeps((call) =>
+      Promise.resolve(
+        call.messageText.includes('gather entries')
+          ? { structuredResponse: { entries: [] } }
+          : { structuredResponse: { summary: 'no entries' } },
+      ),
+    )
     const config: AgentGraphConfig = {
       phases: [
         {
-          key: 'plan',
-          label: 'Plan',
-          model: 'm',
-          prompt: 'do plan',
+          key: 'source',
+          label: 'Source',
+          model: 'fictional-model',
+          prompt: 'gather entries',
           skills: [],
           tools: [],
-          output: { hypotheses: { type: 'array' } },
+          output: { entries: { type: 'array' } },
         },
         {
-          key: 'investigate',
-          label: 'Investigate',
-          model: 'm',
-          prompt: 'do investigate',
-          forEach: 'plan.hypotheses',
+          key: 'inspect',
+          label: 'Inspect',
+          model: 'fictional-model',
+          prompt: 'inspect each entry',
+          forEach: 'source.entries',
           skills: [],
           tools: [],
           output: {},
         },
+        {
+          key: 'summary',
+          label: 'Summary',
+          model: 'fictional-model',
+          prompt: 'write summary',
+          skills: [],
+          tools: [],
+          output: { summary: { type: 'string' } },
+        },
       ],
     }
 
-    const { result, warnCalls } = await runWithWarnSpy(() =>
-      runAgentGraph(deps, config, {
-        agentsMd: 'AGENTS',
-        skills: {},
-        createStepMcpClient: buildStepMcpClientFactory(),
-        originalPromptText: 'req',
-      }),
-    )
-
-    expect(result).toEqual({
-      status: 'completed',
-      message: '2フェーズの実行が完了しました (Plan → Investigate)',
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
     })
-    expect(planAttempts).toBe(3)
-    expect(warnCalls).toEqual([
+
+    expect(
+      Array.of<unknown>(
+        result,
+        calls.map((call) => call.messageText),
+      ),
+    ).toEqual([
+      {
+        status: 'completed',
+        message: '3フェーズの実行が完了しました (Source → Inspect → Summary)',
+      },
       [
-        {
-          executionStepId: '<execution-step-id>',
-          attemptNumber: 1,
-          reason: 'missing_required_array_fields',
-        },
-        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
-      ],
-      [
-        {
-          executionStepId: '<execution-step-id>',
-          attemptNumber: 2,
-          reason: 'missing_required_array_fields',
-        },
-        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+        buildPhaseMessageText({
+          originalPromptText: 'req',
+          phaseKeys: ['source', 'inspect', 'summary'],
+          phaseKey: 'source',
+          phasePrompt: 'gather entries',
+          item: undefined,
+          priorResults: {},
+        }),
+        buildPhaseMessageText({
+          originalPromptText: 'req',
+          phaseKeys: ['source', 'inspect', 'summary'],
+          phaseKey: 'summary',
+          phasePrompt: 'write summary',
+          item: undefined,
+          priorResults: {
+            source: { entries: [] },
+            inspect: [],
+          },
+        }),
       ],
     ])
   })
