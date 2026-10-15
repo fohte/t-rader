@@ -8418,6 +8418,13 @@
             ],
             "format": "double"
           },
+          "price_start": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
           "status": {
             "type": "string"
           },
@@ -8826,6 +8833,13 @@
             ],
             "format": "double"
           },
+          "price_start": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
           "status": {
             "type": [
               "string",
@@ -8845,6 +8859,13 @@
           },
           "timestamp": {
             "type": "string",
+            "format": "date-time"
+          },
+          "timestamp_start": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         },
