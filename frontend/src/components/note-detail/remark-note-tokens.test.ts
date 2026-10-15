@@ -64,7 +64,7 @@ describe('remarkNoteTokens', () => {
     const valuationToken = '[[valuation:fictional-code@2030-01-02:per]]'
     const observationToken = '[[indicator:demo-indicator@2030-01-02]]'
     const tree = textTree(
-      `PER ${valuationToken}、USDJPY ${observationToken}、指標 [[indicator:demo-indicator]]`,
+      `PER ${valuationToken}、demo-rate ${observationToken}、指標 [[indicator:demo-indicator]]`,
     )
 
     remarkNoteTokens({
@@ -86,7 +86,7 @@ describe('remarkNoteTokens', () => {
                 hProperties: { value: '27.5' },
               },
             },
-            { type: 'text', value: '、USDJPY ' },
+            { type: 'text', value: '、demo-rate ' },
             {
               type: 'noteToken',
               data: {

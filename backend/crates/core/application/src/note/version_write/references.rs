@@ -41,7 +41,7 @@ pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReference
                 .get(&reference.token)
                 .and_then(Value::as_object)
                 .is_some_and(|entry| {
-                    entry.get("value").is_some_and(Value::is_number)
+                    entry.get("value").is_some_and(|value| !value.is_null())
                         && match &reference.reference {
                             NotePriceReference::Price { .. }
                             | NotePriceReference::Change { .. } => entry
@@ -211,13 +211,7 @@ impl NoteUseCases {
             .await?;
         }
 
-        let resolved = Value::Object(resolved_market_data);
-        if !has_resolutions(&resolved, references) {
-            return Err(NoteUseCaseError::Validation(
-                "価格参照をすべて解決できません".into(),
-            ));
-        }
-        Ok(resolved)
+        Ok(Value::Object(resolved_market_data))
     }
 
     async fn resolve_query_data_references(
