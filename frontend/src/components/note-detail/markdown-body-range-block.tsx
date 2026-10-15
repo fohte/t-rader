@@ -42,6 +42,7 @@ interface MarkdownBodyRangeBlockProps {
   element?: ReactNode
   variant?: 'block' | 'table-row'
   showGutter?: boolean
+  listDepth?: number
 }
 
 interface RangeBlockElementProps {
@@ -236,6 +237,7 @@ export function MarkdownBodyRangeBlock({
   element,
   variant = 'block',
   showGutter = true,
+  listDepth = 0,
 }: MarkdownBodyRangeBlockProps) {
   const context = useContext(MarkdownBodyRangeCommentContext)
   const parentSourceBlock = useContext(MarkdownBodySourceBlockContext)
@@ -258,12 +260,18 @@ export function MarkdownBodyRangeBlock({
   const presentation = commentBlockPresentation(range, context, childRanges)
   const { props } = context
   const showThread = presentation.isActive || presentation.comments.length > 0
-  const gutterButtonClassName = `z-10 min-h-7 w-11 select-none px-1 text-right font-mono text-2xs ${presentation.isSelected || presentation.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`
+  const gutterButtonClassName = `z-10 min-h-7 w-11 select-none text-right font-mono text-2xs ${presentation.isSelected || presentation.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`
   const commentMarker =
     presentation.isSelected || presentation.isCommented ? (
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 -left-0.5 w-0.5 bg-primary"
+        className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary"
+        style={{
+          left:
+            sourceBlockTag === 'li'
+              ? `calc(-1.25rem - ${String(listDepth * 1.25)}rem)`
+              : '-1.25rem',
+        }}
       />
     ) : null
   const commentThread = showThread ? (
@@ -339,7 +347,7 @@ export function MarkdownBodyRangeBlock({
 
   const gutterStyle: CSSProperties =
     sourceBlockTag === 'li'
-      ? { left: 'calc(-2.75rem - var(--note-list-indent, 0px))', top: 0 }
+      ? { left: `calc(-2.75rem - ${String(listDepth * 1.25)}rem)`, top: 0 }
       : sourceBlockTag === 'pre'
         ? { left: '-2.75rem', top: '0.75rem' }
         : sourceBlockTag === 'blockquote'

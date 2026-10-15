@@ -269,15 +269,26 @@ describe('MarkdownBody', () => {
 
     const getListItems = () =>
       [...container.querySelectorAll('li')].map((item) => ({
-        gutterLabels: [...item.children]
-          .filter((child) => child.tagName === 'BUTTON')
-          .map((button) => button.getAttribute('aria-label')),
+        gutters: [...item.children]
+          .filter(
+            (child): child is HTMLButtonElement => child.tagName === 'BUTTON',
+          )
+          .map((button) => ({
+            label: button.getAttribute('aria-label'),
+            left: button.style.left,
+          })),
         parentTag: item.parentElement?.tagName ?? null,
       }))
 
     expect(getListItems()).toEqual([
-      { gutterLabels: ['行 1 から 2 にコメント'], parentTag: 'UL' },
-      { gutterLabels: ['行 2 にコメント'], parentTag: 'OL' },
+      {
+        gutters: [{ label: '行 1 から 2 にコメント', left: 'calc(-4rem)' }],
+        parentTag: 'UL',
+      },
+      {
+        gutters: [{ label: '行 2 にコメント', left: 'calc(-5.25rem)' }],
+        parentTag: 'OL',
+      },
     ])
   })
 

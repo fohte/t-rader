@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import {
   type ComponentType,
+  createContext,
   type ReactNode,
   useContext,
   useEffect,
@@ -83,6 +84,8 @@ type NoteTokenComponents = {
     ParsedNoteChangeReference & { node?: MarkdownNode }
   >
 }
+
+const MarkdownBodyListDepthContext = createContext(0)
 
 function GraphNotice({ children }: { children: ReactNode }) {
   return (
@@ -218,22 +221,36 @@ export function MarkdownBody({
           }
         />
       ),
-      ul: ({ children }) => (
-        <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed [--note-list-indent:calc(var(--note-list-indent,0px)_+_1.25rem)]">
-          {children}
-        </ul>
-      ),
-      ol: ({ children }) => (
-        <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed [--note-list-indent:calc(var(--note-list-indent,0px)_+_1.25rem)]">
-          {children}
-        </ol>
-      ),
-      li: ({ children, node }) => (
-        <MarkdownBodyRangeBlock
-          node={node}
-          element={<li className="my-1">{children}</li>}
-        />
-      ),
+      ul: ({ children }) => {
+        const listDepth = useContext(MarkdownBodyListDepthContext)
+        return (
+          <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
+            <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed">
+              {children}
+            </ul>
+          </MarkdownBodyListDepthContext.Provider>
+        )
+      },
+      ol: ({ children }) => {
+        const listDepth = useContext(MarkdownBodyListDepthContext)
+        return (
+          <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
+            <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed">
+              {children}
+            </ol>
+          </MarkdownBodyListDepthContext.Provider>
+        )
+      },
+      li: ({ children, node }) => {
+        const listDepth = useContext(MarkdownBodyListDepthContext)
+        return (
+          <MarkdownBodyRangeBlock
+            node={node}
+            listDepth={listDepth}
+            element={<li className="my-1">{children}</li>}
+          />
+        )
+      },
       blockquote: ({ children, node }) => (
         <MarkdownBodyRangeBlock
           node={node}
@@ -422,7 +439,7 @@ export function MarkdownBody({
   return (
     <div
       ref={selection.rootRef}
-      className="text-foreground"
+      className={`text-foreground ${rangeComments == null ? '' : '-ml-5 pl-5'}`}
       onMouseUp={selection.onMouseUp}
       onTouchEnd={selection.onTouchEnd}
       onPointerMove={selection.onPointerMove}

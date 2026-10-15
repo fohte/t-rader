@@ -60,6 +60,28 @@ print("nsjail で集計したサンプル")
 \`\`\`
 `
 
+const GUTTER_LAYOUT_SAMPLE = `${'\n'.repeat(99)}${[
+  '# 行番号付きの本文',
+  '',
+  '## 見出しと段落',
+  '',
+  '本文の位置と字下げを保つ。',
+  '',
+  '- 箇条書き',
+  '    - 入れ子の項目',
+  '',
+  '1. 番号付きリスト',
+  '    1. 入れ子の番号付きリスト',
+  '',
+  '> 引用文',
+  '',
+  '    コード行',
+  '',
+  '| 項目 | 状態 |',
+  '| --- | --- |',
+  '| 表の行 | 対象 |',
+].join('\n')}`
+
 const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
   {
     note_id: '00000000-0000-0000-0000-000000000101',
@@ -91,21 +113,38 @@ const rangeComment: NoteVersionComment = {
   created_at: '2026-01-12T03:00:00Z',
 }
 
-const formattedNoteComment: NoteVersionComment = {
-  id: 'formatted-note-comment',
-  target_kind: 'note_version',
-  target_id: 'sample-version',
-  parent_id: null,
-  body: 'この項目を確認してください。',
-  author_kind: 'human',
-  author_label: 'レビュー担当者',
-  resolved: false,
-  anchor_text: '下限から中央へ戻った割合',
-  anchor_side: 'new',
-  start_line: 11,
-  end_line: 11,
-  created_at: '2026-01-12T03:00:00Z',
-}
+const formattedNoteComments: NoteVersionComment[] = [
+  {
+    id: 'nested-list-comment',
+    target_kind: 'note_version',
+    target_id: 'sample-version',
+    parent_id: null,
+    body: '入れ子の項目を確認した。',
+    author_kind: 'human',
+    author_label: 'レビュー担当者',
+    resolved: false,
+    anchor_text: '入れ子の項目',
+    anchor_side: 'new',
+    start_line: 107,
+    end_line: 107,
+    created_at: '2026-01-12T03:00:00Z',
+  },
+  {
+    id: 'table-row-comment',
+    target_kind: 'note_version',
+    target_id: 'sample-version',
+    parent_id: null,
+    body: '表の行を確認した。',
+    author_kind: 'human',
+    author_label: 'レビュー担当者',
+    resolved: false,
+    anchor_text: '| 表の行 | 対象 |',
+    anchor_side: 'new',
+    start_line: 118,
+    end_line: 118,
+    created_at: '2026-01-12T03:00:00Z',
+  },
+]
 
 const rangeCommentProps = {
   comments: [rangeComment],
@@ -168,23 +207,30 @@ export const Default: Story = {
 }
 
 export const WithRangeCommentGutter: Story = {
-  name: 'keeps a formatted note aligned beside its comment gutter.',
+  name: 'the formatted note keeps its body position beside the comment gutter.',
+  decorators: [
+    (Story) => (
+      <div className="border border-border bg-card p-5 text-foreground">
+        <Story />
+      </div>
+    ),
+  ],
   args: {
-    source: SAMPLE,
+    source: GUTTER_LAYOUT_SAMPLE,
     noteLinks: NOTE_LINKS,
     rangeComments: {
       ...rangeCommentProps,
-      comments: [formattedNoteComment],
+      comments: formattedNoteComments,
       activeCommentAnchor: {
         side: 'new',
-        lineNumber: 3,
-        endLineNumber: 3,
-        text: '要約',
+        lineNumber: 118,
+        endLineNumber: 118,
+        text: '| 表の行 | 対象 |',
       },
       activeCommentKey: getDiffCommentAnchorKey({
         side: 'new',
-        lineNumber: 3,
-        endLineNumber: 3,
+        lineNumber: 118,
+        endLineNumber: 118,
         text: '',
       }),
     },
