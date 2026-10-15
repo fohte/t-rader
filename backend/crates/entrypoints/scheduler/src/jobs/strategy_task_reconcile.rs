@@ -116,8 +116,9 @@ mod tests {
         agent_task_client::{AgentTaskState, AgentTaskStatus, FakeAgentTaskClient},
         persistence::PersistenceError,
         strategy_task::{
-            StrategyTask, StrategyTaskPhase, StrategyTaskRepository, StrategyTaskRepositoryError,
-            StrategyTaskStep, StrategyTaskUpdate, StrategyTaskUseCases, TaskListQuery,
+            StrategyTask, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskRepository,
+            StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskUpdate,
+            StrategyTaskUseCases, TaskListQuery,
         },
         unit_of_work::FakeUnitOfWork,
     };
@@ -216,10 +217,10 @@ mod tests {
             Ok(None)
         }
 
-        async fn find_strategy_id_by_execution_step_id(
+        async fn find_origin_by_execution_step_id(
             &self,
             _execution_step_id: Uuid,
-        ) -> Result<Option<Uuid>, StrategyTaskRepositoryError> {
+        ) -> Result<Option<StrategyTaskOrigin>, StrategyTaskRepositoryError> {
             Ok(None)
         }
 

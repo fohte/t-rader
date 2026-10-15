@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::persistence::PersistenceError;
 use crate::strategy_task::repository::{StrategyTaskRepository, StrategyTaskRepositoryError};
 use crate::strategy_task::{
-    StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus, StrategyTaskUpdate,
-    TaskListQuery,
+    StrategyTask, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
+    StrategyTaskUpdate, TaskListQuery,
 };
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -199,10 +199,10 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
             .cloned())
     }
 
-    async fn find_strategy_id_by_execution_step_id(
+    async fn find_origin_by_execution_step_id(
         &self,
         _execution_step_id: Uuid,
-    ) -> Result<Option<Uuid>, StrategyTaskRepositoryError> {
+    ) -> Result<Option<StrategyTaskOrigin>, StrategyTaskRepositoryError> {
         Ok(None)
     }
 

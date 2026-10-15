@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use core_application::strategy_task::{
-    StrategyTask, StrategyTaskPhase, StrategyTaskRepository, StrategyTaskRepositoryError,
-    StrategyTaskStep, StrategyTaskStepStatus, StrategyTaskUpdate, TaskListQuery,
+    StrategyTask, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskRepository,
+    StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskStepStatus, StrategyTaskUpdate,
+    TaskListQuery,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
@@ -166,10 +167,10 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             .map_err(repository_error)
     }
 
-    async fn find_strategy_id_by_execution_step_id(
+    async fn find_origin_by_execution_step_id(
         &self,
         execution_step_id: Uuid,
-    ) -> Result<Option<Uuid>, StrategyTaskRepositoryError> {
+    ) -> Result<Option<StrategyTaskOrigin>, StrategyTaskRepositoryError> {
         let Some(step) = strategy_task_step::Entity::find_by_id(execution_step_id)
             .one(&self.db)
             .await
@@ -180,7 +181,12 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         strategy_task::Entity::find_by_id(step.task_id)
             .one(&self.db)
             .await
-            .map(|task| task.map(|task| task.strategy_id))
+            .map(|task| {
+                task.map(|task| StrategyTaskOrigin {
+                    strategy_id: task.strategy_id,
+                    task_id: task.task_id,
+                })
+            })
             .map_err(repository_error)
     }
 

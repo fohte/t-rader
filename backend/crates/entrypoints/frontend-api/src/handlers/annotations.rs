@@ -279,19 +279,19 @@ pub async fn reject_annotation(
 
     let strategy_id = match current.execution_step_id {
         Some(execution_step_id) => {
-            let strategy_id = state
+            let origin = state
                 .strategy_task_use_cases
-                .find_strategy_id_by_execution_step_id(execution_step_id)
+                .find_origin_by_execution_step_id(execution_step_id)
                 .await
                 .map_err(map_get_task_error)?;
-            if strategy_id.is_none() {
+            if origin.is_none() {
                 tracing::warn!(
                     annotation_id = %current.id,
                     execution_step_id = %execution_step_id,
                     "annotation execution step is not recorded"
                 );
             }
-            strategy_id
+            origin.map(|origin| origin.strategy_id)
         }
         None => None,
     };

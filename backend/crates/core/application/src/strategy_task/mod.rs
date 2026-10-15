@@ -29,8 +29,9 @@ pub use repository::{
     SharedStrategyTaskRepository, StrategyTaskRepository, StrategyTaskRepositoryError,
 };
 pub use types::{
-    StrategyTask, StrategyTaskContext, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
-    StrategyTaskUpdate, SubmittedTask, TaskListQuery, TaskSource, TaskStatusView,
+    StrategyTask, StrategyTaskContext, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskStep,
+    StrategyTaskStepStatus, StrategyTaskUpdate, SubmittedTask, TaskListQuery, TaskSource,
+    TaskStatusView,
 };
 
 use crate::agent_config::graph::parse_agent_graph;

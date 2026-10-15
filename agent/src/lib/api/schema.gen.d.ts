@@ -1411,6 +1411,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategy-task-steps/{step_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 実行ステップが属する戦略と実行を取得する */
+    get: operations['get_strategy_task_step_origin']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/tasks': {
     parameters: {
       query?: never
@@ -2776,6 +2793,13 @@ export interface components {
       task_id: string
       /** Format: date-time */
       updated_at: string
+    }
+    /** @description `GET /api/strategy-task-steps/:step_id` の戻り値。 */
+    StrategyTaskStepOriginResponse: {
+      /** Format: uuid */
+      strategy_id: string
+      /** Format: uuid */
+      task_id: string
     }
     /**
      * @description `GET /api/strategies/:id/tasks` と `GET /api/tasks` の一覧要素。`steps`/`result_text`
@@ -8680,6 +8704,54 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_strategy_task_step_origin: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 実行ステップ ID */
+        step_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyTaskStepOriginResponse']
+        }
+      }
+      /** @description 実行ステップ ID が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 実行ステップまたは親の実行が存在しない */
+      404: {
         headers: {
           [name: string]: unknown
         }
