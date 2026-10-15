@@ -101,6 +101,7 @@ const buildCompiledAgent = (
     systemPrompt: string
     responseFormat: ReturnType<typeof toolStrategy>
     deadlineSignal?: AbortSignal
+    phaseTimeout?: BuildPhaseAgentOptions['phaseTimeout']
   },
 ): CompiledPhaseAgent => {
   const agent = createAgent({
@@ -126,7 +127,12 @@ const buildCompiledAgent = (
       createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
       createCallDurationMiddleware(llmCallTimeoutMs),
       ...(options.deadlineSignal !== undefined
-        ? [createDeadlineMiddleware(options.deadlineSignal)]
+        ? [
+            createDeadlineMiddleware(
+              options.deadlineSignal,
+              options.phaseTimeout,
+            ),
+          ]
         : []),
       // LangChain の戻り値検証前に assistant 以外の message を再試行可能なエラーへ変える。
       nonAssistantModelResponseMiddleware,

@@ -7,7 +7,7 @@ import { bindModelCallSignal } from '#strategy-agent/bind-model-call-signal'
 export class AbortedModelCallError extends Error {
   constructor(
     message: string,
-    readonly reason: 'deadline' | 'call-duration',
+    readonly reason: 'deadline' | 'call-duration' | 'phase-timeout',
   ) {
     super(message)
   }
@@ -19,10 +19,12 @@ export class AbortedModelCallError extends Error {
 // factory (例: () => AbortSignal.timeout(ms)) を渡せる。
 export const createAbortingModelCallMiddleware = (
   name: string,
-  reason: AbortedModelCallError['reason'],
+  reason:
+    | AbortedModelCallError['reason']
+    | ((signal: AbortSignal) => AbortedModelCallError['reason']),
   getSignal: () => AbortSignal,
   fingerprint: string,
-  buildErrorMessage: () => string,
+  buildErrorMessage: (signal: AbortSignal) => string,
 ) =>
   createMiddleware({
     name,
@@ -33,14 +35,16 @@ export const createAbortingModelCallMiddleware = (
         (error: unknown) => {
           // eslint-disable-next-line no-restricted-syntax -- abort によるものでないエラーはそのまま呼び出し元に伝播させる必要がある
           if (!signal.aborted) throw error
-          const message = buildErrorMessage()
+          const message = buildErrorMessage(signal)
+          const errorReason =
+            typeof reason === 'function' ? reason(signal) : reason
           logger.warn({}, message)
           captureWithFingerprint(
-            new AbortedModelCallError(message, reason),
+            new AbortedModelCallError(message, errorReason),
             fingerprint,
           )
           // eslint-disable-next-line no-restricted-syntax -- abort 起因のエラーを人間可読なメッセージに変換して再送出する。呼び出し元 (invokePhaseWithRetry 等) は reject をそのまま Result に変換する契約のため、ここで catch した後は再送出するしかない
-          throw new AbortedModelCallError(message, reason)
+          throw new AbortedModelCallError(message, errorReason)
         },
       )
     },

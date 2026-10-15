@@ -1693,6 +1693,57 @@ describe('createStrategyAgentDeps', () => {
     }
   })
 
+  it('reports a phase timeout and does not retry the aborted model call', async () => {
+    const phaseTimeoutController = new AbortController()
+    let capturedSignal: AbortSignal | undefined
+    let callCount = 0
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      capturedSignal = init?.signal ?? undefined
+      setTimeout(() => {
+        phaseTimeoutController.abort()
+      }, 10)
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new Error('aborted'))
+        })
+      })
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+      deadlineSignal: AbortSignal.any([phaseTimeoutController.signal]),
+      phaseTimeout: {
+        signal: phaseTimeoutController.signal,
+        phaseKey: 'sample-phase',
+        timeoutMinutes: 1,
+      },
+    })
+
+    const outcome = await agent
+      .invoke({ messages: [new HumanMessage('hi')] })
+      .then(
+        () => 'resolved',
+        (error: unknown) =>
+          error instanceof Error
+            ? `${error.name}: ${error.message}`
+            : String(error),
+      )
+
+    const actual = Array.of<unknown>(
+      callCount,
+      outcome,
+      capturedSignal?.aborted ?? false,
+    )
+    expect(actual).toEqual([
+      1,
+      'Error: フェーズ sample-phase が timeout (1 分) を超過',
+      true,
+    ])
+  })
+
   it('aborts the model call once distinct tool call indices exceed MAX_TOOL_CALLS_PER_MODEL_CALL, even mid-stream', async () => {
     const encoder = new TextEncoder()
     // OpenAI chat completions のストリーミング delta。1 chunk につき

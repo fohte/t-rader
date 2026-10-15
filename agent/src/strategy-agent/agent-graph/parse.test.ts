@@ -23,6 +23,7 @@ describe('parseAgentGraph', () => {
 
   it('parses a valid multi-phase config into camelCase phases', () => {
     const yaml = `
+timeout_minutes: 30
 tool_models:
   search_web: example-model-search
   query_youtube: example-model-youtube
@@ -40,6 +41,7 @@ phases:
   - key: investigate
     label: 仮説の調査
     model: example-model-investigate
+    timeout_minutes: 15
     for_each: plan.hypotheses
     label_field: title
     max_parallel: 4
@@ -49,6 +51,7 @@ phases:
 
     expect(parseAgentGraph(yaml)).toEqual(
       ok({
+        timeoutMinutes: 30,
         toolModels: {
           search_web: 'example-model-search',
           query_youtube: 'example-model-youtube',
@@ -72,6 +75,7 @@ phases:
             key: 'investigate',
             label: '仮説の調査',
             model: 'example-model-investigate',
+            timeoutMinutes: 15,
             prompt: '割り当てられた仮説を検証せよ',
             forEach: 'plan.hypotheses',
             labelField: 'title',
@@ -82,6 +86,35 @@ phases:
           },
         ],
       }),
+    )
+  })
+
+  it.each([
+    { name: 'zero at the graph level', target: 'graph', value: '0' },
+    { name: 'too large at the graph level', target: 'graph', value: '361' },
+    { name: 'fractional at the graph level', target: 'graph', value: '1.5' },
+    { name: 'zero in a phase', target: 'phase', value: '0' },
+    { name: 'too large in a phase', target: 'phase', value: '361' },
+    { name: 'fractional in a phase', target: 'phase', value: '1.5' },
+  ])('rejects a timeout that is $name', ({ target, value }) => {
+    const timeoutConfig =
+      target === 'graph'
+        ? `timeout_minutes: ${value}`
+        : `phases:\n  - key: sample\n    label: Sample\n    model: example-model-sample\n    prompt: sample\n    timeout_minutes: ${value}`
+    const yaml =
+      target === 'graph'
+        ? `${timeoutConfig}\nphases:\n  - key: sample\n    label: Sample\n    model: example-model-sample\n    prompt: sample`
+        : timeoutConfig
+
+    const normalized = parseAgentGraph(yaml).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+    expect(normalized).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
     )
   })
 

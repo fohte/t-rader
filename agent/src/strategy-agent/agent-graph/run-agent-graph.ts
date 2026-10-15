@@ -23,6 +23,11 @@ import type {
   AgentGraphConfig,
   AgentGraphPhase,
 } from '#strategy-agent/agent-graph/types'
+import {
+  isPhaseTimeoutSignal,
+  type PhaseTimeout,
+  phaseTimeoutMessage,
+} from '#strategy-agent/phase-timeout'
 import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -35,8 +40,56 @@ export type {
 
 const DEADLINE_EXCEEDED_MESSAGE = 'deadline を超過したため実行を中断しました'
 
-const isDeadlineExceeded = (context: RunAgentGraphContext): boolean =>
+const isExecutionAborted = (context: RunAgentGraphContext): boolean =>
   context.deadlineSignal?.aborted === true
+
+const getExecutionAbortMessage = (context: RunAgentGraphContext): string => {
+  const { phaseTimeout } = context
+  return isPhaseTimeoutSignal(context.deadlineSignal, phaseTimeout)
+    ? phaseTimeoutMessage(phaseTimeout)
+    : DEADLINE_EXCEEDED_MESSAGE
+}
+
+const createPhaseExecutionContext = (
+  context: RunAgentGraphContext,
+  phase: AgentGraphPhase,
+): {
+  readonly context: RunAgentGraphContext
+  readonly cleanup?: () => void
+} => {
+  if (phase.timeoutMinutes === undefined) {
+    return { context }
+  }
+
+  const phaseTimeoutController = new AbortController()
+  const timeoutId = setTimeout(() => {
+    phaseTimeoutController.abort()
+  }, phase.timeoutMinutes * 60_000)
+  const deadlineSignal =
+    context.deadlineSignal === undefined
+      ? phaseTimeoutController.signal
+      : AbortSignal.any([context.deadlineSignal, phaseTimeoutController.signal])
+  const phaseTimeout: PhaseTimeout = {
+    signal: phaseTimeoutController.signal,
+    phaseKey: phase.key,
+    timeoutMinutes: phase.timeoutMinutes,
+  }
+
+  return {
+    context: { ...context, deadlineSignal, phaseTimeout },
+    cleanup: () => {
+      clearTimeout(timeoutId)
+    },
+  }
+}
+
+const buildPhaseTimeoutResult = (
+  phaseTimeout: PhaseTimeout,
+): StrategyAgentResult => ({
+  status: 'failed',
+  message: phaseTimeoutMessage(phaseTimeout),
+  errorKind: 'agent_error',
+})
 
 const buildFailureResult = (
   phase: AgentGraphPhase,
@@ -133,8 +186,8 @@ const runForEachItems = async (
   let firstError: unknown
   const previousStepMatcher = createPreviousStepMatcher(previousStepsForPhase)
 
-  if (isDeadlineExceeded(context)) {
-    return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+  if (isExecutionAborted(context)) {
+    return err(new Error(getExecutionAbortMessage(context)))
   }
 
   const runItem = (index: number): Promise<Result<unknown, unknown>> => {
@@ -180,7 +233,7 @@ const runForEachItems = async (
   const runWorker = async (): Promise<boolean> => {
     let isFirstItem = true
     while (nextIndex < items.length) {
-      if (!isFirstItem && isDeadlineExceeded(context)) {
+      if (!isFirstItem && isExecutionAborted(context)) {
         return true
       }
       const index = nextIndex
@@ -200,7 +253,7 @@ const runForEachItems = async (
   )
 
   if (workerDeadlines.includes(true)) {
-    return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+    return err(new Error(getExecutionAbortMessage(context)))
   }
 
   for (const itemResult of results) {
@@ -235,8 +288,8 @@ const runPhase = async (
   requiredArrayFieldsByPhase: ReadonlyMap<string, ReadonlySet<string>>,
   reuseCompleted: boolean,
 ): Promise<Result<unknown, unknown>> => {
-  if (isDeadlineExceeded(context)) {
-    return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+  if (isExecutionAborted(context)) {
+    return err(new Error(getExecutionAbortMessage(context)))
   }
 
   const requiredArrayFields =
@@ -314,17 +367,38 @@ export const runAgentGraph = async (
   )
 
   for (const [index, phase] of config.phases.entries()) {
+    const phaseExecution = createPhaseExecutionContext(context, phase)
     const phaseResult = await runPhase(
       deps,
       phase,
-      context,
+      phaseExecution.context,
       results,
       phaseKeys,
       recorder,
       requiredArrayFieldsByPhase,
       firstIncompleteIndex === -1 || index <= firstIncompleteIndex,
-    )
+    ).finally(() => {
+      phaseExecution.cleanup?.()
+    })
+
+    const { phaseTimeout } = phaseExecution.context
+    if (
+      isPhaseTimeoutSignal(phaseExecution.context.deadlineSignal, phaseTimeout)
+    ) {
+      return buildPhaseTimeoutResult(phaseTimeout)
+    }
     if (phaseResult.isErr()) {
+      if (
+        phaseExecution.context.phaseTimeout !== undefined &&
+        isExecutionAborted(phaseExecution.context)
+      ) {
+        return buildFailureResult(
+          phase,
+          new Error(getExecutionAbortMessage(phaseExecution.context), {
+            cause: phaseResult.error,
+          }),
+        )
+      }
       return buildFailureResult(phase, phaseResult.error)
     }
     results[phase.key] = phaseResult.value
