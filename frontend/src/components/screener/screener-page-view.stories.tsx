@@ -102,8 +102,8 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Results: Story = {
-  name: '条件に一致する銘柄を表とカードで表示します。',
-  args,
+  name: 'PER 上限を指定した結果を表とカードで表示します。',
+  args: { ...args, search: { max_per: 15 } },
 }
 
 export const MobileResults: Story = {
