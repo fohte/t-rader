@@ -35,8 +35,8 @@ vi.mock('#lib/api/client', () => ({
         apiMock.callbacks[path] = callbacks
       },
     }),
-    queryOptions: (method: string, path: string) => ({
-      queryKey: [method, path],
+    queryOptions: (method: string, path: string, options?: unknown) => ({
+      queryKey: [method, path, options],
     }),
   },
 }))
@@ -74,6 +74,8 @@ function renderPanel(onReviewed: (status: NoteVersionReviewResult) => void) {
       <NoteVersionReviewPanel version={version} onReviewed={onReviewed} />
     </QueryClientProvider>,
   )
+
+  return queryClient
 }
 
 describe('NoteVersionReviewPanel', () => {
@@ -105,5 +107,57 @@ describe('NoteVersionReviewPanel', () => {
     await user.click(screen.getByRole('button', { name: '✓ 承認' }))
 
     expect(onReviewed.mock.calls).toEqual([])
+  })
+
+  it('invalidates the note query for the reviewed version', async () => {
+    const user = userEvent.setup()
+    const onReviewed = vi.fn<(status: NoteVersionReviewResult) => void>()
+    const queryClient = renderPanel(onReviewed)
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await user.click(screen.getByRole('button', { name: '✓ 承認' }))
+    act(() => {
+      apiMock.callbacks['/api/notes/{id}/versions/{n}/approve']?.onSuccess?.()
+    })
+
+    expect(
+      invalidateQueries.mock.calls.map(([filters]) => filters?.queryKey),
+    ).toEqual([
+      [
+        'get',
+        '/api/notes/{id}/versions',
+        { params: { path: { id: 'fake-note-a' } } },
+      ],
+      [
+        'get',
+        '/api/notes/{id}/versions/{n}',
+        { params: { path: { id: 'fake-note-a', n: 2 } } },
+      ],
+      ['get', '/api/note-versions/pending', undefined],
+      [
+        'get',
+        '/api/notes/{id}',
+        {
+          params: {
+            path: { id: 'fake-note-a' },
+            query: { version_id: 'fake-version-a' },
+          },
+        },
+      ],
+      ['get', '/api/notes', undefined],
+      [
+        'get',
+        '/api/history',
+        {
+          params: {
+            query: {
+              target_kind: 'note',
+              target_id: 'fake-note-a',
+              limit: 50,
+            },
+          },
+        },
+      ],
+    ])
   })
 })
