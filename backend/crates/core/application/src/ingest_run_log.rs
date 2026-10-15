@@ -99,33 +99,38 @@ impl IngestRunLogUseCases {
             .repository
             .finish(&transaction, run_id, status, stats.clone(), error.clone())
             .await?;
-        let Some(job) = job else {
-            self.unit_of_work
-                .commit(transaction)
+        let should_enqueue_dispatch = job.is_some();
+        if let Some(job) = job {
+            self.event_repository
+                .create(
+                    &transaction,
+                    NewEvent {
+                        event_type: event_type.to_owned(),
+                        payload: serde_json::json!({
+                            "run_id": run_id,
+                            "job": job,
+                            "stats": stats,
+                            "error": error,
+                        }),
+                        chain_depth: Some(0),
+                    },
+                )
                 .await
                 .map_err(|error| PersistenceError::Database(error.to_string()))?;
-            return Ok(());
-        };
-        self.event_repository
-            .create(
-                &transaction,
-                NewEvent {
-                    event_type: event_type.to_owned(),
-                    payload: serde_json::json!({
-                        "run_id": run_id,
-                        "job": job,
-                        "stats": stats,
-                        "error": error,
-                    }),
-                    chain_depth: Some(0),
-                },
-            )
-            .await
-            .map_err(|error| PersistenceError::Database(error.to_string()))?;
+        }
         self.unit_of_work
             .commit(transaction)
             .await
             .map_err(|error| PersistenceError::Database(error.to_string()))?;
+
+        if !should_enqueue_dispatch {
+            tracing::warn!(
+                %run_id,
+                attempted_status = status,
+                "ingest run was already finished; discarding result and skipping event"
+            );
+            return Ok(());
+        }
 
         if let Err(error) = self.event_dispatch_job.enqueue_dispatch().await {
             tracing::warn!(
