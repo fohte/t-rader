@@ -108,6 +108,13 @@ describe('createModelCallRetryMiddleware', () => {
       error: new AbortedModelCallError('deadline elapsed', 'deadline'),
     },
     {
+      name: 'phase timeouts',
+      error: new AbortedModelCallError(
+        'phase timeout elapsed',
+        'phase-timeout',
+      ),
+    },
+    {
       name: 'usage limits',
       error: Object.assign(new Error('usage limit reached'), {
         rateLimitType: 'stop',

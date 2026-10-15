@@ -124,6 +124,9 @@ const createPhaseAgent = (
     ...(context.deadlineSignal !== undefined
       ? { deadlineSignal: context.deadlineSignal }
       : {}),
+    ...(context.phaseTimeout !== undefined
+      ? { phaseTimeout: context.phaseTimeout }
+      : {}),
   })
 }
 

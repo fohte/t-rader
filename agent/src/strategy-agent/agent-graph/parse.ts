@@ -7,6 +7,8 @@ import type {
   AgentGraphPhase,
 } from '#strategy-agent/agent-graph/types'
 
+const timeoutMinutesSchema = z.number().int().min(1).max(360)
+
 export class AgentGraphParseError extends Error {
   constructor(message: string, cause?: unknown) {
     super(message, cause === undefined ? undefined : { cause })
@@ -23,6 +25,7 @@ const agentGraphPhaseSchema = z.object({
   for_each: z.string().optional(),
   label_field: z.string().optional(),
   max_parallel: z.number().optional(),
+  timeout_minutes: timeoutMinutesSchema.optional(),
   skills: z.array(z.string()).default([]),
   // 省略 (undefined) と明示的な空配列を区別するため .default([]) は付けない。
   tools: z.array(z.string()).optional(),
@@ -30,6 +33,7 @@ const agentGraphPhaseSchema = z.object({
 })
 
 const agentGraphConfigSchema = z.object({
+  timeout_minutes: timeoutMinutesSchema.optional(),
   tool_models: z.record(z.string(), z.string()).optional(),
   phases: z.array(agentGraphPhaseSchema),
 })
@@ -47,6 +51,9 @@ const toAgentGraphPhase = (
   ...(raw.for_each !== undefined ? { forEach: raw.for_each } : {}),
   ...(raw.label_field !== undefined ? { labelField: raw.label_field } : {}),
   ...(raw.max_parallel !== undefined ? { maxParallel: raw.max_parallel } : {}),
+  ...(raw.timeout_minutes !== undefined
+    ? { timeoutMinutes: raw.timeout_minutes }
+    : {}),
   skills: raw.skills,
   ...(raw.tools !== undefined ? { tools: raw.tools } : {}),
   output: raw.output,
@@ -75,6 +82,9 @@ export const parseAgentGraph = (
       )
     }
     return ok({
+      ...(validated.data.timeout_minutes !== undefined
+        ? { timeoutMinutes: validated.data.timeout_minutes }
+        : {}),
       ...(validated.data.tool_models !== undefined
         ? { toolModels: validated.data.tool_models }
         : {}),

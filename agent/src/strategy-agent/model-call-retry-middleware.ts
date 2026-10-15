@@ -99,7 +99,8 @@ const isRetryableModelCallError = (error: Error): boolean => {
   if (
     errorChain.some(
       (cause) =>
-        cause instanceof AbortedModelCallError && cause.reason === 'deadline',
+        cause instanceof AbortedModelCallError &&
+        (cause.reason === 'deadline' || cause.reason === 'phase-timeout'),
     ) ||
     isUsageLimitError(error)
   ) {

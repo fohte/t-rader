@@ -23,6 +23,7 @@ describe('parseAgentGraph', () => {
 
   it('parses a valid multi-phase config into camelCase phases', () => {
     const yaml = `
+timeout_minutes: 30
 tool_models:
   search_web: example-model-search
   query_youtube: example-model-youtube
@@ -40,6 +41,7 @@ phases:
   - key: investigate
     label: 仮説の調査
     model: example-model-investigate
+    timeout_minutes: 15
     for_each: plan.hypotheses
     label_field: title
     max_parallel: 4
@@ -49,6 +51,7 @@ phases:
 
     expect(parseAgentGraph(yaml)).toEqual(
       ok({
+        timeoutMinutes: 30,
         toolModels: {
           search_web: 'example-model-search',
           query_youtube: 'example-model-youtube',
@@ -72,6 +75,7 @@ phases:
             key: 'investigate',
             label: '仮説の調査',
             model: 'example-model-investigate',
+            timeoutMinutes: 15,
             prompt: '割り当てられた仮説を検証せよ',
             forEach: 'plan.hypotheses',
             labelField: 'title',

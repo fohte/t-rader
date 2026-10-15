@@ -4,6 +4,7 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 
 import type { ObjectJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import type { PhaseTimeout } from '#strategy-agent/phase-timeout'
 import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 
 export interface BuildPhaseAgentOptions {
@@ -12,6 +13,7 @@ export interface BuildPhaseAgentOptions {
   readonly systemPrompt: string
   readonly responseSchema: ObjectJsonSchema
   readonly deadlineSignal?: AbortSignal
+  readonly phaseTimeout?: PhaseTimeout
 }
 
 export interface CompiledPhaseAgent {
@@ -54,8 +56,9 @@ export interface RunAgentGraphContext {
   // executionStepId を再利用する。
   readonly previousSteps?: readonly StrategyTaskStep[]
   // 実行全体で共有する signal。abort 済みなら新規フェーズ/要素の実行を
-  // 開始しない (モデル呼び出し自体の中断は deadline-middleware が担う)。
+  // 開始しない (phase-local context ではフェーズ timeout と合成する)。
   readonly deadlineSignal?: AbortSignal
+  readonly phaseTimeout?: PhaseTimeout
 }
 
 export type StepStartInput = Omit<

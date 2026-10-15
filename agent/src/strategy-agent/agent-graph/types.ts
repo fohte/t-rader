@@ -9,6 +9,7 @@ export interface AgentGraphPhase {
   readonly forEach?: string
   readonly labelField?: string
   readonly maxParallel?: number
+  readonly timeoutMinutes?: number
   readonly skills: readonly string[]
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   readonly tools?: readonly string[]
@@ -16,6 +17,7 @@ export interface AgentGraphPhase {
 }
 
 export interface AgentGraphConfig {
+  readonly timeoutMinutes?: number
   readonly toolModels?: Readonly<Record<string, string>>
   readonly phases: readonly AgentGraphPhase[]
 }

@@ -279,7 +279,7 @@ describe('runAgentGraph', () => {
     expect(calls).toEqual([])
   })
 
-  it('does not start pending for_each items after the deadline is exceeded', async () => {
+  it('keeps the task deadline reason when it wins over the phase timeout', async () => {
     const controller = new AbortController()
     const { deps, calls } = buildDeps((call) => {
       if (call.messageText.includes('do plan')) {
@@ -308,6 +308,7 @@ describe('runAgentGraph', () => {
           prompt: 'do work',
           forEach: 'plan.items',
           maxParallel: 2,
+          timeoutMinutes: 1,
           skills: [],
           tools: [],
           output: {},
@@ -364,6 +365,103 @@ describe('runAgentGraph', () => {
         },
       ],
     ])
+  })
+
+  it('applies one timeout to the whole for_each phase', async () => {
+    vi.useFakeTimers()
+    try {
+      const firstItemStarted = createDeferred<undefined>()
+      const secondItemStarted = createDeferred<undefined>()
+      const calls: string[] = []
+      let workCalls = 0
+      const deps: RunAgentGraphDeps = {
+        createChatModel: () => new FakeChatModel({}),
+        buildPhaseAgent: (options): CompiledPhaseAgent => ({
+          invoke: (input) => {
+            const messageText = input.messages
+              .map((message) => message.text)
+              .join('\n')
+            if (messageText.includes('build items')) {
+              calls.push('plan')
+              return Promise.resolve({
+                structuredResponse: { items: ['first', 'second'] },
+              })
+            }
+
+            calls.push('work')
+            workCalls += 1
+            if (workCalls === 1) firstItemStarted.resolve(undefined)
+            if (workCalls === 2) secondItemStarted.resolve(undefined)
+            return new Promise((resolve, reject) => {
+              const signal = options.deadlineSignal
+              const itemTimer = setTimeout(() => {
+                resolve({ structuredResponse: {} })
+              }, 40_000)
+              const rejectOnAbort = (): void => {
+                clearTimeout(itemTimer)
+                reject(new Error('phase signal aborted'))
+              }
+              if (signal?.aborted === true) {
+                rejectOnAbort()
+              } else {
+                signal?.addEventListener('abort', rejectOnAbort, { once: true })
+              }
+            })
+          },
+        }),
+      }
+      const execution = runAgentGraph(
+        deps,
+        {
+          phases: [
+            {
+              key: 'plan',
+              label: 'Plan',
+              model: 'example-model-plan',
+              prompt: 'build items',
+              skills: [],
+              output: {
+                items: { type: 'array', items: { type: 'string' } },
+              },
+            },
+            {
+              key: 'work',
+              label: 'Work',
+              model: 'example-model-work',
+              prompt: 'process item',
+              forEach: 'plan.items',
+              maxParallel: 1,
+              timeoutMinutes: 1,
+              skills: [],
+              output: {},
+            },
+          ],
+        },
+        {
+          agentsMd: 'AGENTS',
+          skills: {},
+          createStepMcpClient: buildStepMcpClientFactory(),
+          originalPromptText: 'req',
+        },
+      )
+
+      await firstItemStarted.promise
+      await vi.advanceTimersByTimeAsync(40_000)
+      await secondItemStarted.promise
+      await vi.advanceTimersByTimeAsync(20_000)
+
+      const actual = Array.of<unknown>(await execution, calls)
+      expect(actual).toEqual([
+        {
+          status: 'failed',
+          message: 'フェーズ work が timeout (1 分) を超過',
+          errorKind: 'agent_error',
+        },
+        ['plan', 'work', 'work'],
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('passes the phase reasoning effort through to createChatModel, omitting it when unset', async () => {
