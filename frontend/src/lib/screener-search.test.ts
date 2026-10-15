@@ -228,24 +228,24 @@ describe('saved screen selection URL', () => {
 })
 
 describe('buildScreenerAgentRequest', () => {
-  it('references an unchanged saved screen by name and id', () => {
-    const savedScreen: SavedScreen = {
-      id: 'fake-screen-a',
-      name: '架空条件',
-      created_at: '2099-01-01T00:00:00Z',
-      updated_at: '2099-01-02T00:00:00Z',
-      filters: {
-        markets: ['プライム'],
-        sectors: [],
-        per: { min: null, max: 12 },
-        pbr: null,
-        roe: null,
-        dividend_yield: null,
-        market_cap: null,
-      },
-      sort: { field: 'per', direction: 'asc' },
-    }
+  const savedScreen: SavedScreen = {
+    id: 'fake-screen-a',
+    name: '架空条件',
+    created_at: '2099-01-01T00:00:00Z',
+    updated_at: '2099-01-02T00:00:00Z',
+    filters: {
+      markets: ['プライム'],
+      sectors: [],
+      per: { min: null, max: 12 },
+      pbr: null,
+      roe: null,
+      dividend_yield: null,
+      market_cap: null,
+    },
+    sort: { field: 'per', direction: 'asc' },
+  }
 
+  it('references an unchanged saved screen by name and id', () => {
     expect(
       buildScreenerAgentRequest(
         {
@@ -284,6 +284,28 @@ describe('buildScreenerAgentRequest', () => {
         '次の条件と並び順で銘柄候補を探してください。',
         '条件: 市場: プライム、業種: 架空業種、PER: 8以上倍、PBR: 1以下倍、ROE: 6以上%、配当利回り (予): 3以上%、時価総額: 1200以下億円',
         '並び順: PER (昇順)',
+      ].join('\n'),
+    )
+  })
+
+  it('writes current filters when a selected saved screen has been edited', () => {
+    expect(
+      buildScreenerAgentRequest(
+        {
+          screen: savedScreen.id,
+          markets: ['プライム'],
+          min_per: 8,
+          max_per: 12,
+          sort_by: 'dividend_yield',
+          sort_order: 'asc',
+        },
+        savedScreen,
+      ),
+    ).toEqual(
+      [
+        '次の条件と並び順で銘柄候補を探してください。',
+        '条件: 市場: プライム、PER: 8〜12倍',
+        '並び順: 配当利回り (予) (昇順)',
       ].join('\n'),
     )
   })

@@ -24,9 +24,12 @@ describe('getScreenerIdFromFrontmatter', () => {
     ['missing screen id', {}, undefined],
     ['empty screen id', { screen_id: '  ' }, undefined],
     ['non-object frontmatter', null, undefined],
-  ] as const)('reads a valid %s', (_name, frontmatter, expected) => {
-    expect(getScreenerIdFromFrontmatter(frontmatter)).toEqual(expected)
-  })
+  ] as const)(
+    'extracts a screen id only from valid frontmatter',
+    (_name, frontmatter, expected) => {
+      expect(getScreenerIdFromFrontmatter(frontmatter)).toEqual(expected)
+    },
+  )
 })
 
 describe('NoteScreenerLink', () => {

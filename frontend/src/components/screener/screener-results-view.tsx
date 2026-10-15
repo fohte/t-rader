@@ -11,7 +11,11 @@ import type {
   ScreenerSortBy,
   ScreenerSortOrder,
 } from '#lib/screener-search'
-import { DEFAULT_SCREENER_SORT, isScreenerSortBy } from '#lib/screener-search'
+import {
+  DEFAULT_SCREENER_SORT,
+  isScreenerSortBy,
+  SCREENER_SORT_LABELS,
+} from '#lib/screener-search'
 
 type ScreenerStock = components['schemas']['ScreenerStockResponse']
 type ScreenerResponse = components['schemas']['ScreenerResponse']
@@ -22,18 +26,22 @@ const SORTABLE_COLUMNS: {
   label: string
   align: 'left' | 'right'
 }[] = [
-  { key: 'name', label: '銘柄', align: 'left' },
-  { key: 'market', label: '市場', align: 'left' },
-  { key: 'sector', label: '業種', align: 'left' },
-  { key: 'close', label: '終値', align: 'right' },
-  { key: 'per', label: 'PER', align: 'right' },
-  { key: 'pbr', label: 'PBR', align: 'right' },
-  { key: 'roe', label: 'ROE', align: 'right' },
-  { key: 'dividend_yield', label: '配当利回り (予)', align: 'right' },
-  { key: 'market_cap', label: '時価総額', align: 'right' },
+  { key: 'name', label: SCREENER_SORT_LABELS.name, align: 'left' },
+  { key: 'market', label: SCREENER_SORT_LABELS.market, align: 'left' },
+  { key: 'sector', label: SCREENER_SORT_LABELS.sector, align: 'left' },
+  { key: 'close', label: SCREENER_SORT_LABELS.close, align: 'right' },
+  { key: 'per', label: SCREENER_SORT_LABELS.per, align: 'right' },
+  { key: 'pbr', label: SCREENER_SORT_LABELS.pbr, align: 'right' },
+  { key: 'roe', label: SCREENER_SORT_LABELS.roe, align: 'right' },
+  {
+    key: 'dividend_yield',
+    label: SCREENER_SORT_LABELS.dividend_yield,
+    align: 'right',
+  },
+  { key: 'market_cap', label: SCREENER_SORT_LABELS.market_cap, align: 'right' },
 ]
 const MOBILE_SORT_OPTIONS: { key: ScreenerSortBy; label: string }[] = [
-  { key: 'id', label: '銘柄コード' },
+  { key: 'id', label: SCREENER_SORT_LABELS.id },
   ...SORTABLE_COLUMNS.map(({ key, label }) => ({ key, label })),
 ]
 

@@ -3,6 +3,19 @@ import type { components, operations } from '#lib/api/schema.gen'
 export type ScreenerSortBy = components['schemas']['ScreenerSortBy']
 export type ScreenerSortOrder = components['schemas']['ScreenerSortOrder']
 
+export const SCREENER_SORT_LABELS: Record<ScreenerSortBy, string> = {
+  id: '銘柄コード',
+  name: '銘柄',
+  market: '市場',
+  sector: '業種',
+  close: '終値',
+  per: 'PER',
+  pbr: 'PBR',
+  roe: 'ROE',
+  dividend_yield: '配当利回り (予)',
+  market_cap: '時価総額',
+}
+
 export const SCREENER_MARKETS = [
   'プライム',
   'スタンダード',
@@ -296,7 +309,6 @@ export function buildScreenerAgentRequest(
       if (min == null && max == null) return []
       let range: string
       if (min == null) {
-        if (max == null) return []
         range = `${String(max)}以下`
       } else if (max == null) {
         range = `${String(min)}以上`
@@ -306,25 +318,13 @@ export function buildScreenerAgentRequest(
       return [`${label}: ${range}${unit}`]
     }),
   ]
-  const sortLabels: Record<ScreenerSortBy, string> = {
-    id: '銘柄コード',
-    name: '銘柄',
-    market: '市場',
-    sector: '業種',
-    close: '終値',
-    per: 'PER',
-    pbr: 'PBR',
-    roe: 'ROE',
-    dividend_yield: '配当利回り',
-    market_cap: '時価総額',
-  }
   const sortBy = search.sort_by ?? DEFAULT_SCREENER_SORT.sort_by
   const sortOrder = search.sort_order ?? DEFAULT_SCREENER_SORT.sort_order
 
   return [
     '次の条件と並び順で銘柄候補を探してください。',
     `条件: ${conditions.length === 0 ? 'なし (全銘柄)' : conditions.join('、')}`,
-    `並び順: ${sortLabels[sortBy]} (${sortOrder === 'asc' ? '昇順' : '降順'})`,
+    `並び順: ${SCREENER_SORT_LABELS[sortBy]} (${sortOrder === 'asc' ? '昇順' : '降順'})`,
   ].join('\n')
 }
 

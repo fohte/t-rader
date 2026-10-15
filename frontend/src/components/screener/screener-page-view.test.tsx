@@ -22,8 +22,12 @@ const data: ScreenerResponse = {
   page: 1,
 }
 
-function readMobileAskOutput(calls: unknown[][], dialog: HTMLElement | null) {
-  return { calls, conditionPanelVisible: dialog != null }
+function readMobileAskOutput(
+  calls: unknown[][],
+  dialog: HTMLElement | null,
+  validationError: string | null = null,
+) {
+  return { calls, conditionPanelVisible: dialog != null, validationError }
 }
 
 const savedScreen: SavedScreen = {
@@ -145,6 +149,56 @@ describe('ScreenerPageView', () => {
         ],
       ],
       conditionPanelVisible: false,
+      validationError: null,
+    })
+  })
+
+  it('keeps the mobile condition panel open when an invalid range is requested', async () => {
+    const user = userEvent.setup()
+    const onAskAgent = vi.fn()
+    const args = {
+      search: {},
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      mobileFiltersOpen: true,
+      onAskAgent,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    const dialog = screen.getByRole('dialog')
+    await user.type(
+      within(dialog).getByRole('spinbutton', { name: 'PER 下限' }),
+      '20',
+    )
+    await user.type(
+      within(dialog).getByRole('spinbutton', { name: 'PER 上限' }),
+      '8',
+    )
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'この条件でエージェントに頼む',
+      }),
+    )
+
+    expect(
+      readMobileAskOutput(
+        onAskAgent.mock.calls,
+        screen.queryByRole('dialog'),
+        within(dialog).getByRole('alert').textContent,
+      ),
+    ).toEqual({
+      calls: [],
+      conditionPanelVisible: true,
+      validationError: '下限は上限以下にしてください。',
     })
   })
 

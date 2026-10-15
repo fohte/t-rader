@@ -458,8 +458,12 @@ export function ScreenerPageView({
                 <button
                   type="button"
                   onClick={() => {
+                    const filters = readDraft(draft)
+                    const error = getScreenerRangeError(filters)
+                    setValidationError(error)
+                    if (error != null) return
                     setMobileFiltersOpen(false)
-                    onAskAgent({ ...search, ...readDraft(draft) })
+                    onAskAgent({ ...search, ...filters })
                   }}
                   className="flex w-full items-center justify-center gap-1 border border-primary bg-primary px-3 py-3 font-semibold text-primary-foreground hover:opacity-90"
                 >
