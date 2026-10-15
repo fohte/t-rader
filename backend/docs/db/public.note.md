@@ -74,6 +74,7 @@ erDiagram
   uuid execution_step_id
   text execution_task_id
   timestamp_with_time_zone timestamp_start
+  numeric price_start
 }
 "public.trade_note" {
   uuid trade_id FK

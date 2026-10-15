@@ -193,6 +193,7 @@ mod tests {
             timestamp: Set(Utc::now().fixed_offset()),
             timestamp_start: Set(None),
             price: Set(None),
+            price_start: Set(None),
             text: Set("sample annotation".to_string()),
             status: Set(status.to_owned()),
             linked_note_id: Set(None),

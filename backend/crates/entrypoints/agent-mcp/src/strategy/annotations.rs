@@ -69,6 +69,7 @@ impl StrategyServer {
                     .price_field
                     .map(to_price_reference_field)
                     .map(AnnotationPriceInput::Field),
+                price_start: None,
                 text: params.text,
                 status: Some(DEFAULT_ANNOTATION_STATUS.into()),
                 linked_note_id: params.linked_note_id,
@@ -162,6 +163,7 @@ mod tests {
             timestamp,
             timestamp_start: Some(timestamp),
             price: None,
+            price_start: None,
             text: "Example annotation".into(),
             status: "unread".into(),
             linked_note_id: None,

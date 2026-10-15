@@ -57,6 +57,7 @@ impl AnnotationUseCases {
         command: CreateAnnotationCommand,
     ) -> Result<AnnotationCreateResult, AnnotationUseCaseError> {
         validate_timestamp_range(command.timestamp_start, command.timestamp)?;
+        validate_price_start(command.price_start, command.timestamp_start, command.price)?;
         let price_input = validate_price_input(command.price, command.execution_step_id)?;
         let target_symbol = non_empty_trimmed(command.target_symbol, "target_symbol")?;
         let target_kind = non_empty_trimmed(command.target_kind, "target_kind")?;
@@ -118,6 +119,7 @@ impl AnnotationUseCases {
                     timestamp: command.timestamp,
                     timestamp_start: command.timestamp_start,
                     price,
+                    price_start: command.price_start,
                     text: command.text,
                     status,
                     linked_note_id: command.linked_note_id,
@@ -437,6 +439,19 @@ fn validate_timestamp_range(
     if timestamp_start.is_some_and(|start| start > timestamp) {
         return Err(AnnotationUseCaseError::Validation(
             "timestamp_start must not be after timestamp".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_price_start(
+    price_start: Option<Decimal>,
+    timestamp_start: Option<chrono::DateTime<chrono::FixedOffset>>,
+    price: Option<AnnotationPriceInput>,
+) -> Result<(), AnnotationUseCaseError> {
+    if price_start.is_some() && (timestamp_start.is_none() || price.is_none()) {
+        return Err(AnnotationUseCaseError::Validation(
+            "price_start requires timestamp_start and price".into(),
         ));
     }
     Ok(())
