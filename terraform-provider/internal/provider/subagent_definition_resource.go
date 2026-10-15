@@ -339,20 +339,6 @@ func modelFromSubagentDefinition(ctx context.Context, definition traderapigen.Su
 	}, diagnostics
 }
 
-func nonNilSlice[T any](values []T) []T {
-	if values == nil {
-		return []T{}
-	}
-	return values
-}
-
-func nonNilMap[K comparable, V any](values map[K]V) map[K]V {
-	if values == nil {
-		return map[K]V{}
-	}
-	return values
-}
-
 type subagentDefinitionKeyValidator struct{}
 
 func (subagentDefinitionKeyValidator) Description(context.Context) string {

@@ -138,7 +138,7 @@ func (r *agentConfigResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	skills, diagnostics := types.MapValueFrom(ctx, types.StringType, nonNilSkills(config.Skills))
+	skills, diagnostics := types.MapValueFrom(ctx, types.StringType, nonNilMap(config.Skills))
 	resp.Diagnostics.Append(diagnostics...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -218,14 +218,7 @@ func skillsFromAttribute(ctx context.Context, value types.Map, diagnostics *diag
 	if diagnostics.HasError() {
 		return nil, false
 	}
-	return nonNilSkills(skills), true
-}
-
-func nonNilSkills(skills map[string]string) map[string]string {
-	if skills == nil {
-		return map[string]string{}
-	}
-	return skills
+	return nonNilMap(skills), true
 }
 
 type agentGraphPhase struct {
