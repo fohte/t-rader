@@ -5,12 +5,12 @@ export interface ChartIndicatorBar<Time> {
   close: number
 }
 
-export interface ChartIndicatorPoint<Time> {
+interface ChartIndicatorPoint<Time> {
   time: Time
   value: number
 }
 
-export interface BollingerBands<Time> {
+interface BollingerBands<Time> {
   middle: ChartIndicatorPoint<Time>[]
   upper: ChartIndicatorPoint<Time>[]
   lower: ChartIndicatorPoint<Time>[]
@@ -25,7 +25,7 @@ function isValidPeriod(period: number): boolean {
   return Number.isInteger(period) && period > 0
 }
 
-export function calculateSimpleMovingAverage<Time>(
+function calculateSimpleMovingAverage<Time>(
   bars: readonly ChartIndicatorBar<Time>[],
   period: number,
 ): ChartIndicatorPoint<Time>[] {
@@ -50,7 +50,7 @@ export function calculateSimpleMovingAverage<Time>(
   return points
 }
 
-export function calculateExponentialMovingAverage<Time>(
+function calculateExponentialMovingAverage<Time>(
   bars: readonly ChartIndicatorBar<Time>[],
   period: number,
 ): ChartIndicatorPoint<Time>[] {
@@ -80,7 +80,7 @@ export function calculateExponentialMovingAverage<Time>(
   return points
 }
 
-export function calculateBollingerBands<Time>(
+function calculateBollingerBands<Time>(
   bars: readonly ChartIndicatorBar<Time>[],
   period: number,
   deviationMultiplier: number,
