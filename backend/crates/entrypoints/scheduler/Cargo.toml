@@ -8,7 +8,6 @@ chrono = { workspace = true, features = ["clock"] }
 chrono-tz = { workspace = true }
 core-application = { workspace = true }
 graphile_worker = { workspace = true }
-graphile_worker_extensions = { workspace = true }
 futures-util = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

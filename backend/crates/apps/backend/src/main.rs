@@ -397,15 +397,11 @@ async fn main() -> Result<(), StartupError> {
         strategy_task_reconcile_enabled,
     };
     if let Some(job_name) = cli.run_job.as_deref() {
-        entrypoint_scheduler::run_job(
-            job_name,
-            db.get_postgres_connection_pool().clone(),
-            dependencies,
-        )
-        .await
-        .map_err(|error| {
-            StartupError::Runtime(format!("scheduled job '{job_name}' failed: {error}"))
-        })?;
+        entrypoint_scheduler::run_job(job_name, dependencies)
+            .await
+            .map_err(|error| {
+                StartupError::Runtime(format!("scheduled job '{job_name}' failed: {error}"))
+            })?;
         return Ok(());
     }
 

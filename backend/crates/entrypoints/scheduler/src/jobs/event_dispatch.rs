@@ -19,16 +19,26 @@ impl From<Option<EmptyObject>> for EventDispatch {
 }
 
 impl TaskHandler for EventDispatch {
-    const IDENTIFIER: &'static str = EVENT_DISPATCH_JOB_IDENTIFIER;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move { dispatch_pending_events(&state).await },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for EventDispatch {
+    const IDENTIFIER: &'static str = EVENT_DISPATCH_JOB_IDENTIFIER;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move { dispatch_pending_events(&state).await },
+            )
+            .await
+        })
     }
 }
 

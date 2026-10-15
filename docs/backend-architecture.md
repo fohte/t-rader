@@ -80,7 +80,7 @@ entrypoint をまたぐ結合テストは composition root に置く。現在は
 
 `libs/rate-limit` は外部 crate への依存だけを持ち、`backend/crates/` 内の crate には依存しない。利用できるのは `gateways/*` と `apps/backend` のみとし、`core/*` と `entrypoints/*` からは依存させない。
 
-`gateways/postgres` は `DatabaseHandle`、SeaORM entity 定義、repository 関数を提供する。trade など一部の集約では `core/application` が定義する `UnitOfWork`、repository、`ChangeHistoryPort` port も実装する。`test-support` feature だけが共有テスト DB の準備に必要な `migration` と `sqlx` を有効にする。`gateways/postgres` は `libs/test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
+`gateways/postgres` は `DatabaseHandle`、SeaORM entity 定義、repository 関数を提供する。trade など一部の集約では `core/application` が定義する `UnitOfWork`、repository、`ChangeHistoryPort` port も実装する。SQLx は通常依存として DB アクセスに使い、`test-support` feature は共有テスト DB の準備に必要な optional `migration` を有効にする。`gateways/postgres` は `libs/test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
 
 `backend/scripts/check-entrypoint-dependencies.sh` は `cargo metadata --no-deps` の結果を使い、`backend/crates/entrypoints/` 配下の各 package が直接依存する workspace crate と `sea-orm` を検査する。`core-application` と `core-domain` 以外の workspace crate、および `sea-orm` への依存を禁止する。依存種別に関係なく manifest に直接書かれた依存を対象とする。
 

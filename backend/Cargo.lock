@@ -1727,7 +1727,6 @@ dependencies = [
  "core-domain",
  "futures-util",
  "graphile_worker",
- "graphile_worker_extensions",
  "rstest",
  "serde",
  "serde_json",

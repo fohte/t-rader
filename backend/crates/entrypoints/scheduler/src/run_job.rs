@@ -1,14 +1,11 @@
-use std::{future::Future, pin::Pin};
+use std::time::Duration;
 
-use graphile_worker::{
-    Job, SharedTaskDetails, TaskHandler, WorkerContext, run_task_from_worker_ctx,
-};
-use graphile_worker_extensions::{Extensions, ReadOnlyExtensions};
-use serde_json::Value;
-use sqlx::PgPool;
+use chrono::{DateTime, FixedOffset, Utc};
+use core_application::ingest_run_log::IngestRunLog;
 
 use crate::{
     jobs::{
+        JobFuture, SchedulerJob,
         alpha_vantage::AlphaVantageCalendarIngest,
         boj_calendar::BojCalendarEventIngest,
         daily_bars::DailyBarsIngest,
@@ -28,18 +25,18 @@ use crate::{
         news_content::NewsContentFetch,
         paper_order_filling::PaperOrderFilling,
         prediction::PredictionGrading,
+        run_started_before,
         strategy_task_reconcile::StrategyTaskReconcile,
         twse::TwseIndexIngest,
         us_stock_bars::UsStockBarsIngest,
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
-    scheduler::GRAPHILE_WORKER_SCHEMA,
+    scheduler::RECOVERABLE_INGEST_JOBS,
     state::{SchedulerDependencies, SchedulerState},
 };
 
-type JobRunner =
-    fn(WorkerContext) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
+type JobRunner = fn(SchedulerState) -> JobFuture;
 
 struct SupportedJob {
     identifier: &'static str,
@@ -75,63 +72,71 @@ const SUPPORTED_JOBS: [SupportedJob; 26] = [
     supported_job::<ValuationIngest>(),
 ];
 
-const fn supported_job<T: TaskHandler>() -> SupportedJob {
+const fn supported_job<T: SchedulerJob>() -> SupportedJob {
     SupportedJob {
         identifier: T::IDENTIFIER,
-        run: run_task::<T>,
+        run: T::run,
     }
-}
-
-fn run_task<T: TaskHandler>(
-    context: WorkerContext,
-) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>> {
-    Box::pin(run_task_from_worker_ctx::<T>(context))
 }
 
 pub fn is_supported_job(job_name: &str) -> bool {
     SUPPORTED_JOBS.iter().any(|job| job.identifier == job_name)
 }
 
-pub async fn run_job(
-    job_name: &str,
-    pool: PgPool,
-    dependencies: SchedulerDependencies,
-) -> Result<(), String> {
+pub async fn run_job(job_name: &str, dependencies: SchedulerDependencies) -> Result<(), String> {
     let Some(job) = SUPPORTED_JOBS.iter().find(|job| job.identifier == job_name) else {
         return Err(format!("unsupported scheduled job: {job_name}"));
     };
 
-    let context = build_worker_context(job_name, pool, dependencies);
-    (job.run)(context).await
+    let state = SchedulerState { dependencies };
+    if let Some((_, timeout)) = RECOVERABLE_INGEST_JOBS
+        .iter()
+        .find(|(identifier, _)| *identifier == job_name)
+    {
+        let recovered = recover_interrupted_run(
+            state.dependencies.ingest_run_log.as_ref(),
+            job_name,
+            *timeout,
+            Utc::now().fixed_offset(),
+        )
+        .await?;
+        if recovered > 0 {
+            tracing::info!(
+                task = job_name,
+                recovered,
+                "interrupted ingest runs recovered"
+            );
+        }
+    }
+
+    (job.run)(state).await
 }
 
-fn build_worker_context(
+async fn recover_interrupted_run(
+    log: &dyn IngestRunLog,
     job_name: &str,
-    pool: PgPool,
-    dependencies: SchedulerDependencies,
-) -> WorkerContext {
-    let mut extensions = Extensions::new();
-    let _ = extensions.insert(SchedulerState { dependencies });
-
-    WorkerContext::builder()
-        .payload(Value::Null)
-        .pg_pool(pool)
-        .schema(GRAPHILE_WORKER_SCHEMA)
-        .job(Job::builder().task_identifier(job_name.to_owned()).build())
-        .worker_id("run-job")
-        .extensions(ReadOnlyExtensions::new(extensions))
-        .task_details(SharedTaskDetails::default())
-        .use_local_time(false)
-        .build()
+    timeout: Duration,
+    now: DateTime<FixedOffset>,
+) -> Result<u64, String> {
+    let started_before = run_started_before(now, timeout)?;
+    log.fail_interrupted_before(job_name, started_before)
+        .await
+        .map_err(|error| format!("failed to recover interrupted ingest runs: {error}"))
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, sync::Arc, time::Duration};
 
+    use async_trait::async_trait;
+    use chrono::{DateTime, Duration as ChronoDuration, FixedOffset};
+    use core_application::{ingest_run_log::IngestRunLog, persistence::PersistenceError};
     use rstest::rstest;
+    use serde_json::Value;
+    use tokio::sync::Mutex;
+    use uuid::Uuid;
 
-    use super::{SUPPORTED_JOBS, is_supported_job};
+    use super::{SUPPORTED_JOBS, is_supported_job, recover_interrupted_run};
 
     #[test]
     fn supported_job_table_is_unique_and_queryable() {
@@ -158,5 +163,60 @@ mod tests {
     #[case::unknown("unknown_job", false)]
     fn rejects_jobs_outside_the_one_shot_contract(#[case] job_name: &str, #[case] expected: bool) {
         assert_eq!(is_supported_job(job_name), expected);
+    }
+
+    #[derive(Default)]
+    struct FakeIngestRunLog {
+        calls: Mutex<Vec<(String, DateTime<FixedOffset>)>>,
+    }
+
+    #[async_trait]
+    impl IngestRunLog for FakeIngestRunLog {
+        async fn start(&self, _job: &str) -> Result<Uuid, PersistenceError> {
+            Ok(Uuid::from_u128(1))
+        }
+
+        async fn finish(
+            &self,
+            _run_id: Uuid,
+            _result: Result<Value, String>,
+        ) -> Result<(), PersistenceError> {
+            Ok(())
+        }
+
+        async fn fail_interrupted_before(
+            &self,
+            job: &str,
+            started_before: DateTime<FixedOffset>,
+        ) -> Result<u64, PersistenceError> {
+            self.calls
+                .lock()
+                .await
+                .push((job.to_owned(), started_before));
+            Ok(1)
+        }
+    }
+
+    #[tokio::test]
+    async fn recovers_only_runs_older_than_the_job_timeout() {
+        let now = DateTime::parse_from_rfc3339("2039-05-10T16:00:00+00:00")
+            .expect("valid fixed timestamp");
+        let log = Arc::new(FakeIngestRunLog::default());
+
+        let result = recover_interrupted_run(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(2 * 60 * 60),
+            now,
+        )
+        .await;
+
+        assert_eq!(
+            (result, log.calls.lock().await.clone()),
+            (
+                Ok(1),
+                vec![("sample_ingest".to_owned(), now - ChronoDuration::hours(2))],
+            ),
+        );
     }
 }

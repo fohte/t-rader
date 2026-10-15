@@ -31,36 +31,49 @@ impl From<Option<EmptyObject>> for StrategyTaskReconcile {
 }
 
 impl TaskHandler for StrategyTaskReconcile {
-    const IDENTIFIER: &'static str = STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let lock = state.dependencies.strategy_task_reconcile_lock.clone();
-                run_with_reconcile_lock(&lock, move || async move {
-                    let reconcile_result = reconcile_in_flight_tasks(
-                        &state.dependencies.strategy_tasks,
-                        state.dependencies.agent_task_client.as_ref(),
-                    )
-                    .await
-                    .map(|updated| {
-                        if updated > 0 {
-                            tracing::info!(updated, "strategy task phases reconciled");
-                        }
-                    });
-                    let dispatch_result = super::event_dispatch::dispatch_pending_events(&state)
-                        .await
-                        .map_err(|error| format!("failed to dispatch pending events: {error}"));
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
 
-                    combine_task_results(reconcile_result, dispatch_result)
-                })
-                .await
-            },
-        )
-        .await
+impl super::SchedulerJob for StrategyTaskReconcile {
+    const IDENTIFIER: &'static str = STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let lock = state.dependencies.strategy_task_reconcile_lock.clone();
+                    run_with_reconcile_lock(&lock, move || async move {
+                        let reconcile_result = reconcile_in_flight_tasks(
+                            &state.dependencies.strategy_tasks,
+                            state.dependencies.agent_task_client.as_ref(),
+                        )
+                        .await
+                        .map(|updated| {
+                            if updated > 0 {
+                                tracing::info!(updated, "strategy task phases reconciled");
+                            }
+                        });
+                        let dispatch_result =
+                            super::event_dispatch::dispatch_pending_events(&state)
+                                .await
+                                .map_err(|error| {
+                                    format!("failed to dispatch pending events: {error}")
+                                });
+
+                        combine_task_results(reconcile_result, dispatch_result)
+                    })
+                    .await
+                },
+            )
+            .await
+        })
     }
 }
 
