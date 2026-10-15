@@ -5,8 +5,10 @@ use core_application::trigger::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::Set;
+use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter,
+    QueryOrder,
 };
 use uuid::Uuid;
 
@@ -141,11 +143,13 @@ impl TriggerRepository for PostgresTriggerRepository {
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
         };
-        trigger::Entity::insert(model)
+        let trigger = trigger::Entity::insert(model)
             .exec_with_returning(transaction)
             .await
             .map_err(repository_error)
-            .and_then(to_domain)
+            .and_then(to_domain)?;
+        notify_trigger_change(transaction).await?;
+        Ok(trigger)
     }
 
     async fn update(
@@ -170,11 +174,13 @@ impl TriggerRepository for PostgresTriggerRepository {
             created_at: sea_orm::ActiveValue::Unchanged(trigger.created_at),
             updated_at: Set(trigger.updated_at),
         };
-        model
+        let trigger = model
             .update(transaction)
             .await
             .map_err(repository_error)
-            .and_then(to_domain)
+            .and_then(to_domain)?;
+        notify_trigger_change(transaction).await?;
+        Ok(trigger)
     }
 
     async fn delete(
@@ -183,11 +189,15 @@ impl TriggerRepository for PostgresTriggerRepository {
         trigger_id: Uuid,
     ) -> Result<bool, TriggerRepositoryError> {
         let transaction = transaction_ref(transaction)?;
-        trigger::Entity::delete_by_id(trigger_id)
+        let deleted = trigger::Entity::delete_by_id(trigger_id)
             .exec(transaction)
             .await
             .map(|result| result.rows_affected > 0)
-            .map_err(repository_error)
+            .map_err(repository_error)?;
+        if deleted {
+            notify_trigger_change(transaction).await?;
+        }
+        Ok(deleted)
     }
 
     async fn mark_fired(
@@ -213,6 +223,43 @@ impl TriggerRepository for PostgresTriggerRepository {
             .map(|_| true)
             .map_err(repository_error)
     }
+
+    async fn claim_cron_fire(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+        expected_last_fired_at: Option<DateTime<FixedOffset>>,
+        expected_updated_at: DateTime<FixedOffset>,
+        fired_at: DateTime<FixedOffset>,
+    ) -> Result<bool, TriggerRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let mut query = trigger::Entity::update_many()
+            .col_expr(trigger::Column::LastFiredAt, Expr::value(Some(fired_at)))
+            .col_expr(trigger::Column::UpdatedAt, Expr::value(fired_at))
+            .filter(trigger::Column::TriggerId.eq(trigger_id))
+            .filter(trigger::Column::Kind.eq(TriggerKind::Cron.as_str()))
+            .filter(trigger::Column::Enabled.eq(true))
+            .filter(trigger::Column::UpdatedAt.eq(expected_updated_at));
+        query = match expected_last_fired_at {
+            Some(last_fired_at) => query.filter(trigger::Column::LastFiredAt.eq(last_fired_at)),
+            None => query.filter(trigger::Column::LastFiredAt.is_null()),
+        };
+        query
+            .exec(transaction)
+            .await
+            .map(|result| result.rows_affected == 1)
+            .map_err(repository_error)
+    }
+}
+
+async fn notify_trigger_change(
+    transaction: &sea_orm::DatabaseTransaction,
+) -> Result<(), TriggerRepositoryError> {
+    transaction
+        .execute_unprepared("NOTIFY t_rader_trigger_changed")
+        .await
+        .map(|_| ())
+        .map_err(repository_error)
 }
 
 fn transaction_ref(

@@ -20,6 +20,7 @@ const DEFAULT_WORKER_ADMIN_UI_PORT: u16 = 3001;
 const WORKER_ADMIN_UI_PORT_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_PORT";
 const WORKER_ADMIN_UI_AUTH_HEADER_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_AUTH_HEADER_NAME";
 const WORKER_ADMIN_UI_AUTH_VALUE_ENV: &str = "GRAPHILE_WORKER_ADMIN_UI_AUTH_HEADER_VALUE";
+const CRON_TRIGGER_TIMER_ENABLED_ENV: &str = "CRON_TRIGGER_TIMER_ENABLED";
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum StartupError {
@@ -148,6 +149,29 @@ pub(super) fn required_redis_url(value: Option<String>) -> Result<String, Startu
     value.filter(|value| !value.is_empty()).ok_or_else(|| {
         StartupError::Config("REDIS_URL environment variable is not set".to_string())
     })
+}
+
+pub(super) fn cron_trigger_timer_enabled_from_env() -> Result<bool, StartupError> {
+    match std::env::var(CRON_TRIGGER_TIMER_ENABLED_ENV) {
+        Ok(value) => parse_cron_trigger_timer_enabled(Some(value)),
+        Err(std::env::VarError::NotPresent) => parse_cron_trigger_timer_enabled(None),
+        Err(error) => Err(StartupError::Config(format!(
+            "failed to read {CRON_TRIGGER_TIMER_ENABLED_ENV}: {error}"
+        ))),
+    }
+}
+
+fn parse_cron_trigger_timer_enabled(value: Option<String>) -> Result<bool, StartupError> {
+    value
+        .map(|value| {
+            value.parse().map_err(|error| {
+                StartupError::Config(format!(
+                    "invalid {CRON_TRIGGER_TIMER_ENABLED_ENV} value '{value}': {error}"
+                ))
+            })
+        })
+        .transpose()
+        .map(|enabled| enabled.unwrap_or(false))
 }
 
 fn configured_admin_ui_auth(
@@ -287,6 +311,23 @@ mod tests {
             required_redis_url(value).map_err(|error| error.to_string()),
             expected.map(str::to_owned).map_err(str::to_owned),
         );
+    }
+
+    #[rstest]
+    #[case::unset(None, Ok(false))]
+    #[case::enabled(Some("true".to_string()), Ok(true))]
+    #[case::disabled(Some("false".to_string()), Ok(false))]
+    #[case::invalid(
+        Some("yes".to_string()),
+        Err("configuration error: invalid CRON_TRIGGER_TIMER_ENABLED value 'yes': provided string was not `true` or `false`".to_string()),
+    )]
+    fn parses_cron_trigger_timer_setting(
+        #[case] value: Option<String>,
+        #[case] expected: Result<bool, String>,
+    ) {
+        let actual = parse_cron_trigger_timer_enabled(value).map_err(|error| error.to_string());
+
+        assert_eq!(actual, expected);
     }
 
     #[rstest]

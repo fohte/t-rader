@@ -103,6 +103,37 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn concurrent_cron_ticks_submit_a_due_trigger_once(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = seed_strategy(&db).await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
+        let past = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
+        insert_test_cron_trigger(
+            &db,
+            strategy_id,
+            "* * * * *",
+            true,
+            Some(past),
+            "sample prompt",
+            None,
+        )
+        .await;
+
+        let agent_client = FakeAgentTaskClient::new();
+        let first = build_use_cases(db.clone()).triggers();
+        let second = build_use_cases(db.clone()).triggers();
+        let _ = tokio::join!(
+            first.run_cron_tick(&agent_client, DEFAULT_INTERVAL),
+            second.run_cron_tick(&agent_client, DEFAULT_INTERVAL),
+        );
+        let task_count = strategy_task::Entity::find().all(&db).await.unwrap().len();
+        let submitted_count = agent_client.submitted.lock().await.len();
+
+        assert_eq!((task_count, submitted_count), (1, 1));
+    }
+
+    #[backend_test_macros::database_test]
     async fn fires_due_cron_with_trigger_purpose(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = seed_strategy(&db).await;
         agent_config::create(&db, "synthetic-purpose".to_string())
