@@ -199,7 +199,7 @@ export function ScreenerPageView({
               {SCREENER_MARKETS.map((market) => (
                 <label
                   key={market}
-                  className={`flex cursor-pointer items-center gap-1.5 border border-border bg-background text-muted-foreground-strong has-checked:border-primary has-checked:text-foreground ${isDesktop ? 'whitespace-nowrap px-1 py-1.5 text-3xs' : 'px-2 py-2 text-2xs'}`}
+                  className={`flex cursor-pointer items-center border border-border bg-background text-muted-foreground-strong has-checked:border-primary has-checked:text-foreground ${isDesktop ? 'gap-1 whitespace-nowrap px-1 py-1.5 text-3xs' : 'gap-1.5 px-2 py-2 text-2xs'}`}
                 >
                   <input
                     type="checkbox"
