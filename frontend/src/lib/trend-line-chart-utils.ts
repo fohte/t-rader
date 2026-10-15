@@ -11,7 +11,7 @@ import { getChartBarDate, toChartTimestamp } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
 
-export interface TrendLineSeriesPoint {
+interface TrendLineSeriesPoint {
   time: UTCTimestamp
   value: number
 }
