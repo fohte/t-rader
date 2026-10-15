@@ -7,11 +7,16 @@ import remarkGfm from 'remark-gfm'
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
 import { ChangeReferenceFigure } from '#components/note-detail/change-reference-figure'
+import {
+  NoteChangeReference,
+  NotePriceReference,
+} from '#components/note-detail/note-evidence-reference'
 import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { RefChip } from '#components/strategy-shell/ref-chip'
 import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import type { components } from '#lib/api/schema.gen'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
+import type { ParsedNotePriceReference } from '#lib/note-price-reference'
 
 type ApiGraphDef = components['schemas']['GraphDef']
 type NoteLinkItem = components['schemas']['NoteLinkItem']
@@ -31,8 +36,12 @@ type NoteTokenComponents = {
   'note-anno': ComponentType<{ annoId: string }>
   'note-graph': ComponentType<{ graphId: string }>
   'note-link': ComponentType<{ noteId: string; token: string }>
-  'note-price-reference': ComponentType<{ value: string }>
-  'note-change-reference': ComponentType<{ token: string; value?: string }>
+  'note-price-reference': ComponentType<
+    ParsedNotePriceReference & { value: string }
+  >
+  'note-change-reference': ComponentType<
+    ParsedNoteChangeReference & { token: string; value?: string }
+  >
   'note-change-figure': ComponentType<ParsedNoteChangeReference>
 }
 
@@ -107,22 +116,6 @@ function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
   return value === 'left' || value === 'right' || value === 'center'
     ? value
     : undefined
-}
-
-function formatPriceReference(value: string): string {
-  const numericValue = Number(value)
-  const formattedValue = new Intl.NumberFormat('ja-JP', {
-    maximumSignificantDigits: 15,
-  }).format(numericValue)
-  return formattedValue
-}
-
-function formatChangeReference(value: string): string {
-  const formattedValue = new Intl.NumberFormat('ja-JP', {
-    maximumFractionDigits: 2,
-    signDisplay: 'always',
-  }).format(Number(value))
-  return `${formattedValue}%`
 }
 
 export function MarkdownBody({
@@ -254,15 +247,11 @@ export function MarkdownBody({
         <span className="text-em-85 text-muted-foreground">annotation</span>
       </button>
     ),
-    'note-price-reference': ({ value }) => (
-      <span className="font-mono font-medium tabular-nums">
-        {formatPriceReference(value)}
-      </span>
+    'note-price-reference': (reference) => (
+      <NotePriceReference {...reference} />
     ),
-    'note-change-reference': ({ token, value }) => (
-      <span className="font-mono font-medium tabular-nums">
-        {value == null ? token : formatChangeReference(value)}
-      </span>
+    'note-change-reference': (reference) => (
+      <NoteChangeReference {...reference} />
     ),
     'note-change-figure': (reference) => (
       <ChangeReferenceFigure {...reference} />

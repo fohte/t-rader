@@ -5,15 +5,16 @@ use std::sync::Arc;
 use rstest::rstest;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::json;
 use uuid::Uuid;
 
 use super::StrategyServer;
-use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
-use super::tests_common::mock_db_with_strategy;
+use super::dto::EvalIndicatorParams;
+use super::tests_common::{mock_db_with_strategy, ts_sentinel};
 use core_application::custom_indicator::{SCOPE_GLOBAL, SCOPE_STRATEGY};
 use core_application::kata_exec::{ExecRequest, ExecResult, FakeKataExecutor, SharedKataExecutor};
-use gateway_postgres::entities::{custom_indicator, strategy};
+use gateway_postgres::entities::{custom_indicator, custom_indicator_evaluation, strategy};
 
 async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
@@ -82,48 +83,69 @@ async fn eval_indicator_resolves_and_runs(db: gateway_postgres::DatabaseHandle) 
         &db,
         SCOPE_GLOBAL,
         None,
-        "rsi",
-        "print('{\"value\": 42}')",
+        "demo-indicator",
+        "print('42')",
         json!({"type": "object", "properties": {"period": {"type": "integer"}}, "required": ["period"]}),
-        json!({"type": "object", "properties": {"value": {"type": "number"}}, "required": ["value"]}),
+        json!({"type": "number"}),
     )
     .await;
 
     let executor = Arc::new(FakeKataExecutor::new());
     executor
         .set_response(Ok(ExecResult {
-            stdout: "{\"value\": 42}\n".into(),
+            stdout: "42\n".into(),
             stderr: String::new(),
             exit_code: 0,
         }))
         .await;
-    let (server, _shared) = build_server(db, executor.clone());
+    let (server, _shared) = build_server(db.clone(), executor.clone());
 
     let out = server
-        .eval_indicator(sid, params("rsi", json!({"period": 14})))
+        .eval_indicator(sid, params("demo-indicator", json!({"period": 14})))
         .await
         .expect("eval");
 
+    let evaluation_id = out.evaluation_id.expect("evaluation is recorded");
+    let evaluation = custom_indicator_evaluation::Entity::find_by_id(evaluation_id)
+        .one(&db)
+        .await
+        .expect("query evaluation")
+        .expect("evaluation row exists");
+    let recorded_requests = executor.requests.lock().await.clone();
+    let out = out.normalize_json(|value| value["evaluation_id"] = json!(Uuid::nil()));
+    let evaluation = custom_indicator_evaluation::Model {
+        id: Uuid::nil(),
+        evaluated_at: ts_sentinel(),
+        ..evaluation
+    };
     assert_eq!(
-        out,
-        EvalIndicatorResult {
-            indicator_id: ind.indicator_id,
-            scope: SCOPE_GLOBAL.into(),
-            output: Some(json!({"value": 42})),
-            stdout: "{\"value\": 42}\n".into(),
-            stderr: String::new(),
-            exit_code: 0,
-        }
-    );
-    let recorded = executor.requests.lock().await;
-    assert_eq!(
-        recorded.as_slice(),
-        &[ExecRequest {
-            code: "print('{\"value\": 42}')".into(),
-            stdin: Some(r#"{"args":{"period":14}}"#.into()),
-            timeout: None,
-            max_output_bytes: None,
-        }],
+        (out.as_json().clone(), evaluation, recorded_requests),
+        (
+            json!({
+                "indicator_id": ind.indicator_id,
+                "scope": SCOPE_GLOBAL,
+                "evaluation_id": Uuid::nil(),
+                "output": 42,
+                "stdout": "42\n",
+                "stderr": "",
+                "exit_code": 0,
+            }),
+            custom_indicator_evaluation::Model {
+                id: Uuid::nil(),
+                indicator_id: ind.indicator_id,
+                indicator_name: "demo-indicator".into(),
+                code: "print('42')".into(),
+                args: json!({"period": 14}),
+                output: json!(42),
+                evaluated_at: ts_sentinel(),
+            },
+            vec![ExecRequest {
+                code: "print('42')".into(),
+                stdin: Some(r#"{"args":{"period":14}}"#.into()),
+                timeout: None,
+                max_output_bytes: None,
+            }],
+        )
     );
 }
 
@@ -165,16 +187,22 @@ async fn eval_indicator_prefers_strategy_scope(db: gateway_postgres::DatabaseHan
         .eval_indicator(sid, params("rsi", json!({})))
         .await
         .expect("eval");
-    assert_eq!(
-        out,
-        EvalIndicatorResult {
-            indicator_id: strategy_scoped.indicator_id,
-            scope: SCOPE_STRATEGY.into(),
-            output: Some(json!({"from": "strategy"})),
-            stdout: "{\"from\": \"strategy\"}\n".into(),
-            stderr: String::new(),
-            exit_code: 0,
+    let out = out.normalize_json(|value| {
+        if value["evaluation_id"].is_string() {
+            value["evaluation_id"] = json!(Uuid::nil());
         }
+    });
+    assert_eq!(
+        out.as_json().clone(),
+        json!({
+            "indicator_id": strategy_scoped.indicator_id,
+            "scope": SCOPE_STRATEGY,
+            "evaluation_id": Uuid::nil(),
+            "output": {"from": "strategy"},
+            "stdout": "{\"from\": \"strategy\"}\n",
+            "stderr": "",
+            "exit_code": 0,
+        })
     );
 }
 
@@ -268,22 +296,31 @@ async fn eval_indicator_passes_through_sandbox_rejection(db: gateway_postgres::D
             exit_code: 1,
         }))
         .await;
-    let (server, _shared) = build_server(db, executor.clone());
+    let (server, _shared) = build_server(db.clone(), executor.clone());
 
     let out = server
         .eval_indicator(sid, params("rsi", json!({})))
         .await
         .expect("rejection is conveyed as result, not error");
+    let evaluations = custom_indicator_evaluation::Entity::find()
+        .filter(custom_indicator_evaluation::Column::IndicatorId.eq(ind.indicator_id))
+        .all(&db)
+        .await
+        .expect("query evaluations");
     assert_eq!(
-        out,
-        EvalIndicatorResult {
-            indicator_id: ind.indicator_id,
-            scope: SCOPE_GLOBAL.into(),
-            output: None,
-            stdout: String::new(),
-            stderr: "PermissionError: network access denied".into(),
-            exit_code: 1,
-        }
+        (out.as_json().clone(), evaluations),
+        (
+            json!({
+                "indicator_id": ind.indicator_id,
+                "scope": SCOPE_GLOBAL,
+                "evaluation_id": null,
+                "output": null,
+                "stdout": "",
+                "stderr": "PermissionError: network access denied",
+                "exit_code": 1,
+            }),
+            Vec::new(),
+        ),
     );
 }
 
@@ -328,7 +365,7 @@ async fn eval_indicator_rejects_invalid_output(db: gateway_postgres::DatabaseHan
 #[backend_test_macros::database_test]
 async fn eval_indicator_rejects_output_schema_mismatch(db: gateway_postgres::DatabaseHandle) {
     let sid = insert_strategy(&db, "s").await;
-    insert_indicator(
+    let ind = insert_indicator(
         &db,
         SCOPE_GLOBAL,
         None,
@@ -347,18 +384,28 @@ async fn eval_indicator_rejects_output_schema_mismatch(db: gateway_postgres::Dat
             exit_code: 0,
         }))
         .await;
-    let (server, _shared) = build_server(db, executor.clone());
+    let (server, _shared) = build_server(db.clone(), executor.clone());
 
     let err = server
         .eval_indicator(sid, params("rsi", json!({})))
         .await
         .expect_err("expected output schema mismatch");
     assert_eq!(
-        err,
-        rmcp::ErrorData::invalid_params(
-            "output does not match output_schema of indicator 'rsi': \
-                \"value\" is a required property at ",
-            None,
+        (
+            err,
+            custom_indicator_evaluation::Entity::find()
+                .filter(custom_indicator_evaluation::Column::IndicatorId.eq(ind.indicator_id))
+                .all(&db)
+                .await
+                .expect("query evaluations"),
+        ),
+        (
+            rmcp::ErrorData::invalid_params(
+                "output does not match output_schema of indicator 'rsi': \
+                    \"value\" is a required property at ",
+                None,
+            ),
+            Vec::new(),
         ),
     );
 }

@@ -3,16 +3,7 @@ import { $api } from '#lib/api/client'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
 
 export function ChangeReferenceFigure(reference: ParsedNoteChangeReference) {
-  const result = $api.useQuery('get', '/api/bars', {
-    params: {
-      query: {
-        instrument_id: reference.instrumentId,
-        timeframe: '1d',
-        from: reference.start,
-        to: reference.end,
-      },
-    },
-  })
+  const result = useChangeReferenceBars(reference)
 
   const bars = result.data ?? []
   const state = result.isPending
@@ -31,4 +22,17 @@ export function ChangeReferenceFigure(reference: ParsedNoteChangeReference) {
       state={state}
     />
   )
+}
+
+export function useChangeReferenceBars(reference: ParsedNoteChangeReference) {
+  return $api.useQuery('get', '/api/bars', {
+    params: {
+      query: {
+        instrument_id: reference.instrumentId,
+        timeframe: '1d',
+        from: reference.start,
+        to: reference.end,
+      },
+    },
+  })
 }

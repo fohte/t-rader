@@ -108,10 +108,10 @@ export const Default: Story = {
 }
 
 export const WithResolvedPriceReferences: Story = {
-  name: 'renders resolved values and leaves a missing price token visible.',
+  name: 'renders resolved price, valuation, and indicator values.',
   args: {
     source:
-      '終値 [[price:fictional-code@2030-01-02:close]]、期間変化 [[change:fictional-code@2030-01-02..2030-01-03:close]]、未解決 [[price:fictional-code@2030-01-04:close]]',
+      '終値 [[price:fictional-code@2030-01-02:close]]、期間変化 [[change:fictional-code@2030-01-02..2030-01-03:close]]、PER [[valuation:fictional-code@2030-01-02:per]]、為替 [[indicator:demo-indicator@2030-01-02]]、指標参照 [[indicator:demo-indicator]]、未解決 [[price:fictional-code@2030-01-04:close]]',
     resolvedPriceReferences: {
       '[[price:fictional-code@2030-01-02:close]]': {
         value: 1234.5,
@@ -121,6 +121,8 @@ export const WithResolvedPriceReferences: Story = {
         value: 2.5,
         evidence_id: '00000000-0000-0000-0000-000000000002',
       },
+      '[[valuation:fictional-code@2030-01-02:per]]': { value: 24.6 },
+      '[[indicator:demo-indicator@2030-01-02]]': { value: 152.3 },
     },
   },
 }

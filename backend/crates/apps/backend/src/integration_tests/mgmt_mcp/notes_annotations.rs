@@ -37,6 +37,7 @@ mod tests {
             timestamp: Set(updated_at),
             timestamp_start: Set(None),
             price: Set(None),
+            price_start: Set(None),
             text: Set("sample text".into()),
             status: Set(status.into()),
             linked_note_id: Set(None),

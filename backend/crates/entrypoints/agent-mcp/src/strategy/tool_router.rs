@@ -8,6 +8,8 @@ mod movers;
 mod news;
 mod paper_trade;
 mod predictions;
+mod saved_screens;
+mod screener;
 mod stock_groups;
 mod stock_registration;
 mod strategy_earnings_targets;
@@ -82,7 +84,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference daily (1d) query_data bars; intraday snapshots cannot resolve date-based references. Fields are open, high, low, close, or volume, and change resolves to a percentage. These links remain in the body while their values are saved separately. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference daily (1d) query_data bars; intraday snapshots cannot resolve date-based references. Fields are open, high, low, close, or volume, and change resolves to a percentage. Use [[valuation:<id>@<date>:<field>]] for valuation fields per, fwd_per, pbr, roe, fwd_roe, mkt_cap, eps, fwd_eps, or bps, and [[indicator:<id>@<date>]] for an indicator observation. These values resolve from the specified date without query_data. Keep [[indicator:<id>]] for a plain reference link. The references remain in the body while their values are saved separately. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -492,6 +494,8 @@ impl StrategyServer {
             + Self::strategy_earnings_targets_tool_router()
             + Self::calendar_tool_router()
             + Self::movers_tool_router()
+            + Self::saved_screens_tool_router()
+            + Self::screener_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::paper_trade_tool_router()
@@ -589,6 +593,7 @@ mod tests {
                 ("list_note_kinds", Some(true)),
                 ("list_movers", Some(true)),
                 ("list_notes", Some(true)),
+                ("list_saved_screens", Some(true)),
                 ("list_predictions", Some(true)),
                 ("list_stock_group_members", Some(true)),
                 ("query_data", Some(true)),
@@ -619,6 +624,7 @@ mod tests {
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),
+                ("screen_stocks", Some(true)),
                 ("search_refs", Some(true)),
                 ("search_web", Some(true)),
                 ("update_stock_group", None),

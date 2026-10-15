@@ -192,7 +192,7 @@ mod tests {
             (
                 "invalid_timeframe",
                 "?instrument_id=demo-code&timeframe=3m",
-                serde_json::json!({ "error": "invalid timeframe: 3m. valid values: [\"1d\", \"1m\", \"5m\", \"15m\", \"1h\", \"4h\"]" }),
+                serde_json::json!({ "error": "invalid timeframe: 3m. valid values: [\"1d\", \"1m\", \"5m\", \"15m\", \"1h\", \"4h\", \"1w\"]" }),
             ),
             (
                 "invalid_intraday_datetime",
@@ -265,6 +265,70 @@ mod tests {
                 "low": 95,
                 "close": 105,
                 "volume": 1000,
+            }])),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_weekly_bars_aggregates_daily_bars_and_accepts_date_range(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        insert_test_instrument(&db, "DEMO-WEEKLY-ALPHA").await;
+
+        let bars = vec![
+            make_test_bar(
+                "DEMO-WEEKLY-ALPHA",
+                NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date"),
+                100,
+            ),
+            make_test_bar(
+                "DEMO-WEEKLY-ALPHA",
+                NaiveDate::from_ymd_opt(2025, 1, 7).expect("invalid date"),
+                105,
+            ),
+            make_test_bar(
+                "DEMO-WEEKLY-ALPHA",
+                NaiveDate::from_ymd_opt(2025, 1, 8).expect("invalid date"),
+                103,
+            ),
+            make_test_bar(
+                "DEMO-WEEKLY-ALPHA",
+                NaiveDate::from_ymd_opt(2025, 1, 9).expect("invalid date"),
+                110,
+            ),
+            make_test_bar(
+                "DEMO-WEEKLY-ALPHA",
+                NaiveDate::from_ymd_opt(2025, 1, 10).expect("invalid date"),
+                109,
+            ),
+            make_test_bar(
+                "DEMO-WEEKLY-ALPHA",
+                NaiveDate::from_ymd_opt(2025, 1, 13).expect("invalid date"),
+                108,
+            ),
+        ];
+        repositories::bars::upsert_bars(&db, bars)
+            .await
+            .expect("upsert failed");
+
+        let response = server
+            .get(
+                "/api/bars?instrument_id=DEMO-WEEKLY-ALPHA&timeframe=1w&from=2025-01-08&to=2025-01-09",
+            )
+            .await;
+        assert_response_eq(
+            &response,
+            StatusCode::OK,
+            Some(serde_json::json!([{
+                "instrument_id": "DEMO-WEEKLY-ALPHA",
+                "timeframe": "1w",
+                "timestamp": "2025-01-06T00:00:00Z",
+                "open": 100,
+                "high": 120,
+                "low": 90,
+                "close": 109,
+                "volume": 5000,
             }])),
         );
     }

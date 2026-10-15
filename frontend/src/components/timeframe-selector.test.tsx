@@ -59,20 +59,21 @@ describe('TimeframeSelector compact variant', () => {
     expect(screen.queryByRole('group', { name: 'その他の時間足' })).toBeNull()
   })
 
-  it('keeps the unsupported weekly timeframe disabled in its menu', () => {
+  it('selects the weekly timeframe from its menu', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn<(value: Timeframe) => void>()
+
     render(
       <TimeframeSelector
         variant="compact"
         value="1d"
-        onChange={() => undefined}
+        onChange={onChange}
         moreTimeframesDefaultOpen
       />,
     )
     const menu = screen.getByRole('group', { name: 'その他の時間足' })
-    const weeklyOptionDisabled = within(menu)
-      .getByRole('button', { name: '1W' })
-      .hasAttribute('disabled')
+    await user.click(within(menu).getByRole('button', { name: '1W' }))
 
-    expect(weeklyOptionDisabled).toEqual(true)
+    expect(onChange.mock.calls).toEqual([['1w']])
   })
 })

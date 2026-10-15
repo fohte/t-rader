@@ -14,6 +14,7 @@ use super::types::{IndicatorObservationMetadata, IndicatorObservationQuery};
 pub struct FakeIndicatorObservationRepository {
     pub indicators: Mutex<HashMap<String, IndicatorObservationMetadata>>,
     pub observations: Mutex<BTreeMap<(String, NaiveDate), Decimal>>,
+    pub read_queries: Mutex<Vec<IndicatorObservationQuery>>,
 }
 
 impl FakeIndicatorObservationRepository {
@@ -85,6 +86,10 @@ impl IndicatorObservationRepository for FakeIndicatorObservationRepository {
         &self,
         query: IndicatorObservationQuery,
     ) -> Result<Vec<IndicatorObservation>, IndicatorObservationRepositoryError> {
+        self.read_queries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(query.clone());
         Ok(self
             .observations
             .lock()
