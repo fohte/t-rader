@@ -11,7 +11,7 @@ impl StrategyServer {
     /// 画面と同じ条件で全銘柄を絞り込む。
     #[tool(
         name = "screen_stocks",
-        description = "Filter all stocks with the same criteria and ordering as the stock screener. markets matches exact stock.market values. sectors accepts keys from the TSE 33 industry groups. PER and PBR are ratios; ROE and dividend yield are percentages; market_cap is in 100 million yen. A stock with no value for a metric is excluded only when a range for that metric is supplied. sort_by accepts id, name, market, sector, close, per, pbr, roe, dividend_yield, or market_cap and defaults to market_cap; sort_order accepts asc or desc and defaults to desc. page is 1-based and defaults to 1; each page contains up to 100 stocks. total_count is the count across all matching pages, and as_of is the latest valuation date.",
+        description = "Filter all stocks with the same criteria and ordering as the stock screener. markets matches exact stock.market values. sectors accepts keys from the TSE 33 industry groups; find a group with a partial-name search using search_refs and pass the segment after '/' in its ref_id as the key. PER and PBR are ratios; ROE and dividend yield are percentages; market_cap is in 100 million yen. A stock with no value for a metric is excluded only when a range for that metric is supplied. sort_by accepts id, name, market, sector, close, per, pbr, roe, dividend_yield, or market_cap and defaults to market_cap; sort_order accepts asc or desc and defaults to desc. page is 1-based and defaults to 1; each page contains up to 100 stocks. total_count is the count across all matching pages, and as_of is the latest valuation date.",
         annotations(read_only_hint = true)
     )]
     async fn screen_stocks(
