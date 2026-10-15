@@ -33,6 +33,7 @@ comments:
       timestamp: '注釈を紐づける時刻。'
       timestamp_start: '注釈が語る期間の開始時刻。null は単日の注釈を表す。'
       price: '注釈を紐づける価格。'
+      price_start: '注釈が語る期間の開始価格。'
       text: '注釈本文。'
       status: '注釈のレビュー状態。'
       linked_note_id: '注釈に関連付けたノート。'

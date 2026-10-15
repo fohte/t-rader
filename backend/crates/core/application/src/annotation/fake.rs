@@ -73,6 +73,7 @@ impl AnnotationRepository for FakeAnnotationRepository {
             timestamp: annotation.timestamp,
             timestamp_start: annotation.timestamp_start,
             price: annotation.price,
+            price_start: annotation.price_start,
             text: annotation.text,
             status: annotation.status,
             linked_note_id: annotation.linked_note_id,

@@ -1542,6 +1542,8 @@ export interface components {
       linked_note_id?: string | null
       /** Format: double */
       price?: number | null
+      /** Format: double */
+      price_start?: number | null
       status: string
       target_kind: string
       target_symbol: string
@@ -1666,6 +1668,8 @@ export interface components {
       linked_note_id?: string | null
       /** Format: double */
       price?: number | null
+      /** Format: double */
+      price_start?: number | null
       /** @description 省略時は `created_by_kind` が "human" なら "approved"、"llm" なら "unread"。 */
       status?: string | null
       target_kind: string
@@ -1673,6 +1677,8 @@ export interface components {
       text: string
       /** Format: date-time */
       timestamp: string
+      /** Format: date-time */
+      timestamp_start?: string | null
     }
     CreateCommentRequest: {
       anchor_side?: null | components['schemas']['CommentAnchorSide']

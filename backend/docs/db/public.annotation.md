@@ -22,6 +22,7 @@
 | execution_step_id | uuid                     |                             | true     |          |                               | 注釈を作成したタスク実行ステップの UUID。           |
 | execution_task_id | text                     |                             | true     |          |                               | 注釈を作成したタスク実行の識別子。                  |
 | timestamp_start   | timestamp with time zone |                             | true     |          |                               | 注釈が語る期間の開始時刻。null は単日の注釈を表す。 |
+| price_start       | numeric                  |                             | true     |          |                               | 注釈が語る期間の開始価格。                          |
 
 ## Constraints
 
@@ -63,6 +64,7 @@ erDiagram
   uuid execution_step_id
   text execution_task_id
   timestamp_with_time_zone timestamp_start
+  numeric price_start
 }
 "public.note" {
   uuid id
