@@ -139,6 +139,33 @@ describe('MarkdownBody', () => {
     ])
   })
 
+  it('starts a comment with the source range of a table row', async () => {
+    const user = userEvent.setup()
+    const onStartComment = vi.fn()
+    const source = ['| item | value |', '| --- | ---: |', '| alpha | 1 |'].join(
+      '\n',
+    )
+
+    render(
+      <MarkdownBody
+        source={source}
+        rangeComments={{ ...emptyRangeComments, onStartComment }}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: '行 3 にコメント' }))
+
+    expect(onStartComment.mock.calls).toEqual([
+      [
+        {
+          side: 'new',
+          lineNumber: 3,
+          endLineNumber: 3,
+          text: '| alpha | 1 |',
+        },
+      ],
+    ])
+  })
+
   it('renders a link that opens in a new tab', () => {
     render(<MarkdownBody source="[記事](https://example.com/a)" />)
     const link = screen.getByRole('link', { name: '記事' })

@@ -18,7 +18,6 @@ import {
   MarkdownBodyRangeCommentContext,
   type MarkdownBodyRangeCommentProps,
   MarkdownBodyTableCellGutterContext,
-  type MarkdownBodyTableCellGutterContextValue,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdown-body-text-selection-action'
 import {
@@ -121,36 +120,6 @@ function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
   return value === 'left' || value === 'right' || value === 'center'
     ? value
     : undefined
-}
-
-function tableCellGutter(
-  context: MarkdownBodyTableCellGutterContextValue | null,
-): ReactNode {
-  if (context == null) return null
-
-  return (
-    <>
-      <button
-        type="button"
-        aria-label={`行 ${String(context.range.startLine)}${context.range.endLine > context.range.startLine ? ` から ${String(context.range.endLine)}` : ''} にコメント`}
-        onPointerDown={() => {
-          context.onPointerDown(context.range)
-        }}
-        onClick={(event) => {
-          context.onClick(context.range, event.shiftKey)
-        }}
-        className={`absolute -left-11 top-1.5 z-10 min-h-7 w-11 select-none px-1 text-right font-mono text-2xs ${context.isSelected || context.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
-      >
-        {context.isSelected ? '+' : String(context.range.startLine)}
-      </button>
-      {(context.isSelected || context.isCommented) && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 -left-0.5 w-0.5 bg-primary"
-        />
-      )}
-    </>
-  )
 }
 
 export function MarkdownBody({
@@ -310,13 +279,11 @@ export function MarkdownBody({
         <div
           className={`my-3 overflow-x-auto ${hasRangeComments ? 'relative -ml-11 pl-11' : 'border border-border'}`}
         >
-          <table className="w-full border-collapse text-sm">{children}</table>
-          {hasRangeComments && (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 left-11 right-0 z-10 border border-border"
-            />
-          )}
+          <table
+            className={`w-full border-collapse text-sm ${hasRangeComments ? 'ring-1 ring-inset ring-border' : ''}`}
+          >
+            {children}
+          </table>
         </div>
       ),
       thead: ({ children }) => (
@@ -335,7 +302,7 @@ export function MarkdownBody({
             className={`px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground ${tableGutter == null ? '' : 'relative'}`}
           >
             {children}
-            {tableCellGutter(tableGutter)}
+            {tableGutter}
           </th>
         )
       },
@@ -347,7 +314,7 @@ export function MarkdownBody({
             className={`px-3 py-1.5 text-foreground ${tableGutter == null ? '' : 'relative'}`}
           >
             {children}
-            {tableCellGutter(tableGutter)}
+            {tableGutter}
           </td>
         )
       },
