@@ -48,6 +48,7 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
 const TOOL_MODELS_HEADER = 'x-tool-models'
+const MCP_TOOL_TIMEOUT_MS = 150_000
 
 const DEFAULT_PURPOSE = 'default'
 
@@ -186,6 +187,7 @@ export const createStrategyAgentDeps = (
   fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
   createMcpClient: (strategyId, executionId, toolModels) =>
     new MultiServerMCPClient({
+      defaultToolTimeout: MCP_TOOL_TIMEOUT_MS,
       mcpServers: {
         strategy: {
           url: `${config.backendApiBaseUrl.replace(/\/+$/, '')}/mcp/strategy`,

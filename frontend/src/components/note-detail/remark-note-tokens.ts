@@ -147,7 +147,10 @@ function replaceGraphParagraphs(root: Root): void {
     const match = GRAPH_TOKEN_RE.exec(only.value.trim())
     const graphId = match?.[1]
     if (graphId == null) return child
-    return noteGraphBlock(graphId)
+    return {
+      ...noteGraphBlock(graphId),
+      ...(child.position == null ? {} : { position: child.position }),
+    }
   })
 }
 
@@ -188,7 +191,10 @@ function appendChangeFigures(
     if (child.type === 'paragraph') {
       const references = new Map<string, ParsedNoteChangeReference>()
       collectChangeReferences(child, references)
-      const figures = [...references.values()].map(noteChangeFigure)
+      const figures = [...references.values()].map((reference) => ({
+        ...noteChangeFigure(reference),
+        ...(child.position == null ? {} : { position: child.position }),
+      }))
       children.splice(index + 1, 0, ...figures)
       index += figures.length
       continue
