@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use chrono::{DateTime, Months, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use core_domain::bar::Timeframe;
 use rust_decimal::Decimal;
 
@@ -11,8 +11,8 @@ use super::super::us_stock_source::{
 };
 use super::super::use_cases::BarsUseCases;
 use super::{
-    MINUTE_HISTORY_MONTHS, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange,
-    UsStockBarTimeframe, UsStockSplitHistoryRange,
+    RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
+    UsStockSplitHistoryRange,
 };
 
 impl BarsUseCases {
@@ -70,10 +70,6 @@ impl BarsUseCases {
             }
         }
 
-        let daily_history_start = Utc.timestamp_opt(0, 0).single().unwrap_or(to);
-        let minute_history_start = to
-            .checked_sub_months(Months::new(MINUTE_HISTORY_MONTHS))
-            .unwrap_or(to);
         for target in targets {
             let Some(splits) = splits_by_instrument.remove(&target.instrument_id) else {
                 continue;
@@ -103,10 +99,10 @@ impl BarsUseCases {
                     UsStockSplitHistoryRange {
                         daily_from: UsStockBarTimeframe::Daily
                             .earliest_bar(target)
-                            .unwrap_or(daily_history_start),
+                            .unwrap_or_else(|| UsStockBarTimeframe::Daily.history_start(to)),
                         minute_from: UsStockBarTimeframe::Minute
                             .earliest_bar(target)
-                            .unwrap_or(minute_history_start),
+                            .unwrap_or_else(|| UsStockBarTimeframe::Minute.history_start(to)),
                         to,
                     },
                     budget,
