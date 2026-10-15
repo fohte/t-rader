@@ -50,8 +50,6 @@ impl MigrationTrait for Migration {
              FROM minute_bars",
         )
         .await?;
-        db.execute_unprepared("SELECT set_chunk_time_interval('bars', INTERVAL '1 day')")
-            .await?;
         db.execute_unprepared(
             "ALTER TABLE bars SET (timescaledb.compress = true, timescaledb.compress_segmentby = 'instrument_id,timeframe')",
         )
@@ -333,7 +331,7 @@ mod tests {
             ),
             (
                 true,
-                Some("1 day".into()),
+                Some("7 days".into()),
                 Some("instrument_id,timeframe".into()),
                 Some("7 days".into()),
                 Some("US:DEMO-A|1m|20400102150400|200|210|190|205|20".into()),
@@ -351,6 +349,13 @@ mod tests {
                 indoc::indoc! {
                     "SELECT
                         (SELECT string_agg(timeframe, ',' ORDER BY timeframe) FROM bars) AS bar_timeframes,
+                        (
+                            SELECT time_interval::text
+                            FROM timescaledb_information.dimensions
+                            WHERE hypertable_schema = current_schema()
+                              AND hypertable_name = 'bars'
+                              AND column_name = 'timestamp'
+                        ) AS bars_chunk_interval,
                         (SELECT count(*) FROM minute_bars) AS minute_count,
                         (SELECT close::integer FROM minute_bars) AS minute_close,
                         EXISTS (
@@ -377,6 +382,9 @@ mod tests {
                     .try_get::<Option<String>>("", "bar_timeframes")
                     .expect("read bar timeframes"),
                 restored
+                    .try_get::<Option<String>>("", "bars_chunk_interval")
+                    .expect("read bars chunk interval"),
+                restored
                     .try_get::<i64>("", "minute_count")
                     .expect("read restored minute count"),
                 restored
@@ -389,7 +397,7 @@ mod tests {
                     .try_get::<bool>("", "bars_policy_removed")
                     .expect("read removed bars policy"),
             ),
-            (Some("1d".into()), 1, 205, true, true),
+            (Some("1d".into()), Some("7 days".into()), 1, 205, true, true),
         );
         transaction.rollback().await.expect("roll back test schema");
     }
