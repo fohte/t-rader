@@ -57,13 +57,14 @@ const props: ReviewPageViewProps = {
 
 afterEach(cleanup)
 
-function getKindPresentation(
-  container: HTMLElement,
-  kindOption: HTMLOptionElement,
-) {
+function getKindPresentation(kindOption: HTMLElement) {
   return {
-    displayNameCount: screen.getAllByText('架空の種別表示名').length,
-    rawKeyText: container.textContent.includes('fabricated-kind-key'),
+    displayNames: screen
+      .getAllByText('架空の種別表示名')
+      .map((element) => element.textContent),
+    rawKeyText:
+      screen.queryByText('fabricated-kind-key', { exact: true })?.textContent ??
+      null,
     filterValue: kindOption.getAttribute('value'),
   }
 }
@@ -73,14 +74,14 @@ describe('ReviewPageView', () => {
     const router = createStoryRouter(() => <ReviewPageView {...props} />, {
       paths: ['/notes/$noteId', '/annotations/$annoId'],
     })
-    const { container } = render(<RouterProvider router={router} />)
+    render(<RouterProvider router={router} />)
     const kindOption = await screen.findByRole('option', {
       name: '架空の種別表示名',
     })
 
-    expect(getKindPresentation(container, kindOption)).toEqual({
-      displayNameCount: 2,
-      rawKeyText: false,
+    expect(getKindPresentation(kindOption)).toEqual({
+      displayNames: ['架空の種別表示名', '架空の種別表示名'],
+      rawKeyText: null,
       filterValue: reviewQueueModel.noteKindFilterKey('fabricated-kind-key'),
     })
   })

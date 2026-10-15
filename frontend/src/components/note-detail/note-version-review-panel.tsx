@@ -61,10 +61,7 @@ export function NoteVersionReviewPanel({
     })
     void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/notes/{id}', {
-        params: {
-          path: { id: version.note_id },
-          query: { version_id: version.id },
-        },
+        params: { path: { id: version.note_id } },
       }).queryKey,
     })
     void queryClient.invalidateQueries({

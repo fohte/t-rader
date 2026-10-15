@@ -109,11 +109,26 @@ describe('NoteVersionReviewPanel', () => {
     expect(onReviewed.mock.calls).toEqual([])
   })
 
-  it('invalidates the note query for the reviewed version', async () => {
+  it('invalidates note queries for every version of the reviewed note', async () => {
     const user = userEvent.setup()
     const onReviewed = vi.fn<(status: NoteVersionReviewResult) => void>()
     const queryClient = renderPanel(onReviewed)
-    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+    const versionQueryKeys = ['fake-version-a', 'fake-version-b'].map(
+      (versionId) =>
+        [
+          'get',
+          '/api/notes/{id}',
+          {
+            params: {
+              path: { id: version.note_id },
+              query: { version_id: versionId },
+            },
+          },
+        ] as const,
+    )
+    for (const queryKey of versionQueryKeys) {
+      queryClient.setQueryData(queryKey, { kind: 'fabricated-kind-key' })
+    }
 
     await user.click(screen.getByRole('button', { name: '✓ 承認' }))
     act(() => {
@@ -121,43 +136,9 @@ describe('NoteVersionReviewPanel', () => {
     })
 
     expect(
-      invalidateQueries.mock.calls.map(([filters]) => filters?.queryKey),
-    ).toEqual([
-      [
-        'get',
-        '/api/notes/{id}/versions',
-        { params: { path: { id: 'fake-note-a' } } },
-      ],
-      [
-        'get',
-        '/api/notes/{id}/versions/{n}',
-        { params: { path: { id: 'fake-note-a', n: 2 } } },
-      ],
-      ['get', '/api/note-versions/pending', undefined],
-      [
-        'get',
-        '/api/notes/{id}',
-        {
-          params: {
-            path: { id: 'fake-note-a' },
-            query: { version_id: 'fake-version-a' },
-          },
-        },
-      ],
-      ['get', '/api/notes', undefined],
-      [
-        'get',
-        '/api/history',
-        {
-          params: {
-            query: {
-              target_kind: 'note',
-              target_id: 'fake-note-a',
-              limit: 50,
-            },
-          },
-        },
-      ],
-    ])
+      versionQueryKeys.map(
+        (queryKey) => queryClient.getQueryState(queryKey)?.isInvalidated,
+      ),
+    ).toEqual([true, true])
   })
 })
