@@ -212,6 +212,38 @@ export function useMarkdownBodyCommentSelection({
     updateSelectedRange(null)
   }, [updateSelectedRange])
 
+  useEffect(() => {
+    if (!enabled) return
+    const onDocumentPointerDown = (event: Event): void => {
+      if (
+        !(event.target instanceof Node) ||
+        rootRef.current?.contains(event.target) !== true
+      ) {
+        setTextSelectionAction(null)
+      }
+    }
+    const onDocumentPointerUp = (event: Event): void => {
+      if (dragSelectionRef.current == null) return
+      if (
+        !(event.target instanceof Node) ||
+        rootRef.current?.contains(event.target) !== true
+      ) {
+        dragSelectionRef.current = null
+        updateSelectedRange(null)
+        return
+      }
+      onPointerUp()
+    }
+    document.addEventListener('pointerdown', onDocumentPointerDown)
+    document.addEventListener('pointerup', onDocumentPointerUp, true)
+    document.addEventListener('pointercancel', onPointerCancel, true)
+    return () => {
+      document.removeEventListener('pointerdown', onDocumentPointerDown)
+      document.removeEventListener('pointerup', onDocumentPointerUp, true)
+      document.removeEventListener('pointercancel', onPointerCancel, true)
+    }
+  }, [enabled, onPointerCancel, onPointerUp, updateSelectedRange])
+
   const onGutterPointerDown = useCallback(
     (range: SourceLineRange): void => {
       dragSelectionRef.current = { start: range, hasMoved: false }

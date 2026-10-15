@@ -97,6 +97,7 @@ const rangeCommentProps = {
   resolvingCommentId: null,
   hasCreateError: false,
   hasReplyError: false,
+  hasResolveError: false,
   isCommentsPending: false,
   hasCommentsError: false,
   onStartComment: () => {},
@@ -202,6 +203,41 @@ export const WithCommentComposer: Story = {
         text: '',
       }),
       comments: [],
+    },
+  },
+}
+
+export const CommentsLoading: Story = {
+  name: 'shows a loading message while note comments are fetched.',
+  args: {
+    source: '# コメントを読み込み中の本文\n\nコメント付きの段落です。',
+    rangeComments: {
+      ...rangeCommentProps,
+      comments: [],
+      isCommentsPending: true,
+    },
+  },
+}
+
+export const CommentsLoadFailed: Story = {
+  name: 'shows an error when note comments cannot be loaded.',
+  args: {
+    source: '# コメントを読み込めない本文\n\nコメント付きの段落です。',
+    rangeComments: {
+      ...rangeCommentProps,
+      comments: [],
+      hasCommentsError: true,
+    },
+  },
+}
+
+export const ResolveFailed: Story = {
+  name: 'shows an error when a comment cannot be resolved.',
+  args: {
+    source: '# 解決に失敗した本文\n\nコメント付きの段落です。',
+    rangeComments: {
+      ...rangeCommentProps,
+      hasResolveError: true,
     },
   },
 }

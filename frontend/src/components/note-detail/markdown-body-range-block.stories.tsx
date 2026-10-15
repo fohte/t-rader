@@ -46,6 +46,7 @@ const rangeComments: MarkdownBodyRangeCommentProps = {
   resolvingCommentId: null,
   hasCreateError: false,
   hasReplyError: false,
+  hasResolveError: false,
   isCommentsPending: false,
   hasCommentsError: false,
   onStartComment: () => {},
@@ -86,6 +87,15 @@ export const BlockShowsItsCommentThread: Story = {
   name: 'shows the thread below the last line in the block range.',
   args: {
     node,
+    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
+  },
+}
+
+export const BlockShowsItsCommentThreadWithoutGutter: Story = {
+  name: 'shows the thread beneath the block without a gutter.',
+  args: {
+    node,
+    showGutter: false,
     children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
   },
 }

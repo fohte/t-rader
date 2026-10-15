@@ -4,18 +4,41 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { NoteVersionBodyComments } from '#components/note-detail/note-version-body-comments'
+import type { NoteVersionComment } from '#lib/api/note-version-types'
 
-type CreateCommentRequest = {
+type ApiRequest = {
+  method: 'POST' | 'PATCH'
+  path: string
+  body: Record<string, unknown>
+}
+type MutationRequest = {
+  params?: { path?: { id: string } }
   body: Record<string, unknown>
 }
 
-const { useQuery, useMutation, createMutation, resolveMutation } = vi.hoisted(
+const comment: NoteVersionComment = {
+  id: 'sample-comment',
+  target_kind: 'note_version',
+  target_id: 'sample-version',
+  parent_id: null,
+  body: '対象を確認してください。',
+  author_kind: 'human',
+  author_label: 'レビュー担当者',
+  resolved: false,
+  anchor_text: '対象の本文',
+  anchor_side: 'new',
+  start_line: 1,
+  end_line: 1,
+  created_at: '2026-01-12T03:00:00Z',
+}
+
+const { useQuery, useMutation, apiRequests, resolveMutation } = vi.hoisted(
   () => ({
     useQuery: vi.fn(),
     useMutation: vi.fn(),
-    createMutation: vi.fn<(request: CreateCommentRequest) => void>(),
+    apiRequests: [] as ApiRequest[],
     resolveMutation: {
-      mutate: vi.fn(),
+      mutate: vi.fn<(request: MutationRequest) => void>(),
       isPending: false,
       isError: false,
       variables: undefined,
@@ -37,11 +60,24 @@ const queryClient = new QueryClient({
 
 beforeEach(() => {
   useQuery.mockReturnValue({ data: [], isPending: false, isError: false })
-  useMutation.mockImplementation((_method: string, path: string) =>
-    path === '/api/comments/{id}'
-      ? resolveMutation
+  apiRequests.length = 0
+  resolveMutation.isError = false
+  useMutation.mockImplementation((method: string, path: string) =>
+    method === 'patch'
+      ? {
+          ...resolveMutation,
+          mutate: (request: MutationRequest) => {
+            apiRequests.push({
+              method: 'PATCH',
+              path: path.replace('{id}', request.params?.path?.id ?? ''),
+              body: request.body,
+            })
+          },
+        }
       : {
-          mutate: createMutation,
+          mutate: (request: MutationRequest) => {
+            apiRequests.push({ method: 'POST', path, body: request.body })
+          },
           reset: vi.fn(),
           isPending: false,
           isError: false,
@@ -55,8 +91,9 @@ afterEach(() => {
   queryClient.clear()
   useQuery.mockReset()
   useMutation.mockReset()
-  createMutation.mockReset()
+  apiRequests.length = 0
   resolveMutation.mutate.mockReset()
+  resolveMutation.isError = false
 })
 
 function renderNoteBodyComments(source: string) {
@@ -99,15 +136,19 @@ describe('NoteVersionBodyComments', () => {
     )
     await user.click(screen.getByRole('button', { name: '送信' }))
 
-    expect(createMutation.mock.calls.map(([request]) => request.body)).toEqual([
+    expect(apiRequests).toEqual([
       {
-        target_kind: 'note_version',
-        target_id: 'sample-version',
-        body: '根拠を補足してください。',
-        anchor_text: '対象の段落です。',
-        anchor_side: 'new',
-        start_line: 3,
-        end_line: 4,
+        method: 'POST',
+        path: '/api/comments',
+        body: {
+          target_kind: 'note_version',
+          target_id: 'sample-version',
+          body: '根拠を補足してください。',
+          anchor_text: '対象の段落です。',
+          anchor_side: 'new',
+          start_line: 3,
+          end_line: 4,
+        },
       },
     ])
   })
@@ -130,15 +171,19 @@ describe('NoteVersionBodyComments', () => {
     )
     await user.click(screen.getByRole('button', { name: '送信' }))
 
-    expect(createMutation.mock.calls.map(([request]) => request.body)).toEqual([
+    expect(apiRequests).toEqual([
       {
-        target_kind: 'note_version',
-        target_id: 'sample-version',
-        body: '段落をまとめて確認してください。',
-        anchor_text: '最初の段落\n\n次の段落',
-        anchor_side: 'new',
-        start_line: 3,
-        end_line: 5,
+        method: 'POST',
+        path: '/api/comments',
+        body: {
+          target_kind: 'note_version',
+          target_id: 'sample-version',
+          body: '段落をまとめて確認してください。',
+          anchor_text: '最初の段落\n\n次の段落',
+          anchor_side: 'new',
+          start_line: 3,
+          end_line: 5,
+        },
       },
     ])
   })
@@ -159,16 +204,79 @@ describe('NoteVersionBodyComments', () => {
     )
     await user.click(screen.getByRole('button', { name: '送信' }))
 
-    expect(createMutation.mock.calls.map(([request]) => request.body)).toEqual([
+    expect(apiRequests).toEqual([
       {
-        target_kind: 'note_version',
-        target_id: 'sample-version',
-        body: '範囲をまとめて確認してください。',
-        anchor_text: '最初の段落\n\n次の段落',
-        anchor_side: 'new',
-        start_line: 3,
-        end_line: 5,
+        method: 'POST',
+        path: '/api/comments',
+        body: {
+          target_kind: 'note_version',
+          target_id: 'sample-version',
+          body: '範囲をまとめて確認してください。',
+          anchor_text: '最初の段落\n\n次の段落',
+          anchor_side: 'new',
+          start_line: 3,
+          end_line: 5,
+        },
       },
     ])
+  })
+
+  it('sends a reply to the selected comment', async () => {
+    const user = userEvent.setup()
+    useQuery.mockReturnValue({
+      data: [comment],
+      isPending: false,
+      isError: false,
+    })
+    renderNoteBodyComments('対象の本文')
+
+    await user.click(screen.getByRole('button', { name: '返信' }))
+    await user.type(
+      screen.getByRole('textbox', { name: '返信' }),
+      '該当箇所を確認しました。',
+    )
+    await user.click(screen.getByRole('button', { name: '送信' }))
+
+    expect(apiRequests).toEqual([
+      {
+        method: 'POST',
+        path: '/api/comments',
+        body: {
+          target_kind: 'note_version',
+          target_id: 'sample-version',
+          parent_id: 'sample-comment',
+          body: '該当箇所を確認しました。',
+        },
+      },
+    ])
+  })
+
+  it('toggles the resolved state of a comment', async () => {
+    const user = userEvent.setup()
+    useQuery.mockReturnValue({
+      data: [comment],
+      isPending: false,
+      isError: false,
+    })
+    renderNoteBodyComments('対象の本文')
+
+    await user.click(screen.getByRole('button', { name: '未解決' }))
+
+    expect(apiRequests).toEqual([
+      {
+        method: 'PATCH',
+        path: '/api/comments/sample-comment',
+        body: { resolved: true },
+      },
+    ])
+  })
+
+  it('shows an error when resolving a body comment fails', () => {
+    resolveMutation.isError = true
+    renderNoteBodyComments('対象の本文')
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      'コメントの解決状態を更新できませんでした',
+    )
   })
 })

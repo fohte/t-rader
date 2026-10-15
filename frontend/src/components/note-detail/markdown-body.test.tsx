@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
+import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { components } from '#lib/api/schema.gen'
 
 const { useBarsQuery } = vi.hoisted(() => ({ useBarsQuery: vi.fn() }))
@@ -32,6 +33,7 @@ const emptyRangeComments = {
   resolvingCommentId: null,
   hasCreateError: false,
   hasReplyError: false,
+  hasResolveError: false,
   isCommentsPending: false,
   hasCommentsError: false,
   onStartComment: () => {},
@@ -195,6 +197,45 @@ describe('MarkdownBody', () => {
       ['1', '2'],
       ['2', '2'],
     ])
+  })
+
+  it('renders a range thread once below the final block across paragraphs', () => {
+    const comment: NoteVersionComment = {
+      id: '00000000-0000-0000-0000-000000000403',
+      target_kind: 'note_version',
+      target_id: '00000000-0000-0000-0000-000000000404',
+      parent_id: null,
+      body: '複数段落にまたがるコメントです。',
+      author_kind: 'human',
+      author_label: 'レビュー担当者',
+      resolved: false,
+      anchor_text: null,
+      anchor_side: 'new',
+      start_line: 1,
+      end_line: 3,
+      created_at: '2026-01-12T03:00:00Z',
+    }
+    const { container } = render(
+      <MarkdownBody
+        source={'最初の段落です。\n\n最後の段落です。'}
+        rangeComments={{ ...emptyRangeComments, comments: [comment] }}
+      />,
+    )
+    const renderedComment = screen.getByText(comment.body)
+    const finalBlock = renderedComment.closest('[data-source-block="true"]')
+
+    const getThreadPlacement = () => ({
+      commentCount: screen.getAllByText(comment.body).length,
+      line: finalBlock?.getAttribute('data-source-start-line') ?? null,
+      blockCount: container.querySelectorAll('[data-source-block="true"]')
+        .length,
+    })
+
+    expect(getThreadPlacement()).toEqual({
+      commentCount: 1,
+      line: '3',
+      blockCount: 2,
+    })
   })
 
   it('navigates a stock alias with its resolved id', async () => {

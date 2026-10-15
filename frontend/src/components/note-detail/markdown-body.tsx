@@ -444,6 +444,11 @@ export function MarkdownBody({
           コメントを読み込めませんでした
         </p>
       )}
+      {rangeComments?.hasResolveError === true && (
+        <p role="alert" className="mb-2 font-mono text-2xs text-primary">
+          コメントの解決状態を更新できませんでした
+        </p>
+      )}
       <MarkdownBodyRangeCommentContext.Provider value={commentContextValue}>
         <Markdown
           remarkPlugins={[

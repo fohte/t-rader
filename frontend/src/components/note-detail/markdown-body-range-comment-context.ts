@@ -14,6 +14,7 @@ export interface MarkdownBodyRangeCommentProps {
   resolvingCommentId: string | null
   hasCreateError: boolean
   hasReplyError: boolean
+  hasResolveError?: boolean
   isCommentsPending: boolean
   hasCommentsError: boolean
   onStartComment: (anchor: DiffCommentAnchor) => void
