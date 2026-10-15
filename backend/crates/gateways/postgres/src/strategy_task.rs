@@ -495,7 +495,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus as DbStepStatus;
-    use crate::entities::{strategy, strategy_task_step};
+    use crate::entities::{agent_config, strategy, strategy_task_step};
     use crate::{DatabaseHandle, PostgresUnitOfWork};
 
     use super::PostgresStrategyTaskRepository;
@@ -577,6 +577,41 @@ mod tests {
             error: Set(None),
             seq: NotSet,
         }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn find_agent_graph_by_purpose_returns_matching_configuration(db: DatabaseHandle) {
+        for (id, purpose, agent_graph) in [
+            (900, "other-purpose", "other-agent-graph"),
+            (901, "fictional-purpose", "fictional-agent-graph"),
+        ] {
+            agent_config::ActiveModel {
+                id: Set(Uuid::from_u128(id)),
+                purpose: Set(purpose.to_string()),
+                agents_md: NotSet,
+                skills: NotSet,
+                agent_graph: Set(agent_graph.to_string()),
+                created_at: NotSet,
+                updated_at: NotSet,
+            }
+            .insert(&db)
+            .await
+            .expect("insert test agent config");
+        }
+
+        let repository = PostgresStrategyTaskRepository::new(db);
+        let actual = (
+            repository
+                .find_agent_graph_by_purpose("fictional-purpose")
+                .await
+                .expect("find matching agent graph"),
+            repository
+                .find_agent_graph_by_purpose("missing-purpose")
+                .await
+                .expect("find missing agent graph"),
+        );
+
+        assert_eq!(actual, (Some("fictional-agent-graph".to_string()), None,),);
     }
 
     #[backend_test_macros::database_test]

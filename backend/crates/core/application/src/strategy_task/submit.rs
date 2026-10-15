@@ -52,7 +52,7 @@ impl StrategyTaskUseCases {
             .find_agent_graph_by_purpose(&purpose)
             .await?
             .ok_or_else(|| SubmitTaskError::PurposeNotFound(purpose.clone()))?;
-        let deadline_duration = deadline_duration_from_agent_graph(&agent_graph)?;
+        let deadline_duration = deadline_duration_from_agent_graph(&agent_graph);
 
         let task_id = Uuid::new_v4();
         let now = chrono::Utc::now().fixed_offset();

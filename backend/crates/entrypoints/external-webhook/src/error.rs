@@ -77,9 +77,6 @@ pub(crate) fn map_submit_error(error: SubmitTaskError) -> AppError {
         SubmitTaskError::PurposeNotFound(purpose) => {
             AppError::ServiceUnavailable(format!("agent_config for purpose '{purpose}' not found"))
         }
-        SubmitTaskError::InvalidAgentGraph(error) => {
-            AppError::Validation(format!("agent_graph is invalid: {error}"))
-        }
         SubmitTaskError::Repository(StrategyTaskRepositoryError::Database(error))
         | SubmitTaskError::UnitOfWork(UnitOfWorkError::Begin(error))
         | SubmitTaskError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),

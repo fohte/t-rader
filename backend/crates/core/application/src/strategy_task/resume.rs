@@ -38,7 +38,7 @@ impl StrategyTaskUseCases {
         let purpose = task.purpose.as_deref().unwrap_or(DEFAULT_PURPOSE);
         let agent_graph = self.repository.find_agent_graph_by_purpose(purpose).await?;
         let deadline_duration =
-            deadline_duration_from_agent_graph(agent_graph.as_deref().unwrap_or_default())?;
+            deadline_duration_from_agent_graph(agent_graph.as_deref().unwrap_or_default());
 
         let claim_now = chrono::Utc::now().fixed_offset();
         let transaction = self.unit_of_work.begin().await?;

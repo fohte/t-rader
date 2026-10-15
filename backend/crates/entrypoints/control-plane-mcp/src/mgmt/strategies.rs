@@ -100,9 +100,6 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
         SubmitTaskError::PurposeNotFound(purpose) => {
             invalid_params(format!("agent_config for purpose '{purpose}' not found"))
         }
-        SubmitTaskError::InvalidAgentGraph(error) => {
-            invalid_params(format!("agent_graph is invalid: {error}"))
-        }
         SubmitTaskError::Repository(error) => map_repository_error(error),
         SubmitTaskError::UnitOfWork(error) => map_unit_of_work_error(error),
         SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
@@ -117,9 +114,6 @@ fn map_resume_error(err: ResumeTaskError) -> McpError {
         ResumeTaskError::NotResumable(id, phase) => invalid_params(format!(
             "strategy task {id} is not resumable (current phase: {phase})"
         )),
-        ResumeTaskError::InvalidAgentGraph(error) => {
-            invalid_params(format!("agent_graph is invalid: {error}"))
-        }
         ResumeTaskError::Repository(error) => map_repository_error(error),
         ResumeTaskError::UnitOfWork(error) => map_unit_of_work_error(error),
         ResumeTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),

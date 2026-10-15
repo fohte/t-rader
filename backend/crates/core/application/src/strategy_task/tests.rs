@@ -109,18 +109,35 @@ async fn submit_sets_deadline_from_agent_graph(
     #[case] phase_timeout_minutes: Option<u32>,
     #[case] expected_minutes: i64,
 ) {
+    let agent_graph = agent_graph_with_timeouts(top_level_timeout_minutes, phase_timeout_minutes);
+
+    assert_eq!(
+        submit_deadline_for_agent_graph(&agent_graph).await,
+        (
+            true,
+            Some((chrono::Duration::minutes(expected_minutes), true)),
+        ),
+    );
+}
+
+#[tokio::test]
+async fn submit_uses_default_deadline_when_agent_graph_cannot_be_parsed() {
+    assert_eq!(
+        submit_deadline_for_agent_graph("phases: [").await,
+        (true, Some((chrono::Duration::minutes(15), true))),
+    );
+}
+
+async fn submit_deadline_for_agent_graph(
+    agent_graph: &str,
+) -> (bool, Option<(chrono::Duration, bool)>) {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeStrategyTaskRepository::new(None, Vec::new()));
-    repository
-        .set_agent_graph(&agent_graph_with_timeouts(
-            top_level_timeout_minutes,
-            phase_timeout_minutes,
-        ))
-        .await;
+    repository.set_agent_graph(agent_graph).await;
     let agent_client = FakeAgentTaskClient::new();
     let use_cases = StrategyTaskUseCases::new(unit_of_work, repository.clone());
 
-    use_cases
+    let submitted = use_cases
         .submit_task(
             &agent_client,
             Uuid::nil(),
@@ -129,30 +146,26 @@ async fn submit_sets_deadline_from_agent_graph(
             Some("fictional-purpose".to_string()),
         )
         .await
-        .expect("submit task");
+        .is_ok();
 
-    let task = repository
-        .state
-        .lock()
-        .await
-        .task
-        .clone()
-        .expect("task should be inserted");
+    let task = repository.state.lock().await.task.clone();
     let submitted_deadline = agent_client
         .submitted
         .lock()
         .await
         .first()
-        .map(|request| request.deadline_at)
-        .expect("deadline should be submitted to the agent");
+        .map(|request| request.deadline_at);
 
-    assert_eq!(
-        (
-            task.deadline_at - task.created_at,
-            task.deadline_at == submitted_deadline,
-        ),
-        (chrono::Duration::minutes(expected_minutes), true),
-    );
+    (
+        submitted,
+        task.zip(submitted_deadline)
+            .map(|(task, submitted_deadline)| {
+                (
+                    task.deadline_at - task.created_at,
+                    task.deadline_at == submitted_deadline,
+                )
+            }),
+    )
 }
 
 #[tokio::test]

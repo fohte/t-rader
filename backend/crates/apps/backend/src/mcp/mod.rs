@@ -424,7 +424,10 @@ mod tests {
     /// keep_alive が deadline を下回ると、deadline 内でも session が破棄されうる。
     #[test]
     fn mgmt_session_keep_alive_matches_max_task_deadline_with_grace_period() {
-        assert_eq!(mgmt_session_keep_alive(), Duration::from_secs(21_660));
+        assert_eq!(
+            mgmt_session_keep_alive(),
+            Duration::from_secs(u64::from(MAX_TIMEOUT_MINUTES + 1) * 60),
+        );
     }
 
     #[rstest]

@@ -58,7 +58,10 @@ struct ResumeHarness {
 
 impl ResumeHarness {
     fn new(task: Option<StrategyTask>, steps: Vec<StrategyTaskStep>) -> Self {
-        let repository = Arc::new(FakeStrategyTaskRepository::new(task, steps));
+        Self::with_repository(Arc::new(FakeStrategyTaskRepository::new(task, steps)))
+    }
+
+    fn with_repository(repository: Arc<FakeStrategyTaskRepository>) -> Self {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let agent_client = FakeAgentTaskClient::new();
         let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
@@ -203,6 +206,63 @@ async fn resume_sets_deadline_from_agent_graph_at_resume_time() {
             result,
             submitted_deadline == stored_deadline,
             deadline_matches_timeout,
+        ),
+        (
+            ResumeResult::Submitted {
+                task_id,
+                a2a_task_id: "fake-agent-task".to_string(),
+            },
+            true,
+            true,
+        ),
+    );
+}
+
+#[tokio::test]
+async fn resume_uses_default_deadline_when_agent_graph_is_missing() {
+    let task = task(StrategyTaskPhase::Failed, None);
+    let task_id = task.task_id;
+    let repository = Arc::new(FakeStrategyTaskRepository::without_agent_config(Some(task)));
+    let harness = ResumeHarness::with_repository(repository);
+    harness
+        .agent_client
+        .set_next_task_id("fake-agent-task")
+        .await;
+    let before_resume = chrono::Utc::now().fixed_offset();
+
+    let result = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+
+    let after_resume = chrono::Utc::now().fixed_offset();
+    let submitted_deadline = harness
+        .agent_client
+        .submitted
+        .lock()
+        .await
+        .first()
+        .map(|request| request.deadline_at)
+        .expect("deadline should be submitted to the agent");
+    let stored_deadline = harness
+        .repository
+        .state
+        .lock()
+        .await
+        .task
+        .as_ref()
+        .map(|task| task.deadline_at)
+        .expect("task should remain stored");
+    let deadline_matches_default = submitted_deadline >= before_resume + Duration::minutes(15)
+        && submitted_deadline <= after_resume + Duration::minutes(15);
+
+    assert_eq!(
+        (
+            result,
+            submitted_deadline == stored_deadline,
+            deadline_matches_default,
         ),
         (
             ResumeResult::Submitted {
