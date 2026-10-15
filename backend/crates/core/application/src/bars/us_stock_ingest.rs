@@ -6,7 +6,9 @@ use rust_decimal::Decimal;
 
 use super::error::BarsUseCaseError;
 use super::types::{BarsByInstrumentsQuery, UsStockBarTarget, UsStockBarsIngestStats};
-use super::us_stock_source::{UsStockBarQuery, UsStockBarSource, UsStockBarSourceError};
+use super::us_stock_source::{
+    SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
+};
 use super::use_cases::BarsUseCases;
 
 mod split;
@@ -125,7 +127,10 @@ impl BarsUseCases {
         timeframe: UsStockBarTimeframe,
         max_requests: usize,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        let targets = self.repository.find_us_stock_bar_targets().await?;
+        let targets = match timeframe {
+            UsStockBarTimeframe::Daily => self.repository.find_us_stock_daily_bar_targets().await?,
+            UsStockBarTimeframe::Minute => self.repository.find_us_stock_bar_targets().await?,
+        };
         let mut stats = UsStockBarsIngestStats {
             symbols_attempted: targets.len(),
             ..UsStockBarsIngestStats::default()
@@ -237,7 +242,7 @@ impl BarsUseCases {
                 return Ok(false);
             }
             stats.requests_attempted += 1;
-            let page = source
+            let page = match source
                 .fetch_page(&UsStockBarQuery {
                     instrument_ids: instrument_ids.to_vec(),
                     timeframe: timeframe.timeframe(),
@@ -245,7 +250,29 @@ impl BarsUseCases {
                     to: range.to,
                     page_token: page_token.clone(),
                 })
-                .await?;
+                .await
+            {
+                Ok(page) => page,
+                Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
+                    let Some((first, second)) = split_rejected_batch(instrument_ids, reason, stats)
+                    else {
+                        return Ok(true);
+                    };
+                    if !Box::pin(self.ingest_batch(source, first, timeframe, range, budget, stats))
+                        .await?
+                    {
+                        return Ok(false);
+                    }
+                    return Box::pin(
+                        self.ingest_batch(source, second, timeframe, range, budget, stats),
+                    )
+                    .await;
+                }
+                Err(error) => return Err(error.into()),
+            };
+            for skipped in page.skipped_instruments {
+                record_skipped_instrument(stats, skipped.instrument_id, skipped.reason);
+            }
             let next_page_token = page.next_page_token;
             let mut bars = page.bars;
             if timeframe == UsStockBarTimeframe::Daily {
@@ -281,7 +308,7 @@ impl BarsUseCases {
                 return Ok(None);
             }
             stats.requests_attempted += 1;
-            let page = source
+            let page = match source
                 .fetch_page(&UsStockBarQuery {
                     instrument_ids: instrument_ids.to_vec(),
                     timeframe: timeframe.timeframe(),
@@ -289,7 +316,36 @@ impl BarsUseCases {
                     to: range.to,
                     page_token: page_token.clone(),
                 })
-                .await?;
+                .await
+            {
+                Ok(page) => page,
+                Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
+                    let Some((first, second)) = split_rejected_batch(instrument_ids, reason, stats)
+                    else {
+                        return Ok(Some(pages));
+                    };
+                    let Some(mut first_pages) = Box::pin(
+                        self.fetch_batch_pages(source, first, timeframe, range, budget, stats),
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    let Some(second_pages) = Box::pin(
+                        self.fetch_batch_pages(source, second, timeframe, range, budget, stats),
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    first_pages.extend(second_pages);
+                    return Ok(Some(first_pages));
+                }
+                Err(error) => return Err(error.into()),
+            };
+            for skipped in page.skipped_instruments {
+                record_skipped_instrument(stats, skipped.instrument_id, skipped.reason);
+            }
 
             pages.push(page.bars);
 
@@ -383,6 +439,42 @@ impl BarsUseCases {
     }
 }
 
+pub(super) fn record_skipped_instrument(
+    stats: &mut UsStockBarsIngestStats,
+    instrument_id: String,
+    reason: String,
+) {
+    if stats
+        .skipped_instruments
+        .iter()
+        .any(|skipped| skipped.instrument_id == instrument_id)
+    {
+        return;
+    }
+    tracing::warn!(
+        instrument_id,
+        reason,
+        "米国株の足取り込みで対応できない銘柄をスキップしました"
+    );
+    stats.skipped_instruments.push(SkippedUsStockInstrument {
+        instrument_id,
+        reason,
+    });
+}
+
+fn split_rejected_batch<'a>(
+    instrument_ids: &'a [String],
+    reason: String,
+    stats: &mut UsStockBarsIngestStats,
+) -> Option<(&'a [String], &'a [String])> {
+    if instrument_ids.len() == 1 {
+        record_skipped_instrument(stats, instrument_ids[0].clone(), reason);
+        return None;
+    }
+    let split_at = instrument_ids.len() / 2;
+    Some(instrument_ids.split_at(split_at))
+}
+
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
     use std::sync::Arc;
@@ -395,9 +487,9 @@ mod tests {
     use tokio::sync::Mutex;
 
     use crate::bars::{
-        BarsUseCases, FakeBarsRepository, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
-        UsStockBarSourceError, UsStockBarsIngestStats, UsStockSplit, UsStockSplitBatch,
-        UsStockSplitQuery,
+        BarsUseCases, FakeBarsRepository, SkippedUsStockInstrument, UsStockBarPage,
+        UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockBarsIngestStats,
+        UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
@@ -433,6 +525,8 @@ mod tests {
         repeat_page_token: bool,
         split_has_more: bool,
         pagination: Option<PaginatedPages>,
+        rejected_instruments: Vec<String>,
+        rejected_split_instruments: Vec<String>,
     }
 
     struct PaginatedPages {
@@ -461,6 +555,15 @@ mod tests {
             query: &UsStockBarQuery,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
             self.calls.lock().await.push(query.clone());
+            if query
+                .instrument_ids
+                .iter()
+                .any(|instrument_id| self.rejected_instruments.contains(instrument_id))
+            {
+                return Err(UsStockBarSourceError::RejectedSymbols(
+                    "synthetic symbol rejection".to_owned(),
+                ));
+            }
             if let Some(pagination) = &self.pagination
                 && query.instrument_ids.len() == 1
                 && query.instrument_ids.first() == Some(&pagination.instrument_id)
@@ -480,6 +583,7 @@ mod tests {
                     },
                     next_page_token: (next_page < pagination.total_pages)
                         .then(|| next_page.to_string()),
+                    skipped_instruments: Vec::new(),
                 });
             }
             let configured_bars = self.bars.lock().await.clone();
@@ -539,6 +643,7 @@ mod tests {
             Ok(UsStockBarPage {
                 bars,
                 next_page_token,
+                skipped_instruments: Vec::new(),
             })
         }
 
@@ -548,6 +653,15 @@ mod tests {
             max_requests: usize,
         ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
             self.split_calls.lock().await.push(query.clone());
+            if query
+                .instrument_ids
+                .iter()
+                .any(|instrument_id| self.rejected_split_instruments.contains(instrument_id))
+            {
+                return Err(UsStockBarSourceError::RejectedSymbols(
+                    "synthetic split rejection".to_owned(),
+                ));
+            }
             Ok(UsStockSplitBatch {
                 splits: self
                     .splits
@@ -563,6 +677,7 @@ mod tests {
                     .collect(),
                 requests_attempted: usize::from(max_requests > 0),
                 has_more: self.split_has_more || max_requests == 0,
+                skipped_instruments: Vec::new(),
             })
         }
     }
@@ -679,6 +794,7 @@ mod tests {
                 requests_attempted: 4,
                 daily_bars_upserted: 2,
                 minute_bars_upserted: 0,
+                skipped_instruments: Vec::new(),
                 interrupted_reason: None,
             },
             UsStockBarsIngestStats {
@@ -686,6 +802,7 @@ mod tests {
                 requests_attempted: 2,
                 daily_bars_upserted: 0,
                 minute_bars_upserted: 2,
+                skipped_instruments: Vec::new(),
                 interrupted_reason: None,
             },
             vec![
@@ -740,6 +857,129 @@ mod tests {
         assert_eq!(
             (daily_stats, minute_stats, calls, daily_bars, minute_bars),
             expected,
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn daily_ingestion_includes_daily_targets_while_minute_targets_stay_referenced(
+        harness: Harness,
+    ) {
+        harness
+            .repository
+            .seed_us_stock_targets(vec!["US:QZ-MINUTE".to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_us_stock_daily_targets(vec!["US:QZ-DAILY".to_owned()])
+            .await;
+        let now = date("2040-01-02T12:00:00Z");
+
+        let daily_stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("US stock daily bar ingestion succeeds");
+        let minute_stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("US stock minute bar ingestion succeeds");
+        let calls = harness.source.calls.lock().await.clone();
+
+        assert_eq!(
+            (
+                daily_stats.symbols_attempted,
+                minute_stats.symbols_attempted,
+                calls,
+            ),
+            (
+                2,
+                1,
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec!["US:QZ-DAILY".to_owned(), "US:QZ-MINUTE".to_owned(),],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec!["US:QZ-MINUTE".to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from: now
+                            .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
+                            .unwrap_or(now),
+                        to: now,
+                        page_token: None,
+                    },
+                ],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn skips_an_alpaca_rejected_symbol_and_ingests_the_rest(mut harness: Harness) {
+        let rejected_id = "US:QZ-UNSUPPORTED";
+        let supported_id = "US:QZ-VALID";
+        harness
+            .repository
+            .seed_us_stock_targets(vec![rejected_id.to_owned(), supported_id.to_owned()])
+            .await;
+        harness.source.rejected_instruments = vec![rejected_id.to_owned()];
+        let now = date("2040-01-02T12:00:00Z");
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("one rejected symbol does not fail daily ingestion");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.clone(),
+            harness.repository.bars.lock().await.clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 2,
+                    requests_attempted: 4,
+                    daily_bars_upserted: 1,
+                    minute_bars_upserted: 0,
+                    skipped_instruments: vec![SkippedUsStockInstrument {
+                        instrument_id: rejected_id.to_owned(),
+                        reason: "synthetic symbol rejection".to_owned(),
+                    }],
+                    interrupted_reason: None,
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![rejected_id.to_owned(), supported_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![rejected_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![supported_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: now,
+                        page_token: None,
+                    },
+                ],
+                vec![bar(supported_id, Timeframe::Daily, now)],
+            ),
         );
     }
 
@@ -906,6 +1146,7 @@ mod tests {
                     requests_attempted: MAX_REQUESTS_PER_RUN,
                     daily_bars_upserted: 0,
                     minute_bars_upserted: 2,
+                    skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
                 },
                 UsStockBarsIngestStats {
@@ -913,6 +1154,7 @@ mod tests {
                     requests_attempted: 1,
                     daily_bars_upserted: 0,
                     minute_bars_upserted: 2,
+                    skipped_instruments: Vec::new(),
                     interrupted_reason: None,
                 },
                 expected_calls,
@@ -1008,6 +1250,7 @@ mod tests {
                     requests_attempted: MAX_REQUESTS_PER_RUN,
                     daily_bars_upserted: 1,
                     minute_bars_upserted: 0,
+                    skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
                 },
                 expected_calls,
@@ -1023,6 +1266,109 @@ mod tests {
                     bar(instrument_id, Timeframe::Daily, now),
                 ],
                 vec![],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn isolates_rejected_symbols_when_fetching_split_history(mut harness: Harness) {
+        let rejected_id = "US:QZ-REJECTED";
+        let supported_id = "US:QZ-SUPPORTED";
+        let ex_date = date("2040-01-01T00:00:00Z");
+        let now = date("2040-01-03T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_daily_targets(vec![rejected_id.to_owned(), supported_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![priced_bar(
+                supported_id,
+                Timeframe::Daily,
+                ex_date,
+                200,
+            )])
+            .await;
+        harness.source.rejected_split_instruments = vec![rejected_id.to_owned()];
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: supported_id.to_owned(),
+            ex_date: ex_date.date_naive(),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("one rejected split symbol does not fail daily ingestion");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.clone(),
+            harness.source.split_calls.lock().await.clone(),
+            harness.repository.bars.lock().await.clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 2,
+                    requests_attempted: 6,
+                    daily_bars_upserted: 3,
+                    minute_bars_upserted: 0,
+                    skipped_instruments: vec![SkippedUsStockInstrument {
+                        instrument_id: rejected_id.to_owned(),
+                        reason: "synthetic split rejection".to_owned(),
+                    }],
+                    interrupted_reason: None,
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![supported_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: ex_date,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![rejected_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![supported_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: ex_date,
+                        to: now,
+                        page_token: None,
+                    },
+                ],
+                vec![
+                    UsStockSplitQuery {
+                        instrument_ids: vec![rejected_id.to_owned(), supported_id.to_owned()],
+                        from: date("1970-01-01T00:00:00Z").date_naive(),
+                        to: now.date_naive(),
+                    },
+                    UsStockSplitQuery {
+                        instrument_ids: vec![rejected_id.to_owned()],
+                        from: date("1970-01-01T00:00:00Z").date_naive(),
+                        to: now.date_naive(),
+                    },
+                    UsStockSplitQuery {
+                        instrument_ids: vec![supported_id.to_owned()],
+                        from: date("1970-01-01T00:00:00Z").date_naive(),
+                        to: now.date_naive(),
+                    },
+                ],
+                vec![
+                    priced_bar(supported_id, Timeframe::Daily, ex_date, 200),
+                    bar(supported_id, Timeframe::Daily, now),
+                    bar(rejected_id, Timeframe::Daily, now),
+                ],
             ),
         );
     }
@@ -1088,6 +1434,7 @@ mod tests {
                     requests_attempted: 4,
                     daily_bars_upserted: 4,
                     minute_bars_upserted: 2,
+                    skipped_instruments: Vec::new(),
                     interrupted_reason: None,
                 },
                 vec![
@@ -1173,6 +1520,7 @@ mod tests {
                     requests_attempted: 2,
                     daily_bars_upserted: 1,
                     minute_bars_upserted: 0,
+                    skipped_instruments: Vec::new(),
                     interrupted_reason: None,
                 },
                 vec![UsStockBarQuery {
@@ -1248,6 +1596,7 @@ mod tests {
                     requests_attempted: 4,
                     daily_bars_upserted: 3,
                     minute_bars_upserted: 2,
+                    skipped_instruments: Vec::new(),
                     interrupted_reason: None,
                 },
                 vec![
@@ -1326,6 +1675,7 @@ mod tests {
                     requests_attempted: 2,
                     daily_bars_upserted: 1,
                     minute_bars_upserted: 0,
+                    skipped_instruments: Vec::new(),
                     interrupted_reason: None,
                 },
                 vec![UsStockBarQuery {

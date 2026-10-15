@@ -12,7 +12,7 @@ use super::super::us_stock_source::{
 use super::super::use_cases::BarsUseCases;
 use super::{
     RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
-    UsStockSplitHistoryRange,
+    UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
 };
 
 impl BarsUseCases {
@@ -36,31 +36,13 @@ impl BarsUseCases {
         let target_ids = instrument_ids.iter().cloned().collect::<HashSet<_>>();
         let mut splits_by_instrument: HashMap<String, Vec<UsStockSplit>> = HashMap::new();
         for instrument_ids in instrument_ids.chunks(SYMBOLS_PER_REQUEST) {
-            let max_requests = budget.remaining();
-            if max_requests == 0 {
+            let Some(batch_splits) = self
+                .fetch_split_batch(source, instrument_ids, from, to.date_naive(), budget, stats)
+                .await?
+            else {
                 return Ok(false);
-            }
-            let batch = source
-                .fetch_splits(
-                    &UsStockSplitQuery {
-                        instrument_ids: instrument_ids.to_vec(),
-                        from,
-                        to: to.date_naive(),
-                    },
-                    max_requests,
-                )
-                .await?;
-            if !budget.take(batch.requests_attempted) {
-                return Err(UsStockBarSourceError::Failed(
-                    "source exceeded the request budget".to_owned(),
-                )
-                .into());
-            }
-            stats.requests_attempted += batch.requests_attempted;
-            if batch.has_more {
-                return Ok(false);
-            }
-            for split in batch.splits {
+            };
+            for split in batch_splits {
                 if target_ids.contains(&split.instrument_id) && split.ex_date <= to.date_naive() {
                     splits_by_instrument
                         .entry(split.instrument_id.clone())
@@ -123,6 +105,74 @@ impl BarsUseCases {
         }
 
         Ok(true)
+    }
+
+    async fn fetch_split_batch(
+        &self,
+        source: &dyn UsStockBarSource,
+        instrument_ids: &[String],
+        from: NaiveDate,
+        to: NaiveDate,
+        budget: &mut RequestBudget,
+        stats: &mut UsStockBarsIngestStats,
+    ) -> Result<Option<Vec<UsStockSplit>>, BarsUseCaseError> {
+        let max_requests = budget.remaining();
+        if max_requests == 0 {
+            return Ok(None);
+        }
+        let result = source
+            .fetch_splits(
+                &UsStockSplitQuery {
+                    instrument_ids: instrument_ids.to_vec(),
+                    from,
+                    to,
+                },
+                max_requests,
+            )
+            .await;
+        match result {
+            Ok(batch) => {
+                if !budget.take(batch.requests_attempted) {
+                    return Err(UsStockBarSourceError::Failed(
+                        "source exceeded the request budget".to_owned(),
+                    )
+                    .into());
+                }
+                stats.requests_attempted += batch.requests_attempted;
+                for skipped in batch.skipped_instruments {
+                    record_skipped_instrument(stats, skipped.instrument_id, skipped.reason);
+                }
+                if batch.has_more {
+                    return Ok(None);
+                }
+                Ok(Some(batch.splits))
+            }
+            Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
+                if !budget.take(1) {
+                    return Ok(None);
+                }
+                stats.requests_attempted += 1;
+                let Some((first, second)) = split_rejected_batch(instrument_ids, reason, stats)
+                else {
+                    return Ok(Some(Vec::new()));
+                };
+                let Some(mut first_splits) =
+                    Box::pin(self.fetch_split_batch(source, first, from, to, budget, stats))
+                        .await?
+                else {
+                    return Ok(None);
+                };
+                let Some(second_splits) =
+                    Box::pin(self.fetch_split_batch(source, second, from, to, budget, stats))
+                        .await?
+                else {
+                    return Ok(None);
+                };
+                first_splits.extend(second_splits);
+                Ok(Some(first_splits))
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 
     async fn find_pending_splits(
@@ -223,8 +273,8 @@ impl BarsUseCases {
             *page = regular_bars;
         }
 
-        let minute_history_complete = self
-            .ingest_batch(
+        let minute_history_complete = if target.earliest_minute_bar.is_some() {
+            self.ingest_batch(
                 source,
                 instrument_ids,
                 UsStockBarTimeframe::Minute,
@@ -235,7 +285,10 @@ impl BarsUseCases {
                 budget,
                 stats,
             )
-            .await?;
+            .await?
+        } else {
+            true
+        };
         if !minute_history_complete {
             return Ok(false);
         }
