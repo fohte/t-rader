@@ -8,6 +8,9 @@ pub enum Timeframe {
     /// 日足
     #[serde(rename = "1d")]
     Daily,
+    /// 週足
+    #[serde(rename = "1w")]
+    Weekly,
     /// 1 分足
     #[serde(rename = "1m")]
     Minute,
@@ -26,18 +29,20 @@ pub enum Timeframe {
 }
 
 impl Timeframe {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Daily,
         Self::Minute,
         Self::FiveMinutes,
         Self::FifteenMinutes,
         Self::Hourly,
         Self::FourHours,
+        Self::Weekly,
     ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Daily => "1d",
+            Self::Weekly => "1w",
             Self::Minute => "1m",
             Self::FiveMinutes => "5m",
             Self::FifteenMinutes => "15m",
@@ -48,7 +53,7 @@ impl Timeframe {
 
     pub const fn bucket_interval(self) -> Option<&'static str> {
         match self {
-            Self::Daily | Self::Minute => None,
+            Self::Daily | Self::Weekly | Self::Minute => None,
             Self::FiveMinutes => Some("5 minutes"),
             Self::FifteenMinutes => Some("15 minutes"),
             Self::Hourly => Some("1 hour"),

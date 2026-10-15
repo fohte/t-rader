@@ -20,9 +20,9 @@ pub struct BarsQueryParams {
     /// 時間足 (デフォルト: "1d")
     #[serde(default = "default_timeframe")]
     pub timeframe: String,
-    /// 取得開始日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive)
+    /// 取得開始日時。日足と週足は YYYY-MM-DD、それ以外は RFC 3339 datetime (inclusive)
     pub from: Option<String>,
-    /// 取得終了日時。日足は YYYY-MM-DD、日足以外は RFC 3339 datetime (inclusive)
+    /// 取得終了日時。日足と週足は YYYY-MM-DD、それ以外は RFC 3339 datetime (inclusive)
     pub to: Option<String>,
 }
 
@@ -82,9 +82,9 @@ fn parse_range(
     to: Option<&str>,
 ) -> Result<DateTimeRange, AppError> {
     let parse_boundary = |value: &str, parameter: &str, is_end_of_day: bool| {
-        if timeframe == Timeframe::Daily {
+        if matches!(timeframe, Timeframe::Daily | Timeframe::Weekly) {
             let date = value.parse::<NaiveDate>().map_err(|_| {
-                AppError::Validation(format!("{parameter} must be YYYY-MM-DD for 1d"))
+                AppError::Validation(format!("{parameter} must be YYYY-MM-DD for {timeframe}"))
             })?;
             let time = if is_end_of_day {
                 (23, 59, 59)
