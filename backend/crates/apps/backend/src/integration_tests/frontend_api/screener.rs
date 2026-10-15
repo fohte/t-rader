@@ -197,25 +197,32 @@ async fn seed_sector_axis(db: &gateway_postgres::DatabaseHandle) -> (Uuid, Uuid,
     .expect("insert screener sector axis");
 
     let sector_ids = [
-        ("sector-alpha", "Sector Alpha"),
-        ("sector-beta", "Sector Beta"),
+        ("sector-alpha", "Sector Alpha", "2000"),
+        ("sector-beta", "Sector Beta", "1000"),
     ]
-    .map(|(key, name)| (key.to_string(), name.to_string(), Uuid::new_v4()));
-    for (key, name, id) in &sector_ids {
+    .map(|(key, name, code)| {
+        (
+            key.to_string(),
+            name.to_string(),
+            code.to_string(),
+            Uuid::new_v4(),
+        )
+    });
+    for (key, name, code, id) in &sector_ids {
         stock_group::ActiveModel {
             id: Set(*id),
             axis_id: Set(axis_id),
             key: Set(key.clone()),
             name: Set(name.clone()),
             description: Set(None),
-            code: Set(None),
+            code: Set(Some(code.clone())),
         }
         .insert(db)
         .await
         .expect("insert screener sector");
     }
 
-    (axis_id, sector_ids[0].2, sector_ids[1].2)
+    (axis_id, sector_ids[0].3, sector_ids[1].3)
 }
 
 async fn seed_sector_membership(
@@ -333,8 +340,8 @@ async fn screener_sector_options_only_include_tse_sector33_groups(
         (
             axum::http::StatusCode::OK,
             json!([
-                { "key": "sector-alpha", "name": "Sector Alpha" },
                 { "key": "sector-beta", "name": "Sector Beta" },
+                { "key": "sector-alpha", "name": "Sector Alpha" },
             ]),
         ),
     );

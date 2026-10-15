@@ -100,11 +100,12 @@ const SCREEN_STOCKS_SQL: &str = r#"
 "#;
 
 const LIST_SCREENER_SECTORS_SQL: &str = r#"
-    SELECT DISTINCT stock_group.key, stock_group.name
+    SELECT stock_group.key, stock_group.name
     FROM stock_group
     JOIN group_axis ON group_axis.id = stock_group.axis_id
     WHERE group_axis.derive_from = 'tse_sector33'
-    ORDER BY stock_group.key, stock_group.name
+    GROUP BY stock_group.key, stock_group.name
+    ORDER BY MIN(stock_group.code) NULLS LAST, stock_group.key, stock_group.name
 "#;
 
 #[derive(Debug, FromQueryResult)]
