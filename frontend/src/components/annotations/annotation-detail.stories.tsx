@@ -35,6 +35,12 @@ const generatedAnnotation: Annotation = {
   execution_step_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
 }
 
+const executionOrigin = {
+  strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  strategyName: '架空戦略',
+  taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+}
+
 const approvedAnnotation: Annotation = {
   ...unreadAnnotation,
   id: '00000000-0000-0000-0000-000000000012',
@@ -192,11 +198,7 @@ export const GeneratedByStrategy: Story = {
   name: 'shows the strategy and run that generated the annotation.',
   args: {
     annotation: generatedAnnotation,
-    executionOrigin: {
-      strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      strategyName: '架空戦略',
-      taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    },
+    executionOrigin,
   },
 }
 
@@ -209,9 +211,10 @@ export const NoGenerationOrigin: Story = {
 }
 
 export const HumanCreated: Story = {
-  name: 'shows an annotation written by a user without a generation origin.',
+  name: 'does not show origin links for an annotation written by a user.',
   args: {
     annotation: { ...unreadAnnotation, created_by_kind: 'human' },
+    executionOrigin,
   },
 }
 

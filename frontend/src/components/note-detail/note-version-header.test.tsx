@@ -9,9 +9,9 @@ import { createStoryRouter } from '#storybook/story-router'
 const version: NoteVersion = {
   id: 'fake-version-a',
   note_id: 'fake-note-a',
-  version_no: 3,
-  title: '架空データの確認メモ',
-  body_md: '変更された本文です。',
+  version_no: 1,
+  title: '架空の確認メモ',
+  body_md: '架空の本文',
   frontmatter_json: {},
   resolved_price_references_json: {},
   graphs_json: [],
@@ -30,6 +30,12 @@ function getHeaderOutput() {
   return {
     kindLabel: screen.getByText('架空の種別表示名').textContent,
     title: screen.getByRole('heading', { level: 1 }).textContent,
+    originLinks: screen
+      .queryAllByRole('link', { name: /^(架空戦略|実行詳細 →)$/ })
+      .map((link) => ({
+        name: link.textContent,
+        href: link.getAttribute('href'),
+      })),
   }
 }
 
@@ -92,7 +98,7 @@ describe('NoteVersionHeader', () => {
     ).toEqual([])
   })
 
-  it('shows the resolved kind label for a version awaiting review', () => {
+  it('omits the unresolved origin for a generated version', () => {
     render(
       <NoteVersionHeader
         version={version}
@@ -106,6 +112,7 @@ describe('NoteVersionHeader', () => {
     expect(getHeaderOutput()).toEqual({
       kindLabel: '架空の種別表示名',
       title: version.title,
+      originLinks: [],
     })
   })
 })

@@ -189,4 +189,15 @@ describe('AnnotationDetail', () => {
       }),
     ).toEqual([])
   })
+
+  it('does not show a generation origin when one cannot be resolved', async () => {
+    renderAnnotationDetail(annotation, null)
+
+    await screen.findByText(annotation.text)
+    expect(
+      screen.queryAllByRole('link', {
+        name: /^(架空戦略|実行詳細 →)$/,
+      }),
+    ).toEqual([])
+  })
 })
