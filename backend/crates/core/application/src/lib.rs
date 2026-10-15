@@ -14,6 +14,8 @@ pub mod earnings_schedule_source;
 pub mod equity_master;
 pub mod equity_master_source;
 pub mod event;
+pub mod event_dispatch;
+pub mod event_dispatch_job;
 pub mod financial_summary;
 pub mod financial_summary_source;
 pub mod group_axis;
