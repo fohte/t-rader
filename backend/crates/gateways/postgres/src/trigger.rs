@@ -91,6 +91,22 @@ impl TriggerRepository for PostgresTriggerRepository {
             .transpose()
     }
 
+    async fn list_enabled_event_by_type(
+        &self,
+        event_type: &str,
+    ) -> Result<Vec<Trigger>, TriggerRepositoryError> {
+        trigger::Entity::find()
+            .filter(trigger::Column::Kind.eq(TriggerKind::Event.as_str()))
+            .filter(trigger::Column::EventType.eq(event_type))
+            .filter(trigger::Column::Enabled.eq(true))
+            .all(&self.db)
+            .await
+            .map_err(repository_error)?
+            .into_iter()
+            .map(to_domain)
+            .collect()
+    }
+
     async fn list_enabled_cron(&self) -> Result<Vec<Trigger>, TriggerRepositoryError> {
         trigger::Entity::find()
             .filter(trigger::Column::Kind.eq(TriggerKind::Cron.as_str()))
@@ -116,6 +132,7 @@ impl TriggerRepository for PostgresTriggerRepository {
             kind: Set(trigger.kind.as_str().to_string()),
             schedule: Set(trigger.schedule),
             hook_slug: Set(trigger.hook_slug),
+            event_type: Set(trigger.event_type),
             event_match: Set(trigger.event_match),
             prompt_template: Set(trigger.prompt_template),
             enabled: Set(trigger.enabled),
@@ -144,6 +161,7 @@ impl TriggerRepository for PostgresTriggerRepository {
             kind: Set(trigger.kind.as_str().to_string()),
             schedule: Set(trigger.schedule),
             hook_slug: Set(trigger.hook_slug),
+            event_type: Set(trigger.event_type),
             event_match: Set(trigger.event_match),
             prompt_template: Set(trigger.prompt_template),
             enabled: Set(trigger.enabled),
@@ -217,6 +235,7 @@ fn to_domain(model: trigger::Model) -> Result<Trigger, TriggerRepositoryError> {
         kind,
         schedule: model.schedule,
         hook_slug: model.hook_slug,
+        event_type: model.event_type,
         event_match: model.event_match,
         prompt_template: model.prompt_template,
         enabled: model.enabled,

@@ -1309,12 +1309,24 @@ mod tests {
             .await
             .unwrap();
 
+        let _line_comment = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "note_version",
+                "target_id": rejected_version.id,
+                "body": "sample review comment",
+                "anchor_text": "body",
+                "anchor_side": "new",
+                "start_line": 1,
+                "end_line": 1,
+            }))
+            .await;
         let res = server
             .post(&format!(
                 "/api/notes/{note_id}/versions/{}/reject",
                 rejected_version.version_no
             ))
-            .json(&json!({"label": "sample reason"}))
+            .json(&json!({}))
             .await;
         let tasks = strategy_task::Entity::find()
             .filter(strategy_task::Column::Source.eq("review"))
@@ -1350,8 +1362,9 @@ mod tests {
                     strategy_id: first_task_strategy_id,
                     source: "review".to_string(),
                     prompt: format!(
-                        "ノート「sample title」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: sample reason。付いているコメントを確認し、指摘を反映してください。",
-                        rejected_version.version_no, rejected_version.id,
+                        "ノート「sample title」(id: {note_id}) の v{version_no} (version_id: {version_id}) がレビューで却下されました。このタスクの戦略スコープで `read_comments` を呼び出し、`target_kind=note_version`、`target_id={version_id}`、`resolved=false` を指定して未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。",
+                        version_no = rejected_version.version_no,
+                        version_id = rejected_version.id,
                     ),
                     phase: StrategyTaskPhase::Running,
                 }],

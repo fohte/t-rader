@@ -8,7 +8,7 @@ use super::types::{
     StrategyTask, StrategyTaskContext, StrategyTaskPhase, StrategyTaskUpdate, SubmittedTask,
     TaskSource,
 };
-use super::{DEADLINE_DURATION, DEFAULT_PURPOSE, StrategyTaskUseCases};
+use super::{DEFAULT_PURPOSE, StrategyTaskUseCases, deadline_duration_from_agent_graph};
 
 impl StrategyTaskUseCases {
     pub async fn agent_config_exists(&self, purpose: &str) -> Result<bool, SubmitTaskError> {
@@ -47,13 +47,16 @@ impl StrategyTaskUseCases {
         if !self.repository.strategy_exists(strategy_id).await? {
             return Err(SubmitTaskError::StrategyNotFound(strategy_id));
         }
-        if !self.repository.agent_config_exists(&purpose).await? {
-            return Err(SubmitTaskError::PurposeNotFound(purpose));
-        }
+        let agent_graph = self
+            .repository
+            .find_agent_graph_by_purpose(&purpose)
+            .await?
+            .ok_or_else(|| SubmitTaskError::PurposeNotFound(purpose.clone()))?;
+        let deadline_duration = deadline_duration_from_agent_graph(&agent_graph);
 
         let task_id = Uuid::new_v4();
         let now = chrono::Utc::now().fixed_offset();
-        let deadline_at = now + DEADLINE_DURATION;
+        let deadline_at = now + deadline_duration;
         let as_of = now.trunc_subsecs(6);
         let task = StrategyTask {
             task_id,

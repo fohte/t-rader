@@ -34,10 +34,24 @@ pub use types::{
     TaskStatusView,
 };
 
+use crate::agent_config::graph::parse_agent_graph;
 use crate::unit_of_work::SharedUnitOfWork;
 
-pub const DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
+const DEFAULT_DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
 pub const DEFAULT_PURPOSE: &str = "default";
+
+pub(super) fn deadline_duration_from_agent_graph(agent_graph: &str) -> chrono::Duration {
+    let timeout_minutes = match parse_agent_graph(agent_graph) {
+        Ok(config) => config
+            .and_then(|config| config.timeout_minutes)
+            .map(i64::from),
+        Err(_) => {
+            tracing::warn!("stored agent_graph could not be parsed; using default task deadline");
+            None
+        }
+    };
+    timeout_minutes.map_or(DEFAULT_DEADLINE_DURATION, chrono::Duration::minutes)
+}
 
 #[derive(Clone)]
 pub struct StrategyTaskUseCases {

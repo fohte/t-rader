@@ -2,36 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { closeFloatingChat } from '#components/strategy-shell/floating-chat-store'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
+import { resetFetch, stubFetch } from '#test/stub-fetch.test-helper'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
 type Note = components['schemas']['Note']
-type FetchHandler = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>
-
-let fetchHandler: FetchHandler | null = null
-
-function activeFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  return (
-    fetchHandler?.(input, init) ??
-    Promise.resolve(new Response(null, { status: 500 }))
-  )
-}
-
-function stubFetch(handler: FetchHandler): void {
-  fetchHandler = handler
-  vi.stubGlobal('fetch', activeFetch)
-}
-
 function readReflectionSubmissionOutput(
   draft: { title: string; body: string },
   postRequests: Array<{ path: string; body: unknown }>,
@@ -53,8 +32,7 @@ afterEach(() => {
   cleanup()
   closeFloatingChat()
   window.localStorage.clear()
-  vi.unstubAllGlobals()
-  fetchHandler = null
+  resetFetch()
 })
 
 describe('TradeDetailPage', () => {

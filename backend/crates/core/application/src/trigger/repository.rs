@@ -41,6 +41,11 @@ pub trait TriggerRepository: Send + Sync {
         hook_slug: &str,
     ) -> Result<Option<Trigger>, TriggerRepositoryError>;
 
+    async fn list_enabled_event_by_type(
+        &self,
+        event_type: &str,
+    ) -> Result<Vec<Trigger>, TriggerRepositoryError>;
+
     async fn list_enabled_cron(&self) -> Result<Vec<Trigger>, TriggerRepositoryError>;
 
     async fn create(

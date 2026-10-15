@@ -35,8 +35,8 @@ vi.mock('#lib/api/client', () => ({
         apiMock.callbacks[path] = callbacks
       },
     }),
-    queryOptions: (method: string, path: string) => ({
-      queryKey: [method, path],
+    queryOptions: (method: string, path: string, options?: unknown) => ({
+      queryKey: [method, path, options],
     }),
   },
 }))
@@ -74,6 +74,8 @@ function renderPanel(onReviewed: (status: NoteVersionReviewResult) => void) {
       <NoteVersionReviewPanel version={version} onReviewed={onReviewed} />
     </QueryClientProvider>,
   )
+
+  return queryClient
 }
 
 describe('NoteVersionReviewPanel', () => {
@@ -105,5 +107,38 @@ describe('NoteVersionReviewPanel', () => {
     await user.click(screen.getByRole('button', { name: '✓ 承認' }))
 
     expect(onReviewed.mock.calls).toEqual([])
+  })
+
+  it('invalidates note queries for every version of the reviewed note', async () => {
+    const user = userEvent.setup()
+    const onReviewed = vi.fn<(status: NoteVersionReviewResult) => void>()
+    const queryClient = renderPanel(onReviewed)
+    const versionQueryKeys = ['fake-version-a', 'fake-version-b'].map(
+      (versionId) =>
+        [
+          'get',
+          '/api/notes/{id}',
+          {
+            params: {
+              path: { id: version.note_id },
+              query: { version_id: versionId },
+            },
+          },
+        ] as const,
+    )
+    for (const queryKey of versionQueryKeys) {
+      queryClient.setQueryData(queryKey, { kind: 'fabricated-kind-key' })
+    }
+
+    await user.click(screen.getByRole('button', { name: '✓ 承認' }))
+    act(() => {
+      apiMock.callbacks['/api/notes/{id}/versions/{n}/approve']?.onSuccess?.()
+    })
+
+    expect(
+      versionQueryKeys.map(
+        (queryKey) => queryClient.getQueryState(queryKey)?.isInvalidated,
+      ),
+    ).toEqual([true, true])
   })
 })

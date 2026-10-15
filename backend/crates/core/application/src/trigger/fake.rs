@@ -99,6 +99,26 @@ impl TriggerRepository for FakeTriggerRepository {
             .cloned())
     }
 
+    async fn list_enabled_event_by_type(
+        &self,
+        event_type: &str,
+    ) -> Result<Vec<Trigger>, TriggerRepositoryError> {
+        let mut triggers: Vec<_> = self
+            .triggers
+            .lock()
+            .await
+            .values()
+            .filter(|trigger| {
+                trigger.kind == TriggerKind::Event
+                    && trigger.enabled
+                    && trigger.event_type.as_deref() == Some(event_type)
+            })
+            .cloned()
+            .collect();
+        triggers.sort_by_key(|trigger| trigger.created_at);
+        Ok(triggers)
+    }
+
     async fn list_enabled_cron(&self) -> Result<Vec<Trigger>, TriggerRepositoryError> {
         let mut triggers: Vec<_> = self
             .triggers
@@ -126,6 +146,7 @@ impl TriggerRepository for FakeTriggerRepository {
             kind: trigger.kind,
             schedule: trigger.schedule,
             hook_slug: trigger.hook_slug,
+            event_type: trigger.event_type,
             event_match: trigger.event_match,
             prompt_template: trigger.prompt_template,
             enabled: trigger.enabled,

@@ -9926,6 +9926,14 @@
             ]
           },
           "event_match": {},
+          "event_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "kind=event 時に必須 (小文字のドット区切り識別子)",
+            "pattern": "^[a-z][a-z0-9_]{0,}([.][a-z][a-z0-9_]{0,})+$"
+          },
           "hook_slug": {
             "type": [
               "string",
@@ -12999,6 +13007,12 @@
               "type": "string"
             }
           },
+          "event_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "hook_slug": {
             "type": [
               "string",
@@ -13051,7 +13065,8 @@
         "type": "string",
         "enum": [
           "cron",
-          "hook"
+          "hook",
+          "event"
         ]
       },
       "UpdateAnnotationRequest": {
@@ -13408,6 +13423,13 @@
           "event_match": {
             "description": "省略時は変更せず、`null` 指定時は条件を解除する。"
           },
+          "event_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "省略時は変更せず、null 指定は kind=event では validation error になる。"
+          },
           "hook_slug": {
             "type": [
               "string",
@@ -13508,7 +13530,7 @@
     },
     {
       "name": "triggers",
-      "description": "戦略 trigger (cron / hook)"
+      "description": "戦略 trigger (cron / hook / event)"
     },
     {
       "name": "paper_accounts",

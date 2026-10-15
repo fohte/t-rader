@@ -78,6 +78,7 @@ pub async fn create_strategy_trigger(
                 kind: application_kind(payload.kind),
                 schedule: payload.schedule,
                 hook_slug: payload.hook_slug,
+                event_type: payload.event_type,
                 event_match: payload.event_match,
                 prompt_template: payload.prompt_template,
                 enabled: payload.enabled,
@@ -154,6 +155,7 @@ pub async fn update_trigger(
                 purpose: payload.purpose,
                 schedule: payload.schedule,
                 hook_slug: payload.hook_slug,
+                event_type: payload.event_type,
                 event_match: payload.event_match,
                 prompt_template: payload.prompt_template,
                 enabled: payload.enabled,
@@ -203,6 +205,7 @@ fn application_kind(kind: TriggerKind) -> ApplicationTriggerKind {
     match kind {
         TriggerKind::Cron => ApplicationTriggerKind::Cron,
         TriggerKind::Hook => ApplicationTriggerKind::Hook,
+        TriggerKind::Event => ApplicationTriggerKind::Event,
     }
 }
 

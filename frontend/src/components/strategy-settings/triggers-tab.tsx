@@ -20,9 +20,16 @@ interface TriggersTabProps {
 }
 
 function triggerLabel(trigger: Trigger): string {
-  return trigger.kind === 'cron'
-    ? (trigger.schedule ?? '')
-    : (trigger.hook_slug ?? '')
+  switch (trigger.kind) {
+    case 'cron':
+      return trigger.schedule ?? ''
+    case 'hook':
+      return trigger.hook_slug ?? ''
+    case 'event':
+      return trigger.event_type ?? ''
+    default:
+      return ''
+  }
 }
 
 export function TriggersTab({ strategyId }: TriggersTabProps) {

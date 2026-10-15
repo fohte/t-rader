@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, Duration, FixedOffset};
 use rstest::rstest;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask};
-use crate::strategy_task::test_support::FakeStrategyTaskRepository;
+use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
     ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
     StrategyTaskUseCases,
@@ -58,7 +58,10 @@ struct ResumeHarness {
 
 impl ResumeHarness {
     fn new(task: Option<StrategyTask>, steps: Vec<StrategyTaskStep>) -> Self {
-        let repository = Arc::new(FakeStrategyTaskRepository::new(task, steps));
+        Self::with_repository(Arc::new(FakeStrategyTaskRepository::new(task, steps)))
+    }
+
+    fn with_repository(repository: Arc<FakeStrategyTaskRepository>) -> Self {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let agent_client = FakeAgentTaskClient::new();
         let use_cases = StrategyTaskUseCases::new(unit_of_work.clone(), repository.clone());
@@ -133,6 +136,51 @@ fn fixed_time() -> DateTime<FixedOffset> {
     (DateTime::<chrono::Utc>::UNIX_EPOCH + chrono::Duration::days(20_454)).fixed_offset()
 }
 
+async fn resume_deadline(
+    harness: &ResumeHarness,
+    task_id: Uuid,
+    expected_minutes: i64,
+) -> (ResumeResult, bool, bool) {
+    harness
+        .agent_client
+        .set_next_task_id("fake-agent-task")
+        .await;
+    let before_resume = chrono::Utc::now().fixed_offset();
+
+    let result = summarize_result(
+        harness
+            .use_cases
+            .resume(&harness.agent_client, task_id)
+            .await,
+    );
+
+    let after_resume = chrono::Utc::now().fixed_offset();
+    let submitted_deadline = harness
+        .agent_client
+        .submitted
+        .lock()
+        .await
+        .first()
+        .map(|request| request.deadline_at);
+    let stored_deadline = harness
+        .repository
+        .state
+        .lock()
+        .await
+        .task
+        .as_ref()
+        .map(|task| task.deadline_at);
+    let deadline_matches_timeout = submitted_deadline.is_some_and(|deadline| {
+        deadline >= before_resume + Duration::minutes(expected_minutes)
+            && deadline <= after_resume + Duration::minutes(expected_minutes)
+    });
+    let deadline_was_persisted = submitted_deadline
+        .zip(stored_deadline)
+        .is_some_and(|(submitted_deadline, stored_deadline)| submitted_deadline == stored_deadline);
+
+    (result, deadline_was_persisted, deadline_matches_timeout)
+}
+
 fn task(phase: StrategyTaskPhase, auto_resumed_at: Option<DateTime<FixedOffset>>) -> StrategyTask {
     let now = fixed_time();
     StrategyTask {
@@ -153,6 +201,47 @@ fn task(phase: StrategyTaskPhase, auto_resumed_at: Option<DateTime<FixedOffset>>
         created_at: now,
         updated_at: now,
     }
+}
+
+#[tokio::test]
+async fn resume_sets_deadline_from_agent_graph_at_resume_time() {
+    let task = task(StrategyTaskPhase::Failed, None);
+    let task_id = task.task_id;
+    let harness = ResumeHarness::new(Some(task), Vec::new());
+    harness
+        .repository
+        .set_agent_graph(&agent_graph_with_timeouts(Some(40), None))
+        .await;
+    assert_eq!(
+        resume_deadline(&harness, task_id, 40).await,
+        (
+            ResumeResult::Submitted {
+                task_id,
+                a2a_task_id: "fake-agent-task".to_string(),
+            },
+            true,
+            true,
+        ),
+    );
+}
+
+#[tokio::test]
+async fn resume_uses_default_deadline_when_agent_graph_is_missing() {
+    let task = task(StrategyTaskPhase::Failed, None);
+    let task_id = task.task_id;
+    let repository = Arc::new(FakeStrategyTaskRepository::without_agent_config(Some(task)));
+    let harness = ResumeHarness::with_repository(repository);
+    assert_eq!(
+        resume_deadline(&harness, task_id, 15).await,
+        (
+            ResumeResult::Submitted {
+                task_id,
+                a2a_task_id: "fake-agent-task".to_string(),
+            },
+            true,
+            true,
+        ),
+    );
 }
 
 fn step(

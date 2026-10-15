@@ -26,13 +26,20 @@ const version: NoteVersion = {
 
 afterEach(cleanup)
 
+function getHeaderOutput() {
+  return {
+    kindLabel: screen.getByText('架空の種別表示名').textContent,
+    title: screen.getByRole('heading', { level: 1 }).textContent,
+  }
+}
+
 describe('NoteVersionHeader', () => {
   it('shows the strategy and run that generated the displayed version', async () => {
     const router = createStoryRouter(
       () => (
         <NoteVersionHeader
           version={version}
-          noteKind={null}
+          noteKindLabel={null}
           hasNoteError={false}
           executionOrigin={{
             strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -60,7 +67,7 @@ describe('NoteVersionHeader', () => {
       () => (
         <NoteVersionHeader
           version={{ ...version, created_by_kind: 'human', execution_id: null }}
-          noteKind={null}
+          noteKindLabel={null}
           hasNoteError={false}
           executionOrigin={{
             strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -83,5 +90,22 @@ describe('NoteVersionHeader', () => {
         name: /^(架空戦略|実行詳細 →)$/,
       }),
     ).toEqual([])
+  })
+
+  it('shows the resolved kind label for a version awaiting review', () => {
+    render(
+      <NoteVersionHeader
+        version={version}
+        noteKindLabel="架空の種別表示名"
+        hasNoteError={false}
+        executionOrigin={null}
+        onAsk={() => {}}
+      />,
+    )
+
+    expect(getHeaderOutput()).toEqual({
+      kindLabel: '架空の種別表示名',
+      title: version.title,
+    })
   })
 })

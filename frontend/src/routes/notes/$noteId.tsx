@@ -32,6 +32,7 @@ import {
 } from '#components/strategy-shell/floating-chat-store'
 import { useExecutionOrigin } from '#hooks/use-execution-origin'
 import { $api } from '#lib/api/client'
+import { resolveNoteKindLabel } from '#lib/note-kind-label'
 
 export const Route = createFileRoute('/notes/$noteId')({
   validateSearch: (
@@ -78,19 +79,6 @@ function NoteDetailPage() {
   } = $api.useQuery('get', '/api/notes/{id}/versions', {
     params: { path: { id: noteId } },
   })
-  const { data: note, isError: hasNoteError } = $api.useQuery(
-    'get',
-    '/api/notes/{id}',
-    { params: { path: { id: noteId } } },
-  )
-  const {
-    data: noteHistory,
-    isPending: isNoteHistoryPending,
-    isError: hasNoteHistoryError,
-  } = $api.useQuery('get', '/api/history', {
-    params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
-  })
-
   const orderedVersions = [...(versions ?? [])].sort(
     (left, right) => left.version_no - right.version_no,
   )
@@ -103,6 +91,25 @@ function NoteDetailPage() {
     ) ??
     orderedVersions.find((version) => version.is_current) ??
     orderedVersions.at(-1)
+  const { data: note, isError: hasNoteError } = $api.useQuery(
+    'get',
+    '/api/notes/{id}',
+    {
+      params: {
+        path: { id: noteId },
+        query: { version_id: selectedVersion?.id },
+      },
+    },
+    { enabled: selectedVersion != null },
+  )
+  const { data: noteKinds } = $api.useQuery('get', '/api/note-kinds', undefined)
+  const {
+    data: noteHistory,
+    isPending: isNoteHistoryPending,
+    isError: hasNoteHistoryError,
+  } = $api.useQuery('get', '/api/history', {
+    params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
+  })
   const previousVersion =
     selectedVersion == null
       ? null
@@ -197,7 +204,10 @@ function NoteDetailPage() {
         <article className="space-y-4 border border-border bg-card px-5 py-5">
           <NoteVersionHeader
             version={selectedVersion}
-            noteKind={note?.kind ?? null}
+            noteKindLabel={resolveNoteKindLabel(
+              note?.kind ?? null,
+              noteKinds ?? [],
+            )}
             hasNoteError={hasNoteError}
             executionOrigin={executionOrigin}
             onAsk={(title) => {

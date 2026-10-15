@@ -10,7 +10,7 @@
     "#*": "./src/*.js"
   },
   "scripts": {
-    "test": "conc pnpm:test:type pnpm:test:unit",
+    "test": "pnpm run test:type && pnpm run test:unit",
     "test:type": "pnpm run generate:routes && tsc --noEmit",
     "test:unit": "vitest run",
     "dev": "vite",

@@ -22,6 +22,21 @@ pub(super) fn validate_event_match(event_match: Option<&Value>) -> Result<(), Tr
     }
 }
 
+pub(super) fn normalize_event_type(
+    event_type: Option<&str>,
+) -> Result<Option<String>, TriggerUseCaseError> {
+    let event_type = event_type.map(str::trim).map(str::to_string);
+    if event_type
+        .as_deref()
+        .is_some_and(|event_type| !crate::event::is_valid_event_type(event_type))
+    {
+        return Err(TriggerUseCaseError::Validation(
+            "event_type must be a lowercase dotted identifier".into(),
+        ));
+    }
+    Ok(event_type)
+}
+
 pub(super) fn validate_business_days_only(
     business_days_only: bool,
     kind: &TriggerKind,

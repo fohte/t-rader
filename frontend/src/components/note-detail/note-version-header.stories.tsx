@@ -28,7 +28,7 @@ const meta = {
   component: NoteVersionHeader,
   parameters: { layout: 'padded' },
   args: {
-    noteKind: '架空の種別',
+    noteKindLabel: '架空の種別表示名',
     hasNoteError: false,
     executionOrigin: null,
     onAsk: () => {},
@@ -104,7 +104,7 @@ export const CurrentApproved: Story = {
       change_reason: null,
       reviewed_at: '2026-01-12T03:00:00Z',
     },
-    noteKind: null,
+    noteKindLabel: null,
   },
 }
 

@@ -6,24 +6,24 @@
 
 ## Columns
 
-| Name            | Type                     | Default                        | Nullable | Children                                                  | Parents                               | Comment                                                                                      |
-| --------------- | ------------------------ | ------------------------------ | -------- | --------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| task_id         | uuid                     | gen_random_uuid()              | false    | [public.strategy_task_step](public.strategy_task_step.md) |                                       | タスクを識別する ID。                                                                        |
-| strategy_id     | uuid                     |                                | false    |                                                           | [public.strategy](public.strategy.md) | タスクを実行する戦略。                                                                       |
-| a2a_task_id     | text                     |                                | true     |                                                           |                                       | エージェント側でタスクを識別する ID。                                                        |
-| source          | text                     |                                | false    |                                                           |                                       | タスクの投入元。                                                                             |
-| prompt          | text                     |                                | false    |                                                           |                                       | エージェントへ渡した指示文。                                                                 |
-| phase           | strategy_task_phase      | 'pending'::strategy_task_phase | false    |                                                           |                                       | タスクの実行状態。                                                                           |
-| error_summary   | text                     |                                | true     |                                                           |                                       | 失敗時のエラー概要。                                                                         |
-| created_at      | timestamp with time zone | CURRENT_TIMESTAMP              | false    |                                                           |                                       |                                                                                              |
-| updated_at      | timestamp with time zone | CURRENT_TIMESTAMP              | false    |                                                           |                                       |                                                                                              |
-| result_text     | text                     |                                | true     |                                                           |                                       | エージェントが返した最終応答テキスト。                                                       |
-| deadline_at     | timestamp with time zone |                                | false    |                                                           |                                       | タスクの実行期限。                                                                           |
-| purpose         | text                     |                                | true     |                                                           |                                       | 実行時に選択した agent_config の purpose キー。                                              |
-| as_of           | timestamp with time zone |                                | true     |                                                           |                                       | 実行の論理的な基準時刻。監査用に記録し、実際に参照する全データがこの時刻のものとは限らない。 |
-| auto_resumed_at | timestamp with time zone |                                | true     |                                                           |                                       | タスクを自動再開した時刻。                                                                   |
-| context_kind    | text                     |                                | true     |                                                           |                                       | タスク投入時に指定した文脈対象の種類。                                                       |
-| context_id      | text                     |                                | true     |                                                           |                                       | タスク投入時に指定した文脈対象の ID。                                                        |
+| Name            | Type                     | Default                        | Nullable | Children                                                                                                | Parents                               | Comment                                                                                      |
+| --------------- | ------------------------ | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| task_id         | uuid                     | gen_random_uuid()              | false    | [public.strategy_task_step](public.strategy_task_step.md) [public.event_firing](public.event_firing.md) |                                       | タスクを識別する ID。                                                                        |
+| strategy_id     | uuid                     |                                | false    |                                                                                                         | [public.strategy](public.strategy.md) | タスクを実行する戦略。                                                                       |
+| a2a_task_id     | text                     |                                | true     |                                                                                                         |                                       | エージェント側でタスクを識別する ID。                                                        |
+| source          | text                     |                                | false    |                                                                                                         |                                       | タスクの投入元。                                                                             |
+| prompt          | text                     |                                | false    |                                                                                                         |                                       | エージェントへ渡した指示文。                                                                 |
+| phase           | strategy_task_phase      | 'pending'::strategy_task_phase | false    |                                                                                                         |                                       | タスクの実行状態。                                                                           |
+| error_summary   | text                     |                                | true     |                                                                                                         |                                       | 失敗時のエラー概要。                                                                         |
+| created_at      | timestamp with time zone | CURRENT_TIMESTAMP              | false    |                                                                                                         |                                       |                                                                                              |
+| updated_at      | timestamp with time zone | CURRENT_TIMESTAMP              | false    |                                                                                                         |                                       |                                                                                              |
+| result_text     | text                     |                                | true     |                                                                                                         |                                       | エージェントが返した最終応答テキスト。                                                       |
+| deadline_at     | timestamp with time zone |                                | false    |                                                                                                         |                                       | タスクの実行期限。                                                                           |
+| purpose         | text                     |                                | true     |                                                                                                         |                                       | 実行時に選択した agent_config の purpose キー。                                              |
+| as_of           | timestamp with time zone |                                | true     |                                                                                                         |                                       | 実行の論理的な基準時刻。監査用に記録し、実際に参照する全データがこの時刻のものとは限らない。 |
+| auto_resumed_at | timestamp with time zone |                                | true     |                                                                                                         |                                       | タスクを自動再開した時刻。                                                                   |
+| context_kind    | text                     |                                | true     |                                                                                                         |                                       | タスク投入時に指定した文脈対象の種類。                                                       |
+| context_id      | text                     |                                | true     |                                                                                                         |                                       | タスク投入時に指定した文脈対象の ID。                                                        |
 
 ## Constraints
 
@@ -48,6 +48,7 @@
 erDiagram
 
 "public.strategy_task_step" }o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE"
+"public.event_firing" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id)"
 "public.strategy_task" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 
 "public.strategy_task" {
@@ -84,6 +85,11 @@ erDiagram
   text span_id
   text error
   bigint seq
+}
+"public.event_firing" {
+  uuid event_id FK
+  uuid trigger_id FK
+  uuid task_id FK
 }
 "public.strategy" {
   uuid id

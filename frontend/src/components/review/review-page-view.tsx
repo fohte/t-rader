@@ -9,10 +9,15 @@ import {
   type ReviewTypeFilter,
 } from '#components/review/review-queue-model'
 import { Skeleton } from '#components/ui/skeleton'
+import type { components } from '#lib/api/schema.gen'
+import { resolveNoteKindLabel } from '#lib/note-kind-label'
 import { formatRelative } from '#lib/note-utils'
+
+type NoteKind = components['schemas']['NoteKind']
 
 export interface ReviewPageViewProps {
   data: ReviewQueueData | null
+  noteKinds: NoteKind[]
   navigationSnapshot: ReviewNavigationSnapshot | null
   isPending: boolean
   isError: boolean
@@ -52,10 +57,13 @@ function getReviewItemTypeLabel(item: ReviewQueueItem): string {
     : `ノート更新 v${String(item.versionNo)}`
 }
 
-function getReviewItemDetails(item: ReviewQueueItem): string[] {
+function getReviewItemDetails(
+  item: ReviewQueueItem,
+  noteKinds: NoteKind[],
+): string[] {
   if (item.kind === 'note') {
     return [
-      item.noteKind ?? '種別なし',
+      resolveNoteKindLabel(item.noteKind, noteKinds) ?? '種別なし',
       item.createdByKind === 'llm' ? 'エージェント' : 'ユーザー',
       ...(item.unreadVersionCount > 1
         ? [`未読 ${String(item.unreadVersionCount)} 版`]
@@ -73,6 +81,7 @@ function getReviewItemDetails(item: ReviewQueueItem): string[] {
 
 export function ReviewPageView({
   data,
+  noteKinds: knownNoteKinds,
   navigationSnapshot,
   isPending,
   isError,
@@ -89,7 +98,7 @@ export function ReviewPageView({
 }: ReviewPageViewProps) {
   const {
     visibleItems,
-    noteKinds,
+    noteKinds: noteKindKeys,
     visibleKeys,
     allVisibleSelected,
     selectedCount,
@@ -166,11 +175,11 @@ export function ReviewPageView({
             className="border border-border bg-card px-2 py-1 text-foreground disabled:opacity-50"
           >
             <option value="all">すべて</option>
-            {noteKinds.map((kind) => {
+            {noteKindKeys.map((kind) => {
               const value = reviewQueueModel.noteKindFilterKey(kind)
               return (
                 <option key={value} value={value}>
-                  {kind ?? '種別なし'}
+                  {resolveNoteKindLabel(kind, knownNoteKinds) ?? '種別なし'}
                 </option>
               )
             })}
@@ -229,7 +238,7 @@ export function ReviewPageView({
           <div>
             {visibleItems.map((item) => {
               const key = reviewQueueItemKey(item)
-              const details = getReviewItemDetails(item)
+              const details = getReviewItemDetails(item, knownNoteKinds)
               const reviewNavigation =
                 navigationSnapshot == null
                   ? undefined

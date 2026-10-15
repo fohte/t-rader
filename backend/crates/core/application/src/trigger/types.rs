@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub enum TriggerKind {
     Cron,
     Hook,
+    Event,
 }
 
 impl TriggerKind {
@@ -13,6 +14,7 @@ impl TriggerKind {
         match self {
             Self::Cron => "cron",
             Self::Hook => "hook",
+            Self::Event => "event",
         }
     }
 }
@@ -24,6 +26,7 @@ impl TryFrom<&str> for TriggerKind {
         match value {
             "cron" => Ok(Self::Cron),
             "hook" => Ok(Self::Hook),
+            "event" => Ok(Self::Event),
             _ => Err("trigger kind is invalid"),
         }
     }
@@ -37,6 +40,7 @@ pub struct Trigger {
     pub kind: TriggerKind,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
+    pub event_type: Option<String>,
     pub event_match: Option<Value>,
     pub prompt_template: String,
     pub enabled: bool,
@@ -54,6 +58,7 @@ pub struct NewTrigger {
     pub kind: TriggerKind,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
+    pub event_type: Option<String>,
     pub event_match: Option<Value>,
     pub prompt_template: String,
     pub enabled: bool,
@@ -66,6 +71,7 @@ pub struct CreateTriggerCommand {
     pub kind: TriggerKind,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
+    pub event_type: Option<String>,
     pub event_match: Option<Value>,
     pub prompt_template: String,
     pub enabled: Option<bool>,
@@ -77,6 +83,7 @@ pub struct UpdateTriggerCommand {
     pub purpose: Option<Option<String>>,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
+    pub event_type: Option<Option<String>>,
     pub event_match: Option<Option<Value>>,
     pub prompt_template: Option<String>,
     pub enabled: Option<bool>,

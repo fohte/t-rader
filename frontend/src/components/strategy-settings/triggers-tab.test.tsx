@@ -54,6 +54,7 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
     kind: overrides.kind ?? 'cron',
     schedule: overrides.schedule ?? null,
     hook_slug: overrides.hook_slug ?? null,
+    event_type: overrides.event_type ?? null,
     event_match: overrides.event_match ?? null,
     prompt_template: overrides.prompt_template ?? '',
     enabled: overrides.enabled ?? true,
