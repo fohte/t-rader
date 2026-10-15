@@ -42,7 +42,7 @@ fn expected_page(indices: impl Iterator<Item = u32>, page: u32) -> Value {
                 "market": "market-a",
                 "sector": null,
                 "close": null,
-                "per": index,
+                "per": if index == 1 { Value::Null } else { json!(index) },
                 "pbr": 1,
                 "roe": 1,
                 "dividend_yield": null,
@@ -532,7 +532,7 @@ async fn screener_endpoint_sorts_and_returns_one_hundred_rows_per_page(
         valuations.push(valuation(
             &id,
             3,
-            Some(Decimal::from(index)),
+            (index != 1).then(|| Decimal::from(index)),
             Some(Decimal::ONE),
             Some(Decimal::new(1, 2)),
             Some(Decimal::from(100_000 + index * 100)),
@@ -550,8 +550,14 @@ async fn screener_endpoint_sorts_and_returns_one_hundred_rows_per_page(
     let second_page = server
         .get("/api/screener?sort_by=market_cap&sort_order=desc&page=2")
         .await;
+    let first_per_ascending_page = server.get("/api/screener?sort_by=per&sort_order=asc").await;
+    let second_per_ascending_page = server
+        .get("/api/screener?sort_by=per&sort_order=asc&page=2")
+        .await;
     let first_body = normalize_result(first_page.json::<Value>());
     let second_body = normalize_result(second_page.json::<Value>());
+    let first_per_ascending_body = normalize_result(first_per_ascending_page.json::<Value>());
+    let second_per_ascending_body = normalize_result(second_per_ascending_page.json::<Value>());
 
     assert_eq!(
         (
@@ -563,6 +569,21 @@ async fn screener_endpoint_sorts_and_returns_one_hundred_rows_per_page(
         (
             axum::http::StatusCode::OK,
             expected_page((2..=101).rev(), 1),
+            axum::http::StatusCode::OK,
+            expected_page(1..=1, 2),
+        ),
+    );
+
+    assert_eq!(
+        (
+            first_per_ascending_page.status_code(),
+            first_per_ascending_body,
+            second_per_ascending_page.status_code(),
+            second_per_ascending_body,
+        ),
+        (
+            axum::http::StatusCode::OK,
+            expected_page(2..=101, 1),
             axum::http::StatusCode::OK,
             expected_page(1..=1, 2),
         ),
