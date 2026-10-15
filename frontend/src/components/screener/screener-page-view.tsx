@@ -2,6 +2,7 @@ import { Input } from '@fohte/ui/input'
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react'
 import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
 
+import { MobileScreenerFilterActions } from '#components/screener/mobile-screener-filter-actions'
 import {
   type SaveDialogState,
   type SavedScreenDialogState,
@@ -98,6 +99,7 @@ export function ScreenerPageView({
   onSortOrder,
   onLoadMore,
   onRetryLoadMore,
+  onAskAgent,
   onSelectSavedScreen = () => {},
   onSavedScreenDialogChange = () => {},
   onSaveSavedScreen = () => {},
@@ -127,6 +129,7 @@ export function ScreenerPageView({
   onSortOrder: (order: ScreenerSortOrder) => void
   onLoadMore: () => void
   onRetryLoadMore: () => void
+  onAskAgent?: (search: ScreenerSearch) => void
   onSelectSavedScreen?: (savedScreen: SavedScreen) => void
   onSavedScreenDialogChange?: (dialog: SavedScreenDialogState | null) => void
   onSaveSavedScreen?: (
@@ -313,25 +316,21 @@ export function ScreenerPageView({
             ),
           )}
         </div>
-        <div
-          className={
-            isDesktop
-              ? 'mt-4 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between'
-              : 'mt-5 space-y-2'
-          }
-        >
-          {validationError != null && (
-            <p role="alert" className="text-2xs text-destructive">
-              {validationError}
-            </p>
-          )}
-          <button
-            type="submit"
-            className={`border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 ${isDesktop ? 'w-full sm:w-auto' : 'w-full'}`}
-          >
-            この条件で絞り込む
-          </button>
-        </div>
+        {isDesktop && (
+          <div className="mt-4 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+            {validationError != null && (
+              <p role="alert" className="text-2xs text-destructive">
+                {validationError}
+              </p>
+            )}
+            <button
+              type="submit"
+              className="w-full border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 sm:w-auto"
+            >
+              この条件で絞り込む
+            </button>
+          </div>
+        )}
       </>
     )
   }
@@ -407,6 +406,13 @@ export function ScreenerPageView({
         onSortOrder={onSortOrder}
         onLoadMore={onLoadMore}
         onRetryLoadMore={onRetryLoadMore}
+        onAskAgent={
+          onAskAgent == null
+            ? undefined
+            : () => {
+                onAskAgent(search)
+              }
+        }
       />
 
       {mobileFiltersOpen && (
@@ -443,6 +449,21 @@ export function ScreenerPageView({
               <div className="min-h-0 flex-1 overflow-y-auto pb-4">
                 {renderFilterFields('mobile')}
               </div>
+              <MobileScreenerFilterActions
+                validationError={validationError}
+                onAskAgent={
+                  onAskAgent == null
+                    ? undefined
+                    : () => {
+                        const filters = readDraft(draft)
+                        const error = getScreenerRangeError(filters)
+                        setValidationError(error)
+                        if (error != null) return
+                        setMobileFiltersOpen(false)
+                        onAskAgent({ ...search, ...filters })
+                      }
+                }
+              />
             </form>
           </section>
         </div>

@@ -11,7 +11,11 @@ import type {
   ScreenerSortBy,
   ScreenerSortOrder,
 } from '#lib/screener-search'
-import { DEFAULT_SCREENER_SORT, isScreenerSortBy } from '#lib/screener-search'
+import {
+  DEFAULT_SCREENER_SORT,
+  isScreenerSortBy,
+  SCREENER_SORT_LABELS,
+} from '#lib/screener-search'
 
 type ScreenerStock = components['schemas']['ScreenerStockResponse']
 type ScreenerResponse = components['schemas']['ScreenerResponse']
@@ -22,18 +26,22 @@ const SORTABLE_COLUMNS: {
   label: string
   align: 'left' | 'right'
 }[] = [
-  { key: 'name', label: '銘柄', align: 'left' },
-  { key: 'market', label: '市場', align: 'left' },
-  { key: 'sector', label: '業種', align: 'left' },
-  { key: 'close', label: '終値', align: 'right' },
-  { key: 'per', label: 'PER', align: 'right' },
-  { key: 'pbr', label: 'PBR', align: 'right' },
-  { key: 'roe', label: 'ROE', align: 'right' },
-  { key: 'dividend_yield', label: '配当利回り (予)', align: 'right' },
-  { key: 'market_cap', label: '時価総額', align: 'right' },
+  { key: 'name', label: SCREENER_SORT_LABELS.name, align: 'left' },
+  { key: 'market', label: SCREENER_SORT_LABELS.market, align: 'left' },
+  { key: 'sector', label: SCREENER_SORT_LABELS.sector, align: 'left' },
+  { key: 'close', label: SCREENER_SORT_LABELS.close, align: 'right' },
+  { key: 'per', label: SCREENER_SORT_LABELS.per, align: 'right' },
+  { key: 'pbr', label: SCREENER_SORT_LABELS.pbr, align: 'right' },
+  { key: 'roe', label: SCREENER_SORT_LABELS.roe, align: 'right' },
+  {
+    key: 'dividend_yield',
+    label: SCREENER_SORT_LABELS.dividend_yield,
+    align: 'right',
+  },
+  { key: 'market_cap', label: SCREENER_SORT_LABELS.market_cap, align: 'right' },
 ]
 const MOBILE_SORT_OPTIONS: { key: ScreenerSortBy; label: string }[] = [
-  { key: 'id', label: '銘柄コード' },
+  { key: 'id', label: SCREENER_SORT_LABELS.id },
   ...SORTABLE_COLUMNS.map(({ key, label }) => ({ key, label })),
 ]
 
@@ -92,6 +100,7 @@ export function ScreenerResultsView({
   onSortOrder,
   onLoadMore,
   onRetryLoadMore,
+  onAskAgent,
 }: {
   search: Pick<ScreenerSearch, 'sort_by' | 'sort_order'>
   data: ScreenerResponse | undefined
@@ -104,6 +113,7 @@ export function ScreenerResultsView({
   onSortOrder: (order: ScreenerSortOrder) => void
   onLoadMore: () => void
   onRetryLoadMore: () => void
+  onAskAgent?: () => void
 }) {
   const sortField = search.sort_by ?? DEFAULT_SCREENER_SORT.sort_by
   const sortOrder = search.sort_order ?? DEFAULT_SCREENER_SORT.sort_order
@@ -124,11 +134,27 @@ export function ScreenerResultsView({
               ? '銘柄を検索しています...'
               : '検索結果'}
         </span>
-        {status === 'results' && data != null && (
-          <span className="text-muted-foreground">
-            {formatAsOf(data.as_of)} 時点
-          </span>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {status === 'results' && data != null && (
+            <span className="text-muted-foreground">
+              {formatAsOf(data.as_of)} 時点
+            </span>
+          )}
+          {onAskAgent != null && (
+            <button
+              type="button"
+              onClick={() => {
+                onAskAgent()
+              }}
+              className="hidden items-center gap-1 border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 md:inline-flex"
+            >
+              <span aria-hidden="true" className="font-bold">
+                &gt;_
+              </span>
+              この条件でエージェントに頼む
+            </button>
+          )}
+        </div>
       </div>
 
       {status === 'results' && (

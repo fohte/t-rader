@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ScreenerPageView } from '#components/screener/screener-page-view'
 import type { components } from '#lib/api/schema.gen'
-import type { SavedScreen } from '#lib/screener-search'
+import type { SavedScreen, ScreenerSearch } from '#lib/screener-search'
 
 type ScreenerResponse = components['schemas']['ScreenerResponse']
 
@@ -20,6 +20,24 @@ const data: ScreenerResponse = {
   total_count: 0,
   as_of: '2099-06-18',
   page: 1,
+}
+
+function readMobileActionOutput(
+  calls: unknown[][],
+  dialog: HTMLElement | null,
+  validationError: string | null = null,
+  actionLayout?: {
+    order: string[]
+    types: (string | null)[]
+    outsideScrollableArea: boolean[]
+  },
+) {
+  const output = {
+    calls,
+    conditionPanelVisible: dialog != null,
+    validationError,
+  }
+  return actionLayout == null ? output : { ...output, actionLayout }
 }
 
 const savedScreen: SavedScreen = {
@@ -42,6 +60,245 @@ const savedScreen: SavedScreen = {
 afterEach(cleanup)
 
 describe('ScreenerPageView', () => {
+  it('passes the applied search to the desktop agent request action', async () => {
+    const user = userEvent.setup()
+    const onAskAgent = vi.fn()
+    const search: ScreenerSearch = {
+      markets: ['プライム'],
+      max_per: 12,
+      sort_by: 'per',
+      sort_order: 'asc',
+    }
+    const args = {
+      search,
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      onAskAgent,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    await user.click(
+      screen.getByRole('button', {
+        name: 'この条件でエージェントに頼む',
+      }),
+    )
+
+    expect(onAskAgent.mock.calls).toEqual([[search]])
+  })
+
+  it('keeps mobile actions outside the scroll area and passes filter edits to the agent', async () => {
+    const user = userEvent.setup()
+    const onAskAgent = vi.fn()
+    const args = {
+      search: {
+        screen: 'fake-screen-a',
+        max_per: 12,
+        sort_by: 'per',
+        sort_order: 'asc',
+      },
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      mobileFiltersOpen: true,
+      onAskAgent,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    const dialog = screen.getByRole('dialog')
+    const actions = within(dialog).getByRole('group', { name: '条件の操作' })
+    const applyButton = within(actions).getByRole('button', {
+      name: 'この条件で絞り込む',
+    })
+    const askAgentButton = within(actions).getByRole('button', {
+      name: 'この条件でエージェントに頼む',
+    })
+    const actionButtons = within(actions).getAllByRole('button')
+    const actionLayout = {
+      order: actionButtons.map((button) => {
+        if (button === applyButton) return 'apply'
+        if (button === askAgentButton) return 'ask-agent'
+        return 'unexpected'
+      }),
+      types: actionButtons.map((button) => button.getAttribute('type')),
+      outsideScrollableArea: actionButtons.map(
+        (button) => button.closest('.overflow-y-auto') === null,
+      ),
+    }
+    const perUpperBound = within(dialog).getByRole<HTMLInputElement>(
+      'spinbutton',
+      { name: 'PER 上限' },
+    )
+    await user.clear(perUpperBound)
+    await user.type(perUpperBound, '10')
+    await user.click(askAgentButton)
+
+    expect(
+      readMobileActionOutput(
+        onAskAgent.mock.calls,
+        screen.queryByRole('dialog'),
+        null,
+        actionLayout,
+      ),
+    ).toEqual({
+      calls: [
+        [
+          {
+            screen: 'fake-screen-a',
+            max_per: 10,
+            markets: undefined,
+            sectors: undefined,
+            min_per: undefined,
+            min_pbr: undefined,
+            max_pbr: undefined,
+            min_roe: undefined,
+            max_roe: undefined,
+            min_dividend_yield: undefined,
+            max_dividend_yield: undefined,
+            min_market_cap: undefined,
+            max_market_cap: undefined,
+            sort_by: 'per',
+            sort_order: 'asc',
+          },
+        ],
+      ],
+      conditionPanelVisible: false,
+      validationError: null,
+      actionLayout: {
+        order: ['apply', 'ask-agent'],
+        types: ['submit', 'button'],
+        outsideScrollableArea: [true, true],
+      },
+    })
+  })
+
+  it('applies edited mobile conditions and closes the dialog', async () => {
+    const user = userEvent.setup()
+    const onApplyFilters = vi.fn()
+    const args = {
+      search: { max_per: 12 },
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      mobileFiltersOpen: true,
+      onApplyFilters,
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    const dialog = screen.getByRole('dialog')
+    const perUpperBound = within(dialog).getByRole<HTMLInputElement>(
+      'spinbutton',
+      { name: 'PER 上限' },
+    )
+    await user.clear(perUpperBound)
+    await user.type(perUpperBound, '10')
+    await user.click(
+      within(
+        within(dialog).getByRole('group', { name: '条件の操作' }),
+      ).getByRole('button', { name: 'この条件で絞り込む' }),
+    )
+
+    expect(
+      readMobileActionOutput(
+        onApplyFilters.mock.calls,
+        screen.queryByRole('dialog'),
+      ),
+    ).toEqual({
+      calls: [
+        [
+          {
+            markets: undefined,
+            sectors: undefined,
+            min_per: undefined,
+            max_per: 10,
+            min_pbr: undefined,
+            max_pbr: undefined,
+            min_roe: undefined,
+            max_roe: undefined,
+            min_dividend_yield: undefined,
+            max_dividend_yield: undefined,
+            min_market_cap: undefined,
+            max_market_cap: undefined,
+          },
+        ],
+      ],
+      conditionPanelVisible: false,
+      validationError: null,
+    })
+  })
+
+  it('keeps the mobile condition panel open when an invalid range is requested', async () => {
+    const user = userEvent.setup()
+    const onAskAgent = vi.fn()
+    const args = {
+      search: {},
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      mobileFiltersOpen: true,
+      onAskAgent,
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    const dialog = screen.getByRole('dialog')
+    await user.type(
+      within(dialog).getByRole('spinbutton', { name: 'PER 下限' }),
+      '20',
+    )
+    await user.type(
+      within(dialog).getByRole('spinbutton', { name: 'PER 上限' }),
+      '8',
+    )
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'この条件でエージェントに頼む',
+      }),
+    )
+
+    expect(
+      readMobileActionOutput(
+        onAskAgent.mock.calls,
+        screen.queryByRole('dialog'),
+        within(dialog).getByRole('alert').textContent,
+      ),
+    ).toEqual({
+      calls: [],
+      conditionPanelVisible: true,
+      validationError: '下限は上限以下にしてください。',
+    })
+  })
+
   it('applies all selected screener conditions together', () => {
     const onApplyFilters = vi.fn()
     const args = {
