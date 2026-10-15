@@ -64,6 +64,14 @@ function getNavigationOutput(navigation: HTMLElement) {
     }))
 }
 
+function getQuickSwitcherTriggerOutput(button: HTMLElement) {
+  return {
+    label: button.getAttribute('aria-label'),
+    expanded: button.getAttribute('aria-expanded'),
+    hasSearchIcon: button.querySelector('svg')?.getAttribute('aria-hidden'),
+  }
+}
+
 function getMenuOutput(menuButton: HTMLElement, navigation: HTMLElement) {
   return {
     menuActive: menuButton.getAttribute('aria-current') === 'page',
@@ -154,6 +162,17 @@ function getExpectedStrategyNavigation(pathname: string, activeTab: string) {
 }
 
 describe('Header', () => {
+  it('quick switcher のボタンを表示する', async () => {
+    renderHeader()
+    const button = await screen.findByRole('button', { name: '探す' })
+
+    expect(getQuickSwitcherTriggerOutput(button)).toEqual({
+      label: '探す',
+      expanded: 'false',
+      hasSearchIcon: 'true',
+    })
+  })
+
   it('ロゴからダッシュボードへ戻る', async () => {
     const user = userEvent.setup()
     const router = renderHeader()

@@ -7,7 +7,7 @@ import {
   NAV_PILL_INACTIVE,
 } from '#components/nav-pill-classes'
 import { useReviewQueue } from '#components/review/use-review-queue'
-import { StockSearch } from '#components/stocks/stock-search'
+import { QuickSwitcher } from '#components/strategy-shell/quick-switcher'
 import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
@@ -222,7 +222,7 @@ export function Header({
         </nav>
 
         <div className="ml-auto flex flex-shrink-0 items-center gap-2">
-          <StockSearch />
+          <QuickSwitcher />
           <HeaderMenu
             open={menuOpen}
             onOpenChange={handleMenuOpenChange}
