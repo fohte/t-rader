@@ -60,6 +60,71 @@ describe('remarkNoteTokens', () => {
     })
   })
 
+  it('replaces resolved valuation and dated indicator tokens while keeping a plain indicator link', () => {
+    const valuationToken = '[[valuation:fictional-code@2030-01-02:per]]'
+    const observationToken = '[[indicator:demo-indicator@2030-01-02]]'
+    const tree = textTree(
+      `PER ${valuationToken}、demo-rate ${observationToken}、指標 [[indicator:demo-indicator]]`,
+    )
+
+    remarkNoteTokens({
+      [valuationToken]: { value: 27.5 },
+      [observationToken]: { value: 160.25 },
+    })(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: 'PER ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-price-reference',
+                hProperties: { value: '27.5' },
+              },
+            },
+            { type: 'text', value: '、demo-rate ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-price-reference',
+                hProperties: { value: '160.25' },
+              },
+            },
+            { type: 'text', value: '、指標 ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-ref',
+                hProperties: { token: 'indicator:demo-indicator' },
+              },
+            },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('keeps a dated indicator token visible when it has no resolved value', () => {
+    const token = '[[indicator:demo-indicator@2030-01-02]]'
+    const tree = textTree(token)
+
+    remarkNoteTokens()(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [{ type: 'text', value: token }],
+        },
+      ],
+    })
+  })
+
   it.each([
     { name: 'letter-leading', annoId: 'A2' },
     {

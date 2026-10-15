@@ -20,6 +20,8 @@ impl UseCases {
             Arc::new(PostgresStrategyTaskStepEvidenceRepository::new(
                 self.db.clone(),
             )),
+            self.valuations(),
+            self.indicator_observations(),
         )
     }
 }

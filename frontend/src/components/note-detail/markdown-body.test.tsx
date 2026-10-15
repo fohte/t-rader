@@ -316,6 +316,25 @@ fictional-code · 2030-01-02 – 2030-01-03 2 bars`,
     )
   })
 
+  it('renders valuation and dated indicator citations as numbers while keeping an undated indicator link', () => {
+    const valuationToken = '[[valuation:fictional-code@2030-01-02:per]]'
+    const observationToken = '[[indicator:demo-indicator@2030-01-02]]'
+    const { container } = render(
+      <MarkdownBody
+        source={`PER ${valuationToken}、FX ${observationToken}、参照 [[indicator:demo-indicator]]`}
+        resolvedPriceReferences={{
+          [valuationToken]: { value: 27.5 },
+          [observationToken]: { value: 160.25 },
+        }}
+        onRef={vi.fn()}
+      />,
+      { wrapper: QueryClientWrapper },
+    )
+    expect(container.textContent).toBe(
+      'PER 27.5、FX 160.25、参照 指標demo-indicator',
+    )
+  })
+
   it('requests daily bars for the change reference instrument and date range', () => {
     render(
       <MarkdownBody source="[[change:US:FICTIONAL-A@2030-01-02..2030-01-03:close]]" />,

@@ -11,14 +11,14 @@ impl StrategyServer {
     pub(crate) async fn read_valuation_inner(
         &self,
         // valuation は会社単位の市場データであり戦略に属さないため検索条件に使わない。
-        scope: impl Into<StrategyScope>,
+        _scope: impl Into<StrategyScope>,
         params: ReadValuationParams,
     ) -> Result<ReadValuationResult, McpError> {
         reject_foreign_stock_id(&params.symbol)?;
         let valuations = self
             .dependencies
             .valuations
-            .find_for_symbol(scope.into(), &params.symbol, params.from, params.to)
+            .find_for_symbol(&params.symbol, params.from, params.to)
             .await
             .map_err(valuation_error)?;
 
