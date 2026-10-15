@@ -1,5 +1,11 @@
 import { Link } from '@tanstack/react-router'
-import { type ComponentType, type ReactNode, useEffect, useMemo } from 'react'
+import {
+  type ComponentType,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+} from 'react'
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import Markdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -11,6 +17,8 @@ import { MarkdownBodyRangeBlock } from '#components/note-detail/markdown-body-ra
 import {
   MarkdownBodyRangeCommentContext,
   type MarkdownBodyRangeCommentProps,
+  MarkdownBodyTableCellGutterContext,
+  type MarkdownBodyTableCellGutterContextValue,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdown-body-text-selection-action'
 import {
@@ -115,6 +123,36 @@ function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
     : undefined
 }
 
+function tableCellGutter(
+  context: MarkdownBodyTableCellGutterContextValue | null,
+): ReactNode {
+  if (context == null) return null
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`行 ${String(context.range.startLine)}${context.range.endLine > context.range.startLine ? ` から ${String(context.range.endLine)}` : ''} にコメント`}
+        onPointerDown={() => {
+          context.onPointerDown(context.range)
+        }}
+        onClick={(event) => {
+          context.onClick(context.range, event.shiftKey)
+        }}
+        className={`absolute -left-11 top-1.5 z-10 min-h-7 w-11 select-none px-1 text-right font-mono text-2xs ${context.isSelected || context.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
+      >
+        {context.isSelected ? '+' : String(context.range.startLine)}
+      </button>
+      {(context.isSelected || context.isCommented) && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 -left-0.5 w-0.5 bg-primary"
+        />
+      )}
+    </>
+  )
+}
+
 export function MarkdownBody({
   source,
   graphs = EMPTY_GRAPHS,
@@ -154,6 +192,7 @@ export function MarkdownBody({
           onGutterPointerDown: selection.onGutterPointerDown,
           onGutterClick: selection.onGutterClick,
         }
+  const hasRangeComments = rangeComments != null
   const components = useMemo<Components & NoteTokenComponents>(
     () => ({
       h1: ({ children, node }) => (
@@ -211,19 +250,20 @@ export function MarkdownBody({
         />
       ),
       ul: ({ children }) => (
-        <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed">
+        <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed [--note-list-indent:calc(var(--note-list-indent,0px)_+_1.25rem)]">
           {children}
         </ul>
       ),
       ol: ({ children }) => (
-        <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed">
+        <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed [--note-list-indent:calc(var(--note-list-indent,0px)_+_1.25rem)]">
           {children}
         </ol>
       ),
       li: ({ children, node }) => (
-        <li className="my-1">
-          <MarkdownBodyRangeBlock node={node} element={<>{children}</>} />
-        </li>
+        <MarkdownBodyRangeBlock
+          node={node}
+          element={<li className="my-1">{children}</li>}
+        />
       ),
       blockquote: ({ children, node }) => (
         <MarkdownBodyRangeBlock
@@ -267,8 +307,16 @@ export function MarkdownBody({
         </a>
       ),
       table: ({ children }) => (
-        <div className="my-3 overflow-x-auto border border-border">
+        <div
+          className={`my-3 overflow-x-auto ${hasRangeComments ? 'relative -ml-11 pl-11' : 'border border-border'}`}
+        >
           <table className="w-full border-collapse text-sm">{children}</table>
+          {hasRangeComments && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-11 right-0 z-10 border border-border"
+            />
+          )}
         </div>
       ),
       thead: ({ children }) => (
@@ -279,22 +327,30 @@ export function MarkdownBody({
           {children}
         </MarkdownBodyRangeBlock>
       ),
-      th: ({ children, node }) => (
-        <th
-          align={cellAlign(node?.properties.align)}
-          className="px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground"
-        >
-          {children}
-        </th>
-      ),
-      td: ({ children, node }) => (
-        <td
-          align={cellAlign(node?.properties.align)}
-          className="px-3 py-1.5 text-foreground"
-        >
-          {children}
-        </td>
-      ),
+      th: ({ children, node }) => {
+        const tableGutter = useContext(MarkdownBodyTableCellGutterContext)
+        return (
+          <th
+            align={cellAlign(node?.properties.align)}
+            className={`px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground ${tableGutter == null ? '' : 'relative'}`}
+          >
+            {children}
+            {tableCellGutter(tableGutter)}
+          </th>
+        )
+      },
+      td: ({ children, node }) => {
+        const tableGutter = useContext(MarkdownBodyTableCellGutterContext)
+        return (
+          <td
+            align={cellAlign(node?.properties.align)}
+            className={`px-3 py-1.5 text-foreground ${tableGutter == null ? '' : 'relative'}`}
+          >
+            {children}
+            {tableCellGutter(tableGutter)}
+          </td>
+        )
+      },
       'note-ref': ({ token }) => <RefChip token={token} onOpenRef={onRef} />,
       'note-link': ({ noteId, token }) => {
         const noteLink = noteLinks.find((link) => link.note_id === noteId)
@@ -386,7 +442,14 @@ export function MarkdownBody({
         )
       },
     }),
-    [graphs, noteLinks, onAnno, onRef, resolvedPriceReferences],
+    [
+      graphs,
+      hasRangeComments,
+      noteLinks,
+      onAnno,
+      onRef,
+      resolvedPriceReferences,
+    ],
   )
 
   return (

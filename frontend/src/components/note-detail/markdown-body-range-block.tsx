@@ -1,4 +1,11 @@
-import { Children, isValidElement, type ReactNode, useContext } from 'react'
+import {
+  Children,
+  cloneElement,
+  type CSSProperties,
+  isValidElement,
+  type ReactNode,
+  useContext,
+} from 'react'
 import { type ExtraProps } from 'react-markdown'
 
 import {
@@ -6,6 +13,7 @@ import {
   type MarkdownBodyRangeCommentContextValue,
   type MarkdownBodyRangeCommentProps,
   MarkdownBodySourceBlockContext,
+  MarkdownBodyTableCellGutterContext,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import {
   commentsForThreads,
@@ -34,6 +42,12 @@ interface MarkdownBodyRangeBlockProps {
   element?: ReactNode
   variant?: 'block' | 'table-row'
   showGutter?: boolean
+}
+
+interface RangeBlockElementProps {
+  className?: string
+  children?: ReactNode
+  [key: `data-${string}`]: string | number | boolean | undefined
 }
 
 function sourceLineRange(
@@ -154,6 +168,7 @@ interface RangeBlockGutterButtonProps {
   onPointerDown: (range: SourceLineRange) => void
   onClick: (range: SourceLineRange, shiftKey: boolean) => void
   className: string
+  style?: CSSProperties
 }
 
 function RangeBlockGutterButton({
@@ -162,6 +177,7 @@ function RangeBlockGutterButton({
   onPointerDown,
   onClick,
   className,
+  style,
 }: RangeBlockGutterButtonProps) {
   return (
     <button
@@ -174,6 +190,7 @@ function RangeBlockGutterButton({
         onClick(range, event.shiftKey)
       }}
       className={className}
+      style={style}
     >
       {isSelected ? '+' : String(range.startLine)}
     </button>
@@ -243,7 +260,24 @@ export function MarkdownBodyRangeBlock({
   const showThread = presentation.isActive || presentation.comments.length > 0
 
   if (variant === 'table-row') {
-    const cells = Children.count(content) + 1
+    const cells = Children.count(content)
+    const rowCells = Children.toArray(content)
+    if (rowCells[0] != null) {
+      rowCells[0] = (
+        <MarkdownBodyTableCellGutterContext.Provider
+          key="gutter"
+          value={{
+            range,
+            isSelected: presentation.isSelected,
+            isCommented: presentation.isCommented,
+            onPointerDown: context.onGutterPointerDown,
+            onClick: context.onGutterClick,
+          }}
+        >
+          {rowCells[0]}
+        </MarkdownBodyTableCellGutterContext.Provider>
+      )
+    }
     return (
       <MarkdownBodySourceBlockContext.Provider value={sourceBlockTag}>
         <>
@@ -251,18 +285,9 @@ export function MarkdownBodyRangeBlock({
             data-source-block="true"
             data-source-start-line={range.startLine}
             data-source-end-line={range.endLine}
-            className={`${rowClassName} ${presentation.isSelected ? 'bg-primary/10' : ''} ${presentation.isCommented ? 'border-l-2 border-primary' : ''}`}
+            className={`${rowClassName} ${presentation.isSelected ? 'bg-primary/10' : ''}`}
           >
-            <td className="w-11 select-none px-1 text-right font-mono text-2xs">
-              <RangeBlockGutterButton
-                range={range}
-                isSelected={presentation.isSelected}
-                onPointerDown={context.onGutterPointerDown}
-                onClick={context.onGutterClick}
-                className={`min-h-7 w-full ${presentation.isSelected || presentation.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
-              />
-            </td>
-            {content}
+            {rowCells}
           </tr>
           {showThread && (
             <tr>
@@ -301,26 +326,104 @@ export function MarkdownBodyRangeBlock({
     )
   }
 
+  const gutterStyle: CSSProperties =
+    sourceBlockTag === 'li'
+      ? { left: 'calc(-2.75rem - var(--note-list-indent, 0px))' }
+      : sourceBlockTag === 'pre'
+        ? { left: '-2.75rem', top: '0.75rem' }
+        : sourceBlockTag === 'blockquote'
+          ? { left: '-2.75rem', top: '0.375rem' }
+          : { left: '-2.75rem' }
+  const gutterButton = (
+    <RangeBlockGutterButton
+      range={range}
+      isSelected={presentation.isSelected}
+      onPointerDown={context.onGutterPointerDown}
+      onClick={context.onGutterClick}
+      className={`absolute z-10 min-h-7 w-11 select-none px-1 text-right font-mono text-2xs ${presentation.isSelected || presentation.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
+      style={gutterStyle}
+    />
+  )
+  const commentMarker =
+    presentation.isSelected || presentation.isCommented ? (
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 -left-0.5 w-0.5 bg-primary"
+      />
+    ) : null
+
+  if (
+    isValidElement<RangeBlockElementProps>(content) &&
+    typeof content.type === 'string'
+  ) {
+    const isListItem = sourceBlockTag === 'li'
+    if (isListItem) {
+      const hostElement = cloneElement(content, {
+        className: `${content.props.className ?? ''} relative ${presentation.isSelected ? 'bg-primary/10' : ''}`,
+        'data-source-block': 'true',
+        'data-source-start-line': range.startLine,
+        'data-source-end-line': range.endLine,
+        children: (
+          <>
+            {content.props.children}
+            {gutterButton}
+            {commentMarker}
+            {showThread && (
+              <div className="ml-11">
+                <RangeBlockCommentThread
+                  presentation={presentation}
+                  props={props}
+                />
+              </div>
+            )}
+          </>
+        ),
+      })
+      return (
+        <MarkdownBodySourceBlockContext.Provider value={sourceBlockTag}>
+          {hostElement}
+        </MarkdownBodySourceBlockContext.Provider>
+      )
+    }
+
+    const hostElement = cloneElement(content, {
+      className: `${content.props.className ?? ''} ${presentation.isSelected ? 'bg-primary/10' : ''}`,
+    })
+    return (
+      <MarkdownBodySourceBlockContext.Provider value={sourceBlockTag}>
+        <div
+          data-source-block="true"
+          data-source-start-line={range.startLine}
+          data-source-end-line={range.endLine}
+          className="relative min-w-0"
+        >
+          {gutterButton}
+          {commentMarker}
+          {hostElement}
+          {showThread && (
+            <div className="ml-11">
+              <RangeBlockCommentThread
+                presentation={presentation}
+                props={props}
+              />
+            </div>
+          )}
+        </div>
+      </MarkdownBodySourceBlockContext.Provider>
+    )
+  }
+
   return (
     <MarkdownBodySourceBlockContext.Provider value={sourceBlockTag}>
       <div
         data-source-block="true"
         data-source-start-line={range.startLine}
         data-source-end-line={range.endLine}
-        className="min-w-0"
+        className="relative min-w-0"
       >
-        <div
-          className={`flex items-start ${presentation.isSelected ? 'bg-primary/10' : ''} ${presentation.isCommented ? 'border-l-2 border-primary' : 'border-l-2 border-transparent'}`}
-        >
-          <RangeBlockGutterButton
-            range={range}
-            isSelected={presentation.isSelected}
-            onPointerDown={context.onGutterPointerDown}
-            onClick={context.onGutterClick}
-            className={`min-h-7 w-11 shrink-0 select-none px-1 text-right font-mono text-2xs ${presentation.isSelected || presentation.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
-          />
-          <div className="min-w-0 flex-1">{content}</div>
-        </div>
+        {gutterButton}
+        {commentMarker}
+        {content}
         {showThread && (
           <div className="ml-11">
             <RangeBlockCommentThread

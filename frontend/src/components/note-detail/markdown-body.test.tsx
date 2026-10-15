@@ -106,6 +106,39 @@ describe('MarkdownBody', () => {
     )
   })
 
+  it('keeps the line gutter outside table columns', () => {
+    const src = ['| item | value |', '| --- | ---: |', '| alpha | 1 |'].join(
+      '\n',
+    )
+    const { container } = render(
+      <MarkdownBody source={src} rangeComments={emptyRangeComments} />,
+    )
+
+    const getTableRows = () =>
+      [...container.querySelectorAll('tr[data-source-block="true"]')].map(
+        (row) => ({
+          cellCount: row.children.length,
+          gutterLabels: [...row.querySelectorAll('button')].map((button) =>
+            button.getAttribute('aria-label'),
+          ),
+          startLine: row.getAttribute('data-source-start-line'),
+        }),
+      )
+
+    expect(getTableRows()).toEqual([
+      {
+        cellCount: 2,
+        gutterLabels: ['行 1 にコメント'],
+        startLine: '1',
+      },
+      {
+        cellCount: 2,
+        gutterLabels: ['行 3 にコメント'],
+        startLine: '3',
+      },
+    ])
+  })
+
   it('renders a link that opens in a new tab', () => {
     render(<MarkdownBody source="[記事](https://example.com/a)" />)
     const link = screen.getByRole('link', { name: '記事' })
@@ -196,6 +229,28 @@ describe('MarkdownBody', () => {
     expect(ranges).toEqual([
       ['1', '2'],
       ['2', '2'],
+    ])
+  })
+
+  it('keeps gutter controls inside nested list items', () => {
+    const { container } = render(
+      <MarkdownBody
+        source={'- top\n    1. nested\n'}
+        rangeComments={emptyRangeComments}
+      />,
+    )
+
+    const getListItems = () =>
+      [...container.querySelectorAll('li')].map((item) => ({
+        gutterLabels: [...item.children]
+          .filter((child) => child.tagName === 'BUTTON')
+          .map((button) => button.getAttribute('aria-label')),
+        parentTag: item.parentElement?.tagName ?? null,
+      }))
+
+    expect(getListItems()).toEqual([
+      { gutterLabels: ['行 1 から 2 にコメント'], parentTag: 'UL' },
+      { gutterLabels: ['行 2 にコメント'], parentTag: 'OL' },
     ])
   })
 

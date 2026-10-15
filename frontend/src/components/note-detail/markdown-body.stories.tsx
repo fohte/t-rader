@@ -51,6 +51,10 @@ const SAMPLE = `# サンプル銘柄の記録
     - 下限: 1,480
     - 上限: 1,640
 
+1. 最初の手順
+    - 子項目
+2. 次の手順
+
 \`\`\`python
 print("nsjail で集計したサンプル")
 \`\`\`
@@ -84,6 +88,22 @@ const rangeComment: NoteVersionComment = {
   anchor_side: 'new',
   start_line: 3,
   end_line: 4,
+  created_at: '2026-01-12T03:00:00Z',
+}
+
+const formattedNoteComment: NoteVersionComment = {
+  id: 'formatted-note-comment',
+  target_kind: 'note_version',
+  target_id: 'sample-version',
+  parent_id: null,
+  body: 'この項目を確認してください。',
+  author_kind: 'human',
+  author_label: 'レビュー担当者',
+  resolved: false,
+  anchor_text: '下限から中央へ戻った割合',
+  anchor_side: 'new',
+  start_line: 11,
+  end_line: 11,
   created_at: '2026-01-12T03:00:00Z',
 }
 
@@ -145,6 +165,30 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   name: 'renders a formatted note with links to fixed and current versions.',
   args: { source: SAMPLE, noteLinks: NOTE_LINKS },
+}
+
+export const WithRangeCommentGutter: Story = {
+  name: 'keeps a formatted note aligned beside its comment gutter.',
+  args: {
+    source: SAMPLE,
+    noteLinks: NOTE_LINKS,
+    rangeComments: {
+      ...rangeCommentProps,
+      comments: [formattedNoteComment],
+      activeCommentAnchor: {
+        side: 'new',
+        lineNumber: 3,
+        endLineNumber: 3,
+        text: '要約',
+      },
+      activeCommentKey: getDiffCommentAnchorKey({
+        side: 'new',
+        lineNumber: 3,
+        endLineNumber: 3,
+        text: '',
+      }),
+    },
+  },
 }
 
 export const WithResolvedPriceReferences: Story = {
