@@ -6,6 +6,7 @@ use core_application::bars::BarsUseCases;
 use core_application::calendar::read_use_cases::CalendarEventReadUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
+use core_application::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::financial_summary::FinancialSummaryUseCases;
 use core_application::indicator_observation::IndicatorObservationUseCases;
@@ -20,6 +21,7 @@ use core_application::note_kind::NoteKindUseCases;
 use core_application::paper_trade::PaperTradeUseCases;
 use core_application::prediction::PredictionUseCases;
 use core_application::refs::RefUseCases;
+use core_application::screener::ScreenerUseCases;
 use core_application::shareholding_structure::ShareholdingStructureUseCases;
 use core_application::short_ratio::ShortRatioUseCases;
 use core_application::short_sale_report::ShortSaleReportUseCases;
@@ -44,6 +46,7 @@ pub struct StrategyServerDependencies {
     pub comment_reads: CommentReadUseCases,
     pub comments: CommentUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
+    pub custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
     pub daily_bar_source: Option<SharedDailyBarSource>,
     pub financial_summaries: FinancialSummaryUseCases,
     pub indicator_observations: IndicatorObservationUseCases,
@@ -59,6 +62,7 @@ pub struct StrategyServerDependencies {
     pub paper_trades: PaperTradeUseCases,
     pub predictions: PredictionUseCases,
     pub refs: RefUseCases,
+    pub screener: ScreenerUseCases,
     pub shareholding_structures: ShareholdingStructureUseCases,
     pub short_ratios: ShortRatioUseCases,
     pub short_sale_reports: ShortSaleReportUseCases,

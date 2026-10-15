@@ -8,6 +8,7 @@ mod movers;
 mod news;
 mod paper_trade;
 mod predictions;
+mod screener;
 mod stock_groups;
 mod stock_registration;
 mod strategy_earnings_targets;
@@ -492,6 +493,7 @@ impl StrategyServer {
             + Self::strategy_earnings_targets_tool_router()
             + Self::calendar_tool_router()
             + Self::movers_tool_router()
+            + Self::screener_tool_router()
             + Self::stock_registration_tool_router()
             + Self::predictions_tool_router()
             + Self::paper_trade_tool_router()
@@ -619,6 +621,7 @@ mod tests {
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),
+                ("screen_stocks", Some(true)),
                 ("search_refs", Some(true)),
                 ("search_web", Some(true)),
                 ("update_stock_group", None),

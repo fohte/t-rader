@@ -181,6 +181,7 @@ describe('remarkNoteTokens', () => {
                   instrumentId: 'fictional-code',
                   start: '2030-01-02',
                   end: '2030-01-03',
+                  field: 'close',
                   value: '-12.1',
                 },
               },
@@ -195,6 +196,7 @@ describe('remarkNoteTokens', () => {
               instrumentId: 'fictional-code',
               start: '2030-01-02',
               end: '2030-01-03',
+              field: 'close',
             },
           },
         },
@@ -254,6 +256,7 @@ describe('remarkNoteTokens', () => {
                       instrumentId: 'fictional-code',
                       start: '2030-01-02',
                       end: '2030-01-03',
+                      field: 'close',
                     },
                   },
                 },
@@ -267,6 +270,7 @@ describe('remarkNoteTokens', () => {
                   instrumentId: 'fictional-code',
                   start: '2030-01-02',
                   end: '2030-01-03',
+                  field: 'close',
                 },
               },
             },
@@ -291,6 +295,7 @@ describe('remarkNoteTokens', () => {
                           instrumentId: 'fictional-code',
                           start: '2030-01-02',
                           end: '2030-01-03',
+                          field: 'close',
                         },
                       },
                     },
@@ -304,10 +309,42 @@ describe('remarkNoteTokens', () => {
                       instrumentId: 'fictional-code',
                       start: '2030-01-02',
                       end: '2030-01-03',
+                      field: 'close',
                     },
                   },
                 },
               ],
+            },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('passes the instrument, date, and field from a resolved price token', () => {
+    const token = '[[price:US:FICTIONAL-A@2030-01-02:high]]'
+    const tree = textTree(`高値 ${token}`)
+    remarkNoteTokens({ [token]: { value: 1234.5 } })(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: '高値 ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-price-reference',
+                hProperties: {
+                  token,
+                  instrumentId: 'US:FICTIONAL-A',
+                  date: '2030-01-02',
+                  field: 'high',
+                  value: '1234.5',
+                },
+              },
             },
           ],
         },

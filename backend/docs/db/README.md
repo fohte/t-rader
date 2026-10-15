@@ -11,7 +11,7 @@
 | [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                                     | BASE TABLE |
 | [public.note](public.note.md)                                                               | 7       | ノートの識別情報と作成時の契機を保持する。本文は note_version に保存する。                             | BASE TABLE |
 | [public.note_ref](public.note_ref.md)                                                       | 3       | ノート本文やグラフから抽出した一級参照へのリンクを保持する。                                           | BASE TABLE |
-| [public.annotation](public.annotation.md)                                                   | 14      | 銘柄などの対象へ付与したテキスト注釈を保持する。                                                       | BASE TABLE |
+| [public.annotation](public.annotation.md)                                                   | 15      | 銘柄などの対象へ付与したテキスト注釈を保持する。                                                       | BASE TABLE |
 | [public.comment](public.comment.md)                                                         | 13      | ノートやアノテーションに付けるコメントと返信を保持する。                                               | BASE TABLE |
 | [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                                     | BASE TABLE |
 | [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                                               | BASE TABLE |
@@ -58,6 +58,7 @@
 | [public.paper_account](public.paper_account.md)                                             | 9       | 戦略と agent 設定ごとの仮想取引口座を保持する。                                                        | BASE TABLE |
 | [public.paper_order](public.paper_order.md)                                                 | 7       | 仮想口座に対して記録した不変の売買注文を保持する。                                                     | BASE TABLE |
 | [public.paper_order_result](public.paper_order_result.md)                                   | 6       | 仮想注文を約定または却下した結果を保持する。                                                           | BASE TABLE |
+| [public.custom_indicator_evaluation](public.custom_indicator_evaluation.md)                 | 7       | 自作指標の成功した計算結果を、実行時点の定義とともに保持する。                                         | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -287,6 +288,7 @@ erDiagram
   uuid execution_step_id
   text execution_task_id
   timestamp_with_time_zone timestamp_start
+  numeric price_start
 }
 "public.comment" {
   uuid id
@@ -768,6 +770,15 @@ erDiagram
   numeric fill_price
   text reject_reason
   timestamp_with_time_zone decided_at
+}
+"public.custom_indicator_evaluation" {
+  uuid id
+  uuid indicator_id
+  text indicator_name
+  text code
+  jsonb args
+  jsonb output
+  timestamp_with_time_zone evaluated_at
 }
 ```
 

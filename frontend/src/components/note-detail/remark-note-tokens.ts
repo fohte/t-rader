@@ -12,6 +12,7 @@ import {
   type ParsedNoteChangeReference,
   parseNoteChangeReference,
 } from '#lib/note-change-reference'
+import { parseNotePriceReference } from '#lib/note-price-reference'
 import { REF_PREFIX_RE } from '#lib/note-utils'
 
 const TOKEN_RE = /\[\[([^\]]+)\]\]/g
@@ -128,11 +129,8 @@ function collectChangeReferences(
     typeof node.data.hProperties.end === 'string'
   ) {
     const token = node.data.hProperties.token
-    references.set(token, {
-      instrumentId: node.data.hProperties.instrumentId,
-      start: node.data.hProperties.start,
-      end: node.data.hProperties.end,
-    })
+    const reference = parseNoteChangeReference(token)
+    if (reference != null) references.set(token, reference)
   }
 
   if ('children' in node && Array.isArray(node.children)) {
@@ -206,8 +204,14 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
         const priceReferenceValue = inner.startsWith('price:')
           ? resolvedPriceReferenceValue(resolvedPriceReferences, token)
           : undefined
-        if (priceReferenceValue != null) {
+        const priceReference =
+          priceReferenceValue == null
+            ? undefined
+            : parseNotePriceReference(token)
+        if (priceReferenceValue != null && priceReference != null) {
           return noteToken('note-price-reference', {
+            token,
+            ...priceReference,
             value: String(priceReferenceValue),
           })
         }

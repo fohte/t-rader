@@ -15,6 +15,7 @@ pub struct AnnotationResponse {
     #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
     pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<Decimal>,
+    pub price_start: Option<Decimal>,
     pub text: String,
     pub status: String,
     pub linked_note_id: Option<Uuid>,
@@ -36,6 +37,7 @@ impl From<core_application::annotation::Annotation> for AnnotationResponse {
             timestamp: model.timestamp,
             timestamp_start: model.timestamp_start,
             price: model.price,
+            price_start: model.price_start,
             text: model.text,
             status: model.status,
             linked_note_id: model.linked_note_id,
@@ -51,13 +53,14 @@ impl From<core_application::annotation::Annotation> for AnnotationResponse {
 #[cfg(test)]
 mod tests {
     use chrono::DateTime;
+    use rust_decimal::Decimal;
     use serde_json::json;
     use uuid::Uuid;
 
     use super::AnnotationResponse;
 
     #[test]
-    fn annotation_response_serializes_timestamp_start() {
+    fn annotation_response_serializes_price_start_and_timestamp_start() {
         let timestamp =
             DateTime::parse_from_rfc3339("2030-01-02T00:00:00Z").expect("valid timestamp");
         let timestamp_start =
@@ -68,7 +71,8 @@ mod tests {
             target_kind: "test-kind".into(),
             timestamp,
             timestamp_start: Some(timestamp_start),
-            price: None,
+            price: Some(Decimal::new(1234, 2)),
+            price_start: Some(Decimal::new(1180, 2)),
             text: "sample annotation".into(),
             status: "unread".into(),
             linked_note_id: None,
@@ -87,7 +91,8 @@ mod tests {
                 "target_kind": "test-kind",
                 "timestamp": timestamp,
                 "timestamp_start": timestamp_start,
-                "price": null,
+                "price": Decimal::new(1234, 2),
+                "price_start": Decimal::new(1180, 2),
                 "text": "sample annotation",
                 "status": "unread",
                 "linked_note_id": null,
@@ -108,7 +113,10 @@ pub struct CreateAnnotationRequest {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub timestamp_start: Option<DateTime<FixedOffset>>,
     pub price: Option<Decimal>,
+    pub price_start: Option<Decimal>,
     pub text: String,
     /// 省略時は `created_by_kind` が "human" なら "approved"、"llm" なら "unread"。
     pub status: Option<String>,
