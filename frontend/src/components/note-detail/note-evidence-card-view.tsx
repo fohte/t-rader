@@ -66,21 +66,23 @@ export function NoteEvidenceCardView({
       >
         <p className="font-mono font-semibold text-foreground">{title}</p>
         {evidence.kind === 'price' ? (
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-            <span className="text-muted-foreground">時点</span>
-            <span className="font-mono tabular-nums">{evidence.date}</span>
-            <span className="text-muted-foreground">出どころ</span>
-            <span>日足 (分割調整済み)</span>
+          <div className="grid grid-cols-12 gap-x-3 gap-y-1">
+            <span className="col-span-3 text-muted-foreground">時点</span>
+            <span className="col-span-9 font-mono tabular-nums">
+              {evidence.date}
+            </span>
+            <span className="col-span-3 text-muted-foreground">出どころ</span>
+            <span className="col-span-9">日足 (分割調整済み)</span>
           </div>
         ) : (
           <div className="space-y-1.5">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-              <span className="text-muted-foreground">期間</span>
-              <span className="font-mono tabular-nums">
+            <div className="grid grid-cols-12 gap-x-3 gap-y-1">
+              <span className="col-span-3 text-muted-foreground">期間</span>
+              <span className="col-span-9 whitespace-nowrap font-mono tabular-nums">
                 {evidence.start} → {evidence.end}
               </span>
-              <span className="text-muted-foreground">出どころ</span>
-              <span>日足 (分割調整済み)</span>
+              <span className="col-span-3 text-muted-foreground">出どころ</span>
+              <span className="col-span-9">日足 (分割調整済み)</span>
             </div>
             {evidence.barsState.status === 'loading' ? (
               <p role="status" className="text-muted-foreground">
