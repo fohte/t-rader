@@ -32,7 +32,7 @@ use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
 use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
-use gateway_postgres::DatabaseHandle;
+use gateway_postgres::{DatabaseHandle, PostgresTriggerChangeListener};
 use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
@@ -54,9 +54,9 @@ use logging::default_log_filter;
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
-    eoddata_kospi_source_from_env, initialize_news_and_central_bank_sources,
-    jquants_config_from_env, required_redis_url, us_stock_master_source,
-    worker_admin_ui_settings_from_env,
+    cron_trigger_timer_enabled_from_env, eoddata_kospi_source_from_env,
+    initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
+    us_stock_master_source, worker_admin_ui_settings_from_env,
 };
 
 #[tokio::main]
@@ -382,6 +382,20 @@ async fn main() -> Result<(), StartupError> {
         agent_task_client: agent_task_client.clone(),
         strategy_task_reconcile_enabled,
     };
+    let cron_trigger_timer = if cli.run_mode.starts_api() && cron_trigger_timer_enabled_from_env()?
+    {
+        let listener = PostgresTriggerChangeListener::connect(&database_url)
+            .await
+            .map_err(|error| {
+                StartupError::Config(format!(
+                    "failed to initialize cron trigger timer listener: {error}"
+                ))
+            })?;
+        Some((use_cases.triggers(), agent_task_client.clone(), listener))
+    } else {
+        None
+    };
+
     let app = if cli.run_mode.starts_api() {
         // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
         // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
@@ -485,7 +499,7 @@ async fn main() -> Result<(), StartupError> {
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .map_err(|e| StartupError::Config(format!("failed to bind to {addr}: {e}")))?;
-        let server_shutdown = wait_for_shutdown(shutdown_rx);
+        let server_shutdown = wait_for_shutdown(shutdown_rx.clone());
         Some(Box::pin(async move {
             axum::serve(
                 listener,
@@ -512,6 +526,14 @@ async fn main() -> Result<(), StartupError> {
             server_run
                 .await
                 .map_err(|error| StartupError::Runtime(format!("server error: {error}")))
+        }));
+    }
+    if let Some((triggers, agent_task_client, listener)) = cron_trigger_timer {
+        let timer_shutdown = shutdown_rx.clone();
+        run_futures.push(Box::pin(async move {
+            runtime::run_cron_trigger_timer(triggers, agent_task_client, listener, timer_shutdown)
+                .await;
+            Ok(())
         }));
     }
     if let Some(admin_server_run) = admin_server_run {
