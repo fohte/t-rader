@@ -134,6 +134,7 @@ const buildPreviousStep = (
 const buildDeps = (
   invokeImpl: (
     call: InvokeCall,
+    deadlineSignal: AbortSignal | undefined,
   ) => Promise<{ structuredResponse?: Record<string, unknown> }>,
 ): { deps: RunAgentGraphDeps; calls: InvokeCall[] } => {
   const calls: InvokeCall[] = []
@@ -147,7 +148,7 @@ const buildDeps = (
           executionStepId: input.executionStepId,
         }
         calls.push(call)
-        return invokeImpl(call)
+        return invokeImpl(call, options.deadlineSignal)
       },
     }),
   }
@@ -161,6 +162,22 @@ const createDeferred = <T>() => {
   })
   return { promise, resolve: resolvePromise }
 }
+
+const waitForAbort = (
+  signal: AbortSignal | undefined,
+  onAbort?: () => void,
+): Promise<never> =>
+  new Promise<never>((_, reject) => {
+    const rejectOnAbort = (): void => {
+      onAbort?.()
+      reject(new Error('phase signal aborted'))
+    }
+    if (signal?.aborted === true) {
+      rejectOnAbort()
+    } else {
+      signal?.addEventListener('abort', rejectOnAbort, { once: true })
+    }
+  })
 
 const findAssignedItem = <T extends string>(
   messageText: string,
@@ -317,6 +334,49 @@ describe('runAgentGraph', () => {
       status: 'failed',
       message:
         'フェーズ「Work」(work) の実行に失敗しました: usage limit exceeded',
+      errorKind: 'usage_limit',
+    })
+  })
+
+  it('preserves the usage limit classification when a configured phase hits the task deadline', async () => {
+    const controller = new AbortController()
+    const usageLimitError = Object.assign(new Error('usage limit exceeded'), {
+      rateLimitType: 'capacity',
+    })
+    const { deps } = buildDeps(() => {
+      controller.abort()
+      return Promise.reject(usageLimitError)
+    })
+
+    const result = await runAgentGraph(
+      deps,
+      {
+        phases: [
+          {
+            key: 'work',
+            label: 'Work',
+            model: 'example-model',
+            prompt: 'do work',
+            timeoutMinutes: 1,
+            skills: [],
+            tools: [],
+            output: {},
+          },
+        ],
+      },
+      {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+        deadlineSignal: controller.signal,
+      },
+    )
+
+    expect(result).toEqual({
+      status: 'failed',
+      message:
+        'フェーズ「Work」(work) の実行に失敗しました: deadline を超過したため実行を中断しました',
       errorKind: 'usage_limit',
     })
   })
@@ -561,42 +621,31 @@ describe('runAgentGraph', () => {
       const secondItemStarted = createDeferred<undefined>()
       const calls: string[] = []
       let workCalls = 0
-      const deps: RunAgentGraphDeps = {
-        createChatModel: () => new FakeChatModel({}),
-        buildPhaseAgent: (options): CompiledPhaseAgent => ({
-          invoke: (input) => {
-            const messageText = input.messages
-              .map((message) => message.text)
-              .join('\n')
-            if (messageText.includes('build items')) {
-              calls.push('plan')
-              return Promise.resolve({
-                structuredResponse: { items: ['first', 'second'] },
-              })
-            }
+      const { deps } = buildDeps((call, deadlineSignal) => {
+        if (call.messageText.includes('build items')) {
+          calls.push('plan')
+          return Promise.resolve({
+            structuredResponse: { items: ['first', 'second'] },
+          })
+        }
 
-            calls.push('work')
-            workCalls += 1
-            if (workCalls === 1) firstItemStarted.resolve(undefined)
-            if (workCalls === 2) secondItemStarted.resolve(undefined)
-            return new Promise((resolve, reject) => {
-              const signal = options.deadlineSignal
-              const itemTimer = setTimeout(() => {
-                resolve({ structuredResponse: {} })
-              }, 40_000)
-              const rejectOnAbort = (): void => {
-                clearTimeout(itemTimer)
-                reject(new Error('phase signal aborted'))
-              }
-              if (signal?.aborted === true) {
-                rejectOnAbort()
-              } else {
-                signal?.addEventListener('abort', rejectOnAbort, { once: true })
-              }
-            })
-          },
-        }),
-      }
+        calls.push('work')
+        workCalls += 1
+        if (workCalls === 1) firstItemStarted.resolve(undefined)
+        if (workCalls === 2) secondItemStarted.resolve(undefined)
+        const itemResult = createDeferred<{
+          structuredResponse?: Record<string, unknown>
+        }>()
+        const itemTimer = setTimeout(() => {
+          itemResult.resolve({ structuredResponse: {} })
+        }, 40_000)
+        return Promise.race([
+          itemResult.promise,
+          waitForAbort(deadlineSignal, () => {
+            clearTimeout(itemTimer)
+          }),
+        ])
+      })
       const execution = runAgentGraph(
         deps,
         {
@@ -658,43 +707,21 @@ describe('runAgentGraph', () => {
       const items = ['first', 'second', 'pending']
       const startedItems: string[] = []
       const abortedItems: string[] = []
-      const deps: RunAgentGraphDeps = {
-        createChatModel: () => new FakeChatModel({}),
-        buildPhaseAgent: (options): CompiledPhaseAgent => ({
-          invoke: (input) => {
-            const messageText = input.messages
-              .map((message) => message.text)
-              .join('\n')
-            if (messageText.includes('build items')) {
-              return Promise.resolve({
-                structuredResponse: { items },
-              })
-            }
+      const { deps } = buildDeps((call, deadlineSignal) => {
+        if (call.messageText.includes('build items')) {
+          return Promise.resolve({ structuredResponse: { items } })
+        }
 
-            const item = findAssignedItem(messageText, items)
-            if (item === undefined) {
-              return Promise.reject(new Error('unexpected item'))
-            }
-            startedItems.push(item)
-            if (startedItems.length === 2) itemsStarted.resolve(undefined)
-
-            return new Promise((_, reject) => {
-              const signal = options.deadlineSignal
-              const rejectOnAbort = (): void => {
-                abortedItems.push(item)
-                reject(new Error('phase signal aborted'))
-              }
-              if (signal?.aborted === true) {
-                rejectOnAbort()
-              } else {
-                signal?.addEventListener('abort', rejectOnAbort, {
-                  once: true,
-                })
-              }
-            })
-          },
-        }),
-      }
+        const item = findAssignedItem(call.messageText, items)
+        if (item === undefined) {
+          return Promise.reject(new Error('unexpected item'))
+        }
+        startedItems.push(item)
+        if (startedItems.length === 2) itemsStarted.resolve(undefined)
+        return waitForAbort(deadlineSignal, () => {
+          abortedItems.push(item)
+        })
+      })
       const execution = runAgentGraph(
         deps,
         {
@@ -759,42 +786,23 @@ describe('runAgentGraph', () => {
       const timedPhaseStarted = createDeferred<undefined>()
       const phaseStartTimes: number[] = []
       const abortTimes: number[] = []
-      const deps: RunAgentGraphDeps = {
-        createChatModel: () => new FakeChatModel({}),
-        buildPhaseAgent: (options): CompiledPhaseAgent => ({
-          invoke: (input) => {
-            const messageText = input.messages
-              .map((message) => message.text)
-              .join('\n')
-            if (messageText.includes('do prior work')) {
-              phaseStartTimes.push(Date.now())
-              priorPhaseStarted.resolve(undefined)
-              return new Promise((resolve) => {
-                setTimeout(() => {
-                  resolve({ structuredResponse: { value: 'done' } })
-                }, 90_000)
-              })
-            }
+      const { deps } = buildDeps((call, deadlineSignal) => {
+        if (call.messageText.includes('do prior work')) {
+          phaseStartTimes.push(Date.now())
+          priorPhaseStarted.resolve(undefined)
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve({ structuredResponse: { value: 'done' } })
+            }, 90_000)
+          })
+        }
 
-            phaseStartTimes.push(Date.now())
-            timedPhaseStarted.resolve(undefined)
-            return new Promise((_, reject) => {
-              const signal = options.deadlineSignal
-              const rejectOnAbort = (): void => {
-                abortTimes.push(Date.now())
-                reject(new Error('phase signal aborted'))
-              }
-              if (signal?.aborted === true) {
-                rejectOnAbort()
-              } else {
-                signal?.addEventListener('abort', rejectOnAbort, {
-                  once: true,
-                })
-              }
-            })
-          },
-        }),
-      }
+        phaseStartTimes.push(Date.now())
+        timedPhaseStarted.resolve(undefined)
+        return waitForAbort(deadlineSignal, () => {
+          abortTimes.push(Date.now())
+        })
+      })
       const graphStartedAt = Date.now()
       const execution = runAgentGraph(
         deps,

@@ -385,7 +385,9 @@ export const runAgentGraph = async (
       ) {
         return buildFailureResult(
           phase,
-          new Error(getExecutionAbortMessage(phaseExecution.context)),
+          new Error(getExecutionAbortMessage(phaseExecution.context), {
+            cause: phaseResult.error,
+          }),
         )
       }
       return buildFailureResult(phase, phaseResult.error)
