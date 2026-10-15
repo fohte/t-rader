@@ -197,6 +197,11 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .map(|r| (r.source, r.prompt, r.phase))
         .collect();
     rows.sort_by(|a, b| a.0.cmp(&b.0));
+    let review_prompt = format!(
+        "ノート「note」(id: {note_id}) の v{version_no} (version_id: {version_id}) がレビューで却下されました。理由: 確認事項。このタスクの戦略スコープで `read_comments` を呼び出し、`target_kind=note_version`、`target_id={version_id}`、`resolved=false` を指定して未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。",
+        version_no = version.version_no,
+        version_id = version.id,
+    );
     assert_eq!(
         rows,
         vec![
@@ -222,10 +227,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
             ),
             (
                 "review".to_string(),
-                format!(
-                    "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。このタスクの `strategy_id` と `target_kind=note_version`、`target_id={}`、`resolved=false` を指定して `read_comments` を呼び出し、未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。",
-                    version.version_no, version.id, version.id,
-                ),
+                review_prompt.clone(),
                 StrategyTaskPhase::Running
             ),
         ],
@@ -247,10 +249,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
             "from frontend".to_string(),
             "from hook".to_string(),
             "from mgmt".to_string(),
-            format!(
-                "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。このタスクの `strategy_id` と `target_kind=note_version`、`target_id={}`、`resolved=false` を指定して `read_comments` を呼び出し、未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。",
-                version.version_no, version.id, version.id,
-            ),
+            review_prompt,
         ],
     );
 }

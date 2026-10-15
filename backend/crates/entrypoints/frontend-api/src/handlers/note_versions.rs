@@ -219,9 +219,10 @@ pub async fn reject_note_version(
             .as_deref()
             .map(|label| format!("理由: {label}。"))
             .unwrap_or_default();
+        let title = &version.title;
+        let version_id = version.id;
         let prompt = format!(
-            "ノート「{}」(id: {}) の v{} (version_id: {}) がレビューで却下されました。{}このタスクの `strategy_id` と `target_kind=note_version`、`target_id={}`、`resolved=false` を指定して `read_comments` を呼び出し、未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。",
-            version.title, note_id, version_no, version.id, reason, version.id
+            "ノート「{title}」(id: {note_id}) の v{version_no} (version_id: {version_id}) がレビューで却下されました。{reason}このタスクの戦略スコープで `read_comments` を呼び出し、`target_kind=note_version`、`target_id={version_id}`、`resolved=false` を指定して未解決コメントを読み取ってください。行コメントの `start_line` から `end_line` までは 1 始まりの行範囲です。`anchor_side=new` は却下された版の本文、`old` は直前の版の本文を指します。`anchor_text` が示す箇所への指摘としてコメントを読み、該当箇所を修正した新しいバージョンを書いてください。"
         );
         state
             .strategy_task_use_cases
