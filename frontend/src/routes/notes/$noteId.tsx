@@ -3,7 +3,6 @@ import { useState } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
 import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
-import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { createNoteBodyNavigationHandlers } from '#components/note-detail/note-body-navigation'
 import { NoteHistoryPanel } from '#components/note-detail/note-history-panel'
 import { NoteLinkedTradesPanel } from '#components/note-detail/note-linked-trades-panel'
@@ -12,6 +11,7 @@ import {
   getScreenerIdFromFrontmatter,
   NoteScreenerLink,
 } from '#components/note-detail/note-screener-link'
+import { NoteVersionBodyComments } from '#components/note-detail/note-version-body-comments'
 import {
   type NoteVersionContentTab,
   NoteVersionContentTabs,
@@ -170,7 +170,9 @@ function NoteDetailPage() {
     setContentTab({ versionId: selectedVersion.id, tab })
   }
   const fullBody = (
-    <MarkdownBody
+    <NoteVersionBodyComments
+      key={selectedVersion.id}
+      versionId={selectedVersion.id}
       source={selectedVersion.body_md}
       graphs={selectedVersion.graphs_json}
       noteLinks={noteLinks?.outgoing}

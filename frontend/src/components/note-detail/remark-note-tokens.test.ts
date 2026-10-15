@@ -225,7 +225,19 @@ describe('remarkNoteTokens', () => {
 
   it('keeps a change value inline and appends its figure after the paragraph', () => {
     const token = '[[change:fictional-code@2030-01-02..2030-01-03:close]]'
-    const tree = textTree(`期間変化 ${token}`)
+    const position = {
+      start: { line: 4, column: 1 },
+      end: { line: 4, column: 28 },
+    }
+    const tree: Root = {
+      type: 'root',
+      children: [
+        {
+          ...paragraph(`期間変化 ${token}`),
+          position,
+        },
+      ],
+    }
     remarkNoteTokens({ [token]: { value: -12.1 } })(tree)
     expect(tree).toEqual({
       type: 'root',
@@ -249,6 +261,7 @@ describe('remarkNoteTokens', () => {
               },
             },
           ],
+          position,
         },
         {
           type: 'noteChangeFigure',
@@ -261,6 +274,7 @@ describe('remarkNoteTokens', () => {
               field: 'close',
             },
           },
+          position,
         },
       ],
     })
@@ -433,6 +447,36 @@ describe('remarkNoteTokens', () => {
         {
           type: 'noteGraphBlock',
           data: { hName: 'note-graph', hProperties: { graphId: 'g1' } },
+        },
+      ],
+    })
+  })
+
+  it('keeps a graph block source position for line comments', () => {
+    const position = {
+      start: { line: 7, column: 1 },
+      end: { line: 7, column: 13 },
+    }
+    const tree: Root = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          position,
+          children: [{ type: 'text', value: '[[graph:g1]]' }],
+        },
+      ],
+    }
+
+    remarkNoteTokens()(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'noteGraphBlock',
+          data: { hName: 'note-graph', hProperties: { graphId: 'g1' } },
+          position,
         },
       ],
     })

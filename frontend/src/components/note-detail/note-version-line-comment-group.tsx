@@ -8,7 +8,15 @@ type DiffAnchorSide = 'old' | 'new'
 export interface DiffCommentAnchor {
   side: DiffAnchorSide
   lineNumber: number
+  endLineNumber?: number
   text: string
+}
+
+export function getDiffCommentAnchorKey(anchor: DiffCommentAnchor): string {
+  const endLine = anchor.endLineNumber ?? anchor.lineNumber
+  return endLine === anchor.lineNumber
+    ? `${anchor.side}:${String(anchor.lineNumber)}`
+    : `${anchor.side}:${String(anchor.lineNumber)}-${String(endLine)}`
 }
 
 interface LineCommentGroupProps {

@@ -3,13 +3,13 @@ import { Columns2, Diff } from 'lucide-react'
 import {
   commentsForThreads,
   type DiffCommentAnchor,
+  getDiffCommentAnchorKey,
   LineCommentGroup,
 } from '#components/note-detail/note-version-line-comment-group'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { NoteVersionDiffRow } from '#lib/note-version-diff'
 
 export type DiffColumnMode = 'one-column' | 'two-column'
-export type { DiffCommentAnchor } from '#components/note-detail/note-version-line-comment-group'
 
 export interface NoteVersionDiffViewProps {
   rows: NoteVersionDiffRow[]
@@ -271,29 +271,28 @@ function DiffCell({
           : kind === 'changed'
             ? 'border-l-status-approved bg-status-approved/10'
             : 'border-l-transparent'
-  const relevantTopLevel = comments.filter(
-    (comment) =>
-      comment.parent_id == null &&
-      comment.start_line === lineNumber &&
-      (comment.anchor_side ?? 'new') === side,
+  const relevantTopLevel = commentsCoveringLine(comments, side, lineNumber)
+  const relevantAtEnd = relevantTopLevel.filter(
+    (comment) => (comment.end_line ?? comment.start_line) === lineNumber,
   )
-  const relevantComments = commentsForThreads(comments, relevantTopLevel)
-  const oldTopLevel = alsoShowOldComments
-    ? comments.filter(
-        (comment) =>
-          comment.parent_id == null &&
-          comment.start_line === oldLineNumber &&
-          (comment.anchor_side ?? 'new') === 'old',
-      )
-    : []
-  const oldComments = alsoShowOldComments
-    ? commentsForThreads(comments, oldTopLevel)
-    : []
+  const relevantComments = commentsForThreads(comments, relevantAtEnd)
+  const oldTopLevel =
+    alsoShowOldComments && oldLineNumber != null
+      ? commentsCoveringLine(comments, 'old', oldLineNumber)
+      : []
+  const oldAtEnd = oldTopLevel.filter(
+    (comment) => (comment.end_line ?? comment.start_line) === oldLineNumber,
+  )
+  const oldComments = commentsForThreads(comments, oldAtEnd)
+  const hasCommentRange =
+    hasMultiLineRange(relevantTopLevel) || hasMultiLineRange(oldTopLevel)
   const anchor: DiffCommentAnchor = { side, lineNumber, text }
-  const anchorKey = `${side}:${String(lineNumber)}`
+  const anchorKey = getDiffCommentAnchorKey(anchor)
 
   return (
-    <div className={`border-l-2 ${changeColor}`}>
+    <div
+      className={`border-l-2 ${changeColor} ${hasCommentRange ? 'ring-1 ring-inset ring-primary/50' : ''}`}
+    >
       <div className="flex min-h-8 items-start gap-2 px-2 py-1">
         <span className="w-8 shrink-0 select-none text-right text-muted-foreground">
           {String(lineNumber)}
@@ -324,5 +323,30 @@ function DiffCell({
         />
       </div>
     </div>
+  )
+}
+
+function commentsCoveringLine(
+  comments: NoteVersionComment[],
+  side: DiffCommentAnchor['side'],
+  lineNumber: number,
+): NoteVersionComment[] {
+  return comments.filter((comment) => {
+    if (comment.parent_id != null || comment.start_line == null) return false
+    const endLine = comment.end_line ?? comment.start_line
+    return (
+      comment.start_line <= lineNumber &&
+      lineNumber <= endLine &&
+      (comment.anchor_side ?? 'new') === side
+    )
+  })
+}
+
+function hasMultiLineRange(comments: NoteVersionComment[]): boolean {
+  return comments.some(
+    (comment) =>
+      comment.start_line != null &&
+      comment.end_line != null &&
+      comment.start_line < comment.end_line,
   )
 }
