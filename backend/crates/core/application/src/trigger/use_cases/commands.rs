@@ -4,11 +4,20 @@ use crate::strategy_scope::StrategyScope;
 
 use super::super::error::TriggerUseCaseError;
 use super::super::types::{CreateTriggerCommand, Trigger, TriggerKind, UpdateTriggerCommand};
-use super::validation::{validate_business_days_only, validate_event_match, validate_template};
+use super::validation::{
+    normalize_event_type, validate_business_days_only, validate_event_match, validate_template,
+};
+
+pub(super) struct ValidatedTriggerFields {
+    pub(super) schedule: Option<String>,
+    pub(super) hook_slug: Option<String>,
+    pub(super) event_type: Option<String>,
+    pub(super) prompt_template: String,
+}
 
 pub(super) fn validate_create(
     command: &CreateTriggerCommand,
-) -> Result<(Option<String>, Option<String>, String), TriggerUseCaseError> {
+) -> Result<ValidatedTriggerFields, TriggerUseCaseError> {
     let schedule = command
         .schedule
         .as_deref()
@@ -19,6 +28,7 @@ pub(super) fn validate_create(
         .as_deref()
         .map(str::trim)
         .map(str::to_string);
+    let event_type = normalize_event_type(command.event_type.as_deref())?;
     validate_business_days_only(command.business_days_only.unwrap_or(false), &command.kind)?;
     match command.kind {
         TriggerKind::Cron => {
@@ -30,6 +40,11 @@ pub(super) fn validate_create(
             if hook_slug.is_some() {
                 return Err(TriggerUseCaseError::Validation(
                     "hook_slug must be omitted for kind=cron".into(),
+                ));
+            }
+            if event_type.is_some() {
+                return Err(TriggerUseCaseError::Validation(
+                    "event_type must be omitted for kind=cron".into(),
                 ));
             }
         }
@@ -44,10 +59,37 @@ pub(super) fn validate_create(
                     "schedule must be omitted for kind=hook".into(),
                 ));
             }
+            if event_type.is_some() {
+                return Err(TriggerUseCaseError::Validation(
+                    "event_type must be omitted for kind=hook".into(),
+                ));
+            }
+        }
+        TriggerKind::Event => {
+            if event_type.is_none() {
+                return Err(TriggerUseCaseError::Validation(
+                    "event_type is required for kind=event".into(),
+                ));
+            }
+            if schedule.is_some() {
+                return Err(TriggerUseCaseError::Validation(
+                    "schedule must be omitted for kind=event".into(),
+                ));
+            }
+            if hook_slug.is_some() {
+                return Err(TriggerUseCaseError::Validation(
+                    "hook_slug must be omitted for kind=event".into(),
+                ));
+            }
         }
     }
     let prompt_template = validate_template(&command.prompt_template)?;
-    Ok((schedule, hook_slug, prompt_template))
+    Ok(ValidatedTriggerFields {
+        schedule,
+        hook_slug,
+        event_type,
+        prompt_template,
+    })
 }
 
 pub(super) fn apply_update(
@@ -81,6 +123,26 @@ pub(super) fn apply_update(
             ));
         }
         trigger.hook_slug = Some(hook_slug);
+    }
+    if let Some(event_type) = command.event_type {
+        let event_type = normalize_event_type(event_type.as_deref())?;
+        match trigger.kind {
+            TriggerKind::Event => {
+                if event_type.is_none() {
+                    return Err(TriggerUseCaseError::Validation(
+                        "event_type is required for kind=event".into(),
+                    ));
+                }
+                trigger.event_type = event_type;
+            }
+            TriggerKind::Cron | TriggerKind::Hook if event_type.is_some() => {
+                return Err(TriggerUseCaseError::Validation(format!(
+                    "event_type can only be set when kind=event (kind={})",
+                    trigger.kind.as_str(),
+                )));
+            }
+            TriggerKind::Cron | TriggerKind::Hook => {}
+        }
     }
     if let Some(event_match) = command.event_match {
         validate_event_match(event_match.as_ref())?;

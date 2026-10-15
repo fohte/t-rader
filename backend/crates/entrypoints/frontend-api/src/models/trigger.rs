@@ -13,6 +13,8 @@ pub struct TriggerResponse {
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
     #[schema(value_type = Option<HashMap<String, serde_json::Value>>)]
     pub event_match: Option<HashMap<String, serde_json::Value>>,
     pub prompt_template: String,
@@ -40,6 +42,7 @@ impl From<core_application::trigger::Trigger> for TriggerResponse {
             kind: trigger.kind.as_str().to_string(),
             schedule: trigger.schedule,
             hook_slug: trigger.hook_slug,
+            event_type: trigger.event_type,
             event_match,
             prompt_template: trigger.prompt_template,
             enabled: trigger.enabled,
@@ -56,6 +59,7 @@ impl From<core_application::trigger::Trigger> for TriggerResponse {
 pub enum TriggerKind {
     Cron,
     Hook,
+    Event,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -69,6 +73,9 @@ pub struct CreateTriggerRequest {
     pub schedule: Option<String>,
     /// kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子)
     pub hook_slug: Option<String>,
+    /// kind=event 時に必須 (小文字のドット区切り識別子)
+    #[schema(pattern = r"^[a-z][a-z0-9_]*([.][a-z][a-z0-9_]*)+$")]
+    pub event_type: Option<String>,
     pub event_match: Option<serde_json::Value>,
     #[schema(min_length = 1, pattern = r"\S")]
     pub prompt_template: String,
@@ -91,6 +98,13 @@ pub struct UpdateTriggerRequest {
     pub purpose: Option<Option<String>>,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
+    /// 省略時は変更せず、null 指定は kind=event では validation error になる。
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub event_type: Option<Option<String>>,
     /// 省略時は変更せず、`null` 指定時は条件を解除する。
     #[serde(
         default,

@@ -14,6 +14,8 @@ pub mod cross_shareholding_documents;
 pub mod custom_indicator;
 pub mod custom_indicator_evaluation;
 pub mod earnings_schedule_ingested_date;
+pub mod event;
+pub mod event_firing;
 pub mod financial_summary;
 pub mod group_axis;
 pub mod indicator;

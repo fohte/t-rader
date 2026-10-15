@@ -1877,6 +1877,8 @@ export interface components {
       business_days_only?: boolean | null
       enabled?: boolean | null
       event_match?: unknown
+      /** @description kind=event 時に必須 (小文字のドット区切り識別子) */
+      event_type?: string | null
       /** @description kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子) */
       hook_slug?: string | null
       kind: components['schemas']['TriggerKind']
@@ -2858,6 +2860,7 @@ export interface components {
       event_match?: {
         [key: string]: unknown
       } | null
+      event_type?: string | null
       hook_slug?: string | null
       kind: string
       /** Format: date-time */
@@ -2873,7 +2876,7 @@ export interface components {
       updated_at: string
     }
     /** @enum {string} */
-    TriggerKind: 'cron' | 'hook'
+    TriggerKind: 'cron' | 'hook' | 'event'
     UpdateAnnotationRequest: {
       /** Format: uuid */
       linked_note_id?: string | null
@@ -2961,6 +2964,8 @@ export interface components {
       enabled?: boolean | null
       /** @description 省略時は変更せず、`null` 指定時は条件を解除する。 */
       event_match?: unknown
+      /** @description 省略時は変更せず、null 指定は kind=event では validation error になる。 */
+      event_type?: string | null
       hook_slug?: string | null
       prompt_template?: string | null
       /** @description 省略時は変更せず、`null` 指定時は default purpose に戻す。 */

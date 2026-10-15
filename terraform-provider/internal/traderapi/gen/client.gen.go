@@ -66,14 +66,17 @@ func (e StrategyTaskContextKind) Valid() bool {
 
 // Defines values for TriggerKind.
 const (
-	Cron TriggerKind = "cron"
-	Hook TriggerKind = "hook"
+	Cron  TriggerKind = "cron"
+	Event TriggerKind = "event"
+	Hook  TriggerKind = "hook"
 )
 
 // Valid indicates whether the value is a known member of the TriggerKind enum.
 func (e TriggerKind) Valid() bool {
 	switch e {
 	case Cron:
+		return true
+	case Event:
 		return true
 	case Hook:
 		return true
@@ -197,6 +200,9 @@ type CreateTriggerRequest struct {
 	BusinessDaysOnly nullable.Nullable[bool] `json:"business_days_only,omitempty"`
 	Enabled          nullable.Nullable[bool] `json:"enabled,omitempty"`
 	EventMatch       interface{}             `json:"event_match,omitempty"`
+
+	// EventType kind=event 時に必須 (小文字のドット区切り識別子)
+	EventType nullable.Nullable[string] `json:"event_type,omitempty"`
 
 	// HookSlug kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子)
 	HookSlug       nullable.Nullable[string] `json:"hook_slug,omitempty"`
@@ -651,6 +657,7 @@ type Trigger struct {
 	CreatedAt        time.Time                                 `json:"created_at"`
 	Enabled          bool                                      `json:"enabled"`
 	EventMatch       nullable.Nullable[map[string]interface{}] `json:"event_match,omitempty"`
+	EventType        nullable.Nullable[string]                 `json:"event_type,omitempty"`
 	HookSlug         nullable.Nullable[string]                 `json:"hook_slug,omitempty"`
 	Kind             string                                    `json:"kind"`
 	LastFiredAt      nullable.Nullable[time.Time]              `json:"last_fired_at,omitempty"`
@@ -713,7 +720,10 @@ type UpdateTriggerRequest struct {
 	Enabled          nullable.Nullable[bool] `json:"enabled,omitempty"`
 
 	// EventMatch 省略時は変更せず、`null` 指定時は条件を解除する。
-	EventMatch     interface{}               `json:"event_match,omitempty"`
+	EventMatch interface{} `json:"event_match,omitempty"`
+
+	// EventType 省略時は変更せず、null 指定は kind=event では validation error になる。
+	EventType      nullable.Nullable[string] `json:"event_type,omitempty"`
 	HookSlug       nullable.Nullable[string] `json:"hook_slug,omitempty"`
 	PromptTemplate nullable.Nullable[string] `json:"prompt_template,omitempty"`
 

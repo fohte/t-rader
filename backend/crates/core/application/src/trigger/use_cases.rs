@@ -85,7 +85,7 @@ impl TriggerUseCases {
             Some(purpose) => Some(self.validate_purpose(purpose).await?),
             None => None,
         };
-        let (schedule, hook_slug, prompt_template) = validate_create(&command)?;
+        let validated = validate_create(&command)?;
         validate_event_match(command.event_match.as_ref())?;
 
         let transaction = self.unit_of_work.begin().await?;
@@ -105,10 +105,11 @@ impl TriggerUseCases {
                     strategy_id: scope.id(),
                     purpose,
                     kind: command.kind,
-                    schedule,
-                    hook_slug,
+                    schedule: validated.schedule,
+                    hook_slug: validated.hook_slug,
+                    event_type: validated.event_type,
                     event_match: command.event_match,
-                    prompt_template,
+                    prompt_template: validated.prompt_template,
                     enabled: command.enabled.unwrap_or(true),
                     business_days_only: command.business_days_only.unwrap_or(false),
                 },
@@ -456,6 +457,7 @@ mod tests {
             kind,
             schedule: (kind == TriggerKind::Cron).then(|| "* * * * *".to_string()),
             hook_slug: (kind == TriggerKind::Hook).then(|| "sample-hook".to_string()),
+            event_type: (kind == TriggerKind::Event).then(|| "sample_process.finished".to_string()),
             event_match: None,
             prompt_template: "sample prompt".to_string(),
             enabled: true,
