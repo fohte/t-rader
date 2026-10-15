@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 
 use chrono::{DateTime, FixedOffset, Utc};
 use core_application::ingest_run_log::IngestRunLog;
@@ -20,15 +20,15 @@ use crate::{
         financial_summary::FinancialSummaryIngest,
         fred::FredIngest,
         fred_release_dates::FredReleaseDatesIngest,
+        ingest_run_recovery::recover_interrupted_run,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         news_content::NewsContentFetch,
         paper_order_filling::PaperOrderFilling,
         prediction::PredictionGrading,
-        run_started_before,
         strategy_task_reconcile::StrategyTaskReconcile,
         twse::TwseIndexIngest,
-        us_stock_bars::UsStockBarsIngest,
+        us_stock_bars::{UsStockBarsIngest, UsStockMinuteBarsIngest},
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
@@ -43,7 +43,7 @@ struct SupportedJob {
     run: JobRunner,
 }
 
-const SUPPORTED_JOBS: [SupportedJob; 26] = [
+const SUPPORTED_JOBS: [SupportedJob; 27] = [
     supported_job::<AlphaVantageCalendarIngest>(),
     supported_job::<BojCalendarEventIngest>(),
     supported_job::<DailyBarsIngest>(),
@@ -68,6 +68,7 @@ const SUPPORTED_JOBS: [SupportedJob; 26] = [
     supported_job::<StrategyTaskReconcile>(),
     supported_job::<TwseIndexIngest>(),
     supported_job::<UsStockBarsIngest>(),
+    supported_job::<UsStockMinuteBarsIngest>(),
     supported_job::<UsStockMasterIngest>(),
     supported_job::<ValuationIngest>(),
 ];
@@ -89,44 +90,58 @@ pub async fn run_job(job_name: &str, dependencies: SchedulerDependencies) -> Res
     };
 
     let state = SchedulerState { dependencies };
+    let run = job.run;
     if let Some((_, timeout)) = RECOVERABLE_INGEST_JOBS
         .iter()
         .find(|(identifier, _)| *identifier == job_name)
     {
-        let recovered = recover_interrupted_run(
-            state.dependencies.ingest_run_log.as_ref(),
+        let ingest_run_log = state.dependencies.ingest_run_log.clone();
+        return run_after_recovery(
+            ingest_run_log.as_ref(),
             job_name,
             *timeout,
             Utc::now().fixed_offset(),
+            move || run(state),
         )
-        .await?;
-        if recovered > 0 {
-            tracing::info!(
-                task = job_name,
-                recovered,
-                "interrupted ingest runs recovered"
-            );
-        }
+        .await;
     }
 
-    (job.run)(state).await
+    run(state).await
 }
 
-async fn recover_interrupted_run(
+async fn run_after_recovery<F, Fut>(
     log: &dyn IngestRunLog,
     job_name: &str,
     timeout: Duration,
     now: DateTime<FixedOffset>,
-) -> Result<u64, String> {
-    let started_before = run_started_before(now, timeout)?;
-    log.fail_interrupted_before(job_name, started_before)
-        .await
-        .map_err(|error| format!("failed to recover interrupted ingest runs: {error}"))
+    run: F,
+) -> Result<(), String>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    let recovered = recover_interrupted_run(log, job_name, timeout, now).await?;
+    if recovered > 0 {
+        tracing::info!(
+            task = job_name,
+            recovered,
+            "interrupted ingest runs recovered"
+        );
+    }
+
+    run().await
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, sync::Arc, time::Duration};
+    use std::{
+        collections::HashSet,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::Duration,
+    };
 
     use async_trait::async_trait;
     use chrono::{DateTime, Duration as ChronoDuration, FixedOffset};
@@ -136,7 +151,7 @@ mod tests {
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
-    use super::{SUPPORTED_JOBS, is_supported_job, recover_interrupted_run};
+    use super::{SUPPORTED_JOBS, is_supported_job, recover_interrupted_run, run_after_recovery};
 
     #[test]
     fn supported_job_table_is_unique_and_queryable() {
@@ -158,6 +173,7 @@ mod tests {
     }
 
     #[rstest]
+    #[case::us_stock_minute_bars_ingest("us_stock_minute_bars_ingest", true)]
     #[case::trigger_evaluation("trigger_evaluation", false)]
     #[case::ingest_run_recovery("ingest_run_recovery", false)]
     #[case::unknown("unknown_job", false)]
@@ -168,6 +184,7 @@ mod tests {
     #[derive(Default)]
     struct FakeIngestRunLog {
         calls: Mutex<Vec<(String, DateTime<FixedOffset>)>>,
+        fail_recovery: bool,
     }
 
     #[async_trait]
@@ -193,7 +210,13 @@ mod tests {
                 .lock()
                 .await
                 .push((job.to_owned(), started_before));
-            Ok(1)
+            if self.fail_recovery {
+                Err(PersistenceError::Database(
+                    "database unavailable".to_string(),
+                ))
+            } else {
+                Ok(1)
+            }
         }
     }
 
@@ -216,6 +239,43 @@ mod tests {
             (
                 Ok(1),
                 vec![("sample_ingest".to_owned(), now - ChronoDuration::hours(2))],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn does_not_run_the_job_when_interrupted_run_recovery_fails() {
+        let now = DateTime::parse_from_rfc3339("2039-05-10T16:00:00+00:00")
+            .expect("valid fixed timestamp");
+        let log = Arc::new(FakeIngestRunLog {
+            fail_recovery: true,
+            ..Default::default()
+        });
+        let job_started = Arc::new(AtomicBool::new(false));
+        let job_started_in_future = Arc::clone(&job_started);
+
+        let result = run_after_recovery(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(2 * 60 * 60),
+            now,
+            move || async move {
+                job_started_in_future.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                log.calls.lock().await.clone(),
+                job_started.load(Ordering::SeqCst),
+            ),
+            (
+                Err("failed to recover interrupted ingest runs: database unavailable".to_string()),
+                vec![("sample_ingest".to_owned(), now - ChronoDuration::hours(2),)],
+                false,
             ),
         );
     }

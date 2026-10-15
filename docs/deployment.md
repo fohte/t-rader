@@ -105,6 +105,7 @@ short_sale_report_ingest
 strategy_task_reconcile
 twse_index_ingest
 us_stock_bars_ingest
+us_stock_minute_bars_ingest
 us_stock_master_ingest
 valuation_ingest
 ```
