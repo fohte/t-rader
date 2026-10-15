@@ -11,15 +11,33 @@ export interface NoteChangeEvidence {
   matchesSavedValue: boolean
 }
 
+export type NoteChangeEvidenceState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'empty' }
+  | { status: 'ready'; evidence: NoteChangeEvidence }
+
+export type NoteEvidenceDetails =
+  | { kind: 'price'; date: string }
+  | {
+      kind: 'change'
+      start: string
+      end: string
+      barsState: NoteChangeEvidenceState
+    }
+
 export function formatNoteEvidencePrice(value: number): string {
   return new Intl.NumberFormat('ja-JP', {
     maximumSignificantDigits: 15,
   }).format(value)
 }
 
-export function formatNoteEvidencePercentage(value: number): string {
+export function formatNoteEvidencePercentage(
+  value: number,
+  minimumFractionDigits = 2,
+): string {
   return new Intl.NumberFormat('ja-JP', {
-    minimumFractionDigits: 2,
+    minimumFractionDigits,
     maximumFractionDigits: 2,
     signDisplay: 'always',
   }).format(value)

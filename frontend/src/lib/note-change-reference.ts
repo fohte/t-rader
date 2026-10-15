@@ -2,6 +2,7 @@ import {
   isNotePriceReferenceField,
   type NotePriceReferenceField,
 } from '#lib/note-price-reference'
+import { isNoteReferenceDate } from '#lib/note-reference'
 
 export interface ParsedNoteChangeReference extends Record<string, string> {
   instrumentId: string
@@ -12,14 +13,6 @@ export interface ParsedNoteChangeReference extends Record<string, string> {
 
 const CHANGE_REFERENCE_RE =
   /^\[\[change:([^@\s]+)@(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2}):(open|high|low|close|volume)\]\]$/
-
-function isDate(value: string): boolean {
-  const timestamp = Date.parse(`${value}T00:00:00.000Z`)
-  return (
-    Number.isFinite(timestamp) &&
-    new Date(timestamp).toISOString().slice(0, 10) === value
-  )
-}
 
 export function parseNoteChangeReference(
   token: string,
@@ -35,8 +28,8 @@ export function parseNoteChangeReference(
     start == null ||
     end == null ||
     !isNotePriceReferenceField(field) ||
-    !isDate(start) ||
-    !isDate(end) ||
+    !isNoteReferenceDate(start) ||
+    !isNoteReferenceDate(end) ||
     start >= end
   ) {
     return undefined

@@ -1,5 +1,11 @@
-export type NotePriceReferenceField =
-  'open' | 'high' | 'low' | 'close' | 'volume'
+import {
+  isNoteReferenceDate,
+  isNoteReferenceField,
+  type NoteReferenceField,
+} from '#lib/note-reference'
+
+export type NotePriceReferenceField = NoteReferenceField
+export { isNoteReferenceField as isNotePriceReferenceField } from '#lib/note-reference'
 
 export interface ParsedNotePriceReference extends Record<string, string> {
   instrumentId: string
@@ -9,26 +15,6 @@ export interface ParsedNotePriceReference extends Record<string, string> {
 
 const PRICE_REFERENCE_RE =
   /^\[\[price:([^@\s]+)@(\d{4}-\d{2}-\d{2}):(open|high|low|close|volume)\]\]$/
-
-export function isNotePriceReferenceField(
-  value: string | undefined,
-): value is NotePriceReferenceField {
-  return (
-    value === 'open' ||
-    value === 'high' ||
-    value === 'low' ||
-    value === 'close' ||
-    value === 'volume'
-  )
-}
-
-function isDate(value: string): boolean {
-  const timestamp = Date.parse(`${value}T00:00:00.000Z`)
-  return (
-    Number.isFinite(timestamp) &&
-    new Date(timestamp).toISOString().slice(0, 10) === value
-  )
-}
 
 export function parseNotePriceReference(
   token: string,
@@ -41,8 +27,8 @@ export function parseNotePriceReference(
     instrumentId == null ||
     instrumentId.length === 0 ||
     date == null ||
-    !isNotePriceReferenceField(field) ||
-    !isDate(date)
+    !isNoteReferenceField(field) ||
+    !isNoteReferenceDate(date)
   ) {
     return undefined
   }

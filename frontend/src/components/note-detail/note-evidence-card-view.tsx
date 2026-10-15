@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
 import {
   formatNoteEvidencePercentage,
   formatNoteEvidencePrice,
-  type NoteChangeEvidence,
+  type NoteEvidenceDetails,
 } from '#lib/note-change-evidence'
 import type { NotePriceReferenceField } from '#lib/note-price-reference'
 
@@ -16,19 +16,6 @@ const FIELD_LABELS: Record<NotePriceReferenceField, string> = {
   volume: '出来高',
 }
 
-type EvidenceDetails =
-  | { kind: 'price'; date: string }
-  | {
-      kind: 'change'
-      start: string
-      end: string
-      barsState:
-        | { status: 'loading' }
-        | { status: 'error' }
-        | { status: 'empty' }
-        | { status: 'ready'; evidence: NoteChangeEvidence }
-    }
-
 interface NoteEvidenceCardViewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -36,7 +23,7 @@ interface NoteEvidenceCardViewProps {
   stockId: string
   field: NotePriceReferenceField
   displayValue: string
-  evidence: EvidenceDetails
+  evidence: NoteEvidenceDetails
 }
 
 export function NoteEvidenceCardView({

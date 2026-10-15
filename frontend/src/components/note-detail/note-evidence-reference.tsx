@@ -4,8 +4,9 @@ import { useChangeReferenceBars } from '#components/note-detail/change-reference
 import { NoteEvidenceCardView } from '#components/note-detail/note-evidence-card-view'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import {
+  formatNoteEvidencePercentage,
   formatNoteEvidencePrice,
-  type NoteChangeEvidence,
+  type NoteEvidenceDetails,
   resolveNoteChangeEvidence,
 } from '#lib/note-change-evidence'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
@@ -15,18 +16,7 @@ interface ResolvedNoteEvidenceReferenceProps {
   instrumentId: string
   field: ParsedNotePriceReference['field']
   displayValue: string
-  evidence:
-    | { kind: 'price'; date: string }
-    | {
-        kind: 'change'
-        start: string
-        end: string
-        barsState:
-          | { status: 'loading' }
-          | { status: 'error' }
-          | { status: 'empty' }
-          | { status: 'ready'; evidence: NoteChangeEvidence }
-      }
+  evidence: NoteEvidenceDetails
 }
 
 function ResolvedNoteEvidenceReference({
@@ -123,10 +113,7 @@ function ResolvedNoteChangeReference({
     <ResolvedNoteEvidenceReference
       instrumentId={instrumentId}
       field={field}
-      displayValue={`${new Intl.NumberFormat('ja-JP', {
-        maximumFractionDigits: 2,
-        signDisplay: 'always',
-      }).format(numericValue)}%`}
+      displayValue={`${formatNoteEvidencePercentage(numericValue, 0)}%`}
       evidence={{ kind: 'change', start, end, barsState }}
     />
   )
