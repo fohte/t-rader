@@ -1,6 +1,6 @@
 import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
 
-export interface NoteEvaluationEvidenceRecord {
+interface NoteEvaluationEvidenceRecord {
   indicator_name: string
   args: unknown
   code: string
