@@ -27,8 +27,12 @@ import type {
 import type { components } from '#lib/api/schema.gen'
 import {
   addChartIndicator,
+  CHART_INDICATOR_PANE_HEIGHT,
+  type ChartIndicatorConfig,
+  getChartIndicatorPaneCount,
   removeChartIndicator,
   updateChartIndicatorDeviation,
+  updateChartIndicatorMacdPeriod,
   updateChartIndicatorPeriod,
   useChartIndicators,
 } from '#lib/chart-indicator-settings'
@@ -63,6 +67,7 @@ export function StockChartPageView({
   isLoading,
   hasError,
   isAnnotationsLoading,
+  chartIndicators: configuredIndicators,
 }: {
   stockId: string
   stockName: string
@@ -90,8 +95,16 @@ export function StockChartPageView({
   isLoading: boolean
   hasError: boolean
   isAnnotationsLoading: boolean
+  chartIndicators?: ChartIndicatorConfig[]
 }) {
-  const indicators = useChartIndicators()
+  const savedIndicators = useChartIndicators()
+  const indicators = configuredIndicators ?? savedIndicators
+  const lowerPaneCount = getChartIndicatorPaneCount(indicators)
+  const chartHeightStyle = {
+    height: `calc(600px + ${(
+      lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT
+    ).toString()}px)`,
+  }
   const targetKinds = [
     ...new Set(annotations.map((annotation) => annotation.target_kind)),
   ]
@@ -122,7 +135,6 @@ export function StockChartPageView({
     onCancelHorizontalLine,
     pendingHorizontalLine,
   ])
-
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
@@ -141,6 +153,7 @@ export function StockChartPageView({
             indicators={indicators}
             onAdd={addChartIndicator}
             onUpdatePeriod={updateChartIndicatorPeriod}
+            onUpdateMacdPeriod={updateChartIndicatorMacdPeriod}
             onUpdateDeviation={updateChartIndicatorDeviation}
             onRemove={removeChartIndicator}
           />
@@ -183,9 +196,14 @@ export function StockChartPageView({
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
         {isLoading ? (
-          <Skeleton className="h-150 w-full" />
+          <Skeleton className="w-full" style={chartHeightStyle} />
         ) : hasError ? (
-          <p className="text-destructive">データの取得に失敗しました</p>
+          <p
+            className="flex flex-1 items-center text-destructive"
+            style={chartHeightStyle}
+          >
+            データの取得に失敗しました
+          </p>
         ) : (
           <>
             <CandlestickChart
@@ -200,9 +218,13 @@ export function StockChartPageView({
               onPlaceHorizontalLine={onPlaceHorizontalLine}
               currency={currency}
               intraday={timeframe !== '1d' && timeframe !== '1w'}
-              className="h-150 min-w-0 flex-1"
+              className="min-w-0 flex-1"
+              style={chartHeightStyle}
             />
-            <div className="flex min-h-0 w-full flex-col gap-3 sm:w-72 sm:shrink-0">
+            <div
+              className="flex min-h-0 w-full flex-col gap-3 sm:w-72 sm:shrink-0"
+              style={chartHeightStyle}
+            >
               {pendingHorizontalLine != null && (
                 <HorizontalLineEditor
                   timestamp={pendingHorizontalLine.timestamp}
@@ -221,6 +243,9 @@ export function StockChartPageView({
                 isDeleting={isDeletingAnnotation}
                 deleteError={annotationDeleteError}
                 className="min-h-0 flex-1 sm:h-0"
+                style={
+                  pendingHorizontalLine == null ? chartHeightStyle : undefined
+                }
                 onSelectAnnotation={onSelectAnnotation}
                 onDeleteAnnotation={onDeleteAnnotation}
               />

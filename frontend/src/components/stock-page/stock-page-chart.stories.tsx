@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 
+import { lowerPaneIndicatorBars } from '#components/stock-page/stock-chart.fixtures'
 import { StockPageChart } from '#components/stock-page/stock-page-chart'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
+import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Bar = components['schemas']['Bar']
@@ -55,6 +57,18 @@ const annotations: ChartAnnotation[] = [
   },
 ]
 
+const lowerPaneIndicators: ChartIndicatorConfig[] = [
+  { id: 'indicator-rsi', kind: 'rsi', period: 3, color: '#38bdf8' },
+  {
+    id: 'indicator-macd',
+    kind: 'macd',
+    fastPeriod: 2,
+    slowPeriod: 5,
+    signalPeriod: 3,
+    color: '#34d399',
+  },
+]
+
 const meta = {
   title: 'StockPage/StockPageChart',
   component: StockPageChart,
@@ -90,6 +104,11 @@ type Story = StoryObj<typeof meta>
 
 export const DailyWithSelectedAnnotation: Story = {
   name: '選択中のアノテーション帯を日足チャートに表示する。',
+}
+
+export const WithLowerPaneIndicators: Story = {
+  name: 'RSI と MACD の下段を追加した銘柄チャートを表示する。',
+  args: { bars: lowerPaneIndicatorBars, chartIndicators: lowerPaneIndicators },
 }
 
 export const DateSelected: Story = {

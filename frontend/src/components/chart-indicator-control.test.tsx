@@ -19,7 +19,7 @@ afterEach(() => {
 })
 
 describe('ChartIndicatorControl', () => {
-  it('adds the selected indicator', () => {
+  it('adds RSI and MACD from the menu', () => {
     const onAdd = vi.fn()
 
     render(
@@ -27,6 +27,7 @@ describe('ChartIndicatorControl', () => {
         indicators={[]}
         layout="popover"
         onAdd={onAdd}
+        onUpdateMacdPeriod={vi.fn()}
         onRemove={vi.fn()}
         onUpdateDeviation={vi.fn()}
         onUpdatePeriod={vi.fn()}
@@ -34,9 +35,10 @@ describe('ChartIndicatorControl', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '+ EMA' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ RSI' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ MACD' }))
 
-    expect(onAdd.mock.calls).toEqual([['ema']])
+    expect(onAdd.mock.calls).toEqual([['rsi'], ['macd']])
   })
 
   it('updates a period after the input is committed', () => {
@@ -50,6 +52,7 @@ describe('ChartIndicatorControl', () => {
         indicators={indicators}
         layout="popover"
         onAdd={vi.fn()}
+        onUpdateMacdPeriod={vi.fn()}
         onRemove={vi.fn()}
         onUpdateDeviation={vi.fn()}
         onUpdatePeriod={onUpdatePeriod}
@@ -82,6 +85,7 @@ describe('ChartIndicatorControl', () => {
         indicators={indicators}
         layout="popover"
         onAdd={vi.fn()}
+        onUpdateMacdPeriod={vi.fn()}
         onRemove={vi.fn()}
         onUpdateDeviation={onUpdateDeviation}
         onUpdatePeriod={vi.fn()}
@@ -96,6 +100,54 @@ describe('ChartIndicatorControl', () => {
     expect(onUpdateDeviation.mock.calls).toEqual([['indicator-bollinger', 2.5]])
   })
 
+  it('updates each MACD period after the input is committed', () => {
+    const onUpdateMacdPeriod = vi.fn()
+    const indicators: ChartIndicatorConfig[] = [
+      {
+        id: 'indicator-macd',
+        kind: 'macd',
+        fastPeriod: 12,
+        slowPeriod: 26,
+        signalPeriod: 9,
+        color: '#34d399',
+      },
+    ]
+
+    render(
+      <ChartIndicatorControl
+        indicators={indicators}
+        layout="popover"
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onUpdateDeviation={vi.fn()}
+        onUpdateMacdPeriod={onUpdateMacdPeriod}
+        onUpdatePeriod={vi.fn()}
+        open
+      />,
+    )
+    const fastPeriodInput = screen.getByRole('spinbutton', {
+      name: 'MACDの短期期間',
+    })
+    const slowPeriodInput = screen.getByRole('spinbutton', {
+      name: 'MACDの長期期間',
+    })
+    const signalPeriodInput = screen.getByRole('spinbutton', {
+      name: 'MACDのシグナル期間',
+    })
+    fireEvent.change(fastPeriodInput, { target: { value: '8' } })
+    fireEvent.blur(fastPeriodInput)
+    fireEvent.change(slowPeriodInput, { target: { value: '24' } })
+    fireEvent.blur(slowPeriodInput)
+    fireEvent.change(signalPeriodInput, { target: { value: '5' } })
+    fireEvent.blur(signalPeriodInput)
+
+    expect(onUpdateMacdPeriod.mock.calls).toEqual([
+      ['indicator-macd', 'fastPeriod', 8],
+      ['indicator-macd', 'slowPeriod', 24],
+      ['indicator-macd', 'signalPeriod', 5],
+    ])
+  })
+
   it('removes the selected indicator', () => {
     const onRemove = vi.fn()
     const indicators: ChartIndicatorConfig[] = [
@@ -107,6 +159,7 @@ describe('ChartIndicatorControl', () => {
         indicators={indicators}
         layout="popover"
         onAdd={vi.fn()}
+        onUpdateMacdPeriod={vi.fn()}
         onRemove={onRemove}
         onUpdateDeviation={vi.fn()}
         onUpdatePeriod={vi.fn()}
@@ -140,6 +193,7 @@ describe('ChartIndicatorControl', () => {
       <ChartIndicatorControl
         indicators={[]}
         onAdd={vi.fn()}
+        onUpdateMacdPeriod={vi.fn()}
         onRemove={vi.fn()}
         onUpdateDeviation={vi.fn()}
         onUpdatePeriod={vi.fn()}

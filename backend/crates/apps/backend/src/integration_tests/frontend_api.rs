@@ -171,6 +171,7 @@ mod paper_accounts;
 mod refs;
 mod risk_policy;
 mod rss_feeds;
+mod saved_screens;
 mod screener;
 mod stock_info;
 mod strategies;

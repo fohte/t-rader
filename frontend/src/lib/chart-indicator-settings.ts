@@ -1,20 +1,34 @@
 import { Result } from 'neverthrow'
 import { useSyncExternalStore } from 'react'
 
-export type ChartIndicatorKind = 'sma' | 'ema' | 'bollinger'
+export type ChartIndicatorKind = 'sma' | 'ema' | 'bollinger' | 'rsi' | 'macd'
+
+export type ChartIndicatorMacdPeriodField =
+  'fastPeriod' | 'slowPeriod' | 'signalPeriod'
 
 interface ChartIndicatorBase {
   id: string
-  period: number
   color: string
 }
 
+interface ChartIndicatorWithPeriod extends ChartIndicatorBase {
+  period: number
+}
+
 export type ChartIndicatorConfig =
-  | (ChartIndicatorBase & { kind: 'sma' })
-  | (ChartIndicatorBase & { kind: 'ema' })
-  | (ChartIndicatorBase & { kind: 'bollinger'; deviation: number })
+  | (ChartIndicatorWithPeriod & { kind: 'sma' })
+  | (ChartIndicatorWithPeriod & { kind: 'ema' })
+  | (ChartIndicatorWithPeriod & { kind: 'bollinger'; deviation: number })
+  | (ChartIndicatorWithPeriod & { kind: 'rsi' })
+  | (ChartIndicatorBase & {
+      kind: 'macd'
+      fastPeriod: number
+      slowPeriod: number
+      signalPeriod: number
+    })
 
 export const MAX_CHART_INDICATOR_PERIOD = 500
+export const CHART_INDICATOR_PANE_HEIGHT = 80
 const EMPTY_CHART_INDICATORS: ChartIndicatorConfig[] = []
 
 const STORAGE_KEY = 't-rader:chart-indicators'
@@ -50,6 +64,19 @@ export function isValidChartIndicatorPeriod(value: unknown): value is number {
   )
 }
 
+export function isValidChartIndicatorMacdPeriods(
+  fastPeriod: unknown,
+  slowPeriod: unknown,
+  signalPeriod: unknown,
+): boolean {
+  return (
+    isValidChartIndicatorPeriod(fastPeriod) &&
+    isValidChartIndicatorPeriod(slowPeriod) &&
+    isValidChartIndicatorPeriod(signalPeriod) &&
+    fastPeriod < slowPeriod
+  )
+}
+
 export function isValidChartIndicatorDeviation(
   value: unknown,
 ): value is number {
@@ -57,9 +84,38 @@ export function isValidChartIndicatorDeviation(
 }
 
 export function getChartIndicatorName(indicator: ChartIndicatorConfig): string {
-  if (indicator.kind === 'sma') return 'SMA'
-  if (indicator.kind === 'ema') return 'EMA'
-  return 'ボリンジャー'
+  switch (indicator.kind) {
+    case 'sma':
+      return 'SMA'
+    case 'ema':
+      return 'EMA'
+    case 'bollinger':
+      return 'ボリンジャー'
+    case 'rsi':
+      return 'RSI'
+    case 'macd':
+      return 'MACD'
+  }
+}
+
+export function getChartIndicatorLabel(
+  indicator: ChartIndicatorConfig,
+): string {
+  const name = getChartIndicatorName(indicator)
+  return indicator.kind === 'macd'
+    ? `${name} ${indicator.fastPeriod.toString()} ${indicator.slowPeriod.toString()} ${indicator.signalPeriod.toString()}`
+    : `${name} ${indicator.period.toString()}`
+}
+
+export function getChartIndicatorPaneIndexes(
+  indicators: readonly ChartIndicatorConfig[],
+): number[] {
+  let nextLowerPaneIndex = 0
+  return indicators.map((indicator) =>
+    indicator.kind === 'rsi' || indicator.kind === 'macd'
+      ? ++nextLowerPaneIndex
+      : 0,
+  )
 }
 
 function isChartIndicator(value: unknown): value is ChartIndicatorConfig {
@@ -68,16 +124,30 @@ function isChartIndicator(value: unknown): value is ChartIndicatorConfig {
   const hasBaseValues =
     typeof value.id === 'string' &&
     value.id.length > 0 &&
-    isValidChartIndicatorPeriod(value.period) &&
     typeof value.color === 'string' &&
     /^#[\da-f]{6}$/i.test(value.color)
 
   if (!hasBaseValues) return false
-  if (value.kind === 'sma' || value.kind === 'ema') return true
-  return (
-    value.kind === 'bollinger' &&
-    isValidChartIndicatorDeviation(value.deviation)
-  )
+
+  switch (value.kind) {
+    case 'sma':
+    case 'ema':
+    case 'rsi':
+      return isValidChartIndicatorPeriod(value.period)
+    case 'bollinger':
+      return (
+        isValidChartIndicatorPeriod(value.period) &&
+        isValidChartIndicatorDeviation(value.deviation)
+      )
+    case 'macd':
+      return isValidChartIndicatorMacdPeriods(
+        value.fastPeriod,
+        value.slowPeriod,
+        value.signalPeriod,
+      )
+    default:
+      return false
+  }
 }
 
 function parseStoredIndicators(value: string | null): ChartIndicatorConfig[] {
@@ -163,7 +233,18 @@ export function addChartIndicator(kind: ChartIndicatorKind): string {
   const indicator: ChartIndicatorConfig =
     kind === 'bollinger'
       ? { id, kind, period: 20, deviation: 2, color }
-      : { id, kind, period: 25, color }
+      : kind === 'rsi'
+        ? { id, kind, period: 14, color }
+        : kind === 'macd'
+          ? {
+              id,
+              kind,
+              fastPeriod: 12,
+              slowPeriod: 26,
+              signalPeriod: 9,
+              color,
+            }
+          : { id, kind, period: 25, color }
 
   saveSnapshot([...snapshot, indicator])
   return id
@@ -173,7 +254,9 @@ export function updateChartIndicatorPeriod(id: string, period: number): void {
   if (!isValidChartIndicatorPeriod(period)) return
 
   const next = snapshot.map((indicator) =>
-    indicator.id === id ? { ...indicator, period } : indicator,
+    indicator.id === id && indicator.kind !== 'macd'
+      ? { ...indicator, period }
+      : indicator,
   )
   if (next.some((indicator, index) => indicator !== snapshot[index])) {
     saveSnapshot(next)
@@ -196,6 +279,36 @@ export function updateChartIndicatorDeviation(
   }
 }
 
+export function updateChartIndicatorMacdPeriod(
+  id: string,
+  field: ChartIndicatorMacdPeriodField,
+  period: number,
+): void {
+  if (!isValidChartIndicatorPeriod(period)) return
+
+  const indicator = snapshot.find(
+    (candidate) => candidate.id === id && candidate.kind === 'macd',
+  )
+  if (indicator == null || indicator.kind !== 'macd') return
+
+  const updated = { ...indicator, [field]: period }
+  if (
+    !isValidChartIndicatorMacdPeriods(
+      updated.fastPeriod,
+      updated.slowPeriod,
+      updated.signalPeriod,
+    )
+  ) {
+    return
+  }
+
+  saveSnapshot(
+    snapshot.map((candidate) =>
+      candidate.id === id && candidate.kind === 'macd' ? updated : candidate,
+    ),
+  )
+}
+
 export function removeChartIndicator(id: string): void {
   const next = snapshot.filter((indicator) => indicator.id !== id)
   if (next.length !== snapshot.length) saveSnapshot(next)
@@ -204,8 +317,24 @@ export function removeChartIndicator(id: string): void {
 export function getChartIndicatorLookbackBars(
   indicators: readonly ChartIndicatorConfig[],
 ): number {
-  return indicators.reduce(
-    (maximum, indicator) => Math.max(maximum, indicator.period),
+  return indicators.reduce((maximum, indicator) => {
+    const lookback =
+      indicator.kind === 'rsi'
+        ? indicator.period + 1
+        : indicator.kind === 'macd'
+          ? Math.max(indicator.fastPeriod, indicator.slowPeriod) +
+            indicator.signalPeriod -
+            1
+          : indicator.period
+    return Math.max(maximum, lookback)
+  }, 0)
+}
+
+export function getChartIndicatorPaneCount(
+  indicators: readonly ChartIndicatorConfig[],
+): number {
+  return getChartIndicatorPaneIndexes(indicators).reduce(
+    (maximum, paneIndex) => Math.max(maximum, paneIndex),
     0,
   )
 }

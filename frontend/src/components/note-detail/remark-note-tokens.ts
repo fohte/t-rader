@@ -187,6 +187,20 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
           })
         }
 
+        // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
+        if (
+          inner.startsWith('valuation:') ||
+          (inner.startsWith('indicator:') && inner.includes('@'))
+        ) {
+          const value = resolvedPriceReferenceValue(
+            resolvedPriceReferences,
+            token,
+          )
+          return value == null
+            ? false
+            : noteToken('note-price-reference', { value: String(value) })
+        }
+
         const priceReferenceValue = inner.startsWith('price:')
           ? resolvedPriceReferenceValue(resolvedPriceReferences, token)
           : undefined

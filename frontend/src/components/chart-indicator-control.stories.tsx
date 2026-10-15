@@ -12,6 +12,15 @@ const indicators: ChartIndicatorConfig[] = [
     deviation: 2,
     color: '#38bdf8',
   },
+  { id: 'indicator-rsi', kind: 'rsi', period: 14, color: '#34d399' },
+  {
+    id: 'indicator-macd',
+    kind: 'macd',
+    fastPeriod: 12,
+    slowPeriod: 26,
+    signalPeriod: 9,
+    color: '#c084fc',
+  },
 ]
 
 const meta = {
@@ -21,6 +30,7 @@ const meta = {
     indicators: [],
     onAdd: () => {},
     onUpdatePeriod: () => {},
+    onUpdateMacdPeriod: () => {},
     onUpdateDeviation: () => {},
     onRemove: () => {},
     open: true,
@@ -37,11 +47,11 @@ export const EmptyPopover: Story = {
 }
 
 export const ConfiguredPopover: Story = {
-  name: 'the popover shows editable moving averages and bands.',
+  name: 'the popover shows editable settings for every indicator type.',
   args: { indicators, layout: 'popover' },
 }
 
 export const ConfiguredMobileSheet: Story = {
-  name: 'the mobile sheet shows editable indicator settings.',
+  name: 'the mobile sheet shows editable settings for every indicator type.',
   args: { indicators, layout: 'sheet' },
 }
