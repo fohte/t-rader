@@ -122,17 +122,20 @@ pub async fn screen_stocks(
         dividend_yield: range(params.min_dividend_yield, params.max_dividend_yield),
         market_cap: range(params.min_market_cap, params.max_market_cap),
     };
-    let default_sort = ScreenerSort::default();
+    let default_query = ScreenerQuery::default();
     let query = ScreenerQuery {
         filters,
         sort: ScreenerSort {
-            field: params.sort_by.map(Into::into).unwrap_or(default_sort.field),
+            field: params
+                .sort_by
+                .map(Into::into)
+                .unwrap_or(default_query.sort.field),
             direction: params
                 .sort_order
                 .map(Into::into)
-                .unwrap_or(default_sort.direction),
+                .unwrap_or(default_query.sort.direction),
         },
-        page: params.page.unwrap_or(1),
+        page: params.page.unwrap_or(default_query.page),
     };
 
     let result = state

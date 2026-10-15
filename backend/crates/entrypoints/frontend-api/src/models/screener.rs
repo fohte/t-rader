@@ -9,6 +9,7 @@ pub struct ScreenerResponse {
     pub items: Vec<ScreenerStockResponse>,
     pub total_count: i64,
     pub as_of: Option<NaiveDate>,
+    #[schema(minimum = 1)]
     pub page: u32,
 }
 

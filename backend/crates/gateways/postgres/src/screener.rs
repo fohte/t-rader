@@ -11,23 +11,18 @@ use crate::DatabaseHandle;
 use crate::persistence::persistence_error;
 
 const SCREEN_STOCKS_SQL: &str = r#"
-    WITH latest_valuations AS (
+    WITH latest_financial_summaries AS (
         SELECT DISTINCT ON (LEFT(code, 4))
-            LEFT(code, 4) AS stock_id, per, pbr, roe * 100 AS roe,
-            mkt_cap / 100 AS market_cap
-        FROM valuation
-        ORDER BY LEFT(code, 4), date DESC, code DESC
-    ),
-    latest_bars AS (
-        SELECT DISTINCT ON (instrument_id) instrument_id, close
-        FROM bars
-        WHERE timeframe = '1d'
-        ORDER BY instrument_id, timestamp DESC
-    ),
-    latest_financial_summaries AS (
-        SELECT DISTINCT ON (LEFT(code, 4))
-            LEFT(code, 4) AS stock_id, dividend_annual_forecast
+            LEFT(code, 4) AS stock_id,
+            CASE
+                WHEN current_period_type = 'FY' THEN dividend_annual_forecast_next
+                ELSE dividend_annual_forecast
+            END AS dividend_annual_forecast
         FROM financial_summary
+        WHERE CASE
+            WHEN current_period_type = 'FY' THEN dividend_annual_forecast_next
+            ELSE dividend_annual_forecast
+        END IS NOT NULL
         ORDER BY LEFT(code, 4), disclosure_date DESC, disclosure_no::bigint DESC
     ),
     sectors AS (
@@ -47,10 +42,25 @@ const SCREEN_STOCKS_SQL: &str = r#"
             latest_valuations.roe,
             (latest_financial_summaries.dividend_annual_forecast::numeric
                 / NULLIF(latest_bars.close, 0)) * 100 AS dividend_yield,
-            latest_valuations.market_cap
+            latest_valuations.market_cap,
+            latest_valuations.valuation_date
         FROM stock
-        LEFT JOIN latest_valuations ON latest_valuations.stock_id = stock.id
-        LEFT JOIN latest_bars ON latest_bars.instrument_id = stock.id
+        LEFT JOIN LATERAL (
+            SELECT valuation.date AS valuation_date, valuation.per, valuation.pbr,
+                   valuation.roe * 100 AS roe, valuation.mkt_cap / 100 AS market_cap
+            FROM valuation
+            WHERE LEFT(valuation.code, 4) = stock.id
+            ORDER BY valuation.date DESC, valuation.code DESC
+            LIMIT 1
+        ) AS latest_valuations ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT bars.close
+            FROM bars
+            WHERE bars.instrument_id = stock.id
+              AND bars.timeframe = '1d'
+            ORDER BY bars.timestamp DESC
+            LIMIT 1
+        ) AS latest_bars ON TRUE
         LEFT JOIN latest_financial_summaries ON latest_financial_summaries.stock_id = stock.id
         LEFT JOIN sectors ON sectors.stock_id = stock.id
     ),
@@ -72,14 +82,14 @@ const SCREEN_STOCKS_SQL: &str = r#"
     ),
     metadata AS (
         SELECT COUNT(*) AS total_count,
-               (SELECT MAX(date) FROM valuation) AS as_of
+               (SELECT MAX(valuation_date) FROM stock_rows) AS as_of
         FROM filtered
     ),
     paged AS (
         SELECT *
         FROM filtered
         ORDER BY {sort_column} {sort_direction} NULLS LAST, id ASC
-        LIMIT 100 OFFSET $13
+        LIMIT $13 OFFSET $14
     )
     SELECT metadata.total_count, metadata.as_of,
            paged.id, paged.name, paged.market, paged.sector, paged.close,
@@ -141,6 +151,7 @@ impl ScreenerQuerySource for PostgresScreenerQuerySource {
                     range_max(query.filters.dividend_yield.as_ref()).into(),
                     range_min(query.filters.market_cap.as_ref()).into(),
                     range_max(query.filters.market_cap.as_ref()).into(),
+                    i64::from(SCREENER_PAGE_SIZE).into(),
                     offset.into(),
                 ],
             ))

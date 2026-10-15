@@ -10,6 +10,7 @@ use crate::persistence::PersistenceError;
 
 pub const SCREENER_PAGE_SIZE: u32 = 100;
 
+/// 保存条件を JSON で保ち、新しい条件を追加しても既存の設定を読み込めるようにする。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ScreenerFilters {
@@ -81,7 +82,9 @@ pub enum ScreenerSortDirection {
     Desc,
 }
 
+/// 保存条件で選んだ並び替えを復元できるようにする。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct ScreenerSort {
     #[serde(default)]
     pub field: ScreenerSortField,
@@ -89,8 +92,7 @@ pub struct ScreenerSort {
     pub direction: ScreenerSortDirection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenerQuery {
     pub filters: ScreenerFilters,
     pub sort: ScreenerSort,

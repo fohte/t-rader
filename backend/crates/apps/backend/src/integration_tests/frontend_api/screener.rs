@@ -15,7 +15,10 @@ use uuid::Uuid;
 use crate::testing::create_test_server;
 
 fn normalize_result(mut result: Value) -> Value {
-    for stock in result["items"].as_array_mut().expect("result items") {
+    let Some(items) = result["items"].as_array_mut() else {
+        panic!("unexpected screener response: {result}");
+    };
+    for stock in items {
         for field in ["close", "per", "pbr", "roe", "dividend_yield", "market_cap"] {
             if let Some(serde_json::Value::Number(value)) = stock.get(field) {
                 let decimal = value
@@ -28,6 +31,32 @@ fn normalize_result(mut result: Value) -> Value {
         }
     }
     result
+}
+
+fn expected_page(indices: impl Iterator<Item = u32>, page: u32) -> Value {
+    let items = indices
+        .map(|index| {
+            json!({
+                "id": format!("D{index:03}"),
+                "name": format!("Demo {index:03}"),
+                "market": "market-a",
+                "sector": null,
+                "close": null,
+                "per": index,
+                "pbr": 1,
+                "roe": 1,
+                "dividend_yield": null,
+                "market_cap": 1000 + index,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "items": items,
+        "total_count": 101,
+        "as_of": "2098-01-03",
+        "page": page,
+    })
 }
 
 fn date(day: u32) -> NaiveDate {
@@ -89,12 +118,35 @@ async fn seed_financial_summary(
     disclosure_day: u32,
     dividend_forecast: f64,
 ) {
+    seed_financial_summary_row(
+        db,
+        code,
+        disclosure_no,
+        disclosure_day,
+        None,
+        Some(dividend_forecast),
+        None,
+    )
+    .await;
+}
+
+async fn seed_financial_summary_row(
+    db: &gateway_postgres::DatabaseHandle,
+    code: &str,
+    disclosure_no: &str,
+    disclosure_day: u32,
+    current_period_type: Option<&str>,
+    dividend_forecast: Option<f64>,
+    dividend_forecast_next: Option<f64>,
+) {
     financial_summary::ActiveModel {
         code: Set(code.to_string()),
         disclosure_no: Set(disclosure_no.to_string()),
         disclosure_date: Set(date(disclosure_day)),
         report_group_key: Set(format!("demo-report-{code}-{disclosure_no}")),
-        dividend_annual_forecast: Set(Some(dividend_forecast)),
+        current_period_type: Set(current_period_type.map(str::to_string)),
+        dividend_annual_forecast: Set(dividend_forecast),
+        dividend_annual_forecast_next: Set(dividend_forecast_next),
         ..Default::default()
     }
     .insert(db)
@@ -402,15 +454,69 @@ async fn screener_endpoint_keeps_missing_values_unless_their_metric_is_filtered(
 }
 
 #[backend_test_macros::database_test]
-async fn screener_endpoint_rejects_reversed_metric_ranges(db: gateway_postgres::DatabaseHandle) {
+async fn screener_endpoint_uses_next_year_forecast_after_fy_disclosures(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    seed_stock(&db, "D005", "Delta Demo", "market-a").await;
+    seed_instrument(&db, "D005").await;
+    seed_daily_bar(&db, "D005", 3, 2000).await;
+    seed_financial_summary_row(&db, "D0050", "1", 1, Some("3Q"), Some(60.0), None).await;
+    seed_financial_summary_row(&db, "D0050", "2", 2, Some("FY"), None, Some(80.0)).await;
+    seed_financial_summary_row(&db, "D0050", "3", 3, Some("FY"), None, None).await;
+
     let server = create_test_server(db).await;
-    let response = server.get("/api/screener?min_per=12&max_per=8").await;
+    let response = server.get("/api/screener?min_dividend_yield=3.9").await;
 
     assert_eq!(
-        (response.status_code(), response.json::<Value>()),
         (
-            axum::http::StatusCode::BAD_REQUEST,
-            json!({ "error": "per minimum must be less than or equal to maximum" }),
+            response.status_code(),
+            normalize_result(response.json::<Value>())
+        ),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "items": [
+                    {
+                        "id": "D005",
+                        "name": "Delta Demo",
+                        "market": "market-a",
+                        "sector": null,
+                        "close": 2000,
+                        "per": null,
+                        "pbr": null,
+                        "roe": null,
+                        "dividend_yield": 4,
+                        "market_cap": null,
+                    },
+                ],
+                "total_count": 1,
+                "as_of": null,
+                "page": 1,
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn screener_endpoint_rejects_invalid_queries(db: gateway_postgres::DatabaseHandle) {
+    let server = create_test_server(db).await;
+    let reversed_range = server.get("/api/screener?min_per=12&max_per=8").await;
+    let zero_page = server.get("/api/screener?page=0").await;
+
+    assert_eq!(
+        (
+            (reversed_range.status_code(), reversed_range.json::<Value>()),
+            (zero_page.status_code(), zero_page.json::<Value>()),
+        ),
+        (
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "per minimum must be less than or equal to maximum" }),
+            ),
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                json!({ "error": "page must be greater than or equal to 1" }),
+            ),
         ),
     );
 }
@@ -444,49 +550,21 @@ async fn screener_endpoint_sorts_and_returns_one_hundred_rows_per_page(
     let second_page = server
         .get("/api/screener?sort_by=market_cap&sort_order=desc&page=2")
         .await;
-    let first_body: Value = first_page.json();
-    let second_body: Value = second_page.json();
-    let first_ids = first_body["items"]
-        .as_array()
-        .expect("first page items")
-        .iter()
-        .map(|row| row["id"].as_str().expect("stock id").to_string())
-        .collect::<Vec<_>>();
-    let second_ids = second_body["items"]
-        .as_array()
-        .expect("second page items")
-        .iter()
-        .map(|row| row["id"].as_str().expect("stock id").to_string())
-        .collect::<Vec<_>>();
-    let expected_first_ids = (2..=101)
-        .rev()
-        .map(|index| format!("D{index:03}"))
-        .collect::<Vec<_>>();
+    let first_body = normalize_result(first_page.json::<Value>());
+    let second_body = normalize_result(second_page.json::<Value>());
 
     assert_eq!(
         (
             first_page.status_code(),
-            first_ids,
-            first_body["total_count"].clone(),
-            first_body["as_of"].clone(),
-            first_body["page"].clone(),
+            first_body,
             second_page.status_code(),
-            second_ids,
-            second_body["total_count"].clone(),
-            second_body["as_of"].clone(),
-            second_body["page"].clone(),
+            second_body,
         ),
         (
             axum::http::StatusCode::OK,
-            expected_first_ids,
-            json!(101),
-            json!("2098-01-03"),
-            json!(1),
+            expected_page((2..=101).rev(), 1),
             axum::http::StatusCode::OK,
-            vec!["D001".to_string()],
-            json!(101),
-            json!("2098-01-03"),
-            json!(2),
+            expected_page(1..=1, 2),
         ),
     );
 }

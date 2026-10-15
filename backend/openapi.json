@@ -11261,7 +11261,7 @@
           "page": {
             "type": "integer",
             "format": "int32",
-            "minimum": 0
+            "minimum": 1
           },
           "total_count": {
             "type": "integer",
