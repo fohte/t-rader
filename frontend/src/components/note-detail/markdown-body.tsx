@@ -19,6 +19,7 @@ import {
   MarkdownBodyRangeCommentContext,
   type MarkdownBodyRangeCommentProps,
   MarkdownBodyTableCellGutterContext,
+  NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdown-body-text-selection-action'
 import {
@@ -225,7 +226,10 @@ export function MarkdownBody({
         const listDepth = useContext(MarkdownBodyListDepthContext)
         return (
           <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
-            <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed">
+            <ul
+              className="my-2.5 list-disc space-y-1 text-sm leading-relaxed"
+              style={{ marginLeft: `${String(NOTE_BODY_INDENT_REM)}rem` }}
+            >
               {children}
             </ul>
           </MarkdownBodyListDepthContext.Provider>
@@ -235,7 +239,10 @@ export function MarkdownBody({
         const listDepth = useContext(MarkdownBodyListDepthContext)
         return (
           <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
-            <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed">
+            <ol
+              className="my-2.5 list-decimal space-y-1 text-sm leading-relaxed"
+              style={{ marginLeft: `${String(NOTE_BODY_INDENT_REM)}rem` }}
+            >
               {children}
             </ol>
           </MarkdownBodyListDepthContext.Provider>
@@ -439,7 +446,15 @@ export function MarkdownBody({
   return (
     <div
       ref={selection.rootRef}
-      className={`text-foreground ${rangeComments == null ? '' : '-ml-5 pl-5'}`}
+      className="text-foreground"
+      style={
+        hasRangeComments
+          ? {
+              marginLeft: `-${String(NOTE_BODY_INDENT_REM)}rem`,
+              paddingLeft: `${String(NOTE_BODY_INDENT_REM)}rem`,
+            }
+          : undefined
+      }
       onMouseUp={selection.onMouseUp}
       onTouchEnd={selection.onTouchEnd}
       onPointerMove={selection.onPointerMove}

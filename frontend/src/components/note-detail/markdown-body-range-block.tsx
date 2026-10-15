@@ -14,6 +14,7 @@ import {
   type MarkdownBodyRangeCommentProps,
   MarkdownBodySourceBlockContext,
   MarkdownBodyTableCellGutterContext,
+  NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import {
   commentsForThreads,
@@ -269,8 +270,8 @@ export function MarkdownBodyRangeBlock({
         style={{
           left:
             sourceBlockTag === 'li'
-              ? `calc(-1.25rem - ${String(listDepth * 1.25)}rem)`
-              : '-1.25rem',
+              ? `calc(-${String(NOTE_BODY_INDENT_REM)}rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`
+              : `-${String(NOTE_BODY_INDENT_REM)}rem`,
         }}
       />
     ) : null
@@ -347,7 +348,10 @@ export function MarkdownBodyRangeBlock({
 
   const gutterStyle: CSSProperties =
     sourceBlockTag === 'li'
-      ? { left: `calc(-2.75rem - ${String(listDepth * 1.25)}rem)`, top: 0 }
+      ? {
+          left: `calc(-2.75rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`,
+          top: 0,
+        }
       : sourceBlockTag === 'pre'
         ? { left: '-2.75rem', top: '0.75rem' }
         : sourceBlockTag === 'blockquote'

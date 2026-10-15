@@ -4,6 +4,8 @@ import type { DiffCommentAnchor } from '#components/note-detail/note-version-lin
 import type { SourceLineRange } from '#components/note-detail/use-markdown-body-comment-selection'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 
+export const NOTE_BODY_INDENT_REM = 1.25
+
 export interface MarkdownBodyRangeCommentProps {
   comments: NoteVersionComment[]
   activeCommentAnchor: DiffCommentAnchor | null
