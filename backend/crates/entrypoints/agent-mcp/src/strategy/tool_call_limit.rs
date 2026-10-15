@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use axum::http::{HeaderMap, request::Parts};
 use core_application::agent_config::AgentConfigUseCaseError;
 use core_application::agent_config::graph::parse_agent_graph;
+use core_application::mcp_tool_call_count::McpToolCallCountUseCaseError;
+use core_application::subagent_definition::SubagentDefinitionUseCaseError;
 use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 
@@ -123,9 +125,14 @@ impl StrategyServer {
             .subagent_definitions
             .get(definition_key)
             .await
-            .map_err(|error| {
-                tracing::error!(definition_key, error = %error, "strategy mcp subagent definition lookup failed");
-                internal_error(format!("subagent definition lookup failed: {error}"))
+            .map_err(|error| match error {
+                error @ SubagentDefinitionUseCaseError::NotFound(_) => {
+                    invalid_params(error.to_string())
+                }
+                error => {
+                    tracing::error!(definition_key, error = %error, "strategy mcp subagent definition lookup failed");
+                    internal_error(format!("subagent definition lookup failed: {error}"))
+                }
             })?;
 
         Ok(subagent_tool_max_calls_from_limits(
@@ -158,7 +165,7 @@ impl StrategyServer {
             .await
         {
             self.release_reservation(task_execution_id, tool_name).await;
-            return Err(tool_call_count_error_to_mcp(error));
+            return Err(subagent_tool_call_count_error_to_mcp(error));
         }
 
         Ok(())
@@ -235,6 +242,18 @@ fn subagent_tool_max_calls_from_limits(
     tool_limits
         .get(tool_name)
         .map(|value| u32::try_from(*value).unwrap_or(if *value < 0 { 0 } else { u32::MAX }))
+}
+
+fn subagent_tool_call_count_error_to_mcp(error: McpToolCallCountUseCaseError) -> McpError {
+    match error {
+        McpToolCallCountUseCaseError::CallLimitExceeded {
+            tool_name,
+            max_calls,
+        } => invalid_params(format!(
+            "{tool_name} call limit ({max_calls}) exceeded for this subagent execution"
+        )),
+        error => tool_call_count_error_to_mcp(error),
+    }
 }
 
 fn subagent_execution_identity_from_ctx(

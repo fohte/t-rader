@@ -333,7 +333,7 @@ async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::Data
                 "snippet": "Example snippet",
             }]})),
             Err(rmcp::ErrorData::invalid_params(
-                "search_web call limit (1) exceeded for this task execution",
+                "search_web call limit (1) exceeded for this subagent execution",
                 None,
             )),
             Ok(json!({"results": [{
@@ -353,6 +353,34 @@ async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::Data
                 None,
             )),
             4,
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn search_web_rejects_unknown_subagent_definition_key(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution_id =
+        create_task_with_subagent_limits(&db, strategy_id, "researcher", "search_web", 1, 4).await;
+    let (client, calls) = client(vec![example_result()], false);
+    let server = build_server(db).with_web_search_client(Some(client));
+
+    let result = invoke_search(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("child-run-a", "unknown-researcher")),
+    )
+    .await;
+
+    assert_eq!(
+        (result, calls.lock().expect("record calls").len()),
+        (
+            Err(rmcp::ErrorData::invalid_params(
+                "subagent definition 'unknown-researcher' not found",
+                None,
+            )),
+            0,
         ),
     );
 }

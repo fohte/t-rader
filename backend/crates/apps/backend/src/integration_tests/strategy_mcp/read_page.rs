@@ -316,7 +316,7 @@ async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::Datab
         (
             Ok(json!({"url": PAGE_URL, "text": "page answer"})),
             Err(McpError::invalid_params(
-                "read_page call limit (1) exceeded for this task execution",
+                "read_page call limit (1) exceeded for this subagent execution",
                 None,
             )),
             Ok(json!({"url": PAGE_URL, "text": "page answer"})),
