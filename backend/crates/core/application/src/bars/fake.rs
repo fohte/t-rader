@@ -42,14 +42,7 @@ impl FakeBarsRepository {
     }
 
     pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
-        self.us_stock_targets
-            .lock()
-            .await
-            .extend(instrument_ids.iter().cloned());
-        self.us_stock_daily_targets
-            .lock()
-            .await
-            .extend(instrument_ids);
+        self.us_stock_targets.lock().await.extend(instrument_ids);
     }
 
     pub async fn seed_us_stock_daily_targets(&self, instrument_ids: Vec<String>) {
@@ -208,7 +201,8 @@ impl BarsRepository for FakeBarsRepository {
     async fn find_us_stock_daily_bar_targets(
         &self,
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
-        let target_ids = self.us_stock_daily_targets.lock().await.clone();
+        let mut target_ids = self.us_stock_targets.lock().await.clone();
+        target_ids.extend(self.us_stock_daily_targets.lock().await.iter().cloned());
         self.find_targets(target_ids).await
     }
 

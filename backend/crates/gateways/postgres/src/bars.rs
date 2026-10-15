@@ -28,7 +28,7 @@ pub struct PostgresBarsRepository {
 #[derive(Clone, Copy)]
 enum UsStockBarTargetSelection {
     Referenced,
-    ListedExchange,
+    Daily,
 }
 
 impl PostgresBarsRepository {
@@ -75,8 +75,8 @@ impl PostgresBarsRepository {
             UsStockBarTargetSelection::Referenced => {
                 "EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)"
             }
-            UsStockBarTargetSelection::ListedExchange => {
-                "EXISTS (SELECT 1 FROM stock WHERE stock.id = instruments.id AND stock.market IN ('Nasdaq', 'NYSE'))"
+            UsStockBarTargetSelection::Daily => {
+                "EXISTS (SELECT 1 FROM stock WHERE stock.id = instruments.id AND stock.market IN ('Nasdaq', 'NYSE')) OR EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)"
             }
         };
         let query = format!(
@@ -237,7 +237,7 @@ impl BarsRepository for PostgresBarsRepository {
     async fn find_us_stock_daily_bar_targets(
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
-        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::ListedExchange)
+        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Daily)
             .await
     }
 
@@ -677,12 +677,14 @@ mod tests {
         let nasdaq_id = format!("US:QZ-DAILY-NASDAQ-{suffix}");
         let nyse_id = format!("US:QZ-DAILY-NYSE-{suffix}");
         let otc_id = format!("US:QZ-DAILY-OTC-{suffix}");
+        let referenced_otc_id = format!("US:QZ-DAILY-OTC-REFERENCED-{suffix}");
         let non_us_id = format!("KR:QZ-DAILY-NASDAQ-{suffix}");
 
         for (id, instrument_market, exchange) in [
             (&nasdaq_id, "US", "Nasdaq"),
             (&nyse_id, "US", "NYSE"),
             (&otc_id, "US", "OTC"),
+            (&referenced_otc_id, "US", "OTC"),
             (&non_us_id, "OTHER", "Nasdaq"),
         ] {
             instruments::Entity::insert(instruments::ActiveModel {
@@ -707,6 +709,28 @@ mod tests {
             .expect("insert stock");
         }
 
+        let note_id = uuid::Uuid::new_v4();
+        note::Entity::insert(note::ActiveModel {
+            id: Set(note_id),
+            kind: Set(None),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+            execution_id: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert note");
+        note_ref::Entity::insert(note_ref::ActiveModel {
+            note_id: Set(note_id),
+            ref_kind: Set("stock".to_owned()),
+            ref_id: Set(referenced_otc_id.clone()),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert note reference");
+
         let actual = PostgresBarsRepository::new(db)
             .find_us_stock_daily_bar_targets()
             .await
@@ -724,6 +748,13 @@ mod tests {
                 },
                 UsStockBarTarget {
                     instrument_id: nyse_id,
+                    latest_daily_bar: None,
+                    latest_minute_bar: None,
+                    earliest_daily_bar: None,
+                    earliest_minute_bar: None,
+                },
+                UsStockBarTarget {
+                    instrument_id: referenced_otc_id,
                     latest_daily_bar: None,
                     latest_minute_bar: None,
                     earliest_daily_bar: None,
