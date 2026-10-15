@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import { buildSnippet } from '#lib/note-utils'
 import { cn } from '#lib/utils'
@@ -7,6 +9,7 @@ interface ChartAnnotationListProps {
   selectedAnnotationId: string | null
   isLoading?: boolean
   className?: string
+  style?: CSSProperties
   onSelectAnnotation: (id: string) => void
 }
 
@@ -21,6 +24,7 @@ export function ChartAnnotationList({
   selectedAnnotationId,
   isLoading = false,
   className,
+  style,
   onSelectAnnotation,
 }: ChartAnnotationListProps) {
   return (
@@ -30,6 +34,7 @@ export function ChartAnnotationList({
         'flex min-h-0 w-72 shrink-0 flex-col border border-border bg-card',
         className,
       )}
+      style={style}
     >
       <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
         <h2 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">

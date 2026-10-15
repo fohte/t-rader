@@ -12,7 +12,7 @@ import {
   type SeriesType,
   type Time,
 } from 'lightweight-charts'
-import { useEffect, useRef } from 'react'
+import { type CSSProperties, useEffect, useRef, useState } from 'react'
 
 import { AnnotationChartBand } from '#components/annotations/annotation-chart-band'
 import { useAnnotationOverlays } from '#components/candlestick-chart/use-annotation-overlays'
@@ -20,7 +20,12 @@ import { ChartIndicatorLegend } from '#components/chart-indicator-legend'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import { calculateChartIndicatorLines } from '#lib/chart-indicator-calculations'
-import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
+import {
+  CHART_INDICATOR_PANE_HEIGHT,
+  type ChartIndicatorConfig,
+  getChartIndicatorPaneCount,
+  getChartIndicatorPaneIndexes,
+} from '#lib/chart-indicator-settings'
 import {
   getChartThemeColors,
   getChartThemeOptions,
@@ -53,6 +58,7 @@ interface CandlestickChartProps {
   intraday?: boolean
   highlightedTimestamp?: string
   className?: string
+  style?: CSSProperties
 }
 
 export function CandlestickChart({
@@ -69,14 +75,18 @@ export function CandlestickChart({
   intraday = false,
   highlightedTimestamp,
   className,
+  style,
 }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const [paneTops, setPaneTops] = useState<number[]>([])
+  const updatePaneLayoutRef = useRef<() => void>(() => {})
+  const lowerPaneCountRef = useRef(0)
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const tradeMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const annotationPriceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
-  const indicatorSeriesRef = useRef<Map<string, ISeriesApi<'Line'>[]>>(
+  const indicatorSeriesRef = useRef<Map<string, ISeriesApi<SeriesType>[]>>(
     new Map(),
   )
   const priceLineRef = useRef<IPriceLine | null>(null)
@@ -98,6 +108,50 @@ export function CandlestickChart({
       height: container.clientHeight,
     })
     chartRef.current = chart
+    chart.applyOptions({ layout: { panes: { enableResize: false } } })
+    let paneTopsAnimationFrame: number | null = null
+
+    const updatePaneTops = () => {
+      let top = 0
+      const nextPaneTops = chart.panes().map((pane) => {
+        const paneTop = top
+        top += pane.getHeight()
+        return paneTop
+      })
+      setPaneTops((currentPaneTops) =>
+        currentPaneTops.length === nextPaneTops.length &&
+        currentPaneTops.every(
+          (currentTop, index) => currentTop === nextPaneTops[index],
+        )
+          ? currentPaneTops
+          : nextPaneTops,
+      )
+    }
+    const schedulePaneTopsUpdate = () => {
+      if (paneTopsAnimationFrame != null) {
+        cancelAnimationFrame(paneTopsAnimationFrame)
+      }
+      paneTopsAnimationFrame = requestAnimationFrame(() => {
+        paneTopsAnimationFrame = null
+        updatePaneTops()
+      })
+    }
+    const updatePaneLayout = (chartHeight = container.clientHeight) => {
+      const lowerPaneCount = lowerPaneCountRef.current
+      const mainPaneHeight = Math.max(
+        1,
+        chartHeight -
+          chart.timeScale().height() -
+          lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT,
+      )
+      const panes = chart.panes()
+      panes[0]?.setStretchFactor(mainPaneHeight)
+      for (let paneIndex = 1; paneIndex <= lowerPaneCount; paneIndex += 1) {
+        panes[paneIndex]?.setStretchFactor(CHART_INDICATOR_PANE_HEIGHT)
+      }
+      schedulePaneTopsUpdate()
+    }
+    updatePaneLayoutRef.current = updatePaneLayout
 
     // ローソク足シリーズ
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
@@ -138,6 +192,7 @@ export function CandlestickChart({
       container,
       (width, height) => {
         chart.applyOptions({ width, height })
+        updatePaneLayout(height)
       },
     )
 
@@ -151,6 +206,9 @@ export function CandlestickChart({
     return () => {
       disconnectThemeObserver()
       disconnectResizeObserver()
+      if (paneTopsAnimationFrame != null) {
+        cancelAnimationFrame(paneTopsAnimationFrame)
+      }
       tradeMarkersRef.current?.detach()
       tradeMarkersRef.current = null
       chart.remove()
@@ -160,6 +218,7 @@ export function CandlestickChart({
       volumeSeriesRef.current = null
       indicatorSeriesRef.current.clear()
       priceLineRef.current = null
+      updatePaneLayoutRef.current = () => {}
     }
   }, [])
 
@@ -255,33 +314,106 @@ export function CandlestickChart({
     if (chart == null) return
 
     for (const series of indicatorSeriesRef.current.values()) {
-      for (const lineSeries of series) chart.removeSeries(lineSeries)
+      for (const indicatorSeries of series) {
+        chart.removeSeries(indicatorSeries)
+      }
     }
     indicatorSeriesRef.current.clear()
+    while (chart.panes().length > 1) {
+      chart.removePane(chart.panes().length - 1)
+    }
+
+    const paneIndexes = getChartIndicatorPaneIndexes(indicators)
+    lowerPaneCountRef.current = getChartIndicatorPaneCount(indicators)
 
     const indicatorBars = toCandlestickData(bars).map(({ time, close }) => ({
       time,
       close,
     }))
 
-    for (const indicator of indicators) {
+    for (const [indicatorIndex, indicator] of indicators.entries()) {
       const lines = calculateChartIndicatorLines(indicator, indicatorBars)
-      const series = lines.map(({ variant, points }) => {
-        const lineSeries = chart.addSeries(LineSeries, {
-          color: indicator.color,
-          lineWidth: variant === 'band' ? 1 : 2,
-          lineStyle: variant === 'band' ? LineStyle.Dashed : LineStyle.Solid,
-          priceScaleId: 'right',
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-          pointMarkersVisible: false,
-        })
+      const paneIndex = paneIndexes[indicatorIndex] ?? 0
+
+      const series: ISeriesApi<SeriesType>[] = []
+      for (const { variant, points } of lines) {
+        if (variant === 'histogram') {
+          const histogramSeries = chart.addSeries(
+            HistogramSeries,
+            {
+              priceScaleId: 'right',
+              priceLineVisible: false,
+              lastValueVisible: false,
+            },
+            paneIndex,
+          )
+          histogramSeries.setData(
+            points.map((point) => ({
+              ...point,
+              color:
+                point.value >= 0
+                  ? 'rgba(38, 166, 154, 0.7)'
+                  : 'rgba(239, 83, 80, 0.7)',
+            })),
+          )
+          series.push(histogramSeries)
+          continue
+        }
+
+        const lineSeries = chart.addSeries(
+          LineSeries,
+          {
+            color: variant === 'signal' ? '#a1a1aa' : indicator.color,
+            lineWidth: variant === 'band' || variant === 'signal' ? 1 : 2,
+            lineStyle:
+              variant === 'band' || variant === 'signal'
+                ? LineStyle.Dashed
+                : LineStyle.Solid,
+            priceScaleId: 'right',
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+            pointMarkersVisible: false,
+            ...(indicator.kind === 'rsi'
+              ? {
+                  autoscaleInfoProvider: () => ({
+                    priceRange: { minValue: 0, maxValue: 100 },
+                  }),
+                }
+              : {}),
+          },
+          paneIndex,
+        )
         lineSeries.setData(points)
-        return lineSeries
-      })
+
+        if (indicator.kind === 'rsi') {
+          for (const price of [30, 70]) {
+            lineSeries.createPriceLine({
+              price,
+              color: '#71717a',
+              lineWidth: 1,
+              lineStyle: LineStyle.Dashed,
+              axisLabelVisible: true,
+              title: price.toString(),
+            })
+          }
+        } else if (indicator.kind === 'macd' && variant === 'main') {
+          lineSeries.createPriceLine({
+            price: 0,
+            color: '#71717a',
+            lineWidth: 1,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: false,
+            title: '',
+          })
+        }
+
+        series.push(lineSeries)
+      }
       indicatorSeriesRef.current.set(indicator.id, series)
     }
+
+    updatePaneLayoutRef.current()
   }, [bars, indicators])
 
   useEffect(() => {
@@ -303,7 +435,7 @@ export function CandlestickChart({
     })
 
   return (
-    <div className={cn('relative min-w-0', className)}>
+    <div className={cn('relative min-w-0', className)} style={style}>
       <div ref={containerRef} className="absolute inset-0" />
       {dateMarkerLayout != null && (
         <span
@@ -323,7 +455,7 @@ export function CandlestickChart({
           onSelectAnnotation={onSelectAnnotation}
         />
       )}
-      <ChartIndicatorLegend indicators={indicators} />
+      <ChartIndicatorLegend indicators={indicators} paneTops={paneTops} />
     </div>
   )
 }
