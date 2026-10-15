@@ -1,8 +1,9 @@
 use chrono::NaiveDate;
+use core_application::screener::{ScreenerSortDirection, ScreenerSortField};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScreenStocksSortBy {
     Id,
@@ -34,7 +35,24 @@ impl From<ScreenStocksSortBy> for core_application::screener::ScreenerSortField 
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema)]
+impl From<ScreenerSortField> for ScreenStocksSortBy {
+    fn from(field: ScreenerSortField) -> Self {
+        match field {
+            ScreenerSortField::Id => Self::Id,
+            ScreenerSortField::Name => Self::Name,
+            ScreenerSortField::Market => Self::Market,
+            ScreenerSortField::Sector => Self::Sector,
+            ScreenerSortField::Close => Self::Close,
+            ScreenerSortField::Per => Self::Per,
+            ScreenerSortField::Pbr => Self::Pbr,
+            ScreenerSortField::Roe => Self::Roe,
+            ScreenerSortField::DividendYield => Self::DividendYield,
+            ScreenerSortField::MarketCap => Self::MarketCap,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScreenStocksSortOrder {
     Asc,
@@ -46,6 +64,15 @@ impl From<ScreenStocksSortOrder> for core_application::screener::ScreenerSortDir
         match direction {
             ScreenStocksSortOrder::Asc => Self::Asc,
             ScreenStocksSortOrder::Desc => Self::Desc,
+        }
+    }
+}
+
+impl From<ScreenerSortDirection> for ScreenStocksSortOrder {
+    fn from(direction: ScreenerSortDirection) -> Self {
+        match direction {
+            ScreenerSortDirection::Asc => Self::Asc,
+            ScreenerSortDirection::Desc => Self::Desc,
         }
     }
 }

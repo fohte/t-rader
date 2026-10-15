@@ -1,10 +1,10 @@
 use core_application::saved_screen::SavedScreen;
-use core_application::screener::{
-    ScreenerFilters, ScreenerRange, ScreenerSort, ScreenerSortDirection, ScreenerSortField,
-};
+use core_application::screener::{ScreenerFilters, ScreenerRange, ScreenerSort};
 use schemars::JsonSchema;
 use serde::Serialize;
 use uuid::Uuid;
+
+use super::{ScreenStocksSortBy, ScreenStocksSortOrder};
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct SavedScreenDto {
@@ -35,30 +35,8 @@ pub struct SavedScreenRangeDto {
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct SavedScreenSortDto {
-    pub field: SavedScreenSortField,
-    pub direction: SavedScreenSortDirection,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum SavedScreenSortField {
-    Id,
-    Name,
-    Market,
-    Sector,
-    Close,
-    Per,
-    Pbr,
-    Roe,
-    DividendYield,
-    MarketCap,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum SavedScreenSortDirection {
-    Asc,
-    Desc,
+    pub field: ScreenStocksSortBy,
+    pub direction: ScreenStocksSortOrder,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
@@ -103,22 +81,8 @@ impl From<ScreenerRange> for SavedScreenRangeDto {
 impl From<ScreenerSort> for SavedScreenSortDto {
     fn from(sort: ScreenerSort) -> Self {
         Self {
-            field: match sort.field {
-                ScreenerSortField::Id => SavedScreenSortField::Id,
-                ScreenerSortField::Name => SavedScreenSortField::Name,
-                ScreenerSortField::Market => SavedScreenSortField::Market,
-                ScreenerSortField::Sector => SavedScreenSortField::Sector,
-                ScreenerSortField::Close => SavedScreenSortField::Close,
-                ScreenerSortField::Per => SavedScreenSortField::Per,
-                ScreenerSortField::Pbr => SavedScreenSortField::Pbr,
-                ScreenerSortField::Roe => SavedScreenSortField::Roe,
-                ScreenerSortField::DividendYield => SavedScreenSortField::DividendYield,
-                ScreenerSortField::MarketCap => SavedScreenSortField::MarketCap,
-            },
-            direction: match sort.direction {
-                ScreenerSortDirection::Asc => SavedScreenSortDirection::Asc,
-                ScreenerSortDirection::Desc => SavedScreenSortDirection::Desc,
-            },
+            field: sort.field.into(),
+            direction: sort.direction.into(),
         }
     }
 }
