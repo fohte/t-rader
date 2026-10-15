@@ -1,13 +1,12 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
-use core_application::event::{NewEvent, SharedEventRepository};
-use core_application::event_dispatch_job::EventDispatchJobUseCases;
-use core_application::unit_of_work::SharedUnitOfWork;
-use core_application::{ingest_run_log::IngestRunLog, persistence::PersistenceError};
+use core_application::ingest_run_log::IngestRunRepository;
+use core_application::persistence::PersistenceError;
+use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{Set, Unchanged};
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use serde_json::{Value, json};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
@@ -16,42 +15,38 @@ use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref;
 
 #[derive(Clone)]
-pub struct PostgresIngestRunLog {
+pub struct PostgresIngestRunRepository {
     db: DatabaseHandle,
-    unit_of_work: SharedUnitOfWork,
-    event_repository: SharedEventRepository,
-    event_dispatch_job: EventDispatchJobUseCases,
 }
 
-impl PostgresIngestRunLog {
-    pub fn new(
-        db: impl Into<DatabaseHandle>,
-        unit_of_work: SharedUnitOfWork,
-        event_repository: SharedEventRepository,
-        event_dispatch_job: EventDispatchJobUseCases,
-    ) -> Self {
-        Self {
-            db: db.into(),
-            unit_of_work,
-            event_repository,
-            event_dispatch_job,
-        }
+impl PostgresIngestRunRepository {
+    pub fn new(db: impl Into<DatabaseHandle>) -> Self {
+        Self { db: db.into() }
+    }
+}
+
+#[async_trait]
+impl IngestRunRepository for PostgresIngestRunRepository {
+    async fn start(&self, job: &str) -> Result<Uuid, PersistenceError> {
+        ingest_run::Entity::insert(ingest_run::ActiveModel {
+            job: Set(job.to_string()),
+            ..Default::default()
+        })
+        .exec_with_returning(&self.db)
+        .await
+        .map(|run| run.id)
+        .map_err(persistence_error)
     }
 
-    async fn finish_with_event(
+    async fn finish(
         &self,
+        transaction: &UnitOfWorkTransaction,
         run_id: Uuid,
-        event_type: &str,
         status: &str,
         stats: Option<Value>,
         error: Option<String>,
-    ) -> Result<(), PersistenceError> {
-        let transaction = self
-            .unit_of_work
-            .begin()
-            .await
-            .map_err(|error| PersistenceError::Database(error.to_string()))?;
-        let connection = transaction_ref(&transaction).ok_or_else(|| {
+    ) -> Result<String, PersistenceError> {
+        let connection = transaction_ref(transaction).ok_or_else(|| {
             PersistenceError::Database("transaction has an unexpected type".to_owned())
         })?;
         let run = ingest_run::Entity::find_by_id(run_id)
@@ -71,88 +66,8 @@ impl PostgresIngestRunLog {
         })
         .exec(connection)
         .await
-        .map_err(persistence_error)
-        .map(|_| ())?;
-
-        self.event_repository
-            .create(
-                &transaction,
-                NewEvent {
-                    event_type: event_type.to_owned(),
-                    payload: json!({
-                        "run_id": run_id,
-                        "job": run.job,
-                        "stats": stats,
-                        "error": error,
-                    }),
-                    chain_depth: Some(0),
-                },
-            )
-            .await
-            .map_err(|error| PersistenceError::Database(error.to_string()))?;
-
-        self.unit_of_work
-            .commit(transaction)
-            .await
-            .map_err(|error| PersistenceError::Database(error.to_string()))?;
-
-        self.event_dispatch_job
-            .enqueue_dispatch()
-            .await
-            .map_err(|error| PersistenceError::Database(error.to_string()))
-    }
-}
-
-#[async_trait]
-impl IngestRunLog for PostgresIngestRunLog {
-    async fn start(&self, job: &str) -> Result<Uuid, PersistenceError> {
-        ingest_run::Entity::insert(ingest_run::ActiveModel {
-            job: Set(job.to_string()),
-            ..Default::default()
-        })
-        .exec_with_returning(&self.db)
-        .await
-        .map(|run| run.id)
-        .map_err(persistence_error)
-    }
-
-    async fn finish(
-        &self,
-        run_id: Uuid,
-        result: Result<Value, String>,
-    ) -> Result<(), PersistenceError> {
-        match result {
-            Ok(stats) => {
-                self.finish_with_event(
-                    run_id,
-                    "ingest_run.succeeded",
-                    "succeeded",
-                    Some(stats),
-                    None,
-                )
-                .await
-            }
-            Err(error) => {
-                self.finish_with_event(run_id, "ingest_run.failed", "failed", None, Some(error))
-                    .await
-            }
-        }
-    }
-
-    async fn finish_with_stats_and_error(
-        &self,
-        run_id: Uuid,
-        stats: Value,
-        error: String,
-    ) -> Result<(), PersistenceError> {
-        self.finish_with_event(
-            run_id,
-            "ingest_run.failed",
-            "failed",
-            Some(stats),
-            Some(error),
-        )
-        .await
+        .map_err(persistence_error)?;
+        Ok(run.job)
     }
 
     async fn fail_interrupted_before(
@@ -176,28 +91,61 @@ impl IngestRunLog for PostgresIngestRunLog {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
 
     use async_trait::async_trait;
     use chrono::{Duration, Timelike, Utc};
     use core_application::event_dispatch_job::{
         EventDispatchJobQueue, EventDispatchJobQueueError, EventDispatchJobUseCases,
     };
-    use core_application::ingest_run_log::IngestRunLog;
+    use core_application::ingest_run_log::{IngestRunLog, IngestRunLogUseCases};
+    use core_application::unit_of_work::{
+        SharedUnitOfWork, UnitOfWork, UnitOfWorkError, UnitOfWorkTransaction,
+    };
     use sea_orm::ActiveValue::Set;
     use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, PaginatorTrait, Statement};
     use serde_json::json;
 
-    use super::PostgresIngestRunLog;
+    use super::PostgresIngestRunRepository;
     use crate::{
         DatabaseHandle, PostgresEventRepository, PostgresUnitOfWork,
         entities::{event, ingest_run},
     };
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct DispatchObservation {
+        committed: bool,
+        event_count: u64,
+    }
+
+    #[derive(Clone)]
+    struct ObservingUnitOfWork {
+        inner: SharedUnitOfWork,
+        commit_succeeded: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl UnitOfWork for ObservingUnitOfWork {
+        async fn begin(&self) -> Result<UnitOfWorkTransaction, UnitOfWorkError> {
+            self.inner.begin().await
+        }
+
+        async fn commit(&self, transaction: UnitOfWorkTransaction) -> Result<(), UnitOfWorkError> {
+            self.inner.commit(transaction).await?;
+            self.commit_succeeded.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
     #[derive(Clone)]
     struct ObservingEventDispatchJobQueue {
         db: DatabaseHandle,
-        event_counts: Arc<Mutex<Vec<u64>>>,
+        commit_succeeded: Arc<AtomicBool>,
+        observations: Arc<Mutex<Vec<DispatchObservation>>>,
+        fail_enqueue: bool,
     }
 
     #[async_trait]
@@ -207,34 +155,58 @@ mod tests {
                 .count(&self.db)
                 .await
                 .map_err(|error| EventDispatchJobQueueError::new(error.to_string()))?;
-            self.event_counts
+            self.observations
                 .lock()
                 .map_err(|error| EventDispatchJobQueueError::new(error.to_string()))?
-                .push(event_count);
+                .push(DispatchObservation {
+                    committed: self.commit_succeeded.load(Ordering::SeqCst),
+                    event_count,
+                });
+            if self.fail_enqueue {
+                return Err(EventDispatchJobQueueError::new(
+                    "sample_enqueue_error".to_owned(),
+                ));
+            }
             Ok(())
         }
     }
 
-    fn log(db: DatabaseHandle) -> (PostgresIngestRunLog, Arc<Mutex<Vec<u64>>>) {
-        let event_counts = Arc::new(Mutex::new(Vec::new()));
+    fn log(db: DatabaseHandle) -> (IngestRunLogUseCases, Arc<Mutex<Vec<DispatchObservation>>>) {
+        log_with_dispatch_failure(db, false)
+    }
+
+    fn log_with_dispatch_failure(
+        db: DatabaseHandle,
+        fail_enqueue: bool,
+    ) -> (IngestRunLogUseCases, Arc<Mutex<Vec<DispatchObservation>>>) {
+        let commit_succeeded = Arc::new(AtomicBool::new(false));
+        let observations = Arc::new(Mutex::new(Vec::new()));
+        let unit_of_work: SharedUnitOfWork = Arc::new(ObservingUnitOfWork {
+            inner: Arc::new(PostgresUnitOfWork::new(db.clone())),
+            commit_succeeded: commit_succeeded.clone(),
+        });
         let event_dispatch_job =
             EventDispatchJobUseCases::new(Arc::new(ObservingEventDispatchJobQueue {
                 db: db.clone(),
-                event_counts: event_counts.clone(),
+                commit_succeeded,
+                observations: observations.clone(),
+                fail_enqueue,
             }));
         (
-            PostgresIngestRunLog::new(
-                db.clone(),
-                Arc::new(PostgresUnitOfWork::new(db.clone())),
+            IngestRunLogUseCases::new(
+                unit_of_work,
+                Arc::new(PostgresIngestRunRepository::new(db.clone())),
                 Arc::new(PostgresEventRepository::new(db)),
                 event_dispatch_job,
             ),
-            event_counts,
+            observations,
         )
     }
 
-    fn event_counts(event_counts: &Arc<Mutex<Vec<u64>>>) -> Vec<u64> {
-        event_counts
+    fn read_dispatch_observations(
+        observations: &Arc<Mutex<Vec<DispatchObservation>>>,
+    ) -> Vec<DispatchObservation> {
+        observations
             .lock()
             .expect("read dispatch observations")
             .clone()
@@ -259,7 +231,6 @@ mod tests {
         for event in &mut events {
             event.event_id = uuid::Uuid::nil();
             event.occurred_at = epoch();
-            event.payload["run_id"] = json!("<run_id>");
         }
         events
     }
@@ -301,7 +272,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn start_creates_a_running_row(db: DatabaseHandle) {
-        let (log, dispatch_event_counts) = log(db.clone());
+        let (log, dispatch_observations) = log(db.clone());
         let transaction_time = db
             .query_one_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
@@ -323,7 +294,7 @@ mod tests {
                 normalize_timestamps(run),
                 started_at_matches_transaction_time,
                 normalize_events(events),
-                event_counts(&dispatch_event_counts),
+                read_dispatch_observations(&dispatch_observations),
             ),
             (
                 ingest_run::Model {
@@ -344,7 +315,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn finish_stores_stats_for_a_successful_run(db: DatabaseHandle) {
-        let (log, dispatch_event_counts) = log(db.clone());
+        let (log, dispatch_observations) = log(db.clone());
         let run_id = log.start("sample_ingest").await.expect("start run");
         let started_at = row(&db, run_id).await.started_at;
         let stats = json!({ "rows": 3 });
@@ -359,7 +330,7 @@ mod tests {
             (
                 normalize_finished_at(run),
                 normalize_events(events),
-                event_counts(&dispatch_event_counts),
+                read_dispatch_observations(&dispatch_observations),
             ),
             (
                 ingest_run::Model {
@@ -375,7 +346,7 @@ mod tests {
                     event_id: uuid::Uuid::nil(),
                     event_type: "ingest_run.succeeded".to_owned(),
                     payload: json!({
-                        "run_id": "<run_id>",
+                        "run_id": run_id.to_string(),
                         "job": "sample_ingest",
                         "stats": stats,
                         "error": null,
@@ -384,14 +355,17 @@ mod tests {
                     occurred_at: epoch(),
                     dispatched_at: None,
                 }],
-                vec![1],
+                vec![DispatchObservation {
+                    committed: true,
+                    event_count: 1,
+                }],
             ),
         );
     }
 
     #[backend_test_macros::database_test]
     async fn finish_stores_the_error_for_a_failed_run(db: DatabaseHandle) {
-        let (log, dispatch_event_counts) = log(db.clone());
+        let (log, dispatch_observations) = log(db.clone());
         let run_id = log.start("sample_ingest").await.expect("start run");
         let started_at = row(&db, run_id).await.started_at;
         log.finish(run_id, Err("operation failed".to_string()))
@@ -405,7 +379,7 @@ mod tests {
             (
                 normalize_finished_at(run),
                 normalize_events(events),
-                event_counts(&dispatch_event_counts),
+                read_dispatch_observations(&dispatch_observations),
             ),
             (
                 ingest_run::Model {
@@ -421,7 +395,7 @@ mod tests {
                     event_id: uuid::Uuid::nil(),
                     event_type: "ingest_run.failed".to_owned(),
                     payload: json!({
-                        "run_id": "<run_id>",
+                        "run_id": run_id.to_string(),
                         "job": "sample_ingest",
                         "stats": null,
                         "error": "operation failed",
@@ -430,14 +404,17 @@ mod tests {
                     occurred_at: epoch(),
                     dispatched_at: None,
                 }],
-                vec![1],
+                vec![DispatchObservation {
+                    committed: true,
+                    event_count: 1,
+                }],
             ),
         );
     }
 
     #[backend_test_macros::database_test]
     async fn finish_with_stats_stores_partial_stats_for_a_failed_run(db: DatabaseHandle) {
-        let (log, dispatch_event_counts) = log(db.clone());
+        let (log, dispatch_observations) = log(db.clone());
         let run_id = log
             .start("sample_ingest_with_stats")
             .await
@@ -460,7 +437,7 @@ mod tests {
             (
                 normalize_finished_at(run),
                 normalize_events(events),
-                event_counts(&dispatch_event_counts),
+                read_dispatch_observations(&dispatch_observations),
             ),
             (
                 ingest_run::Model {
@@ -476,7 +453,7 @@ mod tests {
                     event_id: uuid::Uuid::nil(),
                     event_type: "ingest_run.failed".to_owned(),
                     payload: json!({
-                        "run_id": "<run_id>",
+                        "run_id": run_id.to_string(),
                         "job": "sample_ingest_with_stats",
                         "stats": stats,
                         "error": "sample_fetch_error",
@@ -485,7 +462,60 @@ mod tests {
                     occurred_at: epoch(),
                     dispatched_at: None,
                 }],
-                vec![1],
+                vec![DispatchObservation {
+                    committed: true,
+                    event_count: 1,
+                }],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn finish_keeps_the_event_when_dispatch_enqueue_fails(db: DatabaseHandle) {
+        let (log, dispatch_observations) = log_with_dispatch_failure(db.clone(), true);
+        let run_id = log.start("sample_ingest").await.expect("start run");
+        let started_at = row(&db, run_id).await.started_at;
+        let stats = json!({ "rows": 3 });
+        log.finish(run_id, Ok(stats.clone()))
+            .await
+            .expect("finish despite dispatch enqueue failure");
+
+        let run = row(&db, run_id).await;
+        let events = events(&db).await;
+
+        assert_eq!(
+            (
+                normalize_finished_at(run),
+                normalize_events(events),
+                read_dispatch_observations(&dispatch_observations),
+            ),
+            (
+                ingest_run::Model {
+                    id: run_id,
+                    job: "sample_ingest".to_string(),
+                    started_at,
+                    finished_at: Some(epoch()),
+                    status: "succeeded".to_string(),
+                    stats: Some(stats.clone()),
+                    error: None,
+                },
+                vec![event::Model {
+                    event_id: uuid::Uuid::nil(),
+                    event_type: "ingest_run.succeeded".to_owned(),
+                    payload: json!({
+                        "run_id": run_id.to_string(),
+                        "job": "sample_ingest",
+                        "stats": stats,
+                        "error": null,
+                    }),
+                    chain_depth: 0,
+                    occurred_at: epoch(),
+                    dispatched_at: None,
+                }],
+                vec![DispatchObservation {
+                    committed: true,
+                    event_count: 1,
+                }],
             ),
         );
     }
@@ -494,7 +524,7 @@ mod tests {
     async fn fail_interrupted_before_updates_only_expired_running_rows_for_the_job(
         db: DatabaseHandle,
     ) {
-        let (log, dispatch_event_counts) = log(db.clone());
+        let (log, dispatch_observations) = log(db.clone());
         let cutoff =
             truncate_to_postgres_precision((Utc::now() - Duration::hours(2)).fixed_offset());
         let expired_id = log.start("sample_ingest").await.expect("start expired run");
@@ -523,7 +553,7 @@ mod tests {
                 normalize_finished_at(recent),
                 normalize_finished_at(other_job),
                 normalize_events(events),
-                event_counts(&dispatch_event_counts),
+                read_dispatch_observations(&dispatch_observations),
             ),
             (
                 1,
