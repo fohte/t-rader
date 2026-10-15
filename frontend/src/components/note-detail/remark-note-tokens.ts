@@ -189,6 +189,7 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
           })
         }
 
+        // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
         if (
           inner.startsWith('valuation:') ||
           (inner.startsWith('indicator:') && inner.includes('@'))

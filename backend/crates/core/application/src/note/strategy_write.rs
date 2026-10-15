@@ -7,7 +7,7 @@ use crate::note::types::{
     NewNote, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand, NoteWriteResult,
 };
 use crate::note::use_cases::ensure_frontmatter_object;
-use crate::note::version_write::AppendVersionCommand;
+use crate::note::version_write::{AppendVersionCommand, ResolvedMarketDataReferences};
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -31,12 +31,17 @@ impl NoteUseCases {
             core_domain::note_graph::validate_graphs(&graphs)
                 .map_err(|error| NoteUseCaseError::Validation(error.to_string()))?;
         }
+        let resolved_market_data = if let Some(body_md) = command.body_md.as_deref() {
+            self.resolve_market_data_references(body_md).await?
+        } else {
+            serde_json::Map::new()
+        };
 
         if let Some(note_id) = command.note_id {
             let transaction = self.unit_of_work.begin().await?;
             let note = self.require_note(&transaction, note_id).await?;
             let result = self
-                .update_strategy_note(&transaction, note, command)
+                .update_strategy_note(&transaction, note, command, resolved_market_data)
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -50,7 +55,7 @@ impl NoteUseCases {
                 .await?
         {
             let result = self
-                .update_strategy_note(&transaction, note, command)
+                .update_strategy_note(&transaction, note, command, resolved_market_data)
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -103,7 +108,7 @@ impl NoteUseCases {
                     )
                 })?;
             let result = self
-                .update_strategy_note(&transaction, note, command)
+                .update_strategy_note(&transaction, note, command, resolved_market_data)
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -132,6 +137,7 @@ impl NoteUseCases {
                     change_reason: command.change_reason,
                     change_diff: command.change_diff,
                     actor: command.actor,
+                    resolved_market_data,
                 },
             )
             .await?;
@@ -199,6 +205,7 @@ impl NoteUseCases {
         transaction: &UnitOfWorkTransaction,
         note: crate::note::types::Note,
         command: NoteWriteCommand,
+        resolved_market_data: ResolvedMarketDataReferences,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -270,6 +277,7 @@ impl NoteUseCases {
                     change_reason: command.change_reason,
                     change_diff: None,
                     actor: command.actor,
+                    resolved_market_data,
                 },
             )
             .await?;
@@ -332,7 +340,7 @@ mod tests {
         FakeStrategyTaskStepEvidenceRepository, StrategyTaskStepEvidence,
     };
     use crate::unit_of_work::FakeUnitOfWork;
-    use crate::valuation::{ValuationRepository, ValuationRepositoryError, ValuationUseCases};
+    use crate::valuation::{FakeValuationRepository, ValuationUseCases};
 
     const SOURCE_NOTE_ID: Uuid = Uuid::from_u128(1);
     const TARGET_NOTE_ID: Uuid = Uuid::from_u128(2);
@@ -350,62 +358,6 @@ mod tests {
         inserted_links: Mutex<Vec<NewNoteLink>>,
         inserted_versions: Mutex<Vec<NewNoteVersion>>,
         reference_replacements: Mutex<Vec<Vec<(String, String)>>>,
-    }
-
-    #[derive(Default)]
-    struct FakeNoteValuationRepository {
-        valuations: Mutex<Vec<Valuation>>,
-        date_range_queries: Mutex<Vec<(String, NaiveDate, NaiveDate)>>,
-    }
-
-    #[async_trait]
-    impl ValuationRepository for FakeNoteValuationRepository {
-        async fn find_ingested_dates(
-            &self,
-            _from: NaiveDate,
-        ) -> Result<Vec<NaiveDate>, ValuationRepositoryError> {
-            Ok(Vec::new())
-        }
-
-        async fn mark_ingested(&self, _date: NaiveDate) -> Result<(), ValuationRepositoryError> {
-            Ok(())
-        }
-
-        async fn upsert(
-            &self,
-            _valuations: Vec<Valuation>,
-        ) -> Result<usize, ValuationRepositoryError> {
-            Ok(0)
-        }
-
-        async fn find_by_symbol_date_range(
-            &self,
-            symbol: &str,
-            from: NaiveDate,
-            to: NaiveDate,
-        ) -> Result<Vec<Valuation>, ValuationRepositoryError> {
-            self.date_range_queries
-                .lock()
-                .await
-                .push((symbol.to_string(), from, to));
-            Ok(self
-                .valuations
-                .lock()
-                .await
-                .iter()
-                .filter(|valuation| {
-                    valuation.code == symbol && valuation.date >= from && valuation.date <= to
-                })
-                .cloned()
-                .collect())
-        }
-
-        async fn find_latest_by_symbol(
-            &self,
-            _symbol: &str,
-        ) -> Result<Option<Valuation>, ValuationRepositoryError> {
-            Ok(None)
-        }
     }
 
     #[async_trait]
@@ -696,7 +648,7 @@ mod tests {
             evidence,
             requires_approval,
             ValuationUseCases::new(
-                Arc::new(FakeNoteValuationRepository::default()),
+                Arc::new(FakeValuationRepository::default()),
                 Arc::new(FakeBarsRepository::new()),
             ),
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
@@ -935,11 +887,11 @@ mod tests {
     #[tokio::test]
     async fn write_resolves_valuation_and_indicator_values_without_query_data() {
         let date = "2030-01-02".parse::<NaiveDate>().expect("valid date");
-        let valuation_repository = Arc::new(FakeNoteValuationRepository::default());
+        let valuation_repository = Arc::new(FakeValuationRepository::default());
         valuation_repository
             .valuations
             .lock()
-            .await
+            .expect("lock")
             .push(Valuation {
                 code: "fictional-code".into(),
                 date,
@@ -1013,16 +965,19 @@ mod tests {
             .await
             .expect("date-based values resolve without query_data");
 
+        let resolved = result.snapshot.version.resolved_price_references_json;
+        let valuation_queries = valuation_repository
+            .date_range_queries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let adjustment_factor_queries = bars_repository
+            .daily_adjustment_factor_queries
+            .lock()
+            .await
+            .clone();
         assert_eq!(
-            (
-                result.snapshot.version.resolved_price_references_json,
-                valuation_repository.date_range_queries.lock().await.clone(),
-                bars_repository
-                    .daily_adjustment_factor_queries
-                    .lock()
-                    .await
-                    .clone(),
-            ),
+            (resolved, valuation_queries, adjustment_factor_queries),
             (
                 json!({
                     "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
@@ -1081,8 +1036,12 @@ mod tests {
             pbr: None,
             mkt_cap: None,
         };
-        let valuation_repository = Arc::new(FakeNoteValuationRepository::default());
-        valuation_repository.valuations.lock().await.push(valuation);
+        let valuation_repository = Arc::new(FakeValuationRepository::default());
+        valuation_repository
+            .valuations
+            .lock()
+            .expect("lock")
+            .push(valuation);
         let valuations =
             ValuationUseCases::new(valuation_repository, Arc::new(FakeBarsRepository::new()));
         let (use_cases, _) = make_note_use_cases_with_services(
@@ -1177,23 +1136,36 @@ mod tests {
 
     #[tokio::test]
     async fn human_edit_preserves_resolutions_when_body_is_unchanged() {
-        let link = "[[price:fictional-code@2030-01-02:close]]";
+        let body = concat!(
+            "[[valuation:fictional-code@2030-01-02:per]] ",
+            "[[indicator:demo-indicator@2030-01-02]]",
+        );
         let mut current = source_version();
-        current.body_md = link.into();
+        current.body_md = body.into();
         current.resolved_price_references_json = json!({
-            "[[price:fictional-code@2030-01-02:close]]": {
-                "value": 10.0,
-                "evidence_id": Uuid::from_u128(8).to_string(),
-            },
+            "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
+            "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
         });
-        let (use_cases, repository) = make_note_use_cases(current, vec![]);
+        let valuation_repository = Arc::new(FakeValuationRepository::default());
+        let indicator_repository = Arc::new(FakeIndicatorObservationRepository::new());
+        let (use_cases, repository) = make_note_use_cases_with_services(
+            current.clone(),
+            current,
+            vec![],
+            false,
+            ValuationUseCases::new(
+                valuation_repository.clone(),
+                Arc::new(FakeBarsRepository::new()),
+            ),
+            IndicatorObservationUseCases::new(indicator_repository.clone()),
+        );
 
         use_cases
             .write(NoteWriteCommand {
                 execution_id: None,
                 note_id: Some(SOURCE_NOTE_ID),
                 title: Some("Human title edit".into()),
-                body_md: Some(link.into()),
+                body_md: None,
                 frontmatter_json: None,
                 graphs_json: None,
                 kind: None,
@@ -1216,28 +1188,40 @@ mod tests {
             .cloned()
             .expect("the human edit creates a version");
         actual.id = Uuid::nil();
+        let valuation_queries = valuation_repository
+            .date_range_queries
+            .lock()
+            .expect("lock")
+            .clone();
+        let indicator_queries = indicator_repository
+            .read_queries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         assert_eq!(
-            actual,
-            NewNoteVersion {
-                id: Uuid::nil(),
-                note_id: SOURCE_NOTE_ID,
-                version_no: 2,
-                title: "Human title edit".into(),
-                body_md: link.into(),
-                frontmatter_json: json!({}),
-                graphs_json: json!([]),
-                resolved_price_references_json: json!({
-                    "[[price:fictional-code@2030-01-02:close]]": {
-                        "value": 10.0,
-                        "evidence_id": Uuid::from_u128(8).to_string(),
-                    },
-                }),
-                status: "approved".into(),
-                is_current: true,
-                change_reason: None,
-                created_by_kind: "human".into(),
-                execution_id: None,
-            },
+            (actual, valuation_queries, indicator_queries),
+            (
+                NewNoteVersion {
+                    id: Uuid::nil(),
+                    note_id: SOURCE_NOTE_ID,
+                    version_no: 2,
+                    title: "Human title edit".into(),
+                    body_md: body.into(),
+                    frontmatter_json: json!({}),
+                    graphs_json: json!([]),
+                    resolved_price_references_json: json!({
+                        "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
+                        "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
+                    }),
+                    status: "approved".into(),
+                    is_current: true,
+                    change_reason: None,
+                    created_by_kind: "human".into(),
+                    execution_id: None,
+                },
+                vec![],
+                vec![],
+            ),
         );
     }
 

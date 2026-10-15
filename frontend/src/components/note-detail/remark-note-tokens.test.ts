@@ -108,6 +108,23 @@ describe('remarkNoteTokens', () => {
     })
   })
 
+  it('keeps a dated indicator token visible when it has no resolved value', () => {
+    const token = '[[indicator:demo-indicator@2030-01-02]]'
+    const tree = textTree(token)
+
+    remarkNoteTokens()(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [{ type: 'text', value: token }],
+        },
+      ],
+    })
+  })
+
   it.each([
     { name: 'letter-leading', annoId: 'A2' },
     {

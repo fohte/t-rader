@@ -11,6 +11,7 @@ use crate::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCaseError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
 mod references;
+pub(in crate::note) use references::ResolvedMarketDataReferences;
 use references::{has_resolutions, requires_query_data};
 
 const APPROVED_NOTE_STATUS: &str = "approved";
@@ -26,6 +27,7 @@ pub(super) struct AppendVersionCommand {
     pub change_reason: Option<String>,
     pub change_diff: Option<Value>,
     pub actor: Actor,
+    pub resolved_market_data: ResolvedMarketDataReferences,
 }
 
 impl NoteUseCases {
@@ -116,6 +118,7 @@ impl NoteUseCases {
                 transaction,
                 &references,
                 evidence_execution_id.as_deref(),
+                content.resolved_market_data,
             )
             .await?
         };

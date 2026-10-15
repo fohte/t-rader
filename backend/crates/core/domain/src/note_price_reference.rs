@@ -84,7 +84,7 @@ pub fn extract_note_price_references(
     }
 }
 
-fn is_value_reference_kind(token: &str) -> bool {
+pub(crate) fn is_value_reference_kind(token: &str) -> bool {
     let Some((kind, content)) = token.split_once(':') else {
         return false;
     };

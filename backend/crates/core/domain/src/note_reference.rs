@@ -3,6 +3,7 @@ use std::ops::Range;
 use uuid::Uuid;
 
 use super::note_graph::GraphDef;
+use super::note_price_reference::is_value_reference_kind;
 
 mod markdown;
 
@@ -92,8 +93,7 @@ fn classify_token(inner: &str) -> TokenClassification<'_> {
         return TokenClassification::RemovedRef;
     }
 
-    if matches!(kind, "price" | "change" | "valuation") || (kind == "indicator" && id.contains('@'))
-    {
+    if is_value_reference_kind(inner) {
         return TokenClassification::PriceReference;
     }
 
