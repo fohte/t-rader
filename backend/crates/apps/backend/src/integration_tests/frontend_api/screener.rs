@@ -1,9 +1,10 @@
-use chrono::{NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Utc};
 use core_application::valuation::ValuationRepository;
 use core_domain::valuation::Valuation;
 use gateway_postgres::PostgresValuationRepository;
 use gateway_postgres::entities::{
-    bars, financial_summary, group_axis, instruments, stock, stock_group, stock_group_member,
+    bars, financial_summary, group_axis, instruments, minute_bars, stock, stock_group,
+    stock_group_member,
 };
 use rust_decimal::Decimal;
 use sea_orm::ActiveModelTrait;
@@ -69,6 +70,17 @@ fn date(day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(2098, 1, day).expect("valid test date")
 }
 
+fn days_before_latest(days: i64) -> NaiveDate {
+    date(3) - chrono::Duration::days(days)
+}
+
+fn timestamp_at(day: NaiveDate, hour: u32, minute: u32) -> DateTime<FixedOffset> {
+    let datetime = day
+        .and_hms_opt(hour, minute, 0)
+        .expect("valid test timestamp");
+    Utc.from_utc_datetime(&datetime).fixed_offset()
+}
+
 async fn seed_stock(db: &gateway_postgres::DatabaseHandle, id: &str, name: &str, market: &str) {
     stock::ActiveModel {
         id: Set(id.to_string()),
@@ -96,15 +108,20 @@ async fn seed_instrument(db: &gateway_postgres::DatabaseHandle, id: &str) {
 }
 
 async fn seed_daily_bar(db: &gateway_postgres::DatabaseHandle, id: &str, day: u32, close: i64) {
-    let timestamp = date(day)
-        .and_hms_opt(0, 0, 0)
-        .map(|datetime| Utc.from_utc_datetime(&datetime).fixed_offset())
-        .expect("valid test timestamp");
+    seed_daily_bar_at(db, id, date(day), close).await;
+}
+
+async fn seed_daily_bar_at(
+    db: &gateway_postgres::DatabaseHandle,
+    id: &str,
+    day: NaiveDate,
+    close: i64,
+) {
     let close = Decimal::from(close);
     bars::Entity::insert(bars::ActiveModel {
         instrument_id: Set(id.to_string()),
         timeframe: Set("1d".to_string()),
-        timestamp: Set(timestamp),
+        timestamp: Set(timestamp_at(day, 0, 0)),
         open: Set(close),
         high: Set(close),
         low: Set(close),
@@ -115,6 +132,29 @@ async fn seed_daily_bar(db: &gateway_postgres::DatabaseHandle, id: &str, day: u3
     .exec_without_returning(db)
     .await
     .expect("insert screener daily bar");
+}
+
+async fn seed_minute_bar_at(
+    db: &gateway_postgres::DatabaseHandle,
+    id: &str,
+    day: NaiveDate,
+    hour: u32,
+    minute: u32,
+    close: i64,
+) {
+    let close = Decimal::from(close);
+    minute_bars::Entity::insert(minute_bars::ActiveModel {
+        instrument_id: Set(id.to_string()),
+        timestamp: Set(timestamp_at(day, hour, minute)),
+        open: Set(close),
+        high: Set(close),
+        low: Set(close),
+        close: Set(close),
+        volume: Set(100),
+    })
+    .exec_without_returning(db)
+    .await
+    .expect("insert screener minute bar");
 }
 
 async fn seed_financial_summary(
@@ -168,9 +208,20 @@ fn valuation(
     roe: Option<Decimal>,
     market_cap: Option<Decimal>,
 ) -> Valuation {
+    valuation_at(id, date(day), per, pbr, roe, market_cap)
+}
+
+fn valuation_at(
+    id: &str,
+    valuation_date: NaiveDate,
+    per: Option<Decimal>,
+    pbr: Option<Decimal>,
+    roe: Option<Decimal>,
+    market_cap: Option<Decimal>,
+) -> Valuation {
     Valuation {
         code: format!("{id}0"),
-        date: date(day),
+        date: valuation_date,
         eps: None,
         fwd_eps: None,
         bps: None,
@@ -504,6 +555,176 @@ async fn screener_endpoint_keeps_missing_values_unless_their_metric_is_filtered(
                 ],
                 "total_count": 2,
                 "as_of": "2098-01-03",
+                "page": 1,
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn screener_endpoint_limits_latest_metrics_to_thirty_days(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    seed_stock(&db, "D901", "Recent Demo", "market-a").await;
+    seed_stock(&db, "D902", "Boundary Demo", "market-a").await;
+    seed_stock(&db, "D903", "Stale Demo", "market-a").await;
+    for id in ["D901", "D902", "D903"] {
+        seed_instrument(&db, id).await;
+    }
+    seed_instrument(&db, "DEMO-INDEX").await;
+    seed_daily_bar_at(&db, "D901", date(3), 1200).await;
+    seed_minute_bar_at(&db, "D901", date(3), 0, 1, 1250).await;
+    seed_daily_bar_at(&db, "D902", days_before_latest(30), 2400).await;
+    seed_daily_bar_at(&db, "D903", days_before_latest(31), 3600).await;
+    seed_daily_bar_at(&db, "DEMO-INDEX", date(4), 9000).await;
+    PostgresValuationRepository::new(db.clone())
+        .upsert(vec![
+            valuation_at(
+                "D901",
+                date(3),
+                Some(Decimal::from(10)),
+                Some(Decimal::ONE),
+                Some(Decimal::new(1, 1)),
+                Some(Decimal::from(100_000)),
+            ),
+            valuation_at(
+                "D902",
+                days_before_latest(30),
+                Some(Decimal::from(20)),
+                Some(Decimal::from(2)),
+                Some(Decimal::new(2, 1)),
+                Some(Decimal::from(200_000)),
+            ),
+            valuation_at(
+                "D903",
+                days_before_latest(31),
+                Some(Decimal::from(30)),
+                Some(Decimal::from(3)),
+                Some(Decimal::new(3, 1)),
+                Some(Decimal::from(300_000)),
+            ),
+        ])
+        .await
+        .expect("insert screener window valuations");
+
+    let server = create_test_server(db).await;
+    let response = server.get("/api/screener").await;
+
+    assert_eq!(
+        (
+            response.status_code(),
+            normalize_result(response.json::<Value>()),
+        ),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "items": [
+                    {
+                        "id": "D902",
+                        "name": "Boundary Demo",
+                        "market": "market-a",
+                        "sector": null,
+                        "close": 2400,
+                        "per": 20,
+                        "pbr": 2,
+                        "roe": 20,
+                        "dividend_yield": null,
+                        "market_cap": 2000,
+                    },
+                    {
+                        "id": "D901",
+                        "name": "Recent Demo",
+                        "market": "market-a",
+                        "sector": null,
+                        "close": 1200,
+                        "per": 10,
+                        "pbr": 1,
+                        "roe": 10,
+                        "dividend_yield": null,
+                        "market_cap": 1000,
+                    },
+                    {
+                        "id": "D903",
+                        "name": "Stale Demo",
+                        "market": "market-a",
+                        "sector": null,
+                        "close": null,
+                        "per": null,
+                        "pbr": null,
+                        "roe": null,
+                        "dividend_yield": null,
+                        "market_cap": null,
+                    },
+                ],
+                "total_count": 3,
+                "as_of": "2098-01-03",
+                "page": 1,
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn screener_endpoint_preserves_as_of_when_all_valuations_are_outside_the_window(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    seed_stock(&db, "D904", "Stale Demo", "market-a").await;
+    seed_stock(&db, "D905", "Recent Demo", "market-a").await;
+    seed_instrument(&db, "D904").await;
+    seed_instrument(&db, "D905").await;
+    seed_daily_bar_at(&db, "D904", days_before_latest(31), 3600).await;
+    seed_daily_bar_at(&db, "D905", date(3), 1200).await;
+    PostgresValuationRepository::new(db.clone())
+        .upsert(vec![valuation_at(
+            "D904",
+            days_before_latest(31),
+            Some(Decimal::from(30)),
+            Some(Decimal::from(3)),
+            Some(Decimal::new(3, 1)),
+            Some(Decimal::from(300_000)),
+        )])
+        .await
+        .expect("insert screener stale valuation");
+
+    let server = create_test_server(db).await;
+    let response = server.get("/api/screener").await;
+
+    assert_eq!(
+        (
+            response.status_code(),
+            normalize_result(response.json::<Value>()),
+        ),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "items": [
+                    {
+                        "id": "D904",
+                        "name": "Stale Demo",
+                        "market": "market-a",
+                        "sector": null,
+                        "close": null,
+                        "per": null,
+                        "pbr": null,
+                        "roe": null,
+                        "dividend_yield": null,
+                        "market_cap": null,
+                    },
+                    {
+                        "id": "D905",
+                        "name": "Recent Demo",
+                        "market": "market-a",
+                        "sector": null,
+                        "close": 1200,
+                        "per": null,
+                        "pbr": null,
+                        "roe": null,
+                        "dividend_yield": null,
+                        "market_cap": null,
+                    },
+                ],
+                "total_count": 2,
+                "as_of": "2097-12-03",
                 "page": 1,
             }),
         ),
