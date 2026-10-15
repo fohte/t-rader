@@ -45,6 +45,26 @@ const data: ScreenerResponse = {
 afterEach(cleanup)
 
 describe('ScreenerResultsView', () => {
+  it('shows the as-of date as month and day', async () => {
+    const args = {
+      search: {},
+      data,
+      stocks,
+      status: 'results',
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerResultsView>
+    const router = createStoryRouter(() => <ScreenerResultsView {...args} />, {
+      paths: ['/stocks/$stockId'],
+    })
+
+    render(<RouterProvider router={router} />)
+
+    expect((await screen.findByText(/時点/)).textContent).toBe('6/18 時点')
+  })
+
   it('updates the selected sort field and direction for the URL state', async () => {
     const user = userEvent.setup()
     const initialSearch: ScreenerSearch = {

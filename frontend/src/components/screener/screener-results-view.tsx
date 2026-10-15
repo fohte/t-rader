@@ -39,7 +39,7 @@ const MOBILE_SORT_OPTIONS: { key: ScreenerSortBy; label: string }[] = [
 
 function formatAsOf(value: string | null | undefined): string {
   if (value == null) return '—'
-  const [, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? []
+  const [, , month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? []
   const displayMonth = Number(month).toString()
   const displayDay = Number(day).toString()
   return month == null || day == null ? value : `${displayMonth}/${displayDay}`
