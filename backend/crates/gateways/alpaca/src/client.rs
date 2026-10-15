@@ -348,16 +348,45 @@ impl AlpacaClient {
 
 fn source_error(error: AlpacaError) -> UsStockBarSourceError {
     match error {
-        AlpacaError::Api {
-            status: 400,
-            message,
-        } if message.to_ascii_lowercase().contains("symbol")
-            || message.to_ascii_lowercase().contains("ticker") =>
-        {
+        AlpacaError::Api { status, message } if is_symbol_rejection(status, &message) => {
             UsStockBarSourceError::RejectedSymbols(message)
         }
         error => UsStockBarSourceError::Failed(error.to_string()),
     }
+}
+
+fn is_symbol_rejection(status: u16, message: &str) -> bool {
+    if !(400..500).contains(&status) || matches!(status, 401 | 403 | 429) {
+        return false;
+    }
+
+    let message = message.to_ascii_lowercase();
+    let identifies_instrument = ["symbol", "ticker", "asset", "instrument"]
+        .iter()
+        .any(|term| message.contains(term));
+    let indicates_rejection = [
+        "invalid",
+        "unknown",
+        "unsupported",
+        "not supported",
+        "not found",
+        "cannot be found",
+        "could not be found",
+        "does not exist",
+        "doesn't exist",
+        "not recognized",
+        "unrecognized",
+        "not active",
+        "inactive",
+        "not tradable",
+        "not tradeable",
+        "no such",
+        "rejected",
+    ]
+    .iter()
+    .any(|term| message.contains(term));
+
+    identifies_instrument && indicates_rejection
 }
 
 fn alpaca_symbols(
@@ -772,13 +801,24 @@ mod tests {
     }
 
     #[rstest]
+    #[case::invalid_symbol_400(400, "invalid symbol: QZ7", true)]
+    #[case::unknown_asset_422(422, r#"{"code":42210000,"message":"asset QZ7 not found"}"#, true)]
+    #[case::subscription_error_422(
+        422,
+        r#"{"code":42210000,"message":"subscription does not permit querying recent SIP data"}"#,
+        false
+    )]
     #[tokio::test]
-    async fn returns_symbol_rejections_for_application_level_batch_isolation() {
+    async fn classifies_symbol_related_client_errors_for_batch_isolation(
+        #[case] status: u16,
+        #[case] response_body: &str,
+        #[case] rejected_symbols: bool,
+    ) {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v2/stocks/bars"))
             .and(query_param("symbols", "QZ7"))
-            .respond_with(ResponseTemplate::new(400).set_body_string("invalid symbol: QZ7"))
+            .respond_with(ResponseTemplate::new(status).set_body_string(response_body))
             .mount(&server)
             .await;
         let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
@@ -794,11 +834,15 @@ mod tests {
             })
             .await;
 
-        assert_eq!(
-            actual,
+        let expected = if rejected_symbols {
             Err(UsStockBarSourceError::RejectedSymbols(
-                "invalid symbol: QZ7".to_owned(),
-            )),
-        );
+                response_body.to_owned(),
+            ))
+        } else {
+            Err(UsStockBarSourceError::Failed(format!(
+                "Alpaca API returned HTTP {status}: {response_body}"
+            )))
+        };
+        assert_eq!(actual, expected);
     }
 }
