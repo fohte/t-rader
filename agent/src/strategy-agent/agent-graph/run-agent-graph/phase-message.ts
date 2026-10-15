@@ -6,25 +6,7 @@ export const buildPhaseMessageText = (input: {
   readonly item: unknown
   readonly priorResults: Readonly<Record<string, unknown>>
 }): string => {
-  const currentPhaseIndex = input.phaseKeys.indexOf(input.phaseKey)
-  const phaseScopeParts = [
-    `この巡回は ${input.phaseKeys.join(' → ')} の順に進む。あなたは ${input.phaseKey} を担当する。`,
-  ]
-  if (currentPhaseIndex > 0) {
-    phaseScopeParts.push('前の phase の担当分は完了済み。')
-  }
-  if (currentPhaseIndex < input.phaseKeys.length - 1) {
-    phaseScopeParts.push(
-      currentPhaseIndex === 0
-        ? '依頼のうち他の phase の担当分は、後の phase が行う。'
-        : '依頼のうち後の phase の担当分は、後の phase が行う。',
-    )
-  } else if (currentPhaseIndex === 0) {
-    phaseScopeParts.push('依頼全体をこの phase で処理する。')
-  } else {
-    phaseScopeParts.push('依頼のうち他の phase の担当分はすべて完了済み。')
-  }
-  const phaseScopeMessage = phaseScopeParts.join('')
+  const phaseScopeMessage = `この巡回は ${input.phaseKeys.join(' → ')} の順に進む。あなたは ${input.phaseKey} を担当する。依頼のうち他の phase の担当分は、後の phase が行う`
   const sections = [
     input.originalPromptText,
     phaseScopeMessage,

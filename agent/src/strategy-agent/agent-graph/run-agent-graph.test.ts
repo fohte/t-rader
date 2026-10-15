@@ -2439,7 +2439,7 @@ describe('buildPhaseMessageText', () => {
     ).toBe(
       [
         'original request',
-        'この巡回は phase-a → phase-b → phase-c の順に進む。あなたは phase-b を担当する。前の phase の担当分は完了済み。依頼のうち後の phase の担当分は、後の phase が行う。',
+        'この巡回は phase-a → phase-b → phase-c の順に進む。あなたは phase-b を担当する。依頼のうち他の phase の担当分は、後の phase が行う',
         'do the thing',
         '割り当てられた対象:\n```json\n{\n  "title": "hypothesis 1"\n}\n```',
         'これまでのフェーズの結果:\n```json\n{\n  "plan": {\n    "hypotheses": [\n      {\n        "title": "hypothesis 1"\n      }\n    ]\n  }\n}\n```',
@@ -2453,28 +2453,28 @@ describe('buildPhaseMessageText', () => {
       phaseKeys: ['phase-a', 'phase-b'],
       phaseKey: 'phase-a',
       scopeMessage:
-        'この巡回は phase-a → phase-b の順に進む。あなたは phase-a を担当する。依頼のうち他の phase の担当分は、後の phase が行う。',
+        'この巡回は phase-a → phase-b の順に進む。あなたは phase-a を担当する。依頼のうち他の phase の担当分は、後の phase が行う',
     },
     {
       name: 'a middle phase',
       phaseKeys: ['phase-a', 'phase-b', 'phase-c'],
       phaseKey: 'phase-b',
       scopeMessage:
-        'この巡回は phase-a → phase-b → phase-c の順に進む。あなたは phase-b を担当する。前の phase の担当分は完了済み。依頼のうち後の phase の担当分は、後の phase が行う。',
+        'この巡回は phase-a → phase-b → phase-c の順に進む。あなたは phase-b を担当する。依頼のうち他の phase の担当分は、後の phase が行う',
     },
     {
       name: 'the last phase',
       phaseKeys: ['phase-a', 'phase-b'],
       phaseKey: 'phase-b',
       scopeMessage:
-        'この巡回は phase-a → phase-b の順に進む。あなたは phase-b を担当する。前の phase の担当分は完了済み。依頼のうち他の phase の担当分はすべて完了済み。',
+        'この巡回は phase-a → phase-b の順に進む。あなたは phase-b を担当する。依頼のうち他の phase の担当分は、後の phase が行う',
     },
     {
       name: 'a single phase',
       phaseKeys: ['phase-a'],
       phaseKey: 'phase-a',
       scopeMessage:
-        'この巡回は phase-a の順に進む。あなたは phase-a を担当する。依頼全体をこの phase で処理する。',
+        'この巡回は phase-a の順に進む。あなたは phase-a を担当する。依頼のうち他の phase の担当分は、後の phase が行う',
     },
   ])(
     'describes responsibility for $name',
