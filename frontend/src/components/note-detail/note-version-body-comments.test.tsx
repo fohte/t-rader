@@ -153,6 +153,53 @@ describe('NoteVersionBodyComments', () => {
     ])
   })
 
+  it('shows the comment action for a text selection after touch ends', async () => {
+    const user = userEvent.setup()
+    const source = '# サンプル見出し\n\n対象のタッチ段落です。'
+    renderNoteBodyComments(source)
+
+    const paragraph = screen.getByText('対象のタッチ段落です。')
+    const textNode = paragraph.firstChild
+    if (textNode == null) {
+      throw new Error('本文の段落にテキストがありません')
+    }
+    const range = document.createRange()
+    range.setStart(textNode, 0)
+    range.setEnd(textNode, '対象のタッチ段落です。'.length)
+    Object.defineProperty(range, 'getBoundingClientRect', {
+      value: () => new DOMRect(20, 100, 140, 20),
+    })
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    fireEvent.touchEnd(paragraph)
+
+    await user.click(
+      screen.getByRole('button', { name: '選択した本文にコメント' }),
+    )
+    await user.type(
+      await screen.findByRole('textbox', { name: '行コメント' }),
+      'タッチ選択の指摘です。',
+    )
+    await user.click(screen.getByRole('button', { name: '送信' }))
+
+    expect(apiRequests).toEqual([
+      {
+        method: 'POST',
+        path: '/api/comments',
+        body: {
+          target_kind: 'note_version',
+          target_id: 'sample-version',
+          body: 'タッチ選択の指摘です。',
+          anchor_text: '対象のタッチ段落です。',
+          anchor_side: 'new',
+          start_line: 3,
+          end_line: 3,
+        },
+      },
+    ])
+  })
+
   it('sends the union of gutter rows selected with Shift-click', async () => {
     const user = userEvent.setup()
     const source = '# サンプル見出し\n\n最初の段落\n\n次の段落'
