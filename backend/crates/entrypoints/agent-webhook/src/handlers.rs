@@ -28,7 +28,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     tag = "strategies",
     request_body = serde_json::Value,
     responses(
-        (status = 204, description = "受理 (戦略タスク照合 job を投入)"),
+        (status = 204, description = "受理 (戦略タスクの状態同期をバックグラウンドで開始)"),
         (status = 401, description = "トークン不一致", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -47,11 +47,21 @@ async fn receive_agent_task_notification(
         tracing::warn!("agent task notification rejected: token mismatch");
         return Err(AppError::Unauthorized("invalid notification token".into()));
     }
-    state
-        .strategy_task_reconcile_job_use_cases
-        .enqueue_reconciliation()
-        .await
-        .map_err(|error| AppError::Internal(error.to_string()))?;
+    let reconcile_use_cases = state.strategy_task_reconcile_use_cases.clone();
+    tokio::spawn(async move {
+        match reconcile_use_cases.reconcile_waiting_for_lock().await {
+            Ok(updated) if updated > 0 => {
+                tracing::info!(
+                    updated,
+                    "strategy task phases reconciled after agent notification"
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(%error, "agent task notification reconciliation failed");
+            }
+        }
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 

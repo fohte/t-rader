@@ -8,7 +8,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::tests_common::mock_db_with_strategy;
 use crate::integration_tests::mcp_tool::call_tool_output_with_headers;
-use crate::services::use_cases::build_use_cases;
+use crate::services::use_cases::build_use_cases_without_agent_task_client;
 use entrypoint_agent_mcp::StrategyServer;
 use gateway_litellm::LiteLlmClient;
 
@@ -16,7 +16,7 @@ fn server(
     db: impl Into<gateway_postgres::DatabaseHandle>,
     llm_client: Option<core_application::llm_client::SharedLlmClient>,
 ) -> StrategyServer {
-    let use_cases = build_use_cases(db);
+    let use_cases = build_use_cases_without_agent_task_client(db);
     StrategyServer::new(crate::mcp::strategy_server_dependencies(
         &use_cases, None, None, llm_client, None,
     ))

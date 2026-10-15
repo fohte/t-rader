@@ -19,6 +19,23 @@ impl PostgresStrategyTaskReconcileLock {
 
 #[async_trait::async_trait]
 impl StrategyTaskReconcileLock for PostgresStrategyTaskReconcileLock {
+    async fn acquire(&self) -> Result<Box<dyn StrategyTaskReconcileLockGuard>, PersistenceError> {
+        let mut connection = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|error| PersistenceError::Database(error.to_string()))?;
+        sqlx::query("SELECT pg_advisory_lock($1)")
+            .bind(LOCK_KEY)
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(|error| PersistenceError::Database(error.to_string()))?;
+
+        Ok(Box::new(PostgresStrategyTaskReconcileLockGuard {
+            connection: Some(connection),
+        }))
+    }
+
     async fn try_acquire(
         &self,
     ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {
@@ -85,6 +102,8 @@ async fn unlock(connection: &mut PoolConnection<Postgres>) -> Result<bool, sqlx:
 
 #[cfg(test)]
 mod tests {
+    use std::{sync::Arc, time::Duration};
+
     use core_application::strategy_task::StrategyTaskReconcileLock;
 
     use super::PostgresStrategyTaskReconcileLock;
@@ -118,6 +137,46 @@ mod tests {
                 third_release,
             ),
             (true, true, Ok(()), true, Ok(())),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn blocking_advisory_lock_waits_until_the_lock_is_released(_db: crate::DatabaseHandle) {
+        let pool = crate::test_support::create_test_pool_with_max_connections(2).await;
+        let lock = Arc::new(PostgresStrategyTaskReconcileLock::new(pool));
+        let first_guard = lock
+            .try_acquire()
+            .await
+            .expect("acquire first advisory lock")
+            .expect("first advisory lock should be available");
+        let waiter_lock = lock.clone();
+        let mut waiter = tokio::spawn(async move { waiter_lock.acquire().await });
+        let waited_for_lock = tokio::time::timeout(Duration::from_millis(50), &mut waiter)
+            .await
+            .is_err();
+        let first_release = first_guard
+            .release()
+            .await
+            .map_err(|error| error.to_string());
+        let second_guard = tokio::time::timeout(Duration::from_secs(2), waiter).await;
+        let (second_acquired, second_release) = match second_guard {
+            Ok(Ok(Ok(guard))) => (
+                true,
+                guard.release().await.map_err(|error| error.to_string()),
+            ),
+            Ok(Ok(Err(error))) => (false, Err(error.to_string())),
+            Ok(Err(error)) => (false, Err(error.to_string())),
+            Err(_) => (false, Err("second advisory lock timed out".to_string())),
+        };
+
+        assert_eq!(
+            (
+                waited_for_lock,
+                first_release,
+                second_acquired,
+                second_release,
+            ),
+            (true, Ok(()), true, Ok(())),
         );
     }
 }

@@ -259,7 +259,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -309,7 +309,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -375,7 +375,7 @@ mod tests {
 
         let session_id = {
             let server_a = TestServer::new(router(
-                crate::services::use_cases::build_use_cases(db.clone()),
+                crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
                 test_agent_client(),
                 None,
                 None,
@@ -400,7 +400,7 @@ mod tests {
 
         // server_a は drop されたので in-memory session も消えている。
         let server_b = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -481,7 +481,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -509,7 +509,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,

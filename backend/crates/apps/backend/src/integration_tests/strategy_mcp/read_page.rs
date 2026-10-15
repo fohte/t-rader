@@ -18,7 +18,7 @@ use uuid::Uuid;
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto::{ReadPageParams, ReadPageResult};
 use super::tests_common::{insert_strategy, mock_db_with_strategy};
-use crate::services::use_cases::build_use_cases;
+use crate::services::use_cases::build_use_cases_without_agent_task_client;
 use entrypoint_agent_mcp::StrategyServer;
 
 const READ_PAGE_TEST_CALL_LIMIT: u32 = 20;
@@ -158,7 +158,7 @@ fn server(
     llm_client: Option<SharedLlmClient>,
     web_search_client: Option<SharedWebSearchClient>,
 ) -> StrategyServer {
-    let use_cases = build_use_cases(db);
+    let use_cases = build_use_cases_without_agent_task_client(db);
     StrategyServer::new(crate::mcp::strategy_server_dependencies(
         &use_cases,
         None,

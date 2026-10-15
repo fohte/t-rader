@@ -258,7 +258,12 @@ async fn main() -> Result<(), StartupError> {
         Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
             StartupError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
-    let use_cases = backend::services::use_cases::build_use_cases(db.clone());
+    let use_cases =
+        backend::services::use_cases::build_use_cases(db.clone(), agent_task_client.clone());
+    let strategy_task_reconcile =
+        use_cases.strategy_task_reconcile(StrategyTaskReconcileLockUseCases::new(Arc::new(
+            PostgresStrategyTaskReconcileLock::new(db.get_postgres_connection_pool().clone()),
+        )));
 
     let (fred_source, fred_calendar_event_source): (
         Option<SharedIndicatorObservationSource>,
@@ -389,10 +394,7 @@ async fn main() -> Result<(), StartupError> {
         margins: use_cases.margins(),
         short_selling_source,
         margin_source,
-        strategy_tasks: use_cases.strategy_tasks(),
-        strategy_task_reconcile_lock: StrategyTaskReconcileLockUseCases::new(Arc::new(
-            PostgresStrategyTaskReconcileLock::new(db.get_postgres_connection_pool().clone()),
-        )),
+        strategy_task_reconcile: strategy_task_reconcile.clone(),
         event_dispatch: use_cases.event_dispatch(),
         triggers: use_cases.triggers(),
         agent_task_client: agent_task_client.clone(),
@@ -458,7 +460,8 @@ async fn main() -> Result<(), StartupError> {
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
         let web_search_client =
             TavilyClient::from_env().map(|client| Arc::new(client) as SharedWebSearchClient);
-        let agent_webhook_state = build_agent_webhook_state(&use_cases, agent_webhook_token);
+        let agent_webhook_state =
+            build_agent_webhook_state(strategy_task_reconcile, agent_webhook_token);
         let external_webhook_state =
             build_external_webhook_state(&use_cases, agent_task_client.clone());
         let state = build_http_state(

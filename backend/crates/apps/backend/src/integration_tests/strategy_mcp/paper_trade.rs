@@ -25,7 +25,7 @@ mod tests {
         crate::testing::agent_config::create(db, purpose.to_string())
             .await
             .expect("create test agent config");
-        crate::services::use_cases::build_use_cases(db.clone())
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
             .paper_trade()
             .create_account(NewPaperAccount {
                 name: name.to_string(),

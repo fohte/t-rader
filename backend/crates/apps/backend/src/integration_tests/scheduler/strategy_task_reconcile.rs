@@ -8,10 +8,10 @@ pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
 where
     C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
 {
-    let strategy_tasks = crate::services::use_cases::build_use_cases(db.clone()).strategy_tasks();
-    match entrypoint_scheduler::reconcile_in_flight_tasks(&strategy_tasks, agent_client.as_ref())
-        .await
-    {
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
+    let reconcile =
+        use_cases.strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
+    match reconcile.reconcile().await {
         Ok(updated) => updated,
         Err(error) => {
             tracing::warn!(%error, "strategy task reconciliation failed");
@@ -52,8 +52,7 @@ mod tests {
     use sea_orm::{
         ActiveModelTrait,
         ActiveValue::{NotSet, Set},
-        ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, QueryOrder,
-        Statement,
+        ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder,
     };
     use serde_json::{Value, json};
     use uuid::Uuid;
@@ -201,28 +200,6 @@ mod tests {
         unit_of_work.commit(transaction).await.unwrap();
     }
 
-    async fn ensure_event_dispatch_job_schema() {
-        let pool = gateway_postgres::test_support::create_test_pool().await;
-        crate::migrations::migrate_graphile_worker_schema(pool)
-            .await
-            .expect("migrate Graphile Worker schema");
-    }
-
-    async fn event_dispatch_job_count(db: &impl ConnectionTrait) -> i64 {
-        let statement = Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT count(*) AS job_count FROM graphile_worker._private_jobs WHERE key = $1"
-                .to_string(),
-            ["event_dispatch".into()],
-        );
-        db.query_one_raw(statement)
-            .await
-            .unwrap()
-            .unwrap()
-            .try_get("", "job_count")
-            .unwrap()
-    }
-
     async fn fetch_events(db: &impl ConnectionTrait, event_types: &[&str]) -> Vec<Value> {
         event_entity::Entity::find()
             .filter(event_entity::Column::EventType.is_in(event_types.iter().copied()))
@@ -305,7 +282,7 @@ mod tests {
         async fn enqueue_dispatch(&self) -> Result<(), EventDispatchJobQueueError> {
             self.enqueue_calls.fetch_add(1, Ordering::SeqCst);
             Err(EventDispatchJobQueueError::new(
-                "simulated queue failure".to_string(),
+                "simulated enqueue failure".to_string(),
             ))
         }
     }
@@ -314,6 +291,11 @@ mod tests {
         fake: FakeAgentTaskClient,
         submit_started: tokio::sync::Notify,
         release_submit: tokio::sync::Notify,
+    }
+
+    struct FailingStatusAgentTaskClient {
+        fake: FakeAgentTaskClient,
+        failing_task_id: String,
     }
 
     impl BlockingSubmitAgentTaskClient {
@@ -339,9 +321,22 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
+    impl AgentTaskClient for FailingStatusAgentTaskClient {
+        async fn submit(&self, request: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
+            self.fake.submit(request).await
+        }
+
+        async fn get(&self, task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+            if task_id == self.failing_task_id {
+                std::panic::panic_any("synthetic status failure");
+            }
+            self.fake.get(task_id).await
+        }
+    }
+
     #[backend_test_macros::database_test]
     async fn reconciles_completed_running_and_failed_states(db: gateway_postgres::DatabaseHandle) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy_with_id(&db, Uuid::from_u128(0x100)).await;
         let completed_id = insert_task_with_id_and_purpose(
             &db,
@@ -483,7 +478,6 @@ mod tests {
             (failed.phase, failed.result_text, failed.error_summary),
             (running.phase, running.result_text, running.error_summary),
             events,
-            event_dispatch_job_count(&db).await,
         );
 
         assert_eq!(
@@ -502,7 +496,96 @@ mod tests {
                 ),
                 (StrategyTaskPhase::Running, None, None),
                 expected_events,
-                1,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn skips_reconciliation_when_another_run_holds_the_lock(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic task"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "synthetic task",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("finished".to_string()),
+                error_message: None,
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake;
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client);
+        let reconcile = use_cases.strategy_task_reconcile(
+            crate::testing::test_strategy_task_reconcile_lock_unavailable(),
+        );
+
+        let result = reconcile.reconcile().await;
+        let task = fetch_task(&db, task_id).await;
+
+        assert_eq!((result, task.phase), (Ok(0), StrategyTaskPhase::Running));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn continues_reconciling_after_one_task_fails(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db).await;
+        let failed_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic failing task"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let completed_id = insert_task(
+            &db,
+            strategy_id,
+            Some("synthetic completed task"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = FakeAgentTaskClient::new();
+        fake.set_status(
+            "synthetic completed task",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("finished".to_string()),
+                error_message: None,
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = Arc::new(FailingStatusAgentTaskClient {
+            fake,
+            failing_task_id: "synthetic failing task".to_string(),
+        });
+        let reconcile = crate::services::use_cases::build_use_cases(db.clone(), agent_client)
+            .strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
+
+        let result = reconcile.reconcile().await;
+        let failed = fetch_task(&db, failed_id).await;
+        let completed = fetch_task(&db, completed_id).await;
+
+        assert_eq!(
+            (result, failed.phase, completed.phase, completed.result_text,),
+            (
+                Err("strategy task reconciliation failed for 1 task(s)".to_string()),
+                StrategyTaskPhase::Running,
+                StrategyTaskPhase::Completed,
+                Some("finished".to_string()),
             ),
         );
     }
@@ -511,22 +594,22 @@ mod tests {
     async fn submit_failure_emits_event_and_enqueues_dispatch(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         insert_agent_config(&db, "demo-purpose").await;
         let fake = FakeAgentTaskClient::new();
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
 
-        let result = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .submit_task(
-                &fake,
-                strategy_id,
-                "sample prompt",
-                TaskSource::Review,
-                Some("demo-purpose".to_string()),
-            )
-            .await;
+        let result =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .submit_task(
+                    &fake,
+                    strategy_id,
+                    "sample prompt",
+                    TaskSource::Review,
+                    Some("demo-purpose".to_string()),
+                )
+                .await;
         let row = strategy_task::Entity::find()
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
             .one(&db)
@@ -545,7 +628,6 @@ mod tests {
                 ),
                 row.phase,
                 events,
-                event_dispatch_job_count(&db).await,
             ),
             (
                 true,
@@ -561,7 +643,6 @@ mod tests {
                     },
                     "chain_depth": 0,
                 })],
-                1,
             ),
         );
     }
@@ -570,7 +651,6 @@ mod tests {
     async fn resume_submission_failure_emits_event_and_enqueues_dispatch(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -583,10 +663,11 @@ mod tests {
         let fake = FakeAgentTaskClient::new();
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
 
-        let result = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .resume(&fake, task_id)
-            .await;
+        let result =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .resume(&fake, task_id)
+                .await;
         let row = fetch_task(&db, task_id).await;
         let events = fetch_events(&db, &["strategy_task.failed"]).await;
 
@@ -601,7 +682,6 @@ mod tests {
                 row.phase,
                 row.error_summary,
                 events,
-                event_dispatch_job_count(&db).await,
             ),
             (
                 true,
@@ -621,7 +701,6 @@ mod tests {
                     },
                     "chain_depth": 0,
                 })],
-                1,
             ),
         );
     }
@@ -630,7 +709,6 @@ mod tests {
     async fn resume_claim_refreshes_deadline_before_agent_submission(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1321,11 +1399,12 @@ mod tests {
             },
         )
         .await;
-        let updated = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
-            .await
-            .unwrap();
+        let updated =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
+                .await
+                .unwrap();
 
         assert_eq!(
             (
@@ -1427,11 +1506,12 @@ mod tests {
             },
         )
         .await;
-        let updated = crate::services::use_cases::build_use_cases(db.clone())
-            .strategy_tasks()
-            .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
-            .await
-            .unwrap();
+        let updated =
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks()
+                .reconcile_task(&fake, stale_task, Utc::now().fixed_offset())
+                .await
+                .unwrap();
         let row = fetch_task(&db, task_id).await;
 
         assert_eq!(
@@ -1826,7 +1906,6 @@ mod tests {
     async fn concurrent_reconcile_emits_one_completion_event(
         _database: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let pool = gateway_postgres::test_support::create_test_pool_with_max_connections(4).await;
         let connection = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
         let db = gateway_postgres::DatabaseHandle::from(connection);
@@ -1845,7 +1924,8 @@ mod tests {
             .unwrap()
             .unwrap();
         let strategy_tasks =
-            crate::services::use_cases::build_use_cases(db.clone()).strategy_tasks();
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone())
+                .strategy_tasks();
         let client = Arc::new(BarrierAgentTaskClient {
             barrier: tokio::sync::Barrier::new(2),
             status: AgentTaskStatus {
@@ -1887,12 +1967,7 @@ mod tests {
                 })
             })
             .collect::<Vec<_>>();
-        let actual = (
-            changed,
-            event_output,
-            fetch_task(&db, task_id).await.phase,
-            event_dispatch_job_count(&db).await,
-        );
+        let actual = (changed, event_output, fetch_task(&db, task_id).await.phase);
 
         for event_id in event_ids {
             event_entity::Entity::delete_by_id(event_id)
@@ -1900,11 +1975,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        db.execute_unprepared(
-            "DELETE FROM graphile_worker._private_jobs WHERE key = 'event_dispatch'",
-        )
-        .await
-        .unwrap();
         strategy_task::Entity::delete_by_id(task_id)
             .exec(&db)
             .await
@@ -1924,7 +1994,6 @@ mod tests {
                     "chain_depth": 0,
                 })],
                 StrategyTaskPhase::Completed,
-                1,
             ),
         );
     }
@@ -1933,7 +2002,6 @@ mod tests {
     async fn execution_lost_auto_resume_submission_failure_emits_one_failed_event(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        ensure_event_dispatch_job_schema().await;
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1969,7 +2037,6 @@ mod tests {
                 row.error_summary,
                 row.auto_resumed_at.is_some(),
                 events,
-                event_dispatch_job_count(&db).await,
             ),
             (
                 1,
@@ -1990,13 +2057,12 @@ mod tests {
                     },
                     "chain_depth": 0,
                 })],
-                1,
             ),
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn dispatch_enqueue_failure_keeps_failed_transition_and_event(
+    async fn dispatch_failure_keeps_failed_transition_and_event(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
