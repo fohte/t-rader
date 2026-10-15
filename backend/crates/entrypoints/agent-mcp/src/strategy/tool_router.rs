@@ -165,7 +165,7 @@ impl StrategyServer {
     /// ノート / アノテーションに付いたレビューコメントを読み出す
     #[tool(
         name = "read_comments",
-        description = "List review comments attached to any note version or annotation, oldest first. Threads are represented via parent_id. Optionally filter by resolved.",
+        description = "List review comments attached to a note version or annotation, oldest first. Threads are represented via parent_id. Provide both target_kind and target_id to filter by a target. Omit both to list unresolved comments across all note versions. Optionally filter by resolved.",
         annotations(read_only_hint = true)
     )]
     async fn read_comments(

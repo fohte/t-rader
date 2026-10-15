@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use core_application::comment::{
-    Comment, CommentListQuery, CommentReadQuery, CommentReadQueryError, CommentTargetKind,
+    Comment, CommentListQuery, CommentListTarget, CommentReadQuery, CommentReadQueryError,
+    CommentTargetKind,
 };
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
@@ -27,9 +28,22 @@ impl CommentReadQuery for PostgresCommentReadQuery {
         &self,
         query: CommentListQuery,
     ) -> Result<Vec<Comment>, CommentReadQueryError> {
-        let mut select = comment::Entity::find()
-            .filter(comment::Column::TargetKind.eq(query.target_kind.as_str()))
-            .filter(comment::Column::TargetId.eq(query.target_id));
+        let mut select = comment::Entity::find();
+        match query.target {
+            CommentListTarget::Target {
+                target_kind,
+                target_id,
+            } => {
+                select = select
+                    .filter(comment::Column::TargetKind.eq(target_kind.as_str()))
+                    .filter(comment::Column::TargetId.eq(target_id));
+            }
+            CommentListTarget::AllNoteVersions => {
+                select = select.filter(
+                    comment::Column::TargetKind.eq(CommentTargetKind::NoteVersion.as_str()),
+                );
+            }
+        }
         if let Some(resolved) = query.resolved {
             select = select.filter(comment::Column::Resolved.eq(resolved));
         }
