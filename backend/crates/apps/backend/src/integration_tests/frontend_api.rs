@@ -177,6 +177,7 @@ mod stock_info;
 mod strategies;
 mod strategy_earnings_targets;
 mod strategy_investable_amount;
+mod strategy_task_steps;
 mod strategy_tasks;
 mod tasks;
 mod trade_notes;

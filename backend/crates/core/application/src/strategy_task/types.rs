@@ -103,6 +103,12 @@ pub struct SubmittedTask {
     pub a2a_task_id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StrategyTaskOrigin {
+    pub strategy_id: Uuid,
+    pub task_id: Uuid,
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskStatusView {
     pub task_id: Uuid,

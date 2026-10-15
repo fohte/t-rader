@@ -25,6 +25,7 @@ pub mod saved_screens;
 pub mod screener;
 pub mod stock_info;
 pub mod strategies;
+pub mod strategy_task_steps;
 pub mod tasks;
 pub mod trade_notes;
 pub mod trades;

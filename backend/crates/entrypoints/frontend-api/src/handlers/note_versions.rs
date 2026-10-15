@@ -197,12 +197,12 @@ pub async fn reject_note_version(
     });
     let strategy_id = match execution_step_id {
         Some(execution_step_id) => {
-            let strategy_id = state
+            let origin = state
                 .strategy_task_use_cases
-                .find_strategy_id_by_execution_step_id(execution_step_id)
+                .find_origin_by_execution_step_id(execution_step_id)
                 .await
                 .map_err(map_get_task_error)?;
-            if strategy_id.is_none() {
+            if origin.is_none() {
                 tracing::warn!(
                     note_id = %note_id,
                     version_id = %version.id,
@@ -210,7 +210,7 @@ pub async fn reject_note_version(
                     "note version execution step is not recorded"
                 );
             }
-            strategy_id
+            origin.map(|origin| origin.strategy_id)
         }
         None => None,
     };

@@ -4,17 +4,18 @@ use crate::strategy_scope::StrategyScope;
 
 use super::error::{GetTaskError, ListTasksError};
 use super::types::{
-    StrategyTask, StrategyTaskContext, StrategyTaskStep, TaskListQuery, TaskStatusView,
+    StrategyTask, StrategyTaskContext, StrategyTaskOrigin, StrategyTaskStep, TaskListQuery,
+    TaskStatusView,
 };
 use super::{StrategyTaskRepositoryError, StrategyTaskUseCases};
 
 impl StrategyTaskUseCases {
-    pub async fn find_strategy_id_by_execution_step_id(
+    pub async fn find_origin_by_execution_step_id(
         &self,
         execution_step_id: Uuid,
-    ) -> Result<Option<Uuid>, GetTaskError> {
+    ) -> Result<Option<StrategyTaskOrigin>, GetTaskError> {
         self.repository
-            .find_strategy_id_by_execution_step_id(execution_step_id)
+            .find_origin_by_execution_step_id(execution_step_id)
             .await
             .map_err(Into::into)
     }
