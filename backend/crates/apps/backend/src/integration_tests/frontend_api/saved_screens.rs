@@ -292,4 +292,33 @@ mod tests {
             Some(json!({ "error": "saved screen 'condition-alpha' already exists" })),
         );
     }
+
+    #[backend_test_macros::database_test]
+    async fn update_to_another_saved_screen_name_returns_conflict(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        create_screen(
+            &server,
+            request("condition-alpha", &["market-a"], None, None),
+        )
+        .await;
+        let id = create_screen(
+            &server,
+            request("condition-zeta", &["market-b"], None, None),
+        )
+        .await;
+        let response = server
+            .put(&format!("/api/saved-screens/{id}"))
+            .json(&request("condition-alpha", &["market-b"], None, None))
+            .await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
+                StatusCode::CONFLICT,
+                json!({ "error": "saved screen 'condition-alpha' already exists" }),
+            ),
+        );
+    }
 }
