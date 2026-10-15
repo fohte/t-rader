@@ -291,7 +291,7 @@ func TestGroupAxisResourceDeleteReportsConflict(t *testing.T) {
 		Diagnostics: []apiDiagnosticObservation{{
 			Severity: diag.SeverityError.String(),
 			Summary:  "Error deleting group axis",
-			Detail:   `backend returned HTTP 409: {"error":"group axis sample-axis cannot be deleted while it contains groups"}`,
+			Detail:   "backend returned HTTP 409: group axis sample-axis cannot be deleted while it contains groups",
 		}},
 	}
 	if !reflect.DeepEqual(got, want) {
