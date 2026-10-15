@@ -65,26 +65,29 @@ export function NoteEvidenceCardView({
         style={{ maxWidth: 'calc(100vw - 1.5rem)' }}
       >
         <p className="font-mono font-semibold text-foreground">{title}</p>
-        {evidence.kind === 'price' ? (
-          <div className="grid grid-cols-12 gap-x-3 gap-y-1">
-            <span className="col-span-3 text-muted-foreground">時点</span>
-            <span className="col-span-9 font-mono tabular-nums">
-              {evidence.date}
-            </span>
-            <span className="col-span-3 text-muted-foreground">出どころ</span>
-            <span className="col-span-9">日足 (分割調整済み)</span>
+        <div className="space-y-1.5">
+          <div
+            className="grid gap-x-3 gap-y-1"
+            style={{ gridTemplateColumns: '3.5rem minmax(0, 1fr)' }}
+          >
+            {evidence.kind === 'price' ? (
+              <>
+                <span className="text-muted-foreground">時点</span>
+                <span className="font-mono tabular-nums">{evidence.date}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-muted-foreground">期間</span>
+                <span className="whitespace-nowrap font-mono tabular-nums">
+                  {evidence.start} → {evidence.end}
+                </span>
+              </>
+            )}
+            <span className="text-muted-foreground">出どころ</span>
+            <span>日足 (分割調整済み)</span>
           </div>
-        ) : (
-          <div className="space-y-1.5">
-            <div className="grid grid-cols-12 gap-x-3 gap-y-1">
-              <span className="col-span-3 text-muted-foreground">期間</span>
-              <span className="col-span-9 whitespace-nowrap font-mono tabular-nums">
-                {evidence.start} → {evidence.end}
-              </span>
-              <span className="col-span-3 text-muted-foreground">出どころ</span>
-              <span className="col-span-9">日足 (分割調整済み)</span>
-            </div>
-            {evidence.barsState.status === 'loading' ? (
+          {evidence.kind === 'change' &&
+            (evidence.barsState.status === 'loading' ? (
               <p role="status" className="text-muted-foreground">
                 日足を読み込み中...
               </p>
@@ -124,9 +127,8 @@ export function NoteEvidenceCardView({
                   </p>
                 )}
               </div>
-            )}
-          </div>
-        )}
+            ))}
+        </div>
         <Link
           to="/stocks/$stockId"
           params={{ stockId }}
