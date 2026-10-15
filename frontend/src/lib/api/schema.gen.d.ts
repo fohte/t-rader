@@ -1769,7 +1769,7 @@ export interface components {
     CreateNoteRequest: {
       /**
        * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-       *     `@current` を付けると以降の現行バージョンに追従する。価格リンクは実行ステップの query_data から解決する。
+       *     `@current` を付けると以降の現行バージョンに追従する。価格リンクは bars の日足から解決する。
        */
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
@@ -2866,7 +2866,7 @@ export interface components {
     UpdateNoteRequest: {
       /**
        * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-       *     `@current` を付けると以降の現行バージョンに追従する。価格リンクは元の実行ステップの query_data から解決する。
+       *     `@current` を付けると以降の現行バージョンに追従する。価格リンクは bars の日足から解決する。
        */
       body_md?: string | null
       frontmatter_json?: {

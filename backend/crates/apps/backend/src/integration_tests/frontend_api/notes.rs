@@ -19,12 +19,13 @@ mod tests {
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
     use gateway_postgres::entities::{
-        change_history, comment, note, note_kind, note_version, strategy_task_step_evidence,
+        bars, change_history, comment, instruments, note, note_kind, note_version,
     };
     use rstest::{fixture, rstest};
+    use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::sea_query::Expr;
+    use sea_orm::sea_query::{Expr, OnConflict};
     use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder, RuntimeErr};
     use serde_json::{Value, json};
     use uuid::Uuid;
@@ -1027,7 +1028,7 @@ mod tests {
             (
                 StatusCode::BAD_REQUEST,
                 json!({
-                    "error": "価格参照の解決には実行ステップの query_data が必要です",
+                    "error": "価格参照 [[price:fictional-code@2030-01-02:close]] を指定日の bars から解決できません",
                 }),
                 Some("original".to_string()),
             ),
@@ -1040,36 +1041,35 @@ mod tests {
     ) {
         let (db, server) = create_test_server_with_db(db).await;
         let note_id = create_test_note_with_body(&server, "title", "original").await;
-        let source_version = find_current_note_version(&db, note_id)
-            .await
-            .unwrap()
-            .expect("the note has a current version");
-        let execution_step_id = Uuid::from_u128(902);
-        set_test_note_version_execution_id(&db, source_version.id, execution_step_id).await;
-        strategy_task_step_evidence::Entity::insert(strategy_task_step_evidence::ActiveModel {
-            id: Set(Uuid::from_u128(903)),
-            execution_step_id: Set(execution_step_id),
-            source: Set("query_data".into()),
-            source_ref: Set("fictional-code".into()),
-            observed_at: Set(chrono::DateTime::parse_from_rfc3339("2030-01-04T00:00:00Z")
-                .expect("observed timestamp")),
-            published_at: Set(None),
-            effective_at: Set(None),
-            snapshot: Set(json!({
-                "instrument_id": "fictional-code",
-                "bars": [{
-                    "timestamp": "2030-01-02T00:00:00Z",
-                    "open": 9.0,
-                    "high": 11.0,
-                    "low": 8.0,
-                    "close": 10.0,
-                    "volume": 100,
-                }],
-            })),
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set("fictional-code".into()),
+            name: Set("Fictional Instrument".into()),
+            market: Set("TSE".into()),
+            sector: Set(None),
+        })
+        .on_conflict(
+            OnConflict::column(instruments::Column::Id)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(&db)
+        .await
+        .expect("insert instrument");
+        bars::Entity::insert(bars::ActiveModel {
+            instrument_id: Set("fictional-code".into()),
+            timeframe: Set("1d".into()),
+            timestamp: Set(chrono::DateTime::parse_from_rfc3339("2030-01-02T00:00:00Z")
+                .expect("daily bar timestamp")),
+            open: Set(Decimal::from(9)),
+            high: Set(Decimal::from(11)),
+            low: Set(Decimal::from(8)),
+            close: Set(Decimal::from(10)),
+            volume: Set(100),
+            adjustment_factor: Set(Decimal::ONE),
         })
         .exec_without_returning(&db)
         .await
-        .expect("insert query data evidence");
+        .expect("insert daily bar");
         let link = "[[price:fictional-code@2030-01-02:close]]";
 
         let response = server
@@ -1105,8 +1105,7 @@ mod tests {
                     "frontmatter_json": {},
                     "resolved_price_references_json": {
                         "[[price:fictional-code@2030-01-02:close]]": {
-                            "value": 10.0,
-                            "evidence_id": Uuid::from_u128(903).to_string(),
+                            "value": 10,
                         },
                     },
                     "tags": [],
@@ -1124,8 +1123,7 @@ mod tests {
                     link.to_string(),
                     json!({
                         "[[price:fictional-code@2030-01-02:close]]": {
-                            "value": 10.0,
-                            "evidence_id": Uuid::from_u128(903).to_string(),
+                            "value": 10,
                         },
                     }),
                     None,

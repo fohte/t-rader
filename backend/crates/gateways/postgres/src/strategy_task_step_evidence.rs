@@ -68,23 +68,6 @@ impl StrategyTaskStepEvidenceRepository for PostgresStrategyTaskStepEvidenceRepo
                 StrategyTaskStepEvidenceRepositoryError::Database(persistence_error(error))
             })
     }
-
-    async fn find_query_data_by_evidence_id(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        evidence_id: Uuid,
-    ) -> Result<Option<StrategyTaskStepEvidence>, StrategyTaskStepEvidenceRepositoryError> {
-        let transaction = transaction_ref(transaction)
-            .ok_or(StrategyTaskStepEvidenceRepositoryError::InvalidTransaction)?;
-        strategy_task_step_evidence::Entity::find_by_id(evidence_id)
-            .filter(strategy_task_step_evidence::Column::Source.eq("query_data"))
-            .one(transaction)
-            .await
-            .map(|row| row.map(to_evidence))
-            .map_err(|error| {
-                StrategyTaskStepEvidenceRepositoryError::Database(persistence_error(error))
-            })
-    }
 }
 
 fn to_evidence(model: strategy_task_step_evidence::Model) -> StrategyTaskStepEvidence {
@@ -211,18 +194,7 @@ mod tests {
             .find_query_data(&transaction, execution_step_id, "fictional-instrument")
             .await
             .expect("find query data");
-        let actual_by_id = repository
-            .find_query_data_by_evidence_id(&transaction, matching_earlier.id)
-            .await
-            .expect("find evidence by id");
-
-        assert_eq!(
-            (actual, actual_by_id),
-            (
-                vec![matching_earlier.clone(), matching_later],
-                Some(matching_earlier),
-            ),
-        );
+        assert_eq!(actual, vec![matching_earlier, matching_later],);
     }
 
     fn evidence(

@@ -1,31 +1,17 @@
 use std::collections::{BTreeMap, HashSet};
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use core_domain::bar::{Bar, Timeframe};
 use core_domain::note_price_reference::{
-    NotePriceReference, NotePriceReferenceToken, ValuationReferenceField,
+    NotePriceReference, NotePriceReferenceToken, PriceReferenceField, ValuationReferenceField,
 };
 use core_domain::valuation::Valuation;
 use rust_decimal::Decimal;
 use serde_json::{Map, Value, json};
-use uuid::Uuid;
 
+use crate::bars::BarsQuery;
 use crate::indicator_observation::IndicatorObservationQuery;
 use crate::note::{NoteUseCaseError, NoteUseCases};
-use crate::strategy_task_step_evidence::{
-    StrategyTaskStepEvidence, StrategyTaskStepEvidenceUseCaseError,
-};
-use crate::unit_of_work::UnitOfWorkTransaction;
-
-pub(in crate::note) type ResolvedMarketDataReferences = Map<String, Value>;
-
-pub(super) fn requires_query_data(references: &[NotePriceReferenceToken]) -> bool {
-    references.iter().any(|reference| {
-        matches!(
-            &reference.reference,
-            NotePriceReference::Price { .. } | NotePriceReference::Change { .. }
-        )
-    })
-}
 
 pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReferenceToken]) -> bool {
     let Some(resolved) = resolved.as_object() else {
@@ -41,19 +27,7 @@ pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReference
                 .get(&reference.token)
                 .and_then(Value::as_object)
                 .is_some_and(|entry| {
-                    entry.get("value").is_some_and(|value| !value.is_null())
-                        && match &reference.reference {
-                            NotePriceReference::Price { .. }
-                            | NotePriceReference::Change { .. } => entry
-                                .get("evidence_id")
-                                .and_then(Value::as_str)
-                                .and_then(|id| Uuid::parse_str(id).ok())
-                                .is_some(),
-                            NotePriceReference::Valuation { .. }
-                            | NotePriceReference::Indicator { .. } => {
-                                entry.len() == 1 && !entry.contains_key("evidence_id")
-                            }
-                        }
+                    entry.get("value").is_some_and(|value| !value.is_null()) && entry.len() == 1
                 })
         })
 }
@@ -62,7 +36,7 @@ impl NoteUseCases {
     pub(in crate::note) async fn resolve_market_data_references(
         &self,
         body_md: &str,
-    ) -> Result<ResolvedMarketDataReferences, NoteUseCaseError> {
+    ) -> Result<Map<String, Value>, NoteUseCaseError> {
         let references = core_domain::note_price_reference::extract_note_price_references(body_md)
             .map_err(|errors| {
                 NoteUseCaseError::Validation(core_domain::note_reference::format_note_token_errors(
@@ -72,6 +46,7 @@ impl NoteUseCases {
         let mut valuations_by_symbol_date =
             BTreeMap::<(String, NaiveDate), Option<Valuation>>::new();
         let mut observations_by_id_date = BTreeMap::<(String, NaiveDate), Option<Decimal>>::new();
+        let mut daily_bars_by_instrument_date = BTreeMap::<(String, NaiveDate), Option<Bar>>::new();
         let mut values = Map::new();
 
         for token in &references {
@@ -101,7 +76,14 @@ impl NoteUseCases {
                     )
                     .await?;
                 }
-                NotePriceReference::Price { .. } | NotePriceReference::Change { .. } => {}
+                NotePriceReference::Price { .. } | NotePriceReference::Change { .. } => {
+                    self.resolve_bar_reference(
+                        token,
+                        &mut daily_bars_by_instrument_date,
+                        &mut values,
+                    )
+                    .await?;
+                }
             }
         }
 
@@ -183,80 +165,115 @@ impl NoteUseCases {
         Ok(())
     }
 
-    pub(super) async fn resolve_price_references(
+    async fn resolve_bar_reference(
         &self,
-        transaction: &UnitOfWorkTransaction,
-        references: &[NotePriceReferenceToken],
-        execution_id: Option<&str>,
-        mut resolved_market_data: ResolvedMarketDataReferences,
-    ) -> Result<Value, NoteUseCaseError> {
-        if references.is_empty() {
-            return Ok(Value::Object(Map::new()));
-        }
-
-        if requires_query_data(references) {
-            let execution_step_id = execution_id
-                .and_then(|value| Uuid::parse_str(value).ok())
-                .ok_or_else(|| {
-                    NoteUseCaseError::Validation(
-                        "価格参照の解決には実行ステップの query_data が必要です".into(),
-                    )
-                })?;
-            self.resolve_query_data_references(
-                transaction,
-                references,
-                execution_step_id,
-                &mut resolved_market_data,
-            )
-            .await?;
-        }
-
-        Ok(Value::Object(resolved_market_data))
-    }
-
-    async fn resolve_query_data_references(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        references: &[NotePriceReferenceToken],
-        execution_step_id: Uuid,
+        token: &NotePriceReferenceToken,
+        cache: &mut BTreeMap<(String, NaiveDate), Option<Bar>>,
         values: &mut Map<String, Value>,
     ) -> Result<(), NoteUseCaseError> {
-        let mut evidence_by_instrument = BTreeMap::new();
-        for token in references {
-            let instrument_id = match &token.reference {
-                NotePriceReference::Price { instrument_id, .. }
-                | NotePriceReference::Change { instrument_id, .. } => instrument_id,
-                NotePriceReference::Valuation { .. } | NotePriceReference::Indicator { .. } => {
-                    continue;
-                }
-            };
-            if !evidence_by_instrument.contains_key(instrument_id) {
-                let evidence = self
-                    .strategy_task_step_evidence
-                    .find_query_data(transaction, execution_step_id, instrument_id)
-                    .await
-                    .map_err(StrategyTaskStepEvidenceUseCaseError::from)?;
-                evidence_by_instrument.insert(instrument_id.to_string(), evidence);
+        let value = match &token.reference {
+            NotePriceReference::Price {
+                instrument_id,
+                date,
+                field,
+            } => {
+                let bar = self
+                    .find_daily_bar(instrument_id, *date, cache)
+                    .await?
+                    .ok_or_else(|| unresolved_price_reference(token))?;
+                bar_field_value(&bar, *field)
             }
-            let evidence = evidence_by_instrument.get(instrument_id).ok_or_else(|| {
-                NoteUseCaseError::Validation("query_data の取得結果がありません".into())
-            })?;
-            let (value, evidence_id) = resolve_evidence_reference(&token.reference, evidence)
-                .ok_or_else(|| {
-                    NoteUseCaseError::Validation(format!(
-                        "価格参照 {0} を実行ステップの query_data から解決できません",
+            NotePriceReference::Change {
+                instrument_id,
+                start,
+                end,
+                field,
+            } => {
+                let start_bar = self
+                    .find_daily_bar(instrument_id, *start, cache)
+                    .await?
+                    .ok_or_else(|| unresolved_price_reference(token))?;
+                let end_bar = self
+                    .find_daily_bar(instrument_id, *end, cache)
+                    .await?
+                    .ok_or_else(|| unresolved_price_reference(token))?;
+                let start_value = bar_field_value(&start_bar, *field);
+                if start_value == Decimal::ZERO {
+                    return Err(NoteUseCaseError::Validation(format!(
+                        "価格参照 {} の開始値は 0 です",
                         token.token
-                    ))
-                })?;
-            values.insert(
-                token.token.clone(),
-                json!({
-                    "value": value,
-                    "evidence_id": evidence_id,
-                }),
-            );
-        }
+                    )));
+                }
+                bar_field_value(&end_bar, *field)
+                    .checked_sub(start_value)
+                    .and_then(|difference| difference.checked_div(start_value))
+                    .and_then(|ratio| ratio.checked_mul(Decimal::from(100)))
+                    .ok_or_else(|| unresolved_price_reference(token))?
+                    .normalize()
+            }
+            _ => {
+                return Err(NoteUseCaseError::Validation(format!(
+                    "価格参照 {} は bars から解決できません",
+                    token.token
+                )));
+            }
+        };
+        let value = serde_json::to_value(value)?;
+        values.insert(token.token.clone(), json!({ "value": value }));
         Ok(())
+    }
+
+    async fn find_daily_bar(
+        &self,
+        instrument_id: &str,
+        date: NaiveDate,
+        cache: &mut BTreeMap<(String, NaiveDate), Option<Bar>>,
+    ) -> Result<Option<Bar>, NoteUseCaseError> {
+        let key = (instrument_id.to_string(), date);
+        if !cache.contains_key(&key) {
+            let next_date = date.succ_opt().ok_or_else(|| {
+                NoteUseCaseError::Validation(format!(
+                    "価格参照 {} の日付が範囲外です",
+                    instrument_id
+                ))
+            })?;
+            let from =
+                DateTime::<Utc>::from_naive_utc_and_offset(date.and_time(NaiveTime::MIN), Utc)
+                    .fixed_offset();
+            let to =
+                DateTime::<Utc>::from_naive_utc_and_offset(next_date.and_time(NaiveTime::MIN), Utc)
+                    .fixed_offset();
+            let bar = self
+                .bars
+                .find_bars(BarsQuery {
+                    instrument_id: instrument_id.to_string(),
+                    timeframe: Timeframe::Daily.to_string(),
+                    from: Some(from),
+                    to: Some(to),
+                })
+                .await?
+                .into_iter()
+                .find(|bar| bar.timestamp.date_naive() == date);
+            cache.insert(key.clone(), bar);
+        }
+        Ok(cache.get(&key).cloned().flatten())
+    }
+}
+
+fn unresolved_price_reference(token: &NotePriceReferenceToken) -> NoteUseCaseError {
+    NoteUseCaseError::Validation(format!(
+        "価格参照 {} を指定日の bars から解決できません",
+        token.token
+    ))
+}
+
+fn bar_field_value(bar: &Bar, field: PriceReferenceField) -> Decimal {
+    match field {
+        PriceReferenceField::Open => bar.open,
+        PriceReferenceField::High => bar.high,
+        PriceReferenceField::Low => bar.low,
+        PriceReferenceField::Close => bar.close,
+        PriceReferenceField::Volume => Decimal::from(bar.volume),
     }
 }
 
@@ -271,32 +288,5 @@ fn valuation_field_value(valuation: &Valuation, field: ValuationReferenceField) 
         ValuationReferenceField::Eps => valuation.eps,
         ValuationReferenceField::FwdEps => valuation.fwd_eps,
         ValuationReferenceField::Bps => valuation.bps,
-    }
-}
-
-fn resolve_evidence_reference(
-    reference: &NotePriceReference,
-    evidence: &[StrategyTaskStepEvidence],
-) -> Option<(Value, Uuid)> {
-    match reference {
-        NotePriceReference::Price { date, field, .. } => {
-            evidence.iter().rev().find_map(|snapshot| {
-                snapshot
-                    .query_data_bar_value(*date, *field)
-                    .map(|value| (value, snapshot.id))
-            })
-        }
-        NotePriceReference::Change {
-            start, end, field, ..
-        } => evidence.iter().rev().find_map(|snapshot| {
-            let start = snapshot.query_data_bar_value(*start, *field)?.as_f64()?;
-            let end = snapshot.query_data_bar_value(*end, *field)?.as_f64()?;
-            if start == 0.0 {
-                return None;
-            }
-            serde_json::Number::from_f64((end - start) / start * 100.0)
-                .map(|value| (Value::Number(value), snapshot.id))
-        }),
-        NotePriceReference::Valuation { .. } | NotePriceReference::Indicator { .. } => None,
     }
 }

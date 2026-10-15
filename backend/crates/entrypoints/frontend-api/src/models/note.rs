@@ -87,7 +87,7 @@ pub struct CreateNoteRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: String,
     /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-    /// `@current` を付けると以降の現行バージョンに追従する。価格リンクは実行ステップの query_data から解決する。
+    /// `@current` を付けると以降の現行バージョンに追従する。価格リンクは bars の日足から解決する。
     pub body_md: String,
     #[serde(default)]
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
@@ -109,7 +109,7 @@ pub struct UpdateNoteRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: Option<String>,
     /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
-    /// `@current` を付けると以降の現行バージョンに追従する。価格リンクは元の実行ステップの query_data から解決する。
+    /// `@current` を付けると以降の現行バージョンに追従する。価格リンクは bars の日足から解決する。
     pub body_md: Option<String>,
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,

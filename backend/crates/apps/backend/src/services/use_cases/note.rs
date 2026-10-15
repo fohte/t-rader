@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use core_application::note::{NoteReadUseCases, NoteUseCases};
-use gateway_postgres::{
-    PostgresNoteReadQuery, PostgresNoteRepository, PostgresStrategyTaskStepEvidenceRepository,
-};
+use gateway_postgres::{PostgresNoteReadQuery, PostgresNoteRepository};
 
 use super::UseCases;
 
@@ -17,9 +15,7 @@ impl UseCases {
             self.unit_of_work.clone(),
             Arc::new(PostgresNoteRepository::new()),
             self.change_history.clone(),
-            Arc::new(PostgresStrategyTaskStepEvidenceRepository::new(
-                self.db.clone(),
-            )),
+            self.bars(),
             self.valuations(),
             self.indicator_observations(),
         )

@@ -15,9 +15,6 @@ use core_application::note::{
     NoteListQuery, NoteReadQueryError, NoteReadUseCaseError, NoteUseCaseError, NoteWriteCommand,
     UpdateNoteCommand,
 };
-use core_application::strategy_task_step_evidence::{
-    StrategyTaskStepEvidenceRepositoryError, StrategyTaskStepEvidenceUseCaseError,
-};
 use core_application::unit_of_work::UnitOfWorkError;
 use core_domain::note_reference::{NoteReferenceParseError, parse_note_reference};
 
@@ -285,11 +282,6 @@ pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
         | NoteUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
-        NoteUseCaseError::StrategyTaskStepEvidence(
-            StrategyTaskStepEvidenceUseCaseError::Repository(
-                StrategyTaskStepEvidenceRepositoryError::Database(error),
-            ),
-        ) => error.into(),
         other => AppError::Internal(other.to_string()),
     }
 }

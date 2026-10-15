@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_rejects_unresolved_price_links_as_invalid_params(
+    async fn write_note_rejects_price_links_without_a_matching_daily_bar(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
@@ -344,14 +344,14 @@ mod tests {
                 },
             )
             .await
-            .expect_err("a price link without query_data must be rejected");
+            .expect_err("a price link without a matching daily bar must be rejected");
         let saved_notes = note::Entity::find().all(&db).await.unwrap();
 
         assert_eq!(
             (error.code, error.message.as_ref(), saved_notes.len()),
             (
                 rmcp::model::ErrorCode::INVALID_PARAMS,
-                "価格参照 [[price:fictional-code@2030-01-02:close]] を実行ステップの query_data から解決できません",
+                "価格参照 [[price:fictional-code@2030-01-02:close]] を指定日の bars から解決できません",
                 0,
             ),
         );

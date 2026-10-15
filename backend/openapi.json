@@ -9518,7 +9518,7 @@
         "properties": {
           "body_md": {
             "type": "string",
-            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。価格リンクは実行ステップの query_data から解決する。"
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。価格リンクは bars の日足から解決する。"
           },
           "created_by_kind": {
             "type": [
@@ -12998,7 +12998,7 @@
               "string",
               "null"
             ],
-            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。価格リンクは元の実行ステップの query_data から解決する。"
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。価格リンクは bars の日足から解決する。"
           },
           "frontmatter_json": {
             "type": [
