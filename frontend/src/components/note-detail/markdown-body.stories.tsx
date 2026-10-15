@@ -269,6 +269,13 @@ export const WithUnresolvedDatedReferences: Story = {
 
 export const WithRangeCommentThread: Story = {
   name: 'shows a comment thread below the final block in its range.',
+  decorators: [
+    (Story) => (
+      <NoteBodyCard>
+        <Story />
+      </NoteBodyCard>
+    ),
+  ],
   args: {
     source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
     rangeComments: rangeCommentProps,
@@ -277,6 +284,13 @@ export const WithRangeCommentThread: Story = {
 
 export const WithCommentComposer: Story = {
   name: 'shows a comment composer below the selected source block.',
+  decorators: [
+    (Story) => (
+      <NoteBodyCard>
+        <Story />
+      </NoteBodyCard>
+    ),
+  ],
   args: {
     source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
     rangeComments: {
@@ -300,6 +314,13 @@ export const WithCommentComposer: Story = {
 
 export const CommentsLoading: Story = {
   name: 'shows a loading message while note comments are fetched.',
+  decorators: [
+    (Story) => (
+      <NoteBodyCard>
+        <Story />
+      </NoteBodyCard>
+    ),
+  ],
   args: {
     source: '# コメントを読み込み中の本文\n\nコメント付きの段落です。',
     rangeComments: {
@@ -312,6 +333,13 @@ export const CommentsLoading: Story = {
 
 export const CommentsLoadFailed: Story = {
   name: 'shows an error when note comments cannot be loaded.',
+  decorators: [
+    (Story) => (
+      <NoteBodyCard>
+        <Story />
+      </NoteBodyCard>
+    ),
+  ],
   args: {
     source: '# コメントを読み込めない本文\n\nコメント付きの段落です。',
     rangeComments: {
@@ -324,6 +352,13 @@ export const CommentsLoadFailed: Story = {
 
 export const ResolveFailed: Story = {
   name: 'shows an error when a comment cannot be resolved.',
+  decorators: [
+    (Story) => (
+      <NoteBodyCard>
+        <Story />
+      </NoteBodyCard>
+    ),
+  ],
   args: {
     source: '# 解決に失敗した本文\n\nコメント付きの段落です。',
     rangeComments: {
