@@ -5,7 +5,7 @@
 | Name                                                                                        | Columns | Comment                                                                                                | Type       |
 | ------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------ | ---------- |
 | [public.instruments](public.instruments.md)                                                 | 4       | 価格データの取得対象となる金融商品を管理する。                                                         | BASE TABLE |
-| [public.bars](public.bars.md)                                                               | 9       | 銘柄ごとの日足価格と出来高を保持する。                                                                 | BASE TABLE |
+| [public.bars](public.bars.md)                                                               | 9       | 銘柄ごとの 1 分足、1 時間足、日足の価格と出来高を保持する。                                            | BASE TABLE |
 | [public.strategy](public.strategy.md)                                                       | 6       | 投資判断と関連データを分けて管理する永続的な戦略ワークスペース。                                       | BASE TABLE |
 | [public.stock](public.stock.md)                                                             | 6       | ノートや戦略などから参照する銘柄マスタ。銘柄と分類グループの所属関係は stock_group_member で保持する。 | BASE TABLE |
 | [public.indicator](public.indicator.md)                                                     | 3       | マクロ指標などの参照先を定義する。                                                                     | BASE TABLE |
@@ -53,7 +53,6 @@
 | [public.calendar_event](public.calendar_event.md)                                           | 13      | 指標、中銀イベント、決算などの予定を取得元ごとに保持する。                                             | BASE TABLE |
 | [public.earnings_schedule_ingested_date](public.earnings_schedule_ingested_date.md)         | 1       | 決算予定を取得した公表日を記録する。                                                                   | BASE TABLE |
 | [public.news_item_content](public.news_item_content.md)                                     | 6       | ニュース記事の本文と取得状態を保持する。                                                               | BASE TABLE |
-| [public.minute_bars](public.minute_bars.md)                                                 | 7       | 銘柄ごとの 1 分足価格と出来高を保持する。                                                              | BASE TABLE |
 | [public.strategy_earnings_target](public.strategy_earnings_target.md)                       | 4       | 戦略ごとに決算を追う銘柄とグループを保持する。                                                         | BASE TABLE |
 | [public.paper_account](public.paper_account.md)                                             | 9       | 戦略と agent 設定ごとの仮想取引口座を保持する。                                                        | BASE TABLE |
 | [public.paper_order](public.paper_order.md)                                                 | 7       | 仮想口座に対して記録した不変の売買注文を保持する。                                                     | BASE TABLE |
@@ -215,7 +214,6 @@ erDiagram
 "public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 "public.stock_group_member" }o--|| "public.stock_group" : "FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE"
 "public.news_item_content" |o--|| "public.news_item" : "FOREIGN KEY (news_item_id) REFERENCES news_item(id) ON DELETE CASCADE"
-"public.minute_bars" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 "public.strategy_earnings_target" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.paper_account" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.paper_account" }o--o| "public.stock" : "FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)"
@@ -735,15 +733,6 @@ erDiagram
   text error
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
-}
-"public.minute_bars" {
-  varchar instrument_id FK
-  timestamp_with_time_zone timestamp
-  numeric open
-  numeric high
-  numeric low
-  numeric close
-  bigint volume
 }
 "public.strategy_earnings_target" {
   uuid strategy_id FK

@@ -11,7 +11,7 @@ use super::super::StrategyServer;
 use super::super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
 use super::super::tests_common::{insert_strategy, mock_db_with_strategy};
 use core_domain::bar::{Bar, Timeframe};
-use gateway_postgres::entities::{instruments, minute_bars, strategy_task_step_evidence};
+use gateway_postgres::entities::{bars, instruments, strategy_task_step_evidence};
 use gateway_postgres::repositories::bars::upsert_bars;
 
 async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
@@ -62,24 +62,26 @@ struct TestMinuteBar {
     volume: i64,
 }
 
-fn make_test_minute_bar(instrument_id: &str, bar: TestMinuteBar) -> minute_bars::ActiveModel {
+fn make_test_minute_bar(instrument_id: &str, bar: TestMinuteBar) -> bars::ActiveModel {
     let timestamp = NaiveDate::from_ymd_opt(2034, 1, 2)
         .and_then(|date| date.and_hms_opt(bar.hour, bar.minute, 0))
         .map(|datetime| Utc.from_utc_datetime(&datetime).fixed_offset())
         .expect("valid minute bar timestamp");
-    minute_bars::ActiveModel {
+    bars::ActiveModel {
         instrument_id: Set(instrument_id.to_string()),
+        timeframe: Set(Timeframe::Minute.to_string()),
         timestamp: Set(timestamp),
         open: Set(Decimal::new(bar.open, 0)),
         high: Set(Decimal::new(bar.high, 0)),
         low: Set(Decimal::new(bar.low, 0)),
         close: Set(Decimal::new(bar.close, 0)),
         volume: Set(bar.volume),
+        adjustment_factor: Set(Decimal::ONE),
     }
 }
 
 async fn insert_test_minute_bars(db: &impl sea_orm::ConnectionTrait, id: &str, base: i64) {
-    minute_bars::Entity::insert_many([
+    bars::Entity::insert_many([
         make_test_minute_bar(
             id,
             TestMinuteBar {

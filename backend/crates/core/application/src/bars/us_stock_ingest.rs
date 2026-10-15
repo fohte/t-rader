@@ -435,17 +435,10 @@ impl BarsUseCases {
         }
         let count = bars.len();
         let transaction = self.unit_of_work.begin().await?;
+        self.repository.upsert_bars(&transaction, bars).await?;
         match timeframe {
-            UsStockBarTimeframe::Daily => {
-                self.repository.upsert_bars(&transaction, bars).await?;
-                stats.daily_bars_upserted += count;
-            }
-            UsStockBarTimeframe::Minute => {
-                self.repository
-                    .upsert_minute_bars(&transaction, bars)
-                    .await?;
-                stats.minute_bars_upserted += count;
-            }
+            UsStockBarTimeframe::Daily => stats.daily_bars_upserted += count,
+            UsStockBarTimeframe::Minute => stats.minute_bars_upserted += count,
         }
         self.unit_of_work.commit(transaction).await?;
         Ok(())
@@ -667,6 +660,11 @@ mod tests {
         bar
     }
 
+    fn partition_daily_bars(bars: Vec<Bar>) -> (Vec<Bar>, Vec<Bar>) {
+        bars.into_iter()
+            .partition(|bar| bar.timeframe == Timeframe::Daily)
+    }
+
     #[rstest]
     #[tokio::test]
     async fn ingest_backfills_missing_symbols_and_continues_from_saved_bars(harness: Harness) {
@@ -691,8 +689,8 @@ mod tests {
             .await
             .expect("US stock bar ingestion succeeds");
         let calls = harness.source.calls.lock().await.clone();
-        let daily_bars = harness.repository.bars.lock().await.clone();
-        let minute_bars = harness.repository.minute_bars.lock().await.clone();
+        let (daily_bars, minute_bars) =
+            partition_daily_bars(harness.repository.bars.lock().await.clone());
         let expected_minute_start = now
             .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
             .unwrap_or(now);
@@ -872,8 +870,8 @@ mod tests {
             .expect("US stock split refetch succeeds");
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
-        let mut daily_bars = harness.repository.bars.lock().await.clone();
-        let mut minute_bars = harness.repository.minute_bars.lock().await.clone();
+        let (mut daily_bars, mut minute_bars) =
+            partition_daily_bars(harness.repository.bars.lock().await.clone());
         daily_bars.sort_by_key(|bar| bar.timestamp);
         minute_bars.sort_by_key(|bar| bar.timestamp);
 
@@ -965,8 +963,8 @@ mod tests {
             .expect("US stock bars ingestion succeeds");
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
-        let daily_bars = harness.repository.bars.lock().await.clone();
-        let minute_bars = harness.repository.minute_bars.lock().await.clone();
+        let (daily_bars, minute_bars) =
+            partition_daily_bars(harness.repository.bars.lock().await.clone());
 
         assert_eq!(
             (stats, calls, split_calls, daily_bars, minute_bars),
@@ -1046,8 +1044,8 @@ mod tests {
             .expect("US stock split refetch succeeds without an ex-date bar");
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
-        let mut daily_bars = harness.repository.bars.lock().await.clone();
-        let mut minute_bars = harness.repository.minute_bars.lock().await.clone();
+        let (mut daily_bars, mut minute_bars) =
+            partition_daily_bars(harness.repository.bars.lock().await.clone());
         daily_bars.sort_by_key(|bar| bar.timestamp);
         minute_bars.sort_by_key(|bar| bar.timestamp);
 
@@ -1133,8 +1131,8 @@ mod tests {
             .expect("US stock bars ingestion succeeds");
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
-        let daily_bars = harness.repository.bars.lock().await.clone();
-        let minute_bars = harness.repository.minute_bars.lock().await.clone();
+        let (daily_bars, minute_bars) =
+            partition_daily_bars(harness.repository.bars.lock().await.clone());
         let expected_minute_start = now
             .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
             .unwrap_or(now);
