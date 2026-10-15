@@ -21,14 +21,7 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ListMoversParams,
     ) -> Result<ListMoversResult, McpError> {
-        let min_avg_turnover = match params.min_avg_turnover {
-            Some(value) if !value.is_finite() => {
-                return Err(invalid_params("min_avg_turnover must be a finite number"));
-            }
-            Some(value) => Decimal::from_f64(value)
-                .ok_or_else(|| invalid_params("min_avg_turnover is out of range"))?,
-            None => Decimal::ZERO,
-        };
+        let min_avg_turnover = parse_min_avg_turnover(params.min_avg_turnover)?;
 
         let limit = params.limit.unwrap_or(DEFAULT_LIST_MOVERS_LIMIT);
         let scope = scope.into();
@@ -68,14 +61,7 @@ impl StrategyServer {
         &self,
         params: ListGroupMoversParams,
     ) -> Result<ListGroupMoversResult, McpError> {
-        let min_avg_turnover = match params.min_avg_turnover {
-            Some(value) if !value.is_finite() => {
-                return Err(invalid_params("min_avg_turnover must be a finite number"));
-            }
-            Some(value) => Decimal::from_f64(value)
-                .ok_or_else(|| invalid_params("min_avg_turnover is out of range"))?,
-            None => Decimal::ZERO,
-        };
+        let min_avg_turnover = parse_min_avg_turnover(params.min_avg_turnover)?;
 
         let axis_key = params.axis_key;
         let rows = self
@@ -125,10 +111,24 @@ fn group_movers_use_case_error(error: GroupMoversUseCaseError) -> McpError {
         GroupMoversUseCaseError::InvalidMinAvgTurnover => {
             invalid_params("min_avg_turnover must be a non-negative number")
         }
+        GroupMoversUseCaseError::AxisNotFound(axis_key) => {
+            invalid_params(format!("group axis {axis_key} not found"))
+        }
         error @ GroupMoversUseCaseError::Query(_) => {
             tracing::error!(error = %error, "strategy mcp group movers query failed");
             internal_error(format!("database error: {error}"))
         }
+    }
+}
+
+fn parse_min_avg_turnover(value: Option<f64>) -> Result<Decimal, McpError> {
+    match value {
+        Some(value) if !value.is_finite() => {
+            Err(invalid_params("min_avg_turnover must be a finite number"))
+        }
+        Some(value) => Decimal::from_f64(value)
+            .ok_or_else(|| invalid_params("min_avg_turnover is out of range")),
+        None => Ok(Decimal::ZERO),
     }
 }
 

@@ -42,6 +42,8 @@ pub enum GroupMoversQueryError {
 
 #[async_trait]
 pub trait GroupMoversQuerySource: Send + Sync {
+    async fn axis_exists(&self, axis_key: &str) -> Result<bool, GroupMoversQueryError>;
+
     async fn list_group_movers(
         &self,
         query: GroupMoversQuery,
@@ -56,6 +58,8 @@ pub enum GroupMoversUseCaseError {
     InvalidDateRange,
     #[error("min_avg_turnover must be a non-negative number")]
     InvalidMinAvgTurnover,
+    #[error("group axis {0} not found")]
+    AxisNotFound(String),
     #[error(transparent)]
     Query(#[from] GroupMoversQueryError),
 }
@@ -79,6 +83,9 @@ impl GroupMoversUseCases {
         }
         if query.min_avg_turnover < Decimal::ZERO {
             return Err(GroupMoversUseCaseError::InvalidMinAvgTurnover);
+        }
+        if !self.query.axis_exists(&query.axis_key).await? {
+            return Err(GroupMoversUseCaseError::AxisNotFound(query.axis_key));
         }
 
         self.query

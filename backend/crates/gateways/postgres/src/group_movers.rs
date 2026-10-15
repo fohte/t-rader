@@ -10,6 +10,9 @@ use crate::persistence::persistence_error;
 
 const TOP_STOCKS_PER_GROUP: i64 = 5;
 
+const GROUP_AXIS_EXISTS_SQL: &str =
+    "SELECT EXISTS (SELECT 1 FROM group_axis WHERE key = $1::text) AS axis_exists";
+
 const LIST_GROUP_MOVERS_SQL: &str = r#"
     WITH axis_groups AS (
         SELECT group_row.id AS group_id,
@@ -136,6 +139,23 @@ impl PostgresGroupMoversQuerySource {
 
 #[async_trait]
 impl GroupMoversQuerySource for PostgresGroupMoversQuerySource {
+    async fn axis_exists(&self, axis_key: &str) -> Result<bool, GroupMoversQueryError> {
+        let row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                GROUP_AXIS_EXISTS_SQL,
+                [axis_key.into()],
+            ))
+            .await
+            .map_err(query_error)?;
+        let Some(row) = row else {
+            return Ok(false);
+        };
+
+        row.try_get("", "axis_exists").map_err(query_error)
+    }
+
     async fn list_group_movers(
         &self,
         query: GroupMoversQuery,

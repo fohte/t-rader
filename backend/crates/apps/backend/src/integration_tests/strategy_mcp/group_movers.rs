@@ -90,6 +90,11 @@ async fn add_member(db: &impl sea_orm::ConnectionTrait, stock_id: &str, group_id
     .expect("insert sample group member");
 }
 
+async fn build_test_server(db: gateway_postgres::DatabaseHandle) -> (StrategyServer, Uuid) {
+    let strategy_id = insert_strategy(&db, "Sample strategy").await;
+    (build_server(db), strategy_id)
+}
+
 #[backend_test_macros::database_test]
 async fn list_group_movers_returns_group_metrics_and_top_constituents(
     db: gateway_postgres::DatabaseHandle,
@@ -99,6 +104,7 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
         insert_group(&db, axis_id, "sample-group-alpha", "Sample group alpha").await;
     let second_group_id =
         insert_group(&db, axis_id, "sample-group-beta", "Sample group beta").await;
+    insert_group(&db, axis_id, "sample-group-empty", "Sample group empty").await;
     let single_axis_id = insert_axis(&db, "sample-single-axis").await;
     let single_group_id = insert_group(
         &db,
@@ -162,8 +168,7 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
     .await
     .expect("insert sample daily bars");
 
-    let strategy_id = insert_strategy(&db, "Sample strategy").await;
-    let server: StrategyServer = build_server(db);
+    let (server, strategy_id) = build_test_server(db).await;
     let all_groups = server
         .invoke::<_, Value>(
             "list_group_movers",
@@ -213,44 +218,8 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
         .expect("list single-day group movers")
         .as_json()
         .clone();
-    let reversed_range = server
-        .invoke::<_, Value>(
-            "list_group_movers",
-            strategy_id,
-            json!({
-                "axis_key": "sample-axis",
-                "from": "2025-02-04",
-                "to": "2025-02-03",
-            }),
-            None,
-            None,
-        )
-        .await
-        .map(|_| ());
-    let negative_turnover = server
-        .invoke::<_, Value>(
-            "list_group_movers",
-            strategy_id,
-            json!({
-                "axis_key": "sample-axis",
-                "from": "2025-02-03",
-                "to": "2025-02-04",
-                "min_avg_turnover": -1,
-            }),
-            None,
-            None,
-        )
-        .await
-        .map(|_| ());
-
     assert_eq!(
-        (
-            all_groups,
-            filtered_groups,
-            single_day,
-            reversed_range,
-            negative_turnover
-        ),
+        (all_groups, filtered_groups, single_day),
         (
             json!({
                 "axis_key": "sample-axis",
@@ -309,6 +278,15 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
                             },
                         ],
                     },
+                    {
+                        "group_key": "sample-group-empty",
+                        "name": "Sample group empty",
+                        "constituent_count": 0,
+                        "median_change_rate": null,
+                        "turnover_weighted_change_rate": null,
+                        "total_avg_turnover": 0.0,
+                        "top_stocks": [],
+                    },
                 ],
             }),
             json!({
@@ -350,6 +328,15 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
                             },
                         ],
                     },
+                    {
+                        "group_key": "sample-group-empty",
+                        "name": "Sample group empty",
+                        "constituent_count": 0,
+                        "median_change_rate": null,
+                        "turnover_weighted_change_rate": null,
+                        "total_avg_turnover": 0.0,
+                        "top_stocks": [],
+                    },
                 ],
             }),
             json!({
@@ -369,14 +356,88 @@ async fn list_group_movers_returns_group_metrics_and_top_constituents(
                     }],
                 }],
             }),
-            Err(rmcp::ErrorData::invalid_params(
-                "from must be on or before to",
-                None,
-            )),
-            Err(rmcp::ErrorData::invalid_params(
-                "min_avg_turnover must be a non-negative number",
-                None,
-            )),
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn list_group_movers_rejects_reversed_date_range(db: gateway_postgres::DatabaseHandle) {
+    let (server, strategy_id) = build_test_server(db).await;
+    let result = server
+        .invoke::<_, Value>(
+            "list_group_movers",
+            strategy_id,
+            json!({
+                "axis_key": "sample-axis",
+                "from": "2025-02-04",
+                "to": "2025-02-03",
+            }),
+            None,
+            None,
+        )
+        .await
+        .map(|_| ());
+
+    assert_eq!(
+        result,
+        Err(rmcp::ErrorData::invalid_params(
+            "from must be on or before to",
+            None,
+        )),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn list_group_movers_rejects_negative_minimum_turnover(db: gateway_postgres::DatabaseHandle) {
+    let (server, strategy_id) = build_test_server(db).await;
+    let result = server
+        .invoke::<_, Value>(
+            "list_group_movers",
+            strategy_id,
+            json!({
+                "axis_key": "sample-axis",
+                "from": "2025-02-03",
+                "to": "2025-02-04",
+                "min_avg_turnover": -1,
+            }),
+            None,
+            None,
+        )
+        .await
+        .map(|_| ());
+
+    assert_eq!(
+        result,
+        Err(rmcp::ErrorData::invalid_params(
+            "min_avg_turnover must be a non-negative number",
+            None,
+        )),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn list_group_movers_rejects_unknown_axis(db: gateway_postgres::DatabaseHandle) {
+    let (server, strategy_id) = build_test_server(db).await;
+    let result = server
+        .invoke::<_, Value>(
+            "list_group_movers",
+            strategy_id,
+            json!({
+                "axis_key": "unknown-axis",
+                "from": "2025-02-03",
+                "to": "2025-02-04",
+            }),
+            None,
+            None,
+        )
+        .await
+        .map(|_| ());
+
+    assert_eq!(
+        result,
+        Err(rmcp::ErrorData::invalid_params(
+            "group axis unknown-axis not found",
+            None,
+        )),
     );
 }
