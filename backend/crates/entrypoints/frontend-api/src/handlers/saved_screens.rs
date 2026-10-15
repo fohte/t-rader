@@ -20,12 +20,7 @@ fn map_error(error: SavedScreenUseCaseError) -> AppError {
         SavedScreenUseCaseError::Repository(SavedScreenRepositoryError::Persistence(error)) => {
             error.into()
         }
-        SavedScreenUseCaseError::Repository(SavedScreenRepositoryError::DuplicateName(name)) => {
-            AppError::Conflict(format!("saved screen '{name}' already exists"))
-        }
-        SavedScreenUseCaseError::Repository(SavedScreenRepositoryError::InvalidData(message)) => {
-            AppError::Internal(message)
-        }
+        SavedScreenUseCaseError::Repository(error) => AppError::Internal(error.to_string()),
     }
 }
 

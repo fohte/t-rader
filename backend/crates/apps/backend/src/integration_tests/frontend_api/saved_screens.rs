@@ -231,6 +231,49 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn whitespace_only_name_is_rejected(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let response = server
+            .post("/api/saved-screens")
+            .json(&request("   ", &["market-a"], None, None))
+            .await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "name must not be empty" }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn missing_saved_screen_returns_not_found(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let id = Uuid::from_u128(42);
+        let updated = server
+            .put(&format!("/api/saved-screens/{id}"))
+            .json(&request("condition-alpha", &["market-a"], None, None))
+            .await;
+        let deleted = server.delete(&format!("/api/saved-screens/{id}")).await;
+
+        assert_eq!(
+            (
+                updated.status_code(),
+                updated.json::<Value>(),
+                deleted.status_code(),
+                deleted.json::<Value>(),
+            ),
+            (
+                StatusCode::NOT_FOUND,
+                json!({ "error": format!("saved screen {id} not found") }),
+                StatusCode::NOT_FOUND,
+                json!({ "error": format!("saved screen {id} not found") }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn duplicate_name_returns_conflict(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         create_screen(

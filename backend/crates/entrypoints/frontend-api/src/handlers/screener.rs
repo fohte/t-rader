@@ -81,6 +81,23 @@ impl From<ScreenerSortBy> for ScreenerSortField {
     }
 }
 
+impl From<ScreenerSortField> for ScreenerSortBy {
+    fn from(value: ScreenerSortField) -> Self {
+        match value {
+            ScreenerSortField::Id => Self::Id,
+            ScreenerSortField::Name => Self::Name,
+            ScreenerSortField::Market => Self::Market,
+            ScreenerSortField::Sector => Self::Sector,
+            ScreenerSortField::Close => Self::Close,
+            ScreenerSortField::Per => Self::Per,
+            ScreenerSortField::Pbr => Self::Pbr,
+            ScreenerSortField::Roe => Self::Roe,
+            ScreenerSortField::DividendYield => Self::DividendYield,
+            ScreenerSortField::MarketCap => Self::MarketCap,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScreenerSortOrder {
@@ -93,6 +110,15 @@ impl From<ScreenerSortOrder> for ScreenerSortDirection {
         match value {
             ScreenerSortOrder::Asc => Self::Asc,
             ScreenerSortOrder::Desc => Self::Desc,
+        }
+    }
+}
+
+impl From<ScreenerSortDirection> for ScreenerSortOrder {
+    fn from(value: ScreenerSortDirection) -> Self {
+        match value {
+            ScreenerSortDirection::Asc => Self::Asc,
+            ScreenerSortDirection::Desc => Self::Desc,
         }
     }
 }

@@ -121,26 +121,8 @@ impl From<ScreenerSortDto> for ScreenerSort {
 impl From<ScreenerSort> for ScreenerSortDto {
     fn from(sort: ScreenerSort) -> Self {
         Self {
-            field: match sort.field {
-                core_application::screener::ScreenerSortField::Id => ScreenerSortBy::Id,
-                core_application::screener::ScreenerSortField::Name => ScreenerSortBy::Name,
-                core_application::screener::ScreenerSortField::Market => ScreenerSortBy::Market,
-                core_application::screener::ScreenerSortField::Sector => ScreenerSortBy::Sector,
-                core_application::screener::ScreenerSortField::Close => ScreenerSortBy::Close,
-                core_application::screener::ScreenerSortField::Per => ScreenerSortBy::Per,
-                core_application::screener::ScreenerSortField::Pbr => ScreenerSortBy::Pbr,
-                core_application::screener::ScreenerSortField::Roe => ScreenerSortBy::Roe,
-                core_application::screener::ScreenerSortField::DividendYield => {
-                    ScreenerSortBy::DividendYield
-                }
-                core_application::screener::ScreenerSortField::MarketCap => {
-                    ScreenerSortBy::MarketCap
-                }
-            },
-            direction: match sort.direction {
-                core_application::screener::ScreenerSortDirection::Asc => ScreenerSortOrder::Asc,
-                core_application::screener::ScreenerSortDirection::Desc => ScreenerSortOrder::Desc,
-            },
+            field: sort.field.into(),
+            direction: sort.direction.into(),
         }
     }
 }
