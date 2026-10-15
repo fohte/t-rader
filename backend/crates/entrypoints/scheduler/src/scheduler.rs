@@ -933,27 +933,27 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::eoddata_kospi_only(ConfiguredJobs { eoddata_kospi: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "eoddata_kospi_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::twse_only(ConfiguredJobs { twse: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "twse_index_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::ecb_calendar_only(ConfiguredJobs { ecb_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "ecb_calendar_event_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::fed_calendar_only(ConfiguredJobs { fed_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fed_calendar_event_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::alpha_vantage_calendar_only(ConfiguredJobs { alpha_vantage_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "alpha_vantage_calendar_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::fred_release_dates_only(ConfiguredJobs { fred_release_dates: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_release_dates_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::us_stock_master_only(ConfiguredJobs { us_stock_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_master_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::us_stock_bars_only(ConfiguredJobs { us_stock_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_bars_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "paper_order_filling", "trigger_evaluation"])]
-    #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "strategy_task_reconcile", "trigger_evaluation"])]
-    #[case::news_content_enabled(ConfiguredJobs { news_content: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "news_content_fetch", "trigger_evaluation"])]
+    #[case::no_optional_source(ConfiguredJobs::default(), vec!["news_aggregation", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::daily_bars_only(ConfiguredJobs { daily_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "daily_bars_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::fred_only(ConfiguredJobs { fred: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::eoddata_kospi_only(ConfiguredJobs { eoddata_kospi: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "eoddata_kospi_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::twse_only(ConfiguredJobs { twse: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "twse_index_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::e_stat_calendar_only(ConfiguredJobs { e_stat_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "e_stat_calendar_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::boj_calendar_only(ConfiguredJobs { boj_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "boj_calendar_event_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::ecb_calendar_only(ConfiguredJobs { ecb_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "ecb_calendar_event_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::fed_calendar_only(ConfiguredJobs { fed_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fed_calendar_event_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::alpha_vantage_calendar_only(ConfiguredJobs { alpha_vantage_calendar: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "alpha_vantage_calendar_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::fred_release_dates_only(ConfiguredJobs { fred_release_dates: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "fred_release_dates_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::existing_jquants_only(ConfiguredJobs { jquants: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::earnings_schedule_only(ConfiguredJobs { earnings_schedule: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "earnings_schedule_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::financial_summary_only(ConfiguredJobs { financial_summary: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "financial_summary_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::us_stock_master_only(ConfiguredJobs { us_stock_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_master_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::us_stock_bars_only(ConfiguredJobs { us_stock_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_bars_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "strategy_task_reconcile", "event_dispatch", "trigger_evaluation"])]
+    #[case::news_content_enabled(ConfiguredJobs { news_content: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "news_content_fetch", "event_dispatch", "trigger_evaluation"])]
     fn schedules_only_configured_sources(
         #[case] configured: ConfiguredJobs,
         #[case] expected_ids: Vec<&str>,
@@ -964,11 +964,10 @@ mod tests {
                 .filter_map(|crontab| crontab.options.id)
                 .collect::<Vec<_>>()
         });
-        let mut expected_ids = expected_ids
+        let expected_ids = expected_ids
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>();
-        expected_ids.insert(expected_ids.len() - 1, "event_dispatch".to_string());
         let expected_ids = Some(expected_ids);
 
         assert_eq!(actual_ids, expected_ids);

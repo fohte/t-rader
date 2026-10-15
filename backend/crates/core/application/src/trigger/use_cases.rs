@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures_util::{FutureExt, StreamExt, stream};
 use serde_json::Value;
 use uuid::Uuid;
@@ -179,20 +179,8 @@ impl TriggerUseCases {
         if !trigger.enabled {
             return Err(TriggerUseCaseError::Disabled(trigger_id));
         }
-        let strategy_id = trigger
-            .strategy_id
-            .ok_or(TriggerUseCaseError::NoStrategy(trigger_id))?;
-        let strategy = self
-            .strategy_repository
-            .find_by_id(strategy_id)
-            .await?
-            .ok_or(crate::strategy_task::SubmitTaskError::StrategyNotFound(
-                strategy_id,
-            ))?;
-
         let now = Utc::now();
-        let context = build_standard_context(&strategy, now);
-        let prompt = expand_template(&trigger.prompt_template, &payload, &context);
+        let (strategy_id, prompt) = self.resolve_trigger_prompt(&trigger, &payload, now).await?;
         let submitted = self
             .strategy_tasks
             .submit_task(
@@ -252,6 +240,27 @@ impl TriggerUseCases {
         Ok(submitted)
     }
 
+    async fn resolve_trigger_prompt(
+        &self,
+        trigger: &Trigger,
+        payload: &Value,
+        now: DateTime<Utc>,
+    ) -> Result<(Uuid, String), TriggerUseCaseError> {
+        let strategy_id = trigger
+            .strategy_id
+            .ok_or(TriggerUseCaseError::NoStrategy(trigger.trigger_id))?;
+        let strategy = self
+            .strategy_repository
+            .find_by_id(strategy_id)
+            .await?
+            .ok_or(crate::strategy_task::SubmitTaskError::StrategyNotFound(
+                strategy_id,
+            ))?;
+        let context = build_standard_context(&strategy, now);
+        let prompt = expand_template(&trigger.prompt_template, payload, &context);
+        Ok((strategy_id, prompt))
+    }
+
     pub(crate) async fn list_enabled_event_triggers(
         &self,
         event_type: &str,
@@ -267,18 +276,9 @@ impl TriggerUseCases {
         trigger: &Trigger,
         payload: &Value,
     ) -> Result<PreparedStrategyTaskSubmission, TriggerUseCaseError> {
-        let strategy_id = trigger
-            .strategy_id
-            .ok_or(TriggerUseCaseError::NoStrategy(trigger.trigger_id))?;
-        let strategy = self
-            .strategy_repository
-            .find_by_id(strategy_id)
-            .await?
-            .ok_or(crate::strategy_task::SubmitTaskError::StrategyNotFound(
-                strategy_id,
-            ))?;
-        let context = build_standard_context(&strategy, Utc::now());
-        let prompt = expand_template(&trigger.prompt_template, payload, &context);
+        let (strategy_id, prompt) = self
+            .resolve_trigger_prompt(trigger, payload, Utc::now())
+            .await?;
         self.strategy_tasks
             .prepare_submission(
                 strategy_id,

@@ -133,6 +133,15 @@ async fn firing_trigger_ids(db: &DatabaseHandle) -> Vec<Uuid> {
         .collect()
 }
 
+async fn event_dispatch_state(db: &DatabaseHandle, event_id: Uuid) -> (Uuid, bool) {
+    let event = event_entity::Entity::find_by_id(event_id)
+        .one(db)
+        .await
+        .expect("read event")
+        .expect("event exists");
+    (event.event_id, event.dispatched_at.is_some())
+}
+
 async fn submitted_tasks(fake: &FakeAgentTaskClient) -> Vec<(Uuid, String, Option<String>)> {
     fake.submitted
         .lock()
@@ -236,22 +245,18 @@ async fn repeated_dispatch_submits_each_event_trigger_once(db: DatabaseHandle) {
 }
 
 #[backend_test_macros::database_test]
-async fn skips_triggers_when_chain_depth_exceeds_the_limit(db: DatabaseHandle) {
+async fn invalid_trigger_configuration_does_not_block_later_events(db: DatabaseHandle) {
     let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
     testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await
         .expect("insert test agent configuration");
-    let event_id = create_event(
-        &db,
-        "sample_process.finished",
-        json!({}),
-        MAX_EVENT_CHAIN_DEPTH + 1,
-    )
-    .await;
-    create_event_trigger(
+    let invalid_event_id = create_event(&db, "sample_process.invalid", json!({}), 0).await;
+    let valid_event_id = create_event(&db, "sample_process.valid", json!({}), 0).await;
+    create_event_trigger(&db, strategy_id, "sample_process.invalid", None, "   ").await;
+    let valid_trigger_id = create_event_trigger(
         &db,
         strategy_id,
-        "sample_process.finished",
+        "sample_process.valid",
         None,
         "synthetic prompt",
     )
@@ -260,21 +265,95 @@ async fn skips_triggers_when_chain_depth_exceeds_the_limit(db: DatabaseHandle) {
     let dispatch = build_use_cases(db.clone()).event_dispatch();
 
     let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
-    let event_dispatched = event_entity::Entity::find_by_id(event_id)
-        .one(&db)
-        .await
-        .expect("read event")
-        .is_some_and(|event| event.dispatched_at.is_some());
 
     assert_eq!(
         (
             outcome.map_err(|error| error.to_string()),
+            vec![
+                event_dispatch_state(&db, invalid_event_id).await,
+                event_dispatch_state(&db, valid_event_id).await,
+            ],
             tasks(&db).await,
             firing_trigger_ids(&db).await,
             submitted_tasks(&fake).await,
-            event_dispatched,
         ),
-        (Ok((1, 0)), vec![], vec![], vec![], true),
+        (
+            Err("failed to process 1 event trigger(s)".to_string()),
+            vec![(invalid_event_id, true), (valid_event_id, true)],
+            vec![task_shape(strategy_id, "synthetic prompt")],
+            vec![valid_trigger_id],
+            vec![(
+                strategy_id,
+                "synthetic prompt".to_string(),
+                Some(DEFAULT_PURPOSE.to_string()),
+            )],
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn dispatches_at_the_limit_and_skips_events_above_it(db: DatabaseHandle) {
+    let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
+    testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        .await
+        .expect("insert test agent configuration");
+    let allowed_event_id = create_event(
+        &db,
+        "sample_process.within_limit",
+        json!({}),
+        MAX_EVENT_CHAIN_DEPTH,
+    )
+    .await;
+    let skipped_event_id = create_event(
+        &db,
+        "sample_process.over_limit",
+        json!({}),
+        MAX_EVENT_CHAIN_DEPTH + 1,
+    )
+    .await;
+    let allowed_trigger_id = create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.within_limit",
+        None,
+        "synthetic prompt",
+    )
+    .await;
+    create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.over_limit",
+        None,
+        "unused prompt",
+    )
+    .await;
+    let fake = Arc::new(FakeAgentTaskClient::new());
+    let dispatch = build_use_cases(db.clone()).event_dispatch();
+
+    let outcome = dispatch.dispatch_and_cleanup(fake.as_ref()).await;
+
+    assert_eq!(
+        (
+            outcome.map_err(|error| error.to_string()),
+            vec![
+                event_dispatch_state(&db, allowed_event_id).await,
+                event_dispatch_state(&db, skipped_event_id).await,
+            ],
+            tasks(&db).await,
+            firing_trigger_ids(&db).await,
+            submitted_tasks(&fake).await,
+        ),
+        (
+            Ok((2, 0)),
+            vec![(allowed_event_id, true), (skipped_event_id, true)],
+            vec![task_shape(strategy_id, "synthetic prompt")],
+            vec![allowed_trigger_id],
+            vec![(
+                strategy_id,
+                "synthetic prompt".to_string(),
+                Some(DEFAULT_PURPOSE.to_string()),
+            )],
+        ),
     );
 }
 

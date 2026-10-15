@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::agent_task_client::AgentTaskClient;
 use crate::event::{EventRepositoryError, SharedEventRepository};
+use crate::strategy_task::SubmitTaskError;
 use crate::trigger::{TriggerUseCaseError, TriggerUseCases, evaluate_event_match};
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkError};
 
@@ -20,8 +21,8 @@ pub enum EventDispatchUseCaseError {
     UnitOfWork(#[from] UnitOfWorkError),
     #[error("event {event_id} was already fired for trigger {trigger_id}")]
     DuplicateFiring { event_id: Uuid, trigger_id: Uuid },
-    #[error("failed to submit {0} event-trigger task(s)")]
-    TaskSubmissionFailures(usize),
+    #[error("failed to process {0} event trigger(s)")]
+    EventTriggerFailures(usize),
     #[error("event {0} could not be marked dispatched")]
     EventNotMarkedDispatched(Uuid),
 }
@@ -51,7 +52,7 @@ impl EventDispatchUseCases {
         agent_client: &dyn AgentTaskClient,
     ) -> Result<usize, EventDispatchUseCaseError> {
         let mut dispatched_events = 0;
-        let mut submission_failures = 0;
+        let mut trigger_failures = 0;
 
         loop {
             let transaction = self.unit_of_work.begin().await?;
@@ -76,10 +77,24 @@ impl EventDispatchUseCases {
                         continue;
                     }
 
-                    let prepared = self
+                    let prepared = match self
                         .triggers
                         .prepare_event_task(&trigger, &event.payload)
-                        .await?;
+                        .await
+                    {
+                        Ok(prepared) => prepared,
+                        Err(error) if is_trigger_configuration_error(&error) => {
+                            tracing::warn!(
+                                %error,
+                                event_id = %event.event_id,
+                                trigger_id = %trigger.trigger_id,
+                                "event trigger configuration rejected",
+                            );
+                            trigger_failures += 1;
+                            continue;
+                        }
+                        Err(error) => return Err(error.into()),
+                    };
                     self.triggers
                         .insert_prepared_event_task(&transaction, &prepared)
                         .await?;
@@ -126,14 +141,14 @@ impl EventDispatchUseCases {
                         %trigger_id,
                         "event-trigger task submission failed",
                     );
-                    submission_failures += 1;
+                    trigger_failures += 1;
                 }
             }
         }
 
-        if submission_failures > 0 {
-            return Err(EventDispatchUseCaseError::TaskSubmissionFailures(
-                submission_failures,
+        if trigger_failures > 0 {
+            return Err(EventDispatchUseCaseError::EventTriggerFailures(
+                trigger_failures,
             ));
         }
         Ok(dispatched_events)
@@ -152,4 +167,17 @@ impl EventDispatchUseCases {
         let dispatched = self.dispatch_pending_events(agent_client).await?;
         Ok((dispatched, deleted))
     }
+}
+
+fn is_trigger_configuration_error(error: &TriggerUseCaseError) -> bool {
+    matches!(
+        error,
+        TriggerUseCaseError::NoStrategy(_)
+            | TriggerUseCaseError::PurposeNotFound(_)
+            | TriggerUseCaseError::Submit(
+                SubmitTaskError::StrategyNotFound(_)
+                    | SubmitTaskError::EmptyPrompt
+                    | SubmitTaskError::PurposeNotFound(_)
+            )
+    )
 }

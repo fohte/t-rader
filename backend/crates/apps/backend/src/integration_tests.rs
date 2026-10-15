@@ -165,7 +165,7 @@ async fn postgres_queue_enqueues_one_keyed_event_dispatch_job(
 }
 
 #[backend_test_macros::database_test]
-async fn all_five_submission_routes_converge_on_strategy_task_use_case(
+async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
     db: gateway_postgres::DatabaseHandle,
 ) {
     let fake = Arc::new(FakeAgentTaskClient::new());
@@ -249,7 +249,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         .await;
     res.assert_status_ok();
 
-    // 5 経路すべてが StrategyTaskUseCases を通って strategy_task 行を作ることを source 別に検証する。
+    // mgmt-mcp、frontend、cron、hook、review の 5 経路が strategy_task 行を作ることを検証する。
     let mut rows: Vec<(String, String, StrategyTaskPhase)> = strategy_task::Entity::find()
         .filter(strategy_task::Column::Source.ne("sample"))
         .filter(strategy_task::Column::StrategyId.eq(strategy_id))
@@ -296,7 +296,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         ],
     );
 
-    // 同一の agent_client (= 同一の StrategyTaskUseCases 呼び出し経路) に 5 件とも届いていることを検証する。
+    // 同一の agent_client に 5 件の prompt が届くことを検証する。
     let mut submitted_prompts: Vec<String> = fake
         .submitted
         .lock()
