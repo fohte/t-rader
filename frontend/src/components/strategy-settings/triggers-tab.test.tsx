@@ -228,6 +228,13 @@ function setup(initial: Trigger[] = []) {
   return render(<TriggersTab strategyId="strat-1" />, { wrapper: Wrapper })
 }
 
+function triggerLabels(list: HTMLElement): Array<string | null> {
+  return within(list)
+    .getAllByRole('button')
+    .filter((button) => button.getAttribute('aria-label') == null)
+    .map((button) => button.textContent)
+}
+
 afterEach(() => {
   cleanup()
   activeMiddleware?.eject()
@@ -254,13 +261,20 @@ describe('TriggersTab', () => {
         hook_slug: 'tv-alert',
         prompt_template: 'hook fired',
       }),
+      makeTrigger({
+        trigger_id: 't-event',
+        kind: 'event',
+        event_type: 'demo_record.changed',
+        prompt_template: 'event fired',
+      }),
     ])
 
     const list = await screen.findByTestId('trigger-list')
-    await waitFor(() => {
-      expect(within(list).getByText('0 9 * * 1-5')).toBeInTheDocument()
-    })
-    expect(within(list).getByText('tv-alert')).toBeInTheDocument()
+    expect(triggerLabels(list)).toEqual([
+      'cron0 9 * * 1-5',
+      'hooktv-alert',
+      'eventdemo_record.changed',
+    ])
   })
 
   it('初期表示で先頭の trigger を選択しフォームに反映する', async () => {
@@ -314,6 +328,27 @@ describe('TriggersTab', () => {
             enabled: true,
           },
         },
+      ])
+    })
+  })
+
+  it('cron trigger の作成後に一覧へ追加される', async () => {
+    const user = userEvent.setup()
+    setup([])
+
+    await screen.findByTestId('trigger-list')
+    await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
+    fireEvent.change(screen.getByLabelText('schedule (cron 式 UTC)'), {
+      target: { value: '0 9 * * 1-5' },
+    })
+    fireEvent.change(screen.getByLabelText('prompt_template'), {
+      target: { value: 'synthetic prompt' },
+    })
+    await user.click(screen.getByRole('button', { name: '作成' }))
+
+    await waitFor(() => {
+      expect(triggerLabels(screen.getByTestId('trigger-list'))).toEqual([
+        'cron0 9 * * 1-5',
       ])
     })
   })
