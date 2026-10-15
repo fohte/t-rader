@@ -16,27 +16,26 @@ impl TaskHandler for DailyBarsIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::DAILY_BARS_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.market_daily_bar_source,
-                    "J-Quants market daily bar source",
-                )?;
-                let instrument_source = require_source(
-                    state.dependencies.daily_bar_source,
-                    "J-Quants daily bar source",
-                )?;
-                ingest_daily_bars(
-                    &state.dependencies.bars,
-                    source.as_ref(),
-                    instrument_source.as_ref(),
-                )
-                .await
-            },
-        )
+        let state = match super::scheduler_state(&context) {
+            Ok(state) => state,
+            Err(error) => return Err(error),
+        };
+        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
+            let source = require_source(
+                state.dependencies.market_daily_bar_source,
+                "J-Quants market daily bar source",
+            )?;
+            let instrument_source = require_source(
+                state.dependencies.daily_bar_source,
+                "J-Quants daily bar source",
+            )?;
+            ingest_daily_bars(
+                &state.dependencies.bars,
+                source.as_ref(),
+                instrument_source.as_ref(),
+            )
+            .await
+        })
         .await
     }
 }

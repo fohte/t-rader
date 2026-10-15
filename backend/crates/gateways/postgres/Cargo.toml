@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-test-support = ["dep:migration", "dep:sqlx"]
+test-support = ["dep:migration"]
 
 [dependencies]
 async-trait = { workspace = true }
@@ -22,11 +22,10 @@ sea-orm = { workspace = true, features = [
 ] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sqlx = { workspace = true, optional = true, features = [
+sqlx = { workspace = true, features = [
     "runtime-tokio",
     "tls-native-tls",
     "postgres",
-    "migrate",
 ] }
 tracing = { workspace = true }
 rust_decimal = { workspace = true }

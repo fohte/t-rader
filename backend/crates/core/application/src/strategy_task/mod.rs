@@ -6,6 +6,8 @@ mod submit;
 mod error;
 mod reconcile_job_queue;
 mod reconcile_job_use_cases;
+mod reconcile_lock;
+mod reconcile_lock_use_cases;
 mod repository;
 mod types;
 
@@ -25,6 +27,10 @@ pub use reconcile_job_queue::{
     StrategyTaskReconcileJobQueueError,
 };
 pub use reconcile_job_use_cases::StrategyTaskReconcileJobUseCases;
+pub use reconcile_lock::{
+    SharedStrategyTaskReconcileLock, StrategyTaskReconcileLock, StrategyTaskReconcileLockGuard,
+};
+pub use reconcile_lock_use_cases::StrategyTaskReconcileLockUseCases;
 pub use repository::{
     SharedStrategyTaskRepository, StrategyTaskRepository, StrategyTaskRepositoryError,
 };

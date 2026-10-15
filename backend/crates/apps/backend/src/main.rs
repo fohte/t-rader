@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use backend::cli::Cli;
+use backend::cli::{Cli, RunMode};
 use backend::{
     build_agent_webhook_state, build_external_webhook_state, build_http_state, create_router,
 };
@@ -20,6 +20,7 @@ use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
+use core_application::strategy_task::StrategyTaskReconcileLockUseCases;
 use core_application::valuation_source::SharedValuationSource;
 use core_application::web_search::SharedWebSearchClient;
 use entrypoint_frontend_api::FrontendApiState;
@@ -32,7 +33,7 @@ use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
 use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
-use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
+use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog, PostgresStrategyTaskReconcileLock};
 use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
@@ -62,6 +63,16 @@ use startup::{
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {
     let cli = Cli::parse();
+    if let Some(job_name) = cli.run_job.as_deref()
+        && !entrypoint_scheduler::is_supported_job(job_name)
+    {
+        return Err(StartupError::Config(format!("unknown job: {job_name}")));
+    }
+    let run_mode = if cli.run_job.is_some() {
+        RunMode::Worker
+    } else {
+        cli.run_mode
+    };
 
     // --dump-openapi: OpenAPI スペックを JSON で標準出力に出力して終了する
     if cli.dump_openapi {
@@ -121,11 +132,12 @@ async fn main() -> Result<(), StartupError> {
         return Ok(());
     }
 
-    let admin_ui_settings = if cli.run_mode.starts_worker() && !cli.backfill_twse_indices {
-        Some(worker_admin_ui_settings_from_env()?)
-    } else {
-        None
-    };
+    let admin_ui_settings =
+        if cli.run_job.is_none() && run_mode.starts_worker() && !cli.backfill_twse_indices {
+            Some(worker_admin_ui_settings_from_env()?)
+        } else {
+            None
+        };
 
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
 
@@ -299,15 +311,14 @@ async fn main() -> Result<(), StartupError> {
                 None
             }
         };
-    let sec_user_agent = if cli.run_mode.starts_worker() {
+    let sec_user_agent = if run_mode.starts_worker() {
         std::env::var("SEC_USER_AGENT").ok()
     } else {
         None
     };
-    let us_stock_master_source =
-        us_stock_master_source(cli.run_mode.starts_worker(), sec_user_agent)?;
+    let us_stock_master_source = us_stock_master_source(run_mode.starts_worker(), sec_user_agent)?;
     let us_stock_bar_source =
-        alpaca_us_stock_bar_source_from_env(cli.run_mode.starts_worker(), &redis_url)?;
+        alpaca_us_stock_bar_source_from_env(run_mode.starts_worker(), &redis_url)?;
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -365,7 +376,7 @@ async fn main() -> Result<(), StartupError> {
         ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
         fred_source,
         eoddata_kospi_source,
-        twse_source: twse::worker_source(cli.run_mode, &redis_url)?,
+        twse_source: twse::worker_source(run_mode, &redis_url)?,
         e_stat_calendar_source: Some(e_stat_calendar_source),
         alpha_vantage_calendar_source,
         fred_calendar_event_source,
@@ -377,12 +388,28 @@ async fn main() -> Result<(), StartupError> {
         short_selling_source,
         margin_source,
         strategy_tasks: use_cases.strategy_tasks(),
+        strategy_task_reconcile_lock: StrategyTaskReconcileLockUseCases::new(Arc::new(
+            PostgresStrategyTaskReconcileLock::new(db.get_postgres_connection_pool().clone()),
+        )),
         event_dispatch: use_cases.event_dispatch(),
         triggers: use_cases.triggers(),
         agent_task_client: agent_task_client.clone(),
         strategy_task_reconcile_enabled,
     };
-    let app = if cli.run_mode.starts_api() {
+    if let Some(job_name) = cli.run_job.as_deref() {
+        entrypoint_scheduler::run_job(
+            job_name,
+            db.get_postgres_connection_pool().clone(),
+            dependencies,
+        )
+        .await
+        .map_err(|error| {
+            StartupError::Runtime(format!("scheduled job '{job_name}' failed: {error}"))
+        })?;
+        return Ok(());
+    }
+
+    let app = if run_mode.starts_api() {
         // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
         // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
         // 合わさって空文字同士の一致で認証をすり抜けてしまう。
@@ -451,7 +478,7 @@ async fn main() -> Result<(), StartupError> {
         let _ = signal_tx.send(true);
     });
 
-    let worker = if cli.run_mode.starts_worker() {
+    let worker = if run_mode.starts_worker() {
         let worker = Scheduler::initialize(
             db.get_postgres_connection_pool().clone(),
             dependencies,

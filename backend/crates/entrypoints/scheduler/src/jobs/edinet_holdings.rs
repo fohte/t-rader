@@ -19,22 +19,21 @@ impl TaskHandler for ShareholdingStructureIngest {
         core_application::ingest_status::SHAREHOLDING_STRUCTURE_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.shareholding_structure_source,
-                    "J-Quants shareholding structure source",
-                )?;
-                ingest_shareholding_structures(
-                    &state.dependencies.shareholding_structures,
-                    source.as_ref(),
-                )
-                .await
-            },
-        )
+        let state = match super::scheduler_state(&context) {
+            Ok(state) => state,
+            Err(error) => return Err(error),
+        };
+        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
+            let source = require_source(
+                state.dependencies.shareholding_structure_source,
+                "J-Quants shareholding structure source",
+            )?;
+            ingest_shareholding_structures(
+                &state.dependencies.shareholding_structures,
+                source.as_ref(),
+            )
+            .await
+        })
         .await
     }
 }

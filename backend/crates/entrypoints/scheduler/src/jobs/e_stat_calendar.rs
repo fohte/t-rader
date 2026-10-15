@@ -14,18 +14,17 @@ impl TaskHandler for EStatCalendarIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::E_STAT_CALENDAR_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.e_stat_calendar_source,
-                    "e-Stat calendar source",
-                )?;
-                ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref()).await
-            },
-        )
+        let state = match super::scheduler_state(&context) {
+            Ok(state) => state,
+            Err(error) => return Err(error),
+        };
+        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
+            let source = require_source(
+                state.dependencies.e_stat_calendar_source,
+                "e-Stat calendar source",
+            )?;
+            ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref()).await
+        })
         .await
     }
 }

@@ -15,24 +15,23 @@ impl TaskHandler for EodDataKospiIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::EODDATA_KOSPI_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.eoddata_kospi_source,
-                    "EODData KOSPI source",
-                )?;
-                let upserted = state
-                    .dependencies
-                    .indicator_observations
-                    .ingest_eoddata_series(source.as_ref())
-                    .await?;
+        let state = match super::scheduler_state(&context) {
+            Ok(state) => state,
+            Err(error) => return Err(error),
+        };
+        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
+            let source = require_source(
+                state.dependencies.eoddata_kospi_source,
+                "EODData KOSPI source",
+            )?;
+            let upserted = state
+                .dependencies
+                .indicator_observations
+                .ingest_eoddata_series(source.as_ref())
+                .await?;
 
-                Ok(EodDataKospiIngestStats { upserted })
-            },
-        )
+            Ok(EodDataKospiIngestStats { upserted })
+        })
         .await
     }
 }

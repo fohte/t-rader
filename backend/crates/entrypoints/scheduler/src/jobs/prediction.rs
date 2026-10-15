@@ -10,8 +10,12 @@ impl TaskHandler for PredictionGrading {
     const IDENTIFIER: &'static str = core_application::ingest_status::PREDICTION_GRADING_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
+        let state = match super::scheduler_state(&context) {
+            Ok(state) => state,
+            Err(error) => return Err(error),
+        };
         run_with_ingest_run_log_state(
-            context,
+            state,
             Self::IDENTIFIER,
             WEEKLY_TIMEOUT,
             |state| async move {

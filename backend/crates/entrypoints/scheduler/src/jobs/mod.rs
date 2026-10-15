@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::time::Duration;
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use chrono_tz::Asia::Tokyo;
 use core_application::ingest_run_log::IngestRunLog;
 use graphile_worker::WorkerContext;
@@ -49,8 +49,15 @@ pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, Stri
     source.ok_or_else(|| format!("{name} is not configured"))
 }
 
+pub(super) fn scheduler_state(context: &WorkerContext) -> Result<SchedulerState, String> {
+    context
+        .get_ext::<SchedulerState>()
+        .cloned()
+        .ok_or_else(|| "scheduler state is not configured".to_string())
+}
+
 pub(super) async fn run_with_state<F, Fut>(
-    context: WorkerContext,
+    state: SchedulerState,
     task_name: &'static str,
     timeout: Duration,
     task: F,
@@ -59,11 +66,7 @@ where
     F: FnOnce(SchedulerState) -> Fut,
     Fut: Future<Output = Result<(), String>>,
 {
-    let Some(state) = context.get_ext::<SchedulerState>() else {
-        return Err("scheduler state is not configured".to_string());
-    };
-
-    match run_with_timeout(task_name, timeout, task(state.clone())).await {
+    match run_with_timeout(task_name, timeout, task(state)).await {
         TimedTaskResult::Completed(Ok(())) => {
             tracing::info!(task = task_name, "scheduled job completed");
             Ok(())
@@ -77,7 +80,7 @@ where
 }
 
 pub(super) async fn run_with_ingest_run_log_state<F, Fut, Stats>(
-    context: WorkerContext,
+    state: SchedulerState,
     task_name: &'static str,
     timeout: Duration,
     task: F,
@@ -87,21 +90,12 @@ where
     Fut: Future<Output = Result<Stats, String>>,
     Stats: Serialize,
 {
-    let Some(state) = context.get_ext::<SchedulerState>() else {
-        return Err("scheduler state is not configured".to_string());
-    };
-
-    run_with_ingest_run_log(
-        state.dependencies.ingest_run_log.as_ref(),
-        task_name,
-        timeout,
-        task(state.clone()),
-    )
-    .await
+    let ingest_run_log = state.dependencies.ingest_run_log.clone();
+    run_with_ingest_run_log(ingest_run_log.as_ref(), task_name, timeout, task(state)).await
 }
 
 pub(super) async fn run_with_ingest_run_log_state_and_failure_stats<F, Fut, Stats>(
-    context: WorkerContext,
+    state: SchedulerState,
     task_name: &'static str,
     duration: Duration,
     task: F,
@@ -111,15 +105,12 @@ where
     Fut: Future<Output = Result<Stats, (Stats, String)>>,
     Stats: Serialize,
 {
-    let Some(state) = context.get_ext::<SchedulerState>() else {
-        return Err("scheduler state is not configured".to_string());
-    };
-
+    let ingest_run_log = state.dependencies.ingest_run_log.clone();
     run_with_ingest_run_log_with_failure_stats(
-        state.dependencies.ingest_run_log.as_ref(),
+        ingest_run_log.as_ref(),
         task_name,
         duration,
-        task(state.clone()),
+        task(state),
     )
     .await
 }
@@ -196,6 +187,32 @@ where
     F: Future<Output = Result<Stats, IngestTaskFailure<Stats>>>,
     Stats: Serialize,
 {
+    let started_before = match run_started_before(Utc::now(), duration) {
+        Ok(started_before) => started_before,
+        Err(error) => {
+            tracing::error!(task = task_name, %error, "failed to recover interrupted ingest runs");
+            return Err(error);
+        }
+    };
+    let recovered = match ingest_run_log
+        .fail_interrupted_before(task_name, started_before)
+        .await
+    {
+        Ok(recovered) => recovered,
+        Err(error) => {
+            let error = format!("failed to recover interrupted ingest runs: {error}");
+            tracing::error!(task = task_name, %error, "failed to start scheduled job");
+            return Err(error);
+        }
+    };
+    if recovered > 0 {
+        tracing::info!(
+            task = task_name,
+            recovered,
+            "interrupted ingest runs recovered"
+        );
+    }
+
     let run_id = match ingest_run_log.start(task_name).await {
         Ok(run_id) => run_id,
         Err(error) => {
@@ -272,6 +289,15 @@ where
     }
 }
 
+fn run_started_before(
+    now: DateTime<Utc>,
+    duration: Duration,
+) -> Result<DateTime<chrono::FixedOffset>, String> {
+    let duration = ChronoDuration::from_std(duration)
+        .map_err(|error| format!("job timeout cannot be represented: {error}"))?;
+    Ok(now.fixed_offset() - duration)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -294,8 +320,8 @@ mod tests {
     use rstest::rstest;
 
     use super::{
-        TimedTaskResult, run_with_ingest_run_log, run_with_ingest_run_log_with_failure_stats,
-        run_with_timeout, today_in_tokyo,
+        TimedTaskResult, run_started_before, run_with_ingest_run_log,
+        run_with_ingest_run_log_with_failure_stats, run_with_timeout, today_in_tokyo,
     };
 
     const RUN_ID: Uuid = Uuid::from_u128(1);
@@ -315,6 +341,9 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq)]
     enum Call {
+        RecoverInterrupted {
+            job: String,
+        },
         Start {
             job: String,
         },
@@ -332,6 +361,7 @@ mod tests {
     #[derive(Default)]
     struct FakeIngestRunLog {
         calls: Mutex<Vec<Call>>,
+        fail_recovery: bool,
         fail_start: bool,
         fail_finish: bool,
     }
@@ -391,10 +421,19 @@ mod tests {
 
         async fn fail_interrupted_before(
             &self,
-            _job: &str,
+            job: &str,
             _started_before: chrono::DateTime<chrono::FixedOffset>,
         ) -> Result<u64, PersistenceError> {
-            Ok(0)
+            self.calls.lock().await.push(Call::RecoverInterrupted {
+                job: job.to_string(),
+            });
+            if self.fail_recovery {
+                Err(PersistenceError::Database(
+                    "database unavailable".to_string(),
+                ))
+            } else {
+                Ok(0)
+            }
         }
     }
 
@@ -450,6 +489,9 @@ mod tests {
             (
                 Ok(()),
                 vec![
+                    Call::RecoverInterrupted {
+                        job: "sample_ingest".to_string(),
+                    },
                     Call::Start {
                         job: "sample_ingest".to_string(),
                     },
@@ -459,6 +501,19 @@ mod tests {
                     },
                 ],
             ),
+        );
+    }
+
+    #[test]
+    fn computes_the_recovery_cutoff_from_the_job_timeout() {
+        let now = Utc
+            .with_ymd_and_hms(2039, 5, 10, 16, 0, 0)
+            .single()
+            .expect("valid timestamp");
+
+        assert_eq!(
+            run_started_before(now, Duration::from_secs(3600)),
+            Ok((now - chrono::Duration::hours(1)).fixed_offset()),
         );
     }
 
@@ -479,6 +534,9 @@ mod tests {
             (
                 Err("firecrawl_402".to_owned()),
                 vec![
+                    Call::RecoverInterrupted {
+                        job: "news_content_fetch".to_string(),
+                    },
                     Call::Start {
                         job: "news_content_fetch".to_owned(),
                     },
@@ -520,7 +578,48 @@ mod tests {
             ),
             (
                 Err("failed to start ingest run log: database unavailable".to_string()),
-                vec![Call::Start {
+                vec![
+                    Call::RecoverInterrupted {
+                        job: "sample_ingest".to_string(),
+                    },
+                    Call::Start {
+                        job: "sample_ingest".to_string(),
+                    },
+                ],
+                false,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn does_not_start_the_job_when_stale_run_cleanup_fails() {
+        let log = Arc::new(FakeIngestRunLog {
+            fail_recovery: true,
+            ..Default::default()
+        });
+        let task_started = Arc::new(AtomicBool::new(false));
+        let task_started_in_future = Arc::clone(&task_started);
+
+        let result = run_with_ingest_run_log(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(1),
+            async move {
+                task_started_in_future.store(true, Ordering::SeqCst);
+                Ok(IngestStats { rows: 3 })
+            },
+        )
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                log.calls.lock().await.clone(),
+                task_started.load(Ordering::SeqCst),
+            ),
+            (
+                Err("failed to recover interrupted ingest runs: database unavailable".to_string()),
+                vec![Call::RecoverInterrupted {
                     job: "sample_ingest".to_string(),
                 }],
                 false,
@@ -545,6 +644,9 @@ mod tests {
             (
                 Err("operation failed".to_string()),
                 vec![
+                    Call::RecoverInterrupted {
+                        job: "sample_ingest".to_string(),
+                    },
                     Call::Start {
                         job: "sample_ingest".to_string(),
                     },
@@ -574,6 +676,9 @@ mod tests {
             (
                 Err("sample_ingest timed out after 1ms".to_string()),
                 vec![
+                    Call::RecoverInterrupted {
+                        job: "sample_ingest".to_string(),
+                    },
                     Call::Start {
                         job: "sample_ingest".to_string(),
                     },
@@ -606,6 +711,9 @@ mod tests {
             (
                 Ok(()),
                 vec![
+                    Call::RecoverInterrupted {
+                        job: "sample_ingest".to_string(),
+                    },
                     Call::Start {
                         job: "sample_ingest".to_string(),
                     },

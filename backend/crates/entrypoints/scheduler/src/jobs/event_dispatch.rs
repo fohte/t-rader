@@ -22,26 +22,25 @@ impl TaskHandler for EventDispatch {
     const IDENTIFIER: &'static str = EVENT_DISPATCH_JOB_IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let (dispatched, deleted) = state
-                    .dependencies
-                    .event_dispatch
-                    .dispatch_and_cleanup(state.dependencies.agent_task_client.as_ref())
-                    .await
-                    .map_err(|error| error.to_string())?;
-                if dispatched > 0 {
-                    tracing::info!(dispatched, "pending events dispatched");
-                }
-                if deleted > 0 {
-                    tracing::info!(deleted, "expired events deleted");
-                }
-                Ok(())
-            },
-        )
+        let state = match super::scheduler_state(&context) {
+            Ok(state) => state,
+            Err(error) => return Err(error),
+        };
+        run_with_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
+            let (dispatched, deleted) = state
+                .dependencies
+                .event_dispatch
+                .dispatch_and_cleanup(state.dependencies.agent_task_client.as_ref())
+                .await
+                .map_err(|error| error.to_string())?;
+            if dispatched > 0 {
+                tracing::info!(dispatched, "pending events dispatched");
+            }
+            if deleted > 0 {
+                tracing::info!(deleted, "expired events deleted");
+            }
+            Ok(())
+        })
         .await
     }
 }
