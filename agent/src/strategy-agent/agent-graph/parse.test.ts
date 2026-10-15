@@ -89,6 +89,35 @@ phases:
     )
   })
 
+  it.each([
+    { name: 'zero at the graph level', target: 'graph', value: '0' },
+    { name: 'too large at the graph level', target: 'graph', value: '361' },
+    { name: 'fractional at the graph level', target: 'graph', value: '1.5' },
+    { name: 'zero in a phase', target: 'phase', value: '0' },
+    { name: 'too large in a phase', target: 'phase', value: '361' },
+    { name: 'fractional in a phase', target: 'phase', value: '1.5' },
+  ])('rejects a timeout that is $name', ({ target, value }) => {
+    const timeoutConfig =
+      target === 'graph'
+        ? `timeout_minutes: ${value}`
+        : `phases:\n  - key: sample\n    label: Sample\n    model: example-model-sample\n    prompt: sample\n    timeout_minutes: ${value}`
+    const yaml =
+      target === 'graph'
+        ? `${timeoutConfig}\nphases:\n  - key: sample\n    label: Sample\n    model: example-model-sample\n    prompt: sample`
+        : timeoutConfig
+
+    const normalized = parseAgentGraph(yaml).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+    expect(normalized).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
   it('leaves tools undefined when omitted, distinct from an explicit empty list', () => {
     const yaml = `
 phases:

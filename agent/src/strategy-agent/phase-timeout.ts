@@ -7,7 +7,7 @@ export interface PhaseTimeout {
 export const isPhaseTimeoutSignal = (
   signal: AbortSignal | undefined,
   phaseTimeout: PhaseTimeout | undefined,
-): boolean => {
+): phaseTimeout is PhaseTimeout => {
   // AbortSignal.any は最初に abort した入力の reason を保持する。
   return (
     signal?.aborted === true &&

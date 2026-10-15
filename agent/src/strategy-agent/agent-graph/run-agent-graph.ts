@@ -45,8 +45,7 @@ const isExecutionAborted = (context: RunAgentGraphContext): boolean =>
 
 const getExecutionAbortMessage = (context: RunAgentGraphContext): string => {
   const { phaseTimeout } = context
-  return isPhaseTimeoutSignal(context.deadlineSignal, phaseTimeout) &&
-    phaseTimeout !== undefined
+  return isPhaseTimeoutSignal(context.deadlineSignal, phaseTimeout)
     ? phaseTimeoutMessage(phaseTimeout)
     : DEADLINE_EXCEEDED_MESSAGE
 }
@@ -378,11 +377,7 @@ export const runAgentGraph = async (
 
     const { phaseTimeout } = phaseExecution.context
     if (
-      isPhaseTimeoutSignal(
-        phaseExecution.context.deadlineSignal,
-        phaseTimeout,
-      ) &&
-      phaseTimeout !== undefined
+      isPhaseTimeoutSignal(phaseExecution.context.deadlineSignal, phaseTimeout)
     ) {
       return buildPhaseTimeoutResult(phaseTimeout)
     }
@@ -394,12 +389,6 @@ export const runAgentGraph = async (
         )
       }
       return buildFailureResult(phase, phaseResult.error)
-    }
-    if (isExecutionAborted(phaseExecution.context)) {
-      return buildFailureResult(
-        phase,
-        new Error(getExecutionAbortMessage(phaseExecution.context)),
-      )
     }
     results[phase.key] = phaseResult.value
   }

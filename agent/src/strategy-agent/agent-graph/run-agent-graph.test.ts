@@ -367,6 +367,64 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it('keeps partial for_each output when a task deadline aborts the last item', async () => {
+    const controller = new AbortController()
+    let workCalls = 0
+    const { deps, calls } = buildDeps((call) => {
+      if (call.messageText.includes('do plan')) {
+        return Promise.resolve({
+          structuredResponse: { items: ['a', 'b'] },
+        })
+      }
+      workCalls += 1
+      if (workCalls === 1) {
+        return Promise.resolve({ structuredResponse: { value: 'done' } })
+      }
+      controller.abort()
+      return Promise.reject(new Error('aborted'))
+    })
+    const result = await runAgentGraph(
+      deps,
+      {
+        phases: [
+          {
+            key: 'plan',
+            label: 'Plan',
+            model: 'example-model-plan',
+            prompt: 'do plan',
+            skills: [],
+            output: { items: { type: 'array', items: { type: 'string' } } },
+          },
+          {
+            key: 'work',
+            label: 'Work',
+            model: 'example-model-work',
+            prompt: 'do work',
+            forEach: 'plan.items',
+            maxParallel: 1,
+            skills: [],
+            output: {},
+          },
+        ],
+      },
+      {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+        deadlineSignal: controller.signal,
+      },
+    )
+
+    expect(Array.of<unknown>(result, calls.length)).toEqual([
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Plan → Work)',
+      },
+      3,
+    ])
+  })
+
   it('applies one timeout to the whole for_each phase', async () => {
     vi.useFakeTimers()
     try {

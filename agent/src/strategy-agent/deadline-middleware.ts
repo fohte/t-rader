@@ -20,8 +20,7 @@ export const createDeadlineMiddleware = (
     () => signal,
     DEADLINE_EXCEEDED_FINGERPRINT,
     (abortedSignal) =>
-      isPhaseTimeoutSignal(abortedSignal, phaseTimeout) &&
-      phaseTimeout !== undefined
+      isPhaseTimeoutSignal(abortedSignal, phaseTimeout)
         ? phaseTimeoutMessage(phaseTimeout)
         : 'deadlineMiddleware: aborted model call after strategy task deadline exceeded',
   )
