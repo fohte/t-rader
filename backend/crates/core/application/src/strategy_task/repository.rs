@@ -7,7 +7,9 @@ use uuid::Uuid;
 use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkTransaction;
 
-use super::types::{StrategyTask, StrategyTaskStep, StrategyTaskUpdate, TaskListQuery};
+use super::types::{
+    StrategyTask, StrategyTaskOrigin, StrategyTaskStep, StrategyTaskUpdate, TaskListQuery,
+};
 
 #[derive(Debug, Error)]
 pub enum StrategyTaskRepositoryError {
@@ -48,10 +50,10 @@ pub trait StrategyTaskRepository: Send + Sync {
         &self,
         a2a_task_id: &str,
     ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError>;
-    async fn find_strategy_id_by_execution_step_id(
+    async fn find_origin_by_execution_step_id(
         &self,
         execution_step_id: Uuid,
-    ) -> Result<Option<Uuid>, StrategyTaskRepositoryError>;
+    ) -> Result<Option<StrategyTaskOrigin>, StrategyTaskRepositoryError>;
     async fn list(
         &self,
         query: TaskListQuery,
