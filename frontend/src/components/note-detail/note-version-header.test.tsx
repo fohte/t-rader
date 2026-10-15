@@ -1,8 +1,11 @@
+import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { NoteVersionHeader } from '#components/note-detail/note-version-header'
 import type { NoteVersion } from '#lib/api/note-version-types'
+import { createStoryRouter } from '#storybook/story-router'
+import { getExecutionOriginLinks } from '#test/execution-origin-links.test-helper'
 
 const version: NoteVersion = {
   id: 'fake-version-a',
@@ -17,7 +20,7 @@ const version: NoteVersion = {
   is_current: false,
   change_reason: null,
   created_by_kind: 'llm',
-  execution_id: null,
+  execution_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   created_at: '2026-01-12T02:00:00Z',
   reviewed_at: null,
 }
@@ -28,23 +31,83 @@ function getHeaderOutput() {
   return {
     kindLabel: screen.getByText('架空の種別表示名').textContent,
     title: screen.getByRole('heading', { level: 1 }).textContent,
+    originLinks: getExecutionOriginLinks().map((link) => ({
+      name: link.textContent,
+      href: link.getAttribute('href'),
+    })),
   }
 }
 
 describe('NoteVersionHeader', () => {
-  it('shows the resolved kind label for a version awaiting review', () => {
+  it('shows the strategy and run that generated the displayed version', async () => {
+    const router = createStoryRouter(
+      () => (
+        <NoteVersionHeader
+          version={version}
+          noteKindLabel={null}
+          hasNoteError={false}
+          executionOrigin={{
+            strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            strategyName: '架空戦略',
+            taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          }}
+          onAsk={() => {}}
+        />
+      ),
+      {
+        paths: ['/strategies/$id', '/strategies/$id/runs/$taskId'],
+        initialPath: '/strategies/sample-strategy',
+      },
+    )
+    render(<RouterProvider router={router} />)
+
+    const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
+    expect(strategyLink.parentElement?.textContent).toEqual(
+      '架空戦略 · 実行詳細 →',
+    )
+  })
+
+  it('does not show origin links for a version written by a user', async () => {
+    const router = createStoryRouter(
+      () => (
+        <NoteVersionHeader
+          version={{ ...version, created_by_kind: 'human', execution_id: null }}
+          noteKindLabel={null}
+          hasNoteError={false}
+          executionOrigin={{
+            strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            strategyName: '架空戦略',
+            taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          }}
+          onAsk={() => {}}
+        />
+      ),
+      {
+        paths: ['/strategies/$id', '/strategies/$id/runs/$taskId'],
+        initialPath: '/strategies/sample-strategy',
+      },
+    )
+    render(<RouterProvider router={router} />)
+
+    await screen.findByRole('heading', { name: version.title })
+    expect(getExecutionOriginLinks()).toEqual([])
+  })
+
+  it('omits the unresolved origin for a generated version', () => {
     render(
       <NoteVersionHeader
         version={version}
         noteKindLabel="架空の種別表示名"
         hasNoteError={false}
+        executionOrigin={null}
         onAsk={() => {}}
       />,
     )
 
     expect(getHeaderOutput()).toEqual({
       kindLabel: '架空の種別表示名',
-      title: '架空の確認メモ',
+      title: version.title,
+      originLinks: [],
     })
   })
 })

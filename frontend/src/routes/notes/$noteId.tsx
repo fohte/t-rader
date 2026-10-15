@@ -30,6 +30,7 @@ import {
   openFloatingChat,
   useChatContext,
 } from '#components/strategy-shell/floating-chat-store'
+import { useExecutionOrigin } from '#hooks/use-execution-origin'
 import { $api } from '#lib/api/client'
 import { resolveNoteKindLabel } from '#lib/note-kind-label'
 
@@ -150,6 +151,10 @@ function NoteDetailPage() {
     },
     { enabled: selectedVersion != null },
   )
+  const executionOrigin = useExecutionOrigin(
+    selectedVersion?.created_by_kind,
+    selectedVersion?.execution_id,
+  )
 
   if (areVersionsPending || hasVersionsError || selectedVersion == null) {
     const fallbackState = areVersionsPending
@@ -206,6 +211,7 @@ function NoteDetailPage() {
               noteKinds ?? [],
             )}
             hasNoteError={hasNoteError}
+            executionOrigin={executionOrigin}
             onAsk={(title) => {
               openFloatingChat('「' + title + '」について補足して')
             }}

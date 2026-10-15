@@ -1,12 +1,15 @@
+import { ExecutionOriginLinks } from '#components/execution-origin-links'
 import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NoteVersion } from '#lib/api/note-version-types'
+import type { ExecutionOrigin } from '#lib/execution-origin'
 import { formatRelative } from '#lib/note-utils'
 
 interface NoteVersionHeaderProps {
   version: NoteVersion
   noteKindLabel: string | null
   hasNoteError: boolean
+  executionOrigin: ExecutionOrigin | null
   onAsk: (title: string) => void
 }
 
@@ -14,6 +17,7 @@ export function NoteVersionHeader({
   version,
   noteKindLabel,
   hasNoteError,
+  executionOrigin,
   onAsk,
 }: NoteVersionHeaderProps) {
   return (
@@ -23,6 +27,12 @@ export function NoteVersionHeader({
           <span>
             {version.created_by_kind === 'llm' ? 'エージェント' : 'ユーザー'}
           </span>
+          {version.created_by_kind === 'llm' && executionOrigin != null && (
+            <>
+              <span>·</span>
+              <ExecutionOriginLinks origin={executionOrigin} />
+            </>
+          )}
           <span>
             {hasNoteError
               ? '種別を読み込めませんでした'

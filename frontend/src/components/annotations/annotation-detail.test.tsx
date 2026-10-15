@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import type { components } from '#lib/api/schema.gen'
+import type { ExecutionOrigin } from '#lib/execution-origin'
 import { createStoryRouter } from '#storybook/story-router'
+import { getExecutionOriginLinks } from '#test/execution-origin-links.test-helper'
 
 type Annotation = components['schemas']['Annotation']
 
@@ -24,6 +26,12 @@ const annotation: Annotation = {
   execution_task_id: null,
   created_at: '2026-10-15T01:00:00Z',
   updated_at: '2026-10-15T01:00:00Z',
+}
+
+const executionOrigin: ExecutionOrigin = {
+  strategyId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  strategyName: '架空戦略',
+  taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
 }
 
 afterEach(cleanup)
@@ -46,6 +54,7 @@ function StatefulAnnotationDetail({
       }}
       comments={[]}
       history={[]}
+      executionOrigin={null}
       stockName="サンプル銘柄"
       commentDraft=""
       rejectionReason={rejectionReason}
@@ -69,6 +78,53 @@ function StatefulAnnotationDetail({
   )
 }
 
+function renderAnnotationDetail(
+  currentAnnotation: Annotation,
+  executionOrigin: ExecutionOrigin | null,
+) {
+  const router = createStoryRouter(
+    () => (
+      <AnnotationDetail
+        annotation={currentAnnotation}
+        isPending={false}
+        reviewNavigationState={{
+          navigation: null,
+          isPending: false,
+          isError: false,
+        }}
+        comments={[]}
+        history={[]}
+        executionOrigin={executionOrigin}
+        stockName={null}
+        commentDraft=""
+        rejectionReason=""
+        isApprovalPending={false}
+        isRejectionPending={false}
+        isCommentPending={false}
+        approvalError={null}
+        rejectionError={null}
+        commentError={null}
+        onApprove={() => {}}
+        onReject={() => {}}
+        onRejectionReasonChange={() => {}}
+        onAddComment={(event) => {
+          event.preventDefault()
+        }}
+        onCommentDraftChange={() => {}}
+      />
+    ),
+    {
+      paths: [
+        '/annotations/$annoId',
+        '/strategies/$id',
+        '/strategies/$id/runs/$taskId',
+      ],
+      initialPath: '/annotations/sample-annotation-01',
+    },
+  )
+  render(<RouterProvider router={router} />)
+}
+
 describe('AnnotationDetail', () => {
   it('passes the rejection reason input to its change callback', async () => {
     const user = userEvent.setup()
@@ -80,7 +136,13 @@ describe('AnnotationDetail', () => {
         />
       ),
       {
-        paths: ['/annotations/$annoId', '/notes', '/stocks/$stockId'],
+        paths: [
+          '/annotations/$annoId',
+          '/notes',
+          '/stocks/$stockId',
+          '/strategies/$id',
+          '/strategies/$id/runs/$taskId',
+        ],
         initialPath: '/annotations/sample-annotation-01',
       },
     )
@@ -97,4 +159,40 @@ describe('AnnotationDetail', () => {
       'abc',
     ])
   })
+
+  it('shows the strategy and run that generated the annotation', async () => {
+    renderAnnotationDetail(
+      {
+        ...annotation,
+        execution_step_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
+      executionOrigin,
+    )
+
+    const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
+    expect(strategyLink.parentElement?.textContent).toEqual(
+      '架空戦略 · 実行詳細 →',
+    )
+  })
+
+  it.each([
+    {
+      state: 'the annotation was written by a user',
+      currentAnnotation: { ...annotation, created_by_kind: 'human' },
+      origin: executionOrigin,
+    },
+    {
+      state: 'the generation origin cannot be resolved',
+      currentAnnotation: annotation,
+      origin: null,
+    },
+  ])(
+    'omits origin links when $state',
+    async ({ currentAnnotation, origin }) => {
+      renderAnnotationDetail(currentAnnotation, origin)
+
+      await screen.findByText(annotation.text)
+      expect(getExecutionOriginLinks()).toEqual([])
+    },
+  )
 })

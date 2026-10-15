@@ -2,12 +2,14 @@ import { Link } from '@tanstack/react-router'
 import type { SyntheticEvent } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
+import { ExecutionOriginLinks } from '#components/execution-origin-links'
 import { ReviewNavigationBand } from '#components/review/review-navigation-band'
 import type { ReviewNavigationViewState } from '#components/review/use-review-navigation'
 import { StockNameLink } from '#components/stocks/stock-name-link'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
 import type { components } from '#lib/api/schema.gen'
+import type { ExecutionOrigin } from '#lib/execution-origin'
 
 type Annotation = components['schemas']['Annotation']
 type Comment = components['schemas']['Comment']
@@ -19,6 +21,7 @@ type AnnotationDetailProps = {
   reviewNavigationState: ReviewNavigationViewState
   comments: Comment[] | undefined
   history: ChangeHistory[] | undefined
+  executionOrigin: ExecutionOrigin | null
   stockName: string | null
   commentDraft: string
   rejectionReason: string
@@ -52,6 +55,7 @@ export function AnnotationDetail({
   reviewNavigationState,
   comments,
   history,
+  executionOrigin,
   stockName,
   commentDraft,
   rejectionReason,
@@ -132,6 +136,15 @@ export function AnnotationDetail({
               )}
               <dt>作成者</dt>
               <dd>{annotation.created_by_kind}</dd>
+              {annotation.created_by_kind === 'llm' &&
+                executionOrigin != null && (
+                  <>
+                    <dt>生成元</dt>
+                    <dd>
+                      <ExecutionOriginLinks origin={executionOrigin} />
+                    </dd>
+                  </>
+                )}
               <dt>作成日時</dt>
               <dd>{formatDateTime(annotation.created_at)}</dd>
             </dl>
