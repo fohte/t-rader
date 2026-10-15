@@ -14,6 +14,8 @@ import {
   type MarkdownBodyRangeCommentProps,
   MarkdownBodySourceBlockContext,
   MarkdownBodyTableCellGutterContext,
+  NOTE_BODY_GUTTER_CARD_PADDING_REM,
+  NOTE_BODY_GUTTER_GAP_REM,
   NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import {
@@ -52,6 +54,25 @@ interface RangeBlockElementProps {
   [key: `data-${string}`]: string | number | boolean | undefined
 }
 
+interface MarkdownNodeElementProps {
+  node?: MarkdownNode
+  children?: ReactNode
+}
+
+const SOURCE_BLOCK_TAGS = new Set([
+  'blockquote',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'li',
+  'p',
+  'pre',
+  'tr',
+])
+
 function sourceLineRange(
   node: MarkdownNode | undefined,
 ): SourceLineRange | null {
@@ -75,7 +96,15 @@ function descendantSourceBlockRanges(content: ReactNode): SourceLineRange[] {
         visit(childProps.children)
         continue
       }
-      visit(child.props.children)
+      const childProps = child.props as MarkdownNodeElementProps
+      if (
+        childProps.node?.tagName != null &&
+        SOURCE_BLOCK_TAGS.has(childProps.node.tagName)
+      ) {
+        const range = sourceLineRange(childProps.node)
+        if (range != null) ranges.push(range)
+      }
+      visit(childProps.children)
     }
   }
   visit(content)
@@ -270,8 +299,8 @@ export function MarkdownBodyRangeBlock({
         style={{
           left:
             sourceBlockTag === 'li'
-              ? `calc(-${String(NOTE_BODY_INDENT_REM)}rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`
-              : `-${String(NOTE_BODY_INDENT_REM)}rem`,
+              ? `calc(-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`
+              : `-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem`,
         }}
       />
     ) : null
@@ -292,6 +321,7 @@ export function MarkdownBodyRangeBlock({
           onPointerDown={context.onGutterPointerDown}
           onClick={context.onGutterClick}
           className={`absolute -left-11 top-1.5 ${gutterButtonClassName}`}
+          style={{ paddingRight: `${String(NOTE_BODY_GUTTER_GAP_REM)}rem` }}
         />
         {commentMarker}
       </>
@@ -346,8 +376,8 @@ export function MarkdownBodyRangeBlock({
     )
   }
 
-  const gutterStyle: CSSProperties =
-    sourceBlockTag === 'li'
+  const gutterStyle: CSSProperties = {
+    ...(sourceBlockTag === 'li'
       ? {
           left: `calc(-2.75rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`,
           top: 0,
@@ -356,7 +386,9 @@ export function MarkdownBodyRangeBlock({
         ? { left: '-2.75rem', top: '0.75rem' }
         : sourceBlockTag === 'blockquote'
           ? { left: '-2.75rem', top: '0.375rem' }
-          : { left: '-2.75rem' }
+          : { left: '-2.75rem' }),
+    paddingRight: `${String(NOTE_BODY_GUTTER_GAP_REM)}rem`,
+  }
   const gutterButton = (
     <RangeBlockGutterButton
       range={range}

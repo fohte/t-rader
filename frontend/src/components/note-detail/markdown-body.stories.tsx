@@ -5,6 +5,10 @@ import { http, HttpResponse } from 'msw'
 
 import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
+import {
+  NOTE_BODY_GUTTER_CARD_BLEED_REM,
+  NOTE_BODY_GUTTER_CARD_PADDING_REM,
+} from '#components/note-detail/markdown-body-range-comment-context'
 import { getDiffCommentAnchorKey } from '#components/note-detail/note-version-line-comment-group'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { components } from '#lib/api/schema.gen'
@@ -210,7 +214,13 @@ export const WithRangeCommentGutter: Story = {
   name: 'the formatted note keeps its body position beside the comment gutter.',
   decorators: [
     (Story) => (
-      <div className="border border-border bg-card p-5 text-foreground">
+      <div
+        className="border border-border bg-card p-5 text-foreground"
+        style={{
+          marginLeft: `-${String(NOTE_BODY_GUTTER_CARD_BLEED_REM)}rem`,
+          paddingLeft: `${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem`,
+        }}
+      >
         <Story />
       </div>
     ),
