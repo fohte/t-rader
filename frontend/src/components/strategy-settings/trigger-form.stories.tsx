@@ -71,3 +71,51 @@ export const HookEditing: Story = {
     onCancel: null,
   },
 }
+
+export const EventCreation: Story = {
+  name: 'the form creates an event trigger.',
+  args: {
+    mode: 'create',
+    form: {
+      ...EMPTY_FORM,
+      kind: 'event',
+      eventType: 'sample_process.finished',
+      eventMatch: `{
+  "status": {
+    "eq": "complete"
+  }
+}`,
+      promptTemplate: 'synthetic prompt',
+    },
+    agentConfigs: [{ purpose: 'synthetic-purpose' }],
+    onChange: () => {},
+    formError: null,
+    isSaving: false,
+    onSubmit: () => {},
+    onCancel: null,
+  },
+}
+
+export const EventEditing: Story = {
+  name: 'the form edits an event trigger with a locked kind.',
+  args: {
+    mode: 'edit',
+    form: {
+      ...EMPTY_FORM,
+      kind: 'event',
+      eventType: 'sample_process.finished',
+      eventMatch: `{
+  "status": {
+    "exists": true
+  }
+}`,
+      promptTemplate: 'synthetic prompt',
+    },
+    agentConfigs: [{ purpose: 'synthetic-purpose' }],
+    onChange: () => {},
+    formError: null,
+    isSaving: false,
+    onSubmit: () => {},
+    onCancel: null,
+  },
+}
