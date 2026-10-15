@@ -134,6 +134,41 @@ describe('remarkNoteTokens', () => {
     expect(tree).toEqual(textTree(token))
   })
 
+  it('replaces a resolved evaluation output with its numeric value', () => {
+    const token = '[[eval:00000000-0000-0000-0000-000000000101:result]]'
+    const tree = textTree(`結果 ${token}`)
+
+    remarkNoteTokens({ [token]: { value: 256.75 } })(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: '結果 ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-eval-reference',
+                hProperties: { value: '256.75' },
+              },
+            },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('keeps an evaluation token visible when it has no resolved value', () => {
+    const token = '[[eval:00000000-0000-0000-0000-000000000101:result]]'
+    const tree = textTree(token)
+
+    remarkNoteTokens()(tree)
+
+    expect(tree).toEqual(textTree(token))
+  })
+
   it.each([
     { name: 'letter-leading', annoId: 'A2' },
     {

@@ -22,6 +22,7 @@ impl UseCases {
             )),
             self.valuations(),
             self.indicator_observations(),
+            self.custom_indicator_evaluations(),
         )
     }
 }

@@ -2,6 +2,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::change_history::{ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
+use crate::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
 use crate::indicator_observation::IndicatorObservationUseCases;
 use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
@@ -28,6 +29,7 @@ pub struct NoteUseCases {
     pub(super) strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
     pub(super) valuations: ValuationUseCases,
     pub(super) indicator_observations: IndicatorObservationUseCases,
+    pub(super) custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
 }
 
 impl NoteUseCases {
@@ -38,6 +40,7 @@ impl NoteUseCases {
         strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
         valuations: ValuationUseCases,
         indicator_observations: IndicatorObservationUseCases,
+        custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
     ) -> Self {
         Self {
             unit_of_work,
@@ -46,6 +49,7 @@ impl NoteUseCases {
             strategy_task_step_evidence,
             valuations,
             indicator_observations,
+            custom_indicator_evaluations,
         }
     }
 

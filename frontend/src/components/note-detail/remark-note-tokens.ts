@@ -205,6 +205,16 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
           })
         }
 
+        if (inner.startsWith('eval:')) {
+          const value = resolvedPriceReferenceValue(
+            resolvedPriceReferences,
+            token,
+          )
+          return value == null
+            ? false
+            : noteToken('note-eval-reference', { value: String(value) })
+        }
+
         if (inner.startsWith('valuation:')) {
           return resolvedEvidenceToken(
             token,

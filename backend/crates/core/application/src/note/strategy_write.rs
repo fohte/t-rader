@@ -328,6 +328,10 @@ mod tests {
     use super::*;
     use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository};
     use crate::change_history::{Actor, FakeChangeHistory};
+    use crate::custom_indicator_evaluation::{
+        CustomIndicatorEvaluation, CustomIndicatorEvaluationUseCases,
+        FakeCustomIndicatorEvaluationRepository,
+    };
     use crate::indicator_observation::{
         FakeIndicatorObservationRepository, IndicatorObservationUseCases,
     };
@@ -348,6 +352,29 @@ mod tests {
     const TARGET_VERSION_ID: Uuid = Uuid::from_u128(4);
     const EXECUTION_STEP_ID: Uuid = Uuid::from_u128(5);
     const NORMALIZED_VERSION_ID: Uuid = Uuid::from_u128(7);
+    const EVALUATION_ID: Uuid = Uuid::from_u128(0x101);
+
+    fn custom_indicator_evaluation_use_cases(
+        evaluations: impl IntoIterator<Item = CustomIndicatorEvaluation>,
+    ) -> CustomIndicatorEvaluationUseCases {
+        let repository = Arc::new(FakeCustomIndicatorEvaluationRepository::new());
+        for evaluation in evaluations {
+            repository.seed(evaluation);
+        }
+        CustomIndicatorEvaluationUseCases::new(repository)
+    }
+
+    fn custom_indicator_evaluation(output: serde_json::Value) -> CustomIndicatorEvaluation {
+        CustomIndicatorEvaluation {
+            id: EVALUATION_ID,
+            indicator_id: Uuid::from_u128(0x102),
+            indicator_name: "demo-indicator".into(),
+            code: "return 1".into(),
+            args: json!({}),
+            output,
+            evaluated_at: Utc::now().fixed_offset(),
+        }
+    }
 
     struct LinkNoteRepository {
         source_note: Note,
@@ -652,6 +679,7 @@ mod tests {
                 Arc::new(FakeBarsRepository::new()),
             ),
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+            custom_indicator_evaluation_use_cases([]),
         )
     }
 
@@ -662,6 +690,7 @@ mod tests {
         requires_approval: bool,
         valuations: ValuationUseCases,
         indicator_observations: IndicatorObservationUseCases,
+        custom_indicator_evaluations: CustomIndicatorEvaluationUseCases,
     ) -> (NoteUseCases, Arc<LinkNoteRepository>) {
         let repository = Arc::new(LinkNoteRepository {
             source_note: source_note_with_kind(requires_approval.then(|| "sample-kind".into())),
@@ -684,6 +713,7 @@ mod tests {
             Arc::new(evidence_repository),
             valuations,
             indicator_observations,
+            custom_indicator_evaluations,
         );
         (use_cases, repository)
     }
@@ -946,6 +976,9 @@ mod tests {
             false,
             valuations,
             indicator_observations,
+            custom_indicator_evaluation_use_cases([custom_indicator_evaluation(
+                json!({ "result": 256.75 }),
+            )]),
         );
         let body = concat!(
             "[[valuation:fictional-code@2030-01-02:per]] ",
@@ -958,6 +991,7 @@ mod tests {
             "[[valuation:fictional-code@2030-01-02:fwd_eps]] ",
             "[[valuation:fictional-code@2030-01-02:bps]] ",
             "[[indicator:demo-indicator@2030-01-02]]",
+            " [[eval:00000000-0000-0000-0000-000000000101:result]]",
         );
 
         let result = use_cases
@@ -990,11 +1024,61 @@ mod tests {
                     "[[valuation:fictional-code@2030-01-02:fwd_eps]]": { "value": 66 },
                     "[[valuation:fictional-code@2030-01-02:bps]]": { "value": 72 },
                     "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
+                    "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
                 }),
                 vec![("fictional-code".into(), date, date)],
                 vec![("fictional-code".into(), date)],
             ),
         );
+    }
+
+    #[rstest]
+    #[case::missing_evaluation(None, "評価記録が見つかりません")]
+    #[case::output_is_not_an_object(Some(json!(256.75)), "出力名を解決できません")]
+    #[case::output_name_is_missing(
+        Some(json!({ "other": 256.75 })),
+        "出力名を解決できません"
+    )]
+    #[case::output_is_a_string(
+        Some(json!({ "result": "256.75" })),
+        "出力は数値ではありません"
+    )]
+    #[case::output_is_an_array(
+        Some(json!({ "result": [256.75] })),
+        "出力は数値ではありません"
+    )]
+    #[tokio::test]
+    async fn write_rejects_unresolvable_custom_indicator_evaluations(
+        #[case] output: Option<serde_json::Value>,
+        #[case] reason: &str,
+    ) {
+        let evaluation_use_cases = match output {
+            Some(output) => {
+                custom_indicator_evaluation_use_cases([custom_indicator_evaluation(output)])
+            }
+            None => custom_indicator_evaluation_use_cases([]),
+        };
+        let (use_cases, _) = make_note_use_cases_with_services(
+            source_version(),
+            source_version(),
+            vec![],
+            false,
+            ValuationUseCases::new(
+                Arc::new(FakeValuationRepository::default()),
+                Arc::new(FakeBarsRepository::new()),
+            ),
+            IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+            evaluation_use_cases,
+        );
+        let token = "[[eval:00000000-0000-0000-0000-000000000101:result]]";
+
+        let error = use_cases
+            .write(write_body_command(token))
+            .await
+            .err()
+            .map(|error| error.to_string());
+
+        assert_eq!(error, Some(format!("eval 参照 {token} の{reason}")));
     }
 
     #[rstest]
@@ -1051,6 +1135,7 @@ mod tests {
             false,
             valuations,
             IndicatorObservationUseCases::new(Arc::new(FakeIndicatorObservationRepository::new())),
+            custom_indicator_evaluation_use_cases([]),
         );
 
         let result = use_cases
@@ -1138,13 +1223,15 @@ mod tests {
     async fn human_edit_preserves_resolutions_when_body_is_unchanged() {
         let body = concat!(
             "[[valuation:fictional-code@2030-01-02:per]] ",
-            "[[indicator:demo-indicator@2030-01-02]]",
+            "[[indicator:demo-indicator@2030-01-02]] ",
+            "[[eval:00000000-0000-0000-0000-000000000101:result]]",
         );
         let mut current = source_version();
         current.body_md = body.into();
         current.resolved_price_references_json = json!({
             "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
             "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
+            "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
         });
         let valuation_repository = Arc::new(FakeValuationRepository::default());
         let indicator_repository = Arc::new(FakeIndicatorObservationRepository::new());
@@ -1158,6 +1245,7 @@ mod tests {
                 Arc::new(FakeBarsRepository::new()),
             ),
             IndicatorObservationUseCases::new(indicator_repository.clone()),
+            custom_indicator_evaluation_use_cases([]),
         );
 
         use_cases
@@ -1212,6 +1300,7 @@ mod tests {
                     resolved_price_references_json: json!({
                         "[[valuation:fictional-code@2030-01-02:per]]": { "value": 20.5 },
                         "[[indicator:demo-indicator@2030-01-02]]": { "value": 150.123 },
+                        "[[eval:00000000-0000-0000-0000-000000000101:result]]": { "value": 256.75 },
                     }),
                     status: "approved".into(),
                     is_current: true,
@@ -1375,7 +1464,7 @@ mod tests {
                 Some(indoc! {"
                     ノートのトークンに問題があります:
                     - 本文のトークン \"[[graph:missing-chart]]\": 対応する graphs[].id がありません
-                    許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。
+                    許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。
                 "}
                 .trim_end()
                 .to_string()),

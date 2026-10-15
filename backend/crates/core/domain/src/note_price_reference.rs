@@ -1,4 +1,5 @@
 use chrono::NaiveDate;
+use uuid::Uuid;
 
 use crate::note_reference::{NoteTokenValidationError, tokens_outside_code};
 
@@ -46,6 +47,10 @@ pub enum NotePriceReference {
         indicator_id: String,
         date: NaiveDate,
     },
+    CustomIndicatorEvaluation {
+        evaluation_id: Uuid,
+        output_name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +93,7 @@ pub(crate) fn is_value_reference_kind(token: &str) -> bool {
     let Some((kind, content)) = token.split_once(':') else {
         return false;
     };
-    matches!(kind, "price" | "change" | "valuation")
+    matches!(kind, "price" | "change" | "valuation" | "eval")
         || (kind == "indicator" && content.contains('@'))
 }
 
@@ -153,6 +158,20 @@ fn parse_note_price_reference(token: &str) -> Result<NotePriceReference, &'stati
             Ok(NotePriceReference::Indicator {
                 indicator_id: indicator_id.to_string(),
                 date: parse_date(date)?,
+            })
+        }
+        "eval" => {
+            let (evaluation_id, output_name) = content
+                .split_once(':')
+                .ok_or("評価記録 ID と出力名を `:` で区切ってください")?;
+            let evaluation_id = Uuid::parse_str(evaluation_id)
+                .map_err(|_| "評価記録 ID は UUID で指定してください")?;
+            if output_name.is_empty() {
+                return Err("出力名を空にできません");
+            }
+            Ok(NotePriceReference::CustomIndicatorEvaluation {
+                evaluation_id,
+                output_name: output_name.to_string(),
             })
         }
         _ => Err("価格参照は `price` または `change` を指定してください"),
@@ -229,6 +248,7 @@ fn is_valid_instrument_id(value: &str) -> bool {
 mod tests {
     use indoc::indoc;
     use rstest::rstest;
+    use uuid::Uuid;
 
     use super::{
         NotePriceReference, NotePriceReferenceToken, PriceReferenceField, ValuationReferenceField,
@@ -252,6 +272,7 @@ mod tests {
     #[case::valuation_forward_eps("[[valuation:fictional-code@2030-01-02:fwd_eps]]", NotePriceReference::Valuation { symbol: "fictional-code".into(), date: "2030-01-02".parse().expect("date"), field: ValuationReferenceField::FwdEps })]
     #[case::valuation_bps("[[valuation:fictional-code@2030-01-02:bps]]", NotePriceReference::Valuation { symbol: "fictional-code".into(), date: "2030-01-02".parse().expect("date"), field: ValuationReferenceField::Bps })]
     #[case::indicator_observation("[[indicator:demo-indicator@2030-01-02]]", NotePriceReference::Indicator { indicator_id: "demo-indicator".into(), date: "2030-01-02".parse().expect("date") })]
+    #[case::custom_indicator_evaluation("[[eval:00000000-0000-0000-0000-000000000101:result]]", NotePriceReference::CustomIndicatorEvaluation { evaluation_id: Uuid::from_u128(0x101), output_name: "result".into() })]
     fn parses_price_reference_links(#[case] body: &str, #[case] reference: NotePriceReference) {
         assert_eq!(
             extract_note_price_references(body),
@@ -291,6 +312,18 @@ mod tests {
         "[[indicator:demo-indicator@2030-1-2]]",
         "日付を `YYYY-MM-DD` で指定してください"
     )]
+    #[case::malformed_evaluation_id(
+        "[[eval:invalid-id:result]]",
+        "評価記録 ID は UUID で指定してください"
+    )]
+    #[case::missing_evaluation_output(
+        "[[eval:00000000-0000-0000-0000-000000000101]]",
+        "評価記録 ID と出力名を `:` で区切ってください"
+    )]
+    #[case::empty_evaluation_output(
+        "[[eval:00000000-0000-0000-0000-000000000101:]]",
+        "出力名を空にできません"
+    )]
     fn rejects_invalid_price_reference_links(#[case] body: &str, #[case] reason: &str) {
         assert_eq!(
             extract_note_price_references(body),
@@ -311,6 +344,7 @@ mod tests {
 
                 ```text
                 [[change:fictional-code@2030-01-02..2030-01-03:close]]
+                [[eval:00000000-0000-0000-0000-000000000101:result]]
                 ```
             "}),
             Ok(vec![]),
