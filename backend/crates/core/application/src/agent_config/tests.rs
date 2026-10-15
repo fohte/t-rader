@@ -8,6 +8,10 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
+use crate::subagent_definition::{
+    SharedSubagentDefinitionRepository, SubagentDefinition, SubagentDefinitionRepository,
+    SubagentDefinitionRepositoryError,
+};
 use crate::unit_of_work::{FakeUnitOfWork, UnitOfWorkTransaction};
 
 use super::super::error::{AgentConfigRepositoryError, AgentConfigUseCaseError};
@@ -18,6 +22,54 @@ use super::AgentConfigUseCases;
 #[derive(Default)]
 struct FakeAgentConfigRepository {
     configs: Mutex<BTreeMap<String, AgentConfig>>,
+}
+
+struct EmptySubagentDefinitionRepository;
+
+#[async_trait]
+impl SubagentDefinitionRepository for EmptySubagentDefinitionRepository {
+    async fn list(&self) -> Result<Vec<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn find_by_key(
+        &self,
+        _key: &str,
+    ) -> Result<Option<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(None)
+    }
+
+    async fn find_by_key_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _key: &str,
+    ) -> Result<Option<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(None)
+    }
+
+    async fn insert(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _definition: SubagentDefinition,
+    ) -> Result<SubagentDefinition, SubagentDefinitionRepositoryError> {
+        Err(SubagentDefinitionRepositoryError::InvalidTransaction)
+    }
+
+    async fn update(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _definition: SubagentDefinition,
+    ) -> Result<SubagentDefinition, SubagentDefinitionRepositoryError> {
+        Err(SubagentDefinitionRepositoryError::InvalidTransaction)
+    }
+
+    async fn delete(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+        _key: &str,
+    ) -> Result<bool, SubagentDefinitionRepositoryError> {
+        Err(SubagentDefinitionRepositoryError::InvalidTransaction)
+    }
 }
 
 impl FakeAgentConfigRepository {
@@ -104,8 +156,14 @@ struct Fixture {
 fn fixture() -> Fixture {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeAgentConfigRepository::default());
+    let subagent_definition_repository: SharedSubagentDefinitionRepository =
+        Arc::new(EmptySubagentDefinitionRepository);
     Fixture {
-        use_cases: AgentConfigUseCases::new(unit_of_work.clone(), repository),
+        use_cases: AgentConfigUseCases::new(
+            unit_of_work.clone(),
+            repository,
+            subagent_definition_repository,
+        ),
         unit_of_work,
     }
 }

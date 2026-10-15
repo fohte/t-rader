@@ -45,6 +45,8 @@ phases:
     for_each: plan.hypotheses
     label_field: title
     max_parallel: 4
+    subagents: [researcher, reviewer]
+    max_subagent_runs: 3
     prompt: 割り当てられた仮説を検証せよ
     tools: [query_data, write_note]
 `
@@ -64,6 +66,7 @@ phases:
             reasoningEffort: 'high',
             prompt: '仮説を立てよ',
             skills: [],
+            subagents: [],
             output: {
               hypotheses: {
                 type: 'array',
@@ -81,6 +84,8 @@ phases:
             labelField: 'title',
             maxParallel: 4,
             skills: [],
+            subagents: ['researcher', 'reviewer'],
+            maxSubagentRuns: 3,
             tools: ['query_data', 'write_note'],
             output: {},
           },
@@ -141,6 +146,7 @@ phases:
             model: 'example-model-plan',
             prompt: '仮説を立てよ',
             skills: [],
+            subagents: [],
             output: {},
           },
           {
@@ -149,11 +155,38 @@ phases:
             model: 'example-model-synthesize',
             prompt: 'まとめよ',
             skills: [],
+            subagents: [],
             tools: [],
             output: {},
           },
         ],
       }),
+    )
+  })
+
+  it.each([
+    { name: 'negative', value: '-1' },
+    { name: 'fractional', value: '1.5' },
+    { name: 'larger than an unsigned 32-bit integer', value: '4294967296' },
+  ])('rejects a $name max_subagent_runs value', ({ value }) => {
+    const yaml = `
+phases:
+  - key: research
+    label: Research
+    model: example-model-research
+    prompt: Investigate
+    max_subagent_runs: ${value}
+`
+
+    const normalized = parseAgentGraph(yaml).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+    expect(normalized).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
     )
   })
 

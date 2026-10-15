@@ -53,6 +53,7 @@ pub use super::strategy_investable_amount::Entity as StrategyInvestableAmount;
 pub use super::strategy_task::Entity as StrategyTask;
 pub use super::strategy_task_step::Entity as StrategyTaskStep;
 pub use super::strategy_task_step_evidence::Entity as StrategyTaskStepEvidence;
+pub use super::subagent_definition::Entity as SubagentDefinition;
 pub use super::trade::Entity as Trade;
 pub use super::trade_note::Entity as TradeNote;
 pub use super::trigger::Entity as Trigger;

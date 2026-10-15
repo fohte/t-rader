@@ -62,6 +62,7 @@
 | [public.saved_screen](public.saved_screen.md)                                               | 6       | スクリーナーで保存した名前付き条件と並び順を保持する。                                                 | BASE TABLE |
 | [public.event](public.event.md)                                                             | 6       | システム内で発生したイベントと dispatch 状態を保持する。                                               | BASE TABLE |
 | [public.event_firing](public.event_firing.md)                                               | 3       | event と trigger の発火、および投入した task の対応を保持する。                                        | BASE TABLE |
+| [public.subagent_definition](public.subagent_definition.md)                                 | 13      | 戦略設定から独立したサブエージェント定義を保持する。                                                   | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -807,6 +808,21 @@ erDiagram
   uuid event_id FK
   uuid trigger_id FK
   uuid task_id FK
+}
+"public.subagent_definition" {
+  uuid id
+  text key
+  text description
+  text model
+  text reasoning_effort
+  text prompt
+  jsonb tools
+  integer timeout_minutes
+  bigint max_model_calls
+  jsonb tool_limits
+  jsonb output
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 

@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
+use crate::subagent_definition::SharedSubagentDefinitionRepository;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 use super::error::{AgentConfigRepositoryError, AgentConfigUseCaseError};
@@ -16,13 +17,19 @@ use super::types::{AgentConfig, NewAgentConfig, skills_as_btree};
 pub struct AgentConfigUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedAgentConfigRepository,
+    subagent_definition_repository: SharedSubagentDefinitionRepository,
 }
 
 impl AgentConfigUseCases {
-    pub fn new(unit_of_work: SharedUnitOfWork, repository: SharedAgentConfigRepository) -> Self {
+    pub fn new(
+        unit_of_work: SharedUnitOfWork,
+        repository: SharedAgentConfigRepository,
+        subagent_definition_repository: SharedSubagentDefinitionRepository,
+    ) -> Self {
         Self {
             unit_of_work,
             repository,
+            subagent_definition_repository,
         }
     }
 
@@ -151,7 +158,25 @@ impl AgentConfigUseCases {
         purpose: &str,
         content: &str,
     ) -> Result<String, AgentConfigUseCaseError> {
-        parse_agent_graph(content)?;
+        if let Some(graph) = parse_agent_graph(content)? {
+            let keys: std::collections::BTreeSet<_> = self
+                .subagent_definition_repository
+                .list()
+                .await?
+                .into_iter()
+                .map(|definition| definition.key)
+                .collect();
+            if let Some(key) = graph
+                .phases
+                .iter()
+                .flat_map(|phase| &phase.subagents)
+                .find(|key| !keys.contains(key.as_str()))
+            {
+                return Err(AgentConfigUseCaseError::UnknownSubagentDefinition(
+                    key.clone(),
+                ));
+            }
+        }
 
         let transaction = self.unit_of_work.begin().await?;
         let mut agent_config = self.find_in_transaction(&transaction, purpose).await?;

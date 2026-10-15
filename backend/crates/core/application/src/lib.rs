@@ -57,6 +57,7 @@ pub mod strategy_existence;
 pub mod strategy_scope;
 pub mod strategy_task;
 pub mod strategy_task_step_evidence;
+pub mod subagent_definition;
 pub mod trade;
 pub mod trigger;
 pub mod unit_of_work;
