@@ -49,15 +49,8 @@ pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, Stri
     source.ok_or_else(|| format!("{name} is not configured"))
 }
 
-pub(super) fn scheduler_state(context: &WorkerContext) -> Result<SchedulerState, String> {
-    context
-        .get_ext::<SchedulerState>()
-        .cloned()
-        .ok_or_else(|| "scheduler state is not configured".to_string())
-}
-
 pub(super) async fn run_with_state<F, Fut>(
-    state: SchedulerState,
+    context: WorkerContext,
     task_name: &'static str,
     timeout: Duration,
     task: F,
@@ -66,7 +59,11 @@ where
     F: FnOnce(SchedulerState) -> Fut,
     Fut: Future<Output = Result<(), String>>,
 {
-    match run_with_timeout(task_name, timeout, task(state)).await {
+    let Some(state) = context.get_ext::<SchedulerState>() else {
+        return Err("scheduler state is not configured".to_string());
+    };
+
+    match run_with_timeout(task_name, timeout, task(state.clone())).await {
         TimedTaskResult::Completed(Ok(())) => {
             tracing::info!(task = task_name, "scheduled job completed");
             Ok(())
@@ -80,7 +77,7 @@ where
 }
 
 pub(super) async fn run_with_ingest_run_log_state<F, Fut, Stats>(
-    state: SchedulerState,
+    context: WorkerContext,
     task_name: &'static str,
     timeout: Duration,
     task: F,
@@ -90,12 +87,21 @@ where
     Fut: Future<Output = Result<Stats, String>>,
     Stats: Serialize,
 {
+    let Some(state) = context.get_ext::<SchedulerState>() else {
+        return Err("scheduler state is not configured".to_string());
+    };
     let ingest_run_log = state.dependencies.ingest_run_log.clone();
-    run_with_ingest_run_log(ingest_run_log.as_ref(), task_name, timeout, task(state)).await
+    run_with_ingest_run_log(
+        ingest_run_log.as_ref(),
+        task_name,
+        timeout,
+        task(state.clone()),
+    )
+    .await
 }
 
 pub(super) async fn run_with_ingest_run_log_state_and_failure_stats<F, Fut, Stats>(
-    state: SchedulerState,
+    context: WorkerContext,
     task_name: &'static str,
     duration: Duration,
     task: F,
@@ -105,12 +111,15 @@ where
     Fut: Future<Output = Result<Stats, (Stats, String)>>,
     Stats: Serialize,
 {
+    let Some(state) = context.get_ext::<SchedulerState>() else {
+        return Err("scheduler state is not configured".to_string());
+    };
     let ingest_run_log = state.dependencies.ingest_run_log.clone();
     run_with_ingest_run_log_with_failure_stats(
         ingest_run_log.as_ref(),
         task_name,
         duration,
-        task(state),
+        task(state.clone()),
     )
     .await
 }
@@ -187,7 +196,7 @@ where
     F: Future<Output = Result<Stats, IngestTaskFailure<Stats>>>,
     Stats: Serialize,
 {
-    let started_before = match run_started_before(Utc::now(), duration) {
+    let started_before = match run_started_before(Utc::now().fixed_offset(), duration) {
         Ok(started_before) => started_before,
         Err(error) => {
             tracing::error!(task = task_name, %error, "failed to recover interrupted ingest runs");
@@ -289,13 +298,13 @@ where
     }
 }
 
-fn run_started_before(
-    now: DateTime<Utc>,
+pub(super) fn run_started_before(
+    now: DateTime<chrono::FixedOffset>,
     duration: Duration,
 ) -> Result<DateTime<chrono::FixedOffset>, String> {
     let duration = ChronoDuration::from_std(duration)
         .map_err(|error| format!("job timeout cannot be represented: {error}"))?;
-    Ok(now.fixed_offset() - duration)
+    Ok(now - duration)
 }
 
 #[cfg(test)]
@@ -512,7 +521,7 @@ mod tests {
             .expect("valid timestamp");
 
         assert_eq!(
-            run_started_before(now, Duration::from_secs(3600)),
+            run_started_before(now.fixed_offset(), Duration::from_secs(3600)),
             Ok((now - chrono::Duration::hours(1)).fixed_offset()),
         );
     }

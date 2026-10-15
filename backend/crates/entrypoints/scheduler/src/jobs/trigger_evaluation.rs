@@ -13,24 +13,25 @@ impl TaskHandler for TriggerEvaluation {
     const IDENTIFIER: &'static str = "trigger_evaluation";
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let attempts = state
-                .dependencies
-                .triggers
-                .run_cron_tick(
-                    state.dependencies.agent_task_client.as_ref(),
-                    TRIGGER_EVALUATION_INTERVAL,
-                )
-                .await;
-            if attempts > 0 {
-                tracing::info!(attempts, "cron triggers evaluated");
-            }
-            Ok(())
-        })
+        run_with_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let attempts = state
+                    .dependencies
+                    .triggers
+                    .run_cron_tick(
+                        state.dependencies.agent_task_client.as_ref(),
+                        TRIGGER_EVALUATION_INTERVAL,
+                    )
+                    .await;
+                if attempts > 0 {
+                    tracing::info!(attempts, "cron triggers evaluated");
+                }
+                Ok(())
+            },
+        )
         .await
     }
 }

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration as ChronoDuration, FixedOffset, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use core_application::ingest_run_log::IngestRunLog;
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ async fn recover_interrupted_runs(
     let mut recovered = 0_u64;
 
     for (job, timeout) in RECOVERABLE_INGEST_JOBS {
-        let cutoff = now - ChronoDuration::seconds(timeout.as_secs() as i64);
+        let cutoff = super::run_started_before(now, timeout)?;
         recovered = recovered.saturating_add(
             log.fail_interrupted_before(job, cutoff)
                 .await

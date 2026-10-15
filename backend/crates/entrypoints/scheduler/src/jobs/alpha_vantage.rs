@@ -17,17 +17,18 @@ impl TaskHandler for AlphaVantageCalendarIngest {
         core_application::ingest_status::ALPHA_VANTAGE_CALENDAR_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let source = require_source(
-                state.dependencies.alpha_vantage_calendar_source,
-                "Alpha Vantage calendar source",
-            )?;
-            ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref()).await
-        })
+        run_with_ingest_run_log_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let source = require_source(
+                    state.dependencies.alpha_vantage_calendar_source,
+                    "Alpha Vantage calendar source",
+                )?;
+                ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref()).await
+            },
+        )
         .await
     }
 }

@@ -13,12 +13,8 @@ impl TaskHandler for NewsContentFetch {
     const IDENTIFIER: &'static str = NEWS_CONTENT_FETCH_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
         run_with_ingest_run_log_state_and_failure_stats(
-            state,
+            context,
             Self::IDENTIFIER,
             crate::scheduler::NEWS_CONTENT_JOB_TIMEOUT,
             |state| async move {

@@ -11,17 +11,18 @@ impl TaskHandler for NewsAggregation {
     const IDENTIFIER: &'static str = core_application::ingest_status::NEWS_AGGREGATION_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            aggregate_news(
-                &state.dependencies.news,
-                state.dependencies.news_aggregator.as_ref(),
-            )
-            .await
-        })
+        run_with_ingest_run_log_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                aggregate_news(
+                    &state.dependencies.news,
+                    state.dependencies.news_aggregator.as_ref(),
+                )
+                .await
+            },
+        )
         .await
     }
 }

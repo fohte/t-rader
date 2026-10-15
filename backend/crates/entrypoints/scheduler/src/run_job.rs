@@ -1,3 +1,5 @@
+use std::{future::Future, pin::Pin};
+
 use graphile_worker::{
     Job, SharedTaskDetails, TaskHandler, WorkerContext, run_task_from_worker_ctx,
 };
@@ -36,37 +38,58 @@ use crate::{
     state::{SchedulerDependencies, SchedulerState},
 };
 
-const SUPPORTED_JOB_IDENTIFIERS: [&str; 26] = [
-    AlphaVantageCalendarIngest::IDENTIFIER,
-    BojCalendarEventIngest::IDENTIFIER,
-    DailyBarsIngest::IDENTIFIER,
-    EStatCalendarIngest::IDENTIFIER,
-    EarningsScheduleIngest::IDENTIFIER,
-    EcbCalendarEventIngest::IDENTIFIER,
-    ShareholdingStructureIngest::IDENTIFIER,
-    EodDataKospiIngest::IDENTIFIER,
-    EquityMasterIngest::IDENTIFIER,
-    EventDispatch::IDENTIFIER,
-    FedCalendarEventIngest::IDENTIFIER,
-    FinancialSummaryIngest::IDENTIFIER,
-    FredIngest::IDENTIFIER,
-    FredReleaseDatesIngest::IDENTIFIER,
-    MarginIngest::IDENTIFIER,
-    NewsAggregation::IDENTIFIER,
-    NewsContentFetch::IDENTIFIER,
-    PaperOrderFilling::IDENTIFIER,
-    PredictionGrading::IDENTIFIER,
-    ShortRatioIngest::IDENTIFIER,
-    ShortSaleReportIngest::IDENTIFIER,
-    StrategyTaskReconcile::IDENTIFIER,
-    TwseIndexIngest::IDENTIFIER,
-    UsStockBarsIngest::IDENTIFIER,
-    UsStockMasterIngest::IDENTIFIER,
-    ValuationIngest::IDENTIFIER,
+type JobRunner =
+    fn(WorkerContext) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
+
+struct SupportedJob {
+    identifier: &'static str,
+    run: JobRunner,
+}
+
+const SUPPORTED_JOBS: [SupportedJob; 26] = [
+    supported_job::<AlphaVantageCalendarIngest>(),
+    supported_job::<BojCalendarEventIngest>(),
+    supported_job::<DailyBarsIngest>(),
+    supported_job::<EStatCalendarIngest>(),
+    supported_job::<EarningsScheduleIngest>(),
+    supported_job::<EcbCalendarEventIngest>(),
+    supported_job::<ShareholdingStructureIngest>(),
+    supported_job::<EodDataKospiIngest>(),
+    supported_job::<EquityMasterIngest>(),
+    supported_job::<EventDispatch>(),
+    supported_job::<FedCalendarEventIngest>(),
+    supported_job::<FinancialSummaryIngest>(),
+    supported_job::<FredIngest>(),
+    supported_job::<FredReleaseDatesIngest>(),
+    supported_job::<MarginIngest>(),
+    supported_job::<NewsAggregation>(),
+    supported_job::<NewsContentFetch>(),
+    supported_job::<PaperOrderFilling>(),
+    supported_job::<PredictionGrading>(),
+    supported_job::<ShortRatioIngest>(),
+    supported_job::<ShortSaleReportIngest>(),
+    supported_job::<StrategyTaskReconcile>(),
+    supported_job::<TwseIndexIngest>(),
+    supported_job::<UsStockBarsIngest>(),
+    supported_job::<UsStockMasterIngest>(),
+    supported_job::<ValuationIngest>(),
 ];
 
+const fn supported_job<T: TaskHandler>() -> SupportedJob {
+    SupportedJob {
+        identifier: T::IDENTIFIER,
+        run: run_task::<T>,
+    }
+}
+
+fn run_task<T: TaskHandler>(
+    context: WorkerContext,
+) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>> {
+    Box::pin(run_task_from_worker_ctx::<T>(context))
+}
+
 pub fn is_supported_job(job_name: &str) -> bool {
-    SUPPORTED_JOB_IDENTIFIERS.contains(&job_name)
+    SUPPORTED_JOBS.iter().any(|job| job.identifier == job_name)
 }
 
 pub async fn run_job(
@@ -74,74 +97,12 @@ pub async fn run_job(
     pool: PgPool,
     dependencies: SchedulerDependencies,
 ) -> Result<(), String> {
-    if !is_supported_job(job_name) {
+    let Some(job) = SUPPORTED_JOBS.iter().find(|job| job.identifier == job_name) else {
         return Err(format!("unsupported scheduled job: {job_name}"));
-    }
+    };
 
     let context = build_worker_context(job_name, pool, dependencies);
-    match job_name {
-        AlphaVantageCalendarIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<AlphaVantageCalendarIngest>(context).await
-        }
-        BojCalendarEventIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<BojCalendarEventIngest>(context).await
-        }
-        DailyBarsIngest::IDENTIFIER => run_task_from_worker_ctx::<DailyBarsIngest>(context).await,
-        EStatCalendarIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<EStatCalendarIngest>(context).await
-        }
-        EarningsScheduleIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<EarningsScheduleIngest>(context).await
-        }
-        EcbCalendarEventIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<EcbCalendarEventIngest>(context).await
-        }
-        ShareholdingStructureIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<ShareholdingStructureIngest>(context).await
-        }
-        EodDataKospiIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<EodDataKospiIngest>(context).await
-        }
-        EquityMasterIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<EquityMasterIngest>(context).await
-        }
-        EventDispatch::IDENTIFIER => run_task_from_worker_ctx::<EventDispatch>(context).await,
-        FedCalendarEventIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<FedCalendarEventIngest>(context).await
-        }
-        FinancialSummaryIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<FinancialSummaryIngest>(context).await
-        }
-        FredIngest::IDENTIFIER => run_task_from_worker_ctx::<FredIngest>(context).await,
-        FredReleaseDatesIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<FredReleaseDatesIngest>(context).await
-        }
-        MarginIngest::IDENTIFIER => run_task_from_worker_ctx::<MarginIngest>(context).await,
-        NewsAggregation::IDENTIFIER => run_task_from_worker_ctx::<NewsAggregation>(context).await,
-        NewsContentFetch::IDENTIFIER => run_task_from_worker_ctx::<NewsContentFetch>(context).await,
-        PaperOrderFilling::IDENTIFIER => {
-            run_task_from_worker_ctx::<PaperOrderFilling>(context).await
-        }
-        PredictionGrading::IDENTIFIER => {
-            run_task_from_worker_ctx::<PredictionGrading>(context).await
-        }
-        ShortRatioIngest::IDENTIFIER => run_task_from_worker_ctx::<ShortRatioIngest>(context).await,
-        ShortSaleReportIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<ShortSaleReportIngest>(context).await
-        }
-        StrategyTaskReconcile::IDENTIFIER => {
-            run_task_from_worker_ctx::<StrategyTaskReconcile>(context).await
-        }
-        TwseIndexIngest::IDENTIFIER => run_task_from_worker_ctx::<TwseIndexIngest>(context).await,
-        UsStockBarsIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<UsStockBarsIngest>(context).await
-        }
-        UsStockMasterIngest::IDENTIFIER => {
-            run_task_from_worker_ctx::<UsStockMasterIngest>(context).await
-        }
-        ValuationIngest::IDENTIFIER => run_task_from_worker_ctx::<ValuationIngest>(context).await,
-        _ => unreachable!("supported job identifier must have a handler"),
-    }
+    (job.run)(context).await
 }
 
 fn build_worker_context(
@@ -170,19 +131,24 @@ mod tests {
 
     use rstest::rstest;
 
-    use super::{SUPPORTED_JOB_IDENTIFIERS, is_supported_job};
+    use super::{SUPPORTED_JOBS, is_supported_job};
 
     #[test]
-    fn supports_every_registered_one_shot_job() {
+    fn supported_job_table_is_unique_and_queryable() {
+        let identifiers = SUPPORTED_JOBS
+            .iter()
+            .map(|job| job.identifier)
+            .collect::<Vec<_>>();
+
         assert_eq!(
             (
-                SUPPORTED_JOB_IDENTIFIERS.map(is_supported_job),
-                SUPPORTED_JOB_IDENTIFIERS
-                    .into_iter()
-                    .collect::<HashSet<_>>()
-                    .len(),
+                identifiers
+                    .iter()
+                    .map(|name| is_supported_job(name))
+                    .collect::<Vec<_>>(),
+                identifiers.iter().collect::<HashSet<_>>().len(),
             ),
-            ([true; 26], 26),
+            (vec![true; SUPPORTED_JOBS.len()], SUPPORTED_JOBS.len()),
         );
     }
 

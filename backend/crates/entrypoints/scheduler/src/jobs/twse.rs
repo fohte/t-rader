@@ -19,12 +19,8 @@ impl TaskHandler for TwseIndexIngest {
     const IDENTIFIER: &'static str = TWSE_INDEX_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
         run_with_ingest_run_log_state_and_failure_stats(
-            state,
+            context,
             Self::IDENTIFIER,
             DAILY_TIMEOUT,
             |state| async move {

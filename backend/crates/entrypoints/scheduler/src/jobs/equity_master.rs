@@ -14,17 +14,18 @@ impl TaskHandler for EquityMasterIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::EQUITY_MASTER_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let source = require_source(
-                state.dependencies.equity_master_source,
-                "J-Quants equity master source",
-            )?;
-            sync_equity_master(&state.dependencies.equity_master, source.as_ref()).await
-        })
+        run_with_ingest_run_log_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let source = require_source(
+                    state.dependencies.equity_master_source,
+                    "J-Quants equity master source",
+                )?;
+                sync_equity_master(&state.dependencies.equity_master, source.as_ref()).await
+            },
+        )
         .await
     }
 }

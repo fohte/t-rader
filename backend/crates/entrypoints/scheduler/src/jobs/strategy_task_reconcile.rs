@@ -34,42 +34,32 @@ impl TaskHandler for StrategyTaskReconcile {
     const IDENTIFIER: &'static str = STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let lock = state.dependencies.strategy_task_reconcile_lock.clone();
-            run_with_reconcile_lock(&lock, move || async move {
-                let reconcile_result = reconcile_in_flight_tasks(
-                    &state.dependencies.strategy_tasks,
-                    state.dependencies.agent_task_client.as_ref(),
-                )
-                .await
-                .map(|updated| {
-                    if updated > 0 {
-                        tracing::info!(updated, "strategy task phases reconciled");
-                    }
-                });
-                let dispatch_result = state
-                    .dependencies
-                    .event_dispatch
-                    .dispatch_and_cleanup(state.dependencies.agent_task_client.as_ref())
+        run_with_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let lock = state.dependencies.strategy_task_reconcile_lock.clone();
+                run_with_reconcile_lock(&lock, move || async move {
+                    let reconcile_result = reconcile_in_flight_tasks(
+                        &state.dependencies.strategy_tasks,
+                        state.dependencies.agent_task_client.as_ref(),
+                    )
                     .await
-                    .map(|(dispatched, deleted)| {
-                        if dispatched > 0 {
-                            tracing::info!(dispatched, "pending events dispatched");
+                    .map(|updated| {
+                        if updated > 0 {
+                            tracing::info!(updated, "strategy task phases reconciled");
                         }
-                        if deleted > 0 {
-                            tracing::info!(deleted, "expired events deleted");
-                        }
-                    })
-                    .map_err(|error| format!("failed to dispatch pending events: {error}"));
+                    });
+                    let dispatch_result = super::event_dispatch::dispatch_pending_events(&state)
+                        .await
+                        .map_err(|error| format!("failed to dispatch pending events: {error}"));
 
-                combine_reconcile_and_dispatch_results(reconcile_result, dispatch_result)
-            })
-            .await
-        })
+                    combine_task_results(reconcile_result, dispatch_result)
+                })
+                .await
+            },
+        )
         .await
     }
 }
@@ -97,23 +87,17 @@ where
         .await
         .map_err(|error| format!("failed to release strategy task reconcile lock: {error}"));
 
-    match (work_result, release_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(work_error), Err(release_error)) => Err(format!("{work_error}; {release_error}")),
-    }
+    combine_task_results(work_result, release_result)
 }
 
-fn combine_reconcile_and_dispatch_results(
-    reconcile_result: Result<(), String>,
-    dispatch_result: Result<(), String>,
+fn combine_task_results(
+    first_result: Result<(), String>,
+    second_result: Result<(), String>,
 ) -> Result<(), String> {
-    match (reconcile_result, dispatch_result) {
+    match (first_result, second_result) {
         (Ok(()), Ok(())) => Ok(()),
         (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
-        (Err(reconcile_error), Err(dispatch_error)) => {
-            Err(format!("{reconcile_error}; {dispatch_error}"))
-        }
+        (Err(first_error), Err(second_error)) => Err(format!("{first_error}; {second_error}")),
     }
 }
 
@@ -176,7 +160,7 @@ pub async fn reconcile_in_flight_tasks(
 mod tests {
     use std::sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     };
 
     use async_trait::async_trait;
@@ -218,10 +202,12 @@ mod tests {
         available: bool,
         acquired: Arc<AtomicUsize>,
         released: Arc<AtomicUsize>,
+        held: Arc<AtomicBool>,
     }
 
     struct FakeReconcileLockGuard {
         released: Arc<AtomicUsize>,
+        held: Arc<AtomicBool>,
     }
 
     #[async_trait]
@@ -231,8 +217,10 @@ mod tests {
         ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {
             self.acquired.fetch_add(1, Ordering::SeqCst);
             Ok(self.available.then(|| {
+                self.held.store(true, Ordering::SeqCst);
                 Box::new(FakeReconcileLockGuard {
                     released: Arc::clone(&self.released),
+                    held: Arc::clone(&self.held),
                 }) as Box<dyn StrategyTaskReconcileLockGuard>
             }))
         }
@@ -241,6 +229,7 @@ mod tests {
     #[async_trait]
     impl StrategyTaskReconcileLockGuard for FakeReconcileLockGuard {
         async fn release(self: Box<Self>) -> Result<(), PersistenceError> {
+            self.held.store(false, Ordering::SeqCst);
             self.released.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -265,16 +254,23 @@ mod tests {
         let acquired = Arc::new(AtomicUsize::new(0));
         let released = Arc::new(AtomicUsize::new(0));
         let work_runs = Arc::new(AtomicUsize::new(0));
+        let held = Arc::new(AtomicBool::new(false));
+        let held_during_work = Arc::new(AtomicBool::new(false));
         let lock = StrategyTaskReconcileLockUseCases::new(Arc::new(FakeReconcileLock {
             available,
             acquired: Arc::clone(&acquired),
             released: Arc::clone(&released),
+            held: Arc::clone(&held),
         }));
         let work_runs_in_future = Arc::clone(&work_runs);
+        let held_in_future = Arc::clone(&held);
+        let held_during_work_in_future = Arc::clone(&held_during_work);
         let work_result_in_future = work_result.clone();
 
         let result = run_with_reconcile_lock(&lock, move || async move {
             work_runs_in_future.fetch_add(1, Ordering::SeqCst);
+            held_during_work_in_future
+                .store(held_in_future.load(Ordering::SeqCst), Ordering::SeqCst);
             work_result_in_future
         })
         .await;
@@ -285,8 +281,17 @@ mod tests {
                 acquired.load(Ordering::SeqCst),
                 released.load(Ordering::SeqCst),
                 work_runs.load(Ordering::SeqCst),
+                held_during_work.load(Ordering::SeqCst),
+                held.load(Ordering::SeqCst),
             ),
-            (expected_result, 1, expected_work_runs, expected_work_runs,),
+            (
+                expected_result,
+                1,
+                expected_work_runs,
+                expected_work_runs,
+                available,
+                false,
+            ),
         );
     }
 

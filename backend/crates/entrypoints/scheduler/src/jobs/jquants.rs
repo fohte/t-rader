@@ -15,17 +15,18 @@ impl TaskHandler for ShortRatioIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_RATIO_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let source = require_source(
-                state.dependencies.short_selling_source,
-                "J-Quants short-selling source",
-            )?;
-            ingest_short_ratio(&state.dependencies.short_ratios, source.as_ref()).await
-        })
+        run_with_ingest_run_log_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let source = require_source(
+                    state.dependencies.short_selling_source,
+                    "J-Quants short-selling source",
+                )?;
+                ingest_short_ratio(&state.dependencies.short_ratios, source.as_ref()).await
+            },
+        )
         .await
     }
 }
@@ -53,17 +54,19 @@ impl TaskHandler for ShortSaleReportIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_SALE_REPORT_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let source = require_source(
-                state.dependencies.short_selling_source,
-                "J-Quants short-selling source",
-            )?;
-            ingest_short_sale_reports(&state.dependencies.short_sale_reports, source.as_ref()).await
-        })
+        run_with_ingest_run_log_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let source = require_source(
+                    state.dependencies.short_selling_source,
+                    "J-Quants short-selling source",
+                )?;
+                ingest_short_sale_reports(&state.dependencies.short_sale_reports, source.as_ref())
+                    .await
+            },
+        )
         .await
     }
 }
@@ -97,15 +100,16 @@ impl TaskHandler for MarginIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::MARGIN_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let source =
-                require_source(state.dependencies.margin_source, "J-Quants margin source")?;
-            ingest_margin(&state.dependencies.margins, source.as_ref()).await
-        })
+        run_with_ingest_run_log_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let source =
+                    require_source(state.dependencies.margin_source, "J-Quants margin source")?;
+                ingest_margin(&state.dependencies.margins, source.as_ref()).await
+            },
+        )
         .await
     }
 }

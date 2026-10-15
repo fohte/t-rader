@@ -14,17 +14,18 @@ impl TaskHandler for UsStockBarsIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::US_STOCK_BARS_INGEST_JOB;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        let state = match super::scheduler_state(&context) {
-            Ok(state) => state,
-            Err(error) => return Err(error),
-        };
-        run_with_ingest_run_log_state(state, Self::IDENTIFIER, DAILY_TIMEOUT, |state| async move {
-            let source = require_source(
-                state.dependencies.us_stock_bar_source,
-                "Alpaca US stock bar source",
-            )?;
-            ingest_us_stock_bars(&state.dependencies.bars, source, Utc::now()).await
-        })
+        run_with_ingest_run_log_state(
+            context,
+            Self::IDENTIFIER,
+            DAILY_TIMEOUT,
+            |state| async move {
+                let source = require_source(
+                    state.dependencies.us_stock_bar_source,
+                    "Alpaca US stock bar source",
+                )?;
+                ingest_us_stock_bars(&state.dependencies.bars, source, Utc::now()).await
+            },
+        )
         .await
     }
 }
