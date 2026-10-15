@@ -11,7 +11,58 @@ use crate::DatabaseHandle;
 use crate::persistence::persistence_error;
 
 const SCREEN_STOCKS_SQL: &str = r#"
-    WITH latest_financial_summaries AS (
+    WITH latest_daily_timestamp AS (
+        SELECT MAX(timestamp) AS timestamp
+        FROM bars
+        WHERE timeframe = '1d'
+    ),
+    latest_data AS (
+        SELECT latest_daily_timestamp.timestamp,
+               COALESCE(
+                   latest_daily_timestamp.timestamp::date,
+                   (
+                       SELECT MAX(valuation.date)
+                       FROM valuation
+                       JOIN stock ON stock.id = LEFT(valuation.code, 4)
+                   )
+               ) AS latest_date
+        FROM latest_daily_timestamp
+    ),
+    latest_valuations AS (
+        SELECT DISTINCT ON (LEFT(valuation.code, 4))
+            LEFT(valuation.code, 4) AS stock_id,
+            valuation.date AS valuation_date,
+            valuation.per,
+            valuation.pbr,
+            valuation.roe * 100 AS roe,
+            valuation.mkt_cap / 100 AS market_cap
+        FROM valuation
+        JOIN stock ON stock.id = LEFT(valuation.code, 4)
+        CROSS JOIN latest_data
+        WHERE valuation.date >= latest_data.latest_date - 30
+        ORDER BY LEFT(valuation.code, 4), valuation.date DESC, valuation.code DESC
+    ),
+    latest_bars AS (
+        SELECT DISTINCT ON (bars.instrument_id)
+            bars.instrument_id,
+            bars.close
+        FROM bars
+        CROSS JOIN latest_data
+        WHERE bars.timeframe = '1d'
+          AND bars.timestamp >= latest_data.timestamp - INTERVAL '30 days'
+        ORDER BY bars.instrument_id, bars.timestamp DESC
+    ),
+    latest_valuation_date AS (
+        SELECT COALESCE(
+            (SELECT MAX(valuation_date) FROM latest_valuations),
+            (
+                SELECT MAX(valuation.date)
+                FROM valuation
+                JOIN stock ON stock.id = LEFT(valuation.code, 4)
+            )
+        ) AS as_of
+    ),
+    latest_financial_summaries AS (
         SELECT DISTINCT ON (LEFT(code, 4))
             LEFT(code, 4) AS stock_id,
             CASE
@@ -45,22 +96,8 @@ const SCREEN_STOCKS_SQL: &str = r#"
             latest_valuations.market_cap,
             latest_valuations.valuation_date
         FROM stock
-        LEFT JOIN LATERAL (
-            SELECT valuation.date AS valuation_date, valuation.per, valuation.pbr,
-                   valuation.roe * 100 AS roe, valuation.mkt_cap / 100 AS market_cap
-            FROM valuation
-            WHERE LEFT(valuation.code, 4) = stock.id
-            ORDER BY valuation.date DESC, valuation.code DESC
-            LIMIT 1
-        ) AS latest_valuations ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT bars.close
-            FROM bars
-            WHERE bars.instrument_id = stock.id
-              AND bars.timeframe = '1d'
-            ORDER BY bars.timestamp DESC
-            LIMIT 1
-        ) AS latest_bars ON TRUE
+        LEFT JOIN latest_valuations ON latest_valuations.stock_id = stock.id
+        LEFT JOIN latest_bars ON latest_bars.instrument_id = stock.id
         LEFT JOIN latest_financial_summaries ON latest_financial_summaries.stock_id = stock.id
         LEFT JOIN sectors ON sectors.stock_id = stock.id
     ),
@@ -82,7 +119,7 @@ const SCREEN_STOCKS_SQL: &str = r#"
     ),
     metadata AS (
         SELECT COUNT(*) AS total_count,
-               (SELECT MAX(valuation_date) FROM stock_rows) AS as_of
+               (SELECT as_of FROM latest_valuation_date) AS as_of
         FROM filtered
     ),
     paged AS (
