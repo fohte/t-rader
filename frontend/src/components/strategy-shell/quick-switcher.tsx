@@ -76,6 +76,12 @@ const SCREEN_ITEMS = [
     to: '/paper-trading',
   },
   {
+    id: 'screener',
+    label: 'スクリーナー',
+    searchTerms: ['screener'],
+    to: '/screener',
+  },
+  {
     id: 'calendar',
     label: 'カレンダー',
     searchTerms: ['calendar'],

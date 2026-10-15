@@ -142,6 +142,7 @@ function renderQuickSwitcher(
       paths: [
         { path: '/portfolio', component: () => <p>保有画面</p> },
         { path: '/notes', component: () => <p>ノート画面</p> },
+        { path: '/screener', component: () => <p>スクリーナー画面</p> },
         { path: '/strategies', component: () => <p>戦略一覧画面</p> },
         {
           path: '/strategies/$id/performance',
@@ -282,7 +283,7 @@ describe('QuickSwitcher', () => {
       expect(getShortcutOutput(defaultOutput)).toEqual({
         defaultOutput: {
           groups: ['画面', '戦略'],
-          resultCount: 18,
+          resultCount: 19,
           shortcut: `探す ${label}`,
         },
         requestPaths: ['/api/strategies'],
@@ -446,6 +447,13 @@ describe('QuickSwitcher', () => {
       page: '戦略一覧画面',
       pathname: '/strategies',
       search: { strategyTab: 'runs' },
+    },
+    {
+      query: 'スクリーナー',
+      label: 'スクリーナー',
+      page: 'スクリーナー画面',
+      pathname: '/screener',
+      search: {},
     },
   ])(
     'navigates to the $label screen with its search parameters',
