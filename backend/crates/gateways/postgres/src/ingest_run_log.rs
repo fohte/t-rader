@@ -101,7 +101,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{Duration, Timelike, Utc};
     use core_application::event_dispatch_job::{
-        EventDispatchJobError, EventDispatchJobExecutor, EventDispatchJobUseCases,
+        EventDispatchJobQueue, EventDispatchJobQueueError, EventDispatchJobUseCases,
     };
     use core_application::ingest_run_log::{IngestRunLog, IngestRunLogUseCases};
     use core_application::unit_of_work::{
@@ -143,30 +143,30 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct ObservingEventDispatchJobExecutor {
+    struct ObservingEventDispatchJobQueue {
         db: DatabaseHandle,
         commit_succeeded: Arc<AtomicBool>,
         observations: Arc<Mutex<Vec<DispatchObservation>>>,
-        fail_dispatch: bool,
+        fail_enqueue: bool,
     }
 
     #[async_trait]
-    impl EventDispatchJobExecutor for ObservingEventDispatchJobExecutor {
-        async fn dispatch_pending_events(&self) -> Result<(), EventDispatchJobError> {
+    impl EventDispatchJobQueue for ObservingEventDispatchJobQueue {
+        async fn enqueue_dispatch(&self) -> Result<(), EventDispatchJobQueueError> {
             let event_count = event::Entity::find()
                 .count(&self.db)
                 .await
-                .map_err(|error| EventDispatchJobError::new(error.to_string()))?;
+                .map_err(|error| EventDispatchJobQueueError::new(error.to_string()))?;
             self.observations
                 .lock()
-                .map_err(|error| EventDispatchJobError::new(error.to_string()))?
+                .map_err(|error| EventDispatchJobQueueError::new(error.to_string()))?
                 .push(DispatchObservation {
                     committed: self.commit_succeeded.load(Ordering::SeqCst),
                     event_count,
                 });
-            if self.fail_dispatch {
-                return Err(EventDispatchJobError::new(
-                    "sample_dispatch_error".to_owned(),
+            if self.fail_enqueue {
+                return Err(EventDispatchJobQueueError::new(
+                    "sample_enqueue_error".to_owned(),
                 ));
             }
             Ok(())
@@ -179,7 +179,7 @@ mod tests {
 
     fn log_with_dispatch_failure(
         db: DatabaseHandle,
-        fail_dispatch: bool,
+        fail_enqueue: bool,
     ) -> (IngestRunLogUseCases, Arc<Mutex<Vec<DispatchObservation>>>) {
         let commit_succeeded = Arc::new(AtomicBool::new(false));
         let observations = Arc::new(Mutex::new(Vec::new()));
@@ -188,11 +188,11 @@ mod tests {
             commit_succeeded: commit_succeeded.clone(),
         });
         let event_dispatch_job =
-            EventDispatchJobUseCases::new(Arc::new(ObservingEventDispatchJobExecutor {
+            EventDispatchJobUseCases::new(Arc::new(ObservingEventDispatchJobQueue {
                 db: db.clone(),
                 commit_succeeded,
                 observations: observations.clone(),
-                fail_dispatch,
+                fail_enqueue,
             }));
         (
             IngestRunLogUseCases::new(
@@ -473,14 +473,14 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn finish_keeps_the_event_when_dispatch_fails(db: DatabaseHandle) {
+    async fn finish_keeps_the_event_when_dispatch_enqueue_fails(db: DatabaseHandle) {
         let (log, dispatch_observations) = log_with_dispatch_failure(db.clone(), true);
         let run_id = log.start("sample_ingest").await.expect("start run");
         let started_at = row(&db, run_id).await.started_at;
         let stats = json!({ "rows": 3 });
         log.finish(run_id, Ok(stats.clone()))
             .await
-            .expect("finish despite dispatch failure");
+            .expect("finish despite dispatch enqueue failure");
 
         let run = row(&db, run_id).await;
         let events = events(&db).await;

@@ -12,6 +12,12 @@ impl StrategyTaskReconcileLockUseCases {
         Self { lock }
     }
 
+    pub async fn acquire(
+        &self,
+    ) -> Result<Box<dyn StrategyTaskReconcileLockGuard>, PersistenceError> {
+        self.lock.acquire().await
+    }
+
     pub async fn try_acquire(
         &self,
     ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {

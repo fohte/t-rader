@@ -1,8 +1,12 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration as StdDuration};
 
+use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use core_application::{
-    agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask},
+    agent_task_client::{
+        AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
+        FakeAgentTaskClient, SubmitAgentTask,
+    },
     event::{EventRepository, NewEvent},
     strategy_task::DEFAULT_PURPOSE,
     trigger::{NewTrigger, TriggerKind, TriggerRepository},
@@ -16,6 +20,7 @@ use gateway_postgres::{
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::{Value, json};
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 use crate::{services::use_cases::build_use_cases_without_agent_task_client, testing};
@@ -174,13 +179,48 @@ async fn submitted_tasks(fake: &FakeAgentTaskClient) -> Vec<(Uuid, String, Optio
         .collect()
 }
 
+struct BlockingSubmitAgentTaskClient {
+    submit_started: Notify,
+    resume_submit: Notify,
+}
+
+impl BlockingSubmitAgentTaskClient {
+    fn new() -> Self {
+        Self {
+            submit_started: Notify::new(),
+            resume_submit: Notify::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl AgentTaskClient for BlockingSubmitAgentTaskClient {
+    async fn submit(&self, _request: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
+        self.submit_started.notify_one();
+        self.resume_submit.notified().await;
+        Ok(AgentTaskRef {
+            task_id: "synthetic-agent-task".to_string(),
+        })
+    }
+
+    async fn get(&self, _task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+        Ok(AgentTaskStatus {
+            state: AgentTaskState::Working,
+            result_text: None,
+            error_message: None,
+            error_kind: None,
+            steps: None,
+        })
+    }
+}
+
 #[backend_test_macros::database_test]
-async fn inline_dispatch_runs_matching_triggers_and_expands_payload(db: DatabaseHandle) {
+async fn dispatches_matching_triggers_and_expands_payload(db: DatabaseHandle) {
     let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
     testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await
         .expect("insert test agent configuration");
-    create_event(
+    let event_id = create_event(
         &db,
         "sample_process.finished",
         json!({"state": "ready", "value": "synthetic"}),
@@ -208,13 +248,28 @@ async fn inline_dispatch_runs_matching_triggers_and_expands_payload(db: Database
     let dispatch =
         crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
     let outcome = dispatch.enqueue_dispatch().await;
+    let completed_dispatch = tokio::time::timeout(StdDuration::from_secs(2), async {
+        loop {
+            let event = event_dispatch_state(&db, event_id).await;
+            let submitted = submitted_tasks(&fake).await;
+            let current_tasks = tasks(&db).await;
+            let firings = firing_trigger_ids(&db).await;
+            if event.1 && !submitted.is_empty() {
+                break (event, current_tasks, firings, submitted);
+            }
+            tokio::time::sleep(StdDuration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("background event dispatch should finish");
 
     assert_eq!(
         (
             outcome.map_err(|error| error.to_string()),
-            tasks(&db).await,
-            firing_trigger_ids(&db).await,
-            submitted_tasks(&fake).await,
+            completed_dispatch.1,
+            completed_dispatch.2,
+            completed_dispatch.3,
+            completed_dispatch.0,
         ),
         (
             Ok(()),
@@ -225,7 +280,55 @@ async fn inline_dispatch_runs_matching_triggers_and_expands_payload(db: Database
                 "value=synthetic".to_string(),
                 Some(DEFAULT_PURPOSE.to_string()),
             )],
+            (event_id, true),
         ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn enqueue_dispatch_returns_while_agent_submission_is_blocked(db: DatabaseHandle) {
+    let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
+    testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        .await
+        .expect("insert test agent configuration");
+    let event_id = create_event(&db, "sample_process.finished", json!({}), 0).await;
+    create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.finished",
+        None,
+        "synthetic prompt",
+    )
+    .await;
+    let fake = Arc::new(BlockingSubmitAgentTaskClient::new());
+    let dispatch =
+        crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
+
+    let enqueue_result =
+        tokio::time::timeout(StdDuration::from_millis(100), dispatch.enqueue_dispatch()).await;
+    let submission_started =
+        tokio::time::timeout(StdDuration::from_secs(2), fake.submit_started.notified())
+            .await
+            .is_ok();
+    fake.resume_submit.notify_one();
+    let event_dispatched = tokio::time::timeout(StdDuration::from_secs(2), async {
+        loop {
+            if event_dispatch_state(&db, event_id).await.1 {
+                break true;
+            }
+            tokio::time::sleep(StdDuration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or(false);
+
+    assert_eq!(
+        (
+            enqueue_result.map(|result| result.map_err(|error| error.to_string())),
+            submission_started,
+            event_dispatched,
+        ),
+        (Ok(Ok(())), true, true),
     );
 }
 
@@ -269,7 +372,7 @@ async fn repeated_dispatch_submits_each_event_trigger_once(db: DatabaseHandle) {
 }
 
 #[backend_test_macros::database_test]
-async fn inline_dispatch_preserves_failure_events_for_event_triggered_tasks(db: DatabaseHandle) {
+async fn dispatch_preserves_failure_events_for_event_triggered_tasks(db: DatabaseHandle) {
     let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
     testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await
@@ -289,11 +392,29 @@ async fn inline_dispatch_preserves_failure_events_for_event_triggered_tasks(db: 
         crate::services::use_cases::build_use_cases(db.clone(), fake.clone()).event_dispatch_job();
 
     let outcome = dispatch.enqueue_dispatch().await;
-    let task = strategy_task::Entity::find()
-        .one(&db)
-        .await
-        .expect("read event-triggered task")
-        .expect("event-triggered task exists");
+    let completed_dispatch = tokio::time::timeout(StdDuration::from_secs(2), async {
+        loop {
+            let task = strategy_task::Entity::find()
+                .one(&db)
+                .await
+                .expect("read event-triggered task");
+            let failed_events = failed_event_shapes(&db).await;
+            if let Some(task) = task
+                && task.phase == StrategyTaskPhase::Failed
+                && !failed_events.is_empty()
+                && failed_events
+                    .iter()
+                    .all(|event| event["dispatched"] == json!(true))
+                && event_dispatch_state(&db, source_event_id).await.1
+            {
+                break (task, failed_events);
+            }
+            tokio::time::sleep(StdDuration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("background dispatch should retain failure events");
+    let task = completed_dispatch.0;
 
     assert_eq!(
         (
@@ -306,15 +427,12 @@ async fn inline_dispatch_preserves_failure_events_for_event_triggered_tasks(db: 
                 task.phase,
                 task.error_summary,
             ),
-            failed_event_shapes(&db).await,
+            completed_dispatch.1,
             firing_trigger_ids(&db).await,
             submitted_tasks(&fake).await,
         ),
         (
-            Err(
-                "failed to dispatch pending events: failed to process 1 event trigger(s)"
-                    .to_string()
-            ),
+            Ok(()),
             (source_event_id, true),
             (
                 strategy_id,

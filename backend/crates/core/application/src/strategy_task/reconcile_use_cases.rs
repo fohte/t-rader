@@ -5,7 +5,9 @@ use futures_util::{FutureExt, StreamExt, stream};
 
 use crate::agent_task_client::SharedAgentTaskClient;
 
-use super::{StrategyTaskReconcileLockUseCases, StrategyTaskUseCases};
+use super::{
+    StrategyTaskReconcileLockGuard, StrategyTaskReconcileLockUseCases, StrategyTaskUseCases,
+};
 
 const MAX_CONCURRENT_STATUS_FETCHES: usize = 8;
 
@@ -41,6 +43,21 @@ impl StrategyTaskReconcileUseCases {
             return Ok(0);
         };
 
+        self.reconcile_with_guard(guard).await
+    }
+
+    pub async fn reconcile_waiting_for_lock(&self) -> Result<usize, String> {
+        let guard =
+            self.lock.acquire().await.map_err(|error| {
+                format!("failed to acquire strategy task reconcile lock: {error}")
+            })?;
+        self.reconcile_with_guard(guard).await
+    }
+
+    async fn reconcile_with_guard(
+        &self,
+        guard: Box<dyn StrategyTaskReconcileLockGuard>,
+    ) -> Result<usize, String> {
         let reconcile_result =
             reconcile_in_flight_tasks(&self.strategy_tasks, self.agent_task_client.as_ref()).await;
         let release_result = guard

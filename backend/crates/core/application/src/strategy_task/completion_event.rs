@@ -49,29 +49,30 @@ impl StrategyTaskUseCases {
             )
             .await?;
 
-        let should_dispatch = if new_phase == StrategyTaskPhase::Failed && !emit_failure_event {
-            false
-        } else {
-            self.create_completion_event(
-                &transaction,
-                task,
-                new_phase,
-                result.task_updated,
-                &new_error,
-                &new_result_text,
-            )
-            .await?
-        };
+        let should_enqueue_dispatch =
+            if new_phase == StrategyTaskPhase::Failed && !emit_failure_event {
+                false
+            } else {
+                self.create_completion_event(
+                    &transaction,
+                    task,
+                    new_phase,
+                    result.task_updated,
+                    &new_error,
+                    &new_result_text,
+                )
+                .await?
+            };
 
         self.unit_of_work.commit(transaction).await?;
-        if should_dispatch
+        if should_enqueue_dispatch
             && let Some(completion_events) = self.completion_events.as_ref()
             && let Err(error) = completion_events.dispatch_job.enqueue_dispatch().await
         {
             tracing::warn!(
                 error = %error,
                 task_id = %task.task_id,
-                "failed to dispatch event immediately; periodic dispatch will pick up the committed event",
+                "failed to enqueue event dispatch; periodic dispatch will pick up the committed event",
             );
         }
 
@@ -115,7 +116,7 @@ impl StrategyTaskUseCases {
         } else {
             false
         };
-        let should_dispatch = if result.task_updated && !claimed {
+        let should_enqueue_dispatch = if result.task_updated && !claimed {
             self.create_completion_event(
                 &transaction,
                 task,
@@ -130,14 +131,14 @@ impl StrategyTaskUseCases {
         };
 
         self.unit_of_work.commit(transaction).await?;
-        if should_dispatch
+        if should_enqueue_dispatch
             && let Some(completion_events) = self.completion_events.as_ref()
             && let Err(error) = completion_events.dispatch_job.enqueue_dispatch().await
         {
             tracing::warn!(
                 error = %error,
                 task_id = %task.task_id,
-                "failed to dispatch event immediately; periodic dispatch will pick up the committed event",
+                "failed to enqueue event dispatch; periodic dispatch will pick up the committed event",
             );
         }
 

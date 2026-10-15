@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use core_application::{
-    event_dispatch_job::{EventDispatchJobError, EventDispatchJobExecutor, EventDispatchJobUseCases},
+    event_dispatch_job::{
+        EventDispatchJobQueue, EventDispatchJobQueueError, EventDispatchJobUseCases,
+    },
     strategy_task::StrategyTaskUseCases,
 };
 use gateway_postgres::{PostgresEventRepository, PostgresStrategyTaskRepository};
@@ -22,7 +24,7 @@ impl UseCases {
         self.strategy_tasks_without_completion_events()
             .with_completion_events(
                 Arc::new(PostgresEventRepository::new(self.db.clone())),
-                EventDispatchJobUseCases::new(Arc::new(DeferredEventDispatchJobExecutor)),
+                EventDispatchJobUseCases::new(Arc::new(DeferredEventDispatchJobQueue)),
             )
     }
 
@@ -34,11 +36,11 @@ impl UseCases {
     }
 }
 
-struct DeferredEventDispatchJobExecutor;
+struct DeferredEventDispatchJobQueue;
 
 #[async_trait]
-impl EventDispatchJobExecutor for DeferredEventDispatchJobExecutor {
-    async fn dispatch_pending_events(&self) -> Result<(), EventDispatchJobError> {
+impl EventDispatchJobQueue for DeferredEventDispatchJobQueue {
+    async fn enqueue_dispatch(&self) -> Result<(), EventDispatchJobQueueError> {
         // 現在の dispatch loop が、新たに作られた completion event も処理する。
         Ok(())
     }

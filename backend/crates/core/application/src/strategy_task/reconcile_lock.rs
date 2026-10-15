@@ -6,6 +6,7 @@ use crate::persistence::PersistenceError;
 
 #[async_trait]
 pub trait StrategyTaskReconcileLock: Send + Sync {
+    async fn acquire(&self) -> Result<Box<dyn StrategyTaskReconcileLockGuard>, PersistenceError>;
     async fn try_acquire(
         &self,
     ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError>;

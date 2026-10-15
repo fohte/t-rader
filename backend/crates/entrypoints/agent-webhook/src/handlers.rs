@@ -49,7 +49,7 @@ async fn receive_agent_task_notification(
     }
     let reconcile_use_cases = state.strategy_task_reconcile_use_cases.clone();
     tokio::spawn(async move {
-        match reconcile_use_cases.reconcile().await {
+        match reconcile_use_cases.reconcile_waiting_for_lock().await {
             Ok(updated) if updated > 0 => {
                 tracing::info!(
                     updated,

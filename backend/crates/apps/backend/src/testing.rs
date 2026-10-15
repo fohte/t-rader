@@ -49,10 +49,17 @@ struct TestRouterState {
 }
 
 fn base_state(db: DatabaseHandle, agent_task_client: SharedAgentTaskClient) -> TestRouterState {
+    base_state_with_reconcile_lock(db, agent_task_client, test_strategy_task_reconcile_lock())
+}
+
+fn base_state_with_reconcile_lock(
+    db: DatabaseHandle,
+    agent_task_client: SharedAgentTaskClient,
+    reconcile_lock: StrategyTaskReconcileLockUseCases,
+) -> TestRouterState {
     let use_cases = crate::services::use_cases::build_use_cases(db, agent_task_client.clone());
     let app_state = build_http_state(&use_cases, agent_task_client.clone(), None, None);
-    let strategy_task_reconcile_use_cases =
-        use_cases.strategy_task_reconcile(test_strategy_task_reconcile_lock());
+    let strategy_task_reconcile_use_cases = use_cases.strategy_task_reconcile(reconcile_lock);
     TestRouterState {
         agent_webhook_state: build_agent_webhook_state(
             strategy_task_reconcile_use_cases,
@@ -86,6 +93,10 @@ fn test_strategy_task_reconcile_lock_with_availability(
 
 #[async_trait]
 impl StrategyTaskReconcileLock for TestStrategyTaskReconcileLock {
+    async fn acquire(&self) -> Result<Box<dyn StrategyTaskReconcileLockGuard>, PersistenceError> {
+        Ok(Box::new(TestStrategyTaskReconcileLockGuard))
+    }
+
     async fn try_acquire(
         &self,
     ) -> Result<Option<Box<dyn StrategyTaskReconcileLockGuard>>, PersistenceError> {
@@ -460,6 +471,16 @@ pub async fn create_test_server_with_db_and_agent_client(
     let router = create_test_router(states, db.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (db, server)
+}
+
+pub async fn create_test_server_with_db_agent_client_and_reconcile_lock(
+    db: DatabaseHandle,
+    agent_client: SharedAgentTaskClient,
+    reconcile_lock: StrategyTaskReconcileLockUseCases,
+) -> TestServer {
+    let states = base_state_with_reconcile_lock(db.clone(), agent_client, reconcile_lock);
+    let router = create_test_router(states, db);
+    TestServer::new(router).expect("failed to create test server")
 }
 
 /// テスト用のモックデータプロバイダー
