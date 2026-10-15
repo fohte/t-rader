@@ -407,8 +407,7 @@ async fn main() -> Result<(), StartupError> {
         return Ok(());
     }
 
-    let cron_trigger_timer = if cli.run_mode.starts_api() && cron_trigger_timer_enabled_from_env()?
-    {
+    let cron_trigger_timer = if run_mode.starts_api() && cron_trigger_timer_enabled_from_env()? {
         let listener = PostgresTriggerChangeListener::connect(&database_url)
             .await
             .map_err(|error| {
@@ -421,7 +420,7 @@ async fn main() -> Result<(), StartupError> {
         None
     };
 
-    let app = if cli.run_mode.starts_api() {
+    let app = if run_mode.starts_api() {
         // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
         // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
         // 合わさって空文字同士の一致で認証をすり抜けてしまう。
