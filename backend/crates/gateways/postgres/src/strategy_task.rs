@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use core_application::strategy_task::{
-    StrategyTask, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskRepository,
-    StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskStepStatus, StrategyTaskUpdate,
-    TaskListQuery,
+    StrategyTask, StrategyTaskApplyResult, StrategyTaskOrigin, StrategyTaskPhase,
+    StrategyTaskRepository, StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskStepStatus,
+    StrategyTaskUpdate, TaskListQuery,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
-use sea_orm::sea_query::{Expr, OnConflict};
+use sea_orm::sea_query::{Expr, LockType, OnConflict};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
@@ -123,25 +123,47 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         task_id: Uuid,
         task_update: Option<StrategyTaskUpdate>,
         steps: Option<serde_json::Value>,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
+    ) -> Result<StrategyTaskApplyResult, StrategyTaskRepositoryError> {
         let transaction = transaction_ref(transaction)?;
-        let task_changed = match task_update {
-            Some(task_update) => {
-                update_active_model(task_update)
-                    .update(transaction)
-                    .await
-                    .map_err(repository_error)?;
-                true
-            }
+        let task_update_attempted = task_update.is_some();
+        let task_updated = match task_update {
+            Some(task_update) => strategy_task::Entity::update_many()
+                .set(update_active_model(task_update))
+                .filter(strategy_task::Column::TaskId.eq(task_id))
+                .filter(strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]))
+                .exec(transaction)
+                .await
+                .map(|result| result.rows_affected > 0)
+                .map_err(repository_error)?,
             None => false,
         };
-        let steps_changed = match steps {
-            Some(serde_json::Value::Array(steps)) if !steps.is_empty() => {
+
+        let has_steps =
+            matches!(&steps, Some(serde_json::Value::Array(steps)) if !steps.is_empty());
+        let can_update_steps = if task_updated {
+            true
+        } else if !task_update_attempted && has_steps {
+            strategy_task::Entity::find_by_id(task_id)
+                .filter(strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]))
+                .lock(LockType::Update)
+                .one(transaction)
+                .await
+                .map_err(repository_error)?
+                .is_some()
+        } else {
+            false
+        };
+
+        let steps_updated = match (can_update_steps, steps) {
+            (true, Some(serde_json::Value::Array(steps))) if !steps.is_empty() => {
                 upsert_steps(transaction, task_id, &steps).await?
             }
             _ => false,
         };
-        Ok(task_changed || steps_changed)
+        Ok(StrategyTaskApplyResult {
+            task_updated,
+            steps_updated,
+        })
     }
 
     async fn find_by_id(

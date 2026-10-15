@@ -195,12 +195,18 @@ mod tests {
             task_id: Uuid,
             _task_update: Option<StrategyTaskUpdate>,
             _steps: Option<serde_json::Value>,
-        ) -> Result<bool, StrategyTaskRepositoryError> {
+        ) -> Result<
+            core_application::strategy_task::StrategyTaskApplyResult,
+            StrategyTaskRepositoryError,
+        > {
             if task_id == self.failed_task_id {
                 return Err(PersistenceError::Database("write failed".to_string()).into());
             }
             self.updated_task_ids.lock().await.push(task_id);
-            Ok(true)
+            Ok(core_application::strategy_task::StrategyTaskApplyResult {
+                task_updated: true,
+                steps_updated: false,
+            })
         }
 
         async fn find_by_id(

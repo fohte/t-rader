@@ -1,4 +1,5 @@
 use chrono::{DateTime, FixedOffset};
+use serde_json::json;
 
 use crate::agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
@@ -6,7 +7,9 @@ use crate::agent_task_client::{
 
 use super::StrategyTaskUseCases;
 use super::error::ReconcileTaskError;
+use super::repository::StrategyTaskApplyResult;
 use super::types::{StrategyTask, StrategyTaskPhase, StrategyTaskUpdate};
+use crate::event::NewEvent;
 
 impl StrategyTaskUseCases {
     pub async fn reconcile_task(
@@ -115,20 +118,66 @@ impl StrategyTaskUseCases {
             task_id: task.task_id,
             a2a_task_id: None,
             phase: Some(new_phase),
-            error_summary: Some(new_error),
-            result_text: Some(new_result_text),
+            error_summary: Some(new_error.clone()),
+            result_text: Some(new_result_text.clone()),
             deadline_at: None,
             auto_resumed_at: None,
             updated_at: chrono::Utc::now().fixed_offset(),
         });
 
         let transaction = self.unit_of_work.begin().await?;
-        let updated = self
+        let result: StrategyTaskApplyResult = self
             .repository
             .apply_status_and_steps(&transaction, task.task_id, task_update, new_steps)
             .await?;
+
+        let event_type = event_type_for_phase(new_phase);
+        let event_created = if result.task_updated
+            && let (Some(event_type), Some(completion_events)) =
+                (event_type, self.completion_events.as_ref())
+        {
+            let source_chain_depth = completion_events
+                .repository
+                .find_chain_depth_for_task(&transaction, task.task_id)
+                .await?;
+            completion_events
+                .repository
+                .create(
+                    &transaction,
+                    NewEvent {
+                        event_type: event_type.to_string(),
+                        payload: json!({
+                            "task_id": task.task_id,
+                            "strategy_id": task.strategy_id,
+                            "purpose": task.purpose,
+                            "result_text": new_result_text,
+                            "error_summary": new_error,
+                        }),
+                        chain_depth: Some(
+                            source_chain_depth.map_or(0, |depth| depth.saturating_add(1)),
+                        ),
+                    },
+                )
+                .await?;
+            true
+        } else {
+            false
+        };
+
         self.unit_of_work.commit(transaction).await?;
-        Ok(updated)
+        if event_created && let Some(completion_events) = self.completion_events.as_ref() {
+            completion_events.dispatch_job.enqueue_dispatch().await?;
+        }
+
+        Ok(result.changed())
+    }
+}
+
+fn event_type_for_phase(phase: StrategyTaskPhase) -> Option<&'static str> {
+    match phase {
+        StrategyTaskPhase::Completed => Some("strategy_task.completed"),
+        StrategyTaskPhase::Failed => Some("strategy_task.failed"),
+        StrategyTaskPhase::Pending | StrategyTaskPhase::Running => None,
     }
 }
 

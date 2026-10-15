@@ -4,7 +4,9 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
-use crate::strategy_task::repository::{StrategyTaskRepository, StrategyTaskRepositoryError};
+use crate::strategy_task::repository::{
+    StrategyTaskApplyResult, StrategyTaskRepository, StrategyTaskRepositoryError,
+};
 use crate::strategy_task::{
     StrategyTask, StrategyTaskOrigin, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
     StrategyTaskUpdate, TaskListQuery,
@@ -167,8 +169,8 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
         _task_id: Uuid,
         _task_update: Option<StrategyTaskUpdate>,
         _steps: Option<serde_json::Value>,
-    ) -> Result<bool, StrategyTaskRepositoryError> {
-        Ok(false)
+    ) -> Result<StrategyTaskApplyResult, StrategyTaskRepositoryError> {
+        Ok(StrategyTaskApplyResult::default())
     }
 
     async fn find_by_id(

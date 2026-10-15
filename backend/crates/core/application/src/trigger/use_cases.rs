@@ -685,8 +685,9 @@ mod tests {
             _task_id: Uuid,
             _task_update: Option<StrategyTaskUpdate>,
             _steps: Option<serde_json::Value>,
-        ) -> Result<bool, StrategyTaskRepositoryError> {
-            Ok(false)
+        ) -> Result<crate::strategy_task::StrategyTaskApplyResult, StrategyTaskRepositoryError>
+        {
+            Ok(crate::strategy_task::StrategyTaskApplyResult::default())
         }
 
         async fn find_by_id(

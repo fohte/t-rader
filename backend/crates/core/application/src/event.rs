@@ -71,6 +71,12 @@ pub trait EventRepository: Send + Sync {
         event_id: Uuid,
         trigger_id: Uuid,
     ) -> Result<bool, EventRepositoryError>;
+
+    async fn find_chain_depth_for_task(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        task_id: Uuid,
+    ) -> Result<Option<i64>, EventRepositoryError>;
 }
 
 pub type SharedEventRepository = std::sync::Arc<dyn EventRepository + Send + Sync>;

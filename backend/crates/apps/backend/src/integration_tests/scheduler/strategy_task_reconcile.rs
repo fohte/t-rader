@@ -26,24 +26,39 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use core_application::agent_task_client::{
-        AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
-        FakeAgentTaskClient,
+        AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
+        EXECUTION_LOST_ERROR_KIND, FakeAgentTaskClient, SharedAgentTaskClient,
     };
+    use core_application::event::{EventRepository, NewEvent};
+    use core_application::strategy_task::StrategyTaskRepository;
+    use core_application::trigger::{NewTrigger, TriggerKind, TriggerRepository};
+    use core_application::unit_of_work::UnitOfWork;
     use gateway_postgres::entities::sea_orm_active_enums::{
         StrategyTaskPhase, StrategyTaskStepStatus,
     };
-    use gateway_postgres::entities::{strategy, strategy_task, strategy_task_step};
+    use gateway_postgres::entities::{
+        event as event_entity, strategy, strategy_task, strategy_task_step,
+    };
+    use gateway_postgres::{
+        PostgresEventRepository, PostgresStrategyTaskRepository, PostgresTriggerRepository,
+        PostgresUnitOfWork,
+    };
     use sea_orm::{
         ActiveModelTrait,
         ActiveValue::{NotSet, Set},
-        ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+        ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, QueryOrder,
+        Statement,
     };
+    use serde_json::{Value, json};
     use uuid::Uuid;
 
     use super::*;
 
     async fn insert_strategy(db: &impl sea_orm::ConnectionTrait) -> Uuid {
-        let id = Uuid::new_v4();
+        insert_strategy_with_id(db, Uuid::new_v4()).await
+    }
+
+    async fn insert_strategy_with_id(db: &impl sea_orm::ConnectionTrait, id: Uuid) -> Uuid {
         strategy::ActiveModel {
             id: Set(id),
             name: Set("test".to_string()),
@@ -67,7 +82,25 @@ mod tests {
         phase: StrategyTaskPhase,
         deadline_offset: chrono::Duration,
     ) -> Uuid {
-        let task_id = Uuid::new_v4();
+        insert_task_with_id(
+            db,
+            Uuid::new_v4(),
+            strategy_id,
+            a2a_task_id,
+            phase,
+            deadline_offset,
+        )
+        .await
+    }
+
+    async fn insert_task_with_id(
+        db: &impl sea_orm::ConnectionTrait,
+        task_id: Uuid,
+        strategy_id: Uuid,
+        a2a_task_id: Option<&str>,
+        phase: StrategyTaskPhase,
+        deadline_offset: chrono::Duration,
+    ) -> Uuid {
         let now = Utc::now().fixed_offset();
         strategy_task::ActiveModel {
             task_id: Set(task_id),
@@ -91,6 +124,84 @@ mod tests {
         .await
         .unwrap();
         task_id
+    }
+
+    async fn create_event_origin(
+        db: &gateway_postgres::DatabaseHandle,
+        strategy_id: Uuid,
+        task_id: Uuid,
+        chain_depth: i64,
+    ) {
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let event_repository = PostgresEventRepository::new(db.clone());
+        let trigger_repository = PostgresTriggerRepository::new(db.clone());
+        let transaction = unit_of_work.begin().await.unwrap();
+        let event = event_repository
+            .create(
+                &transaction,
+                NewEvent {
+                    event_type: "sample_process.started".to_string(),
+                    payload: json!({}),
+                    chain_depth: Some(chain_depth),
+                },
+            )
+            .await
+            .unwrap();
+        let trigger_id = Uuid::new_v4();
+        trigger_repository
+            .create(
+                &transaction,
+                NewTrigger {
+                    trigger_id,
+                    strategy_id,
+                    purpose: None,
+                    kind: TriggerKind::Event,
+                    schedule: None,
+                    hook_slug: None,
+                    event_type: Some("sample_process.started".to_string()),
+                    event_match: None,
+                    prompt_template: "sample prompt".to_string(),
+                    enabled: true,
+                    business_days_only: false,
+                },
+            )
+            .await
+            .unwrap();
+        event_repository
+            .insert_firing(&transaction, event.event_id, trigger_id, task_id)
+            .await
+            .unwrap();
+        unit_of_work.commit(transaction).await.unwrap();
+    }
+
+    async fn ensure_event_dispatch_job_schema() {
+        let pool = gateway_postgres::test_support::create_test_pool().await;
+        crate::migrations::migrate_graphile_worker_schema(pool)
+            .await
+            .expect("migrate Graphile Worker schema");
+    }
+
+    async fn event_dispatch_job_count(db: &impl ConnectionTrait) -> i64 {
+        let statement = Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT count(*) AS job_count FROM graphile_worker._private_jobs WHERE key = $1"
+                .to_string(),
+            ["event_dispatch".into()],
+        );
+        db.query_one_raw(statement)
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "job_count")
+            .unwrap()
+    }
+
+    fn sort_events(events: &mut [Value]) {
+        events.sort_by(|left, right| {
+            left["payload"]["task_id"]
+                .as_str()
+                .cmp(&right["payload"]["task_id"].as_str())
+        });
     }
 
     async fn fetch_task(db: &impl sea_orm::ConnectionTrait, task_id: Uuid) -> strategy_task::Model {
@@ -127,31 +238,45 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reconciles_completed_running_and_failed_states(db: gateway_postgres::DatabaseHandle) {
-        let strategy_id = insert_strategy(&db).await;
-        let completed_id = insert_task(
+        ensure_event_dispatch_job_schema().await;
+        let strategy_id = insert_strategy_with_id(&db, Uuid::from_u128(0x100)).await;
+        let completed_id = insert_task_with_id(
             &db,
+            Uuid::from_u128(0x101),
             strategy_id,
             Some("t-completed"),
             StrategyTaskPhase::Running,
             FAR_FUTURE,
         )
         .await;
-        let failed_id = insert_task(
+        let failed_id = insert_task_with_id(
             &db,
+            Uuid::from_u128(0x102),
             strategy_id,
             Some("t-failed"),
             StrategyTaskPhase::Running,
             FAR_FUTURE,
         )
         .await;
-        let running_id = insert_task(
+        let running_id = insert_task_with_id(
             &db,
+            Uuid::from_u128(0x103),
             strategy_id,
             Some("t-running"),
             StrategyTaskPhase::Running,
             FAR_FUTURE,
         )
         .await;
+        let event_started_task_id = insert_task_with_id(
+            &db,
+            Uuid::from_u128(0x104),
+            strategy_id,
+            Some("t-event-started"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        create_event_origin(&db, strategy_id, event_started_task_id, 4).await;
 
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_status(
@@ -170,8 +295,8 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
-                error_message: None,
-                error_kind: Some("usage_limit".to_string()),
+                error_message: Some("sample failure".to_string()),
+                error_kind: None,
                 steps: None,
             },
         )
@@ -187,39 +312,109 @@ mod tests {
             },
         )
         .await;
+        fake.set_status(
+            "t-event-started",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("linked result".to_string()),
+                error_message: None,
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
 
         let agent_client: SharedAgentTaskClient = fake.clone();
         let updated = run_once(&db, &agent_client).await;
-        // running は phase (Running) も error/result も変化しないので更新カウントに含まれない。
-        assert_eq!(updated, 2);
 
         let completed = fetch_task(&db, completed_id).await;
         let failed = fetch_task(&db, failed_id).await;
         let running = fetch_task(&db, running_id).await;
-
-        assert_eq!(
+        let mut events = event_entity::Entity::find()
+            .filter(
+                event_entity::Column::EventType
+                    .is_in(["strategy_task.completed", "strategy_task.failed"]),
+            )
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|event| {
+                json!({
+                    "event_type": event.event_type,
+                    "payload": event.payload,
+                    "chain_depth": event.chain_depth,
+                })
+            })
+            .collect::<Vec<_>>();
+        sort_events(&mut events);
+        let mut expected_events = vec![
+            json!({
+                "event_type": "strategy_task.completed",
+                "payload": {
+                    "task_id": completed_id,
+                    "strategy_id": strategy_id,
+                    "purpose": null,
+                    "result_text": "all good",
+                    "error_summary": null,
+                },
+                "chain_depth": 0,
+            }),
+            json!({
+                "event_type": "strategy_task.failed",
+                "payload": {
+                    "task_id": failed_id,
+                    "strategy_id": strategy_id,
+                    "purpose": null,
+                    "result_text": null,
+                    "error_summary": "sample failure",
+                },
+                "chain_depth": 0,
+            }),
+            json!({
+                "event_type": "strategy_task.completed",
+                "payload": {
+                    "task_id": event_started_task_id,
+                    "strategy_id": strategy_id,
+                    "purpose": null,
+                    "result_text": "linked result",
+                    "error_summary": null,
+                },
+                "chain_depth": 5,
+            }),
+        ];
+        sort_events(&mut expected_events);
+        let actual = (
+            updated,
             (
                 completed.phase,
                 completed.result_text,
                 completed.error_summary,
             ),
-            (
-                StrategyTaskPhase::Completed,
-                Some("all good".to_string()),
-                None,
-            ),
-        );
-        assert_eq!(
             (failed.phase, failed.result_text, failed.error_summary),
-            (
-                StrategyTaskPhase::Failed,
-                None,
-                Some("usage_limit".to_string()),
-            ),
-        );
-        assert_eq!(
             (running.phase, running.result_text, running.error_summary),
-            (StrategyTaskPhase::Running, None, None),
+            events,
+            event_dispatch_job_count(&db).await,
+        );
+
+        assert_eq!(
+            actual,
+            (
+                3,
+                (
+                    StrategyTaskPhase::Completed,
+                    Some("all good".to_string()),
+                    None,
+                ),
+                (
+                    StrategyTaskPhase::Failed,
+                    None,
+                    Some("sample failure".to_string()),
+                ),
+                (StrategyTaskPhase::Running, None, None),
+                expected_events,
+                1,
+            ),
         );
     }
 
@@ -1005,5 +1200,132 @@ mod tests {
         let row = fetch_task(db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Failed);
         assert!(fake.submitted.lock().await.is_empty());
+    }
+
+    struct BarrierAgentTaskClient {
+        barrier: tokio::sync::Barrier,
+        status: AgentTaskStatus,
+    }
+
+    #[async_trait::async_trait]
+    impl AgentTaskClient for BarrierAgentTaskClient {
+        async fn submit(
+            &self,
+            _request: core_application::agent_task_client::SubmitAgentTask,
+        ) -> Result<AgentTaskRef, AgentTaskError> {
+            Err(AgentTaskError::NotConfigured)
+        }
+
+        async fn get(&self, _task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+            self.barrier.wait().await;
+            Ok(self.status.clone())
+        }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn concurrent_reconcile_emits_one_completion_event(
+        _database: gateway_postgres::DatabaseHandle,
+    ) {
+        ensure_event_dispatch_job_schema().await;
+        let pool = gateway_postgres::test_support::create_test_pool_with_max_connections(4).await;
+        let connection = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
+        let db = gateway_postgres::DatabaseHandle::from(connection);
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("sample-agent-task"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let task = PostgresStrategyTaskRepository::new(db.clone())
+            .find_by_id(task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let strategy_tasks =
+            crate::services::use_cases::build_use_cases(db.clone()).strategy_tasks();
+        let client = Arc::new(BarrierAgentTaskClient {
+            barrier: tokio::sync::Barrier::new(2),
+            status: AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("sample result".to_string()),
+                error_message: None,
+                error_kind: None,
+                steps: None,
+            },
+        });
+        let now = Utc::now().fixed_offset();
+        let (left, right) = tokio::join!(
+            strategy_tasks.reconcile_task(client.as_ref(), task.clone(), now),
+            strategy_tasks.reconcile_task(client.as_ref(), task, now),
+        );
+        let mut changed = vec![left.unwrap(), right.unwrap()];
+        changed.sort();
+
+        let task_id_text = task_id.to_string();
+        let event_rows = event_entity::Entity::find()
+            .filter(event_entity::Column::EventType.eq("strategy_task.completed"))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.payload["task_id"].as_str() == Some(task_id_text.as_str()))
+            .collect::<Vec<_>>();
+        let event_ids = event_rows
+            .iter()
+            .map(|event| event.event_id)
+            .collect::<Vec<_>>();
+        let event_output = event_rows
+            .iter()
+            .map(|event| {
+                json!({
+                    "event_type": event.event_type,
+                    "task_id": "task",
+                    "chain_depth": event.chain_depth,
+                })
+            })
+            .collect::<Vec<_>>();
+        let actual = (
+            changed,
+            event_output,
+            fetch_task(&db, task_id).await.phase,
+            event_dispatch_job_count(&db).await,
+        );
+
+        for event_id in event_ids {
+            event_entity::Entity::delete_by_id(event_id)
+                .exec(&db)
+                .await
+                .unwrap();
+        }
+        db.execute_unprepared(
+            "DELETE FROM graphile_worker._private_jobs WHERE key = 'event_dispatch'",
+        )
+        .await
+        .unwrap();
+        strategy_task::Entity::delete_by_id(task_id)
+            .exec(&db)
+            .await
+            .unwrap();
+        strategy::Entity::delete_by_id(strategy_id)
+            .exec(&db)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            actual,
+            (
+                vec![false, true],
+                vec![json!({
+                    "event_type": "strategy_task.completed",
+                    "task_id": "task",
+                    "chain_depth": 0,
+                })],
+                StrategyTaskPhase::Completed,
+                1,
+            ),
+        );
     }
 }

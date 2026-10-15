@@ -19,6 +19,18 @@ pub enum StrategyTaskRepositoryError {
     InvalidTransaction,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StrategyTaskApplyResult {
+    pub task_updated: bool,
+    pub steps_updated: bool,
+}
+
+impl StrategyTaskApplyResult {
+    pub fn changed(self) -> bool {
+        self.task_updated || self.steps_updated
+    }
+}
+
 #[async_trait]
 pub trait StrategyTaskRepository: Send + Sync {
     async fn strategy_exists(&self, strategy_id: Uuid)
@@ -45,7 +57,7 @@ pub trait StrategyTaskRepository: Send + Sync {
         task_id: Uuid,
         task_update: Option<StrategyTaskUpdate>,
         steps: Option<serde_json::Value>,
-    ) -> Result<bool, StrategyTaskRepositoryError>;
+    ) -> Result<StrategyTaskApplyResult, StrategyTaskRepositoryError>;
     async fn find_by_id(
         &self,
         task_id: Uuid,
