@@ -5,6 +5,7 @@ use utoipa::OpenApi;
     tags(
         (name = "health", description = "ヘルスチェック"),
         (name = "bars", description = "バーデータ (OHLCV)"),
+        (name = "screener", description = "条件による銘柄検索"),
         (name = "calendar", description = "週間イベントカレンダー"),
         (name = "strategies", description = "戦略 (ワークスペース)"),
         (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
@@ -29,6 +30,10 @@ use utoipa::OpenApi;
         (name = "config", description = "frontend 向けランタイム設定値"),
         (name = "account", description = "口座全体の設定"),
     ),
+    components(schemas(
+        crate::handlers::screener::ScreenerSortBy,
+        crate::handlers::screener::ScreenerSortOrder,
+    )),
     info(
         title = "T-Rader API",
         version = "0.1.0",

@@ -24,6 +24,7 @@ use core_application::portfolio_history::PortfolioHistoryUseCases;
 use core_application::prediction::PredictionUseCases;
 use core_application::refs::RefUseCases;
 use core_application::rss_feed::RssFeedUseCases;
+use core_application::screener::ScreenerUseCases;
 use core_application::stock_group::StockGroupUseCases;
 use core_application::strategy::StrategyUseCases;
 use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
@@ -58,6 +59,7 @@ pub struct FrontendApiState {
     pub ref_use_cases: RefUseCases,
     pub stock_group_use_cases: StockGroupUseCases,
     pub rss_feed_use_cases: RssFeedUseCases,
+    pub screener_use_cases: ScreenerUseCases,
     pub strategy_scope_use_cases: Arc<StrategyScopeUseCases>,
     pub strategy_task_use_cases: StrategyTaskUseCases,
     pub strategy_earnings_target_use_cases: StrategyEarningsTargetUseCases,
