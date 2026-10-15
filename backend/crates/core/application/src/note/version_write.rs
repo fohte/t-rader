@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use chrono::Utc;
+use core_domain::note_price_reference::NotePriceReferenceToken;
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
@@ -15,6 +16,8 @@ use references::has_resolutions;
 
 const APPROVED_NOTE_STATUS: &str = "approved";
 const HUMAN_CREATED_BY_KIND: &str = "human";
+const REFERENCE_RESOLUTION_CONFLICT: &str =
+    "note body changed while resolving references; retry the write";
 
 pub(super) struct AppendVersionCommand {
     pub title: String,
@@ -27,6 +30,39 @@ pub(super) struct AppendVersionCommand {
     pub change_diff: Option<Value>,
     pub actor: Actor,
     pub resolved_market_data: Option<ResolvedMarketDataReferences>,
+}
+
+fn resolve_price_references_json(
+    body_md: &str,
+    references: &[NotePriceReferenceToken],
+    previous: Option<&NoteVersion>,
+    resolved_market_data: Option<ResolvedMarketDataReferences>,
+) -> Result<Value, NoteUseCaseError> {
+    if references.is_empty() {
+        return Ok(Value::Object(Map::new()));
+    }
+
+    match resolved_market_data {
+        Some(ResolvedMarketDataReferences::ReusePrevious { version_id }) => {
+            let Some(previous) = previous.filter(|previous| {
+                previous.id == version_id
+                    && previous.body_md == body_md
+                    && has_resolutions(&previous.resolved_price_references_json, references)
+            }) else {
+                return Err(NoteUseCaseError::Conflict(
+                    REFERENCE_RESOLUTION_CONFLICT.into(),
+                ));
+            };
+            Ok(previous.resolved_price_references_json.clone())
+        }
+        Some(ResolvedMarketDataReferences::Resolved {
+            body_md: resolved_body_md,
+            values,
+        }) if resolved_body_md == body_md => Ok(Value::Object(values)),
+        Some(ResolvedMarketDataReferences::Resolved { .. }) | None => Err(
+            NoteUseCaseError::Conflict(REFERENCE_RESOLUTION_CONFLICT.into()),
+        ),
+    }
 }
 
 impl NoteUseCases {
@@ -88,23 +124,12 @@ impl NoteUseCases {
                 core_domain::note_reference::BodyTokenPolicy::Validate,
             )?;
         }
-        let resolved_price_references_json = if references.is_empty() {
-            Value::Object(Map::new())
-        } else if !body_changed
-            && previous_content.is_some_and(|previous| {
-                has_resolutions(&previous.resolved_price_references_json, &references)
-            })
-        {
-            previous_content
-                .map(|previous| previous.resolved_price_references_json.clone())
-                .unwrap_or_else(|| Value::Object(Map::new()))
-        } else {
-            Value::Object(content.resolved_market_data.ok_or_else(|| {
-                NoteUseCaseError::Conflict(
-                    "note body changed while resolving references; retry the write".into(),
-                )
-            })?)
-        };
+        let resolved_price_references_json = resolve_price_references_json(
+            &content.body_md,
+            &references,
+            previous_content,
+            content.resolved_market_data,
+        )?;
 
         let becomes_current = !requires_approval;
         let status = if content.created_by_kind == HUMAN_CREATED_BY_KIND {
@@ -297,6 +322,41 @@ impl NoteUseCases {
             .insert_note_links(transaction, links)
             .await?;
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::note::version_write::references::ResolvedMarketDataReferences;
+
+    #[test]
+    fn rejects_resolutions_for_a_different_body() {
+        let references = core_domain::note_price_reference::extract_note_price_references(
+            "[[price:fictional-code@2030-01-02:close]]",
+        )
+        .unwrap_or_default();
+        let resolution = ResolvedMarketDataReferences::Resolved {
+            body_md: "[[price:fictional-code@2030-01-02:close]]".into(),
+            values: serde_json::from_value(json!({
+                "[[price:fictional-code@2030-01-02:close]]": { "value": 12.5 }
+            }))
+            .unwrap_or_default(),
+        };
+
+        let result = resolve_price_references_json(
+            "[[price:fictional-code@2030-01-03:close]]",
+            &references,
+            None,
+            Some(resolution),
+        );
+
+        assert_eq!(
+            result.map_err(|error| error.to_string()),
+            Err(REFERENCE_RESOLUTION_CONFLICT.to_string()),
+        );
     }
 }
 

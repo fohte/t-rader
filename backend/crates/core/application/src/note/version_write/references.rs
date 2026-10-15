@@ -16,7 +16,15 @@ use crate::indicator_observation::IndicatorObservationQuery;
 use crate::note::types::NoteVersion;
 use crate::note::{NoteUseCaseError, NoteUseCases};
 
-pub(in crate::note) type ResolvedMarketDataReferences = Map<String, Value>;
+pub(in crate::note) enum ResolvedMarketDataReferences {
+    ReusePrevious {
+        version_id: Uuid,
+    },
+    Resolved {
+        body_md: String,
+        values: Map<String, Value>,
+    },
+}
 
 pub(super) fn has_resolutions(resolved: &Value, references: &[NotePriceReferenceToken]) -> bool {
     let Some(resolved) = resolved.as_object() else {
@@ -53,11 +61,20 @@ impl NoteUseCases {
             version.body_md == body_md
                 && has_resolutions(&version.resolved_price_references_json, &references)
         }) {
-            return Ok(None);
+            return Ok(
+                previous.map(|version| ResolvedMarketDataReferences::ReusePrevious {
+                    version_id: version.id,
+                }),
+            );
         }
         self.resolve_market_data_reference_tokens(&references)
             .await
-            .map(Some)
+            .map(|values| {
+                Some(ResolvedMarketDataReferences::Resolved {
+                    body_md: body_md.to_string(),
+                    values,
+                })
+            })
     }
 
     async fn resolve_market_data_reference_tokens(

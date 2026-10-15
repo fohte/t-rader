@@ -30,18 +30,13 @@ impl NoteUseCases {
                         "current version for note {note_id} not found"
                     ))
                 })?;
-            let latest_version = self
-                .repository
-                .find_latest_version(&read_transaction, note_id)
-                .await?;
             self.unit_of_work.commit(read_transaction).await?;
             let body_md = command
                 .body_md
                 .as_deref()
                 .unwrap_or(&current_version.body_md)
                 .to_string();
-            let previous = Some(current_version).or(latest_version);
-            self.resolve_market_data_references(&body_md, previous.as_ref())
+            self.resolve_market_data_references(&body_md, Some(&current_version))
                 .await?
         } else {
             None
