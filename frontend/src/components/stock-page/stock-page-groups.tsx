@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+
 import type { components } from '#lib/api/schema.gen'
 import type { StockPageListState } from '#lib/stock-page-model'
 import { cn } from '#lib/utils'
@@ -29,12 +31,14 @@ export function StockPageGroups({
         </p>
       ) : (
         memberships.map(({ axis, group }) => (
-          <span
+          <Link
             key={`${axis.key}/${group.key}`}
+            to="/groups/$axisKey/$groupKey"
+            params={{ axisKey: axis.key, groupKey: group.key }}
             className="border border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground-strong"
           >
             {axis.name} / {group.name}
-          </span>
+          </Link>
         ))
       )}
     </div>

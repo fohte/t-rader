@@ -1,7 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
 
 import { StockPageFinancials } from '#components/stock-page/stock-page-financials'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type FinancialSummary = components['schemas']['StockFinancialSummaryResponse']
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
@@ -40,9 +43,25 @@ const groups: GroupMembership[] = [
   },
 ]
 
+function withRouter(Story: ComponentType) {
+  return (
+    <RouterProvider
+      router={createStoryRouter(
+        () => (
+          <Story />
+        ),
+        {
+          paths: ['/groups/$axisKey/$groupKey'],
+        },
+      )}
+    />
+  )
+}
+
 const meta = {
   title: 'StockPage/StockPageFinancials',
   component: StockPageFinancials,
+  decorators: [withRouter],
   args: {
     summaries,
     summariesState: 'ready',

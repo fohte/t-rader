@@ -147,7 +147,11 @@ const meta = {
             <Story />
           ),
           {
-            paths: ['/annotations/$annoId', '/notes/$noteId'],
+            paths: [
+              '/annotations/$annoId',
+              '/groups/$axisKey/$groupKey',
+              '/notes/$noteId',
+            ],
           },
         )}
       />

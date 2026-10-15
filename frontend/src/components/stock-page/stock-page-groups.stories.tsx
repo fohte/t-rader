@@ -1,7 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
 
 import { StockPageGroups } from '#components/stock-page/stock-page-groups'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type GroupMembership = components['schemas']['StockGroupMembershipResponse']
 
@@ -16,9 +19,25 @@ const memberships: GroupMembership[] = [
   },
 ]
 
+function withRouter(Story: ComponentType) {
+  return (
+    <RouterProvider
+      router={createStoryRouter(
+        () => (
+          <Story />
+        ),
+        {
+          paths: ['/groups/$axisKey/$groupKey'],
+        },
+      )}
+    />
+  )
+}
+
 const meta = {
   title: 'StockPage/StockPageGroups',
   component: StockPageGroups,
+  decorators: [withRouter],
   args: { memberships, state: 'ready' },
 } satisfies Meta<typeof StockPageGroups>
 
@@ -26,7 +45,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const WithGroups: Story = {
-  name: '所属するグループを軸名とグループ名で表示する。',
+  name: '所属するグループへ移動できるチップを表示する。',
 }
 
 export const WithoutGroups: Story = {
