@@ -440,7 +440,7 @@ mod tests {
         FormulaQueryNameCollision,
     }
 
-    fn semantic_validation_input(case: SemanticValidationCase) -> String {
+    fn semantic_validation_input(case: SemanticValidationCase) -> WidgetDefinition {
         let mut widget = definition();
         match case {
             SemanticValidationCase::Valid => {}
@@ -514,20 +514,7 @@ mod tests {
             }
         }
 
-        let serialized = serde_json::to_value(widget).expect("serialize widget definition");
-        serde_json::to_string(&serialized).expect("serialize widget input")
-    }
-
-    fn validate_json_input(input: &str) -> Result<(), String> {
-        WidgetDefinition::from_json(input)
-            .map_err(|error| {
-                let error = error.to_string();
-                match error.split_once(" at line ") {
-                    Some((message, _)) => message.to_string(),
-                    None => error,
-                }
-            })
-            .and_then(|widget| widget.validate().map_err(|errors| errors.to_string()))
+        widget
     }
 
     #[rstest]
@@ -634,8 +621,9 @@ mod tests {
         #[case] case: SemanticValidationCase,
         #[case] expected_error: Option<&str>,
     ) {
-        let input = semantic_validation_input(case);
-        let actual = validate_json_input(&input);
+        let actual = semantic_validation_input(case)
+            .validate()
+            .map_err(|errors| errors.to_string());
         assert_eq!(
             actual,
             expected_error.map_or(Ok(()), |error| Err(error.to_string()))
