@@ -38,9 +38,13 @@ fn bar(instrument_id: &str, date: NaiveDate, close: i64, volume: i64) -> Bar {
 }
 
 async fn insert_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
+    insert_instrument_with_name(db, id, &format!("Fictional {id}")).await;
+}
+
+async fn insert_instrument_with_name(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
     instruments::ActiveModel {
         id: Set(id.to_string()),
-        name: Set(format!("Fictional {id}")),
+        name: Set(name.to_string()),
         market: Set("TSE".to_string()),
         sector: Set(None),
     }
@@ -324,7 +328,7 @@ async fn list_movers_prefers_stock_name_and_falls_back_to_instrument_name(
     db: gateway_postgres::DatabaseHandle,
 ) {
     insert_instrument(&db, "fictional-instrument-only").await;
-    insert_instrument(&db, "fictional-stock-backed").await;
+    insert_instrument_with_name(&db, "fictional-stock-backed", "fictional-stock-backed").await;
     insert_stock_named(&db, "fictional-stock-backed", "Fictional listed name", None).await;
     upsert_bars(
         &db,
