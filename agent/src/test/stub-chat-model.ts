@@ -1,8 +1,8 @@
 import { ChatOpenAI } from '@langchain/openai'
 
-export type ChatOpenAIFetch = NonNullable<
-  NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
->['fetch']
+import type { ChatOpenAIFetch } from '#strategy-agent/reasoning-content-middleware'
+
+export type { ChatOpenAIFetch }
 
 export const createStubChatModel = (
   fetch: ChatOpenAIFetch,
