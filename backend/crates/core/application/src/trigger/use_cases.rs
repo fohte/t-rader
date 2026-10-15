@@ -522,7 +522,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn cron_tick_continues_after_a_trigger_panics(harness: Harness) {
+    async fn cron_tick_retries_a_trigger_after_its_submission_panics(harness: Harness) {
         let strategy_id = Uuid::new_v4();
         harness
             .strategies
@@ -538,12 +538,25 @@ mod tests {
             .await;
         let agent_client = PanickingOnceAgentTaskClient::new();
 
-        let attempted = harness
+        let first_attempted = harness
             .use_cases
             .run_cron_tick(&agent_client, Duration::from_secs(60))
             .await;
-        let submitted = agent_client.inner.submitted.lock().await.len();
-        let fired = harness
+        let first_submitted = agent_client.inner.submitted.lock().await.len();
+        let first_fired = harness
+            .triggers
+            .triggers
+            .lock()
+            .await
+            .values()
+            .filter(|trigger| trigger.last_fired_at.is_some())
+            .count();
+        let second_attempted = harness
+            .use_cases
+            .run_cron_tick(&agent_client, Duration::from_secs(60))
+            .await;
+        let total_submitted = agent_client.inner.submitted.lock().await.len();
+        let final_fired = harness
             .triggers
             .triggers
             .lock()
@@ -552,7 +565,17 @@ mod tests {
             .filter(|trigger| trigger.last_fired_at.is_some())
             .count();
 
-        assert_eq!((attempted, submitted, fired), (2, 1, 2));
+        assert_eq!(
+            (
+                first_attempted,
+                first_submitted,
+                first_fired,
+                second_attempted,
+                total_submitted,
+                final_fired,
+            ),
+            (2, 1, 1, 1, 2, 2),
+        );
     }
 
     struct TestStrategyTaskRepository;

@@ -134,13 +134,15 @@ impl TriggerUseCases {
             .insert_prepared_submission(&transaction, &prepared)
             .await?;
         self.unit_of_work.commit(transaction).await?;
-        match self
-            .strategy_tasks
-            .submit_prepared_submission(agent_client, prepared)
-            .await
-        {
-            Ok(submitted) => Ok(Some(submitted)),
-            Err(error) => {
+        let submission = std::panic::AssertUnwindSafe(
+            self.strategy_tasks
+                .submit_prepared_submission(agent_client, prepared),
+        )
+        .catch_unwind()
+        .await;
+        match submission {
+            Ok(Ok(submitted)) => Ok(Some(submitted)),
+            Ok(Err(error)) => {
                 self.release_cron_fire_claim(
                     trigger_id,
                     trigger.last_fired_at,
@@ -149,6 +151,16 @@ impl TriggerUseCases {
                 )
                 .await;
                 Err(error.into())
+            }
+            Err(panic) => {
+                self.release_cron_fire_claim(
+                    trigger_id,
+                    trigger.last_fired_at,
+                    trigger.updated_at,
+                    fired_at,
+                )
+                .await;
+                std::panic::resume_unwind(panic)
             }
         }
     }
