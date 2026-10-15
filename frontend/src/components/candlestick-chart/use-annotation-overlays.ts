@@ -2,6 +2,7 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  LineSeries,
   LineStyle,
   type SeriesType,
 } from 'lightweight-charts'
@@ -17,6 +18,9 @@ import {
   type HorizontalLinePoint,
   isAnnotationBandAnnotation,
   isHumanHorizontalLine,
+  isHumanTrendLine,
+  orderTrendLinePoints,
+  type TrendLinePoint,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import { getChartBarDate, toCandlestickData } from '#lib/chart-utils'
@@ -51,21 +55,29 @@ export function useAnnotationOverlays({
   chartRef,
   candlestickSeriesRef,
   annotationPriceSeriesRef,
+  trendLinePreviewSeriesRef,
   priceLineRef,
   bars,
   annotations,
   selectedAnnotationId,
   pendingHorizontalLine,
+  trendLineDrawingEnabled,
+  pendingTrendLineStart,
+  pendingTrendLinePreviewPoint,
   highlightedTimestamp,
 }: {
   chartRef: ChartRef<IChartApi>
   candlestickSeriesRef: ChartRef<ISeriesApi<SeriesType>>
   annotationPriceSeriesRef: ChartRef<ISeriesApi<'Line'>>
+  trendLinePreviewSeriesRef: ChartRef<ISeriesApi<'Line'>>
   priceLineRef: ChartRef<IPriceLine>
   bars: Bar[]
   annotations?: ChartAnnotation[]
   selectedAnnotationId?: string | null
   pendingHorizontalLine?: HorizontalLinePoint | null
+  trendLineDrawingEnabled: boolean
+  pendingTrendLineStart?: TrendLinePoint | null
+  pendingTrendLinePreviewPoint?: TrendLinePoint | null
   highlightedTimestamp?: string
 }) {
   const [bandLayout, setBandLayout] = useState<BandLayout | null>(null)
@@ -112,6 +124,76 @@ export function useAnnotationOverlays({
       for (const line of lines) series.removePriceLine(line)
     }
   }, [annotations, candlestickSeriesRef, chartRef])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (chart == null) return
+
+    const lineSeries: ISeriesApi<'Line'>[] = []
+    for (const annotation of annotations ?? []) {
+      if (!isHumanTrendLine(annotation)) continue
+
+      const data = toTrendLineSeriesData(
+        {
+          timestamp: annotation.timestamp_start,
+          price: annotation.price_start,
+        },
+        { timestamp: annotation.timestamp, price: annotation.price },
+        bars,
+      )
+      if (data.length === 0) continue
+
+      const series = chart.addSeries(LineSeries, {
+        color: '#ffffff',
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        priceScaleId: 'right',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        pointMarkersVisible: false,
+        autoscaleInfoProvider: () => null,
+      })
+      series.setData(data)
+      lineSeries.push(series)
+    }
+
+    return () => {
+      if (chartRef.current !== chart) return
+
+      for (const series of lineSeries) chart.removeSeries(series)
+    }
+  }, [annotations, bars, chartRef])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    const series = trendLinePreviewSeriesRef.current
+    if (chart == null || series == null) return
+
+    const previewPoint = pendingTrendLinePreviewPoint
+    if (
+      !trendLineDrawingEnabled ||
+      pendingTrendLineStart == null ||
+      previewPoint == null
+    ) {
+      series.setData([])
+      return
+    }
+
+    series.setData(
+      toTrendLineSeriesData(pendingTrendLineStart, previewPoint, bars),
+    )
+    return () => {
+      if (chartRef.current === chart) series.setData([])
+    }
+  }, [
+    bars,
+    chartRef,
+    pendingTrendLinePreviewPoint,
+    pendingTrendLineStart,
+    trendLineDrawingEnabled,
+    trendLinePreviewSeriesRef,
+  ])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -256,7 +338,8 @@ export function useAnnotationOverlays({
     if (
       selectedAnnotation == null ||
       selectedAnnotation.price == null ||
-      isHumanHorizontalLine(selectedAnnotation)
+      isHumanHorizontalLine(selectedAnnotation) ||
+      isHumanTrendLine(selectedAnnotation)
     ) {
       return
     }
@@ -314,4 +397,20 @@ export function useAnnotationOverlays({
   ])
 
   return { bandLayout, bandMarkers, bandPeriods, dateMarkerLayout }
+}
+
+function toTrendLineSeriesData(
+  start: TrendLinePoint,
+  end: TrendLinePoint,
+  bars: Bar[],
+) {
+  const [orderedStart, orderedEnd] = orderTrendLinePoints(start, end)
+  const startTime = bucketAnnotationTimestamp(orderedStart.timestamp, bars)
+  const endTime = bucketAnnotationTimestamp(orderedEnd.timestamp, bars)
+  if (startTime == null || endTime == null || startTime >= endTime) return []
+
+  return [
+    { time: startTime, value: orderedStart.price },
+    { time: endTime, value: orderedEnd.price },
+  ]
 }

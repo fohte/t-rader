@@ -53,11 +53,14 @@ const chartMocks = vi.hoisted(() => {
   const annotationPriceSeries = {
     setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
   }
+  const trendLinePreviewSeries = {
+    setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
+  }
   const indicatorSeries = {
     createPriceLine: vi.fn<(options: CreatePriceLineOptions) => object>(
       () => ({}),
     ),
-    setData: vi.fn(),
+    setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
   }
   const seriesMarkers = {
     detach: vi.fn(),
@@ -99,8 +102,12 @@ const chartMocks = vi.hoisted(() => {
     remove: vi.fn(),
     subscribeClick:
       vi.fn<(handler: (param: MouseEventParams) => void) => void>(),
+    subscribeCrosshairMove:
+      vi.fn<(handler: (param: MouseEventParams) => void) => void>(),
     timeScale: vi.fn(() => timeScale),
     unsubscribeClick:
+      vi.fn<(handler: (param: MouseEventParams) => void) => void>(),
+    unsubscribeCrosshairMove:
       vi.fn<(handler: (param: MouseEventParams) => void) => void>(),
   }
   chart.addSeries.mockImplementation((_series, _options, paneIndex = 0) => {
@@ -109,6 +116,7 @@ const chartMocks = vi.hoisted(() => {
     if (index === 1) return candlestickSeries
     if (index === 2) return annotationPriceSeries
     if (index === 3) return volumeSeries
+    if (index === 4) return trendLinePreviewSeries
     return indicatorSeries
   })
 
@@ -117,6 +125,7 @@ const chartMocks = vi.hoisted(() => {
     candlePriceScale,
     candlestickSeries,
     annotationPriceSeries,
+    trendLinePreviewSeries,
     indicatorSeries,
     volumePriceScale,
     paneApis,
@@ -145,6 +154,12 @@ const firstBar: components['schemas']['Bar'] = {
   timeframe: '1d',
   timestamp: '2025-04-10T00:00:00.000Z',
   volume: 42,
+}
+
+const secondBar: components['schemas']['Bar'] = {
+  ...firstBar,
+  close: 104,
+  timestamp: '2025-04-11T00:00:00.000Z',
 }
 
 const bars: components['schemas']['Bar'][] = [firstBar]
@@ -240,6 +255,9 @@ function createChartPoint(x: number, y: number): Point {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  chartMocks.candlestickSeries.coordinateToPrice.mockReturnValue(100)
+  chartMocks.candlestickSeries.priceToCoordinate.mockReturnValue(30)
+  chartMocks.timeScale.timeToCoordinate.mockReturnValue(36)
   chartMocks.resetPanes()
   pendingAnimationFrames.clear()
   resizeObserverCallbacks.length = 0
@@ -324,7 +342,7 @@ describe('CandlestickChart', () => {
 
     const paneState = () => ({
       seriesPaneIndexes: chartMocks.chart.addSeries.mock.calls
-        .slice(3)
+        .slice(4)
         .map(([, , paneIndex]) => paneIndex ?? 0),
       paneStretchFactors: chartMocks.paneApis.map(
         (pane) => pane.setStretchFactor.mock.lastCall,
@@ -497,6 +515,87 @@ describe('CandlestickChart', () => {
     ])
   })
 
+  it('places both trendline points with two chart clicks', () => {
+    const onPlaceTrendLinePoint = vi.fn()
+    chartMocks.candlestickSeries.coordinateToPrice
+      .mockReturnValueOnce(3390)
+      .mockReturnValueOnce(3120)
+
+    render(
+      <CandlestickChart
+        bars={[firstBar, secondBar]}
+        trendLineDrawingEnabled
+        onPlaceTrendLinePoint={onPlaceTrendLinePoint}
+      />,
+    )
+    const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
+
+    act(() => {
+      clickHandler?.({
+        point: createChartPoint(36, 18),
+        time: toChartTimestamp(firstBar.timestamp),
+        seriesData: new Map(),
+      })
+      clickHandler?.({
+        point: createChartPoint(80, 30),
+        time: toChartTimestamp(secondBar.timestamp),
+        seriesData: new Map(),
+      })
+    })
+
+    expect(onPlaceTrendLinePoint.mock.calls).toEqual([
+      [{ timestamp: firstBar.timestamp, price: 3390 }],
+      [{ timestamp: secondBar.timestamp, price: 3120 }],
+    ])
+  })
+
+  it('tracks the cursor after the first trendline point and places the second point', () => {
+    const onPlaceTrendLinePoint = vi.fn()
+    const start = { timestamp: firstBar.timestamp, price: 3390 }
+    chartMocks.candlestickSeries.coordinateToPrice.mockReturnValue(3120)
+
+    render(
+      <CandlestickChart
+        bars={[firstBar, secondBar]}
+        trendLineDrawingEnabled
+        pendingTrendLineStart={start}
+        onPlaceTrendLinePoint={onPlaceTrendLinePoint}
+      />,
+    )
+    const crosshairHandler =
+      chartMocks.chart.subscribeCrosshairMove.mock.calls.at(-1)?.[0]
+    const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
+
+    act(() => {
+      crosshairHandler?.({
+        point: createChartPoint(80, 18),
+        time: toChartTimestamp(secondBar.timestamp),
+        seriesData: new Map(),
+      })
+      clickHandler?.({
+        point: createChartPoint(80, 18),
+        time: toChartTimestamp(secondBar.timestamp),
+        seriesData: new Map(),
+      })
+    })
+
+    function readTrendLineDrawingState() {
+      return {
+        previewData:
+          chartMocks.trendLinePreviewSeries.setData.mock.calls.at(-1)?.[0],
+        placedPoints: onPlaceTrendLinePoint.mock.calls,
+      }
+    }
+
+    expect(readTrendLineDrawingState()).toEqual({
+      previewData: [
+        { time: toChartTimestamp(firstBar.timestamp), value: 3390 },
+        { time: toChartTimestamp(secondBar.timestamp), value: 3120 },
+      ],
+      placedPoints: [[{ timestamp: secondBar.timestamp, price: 3120 }]],
+    })
+  })
+
   it('draws human horizontal annotations even when none is selected', () => {
     render(
       <CandlestickChart
@@ -534,6 +633,71 @@ describe('CandlestickChart', () => {
       ],
       annotationBand: null,
       volumeScaleOptions: [[{ scaleMargins: { top: 0.8, bottom: 0 } }]],
+    })
+  })
+
+  it('draws and selects a saved human trendline without a band marker', () => {
+    const trendLine: ChartAnnotation = {
+      id: 'annotation-trendline',
+      created_by_kind: 'human',
+      target_kind: 'sample-kind',
+      timestamp_start: firstBar.timestamp,
+      price_start: 3390,
+      timestamp: secondBar.timestamp,
+      price: 3120,
+      status: 'approved',
+      text: '架空のトレンドラインです。',
+    }
+    const onSelectAnnotation = vi.fn()
+    const startTime = toChartTimestamp(firstBar.timestamp)
+    const endTime = toChartTimestamp(secondBar.timestamp)
+    chartMocks.timeScale.timeToCoordinate.mockImplementation((time) =>
+      time === startTime ? 20 : 80,
+    )
+    chartMocks.candlestickSeries.priceToCoordinate.mockImplementation(
+      (price) => (price === 3390 ? 60 : 20),
+    )
+
+    render(
+      <CandlestickChart
+        bars={[firstBar, secondBar]}
+        annotations={[trendLine]}
+        onSelectAnnotation={onSelectAnnotation}
+      />,
+    )
+    const clickHandler = chartMocks.chart.subscribeClick.mock.calls.at(-1)?.[0]
+
+    act(() => {
+      clickHandler?.({
+        point: createChartPoint(50, 40),
+        time: endTime,
+        seriesData: new Map(),
+      })
+    })
+
+    function readRenderedTrendLineState() {
+      return {
+        lineData: chartMocks.indicatorSeries.setData.mock.calls.map(
+          ([data]) => data,
+        ),
+        annotationBand: screen.queryByRole('group', {
+          name: 'チャートのアノテーション',
+        }),
+        selectedAnnotationIds: onSelectAnnotation.mock.calls,
+      }
+    }
+
+    const renderedTrendLineState = readRenderedTrendLineState()
+
+    expect(renderedTrendLineState).toEqual({
+      lineData: [
+        [
+          { time: startTime, value: 3390 },
+          { time: endTime, value: 3120 },
+        ],
+      ],
+      annotationBand: null,
+      selectedAnnotationIds: [['annotation-trendline']],
     })
   })
 

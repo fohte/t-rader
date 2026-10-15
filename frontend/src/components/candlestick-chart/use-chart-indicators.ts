@@ -40,14 +40,15 @@ export function useChartIndicators({
 }) {
   useEffect(() => {
     const chart = chartRef.current
-    if (chart == null) return
+    const indicatorSeriesMap = indicatorSeriesRef.current
+    if (chart == null || indicatorSeriesMap == null) return
 
-    for (const series of indicatorSeriesRef.current.values()) {
+    for (const series of indicatorSeriesMap.values()) {
       for (const indicatorSeries of series) {
         chart.removeSeries(indicatorSeries)
       }
     }
-    indicatorSeriesRef.current.clear()
+    indicatorSeriesMap.clear()
     while (chart.panes().length > 1) {
       chart.removePane(chart.panes().length - 1)
     }
@@ -139,7 +140,7 @@ export function useChartIndicators({
 
         series.push(lineSeries)
       }
-      indicatorSeriesRef.current.set(indicator.id, series)
+      indicatorSeriesMap.set(indicator.id, series)
     }
 
     updatePaneLayoutRef.current()

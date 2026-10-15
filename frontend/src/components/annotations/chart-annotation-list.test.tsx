@@ -119,7 +119,7 @@ describe('ChartAnnotationList', () => {
     })
   })
 
-  it('deletes a selected human period annotation', async () => {
+  it('deletes a selected human trendline annotation', async () => {
     const onDeleteAnnotation = vi.fn()
     const user = userEvent.setup()
 
@@ -127,18 +127,18 @@ describe('ChartAnnotationList', () => {
       <ChartAnnotationList
         annotations={[
           {
-            id: 'annotation-human-period',
+            id: 'annotation-human-trendline',
             created_by_kind: 'human',
             target_kind: 'sample-kind',
-            timestamp_start: '2025-01-02T00:00:00.000Z',
-            timestamp: '2025-01-04T00:00:00.000Z',
-            price: null,
-            price_start: null,
+            timestamp_start: '2030-04-01T06:00:00Z',
+            timestamp: '2030-04-02T06:00:00Z',
+            price: 3120,
+            price_start: 3390,
             status: 'approved',
-            text: '架空の期間注釈です。',
+            text: '架空のトレンドラインです。',
           },
         ]}
-        selectedAnnotationId="annotation-human-period"
+        selectedAnnotationId="annotation-human-trendline"
         onSelectAnnotation={() => undefined}
         onDeleteAnnotation={onDeleteAnnotation}
       />,
@@ -150,7 +150,9 @@ describe('ChartAnnotationList', () => {
       }),
     )
 
-    expect(onDeleteAnnotation.mock.calls).toEqual([['annotation-human-period']])
+    expect(onDeleteAnnotation.mock.calls).toEqual([
+      ['annotation-human-trendline'],
+    ])
   })
 
   it('does not offer deletion for a selected LLM horizontal annotation', () => {

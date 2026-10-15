@@ -23,6 +23,7 @@ import {
   type ChartAnnotation,
   type HorizontalLinePoint,
   isAnnotationBandAnnotation,
+  type TrendLinePoint,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -59,6 +60,10 @@ interface CandlestickChartProps {
   horizontalLineDrawingEnabled?: boolean
   pendingHorizontalLine?: HorizontalLinePoint | null
   onPlaceHorizontalLine?: (line: HorizontalLinePoint) => void
+  trendLineDrawingEnabled?: boolean
+  pendingTrendLineStart?: TrendLinePoint | null
+  pendingTrendLinePreviewPoint?: TrendLinePoint | null
+  onPlaceTrendLinePoint?: (point: TrendLinePoint) => void
   currency?: ChartCurrency
   priceScaleTopMargin?: number
   intraday?: boolean
@@ -79,6 +84,10 @@ export function CandlestickChart({
   horizontalLineDrawingEnabled = false,
   pendingHorizontalLine,
   onPlaceHorizontalLine,
+  trendLineDrawingEnabled = false,
+  pendingTrendLineStart,
+  pendingTrendLinePreviewPoint,
+  onPlaceTrendLinePoint,
   currency,
   priceScaleTopMargin = 0.05,
   intraday = false,
@@ -94,6 +103,7 @@ export function CandlestickChart({
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const tradeMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const annotationPriceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const trendLinePreviewSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<SeriesType>[]>>(
     new Map(),
@@ -195,6 +205,18 @@ export function CandlestickChart({
     })
     volumeSeriesRef.current = volumeSeries
 
+    trendLinePreviewSeriesRef.current = chart.addSeries(LineSeries, {
+      color: '#facc15',
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      priceScaleId: 'right',
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      pointMarkersVisible: false,
+      autoscaleInfoProvider: () => null,
+    })
+
     isInitialDataRef.current = true
 
     // コンテナサイズ追従
@@ -225,6 +247,7 @@ export function CandlestickChart({
       chartRef.current = null
       candlestickSeriesRef.current = null
       annotationPriceSeriesRef.current = null
+      trendLinePreviewSeriesRef.current = null
       volumeSeriesRef.current = null
       indicatorSeriesRef.current.clear()
       priceLineRef.current = null
@@ -232,13 +255,16 @@ export function CandlestickChart({
     }
   }, [])
 
-  useChartInteractions({
+  const { trendLineCursorPoint } = useChartInteractions({
     chartRef,
     candlestickSeriesRef,
     bars,
     annotations,
     horizontalLineDrawingEnabled,
+    trendLineDrawingEnabled,
+    pendingTrendLineStart,
     onPlaceHorizontalLine,
+    onPlaceTrendLinePoint,
     onSelectAnnotation,
   })
 
@@ -349,11 +375,16 @@ export function CandlestickChart({
       chartRef,
       candlestickSeriesRef,
       annotationPriceSeriesRef,
+      trendLinePreviewSeriesRef,
       priceLineRef,
       bars,
       annotations,
       selectedAnnotationId,
       pendingHorizontalLine,
+      trendLineDrawingEnabled,
+      pendingTrendLineStart,
+      pendingTrendLinePreviewPoint:
+        pendingTrendLinePreviewPoint ?? trendLineCursorPoint,
       highlightedTimestamp,
     })
 
@@ -363,7 +394,8 @@ export function CandlestickChart({
         ref={containerRef}
         className={cn(
           'absolute inset-0',
-          horizontalLineDrawingEnabled && 'cursor-crosshair',
+          (horizontalLineDrawingEnabled || trendLineDrawingEnabled) &&
+            'cursor-crosshair',
         )}
       />
       {dateMarkerLayout != null && (

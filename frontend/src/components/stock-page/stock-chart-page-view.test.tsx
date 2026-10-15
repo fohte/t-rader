@@ -17,6 +17,7 @@ function renderChartPage(
   props: Partial<ComponentProps<typeof StockChartPageView>> = {},
 ) {
   const onCancelHorizontalLine = vi.fn()
+  const onCancelTrendLine = vi.fn()
   const router = createStoryRouter(
     () => (
       <StockChartPageView
@@ -38,6 +39,16 @@ function renderChartPage(
         onPlaceHorizontalLine={() => undefined}
         onSaveHorizontalLine={() => undefined}
         onCancelHorizontalLine={onCancelHorizontalLine}
+        trendLineDrawingEnabled={false}
+        pendingTrendLineStart={null}
+        pendingTrendLinePreviewPoint={null}
+        pendingTrendLine={null}
+        isSavingTrendLine={false}
+        trendLineSaveError={null}
+        onToggleTrendLineDrawing={() => undefined}
+        onPlaceTrendLinePoint={() => undefined}
+        onSaveTrendLine={() => undefined}
+        onCancelTrendLine={onCancelTrendLine}
         isDeletingAnnotation={false}
         annotationDeleteError={null}
         onDeleteAnnotation={() => undefined}
@@ -52,7 +63,7 @@ function renderChartPage(
   )
 
   render(<RouterProvider router={router} />)
-  return { onCancelHorizontalLine }
+  return { onCancelHorizontalLine, onCancelTrendLine }
 }
 
 describe('StockChartPageView', () => {
@@ -75,6 +86,18 @@ describe('StockChartPageView', () => {
     expect(onToggleHorizontalLineDrawing.mock.calls).toEqual([[]])
   })
 
+  it('トレンドラインツールのボタンで描画を開始する', async () => {
+    const onToggleTrendLineDrawing = vi.fn()
+    const user = userEvent.setup()
+    renderChartPage({ onToggleTrendLineDrawing })
+
+    await user.click(
+      await screen.findByRole('button', { name: 'トレンドライン' }),
+    )
+
+    expect(onToggleTrendLineDrawing.mock.calls).toEqual([[]])
+  })
+
   it('Esc で描画中の水平線を取り消す', async () => {
     const user = userEvent.setup()
     const { onCancelHorizontalLine } = renderChartPage({
@@ -84,6 +107,25 @@ describe('StockChartPageView', () => {
     await user.keyboard('{Escape}')
 
     expect(onCancelHorizontalLine.mock.calls).toEqual([[]])
+  })
+
+  it('Esc でカーソル追従中のトレンドラインを取り消す', async () => {
+    const user = userEvent.setup()
+    const { onCancelTrendLine } = renderChartPage({
+      trendLineDrawingEnabled: true,
+      pendingTrendLineStart: {
+        timestamp: '2030-04-01T06:00:00Z',
+        price: 3390,
+      },
+      pendingTrendLinePreviewPoint: {
+        timestamp: '2030-04-02T06:00:00Z',
+        price: 3120,
+      },
+    })
+
+    await user.keyboard('{Escape}')
+
+    expect(onCancelTrendLine.mock.calls).toEqual([[]])
   })
 
   it('Esc で種別キーとメモの入力中に水平線を取り消す', async () => {
