@@ -10,7 +10,20 @@ import {
   type ReviewQueueData,
   reviewQueueModel,
 } from '#components/review/review-queue-model'
+import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
+
+type NoteKind = components['schemas']['NoteKind']
+
+const noteKinds: NoteKind[] = [
+  {
+    key: 'fabricated-kind-key',
+    display_name: '架空の種別表示名',
+    description: null,
+    requires_approval: false,
+    sort_order: 1,
+  },
+]
 
 const data: ReviewQueueData = {
   counts: { notes: 2, annotations: 1, total: 3 },
@@ -22,7 +35,7 @@ const data: ReviewQueueData = {
       versionNo: 3,
       title: '架空企業の決算前メモ',
       createdAt: '2026-01-15T08:00:00+09:00',
-      noteKind: '架空の種別',
+      noteKind: 'fabricated-kind-key',
       createdByKind: 'llm',
       unreadVersionCount: 2,
     },
@@ -69,6 +82,7 @@ function withRouter(Story: ComponentType) {
 
 const args: ReviewPageViewProps = {
   data,
+  noteKinds,
   navigationSnapshot: null,
   isPending: false,
   isError: false,
@@ -114,7 +128,7 @@ export const NoteKindFilter: Story = {
   name: 'the note tab shows only notes with the selected kind.',
   args: {
     typeFilter: 'note',
-    noteKindFilter: reviewQueueModel.noteKindFilterKey('架空の種別'),
+    noteKindFilter: reviewQueueModel.noteKindFilterKey('fabricated-kind-key'),
     selectedItemIds: [],
   },
 }

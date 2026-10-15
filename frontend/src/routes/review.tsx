@@ -23,6 +23,7 @@ function ReviewPage() {
   const [typeFilter, setTypeFilter] = useState<ReviewTypeFilter>('all')
   const [noteKindFilter, setNoteKindFilter] = useState('all')
   const { data, isPending, isError, invalidate } = useReviewQueue()
+  const noteKindsQuery = $api.useQuery('get', '/api/note-kinds')
   const approveVersion = $api.useMutation(
     'post',
     '/api/notes/{id}/versions/{n}/approve',
@@ -79,6 +80,7 @@ function ReviewPage() {
   return (
     <ReviewPageView
       data={data}
+      noteKinds={noteKindsQuery.data ?? []}
       navigationSnapshot={navigationSnapshot}
       isPending={isPending}
       isError={isError}
