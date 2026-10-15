@@ -59,6 +59,7 @@
 | [public.paper_order](public.paper_order.md)                                                 | 7       | 仮想口座に対して記録した不変の売買注文を保持する。                                                     | BASE TABLE |
 | [public.paper_order_result](public.paper_order_result.md)                                   | 6       | 仮想注文を約定または却下した結果を保持する。                                                           | BASE TABLE |
 | [public.custom_indicator_evaluation](public.custom_indicator_evaluation.md)                 | 7       | 自作指標の成功した計算結果を、実行時点の定義とともに保持する。                                         | BASE TABLE |
+| [public.saved_screen](public.saved_screen.md)                                               | 6       | スクリーナーで保存した名前付き条件と並び順を保持する。                                                 | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -779,6 +780,14 @@ erDiagram
   jsonb args
   jsonb output
   timestamp_with_time_zone evaluated_at
+}
+"public.saved_screen" {
+  uuid id
+  text name
+  jsonb filters
+  jsonb sort
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 ```
 

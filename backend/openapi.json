@@ -5611,6 +5611,276 @@
         }
       }
     },
+    "/api/saved-screens": {
+      "get": {
+        "tags": [
+          "saved_screens"
+        ],
+        "summary": "保存したスクリーナー条件の一覧",
+        "operationId": "list_saved_screens",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedScreen"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "saved_screens"
+        ],
+        "summary": "スクリーナー条件を保存",
+        "operationId": "create_saved_screen",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveScreenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedScreen"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "保存条件が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "同名の保存条件が存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/saved-screens/{id}": {
+      "put": {
+        "tags": [
+          "saved_screens"
+        ],
+        "summary": "保存したスクリーナー条件を置き換える",
+        "operationId": "update_saved_screen",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "保存条件 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveScreenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedScreen"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "保存条件が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "同名の保存条件が存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "saved_screens"
+        ],
+        "summary": "保存したスクリーナー条件を削除",
+        "operationId": "delete_saved_screen",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "保存条件 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/screener": {
       "get": {
         "tags": [
@@ -11089,6 +11359,63 @@
           }
         }
       },
+      "SaveScreenRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "filters",
+          "sort"
+        ],
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/ScreenerFiltersDto",
+            "description": "銘柄の絞り込み条件。"
+          },
+          "name": {
+            "type": "string",
+            "description": "保存条件の名前。"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/ScreenerSortDto",
+            "description": "銘柄の並び順。"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SavedScreen": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "filters",
+          "sort",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ScreenerFiltersDto"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/ScreenerSortDto"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "SbiCommitRequest": {
         "type": "object",
         "required": [
@@ -11258,6 +11585,106 @@
           }
         }
       },
+      "ScreenerFiltersDto": {
+        "type": "object",
+        "properties": {
+          "dividend_yield": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenerRangeDto",
+                "description": "パーセント単位。"
+              }
+            ],
+            "default": null
+          },
+          "market_cap": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenerRangeDto",
+                "description": "億円単位。"
+              }
+            ],
+            "default": null
+          },
+          "markets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "市場区分。",
+            "default": []
+          },
+          "pbr": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenerRangeDto"
+              }
+            ],
+            "default": null
+          },
+          "per": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenerRangeDto"
+              }
+            ],
+            "default": null
+          },
+          "roe": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScreenerRangeDto",
+                "description": "パーセント単位。"
+              }
+            ],
+            "default": null
+          },
+          "sectors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "東証 33 業種グループの key。",
+            "default": []
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScreenerRangeDto": {
+        "type": "object",
+        "properties": {
+          "max": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "min": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "ScreenerResponse": {
         "type": "object",
         "required": [
@@ -11304,6 +11731,22 @@
           "dividend_yield",
           "market_cap"
         ]
+      },
+      "ScreenerSortDto": {
+        "type": "object",
+        "required": [
+          "field",
+          "direction"
+        ],
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/ScreenerSortOrder"
+          },
+          "field": {
+            "$ref": "#/components/schemas/ScreenerSortBy"
+          }
+        },
+        "additionalProperties": false
       },
       "ScreenerSortOrder": {
         "type": "string",
@@ -12788,6 +13231,10 @@
     {
       "name": "screener",
       "description": "条件による銘柄検索"
+    },
+    {
+      "name": "saved_screens",
+      "description": "保存したスクリーナー条件"
     },
     {
       "name": "calendar",

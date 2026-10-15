@@ -1058,6 +1058,42 @@ export interface paths {
     patch: operations['update_rss_feed']
     trace?: never
   }
+  '/api/saved-screens': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 保存したスクリーナー条件の一覧 */
+    get: operations['list_saved_screens']
+    put?: never
+    /** スクリーナー条件を保存 */
+    post: operations['create_saved_screen']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/saved-screens/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    /** 保存したスクリーナー条件を置き換える */
+    put: operations['update_saved_screen']
+    post?: never
+    /** 保存したスクリーナー条件を削除 */
+    delete: operations['delete_saved_screen']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/screener': {
     parameters: {
       query?: never
@@ -2342,6 +2378,25 @@ export interface components {
       updated_at: string
       url: string
     }
+    SaveScreenRequest: {
+      /** @description 銘柄の絞り込み条件。 */
+      filters: components['schemas']['ScreenerFiltersDto']
+      /** @description 保存条件の名前。 */
+      name: string
+      /** @description 銘柄の並び順。 */
+      sort: components['schemas']['ScreenerSortDto']
+    }
+    SavedScreen: {
+      /** Format: date-time */
+      created_at: string
+      filters: components['schemas']['ScreenerFiltersDto']
+      /** Format: uuid */
+      id: string
+      name: string
+      sort: components['schemas']['ScreenerSortDto']
+      /** Format: date-time */
+      updated_at: string
+    }
     SbiCommitRequest: {
       rows: components['schemas']['SbiCommitRow'][]
     }
@@ -2393,6 +2448,34 @@ export interface components {
       stock_name: string
       symbol: string
     }
+    ScreenerFiltersDto: {
+      /** @default null */
+      dividend_yield: null | components['schemas']['ScreenerRangeDto']
+      /** @default null */
+      market_cap: null | components['schemas']['ScreenerRangeDto']
+      /**
+       * @description 市場区分。
+       * @default []
+       */
+      markets: string[]
+      /** @default null */
+      pbr: null | components['schemas']['ScreenerRangeDto']
+      /** @default null */
+      per: null | components['schemas']['ScreenerRangeDto']
+      /** @default null */
+      roe: null | components['schemas']['ScreenerRangeDto']
+      /**
+       * @description 東証 33 業種グループの key。
+       * @default []
+       */
+      sectors: string[]
+    }
+    ScreenerRangeDto: {
+      /** Format: double */
+      max?: number | null
+      /** Format: double */
+      min?: number | null
+    }
     ScreenerResponse: {
       /** Format: date */
       as_of?: string | null
@@ -2414,6 +2497,10 @@ export interface components {
       | 'roe'
       | 'dividend_yield'
       | 'market_cap'
+    ScreenerSortDto: {
+      direction: components['schemas']['ScreenerSortOrder']
+      field: components['schemas']['ScreenerSortBy']
+    }
     /** @enum {string} */
     ScreenerSortOrder: 'asc' | 'desc'
     ScreenerStockResponse: {
@@ -7007,6 +7094,223 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_saved_screens: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SavedScreen'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_saved_screen: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveScreenRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SavedScreen']
+        }
+      }
+      /** @description 保存条件が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 同名の保存条件が存在 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_saved_screen: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 保存条件 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveScreenRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SavedScreen']
+        }
+      }
+      /** @description 保存条件が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 同名の保存条件が存在 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_saved_screen: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 保存条件 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
         headers: {
           [name: string]: unknown
         }

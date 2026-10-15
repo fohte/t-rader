@@ -60,6 +60,7 @@ pub fn build_http_state(
         ref_use_cases: use_cases.refs(),
         stock_group_use_cases: use_cases.stock_groups(),
         rss_feed_use_cases: use_cases.rss_feeds(),
+        saved_screen_use_cases: use_cases.saved_screens(),
         screener_use_cases: use_cases.screener(),
         strategy_scope_use_cases: Arc::new(use_cases.strategy_scope()),
         strategy_task_use_cases: use_cases.strategy_tasks(),
