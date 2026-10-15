@@ -207,6 +207,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_note_returns_latest_version_when_current_is_missing_and_fallback_is_enabled() {
+        let query = Arc::new(FakeNoteReadQuery::new_unreviewed(NOTE_ID, VERSION_ID));
+        let use_cases = NoteReadUseCases::new(query.clone());
+
+        assert_eq!(
+            use_cases
+                .get_note(NOTE_ID, None, true)
+                .await
+                .expect("the latest version is used when no current version exists"),
+            NoteSnapshot {
+                note: query.note(),
+                version: query.version(),
+                created_by_kind: "human".into(),
+            },
+        );
+    }
+
+    #[tokio::test]
     async fn list_notes_preserves_the_query() {
         let (use_cases, query) = build_use_cases();
         let requested_query = NoteListQuery::default();

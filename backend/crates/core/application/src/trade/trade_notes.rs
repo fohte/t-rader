@@ -237,12 +237,12 @@ mod tests {
 
     #[tokio::test]
     async fn create_links_a_note_to_a_strategy_trade() {
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let trade_repository = Arc::new(FakeTradeRepository::new());
         trade_repository.insert_trade(trade()).await;
-        let note_reads =
-            NoteReadUseCases::new(Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID)));
-        let use_cases = TradeNoteUseCases::new(unit_of_work, trade_repository.clone(), note_reads);
+        let use_cases = build_use_cases(
+            Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID)),
+            trade_repository.clone(),
+        );
 
         let link = use_cases
             .create(TRADE_ID, NOTE_ID)
