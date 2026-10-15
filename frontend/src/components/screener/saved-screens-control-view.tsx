@@ -19,7 +19,7 @@ export type SavedScreenDialogState =
   | { type: 'rename'; savedScreen: SavedScreen }
   | { type: 'delete'; savedScreen: SavedScreen }
 
-type SaveDialogState = Extract<
+export type SaveDialogState = Extract<
   SavedScreenDialogState,
   { type: 'save' | 'rename' }
 >
@@ -71,6 +71,7 @@ export function SavedScreensControlView({
 
   function handleSaveSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault()
+    event.stopPropagation()
     const trimmedName = name.trim()
     if (saveDialog == null || trimmedName === '' || isPending) return
     onSave(trimmedName, saveDialog)

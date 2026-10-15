@@ -78,7 +78,26 @@ function makeSavedScreen(overrides: Partial<SavedScreen> = {}): SavedScreen {
   }
 }
 
-function installMiddleware(initial: SavedScreen[] = [], createStatus = 201) {
+type ApiFailure = {
+  status: number
+  message: string
+}
+
+type ApiFailures = Partial<
+  Record<'get' | 'create' | 'update' | 'delete', ApiFailure>
+>
+
+function errorResponse(failure: ApiFailure) {
+  return new Response(JSON.stringify({ error: failure.message }), {
+    status: failure.status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+function installMiddleware(
+  initial: SavedScreen[] = [],
+  failures: ApiFailures = {},
+) {
   const store = {
     screens: [...initial],
     createCalls: [] as SaveScreenRequest[],
@@ -90,6 +109,7 @@ function installMiddleware(initial: SavedScreen[] = [], createStatus = 201) {
       const url = new URL(request.url)
       const method = request.method.toUpperCase()
       if (url.pathname === '/api/saved-screens' && method === 'GET') {
+        if (failures.get != null) return errorResponse(failures.get)
         return new Response(JSON.stringify(store.screens), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -104,15 +124,7 @@ function installMiddleware(initial: SavedScreen[] = [], createStatus = 201) {
           })
         }
         store.createCalls.push(body)
-        if (createStatus !== 201) {
-          return new Response(
-            JSON.stringify({ error: '同じ名前の保存条件がすでにあります。' }),
-            {
-              status: createStatus,
-              headers: { 'content-type': 'application/json' },
-            },
-          )
-        }
+        if (failures.create != null) return errorResponse(failures.create)
         const created = makeSavedScreen({
           id: 'saved-screen-b',
           name: body.name,
@@ -137,6 +149,7 @@ function installMiddleware(initial: SavedScreen[] = [], createStatus = 201) {
           })
         }
         store.updateCalls.push({ id, body })
+        if (failures.update != null) return errorResponse(failures.update)
         const currentIndex = store.screens.findIndex(
           (screen) => screen.id === id,
         )
@@ -156,6 +169,7 @@ function installMiddleware(initial: SavedScreen[] = [], createStatus = 201) {
       }
       if (id != null && method === 'DELETE') {
         store.deleteCalls.push(id)
+        if (failures.delete != null) return errorResponse(failures.delete)
         store.screens = store.screens.filter((screen) => screen.id !== id)
         return new Response(null, { status: 204 })
       }
@@ -179,10 +193,10 @@ let activeMiddleware: ReturnType<typeof installMiddleware> | null = null
 function setup(
   search: Parameters<typeof useSavedScreens>[0]['search'] = {},
   initial: SavedScreen[] = [],
-  createStatus = 201,
+  failures: ApiFailures = {},
 ) {
   activeMiddleware?.eject()
-  activeMiddleware = installMiddleware(initial, createStatus)
+  activeMiddleware = installMiddleware(initial, failures)
   const onSelect = vi.fn()
   const onClearSelection = vi.fn()
   const queryClient = new QueryClient({
@@ -203,12 +217,30 @@ function setup(
 function readListState(
   state: Pick<
     ReturnType<typeof useSavedScreens>,
-    'listPending' | 'savedScreens'
+    'listError' | 'listPending' | 'savedScreens'
   >,
 ) {
   return {
+    listError: state.listError,
     listPending: state.listPending,
     savedScreens: state.savedScreens,
+  }
+}
+
+function readMutationState(
+  state: Pick<
+    ReturnType<typeof useSavedScreens>,
+    'error' | 'isPending' | 'savedScreens'
+  >,
+  onSelectCalls: unknown[][],
+  onClearSelectionCalls: unknown[][],
+) {
+  return {
+    error: state.error,
+    isPending: state.isPending,
+    savedScreens: state.savedScreens,
+    onSelectCalls,
+    onClearSelectionCalls,
   }
 }
 
@@ -219,10 +251,25 @@ afterEach(() => {
 })
 
 describe('useSavedScreens', () => {
+  it('exposes a saved-screen list loading error', async () => {
+    const { result } = setup({}, [], {
+      get: { status: 500, message: '保存条件一覧の取得に失敗しました。' },
+    })
+
+    await waitFor(() => {
+      expect(readListState(result.current)).toEqual({
+        listError: true,
+        listPending: false,
+        savedScreens: [],
+      })
+    })
+  })
+
   it('creates a saved screen from the current filters and selects the response', async () => {
     const { result, onSelect } = setup()
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
+        listError: false,
         listPending: false,
         savedScreens: [],
       })
@@ -283,6 +330,7 @@ describe('useSavedScreens', () => {
     )
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
+        listError: false,
         listPending: false,
         savedScreens: [savedScreen],
       })
@@ -337,6 +385,7 @@ describe('useSavedScreens', () => {
     const { result } = setup({}, [savedScreen])
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
+        listError: false,
         listPending: false,
         savedScreens: [savedScreen],
       })
@@ -365,6 +414,47 @@ describe('useSavedScreens', () => {
     })
   })
 
+  it('shows an update error without selecting the saved screen', async () => {
+    const savedScreen = makeSavedScreen()
+    const { result, onSelect, onClearSelection } = setup(
+      { screen: savedScreen.id },
+      [savedScreen],
+      {
+        update: {
+          status: 409,
+          message: '保存した条件を上書きできませんでした。',
+        },
+      },
+    )
+    await waitFor(() => {
+      expect(readListState(result.current)).toEqual({
+        listError: false,
+        listPending: false,
+        savedScreens: [savedScreen],
+      })
+    })
+
+    act(() => {
+      result.current.onOverwrite({ min_per: 5, max_per: 10 })
+    })
+
+    await waitFor(() => {
+      expect(
+        readMutationState(
+          result.current,
+          onSelect.mock.calls,
+          onClearSelection.mock.calls,
+        ),
+      ).toEqual({
+        error: '保存した条件を上書きできませんでした。',
+        isPending: false,
+        savedScreens: [savedScreen],
+        onSelectCalls: [],
+        onClearSelectionCalls: [],
+      })
+    })
+  })
+
   it('deletes a selected screen and clears its URL selection', async () => {
     const savedScreen = makeSavedScreen()
     const { result, onClearSelection } = setup({ screen: savedScreen.id }, [
@@ -372,6 +462,7 @@ describe('useSavedScreens', () => {
     ])
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
+        listError: false,
         listPending: false,
         savedScreens: [savedScreen],
       })
@@ -389,10 +480,57 @@ describe('useSavedScreens', () => {
     })
   })
 
-  it('shows the duplicate-name error returned by the API', async () => {
-    const { result, onSelect } = setup({}, [], 409)
+  it('keeps the selection when delete fails', async () => {
+    const savedScreen = makeSavedScreen()
+    const { result, onSelect, onClearSelection } = setup(
+      { screen: savedScreen.id },
+      [savedScreen],
+      {
+        delete: {
+          status: 500,
+          message: '保存した条件を削除できませんでした。',
+        },
+      },
+    )
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
+        listError: false,
+        listPending: false,
+        savedScreens: [savedScreen],
+      })
+    })
+
+    act(() => {
+      result.current.onDelete(savedScreen)
+    })
+
+    await waitFor(() => {
+      expect(
+        readMutationState(
+          result.current,
+          onSelect.mock.calls,
+          onClearSelection.mock.calls,
+        ),
+      ).toEqual({
+        error: '保存した条件を削除できませんでした。',
+        isPending: false,
+        savedScreens: [savedScreen],
+        onSelectCalls: [],
+        onClearSelectionCalls: [],
+      })
+    })
+  })
+
+  it('shows the duplicate-name error returned by the API', async () => {
+    const { result, onSelect } = setup({}, [], {
+      create: {
+        status: 409,
+        message: '同じ名前の保存条件がすでにあります。',
+      },
+    })
+    await waitFor(() => {
+      expect(readListState(result.current)).toEqual({
+        listError: false,
         listPending: false,
         savedScreens: [],
       })
@@ -412,6 +550,7 @@ describe('useSavedScreens', () => {
     const { result } = setup()
     await waitFor(() => {
       expect(readListState(result.current)).toEqual({
+        listError: false,
         listPending: false,
         savedScreens: [],
       })

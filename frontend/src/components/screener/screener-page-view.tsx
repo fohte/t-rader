@@ -3,6 +3,7 @@ import { ChevronDown, SlidersHorizontal, X } from 'lucide-react'
 import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
 
 import {
+  type SaveDialogState,
   type SavedScreenDialogState,
   SavedScreensControlView,
 } from '#components/screener/saved-screens-control-view'
@@ -129,7 +130,7 @@ export function ScreenerPageView({
   onSavedScreenDialogChange?: (dialog: SavedScreenDialogState | null) => void
   onSaveSavedScreen?: (
     name: string,
-    dialog: Exclude<SavedScreenDialogState, { type: 'delete' }>,
+    dialog: SaveDialogState,
     filters: ScreenerSearch,
   ) => void
   onOverwriteSavedScreen?: (filters: ScreenerSearch) => void

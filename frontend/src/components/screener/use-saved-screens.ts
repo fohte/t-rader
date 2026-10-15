@@ -1,7 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import type { SavedScreenDialogState } from '#components/screener/saved-screens-control-view'
+import type {
+  SaveDialogState,
+  SavedScreenDialogState,
+} from '#components/screener/saved-screens-control-view'
 import { $api } from '#lib/api/client'
 import {
   getScreenerRangeError,
@@ -9,8 +12,6 @@ import {
   type ScreenerSearch,
   toSavedScreenRequest,
 } from '#lib/screener-search'
-
-type SaveDialogState = Exclude<SavedScreenDialogState, { type: 'delete' }>
 
 export function useSavedScreens({
   search,

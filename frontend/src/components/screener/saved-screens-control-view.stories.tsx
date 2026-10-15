@@ -52,6 +52,16 @@ export const MenuOpen: Story = {
   args: { ...args, menuOpen: true },
 }
 
+export const Loading: Story = {
+  name: '保存した条件を読み込んでいます。',
+  args: { ...args, menuOpen: true, listPending: true },
+}
+
+export const ListError: Story = {
+  name: '保存した条件を読み込めない状態を表示します。',
+  args: { ...args, menuOpen: true, listError: true },
+}
+
 export const EmptyMenu: Story = {
   name: '保存した条件がないことをメニュー内に表示します。',
   args: {
@@ -92,4 +102,13 @@ export const RenameDialog: Story = {
 export const DeleteConfirmation: Story = {
   name: '保存した条件を削除する前の確認を表示します。',
   args: { ...args, dialog: { type: 'delete', savedScreen } },
+}
+
+export const DeleteError: Story = {
+  name: '保存した条件の削除に失敗した理由を表示します。',
+  args: {
+    ...args,
+    dialog: { type: 'delete', savedScreen },
+    error: '保存した条件を削除できませんでした。',
+  },
 }

@@ -212,6 +212,7 @@ describe('ScreenerPageView', () => {
   it('saves the current filter draft with the requested name', async () => {
     const user = userEvent.setup()
     const onSaveSavedScreen = vi.fn()
+    const onApplyFilters = vi.fn()
     const args = {
       search: { max_per: 12, sort_by: 'per', sort_order: 'asc' },
       data,
@@ -222,7 +223,7 @@ describe('ScreenerPageView', () => {
       status: 'results',
       savedScreenDialog: null,
       onSaveSavedScreen,
-      onApplyFilters: () => {},
+      onApplyFilters,
       onSort: () => {},
       onSortOrder: () => {},
       onLoadMore: () => {},
@@ -259,5 +260,6 @@ describe('ScreenerPageView', () => {
         },
       ],
     ])
+    expect(onApplyFilters.mock.calls).toEqual([])
   })
 })
