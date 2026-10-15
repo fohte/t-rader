@@ -740,6 +740,31 @@ describe('createStrategyAgentDeps', () => {
     })
   })
 
+  it('sends the subagent execution identity as separate headers', () => {
+    createStrategyAgentDeps(baseConfig).createMcpClient(
+      'strategy-1',
+      'task-1:step-1',
+      {},
+      { executionId: 'subagent-run-1', definitionKey: 'researcher' },
+    )
+
+    expect(capturedMcpClientConfig).toEqual({
+      defaultToolTimeout: 150_000,
+      mcpServers: {
+        strategy: {
+          url: 'http://t-rader-backend/mcp/strategy',
+          headers: {
+            'x-strategy-id': 'strategy-1',
+            'x-execution-id': 'task-1:step-1',
+            'x-tool-models': '{}',
+            'x-subagent-execution-id': 'subagent-run-1',
+            'x-subagent-definition-key': 'researcher',
+          },
+        },
+      },
+    })
+  })
+
   it('creates a chat model defaulted to the OpenCode Go base URL', () => {
     const deps = createStrategyAgentDeps(baseConfig)
 

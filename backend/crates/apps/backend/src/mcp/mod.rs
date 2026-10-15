@@ -89,6 +89,7 @@ pub(crate) fn strategy_server_dependencies(
 ) -> StrategyServerDependencies {
     StrategyServerDependencies {
         account_risk_policies: use_cases.account_risk_policies(),
+        agent_configs: use_cases.agent_configs(),
         annotation_reads: use_cases.annotation_reads(),
         annotations: use_cases.annotations(),
         bars: use_cases.bars(),
@@ -123,6 +124,7 @@ pub(crate) fn strategy_server_dependencies(
         strategies: use_cases.strategies(),
         strategy_scope: Arc::new(use_cases.strategy_scope()),
         strategy_tasks: use_cases.strategy_tasks(),
+        subagent_definitions: use_cases.subagent_definitions(),
         strategy_task_step_evidence: use_cases.strategy_task_step_evidence(),
         trades: use_cases.trades(),
         valuations: use_cases.valuations(),

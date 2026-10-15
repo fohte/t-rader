@@ -1,13 +1,18 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use axum::http::{HeaderMap, HeaderValue};
+use core_application::subagent_definition::SubagentDefinitionFields;
 use core_application::web_search::{
     SharedWebSearchClient, WebSearchClient, WebSearchError, WebSearchResult, WebSearchTimeRange,
     WebSearchTopic,
 };
+use indoc::indoc;
+use sea_orm::ActiveModelTrait;
 use serde_json::json;
 use uuid::Uuid;
 
+use super::super::mcp_tool::call_tool_output_with_headers;
 use super::SEARCH_WEB_MAX_CALLS_PER_TASK;
 use super::dto::SearchWebParams;
 use super::tests_common::{build_server, insert_strategy};
@@ -228,4 +233,185 @@ async fn search_web_releases_call_count_reservation_when_request_fails(
         calls.lock().expect("record calls").len(),
         (SEARCH_WEB_MAX_CALLS_PER_TASK * 2) as usize,
     );
+}
+
+#[backend_test_macros::database_test]
+async fn search_web_enforces_subagent_and_task_limits(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution_id = create_task_with_subagent_limits(&db, strategy_id).await;
+    let (client, calls) = client(vec![example_result()], false);
+    let server = build_server(db).with_web_search_client(Some(client));
+
+    let phase_call = invoke_search(&server, strategy_id, &task_execution_id, None).await;
+    let first_subagent_call = invoke_search(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("child-run-a", "researcher")),
+    )
+    .await;
+    let repeated_subagent_call = invoke_search(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("child-run-a", "researcher")),
+    )
+    .await;
+    let other_subagent_call = invoke_search(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("child-run-b", "researcher")),
+    )
+    .await;
+    let second_phase_call = invoke_search(&server, strategy_id, &task_execution_id, None).await;
+    let call_beyond_task_limit =
+        invoke_search(&server, strategy_id, &task_execution_id, None).await;
+
+    assert_eq!(
+        (
+            phase_call,
+            first_subagent_call,
+            repeated_subagent_call,
+            other_subagent_call,
+            second_phase_call,
+            call_beyond_task_limit,
+            calls.lock().expect("record calls").len(),
+        ),
+        (
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            Err(rmcp::ErrorData::invalid_params(
+                "search_web call limit (1) exceeded for this task execution",
+                None,
+            )),
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            Ok(json!({"results": [{
+                "title": "Example article",
+                "url": "https://example.invalid/article",
+                "published_date": "2026-04-05",
+                "snippet": "Example snippet",
+            }]})),
+            Err(rmcp::ErrorData::invalid_params(
+                "search_web call limit (4) exceeded for this task execution",
+                None,
+            )),
+            4,
+        ),
+    );
+}
+
+async fn create_task_with_subagent_limits(
+    db: &gateway_postgres::DatabaseHandle,
+    strategy_id: Uuid,
+) -> String {
+    let purpose = format!("sample-purpose-{}", Uuid::new_v4());
+    crate::testing::agent_config::create(db, purpose.clone())
+        .await
+        .expect("create test agent config");
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+    use_cases
+        .subagent_definitions()
+        .create(
+            "researcher".to_string(),
+            SubagentDefinitionFields {
+                description: String::new(),
+                model: "example-model-subagent".to_string(),
+                reasoning_effort: None,
+                prompt: "placeholder".to_string(),
+                tools: vec!["search_web".to_string()],
+                timeout_minutes: 1,
+                max_model_calls: 1,
+                tool_limits: std::collections::BTreeMap::from([("search_web".to_string(), 1)]),
+                output: serde_json::Map::new(),
+            },
+        )
+        .await
+        .expect("create test subagent definition");
+    use_cases
+        .agent_configs()
+        .save_agent_graph(
+            &purpose,
+            indoc! {"
+                tool_limits:
+                  search_web: 4
+                phases:
+                  - key: sample
+                    label: Sample
+                    model: example-model-phase
+                    prompt: ''
+                    subagents: [researcher]
+            "},
+        )
+        .await
+        .expect("save test agent graph");
+
+    let task_execution_id = format!("task-{}", Uuid::new_v4());
+    let task_id = crate::testing::insert_test_strategy_task(
+        db,
+        strategy_id,
+        "sample task",
+        Some(&purpose),
+        chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
+    )
+    .await;
+    gateway_postgres::entities::strategy_task::ActiveModel {
+        task_id: sea_orm::ActiveValue::Set(task_id),
+        a2a_task_id: sea_orm::ActiveValue::Set(Some(task_execution_id.clone())),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("set task execution ID");
+    task_execution_id
+}
+
+async fn invoke_search(
+    server: &super::test_server::StrategyServer,
+    strategy_id: Uuid,
+    task_execution_id: &str,
+    subagent: Option<(&str, &str)>,
+) -> Result<serde_json::Value, rmcp::ErrorData> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-strategy-id",
+        HeaderValue::from_str(&strategy_id.to_string()).expect("valid strategy ID"),
+    );
+    headers.insert(
+        "x-execution-id",
+        HeaderValue::from_str(&format!("{task_execution_id}:{}", Uuid::new_v4()))
+            .expect("valid execution ID"),
+    );
+    if let Some((execution_id, definition_key)) = subagent {
+        headers.insert(
+            "x-subagent-execution-id",
+            HeaderValue::from_str(execution_id).expect("valid subagent execution ID"),
+        );
+        headers.insert(
+            "x-subagent-definition-key",
+            HeaderValue::from_str(definition_key).expect("valid subagent definition key"),
+        );
+    }
+    call_tool_output_with_headers::<_, serde_json::Value>(
+        server.entrypoint_server(),
+        "search_web",
+        serde_json::to_value(params("example query")).expect("serialize params"),
+        headers,
+    )
+    .await
 }

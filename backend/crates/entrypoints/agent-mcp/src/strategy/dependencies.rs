@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use core_application::account_risk_policy::AccountRiskPolicyUseCases;
+use core_application::agent_config::AgentConfigUseCases;
 use core_application::annotation::{AnnotationReadUseCases, AnnotationUseCases};
 use core_application::bars::BarsUseCases;
 use core_application::calendar::read_use_cases::CalendarEventReadUseCases;
@@ -33,6 +34,7 @@ use core_application::strategy_earnings_target::StrategyEarningsTargetUseCases;
 use core_application::strategy_scope::StrategyScopeUseCases;
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::strategy_task_step_evidence::StrategyTaskStepEvidenceUseCases;
+use core_application::subagent_definition::SubagentDefinitionUseCases;
 use core_application::trade::TradeUseCases;
 use core_application::valuation::ValuationUseCases;
 use core_application::web_search::SharedWebSearchClient;
@@ -40,6 +42,7 @@ use core_application::web_search::SharedWebSearchClient;
 #[derive(Clone)]
 pub struct StrategyServerDependencies {
     pub account_risk_policies: AccountRiskPolicyUseCases,
+    pub agent_configs: AgentConfigUseCases,
     pub annotation_reads: AnnotationReadUseCases,
     pub annotations: AnnotationUseCases,
     pub bars: BarsUseCases,
@@ -74,6 +77,7 @@ pub struct StrategyServerDependencies {
     pub strategies: StrategyUseCases,
     pub strategy_scope: Arc<StrategyScopeUseCases>,
     pub strategy_tasks: StrategyTaskUseCases,
+    pub subagent_definitions: SubagentDefinitionUseCases,
     pub strategy_task_step_evidence: StrategyTaskStepEvidenceUseCases,
     pub trades: TradeUseCases,
     pub valuations: ValuationUseCases,

@@ -208,6 +208,8 @@ mod tests {
 
         let yaml = indoc::indoc! {"
             timeout_minutes: 360
+            tool_limits:
+              search_web: 4
             phases:
               - key: plan
                 label: 調査計画

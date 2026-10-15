@@ -36,6 +36,9 @@ const agentGraphPhaseSchema = z.object({
 
 const agentGraphConfigSchema = z.object({
   timeout_minutes: timeoutMinutesSchema.optional(),
+  tool_limits: z
+    .record(z.string(), z.number().int().min(0).max(4_294_967_295))
+    .optional(),
   tool_models: z.record(z.string(), z.string()).optional(),
   phases: z.array(agentGraphPhaseSchema),
 })
@@ -90,6 +93,9 @@ export const parseAgentGraph = (
     return ok({
       ...(validated.data.timeout_minutes !== undefined
         ? { timeoutMinutes: validated.data.timeout_minutes }
+        : {}),
+      ...(validated.data.tool_limits !== undefined
+        ? { toolLimits: validated.data.tool_limits }
         : {}),
       ...(validated.data.tool_models !== undefined
         ? { toolModels: validated.data.tool_models }

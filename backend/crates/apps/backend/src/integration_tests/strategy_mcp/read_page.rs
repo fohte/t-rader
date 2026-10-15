@@ -5,6 +5,7 @@ use axum::http::{HeaderMap, HeaderValue};
 use core_application::llm_client::{
     ChatMessage, ContentPart, LlmClient, LlmClientError, LlmModel, SharedLlmClient,
 };
+use core_application::subagent_definition::SubagentDefinitionFields;
 use core_application::web_search::{
     SharedWebSearchClient, WebSearchClient, WebSearchError, WebSearchResult, WebSearchTimeRange,
     WebSearchTopic,
@@ -12,6 +13,7 @@ use core_application::web_search::{
 use indoc::formatdoc;
 use rmcp::ErrorData as McpError;
 use rstest::rstest;
+use sea_orm::{ActiveModelTrait, ActiveValue};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -262,6 +264,171 @@ async fn read_page_uses_tool_model_and_truncates_extracted_content_at_100000_cha
             }],
         ),
     );
+}
+
+#[backend_test_macros::database_test]
+async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution_id = create_task_with_subagent_limits(&db, strategy_id).await;
+    let (web_search_client, extracted_urls) = web_search_client("Example page");
+    let (llm_client, llm) = llm_client();
+    let server = server(db, Some(llm_client), Some(web_search_client));
+
+    let first_subagent_call = invoke_read_page(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("reader-run-a", "reader")),
+    )
+    .await;
+    let repeated_subagent_call = invoke_read_page(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("reader-run-a", "reader")),
+    )
+    .await;
+    let other_subagent_call = invoke_read_page(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("reader-run-b", "reader")),
+    )
+    .await;
+    let phase_call = invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+    let second_phase_call = invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+    let call_beyond_task_limit =
+        invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+
+    assert_eq!(
+        (
+            first_subagent_call,
+            repeated_subagent_call,
+            other_subagent_call,
+            phase_call,
+            second_phase_call,
+            call_beyond_task_limit,
+            extracted_urls.lock().expect("read extracted URLs").clone(),
+            llm.calls.lock().expect("read completion calls").len(),
+        ),
+        (
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Err(McpError::invalid_params(
+                "read_page call limit (1) exceeded for this task execution",
+                None,
+            )),
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Err(McpError::invalid_params(
+                "read_page call limit (4) exceeded for this task execution",
+                None,
+            )),
+            vec![
+                PAGE_URL.into(),
+                PAGE_URL.into(),
+                PAGE_URL.into(),
+                PAGE_URL.into()
+            ],
+            4,
+        ),
+    );
+}
+
+async fn create_task_with_subagent_limits(
+    db: &gateway_postgres::DatabaseHandle,
+    strategy_id: Uuid,
+) -> String {
+    let purpose = format!("sample-purpose-{}", Uuid::new_v4());
+    crate::testing::agent_config::create(db, purpose.clone())
+        .await
+        .expect("create test agent config");
+    let use_cases = build_use_cases(db.clone());
+    use_cases
+        .subagent_definitions()
+        .create(
+            "reader".to_string(),
+            SubagentDefinitionFields {
+                description: String::new(),
+                model: "example-model-subagent".to_string(),
+                reasoning_effort: None,
+                prompt: "placeholder".to_string(),
+                tools: vec!["read_page".to_string()],
+                timeout_minutes: 1,
+                max_model_calls: 1,
+                tool_limits: std::collections::BTreeMap::from([("read_page".to_string(), 1)]),
+                output: serde_json::Map::new(),
+            },
+        )
+        .await
+        .expect("create test subagent definition");
+    use_cases
+        .agent_configs()
+        .save_agent_graph(
+            &purpose,
+            indoc::indoc! {"
+                tool_limits:
+                  read_page: 4
+                phases:
+                  - key: sample
+                    label: Sample
+                    model: example-model-phase
+                    prompt: ''
+                    subagents: [reader]
+            "},
+        )
+        .await
+        .expect("save test agent graph");
+
+    let task_execution_id = format!("task-{}", Uuid::new_v4());
+    let task_id = crate::testing::insert_test_strategy_task(
+        db,
+        strategy_id,
+        "sample task",
+        Some(&purpose),
+        chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
+    )
+    .await;
+    gateway_postgres::entities::strategy_task::ActiveModel {
+        task_id: ActiveValue::Set(task_id),
+        a2a_task_id: ActiveValue::Set(Some(task_execution_id.clone())),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("set test task execution ID");
+
+    task_execution_id
+}
+
+async fn invoke_read_page(
+    server: &StrategyServer,
+    strategy_id: Uuid,
+    task_execution_id: &str,
+    subagent: Option<(&str, &str)>,
+) -> Result<Value, McpError> {
+    let mut headers = headers(
+        strategy_id,
+        Some(format!("{task_execution_id}:example-step")),
+    );
+    if let Some((execution_id, definition_key)) = subagent {
+        headers.insert(
+            "x-subagent-execution-id",
+            HeaderValue::from_str(execution_id).expect("valid subagent execution ID"),
+        );
+        headers.insert(
+            "x-subagent-definition-key",
+            HeaderValue::from_str(definition_key).expect("valid subagent definition key"),
+        );
+    }
+
+    call_tool_output_with_headers::<_, Value>(
+        server,
+        "read_page",
+        serde_json::to_value(params(PAGE_URL, "Summarize the page")).expect("serialize params"),
+        headers,
+    )
+    .await
 }
 
 #[rstest]

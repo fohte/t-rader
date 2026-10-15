@@ -24,6 +24,10 @@ impl StrategyServer {
         Self { server }
     }
 
+    pub(super) fn entrypoint_server(&self) -> &EntrypointStrategyServer {
+        &self.server
+    }
+
     pub(super) fn with_kata_executor(
         mut self,
         kata_executor: Option<core_application::kata_exec::SharedKataExecutor>,
