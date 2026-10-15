@@ -34,6 +34,7 @@ pub mod strategy_task_step_origin;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;
+pub mod widget;
 
 pub use agent_config::{
     AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentsMdBody,
@@ -97,3 +98,4 @@ pub use trade_note::{CreateTradeNoteRequest, NoteLinkedTradeResponse, TradeNoteR
 pub use trigger::{
     CreateTriggerRequest, ListTriggersQuery, TriggerKind, TriggerResponse, UpdateTriggerRequest,
 };
+pub use widget::{WidgetQueryRequest, WidgetQueryResponse};

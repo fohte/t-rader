@@ -36,6 +36,7 @@ use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::trade::{TradeNoteUseCases, TradeSummaryUseCases, TradeUseCases};
 use core_application::trigger::TriggerUseCases;
 use core_application::valuation::ValuationUseCases;
+use core_application::widget::WidgetUseCases;
 
 #[derive(Clone)]
 pub struct FrontendApiState {
@@ -74,6 +75,7 @@ pub struct FrontendApiState {
     pub trade_summary_use_cases: TradeSummaryUseCases,
     pub trade_use_cases: TradeUseCases,
     pub valuation_use_cases: ValuationUseCases,
+    pub widget_use_cases: WidgetUseCases,
     pub agent_task_client: SharedAgentTaskClient,
     pub kata_executor: Option<SharedKataExecutor>,
     pub llm_gateway_client: Option<SharedLlmClient>,

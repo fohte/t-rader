@@ -8776,6 +8776,87 @@
           }
         }
       }
+    },
+    "/api/widgets/query": {
+      "post": {
+        "tags": [
+          "widgets"
+        ],
+        "summary": "ウィジェット定義を評価して描画データを返す。",
+        "operationId": "query_widget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetQueryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "リクエストの Content-Type が application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13460,7 +13541,336 @@
         },
         "additionalProperties": false
       },
-      "Value": {}
+      "Value": {},
+      "WidgetAggregationRequest": {
+        "type": "string",
+        "enum": [
+          "mkt_cap_weighted",
+          "mean",
+          "sum",
+          "count"
+        ]
+      },
+      "WidgetByRequest": {
+        "type": "string",
+        "enum": [
+          "none",
+          "stock",
+          "group"
+        ]
+      },
+      "WidgetMetricRequest": {
+        "type": "string",
+        "enum": [
+          "change",
+          "close",
+          "turnover",
+          "mkt_cap",
+          "per",
+          "pbr",
+          "indicator"
+        ]
+      },
+      "WidgetPeriodRequest": {
+        "type": "string",
+        "enum": [
+          "1d",
+          "5d",
+          "20d",
+          "60d"
+        ]
+      },
+      "WidgetQueryRequest": {
+        "type": "object",
+        "required": [
+          "queries",
+          "viz"
+        ],
+        "properties": {
+          "formulas": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "queries": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WidgetQueryRequestDefinition"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "time": {
+            "$ref": "#/components/schemas/WidgetTimeRequest"
+          },
+          "viz": {
+            "$ref": "#/components/schemas/WidgetVisualizationRequest"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WidgetQueryRequestDefinition": {
+        "type": "object",
+        "required": [
+          "metric",
+          "by"
+        ],
+        "properties": {
+          "agg": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetAggregationRequest"
+              }
+            ]
+          },
+          "axis": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "by": {
+            "$ref": "#/components/schemas/WidgetByRequest"
+          },
+          "indicator": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metric": {
+            "$ref": "#/components/schemas/WidgetMetricRequest"
+          },
+          "period": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetPeriodRequest"
+              }
+            ]
+          },
+          "universe": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WidgetUniverseRequest"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WidgetQueryResponse": {
+        "type": "object",
+        "required": [
+          "as_of",
+          "rows"
+        ],
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WidgetQueryResultRow"
+            }
+          }
+        }
+      },
+      "WidgetQueryResultRow": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "values"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WidgetTimeRequest": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "range": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WidgetUniverseRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "group"
+            ],
+            "properties": {
+              "group": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "stocks"
+            ],
+            "properties": {
+              "stocks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "WidgetVisualizationOrderRequest": {
+        "type": "string",
+        "enum": [
+          "asc",
+          "desc"
+        ]
+      },
+      "WidgetVisualizationRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "size",
+              "color",
+              "type"
+            ],
+            "properties": {
+              "color": {
+                "type": "string"
+              },
+              "size": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "treemap"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "value",
+              "order",
+              "limit",
+              "type"
+            ],
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "order": {
+                "$ref": "#/components/schemas/WidgetVisualizationOrderRequest"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "toplist"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "columns",
+              "type"
+            ],
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "table"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "series",
+              "type"
+            ],
+            "properties": {
+              "series": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "line"
+                ]
+              }
+            }
+          }
+        ]
+      }
     }
   },
   "tags": [
@@ -13571,6 +13981,10 @@
     {
       "name": "account",
       "description": "口座全体の設定"
+    },
+    {
+      "name": "widgets",
+      "description": "ウィジェットデータの計算"
     }
   ]
 }

@@ -30,6 +30,7 @@ use utoipa::OpenApi;
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
         (name = "config", description = "frontend 向けランタイム設定値"),
         (name = "account", description = "口座全体の設定"),
+        (name = "widgets", description = "ウィジェットデータの計算"),
     ),
     components(schemas(
         crate::handlers::screener::ScreenerSortBy,

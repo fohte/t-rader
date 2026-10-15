@@ -8,7 +8,7 @@ use crate::handlers::{
     custom_indicator_evaluations, custom_indicators, group_axes, history, imports, ingest_status,
     note_kinds, note_links, note_predictions, note_versions, notes, paper_accounts,
     portfolio_history, refs, risk_policy, rss_feeds, saved_screens, screener, stock_info,
-    strategies, strategy_task_steps, tasks, trade_notes, trades, triggers,
+    strategies, strategy_task_steps, tasks, trade_notes, trades, triggers, widgets,
 };
 use crate::state::FrontendApiState;
 
@@ -193,4 +193,5 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
             risk_policy::get_account_risk_policy,
             risk_policy::put_account_risk_policy
         ))
+        .routes(routes!(widgets::query_widget))
 }

@@ -183,3 +183,4 @@ mod tasks;
 mod trade_notes;
 mod trades;
 mod triggers;
+mod widgets;
