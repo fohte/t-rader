@@ -29,6 +29,24 @@ export interface HorizontalLineAnnotationDraft extends HorizontalLinePoint {
   text: string
 }
 
+export interface TrendLinePoint {
+  timestamp: string
+  price: number
+}
+
+export interface TrendLineAnnotationDraft {
+  start: TrendLinePoint
+  end: TrendLinePoint
+  target_kind: string
+  text: string
+}
+
+export interface TrendLineDrawingProgress {
+  enabled: boolean
+  start: TrendLinePoint | null
+  pending: Pick<TrendLineAnnotationDraft, 'start' | 'end'> | null
+}
+
 export function isHumanHorizontalLine(
   annotation: ChartAnnotation,
 ): annotation is ChartAnnotation & { price: number } {
@@ -40,8 +58,23 @@ export function isHumanHorizontalLine(
   )
 }
 
+export function isHumanTrendLine(
+  annotation: ChartAnnotation,
+): annotation is ChartAnnotation & {
+  timestamp_start: string
+  price_start: number
+  price: number
+} {
+  return (
+    annotation.created_by_kind === 'human' &&
+    annotation.timestamp_start != null &&
+    annotation.price_start != null &&
+    annotation.price != null
+  )
+}
+
 export function isAnnotationBandAnnotation(annotation: ChartAnnotation) {
-  return !isHumanHorizontalLine(annotation)
+  return !isHumanHorizontalLine(annotation) && !isHumanTrendLine(annotation)
 }
 
 export function findNearestHumanHorizontalLineId(
@@ -59,6 +92,90 @@ export function findNearestHumanHorizontalLineId(
     if (coordinate == null || !Number.isFinite(coordinate)) continue
 
     const distance = Math.abs(coordinate - clickY)
+    if (nearest == null || distance < nearest.distance) {
+      nearest = { id: annotation.id, distance }
+    }
+  }
+
+  return nearest != null && nearest.distance <= tolerance ? nearest.id : null
+}
+
+export function orderTrendLinePoints(
+  start: TrendLinePoint,
+  end: TrendLinePoint,
+): [TrendLinePoint, TrendLinePoint] {
+  return Date.parse(start.timestamp) <= Date.parse(end.timestamp)
+    ? [start, end]
+    : [end, start]
+}
+
+export function addTrendLinePoint(
+  progress: TrendLineDrawingProgress,
+  point: TrendLinePoint,
+): TrendLineDrawingProgress {
+  if (!progress.enabled) return progress
+  if (progress.start == null) return { ...progress, start: point }
+  if (progress.start.timestamp === point.timestamp) return progress
+
+  return {
+    enabled: false,
+    start: null,
+    pending: { start: progress.start, end: point },
+  }
+}
+
+export function findNearestHumanTrendLineId(
+  annotations: ChartAnnotation[],
+  toCoordinates: (
+    annotation: ChartAnnotation & {
+      timestamp_start: string
+      price_start: number
+      price: number
+    },
+  ) => {
+    start: { x: number; y: number }
+    end: { x: number; y: number }
+  } | null,
+  clickX: number,
+  clickY: number,
+  tolerance = 8,
+): string | null {
+  let nearest: { id: string; distance: number } | null = null
+
+  for (const annotation of annotations) {
+    if (!isHumanTrendLine(annotation)) continue
+
+    const coordinates = toCoordinates(annotation)
+    if (coordinates == null) continue
+    const { start, end } = coordinates
+    if (
+      !Number.isFinite(start.x) ||
+      !Number.isFinite(start.y) ||
+      !Number.isFinite(end.x) ||
+      !Number.isFinite(end.y)
+    ) {
+      continue
+    }
+
+    const segmentX = end.x - start.x
+    const segmentY = end.y - start.y
+    const segmentLengthSquared = segmentX ** 2 + segmentY ** 2
+    const projection =
+      segmentLengthSquared === 0
+        ? 0
+        : Math.min(
+            1,
+            Math.max(
+              0,
+              ((clickX - start.x) * segmentX + (clickY - start.y) * segmentY) /
+                segmentLengthSquared,
+            ),
+          )
+    const distance = Math.hypot(
+      clickX - (start.x + projection * segmentX),
+      clickY - (start.y + projection * segmentY),
+    )
+
     if (nearest == null || distance < nearest.distance) {
       nearest = { id: annotation.id, distance }
     }

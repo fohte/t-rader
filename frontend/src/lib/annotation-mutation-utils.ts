@@ -1,4 +1,8 @@
-import type { HorizontalLineAnnotationDraft } from '#lib/annotation-chart-utils'
+import {
+  type HorizontalLineAnnotationDraft,
+  orderTrendLinePoints,
+  type TrendLineAnnotationDraft,
+} from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 
 type CreateAnnotationVariables = {
@@ -21,6 +25,28 @@ export function saveHorizontalLineAnnotation(
       text: draft.text,
       timestamp: draft.timestamp,
       price: draft.price,
+      created_by_kind: 'human',
+      status: 'approved',
+    },
+  })
+}
+
+export function saveTrendLineAnnotation(
+  mutate: (variables: CreateAnnotationVariables) => void,
+  targetSymbol: string,
+  draft: TrendLineAnnotationDraft,
+) {
+  const [start, end] = orderTrendLinePoints(draft.start, draft.end)
+
+  mutate({
+    body: {
+      target_kind: draft.target_kind,
+      target_symbol: targetSymbol,
+      text: draft.text,
+      timestamp_start: start.timestamp,
+      price_start: start.price,
+      timestamp: end.timestamp,
+      price: end.price,
       created_by_kind: 'human',
       status: 'approved',
     },

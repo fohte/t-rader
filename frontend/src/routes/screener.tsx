@@ -1,13 +1,18 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
+import { useCallback } from 'react'
 
 import { ScreenerPageView } from '#components/screener/screener-page-view'
+import { useSavedScreens } from '#components/screener/use-saved-screens'
 import { $api } from '#lib/api/client'
+import type { SavedScreen } from '#lib/screener-search'
 import {
+  clearSavedScreenSelectionSearch,
   getScreenerRangeError,
   getScreenerSearchAfterSortBy,
   getScreenerSearchAfterSortOrder,
   toScreenerApiQuery,
+  toScreenerSearch,
   validateScreenerSearch,
 } from '#lib/screener-search'
 
@@ -19,8 +24,21 @@ export const Route = createFileRoute('/screener')({
 function ScreenerRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
+  const clearSavedScreenSelection = useCallback(() => {
+    void navigate({
+      search: (previous) => clearSavedScreenSelectionSearch(previous),
+      replace: true,
+    })
+  }, [navigate])
   const page = search.page ?? 1
   const rangeError = getScreenerRangeError(search)
+  const savedScreens = useSavedScreens({
+    search,
+    onSelect: (savedScreen) => {
+      void navigateToSavedScreen(savedScreen)
+    },
+    onClearSelection: clearSavedScreenSelection,
+  })
   const pages = useQueries({
     queries:
       rangeError == null
@@ -98,6 +116,31 @@ function ScreenerRoute() {
       onRetryLoadMore={() => {
         if (failedLaterQuery != null) void failedLaterQuery.refetch()
       }}
+      savedScreens={savedScreens.savedScreens}
+      savedScreensPending={savedScreens.savedScreensPending}
+      savedScreensError={savedScreens.listError}
+      savedScreenDialog={savedScreens.dialog}
+      savedScreenMutationPending={savedScreens.isPending}
+      savedScreenMutationError={savedScreens.error}
+      onSelectSavedScreen={(savedScreen) => {
+        void navigateToSavedScreen(savedScreen)
+      }}
+      onSavedScreenDialogChange={savedScreens.onDialogChange}
+      onSaveSavedScreen={(name, dialog, filters) => {
+        savedScreens.onSave(name, dialog, filters)
+      }}
+      onOverwriteSavedScreen={savedScreens.onOverwrite}
+      onDeleteSavedScreen={savedScreens.onDelete}
     />
   )
+
+  function navigateToSavedScreen(savedScreen: SavedScreen) {
+    return navigate({
+      search: (previous) => ({
+        ...previous,
+        ...toScreenerSearch(savedScreen),
+        screen: savedScreen.id,
+      }),
+    })
+  }
 }

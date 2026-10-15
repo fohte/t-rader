@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import {
+  addTrendLinePoint,
   bucketAnnotationPeriod,
   bucketAnnotationTimestamp,
   clipAnnotationBandSegment,
@@ -9,6 +10,7 @@ import {
   getAnnotationPeriodLineRange,
   groupAnnotationBandTargets,
   isAnnotationBandAnnotation,
+  isHumanTrendLine,
 } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 
@@ -46,9 +48,20 @@ describe('human horizontal line chart behavior', () => {
         timestamp: '2025-01-03T00:00:00.000Z',
         timestamp_start: '2025-01-02T00:00:00.000Z',
         price: 110,
-        price_start: 95,
+        price_start: null,
         status: 'approved',
         text: '期間注釈です。',
+      },
+      {
+        id: 'human-trendline',
+        created_by_kind: 'human',
+        target_kind: 'sample-kind',
+        timestamp: '2025-01-04T00:00:00.000Z',
+        timestamp_start: '2025-01-02T00:00:00.000Z',
+        price: 115,
+        price_start: 95,
+        status: 'approved',
+        text: '保存したトレンドラインです。',
       },
     ]
     const coordinates = new Map([
@@ -67,12 +80,49 @@ describe('human horizontal line chart behavior', () => {
         bandAnnotationIds: annotations
           .filter(isAnnotationBandAnnotation)
           .map(({ id }) => id),
+        humanTrendLineIds: annotations
+          .filter(isHumanTrendLine)
+          .map(({ id }) => id),
       }
     }
 
     expect(readChartBehavior()).toEqual({
       nearestLineId: 'human-line',
       bandAnnotationIds: ['agent-line', 'human-period'],
+      humanTrendLineIds: ['human-trendline'],
+    })
+  })
+})
+
+describe('trendline drawing progress', () => {
+  it('keeps the first point until the second point completes the draft', () => {
+    const firstPoint = {
+      timestamp: '2030-04-02T06:00:00Z',
+      price: 3120,
+    }
+    const secondPoint = {
+      timestamp: '2030-04-01T06:00:00Z',
+      price: 3390,
+    }
+    const initial = { enabled: true, start: null, pending: null }
+    const afterFirstPoint = addTrendLinePoint(initial, firstPoint)
+    const afterSecondPoint = addTrendLinePoint(afterFirstPoint, secondPoint)
+
+    function readProgress() {
+      return { afterFirstPoint, afterSecondPoint }
+    }
+
+    expect(readProgress()).toEqual({
+      afterFirstPoint: {
+        enabled: true,
+        start: firstPoint,
+        pending: null,
+      },
+      afterSecondPoint: {
+        enabled: false,
+        start: null,
+        pending: { start: firstPoint, end: secondPoint },
+      },
     })
   })
 })

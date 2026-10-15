@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react'
 
 import { ScreenerPageView } from '#components/screener/screener-page-view'
 import type { components } from '#lib/api/schema.gen'
+import type { SavedScreen } from '#lib/screener-search'
 import { createStoryRouter } from '#storybook/story-router'
 
 type ScreenerStock = components['schemas']['ScreenerStockResponse']
@@ -41,6 +42,23 @@ const data: ScreenerResponse = {
   total_count: 142,
   as_of: '2099-04-15',
   page: 1,
+}
+
+const savedScreen: SavedScreen = {
+  id: 'saved-screen-a',
+  name: '試作条件',
+  created_at: '2099-01-01T00:00:00Z',
+  updated_at: '2099-01-02T00:00:00Z',
+  filters: {
+    markets: ['プライム'],
+    sectors: [],
+    per: { min: null, max: 12 },
+    pbr: { min: null, max: 1 },
+    roe: null,
+    dividend_yield: { min: 3, max: null },
+    market_cap: { min: 100, max: null },
+  },
+  sort: { field: 'market_cap', direction: 'desc' },
 }
 
 const args = {
@@ -84,8 +102,8 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Results: Story = {
-  name: '条件に一致する銘柄を表とカードで表示します。',
-  args,
+  name: 'PER 上限を指定した結果を表とカードで表示します。',
+  args: { ...args, search: { max_per: 15 } },
 }
 
 export const MobileResults: Story = {
@@ -152,4 +170,106 @@ export const MobileFilters: Story = {
     },
     screenshot: { viewport: { width: 390, height: 700 } },
   },
+}
+
+export const NoSavedScreens: Story = {
+  name: '保存した条件がない状態で条件の保存を案内します。',
+  args: { ...args, savedScreens: [] },
+}
+
+export const SelectedSavedScreen: Story = {
+  name: '保存した条件を読み込んだ状態を表示します。',
+  args: {
+    ...args,
+    savedScreens: [savedScreen],
+    search: {
+      screen: savedScreen.id,
+      markets: ['プライム'],
+      max_per: 12,
+      max_pbr: 1,
+      min_dividend_yield: 3,
+      min_market_cap: 100,
+      sort_by: 'market_cap',
+      sort_order: 'desc',
+    },
+  },
+}
+
+export const SavedScreensMenuOpen: Story = {
+  name: '保存した条件の選択メニューを開いています。',
+  args: {
+    ...SelectedSavedScreen.args,
+    savedScreensMenuOpen: true,
+  },
+}
+
+export const EditedSavedScreen: Story = {
+  name: '保存した条件の値を変えて上書き保存できる状態です。',
+  args: {
+    ...SelectedSavedScreen.args,
+    search: {
+      ...SelectedSavedScreen.args.search,
+      max_per: 10,
+      sort_by: 'per',
+      sort_order: 'asc',
+    },
+  },
+}
+
+export const SaveDialog: Story = {
+  name: '条件に名前を付けて保存する dialog を表示します。',
+  args: {
+    ...SelectedSavedScreen.args,
+    savedScreenDialog: { type: 'save' },
+  },
+}
+
+export const SaveError: Story = {
+  name: '名前が重複したときに保存エラーを表示します。',
+  args: {
+    ...SelectedSavedScreen.args,
+    savedScreenDialog: { type: 'save' },
+    savedScreenMutationError: '同じ名前の保存条件がすでにあります。',
+  },
+}
+
+export const MobileSavedScreen: Story = {
+  name: 'スマートフォンで保存した条件と結果を表示します。',
+  args: SelectedSavedScreen.args,
+  globals: { viewport: { value: 'mobileScreener' } },
+  parameters: {
+    viewport: {
+      options: {
+        mobileScreener: {
+          name: 'Mobile screener',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: { viewport: { width: 390, height: 700 } },
+  },
+}
+
+export const MobileSavedScreensMenuOpen: Story = {
+  name: 'スマートフォンで保存した条件のメニューを開いています。',
+  args: { ...MobileSavedScreen.args, savedScreensMenuOpen: true },
+  globals: { viewport: { value: 'mobileScreener' } },
+  parameters: MobileSavedScreen.parameters,
+}
+
+export const MobileEditedSavedScreensMenuOpen: Story = {
+  name: 'スマートフォンで変更した条件を上書き保存できます。',
+  args: {
+    ...MobileSavedScreen.args,
+    savedScreensMenuOpen: true,
+    search: {
+      ...MobileSavedScreen.args.search,
+      max_per: 10,
+      sort_by: 'per',
+      sort_order: 'asc',
+    },
+  },
+  globals: { viewport: { value: 'mobileScreener' } },
+  parameters: MobileSavedScreen.parameters,
 }
