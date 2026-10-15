@@ -96,6 +96,16 @@ function referenceTitle(reference: NoteEvidenceCardReference): string {
     : `${label} · ${fieldLabel}`
 }
 
+function evidenceSource(reference: NoteEvidenceCardReference): string {
+  if (reference.kind === 'indicator') return 'マクロ指標'
+  if (reference.kind === 'valuation') {
+    return VALUATION_SPLIT_ADJUSTED[reference.field]
+      ? 'バリュエーション (分割調整済み)'
+      : 'バリュエーション'
+  }
+  return '日足 (分割調整済み)'
+}
+
 function EvidenceRows({ reference }: { reference: NoteEvidenceCardReference }) {
   return (
     <div
@@ -116,15 +126,7 @@ function EvidenceRows({ reference }: { reference: NoteEvidenceCardReference }) {
         </>
       )}
       <span className="text-muted-foreground">出どころ</span>
-      <span>
-        {reference.kind === 'price' || reference.kind === 'change'
-          ? '日足 (分割調整済み)'
-          : reference.kind === 'valuation'
-            ? VALUATION_SPLIT_ADJUSTED[reference.field]
-              ? 'バリュエーション (分割調整済み)'
-              : 'バリュエーション'
-            : 'マクロ指標'}
-      </span>
+      <span>{evidenceSource(reference)}</span>
     </div>
   )
 }
