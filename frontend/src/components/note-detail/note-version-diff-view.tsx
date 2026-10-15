@@ -10,7 +10,6 @@ import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { NoteVersionDiffRow } from '#lib/note-version-diff'
 
 export type DiffColumnMode = 'one-column' | 'two-column'
-export type { DiffCommentAnchor } from '#components/note-detail/note-version-line-comment-group'
 
 export interface NoteVersionDiffViewProps {
   rows: NoteVersionDiffRow[]
