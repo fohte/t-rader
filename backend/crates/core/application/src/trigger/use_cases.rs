@@ -623,10 +623,12 @@ mod tests {
             &self,
             _transaction: &UnitOfWorkTransaction,
             _task_id: Uuid,
+            _expected_a2a_task_id: Option<&str>,
             _task_update: Option<StrategyTaskUpdate>,
             _steps: Option<serde_json::Value>,
-        ) -> Result<bool, StrategyTaskRepositoryError> {
-            Ok(false)
+        ) -> Result<crate::strategy_task::StrategyTaskApplyResult, StrategyTaskRepositoryError>
+        {
+            Ok(crate::strategy_task::StrategyTaskApplyResult::default())
         }
 
         async fn find_by_id(
@@ -673,6 +675,7 @@ mod tests {
             _transaction: &UnitOfWorkTransaction,
             _task_id: Uuid,
             _now: chrono::DateTime<chrono::FixedOffset>,
+            _deadline_at: chrono::DateTime<chrono::FixedOffset>,
             _mark_auto_resumed: bool,
         ) -> Result<bool, StrategyTaskRepositoryError> {
             Ok(true)

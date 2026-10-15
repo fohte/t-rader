@@ -136,16 +136,14 @@ impl StrategyTaskUseCases {
                     "agent task submission failed",
                 );
                 let update_result = self
-                    .update(StrategyTaskUpdate {
-                        task_id,
-                        a2a_task_id: None,
-                        phase: Some(StrategyTaskPhase::Failed),
-                        error_summary: Some(Some(format!("agent task submission failed: {error}"))),
-                        result_text: None,
-                        deadline_at: None,
-                        auto_resumed_at: None,
-                        updated_at: chrono::Utc::now().fixed_offset(),
-                    })
+                    .apply_phase(
+                        &prepared.task,
+                        StrategyTaskPhase::Failed,
+                        Some(format!("agent task submission failed: {error}")),
+                        prepared.task.result_text.clone(),
+                        None,
+                        true,
+                    )
                     .await;
                 if let Err(update_error) = update_result {
                     tracing::error!(

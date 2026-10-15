@@ -133,6 +133,28 @@ impl EventRepository for PostgresEventRepository {
             .map(|firing| firing.is_some())
             .map_err(repository_error)
     }
+
+    async fn find_chain_depth_for_task(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        task_id: Uuid,
+    ) -> Result<Option<i64>, EventRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let Some(firing) = event_firing::Entity::find()
+            .filter(event_firing::Column::TaskId.eq(task_id))
+            .one(transaction)
+            .await
+            .map_err(repository_error)?
+        else {
+            return Ok(None);
+        };
+
+        event::Entity::find_by_id(firing.event_id)
+            .one(transaction)
+            .await
+            .map(|event| event.map(|event| event.chain_depth))
+            .map_err(repository_error)
+    }
 }
 
 fn transaction_ref(

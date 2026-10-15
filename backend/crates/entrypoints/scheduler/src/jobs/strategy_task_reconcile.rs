@@ -193,14 +193,21 @@ mod tests {
             &self,
             _transaction: &core_application::unit_of_work::UnitOfWorkTransaction,
             task_id: Uuid,
+            _expected_a2a_task_id: Option<&str>,
             _task_update: Option<StrategyTaskUpdate>,
             _steps: Option<serde_json::Value>,
-        ) -> Result<bool, StrategyTaskRepositoryError> {
+        ) -> Result<
+            core_application::strategy_task::StrategyTaskApplyResult,
+            StrategyTaskRepositoryError,
+        > {
             if task_id == self.failed_task_id {
                 return Err(PersistenceError::Database("write failed".to_string()).into());
             }
             self.updated_task_ids.lock().await.push(task_id);
-            Ok(true)
+            Ok(core_application::strategy_task::StrategyTaskApplyResult {
+                task_updated: true,
+                steps_updated: false,
+            })
         }
 
         async fn find_by_id(
@@ -247,6 +254,7 @@ mod tests {
             _transaction: &core_application::unit_of_work::UnitOfWorkTransaction,
             _task_id: Uuid,
             _now: chrono::DateTime<chrono::FixedOffset>,
+            _deadline_at: chrono::DateTime<chrono::FixedOffset>,
             _mark_auto_resumed: bool,
         ) -> Result<bool, StrategyTaskRepositoryError> {
             Ok(false)
