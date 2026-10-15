@@ -5,7 +5,7 @@ use crate::agent_task_client::{AgentTaskClient, SubmitAgentTask};
 use super::error::ResumeTaskError;
 use super::queries::step_to_wire_json;
 use super::types::{StrategyTaskPhase, StrategyTaskUpdate, SubmittedTask};
-use super::{DEADLINE_DURATION, StrategyTaskUseCases};
+use super::{DEFAULT_PURPOSE, StrategyTaskUseCases, deadline_duration_from_agent_graph};
 
 impl StrategyTaskUseCases {
     pub async fn resume(
@@ -35,6 +35,10 @@ impl StrategyTaskUseCases {
             .find_by_id(task_id)
             .await?
             .ok_or(ResumeTaskError::NotFound(task_id))?;
+        let purpose = task.purpose.as_deref().unwrap_or(DEFAULT_PURPOSE);
+        let agent_graph = self.repository.find_agent_graph_by_purpose(purpose).await?;
+        let deadline_duration =
+            deadline_duration_from_agent_graph(agent_graph.as_deref().unwrap_or_default());
 
         let claim_now = chrono::Utc::now().fixed_offset();
         let transaction = self.unit_of_work.begin().await?;
@@ -63,7 +67,7 @@ impl StrategyTaskUseCases {
             .collect::<Vec<_>>();
 
         let now = chrono::Utc::now().fixed_offset();
-        let deadline_at = now + DEADLINE_DURATION;
+        let deadline_at = now + deadline_duration;
         let agent_ref = match agent_client
             .submit(SubmitAgentTask {
                 strategy_id: task.strategy_id,

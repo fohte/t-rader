@@ -25,6 +25,10 @@ pub trait StrategyTaskRepository: Send + Sync {
     -> Result<bool, StrategyTaskRepositoryError>;
     async fn agent_config_exists(&self, purpose: &str)
     -> Result<bool, StrategyTaskRepositoryError>;
+    async fn find_agent_graph_by_purpose(
+        &self,
+        purpose: &str,
+    ) -> Result<Option<String>, StrategyTaskRepositoryError>;
     async fn insert(
         &self,
         transaction: &UnitOfWorkTransaction,
