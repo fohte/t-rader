@@ -53,7 +53,7 @@ impl TradeNoteUseCases {
         note_id: Uuid,
     ) -> Result<Vec<super::types::Trade>, TradeUseCaseError> {
         self.note_read_use_cases
-            .get_note(note_id, None, false)
+            .require_note(note_id)
             .await
             .map_err(map_note_read_error)?;
         self.trade_repository
@@ -139,6 +139,7 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+    use rstest::rstest;
     use rust_decimal::Decimal;
 
     use super::*;
@@ -171,14 +172,77 @@ mod tests {
         DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
     }
 
+    fn build_use_cases(
+        note_query: Arc<FakeNoteReadQuery>,
+        trade_repository: Arc<FakeTradeRepository>,
+    ) -> TradeNoteUseCases {
+        TradeNoteUseCases::new(
+            Arc::new(FakeUnitOfWork::new()),
+            trade_repository,
+            NoteReadUseCases::new(note_query),
+        )
+    }
+
+    #[rstest]
+    #[case::linked_trade(vec![trade()])]
+    #[case::no_linked_trades(Vec::new())]
+    #[tokio::test]
+    async fn list_trades_for_note_returns_trades_without_a_current_version(
+        #[case] expected_trades: Vec<Trade>,
+    ) {
+        let trade_repository = Arc::new(FakeTradeRepository::new());
+        for linked_trade in &expected_trades {
+            trade_repository.insert_trade(linked_trade.clone()).await;
+            trade_repository
+                .note_links
+                .lock()
+                .await
+                .push(crate::trade::TradeNoteLink {
+                    trade_id: linked_trade.id,
+                    note_id: NOTE_ID,
+                    note_version_id: VERSION_ID,
+                    created_at: timestamp(),
+                });
+        }
+        let use_cases = build_use_cases(
+            Arc::new(FakeNoteReadQuery::new_unreviewed(NOTE_ID, VERSION_ID)),
+            trade_repository,
+        );
+
+        assert_eq!(
+            use_cases
+                .list_trades_for_note(NOTE_ID)
+                .await
+                .expect("an existing note can list linked trades without a current version"),
+            expected_trades,
+        );
+    }
+
+    #[tokio::test]
+    async fn list_trades_for_note_returns_not_found_for_an_unknown_note() {
+        let unknown_note_id = Uuid::from_u128(99);
+        let use_cases = build_use_cases(
+            Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID)),
+            Arc::new(FakeTradeRepository::new()),
+        );
+
+        assert_eq!(
+            use_cases
+                .list_trades_for_note(unknown_note_id)
+                .await
+                .map_err(|error| error.to_string()),
+            Err(format!("note {unknown_note_id} not found")),
+        );
+    }
+
     #[tokio::test]
     async fn create_links_a_note_to_a_strategy_trade() {
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let trade_repository = Arc::new(FakeTradeRepository::new());
         trade_repository.insert_trade(trade()).await;
-        let note_reads =
-            NoteReadUseCases::new(Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID)));
-        let use_cases = TradeNoteUseCases::new(unit_of_work, trade_repository.clone(), note_reads);
+        let use_cases = build_use_cases(
+            Arc::new(FakeNoteReadQuery::new(NOTE_ID, VERSION_ID)),
+            trade_repository.clone(),
+        );
 
         let link = use_cases
             .create(TRADE_ID, NOTE_ID)
@@ -207,6 +271,24 @@ mod tests {
                     created_at: timestamp(),
                 }],
             ),
+        );
+    }
+
+    #[tokio::test]
+    async fn create_requires_a_current_note_version() {
+        let trade_repository = Arc::new(FakeTradeRepository::new());
+        trade_repository.insert_trade(trade()).await;
+        let use_cases = build_use_cases(
+            Arc::new(FakeNoteReadQuery::new_unreviewed(NOTE_ID, VERSION_ID)),
+            trade_repository,
+        );
+
+        assert_eq!(
+            use_cases
+                .create(TRADE_ID, NOTE_ID)
+                .await
+                .map_err(|error| error.to_string()),
+            Err(format!("current version for note {NOTE_ID} not found")),
         );
     }
 }

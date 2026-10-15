@@ -503,7 +503,7 @@ mod tests {
         strategy::{FakeStrategyRepository, SharedStrategyRepository, Strategy},
         strategy_existence::{FakeStrategyExistence, SharedStrategyExistence},
         strategy_task::{
-            SharedStrategyTaskRepository, StrategyTask, StrategyTaskRepository,
+            SharedStrategyTaskRepository, StrategyTask, StrategyTaskOrigin, StrategyTaskRepository,
             StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskUpdate,
             StrategyTaskUseCases, TaskListQuery, TaskSource,
         },
@@ -734,10 +734,10 @@ mod tests {
             Ok(None)
         }
 
-        async fn find_strategy_id_by_execution_step_id(
+        async fn find_origin_by_execution_step_id(
             &self,
             _execution_step_id: Uuid,
-        ) -> Result<Option<Uuid>, StrategyTaskRepositoryError> {
+        ) -> Result<Option<StrategyTaskOrigin>, StrategyTaskRepositoryError> {
             Ok(None)
         }
 

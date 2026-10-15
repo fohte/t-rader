@@ -4,9 +4,9 @@ use axum::http::StatusCode;
 use core_application::change_history::Actor;
 use core_application::change_history::ChangeHistoryError;
 use core_application::comment::{
-    CommentListQuery, CommentReadQueryError, CommentReadUseCaseError, CommentRepositoryError,
-    CommentTargetKind, CommentUseCaseError, CreateCommentCommand, DeleteCommentCommand,
-    ResolveCommentCommand,
+    CommentListQuery, CommentListTarget, CommentReadQueryError, CommentReadUseCaseError,
+    CommentRepositoryError, CommentTargetKind, CommentUseCaseError, CreateCommentCommand,
+    DeleteCommentCommand, ResolveCommentCommand,
 };
 use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
@@ -47,8 +47,10 @@ pub async fn list_comments(
         .comment_read_use_cases
         .list_comments(
             CommentListQuery {
-                target_kind,
-                target_id: p.target_id,
+                target: CommentListTarget::Target {
+                    target_kind,
+                    target_id: p.target_id,
+                },
                 resolved: None,
             },
             false,

@@ -49,6 +49,13 @@ impl FakeNoteReadQuery {
         }
     }
 
+    pub fn new_unreviewed(note_id: Uuid, version_id: Uuid) -> Self {
+        let mut query = Self::new(note_id, version_id);
+        query.version.status = "unread".into();
+        query.version.is_current = false;
+        query
+    }
+
     pub fn note(&self) -> Note {
         self.note.clone()
     }
@@ -90,10 +97,13 @@ impl NoteReadQuery for FakeNoteReadQuery {
         &self,
         note_id: Uuid,
         version_id: Option<Uuid>,
-        _use_latest_if_no_current: bool,
+        use_latest_if_no_current: bool,
     ) -> Result<Option<NoteVersion>, NoteReadQueryError> {
+        let has_requested_version = version_id.is_none_or(|id| id == self.version.id);
+        let can_select_without_version_id =
+            version_id.is_some() || self.version.is_current || use_latest_if_no_current;
         Ok(
-            (self.note.id == note_id && version_id.is_none_or(|id| id == self.version.id))
+            (self.note.id == note_id && has_requested_version && can_select_without_version_id)
                 .then(|| self.version.clone()),
         )
     }

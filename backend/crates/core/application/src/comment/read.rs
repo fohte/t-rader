@@ -1,7 +1,9 @@
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::query::{CommentListQuery, CommentReadQueryError, SharedCommentReadQuery};
+use super::query::{
+    CommentListQuery, CommentListTarget, CommentReadQueryError, SharedCommentReadQuery,
+};
 use super::types::Comment;
 use crate::annotation::{AnnotationReadUseCaseError, AnnotationReadUseCases};
 use crate::note::{NoteReadUseCaseError, NoteReadUseCases};
@@ -41,17 +43,20 @@ impl CommentReadUseCases {
         query: CommentListQuery,
         require_target_exists: bool,
     ) -> Result<Vec<Comment>, CommentReadUseCaseError> {
-        if require_target_exists {
-            match query.target_kind {
+        if require_target_exists
+            && let CommentListTarget::Target {
+                target_kind,
+                target_id,
+            } = query.target
+        {
+            match target_kind {
                 super::types::CommentTargetKind::NoteVersion => {
-                    if !self.note_reads.note_version_exists(query.target_id).await? {
+                    if !self.note_reads.note_version_exists(target_id).await? {
                         return Err(NoteReadUseCaseError::NoteVersionNotFound.into());
                     }
                 }
                 super::types::CommentTargetKind::Annotation => {
-                    self.annotation_reads
-                        .get_annotation(query.target_id)
-                        .await?;
+                    self.annotation_reads.get_annotation(target_id).await?;
                 }
             }
         }

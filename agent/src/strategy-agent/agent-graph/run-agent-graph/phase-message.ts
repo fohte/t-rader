@@ -1,10 +1,17 @@
 export const buildPhaseMessageText = (input: {
   readonly originalPromptText: string
+  readonly phaseKeys: readonly string[]
+  readonly phaseKey: string
   readonly phasePrompt: string
   readonly item: unknown
   readonly priorResults: Readonly<Record<string, unknown>>
 }): string => {
-  const sections = [input.originalPromptText, input.phasePrompt]
+  const phaseScopeMessage = `この巡回は ${input.phaseKeys.join(' → ')} の順に進む。あなたは ${input.phaseKey} を担当する。依頼のうち他の phase の担当分は、後の phase が行う`
+  const sections = [
+    input.originalPromptText,
+    phaseScopeMessage,
+    input.phasePrompt,
+  ]
   if (input.item !== undefined) {
     sections.push(
       `割り当てられた対象:\n\`\`\`json\n${JSON.stringify(input.item, null, 2)}\n\`\`\``,

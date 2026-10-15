@@ -251,8 +251,11 @@ pub struct ReadAnnotationsResult {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ReadCommentsParams {
-    pub target_kind: String,
-    pub target_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved: Option<bool>,
 }
 

@@ -181,6 +181,17 @@ pub async fn insert_test_strategy_task_step(
         now,
     )
     .await;
+    insert_test_strategy_task_step_for_task(db, task_id, execution_step_id).await;
+    task_id
+}
+
+/// テストで指定した strategy_task の strategy_task_step を 1 件 seed する。
+pub async fn insert_test_strategy_task_step_for_task(
+    db: &impl ConnectionTrait,
+    task_id: Uuid,
+    execution_step_id: Uuid,
+) {
+    let now = Utc::now().fixed_offset();
     strategy_task_step::ActiveModel {
         execution_step_id: Set(execution_step_id),
         task_id: Set(task_id),
@@ -201,7 +212,6 @@ pub async fn insert_test_strategy_task_step(
     .insert(db)
     .await
     .expect("insert test strategy task step");
-    task_id
 }
 
 /// テストで cron trigger を 1 件 seed する。

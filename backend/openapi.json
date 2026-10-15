@@ -7807,6 +7807,69 @@
         }
       }
     },
+    "/api/strategy-task-steps/{step_id}": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "実行ステップが属する戦略と実行を取得する",
+        "operationId": "get_strategy_task_step_origin",
+        "parameters": [
+          {
+            "name": "step_id",
+            "in": "path",
+            "description": "実行ステップ ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyTaskStepOriginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "実行ステップ ID が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "実行ステップまたは親の実行が存在しない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tasks": {
       "get": {
         "tags": [
@@ -12664,6 +12727,24 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "StrategyTaskStepOriginResponse": {
+        "type": "object",
+        "description": "`GET /api/strategy-task-steps/:step_id` の戻り値。",
+        "required": [
+          "strategy_id",
+          "task_id"
+        ],
+        "properties": {
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

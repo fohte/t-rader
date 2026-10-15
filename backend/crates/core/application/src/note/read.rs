@@ -162,7 +162,7 @@ impl NoteReadUseCases {
         Ok(self.query.find_note_ids_for_versions(version_ids).await?)
     }
 
-    async fn require_note(&self, note_id: Uuid) -> Result<Note, NoteReadUseCaseError> {
+    pub(crate) async fn require_note(&self, note_id: Uuid) -> Result<Note, NoteReadUseCaseError> {
         self.query
             .find_note(note_id)
             .await?
@@ -200,6 +200,24 @@ mod tests {
             result,
             NoteSnapshot {
                 note: target_note,
+                version: query.version(),
+                created_by_kind: "human".into(),
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn get_note_returns_latest_version_when_current_is_missing_and_fallback_is_enabled() {
+        let query = Arc::new(FakeNoteReadQuery::new_unreviewed(NOTE_ID, VERSION_ID));
+        let use_cases = NoteReadUseCases::new(query.clone());
+
+        assert_eq!(
+            use_cases
+                .get_note(NOTE_ID, None, true)
+                .await
+                .expect("the latest version is used when no current version exists"),
+            NoteSnapshot {
+                note: query.note(),
                 version: query.version(),
                 created_by_kind: "human".into(),
             },

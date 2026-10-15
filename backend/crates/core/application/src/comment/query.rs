@@ -9,9 +9,17 @@ use crate::persistence::PersistenceError;
 use super::types::{Comment, CommentTargetKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommentListTarget {
+    Target {
+        target_kind: CommentTargetKind,
+        target_id: Uuid,
+    },
+    AllNoteVersions,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommentListQuery {
-    pub target_kind: CommentTargetKind,
-    pub target_id: Uuid,
+    pub target: CommentListTarget,
     pub resolved: Option<bool>,
 }
 

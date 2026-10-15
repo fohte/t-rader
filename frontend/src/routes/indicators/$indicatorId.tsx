@@ -16,7 +16,6 @@ export const Route = createFileRoute('/indicators/$indicatorId')({
 function IndicatorDetailRoute() {
   const { indicatorId } = Route.useParams()
   const [period, setPeriod] = useState<IndicatorPeriod>('1y')
-  // query client の error には HTTP status が含まれないため、404 をここで分岐する。
   const indicatorQuery = useQuery({
     queryKey: ['indicator-detail', indicatorId],
     queryFn: async ({ signal }) => {
