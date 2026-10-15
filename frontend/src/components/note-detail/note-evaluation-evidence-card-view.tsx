@@ -1,4 +1,5 @@
 import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
+import { formatIngestDateTime } from '#lib/format-ingest-status'
 
 interface NoteEvaluationEvidenceRecord {
   indicator_name: string
@@ -78,7 +79,7 @@ export function NoteEvaluationEvidenceCardView({
             >
               <span className="text-muted-foreground">実行時刻</span>
               <span className="font-mono tabular-nums">
-                {state.evaluation.evaluated_at}
+                {formatIngestDateTime(state.evaluation.evaluated_at)}
               </span>
               <span className="text-muted-foreground">出どころ</span>
               <span>自作指標の実行記録</span>

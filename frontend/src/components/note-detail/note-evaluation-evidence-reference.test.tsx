@@ -90,6 +90,7 @@ describe('NoteEvaluationEvidenceReference', () => {
 
     await user.click(screen.getByRole('button', { name: '42.5 の根拠を開く' }))
     const heading = await screen.findByText('デモ指標 · result')
+    const evaluatedAt = await screen.findByText('2030/01/02 12:04')
 
     const requestsAfterOpen = getEvaluation.mock.calls.map(
       ([path, options]) => ({
@@ -104,11 +105,13 @@ describe('NoteEvaluationEvidenceReference', () => {
         { path: { evaluation_id: evaluationId } },
       ],
       'デモ指標 · result',
+      '2030/01/02 12:04',
     ])
     const requestHistory = JSON.stringify([
       requestsBeforeOpen,
       requestsAfterOpen.flatMap(({ path, params }) => [path, params]),
       heading.textContent,
+      evaluatedAt.textContent,
     ])
     expect(requestHistory).toBe(expectedRequestHistory)
   })
