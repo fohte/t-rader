@@ -42,25 +42,34 @@ const data: ScreenerResponse = {
   page: 1,
 }
 
+const baseArgs = {
+  search: {},
+  data,
+  stocks,
+  status: 'results',
+  loadMoreError: false,
+  onSort: () => {},
+  onSortOrder: () => {},
+  onLoadMore: () => {},
+  onRetryLoadMore: () => {},
+} satisfies ComponentProps<typeof ScreenerResultsView>
+
+function renderResultsView(
+  overrides: Partial<ComponentProps<typeof ScreenerResultsView>> = {},
+) {
+  const args = { ...baseArgs, ...overrides }
+  const router = createStoryRouter(() => <ScreenerResultsView {...args} />, {
+    paths: ['/stocks/$stockId'],
+  })
+
+  return render(<RouterProvider router={router} />)
+}
+
 afterEach(cleanup)
 
 describe('ScreenerResultsView', () => {
   it('shows the as-of date as month and day', async () => {
-    const args = {
-      search: {},
-      data,
-      stocks,
-      status: 'results',
-      onSort: () => {},
-      onSortOrder: () => {},
-      onLoadMore: () => {},
-      onRetryLoadMore: () => {},
-    } satisfies ComponentProps<typeof ScreenerResultsView>
-    const router = createStoryRouter(() => <ScreenerResultsView {...args} />, {
-      paths: ['/stocks/$stockId'],
-    })
-
-    render(<RouterProvider router={router} />)
+    renderResultsView()
 
     expect((await screen.findByText(/時点/)).textContent).toBe('6/18 時点')
   })
@@ -82,22 +91,11 @@ describe('ScreenerResultsView', () => {
     const onSortOrder = vi.fn((order: ScreenerSortOrder) => {
       nextSearch = getScreenerSearchAfterSortOrder(nextSearch, order)
     })
-    const args = {
+    renderResultsView({
       search: initialSearch,
-      data,
-      stocks,
-      status: 'results',
-      loadMoreError: false,
       onSort,
       onSortOrder,
-      onLoadMore: () => {},
-      onRetryLoadMore: () => {},
-    } satisfies ComponentProps<typeof ScreenerResultsView>
-    const router = createStoryRouter(() => <ScreenerResultsView {...args} />, {
-      paths: ['/stocks/$stockId'],
     })
-
-    render(<RouterProvider router={router} />)
 
     const sortField = await screen.findByRole('combobox', {
       name: '並べ替える列',
@@ -121,22 +119,12 @@ describe('ScreenerResultsView', () => {
   it('keeps loaded stocks visible and retries a failed later page', async () => {
     const user = userEvent.setup()
     const onRetryLoadMore = vi.fn()
-    const args = {
-      search: {},
+    renderResultsView({
       data: { ...data, total_count: 2 },
-      stocks,
-      status: 'results',
       loadMoreError: true,
-      onSort: () => {},
-      onSortOrder: () => {},
-      onLoadMore: () => {},
       onRetryLoadMore,
-    } satisfies ComponentProps<typeof ScreenerResultsView>
-    const router = createStoryRouter(() => <ScreenerResultsView {...args} />, {
-      paths: ['/stocks/$stockId'],
     })
 
-    render(<RouterProvider router={router} />)
     await user.click(await screen.findByRole('button', { name: '再試行' }))
 
     const actual = JSON.stringify({
