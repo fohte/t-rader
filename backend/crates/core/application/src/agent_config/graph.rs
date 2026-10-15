@@ -37,6 +37,10 @@ pub struct AgentGraphPhase {
     #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default)]
+    pub subagents: Vec<String>,
+    #[serde(default)]
+    pub max_subagent_runs: Option<u32>,
+    #[serde(default)]
     pub tools: Vec<String>,
     #[serde(default)]
     pub output: serde_json::Map<String, JsonValue>,
@@ -197,6 +201,8 @@ mod tests {
                 for_each: plan.hypotheses
                 label_field: title
                 max_parallel: 4
+                subagents: [researcher, reviewer]
+                max_subagent_runs: 3
                 prompt: 割り当てられた仮説を検証せよ
                 tools: [query_data, write_note]
         "};
@@ -221,6 +227,8 @@ mod tests {
                         label_field: None,
                         max_parallel: None,
                         skills: vec![],
+                        subagents: vec![],
+                        max_subagent_runs: None,
                         tools: vec![],
                         output: serde_json::json!({
                             "hypotheses": {
@@ -244,6 +252,8 @@ mod tests {
                         label_field: Some("title".to_string()),
                         max_parallel: Some(4),
                         skills: vec![],
+                        subagents: vec!["researcher".to_string(), "reviewer".to_string()],
+                        max_subagent_runs: Some(3),
                         tools: vec!["query_data".to_string(), "write_note".to_string()],
                         output: serde_json::Map::new(),
                     },
@@ -278,6 +288,8 @@ mod tests {
                     label_field: None,
                     max_parallel: None,
                     skills: vec![],
+                    subagents: vec![],
+                    max_subagent_runs: None,
                     tools: vec![],
                     output: serde_json::Map::new(),
                 }],
@@ -321,6 +333,8 @@ mod tests {
                     label_field: None,
                     max_parallel: None,
                     skills: vec![],
+                    subagents: vec![],
+                    max_subagent_runs: None,
                     tools: vec![],
                     output: serde_json::Map::new(),
                 }],
@@ -393,7 +407,7 @@ mod tests {
         assert_eq!(
             parse_agent_graph(yaml),
             Err(AgentGraphError::InvalidYaml(
-                "phases[0]: unknown field `unknown_field`, expected one of `key`, `label`, `model`, `timeout_minutes`, `reasoning_effort`, `prompt`, `for_each`, `label_field`, `max_parallel`, `skills`, `tools`, `output` at line 6 column 5".to_string(),
+                "phases[0]: unknown field `unknown_field`, expected one of `key`, `label`, `model`, `timeout_minutes`, `reasoning_effort`, `prompt`, `for_each`, `label_field`, `max_parallel`, `skills`, `subagents`, `max_subagent_runs`, `tools`, `output` at line 6 column 5".to_string(),
             )),
         );
     }

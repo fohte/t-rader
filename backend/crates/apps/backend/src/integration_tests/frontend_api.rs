@@ -179,6 +179,7 @@ mod strategy_earnings_targets;
 mod strategy_investable_amount;
 mod strategy_task_steps;
 mod strategy_tasks;
+mod subagent_definitions;
 mod tasks;
 mod trade_notes;
 mod trades;

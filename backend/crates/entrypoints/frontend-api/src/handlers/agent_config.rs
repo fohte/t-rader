@@ -23,6 +23,7 @@ fn map_err(error: AgentConfigUseCaseError) -> AppError {
     match error {
         AgentConfigUseCaseError::InvalidPurpose(_)
         | AgentConfigUseCaseError::InvalidSkillName(_)
+        | AgentConfigUseCaseError::UnknownSubagentDefinition(_)
         | AgentConfigUseCaseError::InvalidAgentGraph(_) => AppError::Validation(error.to_string()),
         AgentConfigUseCaseError::DuplicatePurpose(_) => AppError::Conflict(error.to_string()),
         AgentConfigUseCaseError::NotFound(_) | AgentConfigUseCaseError::SkillNotFound(_) => {

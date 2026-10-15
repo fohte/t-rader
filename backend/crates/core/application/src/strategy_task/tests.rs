@@ -68,6 +68,7 @@ fn resume_outcome(result: Result<super::SubmittedTask, ResumeTaskError>) -> Outc
 #[case::cron(TaskSource::Cron, "cron")]
 #[case::hook(TaskSource::Hook, "hook")]
 #[case::review(TaskSource::Review, "review")]
+#[case::event(TaskSource::Event, "event")]
 fn task_source_as_str(#[case] source: TaskSource, #[case] expected: &str) {
     assert_eq!(source.as_str(), expected);
 }

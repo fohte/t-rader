@@ -40,7 +40,10 @@ pub trait EventRepository: Send + Sync {
         event: NewEvent,
     ) -> Result<Event, EventRepositoryError>;
 
-    async fn list_undispatched(&self) -> Result<Vec<Event>, EventRepositoryError>;
+    async fn lock_next_undispatched(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Option<Event>, EventRepositoryError>;
 
     async fn mark_dispatched(
         &self,
@@ -60,6 +63,13 @@ pub trait EventRepository: Send + Sync {
         event_id: Uuid,
         trigger_id: Uuid,
         task_id: Uuid,
+    ) -> Result<bool, EventRepositoryError>;
+
+    async fn has_firing(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        event_id: Uuid,
+        trigger_id: Uuid,
     ) -> Result<bool, EventRepositoryError>;
 }
 

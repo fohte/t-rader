@@ -56,6 +56,7 @@ pub mod strategy_investable_amount;
 pub mod strategy_task;
 pub mod strategy_task_step;
 pub mod strategy_task_step_evidence;
+pub mod subagent_definition;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;

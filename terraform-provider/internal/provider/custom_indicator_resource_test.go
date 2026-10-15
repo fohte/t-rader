@@ -576,7 +576,7 @@ func TestCustomIndicatorSchemaMatchesPreservesNumberDynamicType(t *testing.T) {
 	prior := types.DynamicValue(priorObject)
 	remote := map[string]interface{}{"threshold": float64(0.1)}
 
-	got := struct{ Matches bool }{Matches: customIndicatorSchemaMatches(context.Background(), prior, remote)}
+	got := struct{ Matches bool }{Matches: jsonObjectMatchesPrior(context.Background(), prior, remote)}
 	want := struct{ Matches bool }{Matches: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("schema comparison output mismatch: got=%#v want=%#v", got, want)

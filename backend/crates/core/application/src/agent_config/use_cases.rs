@@ -5,6 +5,8 @@ use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
+use crate::slug::is_valid_slug;
+use crate::subagent_definition::SharedSubagentDefinitionRepository;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 use super::error::{AgentConfigRepositoryError, AgentConfigUseCaseError};
@@ -16,13 +18,19 @@ use super::types::{AgentConfig, NewAgentConfig, skills_as_btree};
 pub struct AgentConfigUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedAgentConfigRepository,
+    subagent_definition_repository: SharedSubagentDefinitionRepository,
 }
 
 impl AgentConfigUseCases {
-    pub fn new(unit_of_work: SharedUnitOfWork, repository: SharedAgentConfigRepository) -> Self {
+    pub fn new(
+        unit_of_work: SharedUnitOfWork,
+        repository: SharedAgentConfigRepository,
+        subagent_definition_repository: SharedSubagentDefinitionRepository,
+    ) -> Self {
         Self {
             unit_of_work,
             repository,
+            subagent_definition_repository,
         }
     }
 
@@ -78,13 +86,16 @@ impl AgentConfigUseCases {
         content: String,
     ) -> Result<String, AgentConfigUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
-        let mut agent_config = self.find_in_transaction(&transaction, purpose).await?;
+        let agent_config = self.find_in_transaction(&transaction, purpose).await?;
         let from_len = agent_config.agents_md.len();
-        agent_config.agents_md = content;
-        agent_config.updated_at = Utc::now().fixed_offset();
         let saved = self
             .repository
-            .update(&transaction, agent_config)
+            .update_agents_md(
+                &transaction,
+                agent_config.id,
+                content,
+                Utc::now().fixed_offset(),
+            )
             .await
             .map_err(|error| map_update_error(error, purpose))?;
         self.unit_of_work.commit(transaction).await?;
@@ -151,16 +162,42 @@ impl AgentConfigUseCases {
         purpose: &str,
         content: &str,
     ) -> Result<String, AgentConfigUseCaseError> {
-        parse_agent_graph(content)?;
-
+        let graph = parse_agent_graph(content)?;
         let transaction = self.unit_of_work.begin().await?;
-        let mut agent_config = self.find_in_transaction(&transaction, purpose).await?;
+        self.subagent_definition_repository
+            .acquire_agent_graph_reference_lock(&transaction)
+            .await?;
+
+        if let Some(graph) = graph {
+            let keys: std::collections::BTreeSet<_> = self
+                .subagent_definition_repository
+                .list_in_transaction(&transaction)
+                .await?
+                .into_iter()
+                .map(|definition| definition.key)
+                .collect();
+            if let Some(key) = graph
+                .phases
+                .iter()
+                .flat_map(|phase| &phase.subagents)
+                .find(|key| !keys.contains(key.as_str()))
+            {
+                return Err(AgentConfigUseCaseError::UnknownSubagentDefinition(
+                    key.clone(),
+                ));
+            }
+        }
+
+        let agent_config = self.find_in_transaction(&transaction, purpose).await?;
         let from_len = agent_config.agent_graph.len();
-        agent_config.agent_graph = content.to_string();
-        agent_config.updated_at = Utc::now().fixed_offset();
         let saved = self
             .repository
-            .update(&transaction, agent_config)
+            .update_agent_graph(
+                &transaction,
+                agent_config.id,
+                content.to_string(),
+                Utc::now().fixed_offset(),
+            )
             .await
             .map_err(|error| map_update_error(error, purpose))?;
         self.unit_of_work.commit(transaction).await?;
@@ -187,17 +224,16 @@ impl AgentConfigUseCases {
     async fn save_skills(
         &self,
         transaction: UnitOfWorkTransaction,
-        mut current: AgentConfig,
+        current: AgentConfig,
         skills: Value,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         let purpose = current.purpose.clone();
         let from: Vec<String> = current.skills_as_btree().into_keys().collect();
         let to: Vec<String> = skills_as_btree(&skills).into_keys().collect();
-        current.skills = skills;
-        current.updated_at = Utc::now().fixed_offset();
+        let updated_at = Utc::now().fixed_offset();
         let saved = self
             .repository
-            .update(&transaction, current)
+            .update_skills(&transaction, current.id, skills, updated_at)
             .await
             .map_err(|error| map_update_error(error, &purpose))?;
         self.unit_of_work.commit(transaction).await?;
@@ -212,21 +248,6 @@ fn map_update_error(error: AgentConfigRepositoryError, purpose: &str) -> AgentCo
             AgentConfigUseCaseError::NotFound(purpose.to_string())
         }
         error => error.into(),
-    }
-}
-
-fn is_valid_slug(value: &str) -> bool {
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(first) if first.is_ascii_lowercase() || first.is_ascii_digit() => {
-            chars.all(|character| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || character == '_'
-                    || character == '-'
-            })
-        }
-        _ => false,
     }
 }
 

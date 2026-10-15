@@ -213,6 +213,7 @@ describe('runAgentGraph', () => {
           label: 'Step A',
           model: 'model-a',
           prompt: 'do A',
+          subagents: [],
           skills: [],
           tools: [],
           output: { value: { type: 'string' } },
@@ -222,6 +223,7 @@ describe('runAgentGraph', () => {
           label: 'Step B',
           model: 'model-b',
           prompt: 'do B',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -279,6 +281,7 @@ describe('runAgentGraph', () => {
           label: 'Step A',
           model: 'model-a',
           prompt: 'do A',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -322,6 +325,7 @@ describe('runAgentGraph', () => {
             label: 'Work',
             model: 'example-model',
             prompt: 'do work',
+            subagents: [],
             skills: [],
             tools: [],
             output: {},
@@ -365,6 +369,7 @@ describe('runAgentGraph', () => {
             model: 'example-model',
             prompt: 'do work',
             timeoutMinutes: 1,
+            subagents: [],
             skills: [],
             tools: [],
             output: {},
@@ -406,6 +411,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -417,6 +423,7 @@ describe('runAgentGraph', () => {
           prompt: 'do work',
           forEach: 'plan.items',
           maxParallel: 2,
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -499,6 +506,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -511,6 +519,7 @@ describe('runAgentGraph', () => {
           forEach: 'plan.items',
           maxParallel: 2,
           timeoutMinutes: 1,
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -600,6 +609,7 @@ describe('runAgentGraph', () => {
             label: 'Plan',
             model: 'example-model-plan',
             prompt: 'do plan',
+            subagents: [],
             skills: [],
             output: { items: { type: 'array', items: { type: 'string' } } },
           },
@@ -610,6 +620,7 @@ describe('runAgentGraph', () => {
             prompt: 'do work',
             forEach: 'plan.items',
             maxParallel: 1,
+            subagents: [],
             skills: [],
             output: {},
           },
@@ -674,6 +685,7 @@ describe('runAgentGraph', () => {
               label: 'Plan',
               model: 'example-model-plan',
               prompt: 'build items',
+              subagents: [],
               skills: [],
               output: {
                 items: { type: 'array', items: { type: 'string' } },
@@ -687,6 +699,7 @@ describe('runAgentGraph', () => {
               forEach: 'plan.items',
               maxParallel: 1,
               timeoutMinutes: 1,
+              subagents: [],
               skills: [],
               output: {},
             },
@@ -750,6 +763,7 @@ describe('runAgentGraph', () => {
               label: 'Plan',
               model: 'example-model-plan',
               prompt: 'build items',
+              subagents: [],
               skills: [],
               output: {
                 items: { type: 'array', items: { type: 'string' } },
@@ -763,6 +777,7 @@ describe('runAgentGraph', () => {
               forEach: 'plan.items',
               maxParallel: 2,
               timeoutMinutes: 1,
+              subagents: [],
               skills: [],
               output: {},
             },
@@ -832,6 +847,7 @@ describe('runAgentGraph', () => {
               label: 'Prior',
               model: 'example-model-prior',
               prompt: 'do prior work',
+              subagents: [],
               skills: [],
               output: { value: { type: 'string' } },
             },
@@ -841,6 +857,7 @@ describe('runAgentGraph', () => {
               model: 'example-model-timed',
               prompt: 'do timed work',
               timeoutMinutes: 1,
+              subagents: [],
               skills: [],
               output: {},
             },
@@ -908,6 +925,7 @@ describe('runAgentGraph', () => {
           model: 'model-a',
           reasoningEffort: 'high',
           prompt: 'do a',
+          subagents: [],
           skills: [],
           output: {},
         },
@@ -916,6 +934,7 @@ describe('runAgentGraph', () => {
           label: 'Without effort',
           model: 'model-b',
           prompt: 'do b',
+          subagents: [],
           skills: [],
           output: {},
         },
@@ -958,6 +977,7 @@ describe('runAgentGraph', () => {
           label: 'P',
           model: 'm',
           prompt: 'do p',
+          subagents: [],
           skills: ['skill-a'],
           tools: ['tool_a'],
           output: {},
@@ -1007,6 +1027,7 @@ describe('runAgentGraph', () => {
           label: 'P',
           model: 'm',
           prompt: 'do p',
+          subagents: [],
           skills: [],
           output: {},
         },
@@ -1052,6 +1073,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -1063,6 +1085,7 @@ describe('runAgentGraph', () => {
           prompt: 'do work',
           forEach: 'plan.items',
           maxParallel: 2,
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1121,6 +1144,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -1132,6 +1156,7 @@ describe('runAgentGraph', () => {
           prompt: 'do work',
           forEach: 'plan.items',
           maxParallel: 2,
+          subagents: [],
           skills: [],
           tools: [],
           output: { value: { type: 'string' } },
@@ -1219,6 +1244,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'make plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -1230,6 +1256,7 @@ describe('runAgentGraph', () => {
           prompt: 'do work',
           forEach: 'plan.items',
           maxParallel: items.length,
+          subagents: [],
           skills: [],
           tools: [],
           output: { value: { type: 'string' } },
@@ -1239,6 +1266,7 @@ describe('runAgentGraph', () => {
           label: 'Summary',
           model: 'm',
           prompt: 'summarize',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1292,6 +1320,7 @@ describe('runAgentGraph', () => {
           label: 'P',
           model: 'm',
           prompt: 'do p',
+          subagents: [],
           skills: [],
           tools: [],
           output: { ok: { type: 'boolean' } },
@@ -1367,11 +1396,11 @@ describe('runAgentGraph', () => {
       reasonText: 'agent did not return a structured response',
     },
     {
-      name: 'empty required array field',
-      firstAttemptResult: { structuredResponse: { ok: [] } },
+      name: 'missing required array field',
+      firstAttemptResult: { structuredResponse: {} },
       reason: 'missing_required_array_fields',
       reasonText:
-        "agent's structured response did not resolve required for_each field(s) to a non-empty array: ok",
+        "agent's structured response did not resolve required for_each field(s) to an array: ok",
     },
   ])(
     'feeds back the rejection reason and a write-tool warning on retry ($name)',
@@ -1395,6 +1424,7 @@ describe('runAgentGraph', () => {
             label: 'Plan',
             model: 'm',
             prompt: 'do plan',
+            subagents: [],
             skills: [],
             tools: [],
             output: { ok: { type: 'array', items: { type: 'string' } } },
@@ -1405,6 +1435,7 @@ describe('runAgentGraph', () => {
             model: 'm',
             prompt: 'do work',
             forEach: 'plan.ok',
+            subagents: [],
             skills: [],
             tools: [],
             output: {},
@@ -1462,6 +1493,7 @@ describe('runAgentGraph', () => {
           label: 'P',
           model: 'm',
           prompt: 'do p',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1518,6 +1550,7 @@ describe('runAgentGraph', () => {
           label: 'P',
           model: 'm',
           prompt: 'do p',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1553,6 +1586,7 @@ describe('runAgentGraph', () => {
           label: 'P',
           model: 'm',
           prompt: 'do p',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1587,10 +1621,10 @@ describe('runAgentGraph', () => {
       field: 'value',
     },
     {
-      name: 'stays an empty array',
+      name: 'is missing',
       output: { hypotheses: { type: 'array' } },
       forEach: 'plan.hypotheses',
-      response: { hypotheses: [] },
+      response: {},
       field: 'hypotheses',
     },
   ])(
@@ -1608,6 +1642,7 @@ describe('runAgentGraph', () => {
             label: 'Plan',
             model: 'm',
             prompt: 'do plan',
+            subagents: [],
             skills: [],
             tools: [],
             output,
@@ -1618,6 +1653,7 @@ describe('runAgentGraph', () => {
             model: 'm',
             prompt: 'do investigate',
             forEach,
+            subagents: [],
             skills: [],
             tools: [],
             output: {},
@@ -1634,28 +1670,30 @@ describe('runAgentGraph', () => {
         }),
       )
 
-      expect(result).toEqual({
-        status: 'failed',
-        message: `フェーズ「Plan」(plan) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to a non-empty array: ${field}`,
-        errorKind: 'agent_error',
-      })
-      expect(attempts).toBe(3)
-      expect(warnCalls).toEqual([
+      expect(Array.of<unknown>(result, attempts, warnCalls)).toEqual([
+        {
+          status: 'failed',
+          message: `フェーズ「Plan」(plan) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to an array: ${field}`,
+          errorKind: 'agent_error',
+        },
+        3,
         [
-          {
-            executionStepId: '<execution-step-id>',
-            attemptNumber: 1,
-            reason: 'missing_required_array_fields',
-          },
-          'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
-        ],
-        [
-          {
-            executionStepId: '<execution-step-id>',
-            attemptNumber: 2,
-            reason: 'missing_required_array_fields',
-          },
-          'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+          [
+            {
+              executionStepId: '<execution-step-id>',
+              attemptNumber: 1,
+              reason: 'missing_required_array_fields',
+            },
+            'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
+          ],
+          [
+            {
+              executionStepId: '<execution-step-id>',
+              attemptNumber: 2,
+              reason: 'missing_required_array_fields',
+            },
+            'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+          ],
         ],
       ])
     },
@@ -1675,6 +1713,7 @@ describe('runAgentGraph', () => {
           model: 'm',
           prompt: 'do investigate',
           forEach: 'missing.items',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1698,19 +1737,14 @@ describe('runAgentGraph', () => {
     expect(attempts).toBe(0)
   })
 
-  it('retries the source phase until for_each resolves to a non-empty array, then runs the dependent phase', async () => {
-    let planAttempts = 0
-    const { deps } = buildDeps((call) => {
-      if (call.messageText.includes('do plan')) {
-        planAttempts++
-        return Promise.resolve(
-          planAttempts < 3
-            ? { structuredResponse: { hypotheses: [] } }
-            : { structuredResponse: { hypotheses: [{ title: 'H1' }] } },
-        )
-      }
-      return Promise.resolve({ structuredResponse: {} })
-    })
+  it('passes an empty for_each result to the following phase without invoking an item', async () => {
+    const { deps, calls } = buildDeps((call) =>
+      Promise.resolve(
+        call.messageText.includes('do plan')
+          ? { structuredResponse: { items: [] } }
+          : { structuredResponse: { summary: 'no entries' } },
+      ),
+    )
     const config: AgentGraphConfig = {
       phases: [
         {
@@ -1718,53 +1752,74 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
-          output: { hypotheses: { type: 'array' } },
+          output: { items: { type: 'array' } },
         },
         {
           key: 'investigate',
           label: 'Investigate',
           model: 'm',
           prompt: 'do investigate',
-          forEach: 'plan.hypotheses',
+          forEach: 'plan.items',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
         },
+        {
+          key: 'summary',
+          label: 'Summary',
+          model: 'fictional-model',
+          prompt: 'write summary',
+          subagents: [],
+          skills: [],
+          tools: [],
+          output: { summary: { type: 'string' } },
+        },
       ],
     }
 
-    const { result, warnCalls } = await runWithWarnSpy(() =>
-      runAgentGraph(deps, config, {
-        agentsMd: 'AGENTS',
-        skills: {},
-        createStepMcpClient: buildStepMcpClientFactory(),
-        originalPromptText: 'req',
-      }),
-    )
-
-    expect(result).toEqual({
-      status: 'completed',
-      message: '2フェーズの実行が完了しました (Plan → Investigate)',
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
     })
-    expect(planAttempts).toBe(3)
-    expect(warnCalls).toEqual([
+
+    expect(
+      Array.of<unknown>(
+        result,
+        calls.filter((call) => call.messageText.includes('do plan')).length,
+        calls.map((call) => call.messageText),
+      ),
+    ).toEqual([
+      {
+        status: 'completed',
+        message: '3フェーズの実行が完了しました (Plan → Investigate → Summary)',
+      },
+      1,
       [
-        {
-          executionStepId: '<execution-step-id>',
-          attemptNumber: 1,
-          reason: 'missing_required_array_fields',
-        },
-        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
-      ],
-      [
-        {
-          executionStepId: '<execution-step-id>',
-          attemptNumber: 2,
-          reason: 'missing_required_array_fields',
-        },
-        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+        buildPhaseMessageText({
+          originalPromptText: 'req',
+          phaseKeys: ['plan', 'investigate', 'summary'],
+          phaseKey: 'plan',
+          phasePrompt: 'do plan',
+          item: undefined,
+          priorResults: {},
+        }),
+        buildPhaseMessageText({
+          originalPromptText: 'req',
+          phaseKeys: ['plan', 'investigate', 'summary'],
+          phaseKey: 'summary',
+          phasePrompt: 'write summary',
+          item: undefined,
+          priorResults: {
+            plan: { items: [] },
+            investigate: [],
+          },
+        }),
       ],
     ])
   })
@@ -1780,6 +1835,7 @@ describe('runAgentGraph', () => {
           label: 'Step A',
           model: 'model-a',
           prompt: 'do A',
+          subagents: [],
           skills: [],
           tools: [],
           output: { value: { type: 'string' } },
@@ -1845,6 +1901,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { hypotheses: { type: 'array' } },
@@ -1856,6 +1913,7 @@ describe('runAgentGraph', () => {
           prompt: 'do investigate',
           forEach: 'plan.hypotheses',
           labelField: 'title',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1934,6 +1992,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -1944,6 +2003,7 @@ describe('runAgentGraph', () => {
           model: 'm',
           prompt: 'do work',
           forEach: 'plan.items',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -1996,6 +2056,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -2007,6 +2068,7 @@ describe('runAgentGraph', () => {
           prompt: 'do work',
           forEach: 'plan.items',
           maxParallel: 1,
+          subagents: [],
           skills: [],
           tools: [],
           output: { value: { type: 'string' } },
@@ -2016,6 +2078,7 @@ describe('runAgentGraph', () => {
           label: 'Summarize',
           model: 'm',
           prompt: 'do summarize',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -2133,6 +2196,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -2143,6 +2207,7 @@ describe('runAgentGraph', () => {
           model: 'm',
           prompt: 'do work',
           forEach: 'plan.items',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -2181,6 +2246,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { items: { type: 'array', items: { type: 'string' } } },
@@ -2191,6 +2257,7 @@ describe('runAgentGraph', () => {
           model: 'm',
           prompt: 'do work',
           forEach: 'plan.items',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -2222,6 +2289,7 @@ describe('runAgentGraph', () => {
           label: 'P',
           model: 'm',
           prompt: 'do p',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -2268,6 +2336,7 @@ describe('runAgentGraph', () => {
           label: 'Step A',
           model: 'model-a',
           prompt: 'do A',
+          subagents: [],
           skills: [],
           tools: [],
           output: { value: { type: 'string' } },
@@ -2277,6 +2346,7 @@ describe('runAgentGraph', () => {
           label: 'Step B',
           model: 'model-b',
           prompt: 'do B',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -2363,6 +2433,7 @@ describe('runAgentGraph', () => {
           label: 'Step A',
           model: 'model-a',
           prompt: 'do A',
+          subagents: [],
           skills: [],
           tools: [],
           output: { value: { type: 'string' } },
@@ -2415,6 +2486,7 @@ describe('runAgentGraph', () => {
           label: 'Plan',
           model: 'm',
           prompt: 'do plan',
+          subagents: [],
           skills: [],
           tools: [],
           output: { hypotheses: { type: 'array' } },
@@ -2426,6 +2498,7 @@ describe('runAgentGraph', () => {
           prompt: 'do investigate',
           forEach: 'plan.hypotheses',
           labelField: 'title',
+          subagents: [],
           skills: [],
           tools: [],
           output: {},
@@ -2650,6 +2723,7 @@ describe('runAgentGraph', () => {
         label: 'Plan',
         model: 'm',
         prompt: 'do plan',
+        subagents: [],
         skills: [],
         tools: [],
         output: { hypotheses: { type: 'array' } },
@@ -2661,6 +2735,7 @@ describe('runAgentGraph', () => {
         prompt: 'do investigate',
         forEach: 'plan.hypotheses',
         labelField: 'title',
+        subagents: [],
         skills: [],
         tools: [],
         output: {},
@@ -2709,6 +2784,7 @@ describe('runAgentGraph', () => {
               label: 'Summarize',
               model: 'm',
               prompt: 'do summarize',
+              subagents: [],
               skills: [],
               tools: [],
               output: {},
@@ -2842,6 +2918,7 @@ describe('runAgentGraph', () => {
               prompt: 'do review',
               forEach: 'plan.hypotheses',
               labelField: 'title',
+              subagents: [],
               skills: [],
               tools: [],
               output: {},

@@ -8,7 +8,8 @@ use crate::handlers::{
     custom_indicator_evaluations, custom_indicators, group_axes, history, imports, ingest_status,
     note_kinds, note_links, note_predictions, note_versions, notes, paper_accounts,
     portfolio_history, refs, risk_policy, rss_feeds, saved_screens, screener, stock_info,
-    strategies, strategy_task_steps, tasks, trade_notes, trades, triggers, widgets,
+    strategies, strategy_task_steps, subagent_definitions, tasks, trade_notes, trades, triggers,
+    widgets,
 };
 use crate::state::FrontendApiState;
 
@@ -75,6 +76,15 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
             agent_config::put_agent_graph
         ))
         .routes(routes!(agent_config::get_agent_config_bundle))
+        .routes(routes!(
+            subagent_definitions::list_subagent_definitions,
+            subagent_definitions::create_subagent_definition
+        ))
+        .routes(routes!(
+            subagent_definitions::get_subagent_definition,
+            subagent_definitions::update_subagent_definition,
+            subagent_definitions::delete_subagent_definition
+        ))
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))
         .routes(routes!(refs::get_group))

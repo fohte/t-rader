@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestCustomIndicatorJSONRoundTrip(t *testing.T) {
+func TestDynamicJSONRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	remote := map[string]interface{}{
@@ -18,17 +18,17 @@ func TestCustomIndicatorJSONRoundTrip(t *testing.T) {
 		},
 		"values": []interface{}{float64(3), "synthetic item", false, nil},
 	}
-	dynamic, err := customIndicatorDynamic(remote)
+	dynamic, err := dynamicFromJSON(remote)
 	var converted map[string]interface{}
 	if err == nil {
-		converted, err = customIndicatorJSONObject(context.Background(), dynamic)
+		converted, err = jsonObjectFromDynamic(context.Background(), dynamic)
 	}
 
 	got := struct {
 		JSON    map[string]interface{}
 		Matches bool
 		Error   string
-	}{JSON: converted, Matches: customIndicatorSchemaMatches(context.Background(), dynamic, remote)}
+	}{JSON: converted, Matches: jsonObjectMatchesPrior(context.Background(), dynamic, remote)}
 	if err != nil {
 		got.Error = err.Error()
 	}

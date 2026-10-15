@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use core_application::event::{Event, EventRepository, EventRepositoryError, NewEvent};
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::sea_query::{Expr, LockBehavior, LockType, OnConflict};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
@@ -45,15 +45,21 @@ impl EventRepository for PostgresEventRepository {
             .map_err(repository_error)
     }
 
-    async fn list_undispatched(&self) -> Result<Vec<Event>, EventRepositoryError> {
-        let models = event::Entity::find()
+    async fn lock_next_undispatched(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Option<Event>, EventRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        event::Entity::find()
             .filter(event::Column::DispatchedAt.is_null())
             .order_by_asc(event::Column::OccurredAt)
             .order_by_asc(event::Column::EventId)
-            .all(&self.db)
+            .limit(1)
+            .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
+            .one(transaction)
             .await
-            .map_err(repository_error)?;
-        Ok(models.into_iter().map(to_domain).collect())
+            .map(|model| model.map(to_domain))
+            .map_err(repository_error)
     }
 
     async fn mark_dispatched(
@@ -111,6 +117,22 @@ impl EventRepository for PostgresEventRepository {
         .map(|rows_affected| rows_affected > 0)
         .map_err(repository_error)
     }
+
+    async fn has_firing(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        event_id: Uuid,
+        trigger_id: Uuid,
+    ) -> Result<bool, EventRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        event_firing::Entity::find()
+            .filter(event_firing::Column::EventId.eq(event_id))
+            .filter(event_firing::Column::TriggerId.eq(trigger_id))
+            .one(transaction)
+            .await
+            .map(|firing| firing.is_some())
+            .map_err(repository_error)
+    }
 }
 
 fn transaction_ref(
@@ -146,7 +168,7 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::sea_query::Expr;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -259,7 +281,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn create_event_uses_defaults_and_preserves_chain_depth(db: DatabaseHandle) {
         let repository = PostgresEventRepository::new(db.clone());
-        let unit_of_work = PostgresUnitOfWork::new(db);
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let default_depth =
             create_event(&repository, &unit_of_work, "sample_process.finished", None).await;
         let explicit_depth =
@@ -292,7 +314,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_undispatched_orders_by_occurred_at_and_skips_dispatched_events(
+    async fn lock_next_undispatched_returns_oldest_event_and_skips_dispatched_events(
         db: DatabaseHandle,
     ) {
         let repository = PostgresEventRepository::new(db.clone());
@@ -316,19 +338,85 @@ mod tests {
             .await
             .expect("commit transaction");
 
-        let actual = repository
-            .list_undispatched()
+        let first_transaction = unit_of_work.begin().await.expect("begin first transaction");
+        let first = repository
+            .lock_next_undispatched(&first_transaction)
             .await
-            .expect("list undispatched events");
-        let actual_ids: Vec<_> = actual.iter().map(|event| event.event_id).collect();
+            .expect("lock first undispatched event")
+            .expect("first event exists");
+        repository
+            .mark_dispatched(&first_transaction, first.event_id, fixed_time(5))
+            .await
+            .expect("mark first event dispatched");
+        unit_of_work
+            .commit(first_transaction)
+            .await
+            .expect("commit first transaction");
+        let second_transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin second transaction");
+        let second = repository
+            .lock_next_undispatched(&second_transaction)
+            .await
+            .expect("lock second undispatched event")
+            .expect("second event exists");
+        unit_of_work
+            .commit(second_transaction)
+            .await
+            .expect("commit second transaction");
 
-        assert_eq!(actual_ids, vec![early.event_id, late.event_id]);
+        assert_eq!(
+            (first.event_id, second.event_id),
+            (early.event_id, late.event_id)
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn lock_next_undispatched_skips_an_event_locked_by_another_transaction(
+        _db: DatabaseHandle,
+    ) {
+        let pool = crate::test_support::create_test_pool_with_max_connections(2).await;
+        let db = sea_orm::SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
+        let db = DatabaseHandle::from(db);
+        let repository = PostgresEventRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let event = create_event(&repository, &unit_of_work, "sample_process.finished", None).await;
+        let first_transaction = unit_of_work.begin().await.expect("begin first transaction");
+        let locked = repository
+            .lock_next_undispatched(&first_transaction)
+            .await
+            .expect("lock event")
+            .map(|event| event.event_id);
+        let second_transaction = unit_of_work
+            .begin()
+            .await
+            .expect("begin second transaction");
+        let skipped = repository
+            .lock_next_undispatched(&second_transaction)
+            .await
+            .expect("skip locked event")
+            .map(|event| event.event_id);
+        unit_of_work
+            .commit(first_transaction)
+            .await
+            .expect("commit first transaction");
+        unit_of_work
+            .commit(second_transaction)
+            .await
+            .expect("commit second transaction");
+        event_entity::Entity::delete_by_id(event.event_id)
+            .exec(&db)
+            .await
+            .expect("delete event fixture");
+
+        assert_eq!((locked, skipped), (Some(event.event_id), None));
     }
 
     #[backend_test_macros::database_test]
     async fn mark_dispatched_is_idempotent_and_unknown_ids_return_false(db: DatabaseHandle) {
         let repository = PostgresEventRepository::new(db.clone());
-        let unit_of_work = PostgresUnitOfWork::new(db);
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let event = create_event(&repository, &unit_of_work, "sample_process.finished", None).await;
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         let first = repository
@@ -343,19 +431,26 @@ mod tests {
             .mark_dispatched(&transaction, Uuid::from_u128(999), fixed_time(2))
             .await
             .expect("mark unknown event");
+        let has_firing = repository
+            .has_firing(&transaction, event.event_id, Uuid::from_u128(100))
+            .await
+            .expect("check event firing");
         unit_of_work
             .commit(transaction)
             .await
             .expect("commit transaction");
-        let pending = repository
-            .list_undispatched()
+        let pending_ids = event_entity::Entity::find()
+            .filter(event_entity::Column::DispatchedAt.is_null())
+            .all(&db)
             .await
-            .expect("list undispatched events");
-        let pending_ids: Vec<_> = pending.iter().map(|event| event.event_id).collect();
+            .expect("list pending events")
+            .into_iter()
+            .map(|event| event.event_id)
+            .collect::<Vec<_>>();
 
         assert_eq!(
-            (first, repeated, missing, pending_ids),
-            (true, false, false, vec![])
+            (first, repeated, missing, has_firing, pending_ids),
+            (true, false, false, false, vec![])
         );
     }
 
@@ -375,11 +470,15 @@ mod tests {
             .delete_before(fixed_time(0))
             .await
             .expect("delete old events");
-        let survivors = repository
-            .list_undispatched()
+        let survivor_ids = event_entity::Entity::find()
+            .order_by_asc(event_entity::Column::OccurredAt)
+            .order_by_asc(event_entity::Column::EventId)
+            .all(&db)
             .await
-            .expect("list retained events");
-        let survivor_ids: Vec<_> = survivors.iter().map(|event| event.event_id).collect();
+            .expect("list retained events")
+            .into_iter()
+            .map(|event| event.event_id)
+            .collect::<Vec<_>>();
 
         assert_eq!(
             (deleted, survivor_ids),
@@ -457,6 +556,10 @@ mod tests {
             .insert_firing(&transaction, event_id, trigger_id, task_id)
             .await
             .expect("repeat event firing");
+        let has_firing = repository
+            .has_firing(&transaction, event_id, trigger_id)
+            .await
+            .expect("check event firing");
         unit_of_work
             .commit(transaction)
             .await
@@ -478,10 +581,17 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(
-            (first_insert, repeated_insert, firings, matching_triggers,),
+            (
+                first_insert,
+                repeated_insert,
+                has_firing,
+                firings,
+                matching_triggers,
+            ),
             (
                 true,
                 false,
+                true,
                 vec![(event_id, trigger_id, task_id)],
                 vec![trigger_id],
             ),

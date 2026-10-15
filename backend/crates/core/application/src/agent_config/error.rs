@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::subagent_definition::SubagentDefinitionRepositoryError;
 use crate::unit_of_work::UnitOfWorkError;
 
 use super::graph::AgentGraphError;
@@ -25,10 +26,14 @@ pub enum AgentConfigUseCaseError {
     NotFound(String),
     #[error("skill '{0}' not found")]
     SkillNotFound(String),
+    #[error("subagent definition '{0}' referenced by agent_graph does not exist")]
+    UnknownSubagentDefinition(String),
     #[error(transparent)]
     InvalidAgentGraph(#[from] AgentGraphError),
     #[error(transparent)]
     Repository(#[from] AgentConfigRepositoryError),
+    #[error(transparent)]
+    SubagentDefinitionRepository(#[from] SubagentDefinitionRepositoryError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
 }

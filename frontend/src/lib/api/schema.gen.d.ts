@@ -1428,6 +1428,43 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/subagent-definitions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** サブエージェント定義一覧 */
+    get: operations['list_subagent_definitions']
+    put?: never
+    /** サブエージェント定義を作成 */
+    post: operations['create_subagent_definition']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/subagent-definitions/{key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** サブエージェント定義を取得 */
+    get: operations['get_subagent_definition']
+    /** サブエージェント定義を更新 */
+    put: operations['update_subagent_definition']
+    post?: never
+    /** サブエージェント定義を削除 */
+    delete: operations['delete_subagent_definition']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/tasks': {
     parameters: {
       query?: never
@@ -1883,6 +1920,24 @@ export interface components {
       name: string
       /** Format: int32 */
       sort_order?: number | null
+    }
+    CreateSubagentDefinitionRequest: {
+      description: string
+      key: string
+      /** Format: int64 */
+      max_model_calls: number
+      model: string
+      output: {
+        [key: string]: unknown
+      }
+      prompt: string
+      reasoning_effort?: string | null
+      /** Format: int32 */
+      timeout_minutes: number
+      tool_limits: {
+        [key: string]: number
+      }
+      tools: string[]
     }
     CreateTradeNoteRequest: {
       /** Format: uuid */
@@ -2850,6 +2905,30 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    SubagentDefinitionResponse: {
+      /** Format: date-time */
+      created_at: string
+      description: string
+      /** Format: uuid */
+      id: string
+      key: string
+      /** Format: int64 */
+      max_model_calls: number
+      model: string
+      output: {
+        [key: string]: unknown
+      }
+      prompt: string
+      reasoning_effort?: string | null
+      /** Format: int32 */
+      timeout_minutes: number
+      tool_limits: {
+        [key: string]: number
+      }
+      tools: string[]
+      /** Format: date-time */
+      updated_at: string
+    }
     Trade: {
       /** Format: date-time */
       created_at: string
@@ -2982,6 +3061,23 @@ export interface components {
       name?: string | null
       /** Format: int32 */
       sort_order?: number | null
+    }
+    UpdateSubagentDefinitionRequest: {
+      description: string
+      /** Format: int64 */
+      max_model_calls: number
+      model: string
+      output: {
+        [key: string]: unknown
+      }
+      prompt: string
+      reasoning_effort?: string | null
+      /** Format: int32 */
+      timeout_minutes: number
+      tool_limits: {
+        [key: string]: number
+      }
+      tools: string[]
     }
     UpdateTradeRequest: {
       /** Format: date */
@@ -8853,6 +8949,244 @@ export interface operations {
       }
       /** @description 実行ステップまたは親の実行が存在しない */
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_subagent_definitions: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SubagentDefinitionResponse'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_subagent_definition: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateSubagentDefinitionRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SubagentDefinitionResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_subagent_definition: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description サブエージェント定義の key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SubagentDefinitionResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_subagent_definition: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description サブエージェント定義の key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateSubagentDefinitionRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SubagentDefinitionResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_subagent_definition: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description サブエージェント定義の key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
         headers: {
           [name: string]: unknown
         }

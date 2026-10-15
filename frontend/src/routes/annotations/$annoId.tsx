@@ -5,6 +5,7 @@ import { type SyntheticEvent, useState } from 'react'
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import { reviewQueueItemKey } from '#components/review/review-queue-model'
 import { useReviewNavigation } from '#components/review/use-review-navigation'
+import { useExecutionOrigin } from '#hooks/use-execution-origin'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { $api } from '#lib/api/client'
 
@@ -35,6 +36,11 @@ function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
   const { data: history } = $api.useQuery('get', '/api/history', {
     params: { query: { target_kind: 'annotation', target_id: annoId } },
   })
+
+  const executionOrigin = useExecutionOrigin(
+    annotation?.created_by_kind,
+    annotation?.execution_step_id,
+  )
 
   const stockRef = useResolveRef(`stock:${annotation?.target_symbol ?? ''}`)
   const [rejectionReason, setRejectionReason] = useState('')
@@ -125,6 +131,7 @@ function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
       reviewNavigationState={reviewNavigationState}
       comments={comments}
       history={history}
+      executionOrigin={executionOrigin}
       stockName={stockRef.name}
       commentDraft={commentDraft}
       isApprovalPending={approveMutation.isPending}

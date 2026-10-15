@@ -31,6 +31,7 @@ pub mod stock_info;
 pub mod strategy;
 pub mod strategy_earnings_target;
 pub mod strategy_task_step_origin;
+pub mod subagent_definition;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;
@@ -90,6 +91,9 @@ pub use strategy_earnings_target::{
     StrategyEarningsTargetChangeResponse, StrategyEarningsTargetResponse,
 };
 pub use strategy_task_step_origin::StrategyTaskStepOriginResponse;
+pub use subagent_definition::{
+    CreateSubagentDefinitionRequest, SubagentDefinitionResponse, UpdateSubagentDefinitionRequest,
+};
 pub use trade::{
     CreateTradeRequest, PerformanceSummary, TradeDetailResponse, TradeListItem, TradeResponse,
     UpdateTradeRequest,

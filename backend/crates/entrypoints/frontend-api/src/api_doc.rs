@@ -10,6 +10,7 @@ use utoipa::OpenApi;
         (name = "calendar", description = "週間イベントカレンダー"),
         (name = "strategies", description = "戦略 (ワークスペース)"),
         (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
+        (name = "subagent_definitions", description = "戦略設定から独立したサブエージェント定義"),
         (name = "refs", description = "一級参照型 (stock / indicator / group)"),
         (name = "notes", description = "ノート"),
         (name = "note_kinds", description = "ノート種別"),
