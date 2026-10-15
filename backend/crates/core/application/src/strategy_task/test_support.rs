@@ -21,6 +21,7 @@ pub(super) struct FakeStrategyTaskRepository {
     pub(super) state: Mutex<RepositoryState>,
     pub(super) update_phases: Mutex<Vec<Option<StrategyTaskPhase>>>,
     agent_config_exists: bool,
+    agent_graph: Mutex<String>,
     fail_failed_update: bool,
 }
 
@@ -30,6 +31,7 @@ impl FakeStrategyTaskRepository {
             state: Mutex::new(RepositoryState { task, steps }),
             update_phases: Mutex::new(Vec::new()),
             agent_config_exists: true,
+            agent_graph: Mutex::new(String::new()),
             fail_failed_update: false,
         }
     }
@@ -53,6 +55,10 @@ impl FakeStrategyTaskRepository {
             task.phase = phase;
         }
     }
+
+    pub(super) async fn set_agent_graph(&self, agent_graph: &str) {
+        *self.agent_graph.lock().await = agent_graph.to_string();
+    }
 }
 
 #[async_trait]
@@ -69,6 +75,16 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
         _purpose: &str,
     ) -> Result<bool, StrategyTaskRepositoryError> {
         Ok(self.agent_config_exists)
+    }
+
+    async fn find_agent_graph_by_purpose(
+        &self,
+        _purpose: &str,
+    ) -> Result<Option<String>, StrategyTaskRepositoryError> {
+        if !self.agent_config_exists {
+            return Ok(None);
+        }
+        Ok(Some(self.agent_graph.lock().await.clone()))
     }
 
     async fn insert(

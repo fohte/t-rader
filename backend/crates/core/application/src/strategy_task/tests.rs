@@ -11,6 +11,23 @@ use crate::strategy_task::{
 use crate::unit_of_work::FakeUnitOfWork;
 use rstest::rstest;
 
+fn agent_graph_with_timeout(timeout_minutes: Option<u32>) -> String {
+    let Some(timeout_minutes) = timeout_minutes else {
+        return String::new();
+    };
+    format!(
+        indoc::indoc! {"
+            timeout_minutes: {}
+            phases:
+              - key: task
+                label: Task
+                model: example-model
+                prompt: prompt
+        "},
+        timeout_minutes,
+    )
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
     Submitted,
@@ -96,6 +113,57 @@ async fn submit_rejects_missing_default_purpose_before_inserting_a_task() {
     assert_eq!(
         (result, task_inserted, submitted_count),
         (Outcome::PurposeNotFound("default".to_string()), false, 0),
+    );
+}
+
+#[rstest]
+#[case::default_timeout(None, 15)]
+#[case::configured_timeout(Some(42), 42)]
+#[tokio::test]
+async fn submit_sets_deadline_from_agent_graph(
+    #[case] timeout_minutes: Option<u32>,
+    #[case] expected_minutes: i64,
+) {
+    let unit_of_work = Arc::new(FakeUnitOfWork::new());
+    let repository = Arc::new(FakeStrategyTaskRepository::new(None, Vec::new()));
+    repository
+        .set_agent_graph(&agent_graph_with_timeout(timeout_minutes))
+        .await;
+    let agent_client = FakeAgentTaskClient::new();
+    let use_cases = StrategyTaskUseCases::new(unit_of_work, repository.clone());
+
+    use_cases
+        .submit_task(
+            &agent_client,
+            Uuid::nil(),
+            "prompt",
+            TaskSource::Review,
+            Some("fictional-purpose".to_string()),
+        )
+        .await
+        .expect("submit task");
+
+    let task = repository
+        .state
+        .lock()
+        .await
+        .task
+        .clone()
+        .expect("task should be inserted");
+    let submitted_deadline = agent_client
+        .submitted
+        .lock()
+        .await
+        .first()
+        .map(|request| request.deadline_at)
+        .expect("deadline should be submitted to the agent");
+
+    assert_eq!(
+        (
+            task.deadline_at - task.created_at,
+            task.deadline_at == submitted_deadline,
+        ),
+        (chrono::Duration::minutes(expected_minutes), true),
     );
 }
 

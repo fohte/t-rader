@@ -207,10 +207,12 @@ mod tests {
         create_agent_config(&server, "explore").await;
 
         let yaml = indoc::indoc! {"
+            timeout_minutes: 360
             phases:
               - key: plan
                 label: 調査計画
                 model: sample-model-plan
+                timeout_minutes: 1
                 prompt: 仮説を立てよ
         "};
         let put = server
@@ -238,6 +240,37 @@ mod tests {
             Some(json!({
                 "error": "agent_graph is not valid YAML: did not find expected node content at line 2 column 1, while parsing a flow node"
             })),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn put_agent_graph_rejects_timeout_outside_range_without_saving(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        create_agent_config(&server, "explore").await;
+        let yaml = indoc::indoc! {"
+            timeout_minutes: 361
+            phases:
+              - key: plan
+                label: Plan
+                model: example-model-plan
+                prompt: Make a plan
+        "};
+
+        let put = server
+            .put("/api/agent-configs/explore/agent-graph")
+            .json(&json!({ "content": yaml }))
+            .await;
+        let get = server.get("/api/agent-configs/explore/agent-graph").await;
+
+        assert_eq!(
+            (put.status_code(), put.json(), get.json()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "agent_graph: timeout_minutes must be between 1 and 360, got 361" }),
+                json!({ "content": "" }),
+            ),
         );
     }
 

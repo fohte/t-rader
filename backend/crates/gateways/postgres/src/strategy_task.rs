@@ -59,6 +59,18 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             .map_err(repository_error)
     }
 
+    async fn find_agent_graph_by_purpose(
+        &self,
+        purpose: &str,
+    ) -> Result<Option<String>, StrategyTaskRepositoryError> {
+        agent_config::Entity::find()
+            .filter(agent_config::Column::Purpose.eq(purpose))
+            .one(&self.db)
+            .await
+            .map(|row| row.map(|config| config.agent_graph))
+            .map_err(repository_error)
+    }
+
     async fn insert(
         &self,
         transaction: &UnitOfWorkTransaction,

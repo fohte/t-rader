@@ -165,6 +165,13 @@ mod tests {
             Ok(false)
         }
 
+        async fn find_agent_graph_by_purpose(
+            &self,
+            _purpose: &str,
+        ) -> Result<Option<String>, StrategyTaskRepositoryError> {
+            Ok(None)
+        }
+
         async fn insert(
             &self,
             _transaction: &core_application::unit_of_work::UnitOfWorkTransaction,

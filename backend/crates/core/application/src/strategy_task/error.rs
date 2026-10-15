@@ -1,6 +1,7 @@
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::agent_config::graph::AgentGraphError;
 use crate::unit_of_work::UnitOfWorkError;
 
 use super::repository::StrategyTaskRepositoryError;
@@ -16,6 +17,8 @@ pub enum SubmitTaskError {
     #[error(transparent)]
     Repository(#[from] StrategyTaskRepositoryError),
     #[error(transparent)]
+    InvalidAgentGraph(#[from] AgentGraphError),
+    #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]
     AgentTask(#[from] crate::agent_task_client::AgentTaskError),
@@ -29,6 +32,8 @@ pub enum ResumeTaskError {
     NotResumable(Uuid, &'static str),
     #[error(transparent)]
     Repository(#[from] StrategyTaskRepositoryError),
+    #[error(transparent)]
+    InvalidAgentGraph(#[from] AgentGraphError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]

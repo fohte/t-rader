@@ -11,6 +11,8 @@ use serde_json::Value as JsonValue;
 #[serde(deny_unknown_fields)]
 pub struct AgentGraphConfig {
     #[serde(default)]
+    pub timeout_minutes: Option<u32>,
+    #[serde(default)]
     pub tool_models: BTreeMap<String, String>,
     pub phases: Vec<AgentGraphPhase>,
 }
@@ -21,6 +23,8 @@ pub struct AgentGraphPhase {
     pub key: String,
     pub label: String,
     pub model: String,
+    #[serde(default)]
+    pub timeout_minutes: Option<u32>,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
     pub prompt: String,
@@ -44,6 +48,8 @@ pub enum AgentGraphError {
     InvalidYaml(String),
     #[error("phase key {0:?} is duplicated")]
     DuplicatePhaseKey(String),
+    #[error("{scope}: timeout_minutes must be between 1 and 360, got {value}")]
+    TimeoutMinutesOutOfRange { scope: String, value: u32 },
     #[error("phase {phase:?}: for_each must be in the form \"<phase_key>.<field>\", got {value:?}")]
     InvalidForEachFormat { phase: String, value: String },
     #[error(
@@ -68,6 +74,8 @@ pub enum AgentGraphError {
     },
 }
 
+pub const MAX_TIMEOUT_MINUTES: u32 = 360;
+
 /// `agent_graph` の YAML テキストをパース・検証する。
 ///
 /// 空文字列 (未設定) は `Ok(None)` を返す。
@@ -82,14 +90,30 @@ pub fn parse_agent_graph(yaml: &str) -> Result<Option<AgentGraphConfig>, AgentGr
 }
 
 fn validate(config: &AgentGraphConfig) -> Result<(), AgentGraphError> {
+    if let Some(timeout_minutes) = config.timeout_minutes {
+        validate_timeout_minutes("agent_graph", timeout_minutes)?;
+    }
     let mut seen = BTreeSet::new();
     for (i, phase) in config.phases.iter().enumerate() {
         if !seen.insert(phase.key.as_str()) {
             return Err(AgentGraphError::DuplicatePhaseKey(phase.key.clone()));
         }
+        if let Some(timeout_minutes) = phase.timeout_minutes {
+            validate_timeout_minutes(&format!("phase {:?}", phase.key), timeout_minutes)?;
+        }
         if let Some(for_each) = &phase.for_each {
             validate_for_each(phase, for_each, &config.phases[..i])?;
         }
+    }
+    Ok(())
+}
+
+fn validate_timeout_minutes(scope: &str, value: u32) -> Result<(), AgentGraphError> {
+    if !(1..=MAX_TIMEOUT_MINUTES).contains(&value) {
+        return Err(AgentGraphError::TimeoutMinutesOutOfRange {
+            scope: scope.to_string(),
+            value,
+        });
     }
     Ok(())
 }
@@ -177,6 +201,7 @@ mod tests {
         assert_eq!(
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
+                timeout_minutes: None,
                 tool_models: BTreeMap::from([(
                     "query_youtube".to_string(),
                     "example-model-youtube".to_string()
@@ -186,6 +211,7 @@ mod tests {
                         key: "plan".to_string(),
                         label: "調査計画".to_string(),
                         model: "sample-model-plan".to_string(),
+                        timeout_minutes: None,
                         reasoning_effort: Some("high".to_string()),
                         prompt: "仮説を立てよ".to_string(),
                         for_each: None,
@@ -208,6 +234,7 @@ mod tests {
                         key: "investigate".to_string(),
                         label: "仮説の調査".to_string(),
                         model: "sample-model-investigator".to_string(),
+                        timeout_minutes: None,
                         reasoning_effort: None,
                         prompt: "割り当てられた仮説を検証せよ".to_string(),
                         for_each: Some("plan.hypotheses".to_string()),
@@ -235,11 +262,13 @@ mod tests {
         assert_eq!(
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
+                timeout_minutes: None,
                 tool_models: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
                     label: "Plan".to_string(),
                     model: "example-model-plan".to_string(),
+                    timeout_minutes: None,
                     reasoning_effort: None,
                     prompt: "Make a plan".to_string(),
                     for_each: None,
@@ -250,6 +279,90 @@ mod tests {
                     output: serde_json::Map::new(),
                 }],
             })),
+        );
+    }
+
+    #[rstest]
+    #[case::minimum(1, 360)]
+    #[case::maximum(360, 1)]
+    fn parse_accepts_timeout_boundaries(
+        #[case] timeout_minutes: u32,
+        #[case] phase_timeout_minutes: u32,
+    ) {
+        let yaml = format!(
+            indoc! {"
+                timeout_minutes: {}
+                phases:
+                  - key: plan
+                    label: Plan
+                    model: example-model-plan
+                    timeout_minutes: {}
+                    prompt: Make a plan
+            "},
+            timeout_minutes, phase_timeout_minutes,
+        );
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Ok(Some(AgentGraphConfig {
+                timeout_minutes: Some(timeout_minutes),
+                tool_models: BTreeMap::new(),
+                phases: vec![AgentGraphPhase {
+                    key: "plan".to_string(),
+                    label: "Plan".to_string(),
+                    model: "example-model-plan".to_string(),
+                    timeout_minutes: Some(phase_timeout_minutes),
+                    reasoning_effort: None,
+                    prompt: "Make a plan".to_string(),
+                    for_each: None,
+                    label_field: None,
+                    max_parallel: None,
+                    skills: vec![],
+                    tools: vec![],
+                    output: serde_json::Map::new(),
+                }],
+            })),
+        );
+    }
+
+    #[rstest]
+    #[case::top_level_below_range("agent_graph", 0)]
+    #[case::top_level_above_range("agent_graph", 361)]
+    #[case::phase_below_range("phase \"plan\"", 0)]
+    #[case::phase_above_range("phase \"plan\"", 361)]
+    fn parse_rejects_timeout_outside_range(#[case] scope: &str, #[case] value: u32) {
+        let yaml = if scope == "agent_graph" {
+            format!(
+                indoc! {"
+                    timeout_minutes: {}
+                    phases:
+                      - key: plan
+                        label: Plan
+                        model: example-model-plan
+                        prompt: Make a plan
+                "},
+                value,
+            )
+        } else {
+            format!(
+                indoc! {"
+                    phases:
+                      - key: plan
+                        label: Plan
+                        model: example-model-plan
+                        timeout_minutes: {}
+                        prompt: Make a plan
+                "},
+                value,
+            )
+        };
+
+        assert_eq!(
+            parse_agent_graph(&yaml),
+            Err(AgentGraphError::TimeoutMinutesOutOfRange {
+                scope: scope.to_string(),
+                value,
+            }),
         );
     }
 
@@ -277,7 +390,7 @@ mod tests {
         assert_eq!(
             parse_agent_graph(yaml),
             Err(AgentGraphError::InvalidYaml(
-                "phases[0]: unknown field `unknown_field`, expected one of `key`, `label`, `model`, `reasoning_effort`, `prompt`, `for_each`, `label_field`, `max_parallel`, `skills`, `tools`, `output` at line 6 column 5".to_string(),
+                "phases[0]: unknown field `unknown_field`, expected one of `key`, `label`, `model`, `timeout_minutes`, `reasoning_effort`, `prompt`, `for_each`, `label_field`, `max_parallel`, `skills`, `tools`, `output` at line 6 column 5".to_string(),
             )),
         );
     }

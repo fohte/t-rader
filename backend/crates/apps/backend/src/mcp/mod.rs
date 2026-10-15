@@ -10,11 +10,11 @@ use std::time::Duration;
 
 use crate::services::use_cases::UseCases;
 use axum::Router;
+use core_application::agent_config::graph::MAX_TIMEOUT_MINUTES;
 use core_application::agent_task_client::SharedAgentTaskClient;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::kata_exec::SharedKataExecutor;
 use core_application::llm_client::SharedLlmClient;
-use core_application::strategy_task::DEADLINE_DURATION;
 use core_application::web_search::SharedWebSearchClient;
 pub use entrypoint_agent_mcp::{StrategyServer, StrategyServerDependencies};
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
@@ -162,12 +162,7 @@ fn mgmt_session_manager() -> LocalSessionManager {
 }
 
 fn mgmt_session_keep_alive() -> Duration {
-    // to_std() は負の Duration でのみ失敗する (起こらない想定)。フォールバックは
-    // deadline を下回らない安全側 (Duration::MAX) にする。
-    DEADLINE_DURATION
-        .to_std()
-        .map(|deadline| deadline + Duration::from_secs(60))
-        .unwrap_or(Duration::MAX)
+    Duration::from_secs(u64::from(MAX_TIMEOUT_MINUTES + 1) * 60)
 }
 
 fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
@@ -428,15 +423,8 @@ mod tests {
 
     /// keep_alive が deadline を下回ると、deadline 内でも session が破棄されうる。
     #[test]
-    fn mgmt_session_keep_alive_exceeds_task_deadline() {
-        let deadline = DEADLINE_DURATION
-            .to_std()
-            .expect("DEADLINE_DURATION should be a positive duration");
-        assert!(
-            mgmt_session_keep_alive() > deadline,
-            "session keep_alive ({:?}) must exceed the task deadline ({deadline:?})",
-            mgmt_session_keep_alive(),
-        );
+    fn mgmt_session_keep_alive_matches_max_task_deadline_with_grace_period() {
+        assert_eq!(mgmt_session_keep_alive(), Duration::from_secs(21_660));
     }
 
     #[rstest]
