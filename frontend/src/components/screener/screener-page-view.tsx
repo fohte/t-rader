@@ -223,10 +223,7 @@ export function ScreenerPageView({
     setMobileFiltersOpen(false)
   }
 
-  function renderFilterFields(
-    layout: 'desktop' | 'mobile',
-    includeApplyAction = true,
-  ) {
+  function renderFilterFields(layout: 'desktop' | 'mobile') {
     const isDesktop = layout === 'desktop'
     return (
       <>
@@ -319,14 +316,8 @@ export function ScreenerPageView({
             ),
           )}
         </div>
-        {includeApplyAction && (
-          <div
-            className={
-              isDesktop
-                ? 'mt-4 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between'
-                : 'mt-5 space-y-2'
-            }
-          >
+        {isDesktop && (
+          <div className="mt-4 flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
             {validationError != null && (
               <p role="alert" className="text-2xs text-destructive">
                 {validationError}
@@ -334,7 +325,7 @@ export function ScreenerPageView({
             )}
             <button
               type="submit"
-              className={`border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 ${isDesktop ? 'w-full sm:w-auto' : 'w-full'}`}
+              className="w-full border border-primary bg-primary px-3 py-2 font-semibold text-primary-foreground hover:opacity-90 sm:w-auto"
             >
               この条件で絞り込む
             </button>
@@ -456,7 +447,7 @@ export function ScreenerPageView({
               className="flex min-h-0 flex-1 flex-col"
             >
               <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-                {renderFilterFields('mobile', false)}
+                {renderFilterFields('mobile')}
               </div>
               <MobileScreenerFilterActions
                 validationError={validationError}

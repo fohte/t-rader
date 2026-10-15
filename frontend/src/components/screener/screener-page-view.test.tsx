@@ -22,7 +22,7 @@ const data: ScreenerResponse = {
   page: 1,
 }
 
-function readMobileAskOutput(
+function readMobileActionOutput(
   calls: unknown[][],
   dialog: HTMLElement | null,
   validationError: string | null = null,
@@ -150,7 +150,7 @@ describe('ScreenerPageView', () => {
     await user.click(askAgentButton)
 
     expect(
-      readMobileAskOutput(
+      readMobileActionOutput(
         onAskAgent.mock.calls,
         screen.queryByRole('dialog'),
         null,
@@ -185,6 +185,68 @@ describe('ScreenerPageView', () => {
         types: ['submit', 'button'],
         outsideScrollableArea: [true, true],
       },
+    })
+  })
+
+  it('applies edited mobile conditions and closes the dialog', async () => {
+    const user = userEvent.setup()
+    const onApplyFilters = vi.fn()
+    const args = {
+      search: { max_per: 12 },
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      mobileFiltersOpen: true,
+      onApplyFilters,
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    const dialog = screen.getByRole('dialog')
+    const perUpperBound = within(dialog).getByRole<HTMLInputElement>(
+      'spinbutton',
+      { name: 'PER 上限' },
+    )
+    await user.clear(perUpperBound)
+    await user.type(perUpperBound, '10')
+    await user.click(
+      within(
+        within(dialog).getByRole('group', { name: '条件の操作' }),
+      ).getByRole('button', { name: 'この条件で絞り込む' }),
+    )
+
+    expect(
+      readMobileActionOutput(
+        onApplyFilters.mock.calls,
+        screen.queryByRole('dialog'),
+      ),
+    ).toEqual({
+      calls: [
+        [
+          {
+            markets: undefined,
+            sectors: undefined,
+            min_per: undefined,
+            max_per: 10,
+            min_pbr: undefined,
+            max_pbr: undefined,
+            min_roe: undefined,
+            max_roe: undefined,
+            min_dividend_yield: undefined,
+            max_dividend_yield: undefined,
+            min_market_cap: undefined,
+            max_market_cap: undefined,
+          },
+        ],
+      ],
+      conditionPanelVisible: false,
+      validationError: null,
     })
   })
 
@@ -225,7 +287,7 @@ describe('ScreenerPageView', () => {
     )
 
     expect(
-      readMobileAskOutput(
+      readMobileActionOutput(
         onAskAgent.mock.calls,
         screen.queryByRole('dialog'),
         within(dialog).getByRole('alert').textContent,
