@@ -9,7 +9,8 @@ use core_application::{
     strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME,
 };
 use graphile_worker::{
-    Cron, Crontab, CrontabFill, CrontabTimer, CrontabTimerError, TaskHandler, Worker, WorkerOptions,
+    Cron, Crontab, CrontabFill, CrontabTimer, CrontabTimerError, CrontabValue, TaskHandler, Worker,
+    WorkerOptions,
 };
 use sqlx::PgPool;
 
@@ -51,6 +52,7 @@ const ALPACA_QUEUE: &str = "alpaca";
 const FRED_QUEUE: &str = "fred";
 const EODDATA_QUEUE: &str = "eoddata";
 const MAX_ATTEMPTS: u16 = 3;
+const BUSINESS_DAY_INGEST_MAX_ATTEMPTS: u16 = 10;
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
 pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 24] = [
@@ -340,18 +342,18 @@ fn build_crontabs(configured: ConfiguredJobs) -> Result<Vec<Crontab>, CrontabTim
         )?);
     }
     if configured.valuation {
-        crontabs.push(hourly_cron::<ValuationIngest>(
+        crontabs.push(weekday_daily_cron::<ValuationIngest>(
             "valuation_ingest",
+            7,
             30,
-            CrontabFill::hours(3),
             Some(JQUANTS_QUEUE),
         )?);
     }
     if configured.daily_bars {
-        crontabs.push(hourly_cron::<DailyBarsIngest>(
+        crontabs.push(weekday_daily_cron::<DailyBarsIngest>(
             "daily_bars_ingest",
+            7,
             45,
-            CrontabFill::hours(3),
             Some(JQUANTS_QUEUE),
         )?);
     }
@@ -415,6 +417,19 @@ fn daily_cron<T: TaskHandler>(
     ))
 }
 
+fn weekday_daily_cron<T: TaskHandler>(
+    id: &str,
+    utc_hour: u32,
+    utc_minute: u32,
+    queue: Option<&str>,
+) -> Result<Crontab, CrontabTimerError> {
+    let mut timer = CrontabTimer::daily_at(utc_hour, utc_minute)?;
+    timer.dows = vec![CrontabValue::Range(1, 5)];
+    let mut crontab = configure_cron::<T>(timer, id, Some(CrontabFill::hours(3)), queue);
+    crontab.options.max = Some(BUSINESS_DAY_INGEST_MAX_ATTEMPTS);
+    Ok(crontab)
+}
+
 fn hourly_cron<T: TaskHandler>(
     id: &str,
     utc_minute: u32,
@@ -466,7 +481,7 @@ const TWSE_QUEUE: &str = "twse";
 #[cfg(test)]
 mod tests {
     use chrono::Weekday;
-    use graphile_worker::{Crontab, CrontabFill, CrontabTimer, TaskHandler};
+    use graphile_worker::{Crontab, CrontabFill, CrontabTimer, CrontabValue, TaskHandler};
     use rstest::{fixture, rstest};
 
     use crate::jobs::{
@@ -535,6 +550,27 @@ mod tests {
         queue: Option<&str>,
     ) -> Option<Crontab> {
         Some(configure_cron::<T>(timer?, id, Some(fill), queue))
+    }
+
+    fn expected_weekday_cron<T: TaskHandler>(
+        hour: u32,
+        minute: u32,
+        id: &str,
+        queue: Option<&str>,
+    ) -> Option<Crontab> {
+        let mut crontab = expected_cron::<T>(
+            Some(CrontabTimer {
+                minutes: vec![CrontabValue::Number(minute)],
+                hours: vec![CrontabValue::Number(hour)],
+                dows: vec![CrontabValue::Range(1, 5)],
+                ..Default::default()
+            }),
+            id,
+            CrontabFill::hours(3),
+            queue,
+        )?;
+        crontab.options.max = Some(10);
+        Some(crontab)
     }
 
     #[rstest]
@@ -654,16 +690,16 @@ mod tests {
                 CrontabFill::hours(3),
                 Some(ALPACA_QUEUE),
             ),
-            expected_cron::<ValuationIngest>(
-                CrontabTimer::hourly_at(30).ok(),
+            expected_weekday_cron::<ValuationIngest>(
+                7,
+                30,
                 "valuation_ingest",
-                CrontabFill::hours(3),
                 Some(JQUANTS_QUEUE),
             ),
-            expected_cron::<DailyBarsIngest>(
-                CrontabTimer::hourly_at(45).ok(),
+            expected_weekday_cron::<DailyBarsIngest>(
+                7,
+                45,
                 "daily_bars_ingest",
-                CrontabFill::hours(3),
                 Some(JQUANTS_QUEUE),
             ),
             expected_cron::<PredictionGrading>(
@@ -839,13 +875,13 @@ mod tests {
                 (
                     Some("valuation_ingest".to_string()),
                     Some(CrontabFill::hours(3)),
-                    Some(3),
+                    Some(10),
                     Some("jquants".to_string()),
                 ),
                 (
                     Some("daily_bars_ingest".to_string()),
                     Some(CrontabFill::hours(3)),
-                    Some(3),
+                    Some(10),
                     Some("jquants".to_string()),
                 ),
                 (

@@ -1,6 +1,8 @@
 use std::future::Future;
 use std::time::Duration;
 
+use chrono::{DateTime, NaiveDate, Utc};
+use chrono_tz::Asia::Tokyo;
 use core_application::ingest_run_log::IngestRunLog;
 use graphile_worker::WorkerContext;
 use serde::Serialize;
@@ -37,6 +39,10 @@ pub mod valuation;
 
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
+
+pub(super) fn today_in_tokyo(now: DateTime<Utc>) -> NaiveDate {
+    now.with_timezone(&Tokyo).date_naive()
+}
 
 pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, String> {
     source.ok_or_else(|| format!("{name} is not configured"))
@@ -277,6 +283,7 @@ mod tests {
     };
 
     use async_trait::async_trait;
+    use chrono::{NaiveDate, TimeZone, Utc};
     use core_application::{ingest_run_log::IngestRunLog, persistence::PersistenceError};
     use serde::Serialize;
     use serde_json::{Value, json};
@@ -287,10 +294,23 @@ mod tests {
 
     use super::{
         TimedTaskResult, run_with_ingest_run_log, run_with_ingest_run_log_with_failure_stats,
-        run_with_timeout,
+        run_with_timeout, today_in_tokyo,
     };
 
     const RUN_ID: Uuid = Uuid::from_u128(1);
+
+    #[test]
+    fn today_in_tokyo_uses_the_tokyo_calendar_date() {
+        let now = Utc
+            .with_ymd_and_hms(2039, 5, 10, 16, 0, 0)
+            .single()
+            .expect("valid timestamp");
+
+        assert_eq!(
+            today_in_tokyo(now),
+            NaiveDate::from_ymd_opt(2039, 5, 11).expect("valid date"),
+        );
+    }
 
     #[derive(Debug, Clone, PartialEq)]
     enum Call {
