@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -19,10 +20,11 @@ type Trigger = components['schemas']['Trigger']
 
 interface CreateBody {
   purpose?: string | null
-  kind?: 'cron' | 'hook'
+  kind?: 'cron' | 'hook' | 'event'
   schedule?: string | null
   hook_slug?: string | null
-  event_match?: Record<string, never> | null
+  event_type?: string | null
+  event_match?: Record<string, unknown> | null
   prompt_template?: string
   enabled?: boolean
   business_days_only?: boolean
@@ -32,7 +34,8 @@ interface UpdateBody {
   purpose?: string | null
   schedule?: string | null
   hook_slug?: string | null
-  event_match?: Record<string, never> | null
+  event_type?: string | null
+  event_match?: Record<string, unknown> | null
   prompt_template?: string
   enabled?: boolean
   business_days_only?: boolean
@@ -116,6 +119,7 @@ function installMiddleware(initial: Trigger[] = []) {
             kind: body.kind ?? 'cron',
             schedule: body.schedule ?? null,
             hook_slug: body.hook_slug ?? null,
+            event_type: body.event_type ?? null,
             event_match: body.event_match ?? null,
             prompt_template: body.prompt_template ?? '',
             enabled: body.enabled ?? true,
@@ -155,6 +159,10 @@ function installMiddleware(initial: Trigger[] = []) {
               'hook_slug' in body
                 ? (body.hook_slug ?? null)
                 : current.hook_slug,
+            event_type:
+              'event_type' in body
+                ? (body.event_type ?? null)
+                : current.event_type,
             event_match:
               'event_match' in body
                 ? (body.event_match ?? null)
@@ -255,6 +263,24 @@ describe('TriggersTab', () => {
     expect(within(list).getByText('tv-alert')).toBeInTheDocument()
   })
 
+  it('event trigger の一覧に event_type を表示する', async () => {
+    setup([
+      makeTrigger({
+        trigger_id: 't-event',
+        kind: 'event',
+        event_type: 'demo_record.changed',
+      }),
+    ])
+
+    const list = await screen.findByTestId('trigger-list')
+    expect(
+      within(list)
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-label') == null)
+        .map((button) => button.textContent),
+    ).toEqual(['eventdemo_record.changed'])
+  })
+
   it('初期表示で先頭の trigger を選択しフォームに反映する', async () => {
     setup([
       makeTrigger({
@@ -306,12 +332,75 @@ describe('TriggersTab', () => {
           kind: 'cron',
           schedule: '0 9 * * 1-5',
           hook_slug: null,
+          event_type: null,
           event_match: null,
           prompt_template: 'morning briefing',
           enabled: true,
         },
       },
     ])
+  })
+
+  it('event trigger を作成すると event_type と event_match を API に送る', async () => {
+    const user = userEvent.setup()
+    setup([])
+
+    await screen.findByTestId('trigger-list')
+    await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
+    await user.selectOptions(screen.getByLabelText('kind'), 'event')
+    fireEvent.change(screen.getByLabelText('event_type'), {
+      target: { value: 'demo_record.changed' },
+    })
+    fireEvent.change(
+      screen.getByLabelText('event_match (JSON、空欄なら無条件)'),
+      { target: { value: '{"status":{"eq":"complete"}}' } },
+    )
+    fireEvent.change(screen.getByLabelText('prompt_template'), {
+      target: { value: 'synthetic prompt' },
+    })
+    await user.click(screen.getByRole('button', { name: '作成' }))
+
+    await waitFor(() => {
+      expect(activeMiddleware?.store.createCalls).toEqual([
+        {
+          strategyId: 'strat-1',
+          body: {
+            purpose: null,
+            kind: 'event',
+            schedule: null,
+            hook_slug: null,
+            event_type: 'demo_record.changed',
+            event_match: { status: { eq: 'complete' } },
+            prompt_template: 'synthetic prompt',
+            enabled: true,
+          },
+        },
+      ])
+    })
+  })
+
+  it('event_type が空の event trigger は作成できない', async () => {
+    const user = userEvent.setup()
+    setup([])
+
+    await screen.findByTestId('trigger-list')
+    await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
+    await user.selectOptions(screen.getByLabelText('kind'), 'event')
+    fireEvent.change(screen.getByLabelText('prompt_template'), {
+      target: { value: 'synthetic prompt' },
+    })
+    await user.click(screen.getByRole('button', { name: '作成' }))
+
+    function result() {
+      return {
+        error: screen.getByTestId('trigger-form-error').textContent,
+        createCalls: activeMiddleware?.store.createCalls,
+      }
+    }
+    expect(result()).toEqual({
+      error: 'event_type は必須です',
+      createCalls: [],
+    })
   })
 
   it('hook trigger 作成時に event_match の JSON が不正だとエラーになり API は呼ばれない', async () => {
@@ -387,6 +476,44 @@ describe('TriggersTab', () => {
             enabled: true,
             event_match: null,
             schedule: '0 9 * * 1-5',
+          },
+        },
+      ])
+    })
+  })
+
+  it('event trigger を編集すると event_type と event_match が PUT される', async () => {
+    const user = userEvent.setup()
+    setup([
+      makeTrigger({
+        trigger_id: 't-event',
+        kind: 'event',
+        event_type: 'demo_record.changed',
+        event_match: { status: { eq: 'pending' } },
+        prompt_template: 'synthetic prompt',
+      }),
+    ])
+
+    await screen.findByLabelText('event_type')
+    fireEvent.change(screen.getByLabelText('event_type'), {
+      target: { value: 'demo_record.removed' },
+    })
+    fireEvent.change(
+      screen.getByLabelText('event_match (JSON、空欄なら無条件)'),
+      { target: { value: '{"status":{"eq":"failed"}}' } },
+    )
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(activeMiddleware?.store.updateCalls).toEqual([
+        {
+          triggerId: 't-event',
+          body: {
+            purpose: null,
+            prompt_template: 'synthetic prompt',
+            enabled: true,
+            event_match: { status: { eq: 'failed' } },
+            event_type: 'demo_record.removed',
           },
         },
       ])

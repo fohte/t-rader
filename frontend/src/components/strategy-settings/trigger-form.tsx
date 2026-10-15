@@ -13,6 +13,7 @@ export interface FormState {
   kind: TriggerKind
   schedule: string
   hookSlug: string
+  eventType: string
   eventMatch: string
   promptTemplate: string
   enabled: boolean
@@ -23,13 +24,15 @@ export const EMPTY_FORM: FormState = {
   kind: 'cron',
   schedule: '',
   hookSlug: '',
+  eventType: '',
   eventMatch: '',
   promptTemplate: '',
   enabled: true,
 }
 
 function parseKind(value: string): TriggerKind {
-  return value === 'hook' ? 'hook' : 'cron'
+  if (value === 'hook' || value === 'event') return value
+  return 'cron'
 }
 
 export function toFormState(trigger: Trigger): FormState {
@@ -38,6 +41,7 @@ export function toFormState(trigger: Trigger): FormState {
     kind: parseKind(trigger.kind),
     schedule: trigger.schedule ?? '',
     hookSlug: trigger.hook_slug ?? '',
+    eventType: trigger.event_type ?? '',
     eventMatch:
       trigger.event_match != null
         ? JSON.stringify(trigger.event_match, null, 2)
@@ -61,8 +65,12 @@ export function validateForm(form: FormState): ValidationResult {
     if (form.schedule.trim() === '') {
       return { ok: false, error: 'schedule (cron 式) は必須です' }
     }
-  } else if (form.hookSlug.trim() === '') {
-    return { ok: false, error: 'hook_slug は必須です' }
+  } else if (form.kind === 'hook') {
+    if (form.hookSlug.trim() === '') {
+      return { ok: false, error: 'hook_slug は必須です' }
+    }
+  } else if (form.eventType.trim() === '') {
+    return { ok: false, error: 'event_type は必須です' }
   }
   let eventMatch: Record<string, unknown> | null = null
   const trimmed = form.eventMatch.trim()
@@ -154,6 +162,7 @@ export function TriggerForm({
         >
           <option value="cron">cron</option>
           <option value="hook">hook</option>
+          <option value="event">event</option>
         </select>
         {mode === 'edit' && (
           <p className="font-mono text-2xs text-muted-foreground">
@@ -162,7 +171,7 @@ export function TriggerForm({
         )}
       </div>
 
-      {form.kind === 'cron' ? (
+      {form.kind === 'cron' && (
         <div className="space-y-1.5">
           <label
             className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
@@ -179,7 +188,9 @@ export function TriggerForm({
             }}
           />
         </div>
-      ) : (
+      )}
+
+      {form.kind === 'hook' && (
         <div className="space-y-1.5">
           <label
             className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
@@ -198,7 +209,26 @@ export function TriggerForm({
         </div>
       )}
 
-      {form.kind === 'hook' && (
+      {form.kind === 'event' && (
+        <div className="space-y-1.5">
+          <label
+            className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
+            htmlFor="trigger-event-type"
+          >
+            event_type
+          </label>
+          <Input
+            id="trigger-event-type"
+            value={form.eventType}
+            placeholder="sample_process.finished"
+            onChange={(e) => {
+              update('eventType', e.target.value)
+            }}
+          />
+        </div>
+      )}
+
+      {(form.kind === 'hook' || form.kind === 'event') && (
         <div className="space-y-1.5">
           <label
             className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
