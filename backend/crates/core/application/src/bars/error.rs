@@ -12,6 +12,8 @@ use super::repository::BarsRepositoryError;
 pub enum BarsUseCaseError {
     #[error("東証営業日の日足が未公開です: {0}")]
     MissingBusinessDayData(NaiveDate),
+    #[error("東証営業日の日足取り込みに失敗しました: {0}")]
+    BusinessDayIngestFailed(NaiveDate),
     #[error(transparent)]
     Repository(#[from] BarsRepositoryError),
     #[error(transparent)]
