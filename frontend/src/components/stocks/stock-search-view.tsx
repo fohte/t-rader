@@ -99,6 +99,18 @@ export function StockSearchView({
             </ul>
           )}
         </div>
+        <div className="border-t border-border pt-2">
+          <Link
+            to="/screener"
+            onClick={() => {
+              onOpenChange(false)
+            }}
+            className="flex items-center justify-between px-2 py-2 font-mono text-xs text-muted-foreground-strong hover:bg-surface-strong hover:text-foreground"
+          >
+            <span>条件で探す</span>
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
       </PopoverContent>
     </Popover>
   )

@@ -34,7 +34,7 @@ const meta = {
           <StockSearchView {...viewArgs} />
         ),
         {
-          paths: ['/stocks/$stockId'],
+          paths: ['/stocks/$stockId', '/screener'],
         },
       )}
     />

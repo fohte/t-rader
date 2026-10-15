@@ -16,6 +16,7 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(ingest_status::get_ingest_status))
         .routes(routes!(bars::list_bars))
         .routes(routes!(screener::screen_stocks))
+        .routes(routes!(screener::list_sector_options))
         .routes(routes!(
             saved_screens::list_saved_screens,
             saved_screens::create_saved_screen

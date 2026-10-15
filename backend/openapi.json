@@ -6071,6 +6071,40 @@
         }
       }
     },
+    "/api/screener/sectors": {
+      "get": {
+        "tags": [
+          "screener"
+        ],
+        "summary": "スクリーナーで選択できる東証 33 業種を一覧する",
+        "operationId": "list_sector_options",
+        "responses": {
+          "200": {
+            "description": "東証 33 業種の key と名前",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ScreenerSectorResponse"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/stocks/{stock_id}/financial-summaries": {
       "get": {
         "tags": [
@@ -11714,6 +11748,21 @@
           "total_count": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ScreenerSectorResponse": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
