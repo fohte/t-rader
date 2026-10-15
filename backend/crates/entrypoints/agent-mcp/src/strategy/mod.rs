@@ -30,6 +30,7 @@ pub(super) mod ref_terms;
 pub(super) mod refs;
 pub(super) mod risk_check;
 pub(super) mod saved_screens;
+pub(super) mod screener;
 mod serde_helpers;
 pub(super) mod short_ratio;
 pub(super) mod short_sale_report;

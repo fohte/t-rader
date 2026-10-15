@@ -22,6 +22,7 @@ use core_application::paper_trade::PaperTradeUseCases;
 use core_application::prediction::PredictionUseCases;
 use core_application::refs::RefUseCases;
 use core_application::saved_screen::SavedScreenUseCases;
+use core_application::screener::ScreenerUseCases;
 use core_application::shareholding_structure::ShareholdingStructureUseCases;
 use core_application::short_ratio::ShortRatioUseCases;
 use core_application::short_sale_report::ShortSaleReportUseCases;
@@ -63,6 +64,7 @@ pub struct StrategyServerDependencies {
     pub predictions: PredictionUseCases,
     pub refs: RefUseCases,
     pub saved_screens: SavedScreenUseCases,
+    pub screener: ScreenerUseCases,
     pub shareholding_structures: ShareholdingStructureUseCases,
     pub short_ratios: ShortRatioUseCases,
     pub short_sale_reports: ShortSaleReportUseCases,
