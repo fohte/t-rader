@@ -61,12 +61,14 @@ impl ValuationUseCases {
             .collect::<HashSet<_>>();
         let targets = target_dates(&business_days, &ingested);
         let mut stats = IngestStats::default();
+        let mut today_has_no_valuations = false;
 
         for date in targets {
             stats.days_attempted += 1;
             match source.fetch_valuations_by_date(date).await {
                 Ok(items) if items.is_empty() => {
                     tracing::debug!(%date, "この日の valuation はまだ公開されていません");
+                    today_has_no_valuations |= date == today && latest_business_day(today) == today;
                 }
                 Ok(items) => match self.repository.upsert(items).await {
                     Ok(row_count) => {
@@ -83,6 +85,10 @@ impl ValuationUseCases {
                     tracing::warn!(%date, %error, "valuation の取得に失敗、この日をスキップします");
                 }
             }
+        }
+
+        if today_has_no_valuations {
+            return Err(ValuationUseCaseError::MissingBusinessDayData(today));
         }
 
         Ok(stats)
@@ -199,6 +205,7 @@ mod tests {
     struct FakeValuationSource {
         range: Option<DateRange>,
         valuations: Vec<Valuation>,
+        empty_dates: HashSet<NaiveDate>,
         requested_dates: Mutex<Vec<NaiveDate>>,
     }
 
@@ -209,6 +216,9 @@ mod tests {
             date: NaiveDate,
         ) -> Result<Vec<Valuation>, ValuationSourceError> {
             self.requested_dates.lock().expect("lock").push(date);
+            if self.empty_dates.contains(&date) {
+                return Ok(Vec::new());
+            }
             let mut valuations = self.valuations.clone();
             for valuation in &mut valuations {
                 valuation.date = date;
@@ -282,6 +292,7 @@ mod tests {
                 to: today,
             }),
             valuations: vec![sample_valuation(today)],
+            empty_dates: HashSet::new(),
             requested_dates: Mutex::new(Vec::new()),
         });
         let use_cases = ValuationUseCases::new(repository.clone(), bars_repository);
@@ -326,6 +337,7 @@ mod tests {
         let source = FakeValuationSource {
             range: None,
             valuations: Vec::new(),
+            empty_dates: HashSet::new(),
             requested_dates: Mutex::new(Vec::new()),
         };
         let use_cases = ValuationUseCases::new(repository.clone(), bars_repository);
@@ -358,19 +370,24 @@ mod tests {
     }
 
     #[rstest]
+    #[case::business_day(date(2099, 1, 9), true)]
+    #[case::weekend(date(2099, 1, 10), false)]
+    #[case::national_holiday(date(2025, 2, 11), false)]
     #[tokio::test]
-    async fn does_not_mark_dates_when_source_returns_no_valuations(
+    async fn empty_latest_available_date_fails_only_when_it_is_a_business_day(
         repository: Arc<FakeValuationRepository>,
         bars_repository: Arc<FakeBarsRepository>,
+        #[case] today: NaiveDate,
+        #[case] expects_error: bool,
     ) {
-        let today = date(2099, 1, 9);
         let expected_date = core_domain::business_day::latest_business_day(today);
         let source = FakeValuationSource {
             range: Some(DateRange {
                 from: expected_date,
                 to: expected_date,
             }),
-            valuations: Vec::new(),
+            valuations: vec![sample_valuation(expected_date)],
+            empty_dates: HashSet::from([expected_date]),
             requested_dates: Mutex::new(Vec::new()),
         };
         let use_cases = ValuationUseCases::new(repository.clone(), bars_repository);
@@ -378,7 +395,7 @@ mod tests {
         let result = use_cases
             .run_ingest_cycle(&source, today)
             .await
-            .expect("cycle succeeds");
+            .map_err(|error| error.to_string());
 
         assert_eq!(
             (
@@ -388,13 +405,57 @@ mod tests {
                 source.requested_dates.lock().expect("lock").clone(),
             ),
             (
-                IngestStats {
-                    days_attempted: 1,
-                    rows_upserted: 0,
+                if expects_error {
+                    Err(format!("東証営業日の valuation が未公開です: {today}"))
+                } else {
+                    Ok(IngestStats {
+                        days_attempted: 1,
+                        rows_upserted: 0,
+                    })
                 },
                 HashSet::new(),
                 Vec::new(),
                 vec![expected_date],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn processes_prior_dates_before_failing_for_empty_current_date(
+        repository: Arc<FakeValuationRepository>,
+        bars_repository: Arc<FakeBarsRepository>,
+    ) {
+        let today = date(2099, 1, 9);
+        let previous = date(2099, 1, 8);
+        let source = FakeValuationSource {
+            range: Some(DateRange {
+                from: previous,
+                to: today,
+            }),
+            valuations: vec![sample_valuation(previous)],
+            empty_dates: HashSet::from([today]),
+            requested_dates: Mutex::new(Vec::new()),
+        };
+        let use_cases = ValuationUseCases::new(repository.clone(), bars_repository);
+
+        let result = use_cases
+            .run_ingest_cycle(&source, today)
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            (
+                result,
+                repository.valuations.lock().expect("lock").clone(),
+                repository.ingested_dates.lock().expect("lock").clone(),
+                source.requested_dates.lock().expect("lock").clone(),
+            ),
+            (
+                Err(format!("東証営業日の valuation が未公開です: {today}")),
+                vec![sample_valuation(previous)],
+                HashSet::from([previous]),
+                vec![previous, today],
             ),
         );
     }

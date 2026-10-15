@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use chrono::{Duration, NaiveDate, Utc};
+use chrono_tz::Asia::Tokyo;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::business_day::latest_business_day;
 use rust_decimal::Decimal;
@@ -24,7 +25,17 @@ impl BarsUseCases {
         market_source: &dyn MarketDailyBarSource,
         instrument_source: &dyn DailyBarSource,
     ) -> Result<IngestStats, BarsUseCaseError> {
-        let today = Utc::now().date_naive();
+        let today = Utc::now().with_timezone(&Tokyo).date_naive();
+        self.run_ingest_cycle_at(market_source, instrument_source, today)
+            .await
+    }
+
+    async fn run_ingest_cycle_at(
+        &self,
+        market_source: &dyn MarketDailyBarSource,
+        instrument_source: &dyn DailyBarSource,
+        today: NaiveDate,
+    ) -> Result<IngestStats, BarsUseCaseError> {
         let Some(range) = market_source.fetchable_range(today) else {
             tracing::debug!("日足を取得できないため取り込みをスキップします");
             return Ok(IngestStats::default());
@@ -39,6 +50,7 @@ impl BarsUseCases {
         let ingested = self.repository.find_ingested_dates(earliest).await?;
         let targets = target_dates(&business_days, &ingested);
         let mut stats = IngestStats::default();
+        let mut today_has_no_bars = false;
 
         for date in targets {
             stats.days_attempted += 1;
@@ -46,7 +58,10 @@ impl BarsUseCases {
                 .ingest_date(market_source, instrument_source, date)
                 .await
             {
-                Ok(0) => tracing::debug!(%date, "この日の日足はまだ公開されていません"),
+                Ok(0) => {
+                    tracing::debug!(%date, "この日の日足はまだ公開されていません");
+                    today_has_no_bars |= date == today && latest_business_day(today) == today;
+                }
                 Ok(count) => stats.bars_upserted += count,
                 Err(error) => tracing::warn!(
                     %date,
@@ -54,6 +69,10 @@ impl BarsUseCases {
                     "日足の取り込みに失敗、この日をスキップします",
                 ),
             }
+        }
+
+        if today_has_no_bars {
+            return Err(BarsUseCaseError::MissingBusinessDayData(today));
         }
 
         Ok(stats)
@@ -382,7 +401,8 @@ mod tests {
     async fn ingest_cycle_saves_bars_and_marks_the_date_in_one_transaction(
         bars_fixture: BarsFixture,
     ) {
-        let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
+        let today = date(2099, 1, 9);
+        let to = today;
         let source = FakeMarketDailyBarSource::new(to);
         let bar = make_bar("SAMPLE-ALPHA", to, 125);
         source.set_bars(to, vec![bar.clone()]).await;
@@ -391,7 +411,7 @@ mod tests {
         let instrument_source = FakeDailyBarSource::new();
         let result = bars_fixture
             .use_cases
-            .run_ingest_cycle(&source, &instrument_source)
+            .run_ingest_cycle_at(&source, &instrument_source, today)
             .await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
@@ -437,49 +457,71 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn ingest_cycle_does_not_mark_an_empty_date(bars_fixture: BarsFixture) {
-        let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
+    async fn ingest_cycle_fails_on_empty_business_day_after_processing_older_dates(
+        bars_fixture: BarsFixture,
+    ) {
+        let today = date(2099, 1, 9);
+        let to = today;
         let source = FakeMarketDailyBarSource::new(to);
-        seed_old_dates(&bars_fixture.repository, to).await;
+        let business_days = seed_old_dates(&bars_fixture.repository, to).await;
+        let previous = business_days[business_days.len() - 2];
+        let bar = make_bar("SAMPLE-BETA", previous, 230);
+        source.set_bars(previous, vec![bar.clone()]).await;
 
         let instrument_source = FakeDailyBarSource::new();
         let result = bars_fixture
             .use_cases
-            .run_ingest_cycle(&source, &instrument_source)
+            .run_ingest_cycle_at(&source, &instrument_source, today)
             .await;
-        let succeeded = result.is_ok();
-        let stats = result.unwrap_or_default();
+        let result = result.map_err(|error| error.to_string());
+        let ingested_dates = bars_fixture.repository.ingested_dates.lock().await.clone();
 
         assert_eq!(
             (
-                succeeded,
-                stats,
+                result,
                 bars_fixture.repository.bars.lock().await.clone(),
-                bars_fixture
-                    .repository
-                    .ingested_dates
-                    .lock()
-                    .await
-                    .contains(&to),
+                ingested_dates.contains(&today),
+                ingested_dates.contains(&previous),
                 bars_fixture.unit_of_work.committed.lock().await.len(),
             ),
             (
-                true,
-                IngestStats {
-                    days_attempted: REFETCH_WINDOW_BUSINESS_DAYS,
-                    bars_upserted: 0,
-                },
-                vec![],
+                Err(format!("東証営業日の日足が未公開です: {today}")),
+                vec![bar],
                 false,
-                0,
+                true,
+                1,
             ),
         );
     }
 
     #[rstest]
     #[tokio::test]
+    async fn ingest_cycle_succeeds_when_a_non_business_day_has_no_bars(bars_fixture: BarsFixture) {
+        let today = date(2099, 1, 10);
+        let to = core_domain::business_day::latest_business_day(today);
+        let source = FakeMarketDailyBarSource::new(to);
+        seed_old_dates(&bars_fixture.repository, to).await;
+
+        let result = bars_fixture
+            .use_cases
+            .run_ingest_cycle_at(&source, &FakeDailyBarSource::new(), today)
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            result,
+            Ok(IngestStats {
+                days_attempted: REFETCH_WINDOW_BUSINESS_DAYS,
+                bars_upserted: 0,
+            }),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
     async fn ingest_cycle_continues_after_a_failed_date(bars_fixture: BarsFixture) {
-        let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
+        let today = date(2099, 1, 9);
+        let to = today;
         let source = FakeMarketDailyBarSource::new(to);
         let business_days = seed_old_dates(&bars_fixture.repository, to).await;
         let previous = business_days[business_days.len() - 2];
@@ -490,7 +532,7 @@ mod tests {
         let instrument_source = FakeDailyBarSource::new();
         let result = bars_fixture
             .use_cases
-            .run_ingest_cycle(&source, &instrument_source)
+            .run_ingest_cycle_at(&source, &instrument_source, today)
             .await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
@@ -524,7 +566,8 @@ mod tests {
     async fn ingest_cycle_refetches_split_instrument_history_and_replaces_old_bars(
         bars_fixture: BarsFixture,
     ) {
-        let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
+        let today = date(2099, 1, 9);
+        let to = today;
         let source = FakeMarketDailyBarSource::new(to);
         let business_days = seed_old_dates(&bars_fixture.repository, to).await;
         let old_date = business_days[0];
@@ -546,7 +589,7 @@ mod tests {
 
         let result = bars_fixture
             .use_cases
-            .run_ingest_cycle(&source, &instrument_source)
+            .run_ingest_cycle_at(&source, &instrument_source, today)
             .await;
         let stats = result.expect("ingest cycle succeeds");
         let stored_bars = bars_fixture.repository.bars.lock().await.clone();

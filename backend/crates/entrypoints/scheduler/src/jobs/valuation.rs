@@ -1,4 +1,5 @@
 use chrono::Utc;
+use chrono_tz::Asia::Tokyo;
 use core_application::{
     valuation::{IngestStats as ValuationIngestStats, ValuationUseCaseError, ValuationUseCases},
     valuation_source::ValuationSource,
@@ -36,7 +37,7 @@ async fn ingest_valuations(
     source: &dyn ValuationSource,
 ) -> Result<ValuationIngestStats, String> {
     let stats = use_cases
-        .run_ingest_cycle(source, Utc::now().date_naive())
+        .run_ingest_cycle(source, Utc::now().with_timezone(&Tokyo).date_naive())
         .await
         .map_err(|error: ValuationUseCaseError| error.to_string())?;
     tracing::debug!(
