@@ -689,17 +689,39 @@ mod tests {
             .commit(transaction)
             .await
             .expect("commit transaction");
-        let hourly_progress = Utc
+        let initial_hourly_progress = Utc
             .with_ymd_and_hms(2040, 1, 2, 15, 10, 0)
             .single()
             .expect("hourly progress timestamp");
+        let later_hourly_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 20, 0)
+            .single()
+            .expect("later hourly progress timestamp");
+        let older_hourly_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 0, 0)
+            .single()
+            .expect("older hourly progress timestamp");
         repository
             .mark_us_stock_hourly_bar_history_completed(
                 std::slice::from_ref(&group_stock_id),
-                hourly_progress,
+                initial_hourly_progress,
             )
             .await
-            .expect("mark hourly history complete");
+            .expect("mark initial hourly progress");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                later_hourly_progress,
+            )
+            .await
+            .expect("mark later hourly progress");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                older_hourly_progress,
+            )
+            .await
+            .expect("ignore older hourly progress");
 
         let actual = repository
             .find_us_stock_bar_targets()
@@ -718,7 +740,7 @@ mod tests {
                             .single()
                             .expect("latest hourly timestamp"),
                     ),
-                    hourly_history_completed_through: Some(hourly_progress),
+                    hourly_history_completed_through: Some(later_hourly_progress),
                     earliest_daily_bar: Some(
                         Utc.with_ymd_and_hms(2040, 1, 1, 0, 0, 0)
                             .single()

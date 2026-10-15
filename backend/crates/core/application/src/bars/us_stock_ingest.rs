@@ -76,11 +76,7 @@ impl UsStockBarTimeframe {
         match self {
             Self::Daily => target.latest_daily_bar,
             Self::Minute => target.latest_minute_bar,
-            Self::Hourly => target
-                .latest_hourly_bar
-                .into_iter()
-                .chain(target.hourly_history_completed_through)
-                .max(),
+            Self::Hourly => target.latest_hourly_bar,
         }
     }
 
