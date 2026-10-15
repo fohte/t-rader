@@ -13,6 +13,7 @@ use super::serde_helpers::deserialize_nullable_option;
 
 mod annotations;
 mod financials;
+mod group_movers;
 mod list_movers;
 mod news;
 mod paper_trade;
@@ -22,6 +23,7 @@ mod saved_screen;
 mod screen_stocks;
 pub use annotations::*;
 pub use financials::*;
+pub use group_movers::*;
 pub use list_movers::*;
 pub use news::*;
 pub use paper_trade::*;
