@@ -12,7 +12,7 @@ use super::super::us_stock_source::{
 use super::super::use_cases::BarsUseCases;
 use super::{
     RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
-    UsStockSplitHistoryRange, record_skipped_instrument,
+    UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
 };
 
 impl BarsUseCases {
@@ -152,12 +152,10 @@ impl BarsUseCases {
                     return Ok(None);
                 }
                 stats.requests_attempted += 1;
-                if instrument_ids.len() == 1 {
-                    record_skipped_instrument(stats, instrument_ids[0].clone(), reason);
+                let Some((first, second)) = split_rejected_batch(instrument_ids, reason, stats)
+                else {
                     return Ok(Some(Vec::new()));
-                }
-                let split_at = instrument_ids.len() / 2;
-                let (first, second) = instrument_ids.split_at(split_at);
+                };
                 let Some(mut first_splits) =
                     Box::pin(self.fetch_split_batch(source, first, from, to, budget, stats))
                         .await?
@@ -275,8 +273,8 @@ impl BarsUseCases {
             *page = regular_bars;
         }
 
-        let minute_history_complete = self
-            .ingest_batch(
+        let minute_history_complete = if target.earliest_minute_bar.is_some() {
+            self.ingest_batch(
                 source,
                 instrument_ids,
                 UsStockBarTimeframe::Minute,
@@ -287,7 +285,10 @@ impl BarsUseCases {
                 budget,
                 stats,
             )
-            .await?;
+            .await?
+        } else {
+            true
+        };
         if !minute_history_complete {
             return Ok(false);
         }
