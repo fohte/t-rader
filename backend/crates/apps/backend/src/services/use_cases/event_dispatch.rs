@@ -11,7 +11,7 @@ use core_application::{
 };
 use gateway_postgres::PostgresEventRepository;
 
-use super::UseCases;
+use super::{BackgroundEventDispatchControl, UseCases};
 
 impl UseCases {
     pub fn event_dispatch(&self) -> EventDispatchUseCases {
@@ -23,6 +23,7 @@ impl UseCases {
         EventDispatchJobUseCases::new(Arc::new(BackgroundEventDispatchJobQueue {
             event_dispatch: self.event_dispatch_with_triggers(triggers),
             agent_task_client: self.agent_task_client.clone(),
+            control: self.event_dispatch_control.clone(),
         }))
     }
 
@@ -42,19 +43,51 @@ impl UseCases {
 struct BackgroundEventDispatchJobQueue {
     event_dispatch: EventDispatchUseCases,
     agent_task_client: SharedAgentTaskClient,
+    control: Arc<BackgroundEventDispatchControl>,
 }
 
 #[async_trait]
 impl EventDispatchJobQueue for BackgroundEventDispatchJobQueue {
     async fn enqueue_dispatch(&self) -> Result<(), EventDispatchJobQueueError> {
+        let should_spawn = {
+            let mut state = self.control.state.lock().await;
+            state.pending = true;
+            if state.running {
+                false
+            } else {
+                state.running = true;
+                true
+            }
+        };
+        if !should_spawn {
+            return Ok(());
+        }
+
         let event_dispatch = self.event_dispatch.clone();
         let agent_task_client = self.agent_task_client.clone();
+        let control = self.control.clone();
         tokio::spawn(async move {
-            if let Err(error) = event_dispatch
-                .dispatch_pending_events(agent_task_client.as_ref())
-                .await
-            {
-                tracing::warn!(%error, "event dispatch failed; periodic dispatch will retry");
+            loop {
+                let should_dispatch = {
+                    let mut state = control.state.lock().await;
+                    if state.pending {
+                        state.pending = false;
+                        true
+                    } else {
+                        state.running = false;
+                        false
+                    }
+                };
+                if !should_dispatch {
+                    break;
+                }
+
+                if let Err(error) = event_dispatch
+                    .dispatch_pending_events(agent_task_client.as_ref())
+                    .await
+                {
+                    tracing::warn!(%error, "event dispatch failed; periodic dispatch will retry");
+                }
             }
         });
         Ok(())

@@ -1,7 +1,13 @@
-use std::panic::AssertUnwindSafe;
+use std::{
+    panic::AssertUnwindSafe,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use chrono::Utc;
-use futures_util::{FutureExt, StreamExt, stream};
+use futures_util::{FutureExt, StreamExt, lock::Mutex, stream};
 
 use crate::agent_task_client::SharedAgentTaskClient;
 
@@ -16,6 +22,12 @@ pub struct StrategyTaskReconcileUseCases {
     strategy_tasks: StrategyTaskUseCases,
     lock: StrategyTaskReconcileLockUseCases,
     agent_task_client: SharedAgentTaskClient,
+    waiting_reconcile: Arc<WaitingReconcileState>,
+}
+
+struct WaitingReconcileState {
+    gate: Mutex<()>,
+    pending: AtomicBool,
 }
 
 impl StrategyTaskReconcileUseCases {
@@ -28,6 +40,10 @@ impl StrategyTaskReconcileUseCases {
             strategy_tasks,
             lock,
             agent_task_client,
+            waiting_reconcile: Arc::new(WaitingReconcileState {
+                gate: Mutex::new(()),
+                pending: AtomicBool::new(false),
+            }),
         }
     }
 
@@ -47,6 +63,25 @@ impl StrategyTaskReconcileUseCases {
     }
 
     pub async fn reconcile_waiting_for_lock(&self) -> Result<usize, String> {
+        self.waiting_reconcile.pending.store(true, Ordering::SeqCst);
+        let _guard = self.waiting_reconcile.gate.lock().await;
+        let mut updated = 0;
+        let mut last_error = None;
+
+        while self.waiting_reconcile.pending.swap(false, Ordering::SeqCst) {
+            match self.reconcile_after_acquiring_lock().await {
+                Ok(count) => {
+                    updated += count;
+                    last_error = None;
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+
+        last_error.map_or(Ok(updated), Err)
+    }
+
+    async fn reconcile_after_acquiring_lock(&self) -> Result<usize, String> {
         let guard =
             self.lock.acquire().await.map_err(|error| {
                 format!("failed to acquire strategy task reconcile lock: {error}")

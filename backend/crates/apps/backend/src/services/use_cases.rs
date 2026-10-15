@@ -7,6 +7,7 @@ use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresUnitOfWork,
 };
+use tokio::sync::Mutex;
 
 automod::dir!("src/services/use_cases");
 
@@ -17,6 +18,16 @@ pub struct UseCases {
     pub(super) strategy_existence: SharedStrategyExistence,
     pub(super) change_history: SharedChangeHistoryPort,
     pub(super) agent_task_client: SharedAgentTaskClient,
+    pub(super) event_dispatch_control: Arc<BackgroundEventDispatchControl>,
+}
+
+pub(super) struct BackgroundEventDispatchControl {
+    pub(super) state: Mutex<BackgroundEventDispatchState>,
+}
+
+pub(super) struct BackgroundEventDispatchState {
+    pub(super) running: bool,
+    pub(super) pending: bool,
 }
 
 pub fn build_use_cases(
@@ -34,6 +45,12 @@ pub fn build_use_cases(
         strategy_existence,
         change_history,
         agent_task_client,
+        event_dispatch_control: Arc::new(BackgroundEventDispatchControl {
+            state: Mutex::new(BackgroundEventDispatchState {
+                running: false,
+                pending: false,
+            }),
+        }),
     }
 }
 

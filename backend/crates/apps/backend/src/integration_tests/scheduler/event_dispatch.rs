@@ -182,6 +182,7 @@ async fn submitted_tasks(fake: &FakeAgentTaskClient) -> Vec<(Uuid, String, Optio
 struct BlockingSubmitAgentTaskClient {
     submit_started: Notify,
     resume_submit: Notify,
+    submit_count: std::sync::atomic::AtomicUsize,
 }
 
 impl BlockingSubmitAgentTaskClient {
@@ -189,6 +190,7 @@ impl BlockingSubmitAgentTaskClient {
         Self {
             submit_started: Notify::new(),
             resume_submit: Notify::new(),
+            submit_count: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 }
@@ -196,10 +198,14 @@ impl BlockingSubmitAgentTaskClient {
 #[async_trait]
 impl AgentTaskClient for BlockingSubmitAgentTaskClient {
     async fn submit(&self, _request: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
+        let submit_number = self
+            .submit_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
         self.submit_started.notify_one();
         self.resume_submit.notified().await;
         Ok(AgentTaskRef {
-            task_id: "synthetic-agent-task".to_string(),
+            task_id: format!("synthetic-agent-task-{submit_number}"),
         })
     }
 
@@ -311,24 +317,122 @@ async fn enqueue_dispatch_returns_while_agent_submission_is_blocked(db: Database
             .await
             .is_ok();
     fake.resume_submit.notify_one();
-    let event_dispatched = tokio::time::timeout(StdDuration::from_secs(2), async {
+    let persisted_task_id = tokio::time::timeout(StdDuration::from_secs(2), async {
         loop {
-            if event_dispatch_state(&db, event_id).await.1 {
-                break true;
+            let task = strategy_task::Entity::find()
+                .one(&db)
+                .await
+                .expect("read submitted strategy task");
+            if let Some(task) = task
+                && task.a2a_task_id.as_deref() == Some("synthetic-agent-task-1")
+                && event_dispatch_state(&db, event_id).await.1
+            {
+                break task.a2a_task_id;
             }
             tokio::time::sleep(StdDuration::from_millis(10)).await;
         }
     })
     .await
-    .unwrap_or(false);
+    .unwrap_or(None);
 
     assert_eq!(
         (
             enqueue_result.map(|result| result.map_err(|error| error.to_string())),
             submission_started,
-            event_dispatched,
+            persisted_task_id,
         ),
-        (Ok(Ok(())), true, true),
+        (Ok(Ok(())), true, Some("synthetic-agent-task-1".to_string())),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn concurrent_enqueues_share_a_single_background_dispatch(db: DatabaseHandle) {
+    let strategy_id = testing::insert_test_strategy(&db, "synthetic strategy").await;
+    testing::agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        .await
+        .expect("insert test agent configuration");
+    create_event(&db, "sample_process.first", json!({}), 0).await;
+    create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.first",
+        None,
+        "synthetic prompt",
+    )
+    .await;
+
+    let fake = Arc::new(BlockingSubmitAgentTaskClient::new());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), fake.clone());
+    let first_dispatch = use_cases.event_dispatch_job();
+    let first_enqueue = first_dispatch.enqueue_dispatch().await;
+    let first_submission_started =
+        tokio::time::timeout(StdDuration::from_secs(2), fake.submit_started.notified())
+            .await
+            .is_ok();
+
+    create_event(&db, "sample_process.second", json!({}), 0).await;
+    create_event_trigger(
+        &db,
+        strategy_id,
+        "sample_process.second",
+        None,
+        "synthetic prompt",
+    )
+    .await;
+    let second_dispatch = use_cases.event_dispatch_job();
+    let second_enqueue = second_dispatch.enqueue_dispatch().await;
+    let overlapping_submission_started = tokio::time::timeout(
+        StdDuration::from_millis(100),
+        fake.submit_started.notified(),
+    )
+    .await
+    .is_ok();
+
+    fake.resume_submit.notify_one();
+    let second_submission_started =
+        tokio::time::timeout(StdDuration::from_secs(2), fake.submit_started.notified())
+            .await
+            .is_ok();
+    fake.resume_submit.notify_one();
+    let persisted_task_ids = tokio::time::timeout(StdDuration::from_secs(2), async {
+        loop {
+            let mut task_ids = strategy_task::Entity::find()
+                .all(&db)
+                .await
+                .expect("read submitted strategy tasks")
+                .into_iter()
+                .filter_map(|task| task.a2a_task_id)
+                .collect::<Vec<_>>();
+            task_ids.sort();
+            if task_ids.len() == 2 {
+                break task_ids;
+            }
+            tokio::time::sleep(StdDuration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or_default();
+
+    assert_eq!(
+        (
+            first_enqueue.map_err(|error| error.to_string()),
+            second_enqueue.map_err(|error| error.to_string()),
+            first_submission_started,
+            overlapping_submission_started,
+            second_submission_started,
+            persisted_task_ids,
+        ),
+        (
+            Ok(()),
+            Ok(()),
+            true,
+            false,
+            true,
+            vec![
+                "synthetic-agent-task-1".to_string(),
+                "synthetic-agent-task-2".to_string(),
+            ],
+        ),
     );
 }
 
