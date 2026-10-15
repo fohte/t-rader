@@ -17,7 +17,7 @@ interface BollingerBands<Time> {
 }
 
 export interface ChartIndicatorLine<Time> {
-  variant: 'main' | 'band'
+  variant: 'main' | 'band' | 'signal' | 'histogram'
   points: ChartIndicatorPoint<Time>[]
 }
 
@@ -54,9 +54,23 @@ function calculateExponentialMovingAverage<Time>(
   bars: readonly ChartIndicatorBar<Time>[],
   period: number,
 ): ChartIndicatorPoint<Time>[] {
-  if (!isValidPeriod(period) || bars.length < period) return []
+  const values = calculateExponentialMovingAverageValues(bars, period)
+  return bars.flatMap((bar, index) => {
+    const value = values[index]
+    return value == null ? [] : [{ time: bar.time, value }]
+  })
+}
 
-  const points: ChartIndicatorPoint<Time>[] = []
+function calculateExponentialMovingAverageValues<Time>(
+  bars: readonly ChartIndicatorBar<Time>[],
+  period: number,
+): (number | undefined)[] {
+  const values: (number | undefined)[] = Array.from(
+    { length: bars.length },
+    () => undefined,
+  )
+  if (!isValidPeriod(period) || bars.length < period) return values
+
   const alpha = 2 / (period + 1)
   let average = 0
 
@@ -66,18 +80,133 @@ function calculateExponentialMovingAverage<Time>(
   }
 
   average /= period
-  const seedBar = bars[period - 1]
-  if (seedBar != null) points.push({ time: seedBar.time, value: average })
+  values[period - 1] = average
 
   for (let index = period; index < bars.length; index += 1) {
     const bar = bars[index]
     if (bar == null) continue
 
     average += alpha * (bar.close - average)
-    points.push({ time: bar.time, value: average })
+    values[index] = average
+  }
+
+  return values
+}
+
+function calculateRelativeStrengthIndex<Time>(
+  bars: readonly ChartIndicatorBar<Time>[],
+  period: number,
+): ChartIndicatorPoint<Time>[] {
+  if (!isValidPeriod(period) || bars.length <= period) return []
+
+  let averageGain = 0
+  let averageLoss = 0
+
+  for (let index = 1; index <= period; index += 1) {
+    const previousBar = bars[index - 1]
+    const currentBar = bars[index]
+    if (previousBar == null || currentBar == null) continue
+
+    const change = currentBar.close - previousBar.close
+    averageGain += Math.max(change, 0)
+    averageLoss += Math.max(-change, 0)
+  }
+
+  averageGain /= period
+  averageLoss /= period
+
+  const points: ChartIndicatorPoint<Time>[] = []
+  const firstRsiBar = bars[period]
+  if (firstRsiBar != null) {
+    points.push({
+      time: firstRsiBar.time,
+      value: calculateRelativeStrengthIndexValue(averageGain, averageLoss),
+    })
+  }
+
+  for (let index = period + 1; index < bars.length; index += 1) {
+    const previousBar = bars[index - 1]
+    const currentBar = bars[index]
+    if (previousBar == null || currentBar == null) continue
+
+    const change = currentBar.close - previousBar.close
+    averageGain = (averageGain * (period - 1) + Math.max(change, 0)) / period
+    averageLoss = (averageLoss * (period - 1) + Math.max(-change, 0)) / period
+    points.push({
+      time: currentBar.time,
+      value: calculateRelativeStrengthIndexValue(averageGain, averageLoss),
+    })
   }
 
   return points
+}
+
+function calculateRelativeStrengthIndexValue(
+  averageGain: number,
+  averageLoss: number,
+): number {
+  if (averageGain === 0 && averageLoss === 0) return 50
+  if (averageLoss === 0) return 100
+  if (averageGain === 0) return 0
+
+  const relativeStrength = averageGain / averageLoss
+  return 100 - 100 / (1 + relativeStrength)
+}
+
+function calculateMovingAverageConvergenceDivergence<Time>(
+  bars: readonly ChartIndicatorBar<Time>[],
+  fastPeriod: number,
+  slowPeriod: number,
+  signalPeriod: number,
+): ChartIndicatorLine<Time>[] {
+  const emptyLines: ChartIndicatorLine<Time>[] = [
+    { variant: 'main', points: [] },
+    { variant: 'signal', points: [] },
+    { variant: 'histogram', points: [] },
+  ]
+  if (
+    !isValidPeriod(fastPeriod) ||
+    !isValidPeriod(slowPeriod) ||
+    !isValidPeriod(signalPeriod) ||
+    fastPeriod >= slowPeriod
+  ) {
+    return emptyLines
+  }
+
+  const fastValues = calculateExponentialMovingAverageValues(bars, fastPeriod)
+  const slowValues = calculateExponentialMovingAverageValues(bars, slowPeriod)
+  const macdPoints = bars.flatMap((bar, index) => {
+    const fastValue = fastValues[index]
+    const slowValue = slowValues[index]
+    return fastValue == null || slowValue == null
+      ? []
+      : [{ time: bar.time, value: fastValue - slowValue }]
+  })
+  const signalBars = macdPoints.map(({ time, value }) => ({
+    time,
+    close: value,
+  }))
+  const signalPoints = calculateExponentialMovingAverage(
+    signalBars,
+    signalPeriod,
+  )
+  const histogramPoints = signalPoints.flatMap((signalPoint, index) => {
+    const macdPoint = macdPoints[index + signalPeriod - 1]
+    return macdPoint == null
+      ? []
+      : [
+          {
+            time: signalPoint.time,
+            value: macdPoint.value - signalPoint.value,
+          },
+        ]
+  })
+
+  return [
+    { variant: 'main', points: macdPoints },
+    { variant: 'signal', points: signalPoints },
+    { variant: 'histogram', points: histogramPoints },
+  ]
 }
 
 function calculateBollingerBands<Time>(
@@ -158,5 +287,19 @@ export function calculateChartIndicatorLines<Time>(
         { variant: 'band', points: bands.lower },
       ]
     }
+    case 'rsi':
+      return [
+        {
+          variant: 'main',
+          points: calculateRelativeStrengthIndex(bars, indicator.period),
+        },
+      ]
+    case 'macd':
+      return calculateMovingAverageConvergenceDivergence(
+        bars,
+        indicator.fastPeriod,
+        indicator.slowPeriod,
+        indicator.signalPeriod,
+      )
   }
 }

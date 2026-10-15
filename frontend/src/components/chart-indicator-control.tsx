@@ -12,8 +12,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '#components/ui/popover'
 import {
   type ChartIndicatorConfig,
   type ChartIndicatorKind,
+  type ChartIndicatorMacdPeriodField,
   getChartIndicatorName,
   isValidChartIndicatorDeviation,
+  isValidChartIndicatorMacdPeriods,
   isValidChartIndicatorPeriod,
   MAX_CHART_INDICATOR_PERIOD,
 } from '#lib/chart-indicator-settings'
@@ -22,6 +24,11 @@ type ChartIndicatorControlProps = {
   indicators: ChartIndicatorConfig[]
   onAdd: (kind: ChartIndicatorKind) => void
   onUpdatePeriod: (id: string, period: number) => void
+  onUpdateMacdPeriod: (
+    id: string,
+    field: ChartIndicatorMacdPeriodField,
+    period: number,
+  ) => void
   onUpdateDeviation: (id: string, deviation: number) => void
   onRemove: (id: string) => void
   open?: boolean
@@ -63,10 +70,48 @@ function useIsMobileViewport(): boolean {
   )
 }
 
+function IndicatorPeriodInput({
+  label,
+  value,
+  onCommit,
+  isValid = isValidChartIndicatorPeriod,
+  compact = false,
+}: {
+  label: string
+  value: number
+  onCommit: (period: number) => void
+  isValid?: (period: number) => boolean
+  compact?: boolean
+}) {
+  return (
+    <input
+      aria-label={label}
+      className={`h-7 ${compact ? 'w-12' : 'w-16'} rounded border border-input bg-background px-2 text-right`}
+      defaultValue={value}
+      max={MAX_CHART_INDICATOR_PERIOD}
+      min={1}
+      onBlur={(event) => {
+        const period = Number(event.currentTarget.value)
+        if (!isValid(period)) {
+          event.currentTarget.value = String(value)
+        } else {
+          onCommit(period)
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+      }}
+      step={1}
+      type="number"
+    />
+  )
+}
+
 export function ChartIndicatorControl({
   indicators,
   onAdd,
   onUpdatePeriod,
+  onUpdateMacdPeriod,
   onUpdateDeviation,
   onRemove,
   open: controlledOpen,
@@ -99,6 +144,7 @@ export function ChartIndicatorControl({
       indicators={indicators}
       onAdd={onAdd}
       onUpdatePeriod={onUpdatePeriod}
+      onUpdateMacdPeriod={onUpdateMacdPeriod}
       onUpdateDeviation={onUpdateDeviation}
       onRemove={onRemove}
     />
@@ -132,11 +178,17 @@ function ChartIndicatorMenu({
   indicators,
   onAdd,
   onUpdatePeriod,
+  onUpdateMacdPeriod,
   onUpdateDeviation,
   onRemove,
 }: Pick<
   ChartIndicatorControlProps,
-  'indicators' | 'onAdd' | 'onUpdatePeriod' | 'onUpdateDeviation' | 'onRemove'
+  | 'indicators'
+  | 'onAdd'
+  | 'onUpdatePeriod'
+  | 'onUpdateMacdPeriod'
+  | 'onUpdateDeviation'
+  | 'onRemove'
 >) {
   return (
     <div className="space-y-3 font-mono text-xs">
@@ -148,7 +200,10 @@ function ChartIndicatorMenu({
           <ul className="space-y-2">
             {indicators.map((indicator) => {
               const name = getChartIndicatorName(indicator)
-              const label = `${name} ${indicator.period.toString()}`
+              const label =
+                indicator.kind === 'macd'
+                  ? `${name} ${indicator.fastPeriod.toString()} ${indicator.slowPeriod.toString()} ${indicator.signalPeriod.toString()}`
+                  : `${name} ${indicator.period.toString()}`
 
               return (
                 <li
@@ -161,27 +216,82 @@ function ChartIndicatorMenu({
                     style={{ backgroundColor: indicator.color }}
                   />
                   <span className="shrink-0">{name}</span>
-                  <input
-                    aria-label={`${label}の期間`}
-                    className="h-7 w-16 rounded border border-input bg-background px-2 text-right"
-                    defaultValue={indicator.period}
-                    key={`${indicator.id}-period`}
-                    max={MAX_CHART_INDICATOR_PERIOD}
-                    min={1}
-                    onBlur={(event) => {
-                      const period = Number(event.currentTarget.value)
-                      if (!isValidChartIndicatorPeriod(period)) {
-                        event.currentTarget.value = String(indicator.period)
-                      } else {
+                  {indicator.kind === 'macd' ? (
+                    <div className="flex min-w-0 items-center gap-1">
+                      <span
+                        aria-hidden="true"
+                        className="text-muted-foreground"
+                      >
+                        短
+                      </span>
+                      <IndicatorPeriodInput
+                        key={`${indicator.id}-fast-${indicator.fastPeriod.toString()}`}
+                        label={`${name}の短期期間`}
+                        value={indicator.fastPeriod}
+                        isValid={(period) =>
+                          isValidChartIndicatorMacdPeriods(
+                            period,
+                            indicator.slowPeriod,
+                            indicator.signalPeriod,
+                          )
+                        }
+                        onCommit={(period) => {
+                          onUpdateMacdPeriod(indicator.id, 'fastPeriod', period)
+                        }}
+                        compact
+                      />
+                      <span
+                        aria-hidden="true"
+                        className="text-muted-foreground"
+                      >
+                        長
+                      </span>
+                      <IndicatorPeriodInput
+                        key={`${indicator.id}-slow-${indicator.slowPeriod.toString()}`}
+                        label={`${name}の長期期間`}
+                        value={indicator.slowPeriod}
+                        isValid={(period) =>
+                          isValidChartIndicatorMacdPeriods(
+                            indicator.fastPeriod,
+                            period,
+                            indicator.signalPeriod,
+                          )
+                        }
+                        onCommit={(period) => {
+                          onUpdateMacdPeriod(indicator.id, 'slowPeriod', period)
+                        }}
+                        compact
+                      />
+                      <span
+                        aria-hidden="true"
+                        className="text-muted-foreground"
+                      >
+                        信
+                      </span>
+                      <IndicatorPeriodInput
+                        key={`${indicator.id}-signal-${indicator.signalPeriod.toString()}`}
+                        label={`${name}のシグナル期間`}
+                        value={indicator.signalPeriod}
+                        onCommit={(period) => {
+                          onUpdateMacdPeriod(
+                            indicator.id,
+                            'signalPeriod',
+                            period,
+                          )
+                        }}
+                        compact
+                      />
+                    </div>
+                  ) : (
+                    <IndicatorPeriodInput
+                      key={`${indicator.id}-period-${indicator.period.toString()}`}
+                      label={`${label}の期間`}
+                      value={indicator.period}
+                      onCommit={(period) => {
                         onUpdatePeriod(indicator.id, period)
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') event.currentTarget.blur()
-                    }}
-                    step={1}
-                    type="number"
-                  />
+                      }}
+                    />
+                  )}
                   {indicator.kind === 'bollinger' && (
                     <>
                       <input
@@ -258,6 +368,26 @@ function ChartIndicatorMenu({
             type="button"
           >
             + ボリンジャー
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              onAdd('rsi')
+            }}
+            type="button"
+          >
+            + RSI
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              onAdd('macd')
+            }}
+            type="button"
+          >
+            + MACD
           </Button>
         </div>
       </div>

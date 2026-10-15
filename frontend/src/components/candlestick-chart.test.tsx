@@ -13,6 +13,23 @@ import type { components } from '#lib/api/schema.gen'
 
 const chartMocks = vi.hoisted(() => {
   const candlePriceScale = { applyOptions: vi.fn() }
+  const paneApis: {
+    getHeight: ReturnType<typeof vi.fn>
+    setHeight: ReturnType<typeof vi.fn>
+  }[] = []
+  const createPane = (initialHeight = 220) => {
+    let height = initialHeight
+    return {
+      getHeight: vi.fn(() => height),
+      setHeight: vi.fn((nextHeight: number) => {
+        height = nextHeight
+      }),
+    }
+  }
+  const resetPanes = () => {
+    paneApis.splice(0, paneApis.length, createPane())
+  }
+  resetPanes()
   const volumePriceScale = {
     applyOptions:
       vi.fn<
@@ -31,7 +48,12 @@ const chartMocks = vi.hoisted(() => {
   const annotationPriceSeries = {
     setData: vi.fn<(data: { time: UTCTimestamp; value: number }[]) => void>(),
   }
-  const indicatorSeries = { setData: vi.fn() }
+  const indicatorSeries = {
+    createPriceLine: vi.fn<(options: CreatePriceLineOptions) => object>(
+      () => ({}),
+    ),
+    setData: vi.fn(),
+  }
   const seriesMarkers = {
     detach: vi.fn(),
     markers: vi.fn(),
@@ -60,13 +82,20 @@ const chartMocks = vi.hoisted(() => {
     width: vi.fn(() => 120),
   }
   const chart = {
-    addSeries: vi.fn((): unknown => null),
+    addSeries: vi.fn<
+      (series: unknown, options?: unknown, paneIndex?: number) => unknown
+    >(() => null),
     applyOptions: vi.fn(),
+    panes: vi.fn(() => paneApis),
+    removePane: vi.fn((index: number) => {
+      paneApis.splice(index, 1)
+    }),
     removeSeries: vi.fn(),
     remove: vi.fn(),
     timeScale: vi.fn(() => timeScale),
   }
-  chart.addSeries.mockImplementation(() => {
+  chart.addSeries.mockImplementation((_series, _options, paneIndex = 0) => {
+    while (paneApis.length <= paneIndex) paneApis.push(createPane())
     const index = chart.addSeries.mock.calls.length
     if (index === 1) return candlestickSeries
     if (index === 2) return annotationPriceSeries
@@ -81,6 +110,8 @@ const chartMocks = vi.hoisted(() => {
     annotationPriceSeries,
     indicatorSeries,
     volumePriceScale,
+    paneApis,
+    resetPanes,
     timeScale,
     seriesMarkers,
   }
@@ -142,6 +173,7 @@ const annotations: ChartAnnotation[] = [pointAnnotation]
 
 beforeEach(() => {
   vi.clearAllMocks()
+  chartMocks.resetPanes()
 })
 
 afterEach(() => {
@@ -186,6 +218,44 @@ describe('CandlestickChart', () => {
       ],
       visibleRanges: [[{ from: 1.5, to: 3.5 }]],
       legend: 'SMA 2',
+    })
+  })
+
+  it('creates separate eighty-pixel panes for RSI and MACD', () => {
+    render(
+      <CandlestickChart
+        bars={bars}
+        indicators={[
+          { id: 'indicator-rsi', kind: 'rsi', period: 14, color: '#38bdf8' },
+          {
+            id: 'indicator-macd',
+            kind: 'macd',
+            fastPeriod: 12,
+            slowPeriod: 26,
+            signalPeriod: 9,
+            color: '#34d399',
+          },
+        ]}
+      />,
+    )
+
+    const paneState = () => ({
+      seriesPaneIndexes: chartMocks.chart.addSeries.mock.calls
+        .slice(3)
+        .map(([, , paneIndex]) => paneIndex ?? 0),
+      lowerPaneHeights: chartMocks.paneApis
+        .slice(1)
+        .map((pane) => pane.setHeight.mock.calls),
+      lowerPaneLegends: [
+        screen.getByRole('list', { name: '下段 1 の表示中の指標' }).textContent,
+        screen.getByRole('list', { name: '下段 2 の表示中の指標' }).textContent,
+      ],
+    })
+
+    expect(paneState()).toEqual({
+      seriesPaneIndexes: [1, 2, 2, 2],
+      lowerPaneHeights: [[[80]], [[80]]],
+      lowerPaneLegends: ['RSI 14', 'MACD 12 26 9'],
     })
   })
 

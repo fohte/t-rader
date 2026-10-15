@@ -11,8 +11,11 @@ import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
   addChartIndicator,
+  CHART_INDICATOR_PANE_HEIGHT,
+  getChartIndicatorPaneCount,
   removeChartIndicator,
   updateChartIndicatorDeviation,
+  updateChartIndicatorMacdPeriod,
   updateChartIndicatorPeriod,
   useChartIndicators,
 } from '#lib/chart-indicator-settings'
@@ -87,6 +90,12 @@ export function StockPageChart({
   selectedDateBar?: Bar | null
 }) {
   const indicators = useChartIndicators()
+  const lowerPaneCount = getChartIndicatorPaneCount(indicators)
+  const chartHeightStyle = {
+    height: `calc(var(--stock-chart-base-height) + ${(
+      lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT
+    ).toString()}px)`,
+  }
   const selectedDateStatus = getSelectedDateStatus(
     selectedDate,
     selectedDateBar,
@@ -116,6 +125,7 @@ export function StockPageChart({
           indicators={indicators}
           onAdd={addChartIndicator}
           onUpdatePeriod={updateChartIndicatorPeriod}
+          onUpdateMacdPeriod={updateChartIndicatorMacdPeriod}
           onUpdateDeviation={updateChartIndicatorDeviation}
           onRemove={removeChartIndicator}
         />
@@ -129,9 +139,15 @@ export function StockPageChart({
         </Link>
       </div>
       {isLoading ? (
-        <Skeleton className="h-55 w-full sm:h-110 lg:h-120" />
+        <Skeleton
+          className="[--stock-chart-base-height:220px] w-full sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
+          style={chartHeightStyle}
+        />
       ) : hasError ? (
-        <div className="flex h-55 items-center justify-center border border-border bg-card font-mono text-xs text-destructive sm:h-110 lg:h-120">
+        <div
+          className="flex items-center justify-center border border-border bg-card font-mono text-xs text-destructive [--stock-chart-base-height:220px] sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
+          style={chartHeightStyle}
+        >
           チャートの取得に失敗しました
         </div>
       ) : (
@@ -146,7 +162,8 @@ export function StockPageChart({
           highlightedTimestamp={selectedDateBar?.timestamp}
           currency={currency}
           intraday={timeframe !== '1d' && timeframe !== '1w'}
-          className="h-55 w-full min-w-0 sm:h-110 lg:h-120"
+          className="w-full min-w-0 [--stock-chart-base-height:220px] sm:[--stock-chart-base-height:440px] lg:[--stock-chart-base-height:480px]"
+          style={chartHeightStyle}
         />
       )}
       {selectedDate != null && selectedDateStatus != null && (

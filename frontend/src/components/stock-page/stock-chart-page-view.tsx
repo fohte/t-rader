@@ -21,8 +21,11 @@ import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import type { components } from '#lib/api/schema.gen'
 import {
   addChartIndicator,
+  CHART_INDICATOR_PANE_HEIGHT,
+  getChartIndicatorPaneCount,
   removeChartIndicator,
   updateChartIndicatorDeviation,
+  updateChartIndicatorMacdPeriod,
   updateChartIndicatorPeriod,
   useChartIndicators,
 } from '#lib/chart-indicator-settings'
@@ -64,6 +67,12 @@ export function StockChartPageView({
   isAnnotationsLoading: boolean
 }) {
   const indicators = useChartIndicators()
+  const lowerPaneCount = getChartIndicatorPaneCount(indicators)
+  const chartHeightStyle = {
+    height: `calc(600px + ${(
+      lowerPaneCount * CHART_INDICATOR_PANE_HEIGHT
+    ).toString()}px)`,
+  }
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -83,6 +92,7 @@ export function StockChartPageView({
             indicators={indicators}
             onAdd={addChartIndicator}
             onUpdatePeriod={updateChartIndicatorPeriod}
+            onUpdateMacdPeriod={updateChartIndicatorMacdPeriod}
             onUpdateDeviation={updateChartIndicatorDeviation}
             onRemove={removeChartIndicator}
           />
@@ -108,9 +118,14 @@ export function StockChartPageView({
       </div>
       <div className="flex min-h-0 flex-1 gap-4">
         {isLoading ? (
-          <Skeleton className="h-150 w-full" />
+          <Skeleton className="w-full" style={chartHeightStyle} />
         ) : hasError ? (
-          <p className="text-destructive">データの取得に失敗しました</p>
+          <p
+            className="flex flex-1 items-center text-destructive"
+            style={chartHeightStyle}
+          >
+            データの取得に失敗しました
+          </p>
         ) : (
           <>
             <CandlestickChart
@@ -122,13 +137,15 @@ export function StockChartPageView({
               selectedAnnotationId={selectedAnnotationId}
               currency={currency}
               intraday={timeframe !== '1d' && timeframe !== '1w'}
-              className="h-150 min-w-0 flex-1"
+              className="min-w-0 flex-1"
+              style={chartHeightStyle}
             />
             <ChartAnnotationList
               annotations={annotations}
               selectedAnnotationId={selectedAnnotationId}
               isLoading={isAnnotationsLoading}
               className="h-150"
+              style={chartHeightStyle}
               onSelectAnnotation={onSelectAnnotation}
             />
           </>
