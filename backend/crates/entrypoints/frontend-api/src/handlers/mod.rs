@@ -5,6 +5,7 @@ pub mod bars;
 pub mod calendar;
 pub mod comments;
 pub mod config;
+pub mod custom_indicator_evaluations;
 pub mod custom_indicators;
 pub mod group_axes;
 pub mod history;

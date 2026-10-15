@@ -134,8 +134,8 @@ describe('remarkNoteTokens', () => {
     expect(tree).toEqual(textTree(token))
   })
 
-  it('replaces a resolved evaluation output with its numeric value', () => {
-    const token = '[[eval:00000000-0000-0000-0000-000000000101:result]]'
+  it('passes the evaluation ID and output name with a resolved value', () => {
+    const token = '[[eval:00000000-0000-0000-0000-000000000101:result:rate]]'
     const tree = textTree(`結果 ${token}`)
 
     remarkNoteTokens({ [token]: { value: 256.75 } })(tree)
@@ -151,7 +151,11 @@ describe('remarkNoteTokens', () => {
               type: 'noteToken',
               data: {
                 hName: 'note-eval-reference',
-                hProperties: { value: '256.75' },
+                hProperties: {
+                  evaluationId: '00000000-0000-0000-0000-000000000101',
+                  outputName: 'result:rate',
+                  value: '256.75',
+                },
               },
             },
           ],
@@ -165,6 +169,20 @@ describe('remarkNoteTokens', () => {
     const tree = textTree(token)
 
     remarkNoteTokens()(tree)
+
+    expect(tree).toEqual(textTree(token))
+  })
+
+  it.each([
+    { name: 'invalid UUID', token: '[[eval:demo-id:result]]' },
+    {
+      name: 'empty output name',
+      token: '[[eval:00000000-0000-0000-0000-000000000101:]]',
+    },
+  ])('keeps an invalid evaluation token visible ($name)', ({ token }) => {
+    const tree = textTree(token)
+
+    remarkNoteTokens({ [token]: { value: 256.75 } })(tree)
 
     expect(tree).toEqual(textTree(token))
   })

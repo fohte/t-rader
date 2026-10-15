@@ -224,6 +224,16 @@ type CustomIndicator struct {
 	UpdatedAt    time.Time                             `json:"updated_at"`
 }
 
+// CustomIndicatorEvaluationResponse defines model for CustomIndicatorEvaluationResponse.
+type CustomIndicatorEvaluationResponse struct {
+	Args          interface{}        `json:"args"`
+	Code          string             `json:"code"`
+	EvaluatedAt   time.Time          `json:"evaluated_at"`
+	Id            openapi_types.UUID `json:"id"`
+	IndicatorName string             `json:"indicator_name"`
+	Output        interface{}        `json:"output"`
+}
+
 // ErrorResponse API エラーレスポンスの JSON 構造
 type ErrorResponse struct {
 	// Error エラーメッセージ
@@ -1071,6 +1081,11 @@ type ClientInterface interface {
 	// Corresponds with POST /api/agent-tasks/notifications (the `ReceiveAgentTaskNotification` operationId).
 	ReceiveAgentTaskNotification(ctx context.Context, body ReceiveAgentTaskNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetCustomIndicatorEvaluation 自作指標の実行記録を取得
+	//
+	// Corresponds with GET /api/custom-indicator-evaluations/{evaluation_id} (the `GetCustomIndicatorEvaluation` operationId).
+	GetCustomIndicatorEvaluation(ctx context.Context, evaluationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListGroupAxes 分類軸一覧
 	//
 	// Corresponds with GET /api/group-axes (the `ListGroupAxes` operationId).
@@ -1893,6 +1908,21 @@ func (c *OpenAPIClient) ReceiveAgentTaskNotificationWithBody(ctx context.Context
 // Corresponds with POST /api/agent-tasks/notifications (the `ReceiveAgentTaskNotification` operationId).
 func (c *OpenAPIClient) ReceiveAgentTaskNotification(ctx context.Context, body ReceiveAgentTaskNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReceiveAgentTaskNotificationRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCustomIndicatorEvaluation 自作指標の実行記録を取得
+//
+// Corresponds with GET /api/custom-indicator-evaluations/{evaluation_id} (the `GetCustomIndicatorEvaluation` operationId).
+func (c *OpenAPIClient) GetCustomIndicatorEvaluation(ctx context.Context, evaluationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCustomIndicatorEvaluationRequest(c.Server, evaluationId)
 	if err != nil {
 		return nil, err
 	}
@@ -3700,6 +3730,40 @@ func NewReceiveAgentTaskNotificationRequestWithBody(server string, contentType s
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetCustomIndicatorEvaluationRequest constructs an http.Request for the GetCustomIndicatorEvaluation method
+func NewGetCustomIndicatorEvaluationRequest(server string, evaluationId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "evaluation_id", evaluationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/custom-indicator-evaluations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -6142,6 +6206,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/agent-tasks/notifications (the `ReceiveAgentTaskNotification` operationId).
 	ReceiveAgentTaskNotificationWithResponse(ctx context.Context, body ReceiveAgentTaskNotificationJSONRequestBody, reqEditors ...RequestEditorFn) (*ReceiveAgentTaskNotificationResult, error)
 
+	// GetCustomIndicatorEvaluationWithResponse 自作指標の実行記録を取得
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/custom-indicator-evaluations/{evaluation_id} (the `GetCustomIndicatorEvaluation` operationId).
+	GetCustomIndicatorEvaluationWithResponse(ctx context.Context, evaluationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetCustomIndicatorEvaluationResult, error)
+
 	// ListGroupAxesWithResponse 分類軸一覧
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -7628,6 +7699,68 @@ func (r ReceiveAgentTaskNotificationResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReceiveAgentTaskNotificationResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCustomIndicatorEvaluationResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CustomIndicatorEvaluationResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetCustomIndicatorEvaluationResult) GetJSON200() *CustomIndicatorEvaluationResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetCustomIndicatorEvaluationResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCustomIndicatorEvaluationResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetCustomIndicatorEvaluationResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCustomIndicatorEvaluationResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCustomIndicatorEvaluationResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCustomIndicatorEvaluationResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCustomIndicatorEvaluationResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11394,6 +11527,19 @@ func (c *ClientWithResponses) ReceiveAgentTaskNotificationWithResponse(ctx conte
 	return ParseReceiveAgentTaskNotificationResult(rsp)
 }
 
+// GetCustomIndicatorEvaluationWithResponse 自作指標の実行記録を取得
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/custom-indicator-evaluations/{evaluation_id} (the `GetCustomIndicatorEvaluation` operationId).
+func (c *ClientWithResponses) GetCustomIndicatorEvaluationWithResponse(ctx context.Context, evaluationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetCustomIndicatorEvaluationResult, error) {
+	rsp, err := c.GetCustomIndicatorEvaluation(ctx, evaluationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCustomIndicatorEvaluationResult(rsp)
+}
+
 // ListGroupAxesWithResponse 分類軸一覧
 //
 // Returns a wrapper object for the known response body format(s).
@@ -13086,6 +13232,53 @@ func ParseReceiveAgentTaskNotificationResult(rsp *http.Response) (*ReceiveAgentT
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCustomIndicatorEvaluationResult parses an HTTP response from a GetCustomIndicatorEvaluationWithResponse call
+func ParseGetCustomIndicatorEvaluationResult(rsp *http.Response) (*GetCustomIndicatorEvaluationResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCustomIndicatorEvaluationResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CustomIndicatorEvaluationResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 

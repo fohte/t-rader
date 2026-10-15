@@ -9,6 +9,7 @@ import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
 import { ChangeReferenceFigure } from '#components/note-detail/change-reference-figure'
 import {
   NoteChangeReference,
+  NoteEvaluationEvidenceReference,
   NoteIndicatorObservationReference,
   NotePriceReference,
   NoteValuationReference,
@@ -45,7 +46,11 @@ type NoteTokenComponents = {
   'note-price-reference': ComponentType<
     ParsedNotePriceReference & { value: string }
   >
-  'note-eval-reference': ComponentType<{ value: string }>
+  'note-eval-reference': ComponentType<{
+    evaluationId: string
+    outputName: string
+    value: string
+  }>
   'note-valuation-reference': ComponentType<
     ParsedNoteValuationReference & { value: string }
   >
@@ -263,8 +268,8 @@ export function MarkdownBody({
     'note-price-reference': (reference) => (
       <NotePriceReference {...reference} />
     ),
-    'note-eval-reference': ({ value }) => (
-      <span className="font-mono font-medium tabular-nums">{value}</span>
+    'note-eval-reference': (reference) => (
+      <NoteEvaluationEvidenceReference {...reference} />
     ),
     'note-valuation-reference': (reference) => (
       <NoteValuationReference {...reference} />

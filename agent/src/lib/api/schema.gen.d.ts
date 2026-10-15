@@ -382,6 +382,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/custom-indicator-evaluations/{evaluation_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 自作指標の実行記録を取得 */
+    get: operations['get_custom_indicator_evaluation']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/group-axes': {
     parameters: {
       query?: never
@@ -1884,6 +1901,16 @@ export interface components {
       strategy_id?: string | null
       /** Format: date-time */
       updated_at: string
+    }
+    CustomIndicatorEvaluationResponse: {
+      args: unknown
+      code: string
+      /** Format: date-time */
+      evaluated_at: string
+      /** Format: uuid */
+      id: string
+      indicator_name: string
+      output: unknown
     }
     /** @description API エラーレスポンスの JSON 構造 */
     ErrorResponse: {
@@ -4522,6 +4549,53 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ConfigResponse']
+        }
+      }
+    }
+  }
+  get_custom_indicator_evaluation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 自作指標の実行記録 ID */
+        evaluation_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicatorEvaluationResponse']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
     }

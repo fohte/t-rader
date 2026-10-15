@@ -22,6 +22,7 @@ utoipa-axum = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
+core-application = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 
