@@ -1,8 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { RouterProvider } from '@tanstack/react-router'
+import type { ComponentType } from 'react'
 
 import { StockPageHeader } from '#components/stock-page/stock-page-header'
 import type { components } from '#lib/api/schema.gen'
 import type { StockQuote } from '#lib/stock-page-model'
+import { createStoryRouter } from '#storybook/story-router'
 
 type Stock = components['schemas']['Stock']
 
@@ -23,9 +26,25 @@ const quote: StockQuote = {
   timestamp: '2030-04-03T06:00:00Z',
 }
 
+function withRouter(Story: ComponentType) {
+  return (
+    <RouterProvider
+      router={createStoryRouter(
+        () => (
+          <Story />
+        ),
+        {
+          paths: ['/groups/$axisKey/$groupKey'],
+        },
+      )}
+    />
+  )
+}
+
 const meta = {
   title: 'StockPage/StockPageHeader',
   component: StockPageHeader,
+  decorators: [withRouter],
   args: {
     stock,
     quote,
