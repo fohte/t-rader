@@ -9,6 +9,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { createMiddleware } from 'langchain'
 import { Result } from 'neverthrow'
 
+import { logger } from '#logger'
 import { isPlainObject } from '#strategy-agent/agent-graph/json'
 
 export type ChatOpenAIFetch = NonNullable<
@@ -89,8 +90,15 @@ export const createReasoningContentAwareFetch =
     const assistantMessageCount = requestMessages.filter(
       (message) => isPlainObject(message) && message['role'] === 'assistant',
     ).length
-    // output_version v1 の変換で件数が変わった場合、別の assistant に思考を付けない。
+    // output_version === 'v1' は別経路で assistant entry が変換されるため、件数不一致時は誤対応を避ける。
     if (assistantMessageCount !== reasoningContents.length) {
+      logger.warn(
+        {
+          assistantMessageCount,
+          reasoningContentCount: reasoningContents.length,
+        },
+        'assistant message count differs from reasoning content history',
+      )
       return fetchImpl(input, init)
     }
 

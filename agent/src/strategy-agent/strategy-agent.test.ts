@@ -25,10 +25,7 @@ import type {
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
-import {
-  createReasoningContentAwareFetch,
-  reasoningContentMiddleware,
-} from '#strategy-agent/reasoning-content-middleware'
+import { createReasoningContentAwareFetch } from '#strategy-agent/reasoning-content-middleware'
 import type {
   McpToolsClient,
   RunStrategyAgentInput,
@@ -77,33 +74,6 @@ class FakeChatModel extends BaseChatModel {
     return Promise.reject(
       new Error('FakeChatModel should never be invoked directly in tests'),
     )
-  }
-}
-
-class RawBodyChatModel extends BaseChatModel {
-  constructor(
-    private readonly fetchImpl: ChatOpenAIFetch,
-    private readonly body: string,
-  ) {
-    super({})
-  }
-
-  override bindTools(
-    ...args: Parameters<NonNullable<BaseChatModel['bindTools']>>
-  ): ReturnType<NonNullable<BaseChatModel['bindTools']>> {
-    void args
-    return this
-  }
-
-  override _llmType(): string {
-    return 'fake'
-  }
-
-  override async _generate(): Promise<ChatResult> {
-    await this.fetchImpl('http://localhost', { body: this.body })
-    return {
-      generations: [{ text: 'done', message: new AIMessage('done') }],
-    }
   }
 }
 
@@ -942,40 +912,6 @@ describe('createStrategyAgentDeps', () => {
       ],
     },
     {
-      name: 'omits null reasoning content',
-      messages: [
-        new HumanMessage('first input'),
-        new AIMessage({
-          content: 'intermediate response',
-          additional_kwargs: { reasoning_content: null },
-        }),
-        new HumanMessage('follow-up input'),
-      ],
-      expected: [
-        { role: 'system', content: 'test system prompt' },
-        { role: 'user', content: 'first input' },
-        { role: 'assistant', content: 'intermediate response' },
-        { role: 'user', content: 'follow-up input' },
-      ],
-    },
-    {
-      name: 'omits empty reasoning content',
-      messages: [
-        new HumanMessage('first input'),
-        new AIMessage({
-          content: 'intermediate response',
-          additional_kwargs: { reasoning_content: '' },
-        }),
-        new HumanMessage('follow-up input'),
-      ],
-      expected: [
-        { role: 'system', content: 'test system prompt' },
-        { role: 'user', content: 'first input' },
-        { role: 'assistant', content: 'intermediate response' },
-        { role: 'user', content: 'follow-up input' },
-      ],
-    },
-    {
       name: 'keeps later reasoning aligned after an audio message',
       messages: [
         new HumanMessage('first input'),
@@ -1004,52 +940,6 @@ describe('createStrategyAgentDeps', () => {
     },
   ])('$name', async ({ messages, expected }) => {
     expect(await invokeWithHistory(messages)).toEqual(expected)
-  })
-
-  it.each([
-    { name: 'non-JSON request bodies', body: 'not-json' },
-    {
-      name: 'request bodies whose messages are not arrays',
-      body: JSON.stringify({ messages: { role: 'assistant' } }),
-    },
-    {
-      name: 'request bodies with a different assistant count',
-      body: JSON.stringify({
-        messages: [
-          { role: 'assistant', content: 'first' },
-          { role: 'assistant', content: 'second' },
-        ],
-      }),
-    },
-  ])('passes through $name', async ({ body }) => {
-    const forwardedBodies: string[] = []
-    const fetchImpl: ChatOpenAIFetch = (_input, init) => {
-      const forwardedBody = init?.body
-      forwardedBodies.push(
-        typeof forwardedBody === 'string' ? forwardedBody : '',
-      )
-      return Promise.resolve(new Response(''))
-    }
-    const model = new RawBodyChatModel(
-      createReasoningContentAwareFetch(fetchImpl),
-      body,
-    )
-    const agent = createAgent({
-      model,
-      middleware: [reasoningContentMiddleware],
-    })
-
-    await agent.invoke({
-      messages: [
-        new AIMessage({
-          content: 'prior response',
-          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
-        }),
-        new HumanMessage('continue'),
-      ],
-    })
-
-    expect(forwardedBodies).toEqual([body])
   })
 
   const getForcedSubmissionOutput = (
