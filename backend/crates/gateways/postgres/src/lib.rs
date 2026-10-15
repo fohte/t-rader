@@ -87,7 +87,7 @@ pub use event_dispatch_job_queue::PostgresEventDispatchJobQueue;
 pub use financial_summary::PostgresFinancialSummaryRepository;
 pub use group_axis::PostgresGroupAxisRepository;
 pub use indicator_observation::PostgresIndicatorObservationRepository;
-pub use ingest_run_log::PostgresIngestRunLog;
+pub use ingest_run_log::PostgresIngestRunRepository;
 pub use ingest_status::PostgresIngestStatusRepository;
 pub use margin::PostgresMarginRepository;
 pub use market_movers::PostgresMarketMoversQuerySource;

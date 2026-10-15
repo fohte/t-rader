@@ -194,6 +194,20 @@ type CreateStrategyRequest struct {
 	SortOrder   nullable.Nullable[int32]  `json:"sort_order,omitempty"`
 }
 
+// CreateSubagentDefinitionRequest defines model for CreateSubagentDefinitionRequest.
+type CreateSubagentDefinitionRequest struct {
+	Description     string                    `json:"description"`
+	Key             string                    `json:"key"`
+	MaxModelCalls   int64                     `json:"max_model_calls"`
+	Model           string                    `json:"model"`
+	Output          map[string]interface{}    `json:"output"`
+	Prompt          string                    `json:"prompt"`
+	ReasoningEffort nullable.Nullable[string] `json:"reasoning_effort,omitempty"`
+	TimeoutMinutes  int32                     `json:"timeout_minutes"`
+	ToolLimits      map[string]int64          `json:"tool_limits"`
+	Tools           []string                  `json:"tools"`
+}
+
 // CreateTriggerRequest defines model for CreateTriggerRequest.
 type CreateTriggerRequest struct {
 	// BusinessDaysOnly 土日・日本の祝日・年末年始を休場日として扱い、東証の営業日に限って cron trigger を起動する。臨時休場日は判定しない。省略時は false。
@@ -651,6 +665,23 @@ type StrategyTaskSummary struct {
 	UpdatedAt  time.Time                 `json:"updated_at"`
 }
 
+// SubagentDefinitionResponse defines model for SubagentDefinitionResponse.
+type SubagentDefinitionResponse struct {
+	CreatedAt       time.Time                 `json:"created_at"`
+	Description     string                    `json:"description"`
+	Id              openapi_types.UUID        `json:"id"`
+	Key             string                    `json:"key"`
+	MaxModelCalls   int64                     `json:"max_model_calls"`
+	Model           string                    `json:"model"`
+	Output          map[string]interface{}    `json:"output"`
+	Prompt          string                    `json:"prompt"`
+	ReasoningEffort nullable.Nullable[string] `json:"reasoning_effort,omitempty"`
+	TimeoutMinutes  int32                     `json:"timeout_minutes"`
+	ToolLimits      map[string]int64          `json:"tool_limits"`
+	Tools           []string                  `json:"tools"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
+}
+
 // Trigger defines model for Trigger.
 type Trigger struct {
 	BusinessDaysOnly bool                                      `json:"business_days_only"`
@@ -711,6 +742,19 @@ type UpdateStrategyRequest struct {
 	Description nullable.Nullable[string] `json:"description,omitempty"`
 	Name        nullable.Nullable[string] `json:"name,omitempty"`
 	SortOrder   nullable.Nullable[int32]  `json:"sort_order,omitempty"`
+}
+
+// UpdateSubagentDefinitionRequest defines model for UpdateSubagentDefinitionRequest.
+type UpdateSubagentDefinitionRequest struct {
+	Description     string                    `json:"description"`
+	MaxModelCalls   int64                     `json:"max_model_calls"`
+	Model           string                    `json:"model"`
+	Output          map[string]interface{}    `json:"output"`
+	Prompt          string                    `json:"prompt"`
+	ReasoningEffort nullable.Nullable[string] `json:"reasoning_effort,omitempty"`
+	TimeoutMinutes  int32                     `json:"timeout_minutes"`
+	ToolLimits      map[string]int64          `json:"tool_limits"`
+	Tools           []string                  `json:"tools"`
 }
 
 // UpdateTriggerRequest defines model for UpdateTriggerRequest.
@@ -869,6 +913,12 @@ type PutInvestableAmountJSONRequestBody = PutInvestableAmountRequest
 
 // CreateStrategyTriggerJSONRequestBody defines body for CreateStrategyTrigger for application/json ContentType.
 type CreateStrategyTriggerJSONRequestBody = CreateTriggerRequest
+
+// CreateSubagentDefinitionJSONRequestBody defines body for CreateSubagentDefinition for application/json ContentType.
+type CreateSubagentDefinitionJSONRequestBody = CreateSubagentDefinitionRequest
+
+// UpdateSubagentDefinitionJSONRequestBody defines body for UpdateSubagentDefinition for application/json ContentType.
+type UpdateSubagentDefinitionJSONRequestBody = UpdateSubagentDefinitionRequest
 
 // UpdateTriggerJSONRequestBody defines body for UpdateTrigger for application/json ContentType.
 type UpdateTriggerJSONRequestBody = UpdateTriggerRequest
@@ -1528,6 +1578,49 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/strategies/{id}/triggers (the `CreateStrategyTrigger` operationId).
 	CreateStrategyTrigger(ctx context.Context, id openapi_types.UUID, body CreateStrategyTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSubagentDefinitions サブエージェント定義一覧
+	//
+	// Corresponds with GET /api/subagent-definitions (the `ListSubagentDefinitions` operationId).
+	ListSubagentDefinitions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSubagentDefinitionWithBody サブエージェント定義を作成
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+	CreateSubagentDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSubagentDefinition サブエージェント定義を作成
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+	CreateSubagentDefinition(ctx context.Context, body CreateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSubagentDefinition サブエージェント定義を削除
+	//
+	// Corresponds with DELETE /api/subagent-definitions/{key} (the `DeleteSubagentDefinition` operationId).
+	DeleteSubagentDefinition(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSubagentDefinition サブエージェント定義を取得
+	//
+	// Corresponds with GET /api/subagent-definitions/{key} (the `GetSubagentDefinition` operationId).
+	GetSubagentDefinition(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSubagentDefinitionWithBody サブエージェント定義を更新
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+	UpdateSubagentDefinitionWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSubagentDefinition サブエージェント定義を更新
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+	UpdateSubagentDefinition(ctx context.Context, key string, body UpdateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteTrigger trigger 削除
 	//
@@ -3056,6 +3149,119 @@ func (c *OpenAPIClient) CreateStrategyTriggerWithBody(ctx context.Context, id op
 // Corresponds with POST /api/strategies/{id}/triggers (the `CreateStrategyTrigger` operationId).
 func (c *OpenAPIClient) CreateStrategyTrigger(ctx context.Context, id openapi_types.UUID, body CreateStrategyTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateStrategyTriggerRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSubagentDefinitions サブエージェント定義一覧
+//
+// Corresponds with GET /api/subagent-definitions (the `ListSubagentDefinitions` operationId).
+func (c *OpenAPIClient) ListSubagentDefinitions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSubagentDefinitionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSubagentDefinitionWithBody サブエージェント定義を作成
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+func (c *OpenAPIClient) CreateSubagentDefinitionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSubagentDefinitionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSubagentDefinition サブエージェント定義を作成
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+func (c *OpenAPIClient) CreateSubagentDefinition(ctx context.Context, body CreateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSubagentDefinitionRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSubagentDefinition サブエージェント定義を削除
+//
+// Corresponds with DELETE /api/subagent-definitions/{key} (the `DeleteSubagentDefinition` operationId).
+func (c *OpenAPIClient) DeleteSubagentDefinition(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSubagentDefinitionRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSubagentDefinition サブエージェント定義を取得
+//
+// Corresponds with GET /api/subagent-definitions/{key} (the `GetSubagentDefinition` operationId).
+func (c *OpenAPIClient) GetSubagentDefinition(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSubagentDefinitionRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSubagentDefinitionWithBody サブエージェント定義を更新
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+func (c *OpenAPIClient) UpdateSubagentDefinitionWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSubagentDefinitionRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSubagentDefinition サブエージェント定義を更新
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+func (c *OpenAPIClient) UpdateSubagentDefinition(ctx context.Context, key string, body UpdateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSubagentDefinitionRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5895,6 +6101,188 @@ func NewCreateStrategyTriggerRequestWithBody(server string, id openapi_types.UUI
 	return req, nil
 }
 
+// NewListSubagentDefinitionsRequest constructs an http.Request for the ListSubagentDefinitions method
+func NewListSubagentDefinitionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/subagent-definitions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSubagentDefinitionRequest calls the generic CreateSubagentDefinition builder with application/json body
+func NewCreateSubagentDefinitionRequest(server string, body CreateSubagentDefinitionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSubagentDefinitionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateSubagentDefinitionRequestWithBody constructs an http.Request for the CreateSubagentDefinition method, with any body, and a specified content type
+func NewCreateSubagentDefinitionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/subagent-definitions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSubagentDefinitionRequest constructs an http.Request for the DeleteSubagentDefinition method
+func NewDeleteSubagentDefinitionRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/subagent-definitions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSubagentDefinitionRequest constructs an http.Request for the GetSubagentDefinition method
+func NewGetSubagentDefinitionRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/subagent-definitions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSubagentDefinitionRequest calls the generic UpdateSubagentDefinition builder with application/json body
+func NewUpdateSubagentDefinitionRequest(server string, key string, body UpdateSubagentDefinitionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSubagentDefinitionRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewUpdateSubagentDefinitionRequestWithBody constructs an http.Request for the UpdateSubagentDefinition method, with any body, and a specified content type
+func NewUpdateSubagentDefinitionRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/subagent-definitions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteTriggerRequest constructs an http.Request for the DeleteTrigger method
 func NewDeleteTriggerRequest(server string, triggerId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -6721,6 +7109,55 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/strategies/{id}/triggers (the `CreateStrategyTrigger` operationId).
 	CreateStrategyTriggerWithResponse(ctx context.Context, id openapi_types.UUID, body CreateStrategyTriggerJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStrategyTriggerResult, error)
+
+	// ListSubagentDefinitionsWithResponse サブエージェント定義一覧
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/subagent-definitions (the `ListSubagentDefinitions` operationId).
+	ListSubagentDefinitionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSubagentDefinitionsResult, error)
+
+	// CreateSubagentDefinitionWithBodyWithResponse サブエージェント定義を作成
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+	CreateSubagentDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSubagentDefinitionResult, error)
+
+	// CreateSubagentDefinitionWithResponse サブエージェント定義を作成
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+	CreateSubagentDefinitionWithResponse(ctx context.Context, body CreateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSubagentDefinitionResult, error)
+
+	// DeleteSubagentDefinitionWithResponse サブエージェント定義を削除
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/subagent-definitions/{key} (the `DeleteSubagentDefinition` operationId).
+	DeleteSubagentDefinitionWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteSubagentDefinitionResult, error)
+
+	// GetSubagentDefinitionWithResponse サブエージェント定義を取得
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/subagent-definitions/{key} (the `GetSubagentDefinition` operationId).
+	GetSubagentDefinitionWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetSubagentDefinitionResult, error)
+
+	// UpdateSubagentDefinitionWithBodyWithResponse サブエージェント定義を更新
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+	UpdateSubagentDefinitionWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSubagentDefinitionResult, error)
+
+	// UpdateSubagentDefinitionWithResponse サブエージェント定義を更新
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+	UpdateSubagentDefinitionWithResponse(ctx context.Context, key string, body UpdateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSubagentDefinitionResult, error)
 
 	// DeleteTriggerWithResponse trigger 削除
 	//
@@ -11037,6 +11474,316 @@ func (r CreateStrategyTriggerResult) ContentType() string {
 	return ""
 }
 
+type ListSubagentDefinitionsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]SubagentDefinitionResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSubagentDefinitionsResult) GetJSON200() *[]SubagentDefinitionResponse {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListSubagentDefinitionsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSubagentDefinitionsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSubagentDefinitionsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSubagentDefinitionsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSubagentDefinitionsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateSubagentDefinitionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SubagentDefinitionResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSubagentDefinitionResult) GetJSON201() *SubagentDefinitionResponse {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateSubagentDefinitionResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateSubagentDefinitionResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r CreateSubagentDefinitionResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateSubagentDefinitionResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateSubagentDefinitionResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSubagentDefinitionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSubagentDefinitionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSubagentDefinitionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSubagentDefinitionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSubagentDefinitionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteSubagentDefinitionResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteSubagentDefinitionResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteSubagentDefinitionResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSubagentDefinitionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSubagentDefinitionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSubagentDefinitionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSubagentDefinitionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetSubagentDefinitionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SubagentDefinitionResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSubagentDefinitionResult) GetJSON200() *SubagentDefinitionResponse {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSubagentDefinitionResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetSubagentDefinitionResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSubagentDefinitionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSubagentDefinitionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSubagentDefinitionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSubagentDefinitionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateSubagentDefinitionResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SubagentDefinitionResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSubagentDefinitionResult) GetJSON200() *SubagentDefinitionResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateSubagentDefinitionResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateSubagentDefinitionResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r UpdateSubagentDefinitionResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateSubagentDefinitionResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UpdateSubagentDefinitionResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSubagentDefinitionResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSubagentDefinitionResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSubagentDefinitionResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSubagentDefinitionResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type DeleteTriggerResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12461,6 +13208,97 @@ func (c *ClientWithResponses) CreateStrategyTriggerWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseCreateStrategyTriggerResult(rsp)
+}
+
+// ListSubagentDefinitionsWithResponse サブエージェント定義一覧
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/subagent-definitions (the `ListSubagentDefinitions` operationId).
+func (c *ClientWithResponses) ListSubagentDefinitionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListSubagentDefinitionsResult, error) {
+	rsp, err := c.ListSubagentDefinitions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSubagentDefinitionsResult(rsp)
+}
+
+// CreateSubagentDefinitionWithBodyWithResponse サブエージェント定義を作成
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+func (c *ClientWithResponses) CreateSubagentDefinitionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSubagentDefinitionResult, error) {
+	rsp, err := c.CreateSubagentDefinitionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSubagentDefinitionResult(rsp)
+}
+
+// CreateSubagentDefinitionWithResponse サブエージェント定義を作成
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/subagent-definitions (the `CreateSubagentDefinition` operationId).
+func (c *ClientWithResponses) CreateSubagentDefinitionWithResponse(ctx context.Context, body CreateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSubagentDefinitionResult, error) {
+	rsp, err := c.CreateSubagentDefinition(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSubagentDefinitionResult(rsp)
+}
+
+// DeleteSubagentDefinitionWithResponse サブエージェント定義を削除
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/subagent-definitions/{key} (the `DeleteSubagentDefinition` operationId).
+func (c *ClientWithResponses) DeleteSubagentDefinitionWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteSubagentDefinitionResult, error) {
+	rsp, err := c.DeleteSubagentDefinition(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSubagentDefinitionResult(rsp)
+}
+
+// GetSubagentDefinitionWithResponse サブエージェント定義を取得
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/subagent-definitions/{key} (the `GetSubagentDefinition` operationId).
+func (c *ClientWithResponses) GetSubagentDefinitionWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetSubagentDefinitionResult, error) {
+	rsp, err := c.GetSubagentDefinition(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSubagentDefinitionResult(rsp)
+}
+
+// UpdateSubagentDefinitionWithBodyWithResponse サブエージェント定義を更新
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+func (c *ClientWithResponses) UpdateSubagentDefinitionWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSubagentDefinitionResult, error) {
+	rsp, err := c.UpdateSubagentDefinitionWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSubagentDefinitionResult(rsp)
+}
+
+// UpdateSubagentDefinitionWithResponse サブエージェント定義を更新
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/subagent-definitions/{key} (the `UpdateSubagentDefinition` operationId).
+func (c *ClientWithResponses) UpdateSubagentDefinitionWithResponse(ctx context.Context, key string, body UpdateSubagentDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSubagentDefinitionResult, error) {
+	rsp, err := c.UpdateSubagentDefinition(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSubagentDefinitionResult(rsp)
 }
 
 // DeleteTriggerWithResponse trigger 削除
@@ -15778,6 +16616,244 @@ func ParseCreateStrategyTriggerResult(rsp *http.Response) (*CreateStrategyTrigge
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSubagentDefinitionsResult parses an HTTP response from a ListSubagentDefinitionsWithResponse call
+func ParseListSubagentDefinitionsResult(rsp *http.Response) (*ListSubagentDefinitionsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSubagentDefinitionsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []SubagentDefinitionResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSubagentDefinitionResult parses an HTTP response from a CreateSubagentDefinitionWithResponse call
+func ParseCreateSubagentDefinitionResult(rsp *http.Response) (*CreateSubagentDefinitionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSubagentDefinitionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SubagentDefinitionResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSubagentDefinitionResult parses an HTTP response from a DeleteSubagentDefinitionWithResponse call
+func ParseDeleteSubagentDefinitionResult(rsp *http.Response) (*DeleteSubagentDefinitionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSubagentDefinitionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSubagentDefinitionResult parses an HTTP response from a GetSubagentDefinitionWithResponse call
+func ParseGetSubagentDefinitionResult(rsp *http.Response) (*GetSubagentDefinitionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSubagentDefinitionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SubagentDefinitionResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSubagentDefinitionResult parses an HTTP response from a UpdateSubagentDefinitionWithResponse call
+func ParseUpdateSubagentDefinitionResult(rsp *http.Response) (*UpdateSubagentDefinitionResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSubagentDefinitionResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SubagentDefinitionResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
 		var dest ErrorResponse
