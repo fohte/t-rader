@@ -70,3 +70,43 @@ Pod spec 側の不変条件 (`automountServiceAccountToken: false`、`runAsNonRo
 ## マイグレーション
 
 `--skip-migration` を指定しない場合、起動時に SeaORM の `Migrator::up` と Graphile Worker schema (`graphile_worker`) の migration を実行する。`--migrate-only` は両方の migration を実行して終了するため、API / worker の起動前に initContainer などから実行できる。`--skip-migration` はこの工程をスキップする。worker 起動時は Graphile Worker 自身も schema を初期化するが、api-only で job を投入する場合は、事前に migration 済みの DB を使う必要がある。
+
+## 定期ジョブの単発実行
+
+`--run-job` は指定した定期ジョブを 1 回実行して終了する。API と worker は起動しない。DB は事前に migration 済みにし、次の形式で実行する。
+
+```sh
+backend --run-job <job-name> --skip-migration
+```
+
+`<job-name>` には次のいずれかを指定する。正常終了時は終了コード `0`、失敗時は非 `0` になる。
+
+```text
+alpha_vantage_calendar_ingest
+boj_calendar_event_ingest
+daily_bars_ingest
+e_stat_calendar_ingest
+earnings_schedule_ingest
+ecb_calendar_event_ingest
+shareholding_structure_ingest
+eoddata_kospi_ingest
+equity_master_ingest
+event_dispatch
+fed_calendar_event_ingest
+financial_summary_ingest
+fred_ingest
+fred_release_dates_ingest
+margin_ingest
+news_aggregation
+news_content_fetch
+paper_order_filling
+prediction_grading
+short_ratio_ingest
+short_sale_report_ingest
+strategy_task_reconcile
+twse_index_ingest
+us_stock_bars_ingest
+us_stock_minute_bars_ingest
+us_stock_master_ingest
+valuation_ingest
+```

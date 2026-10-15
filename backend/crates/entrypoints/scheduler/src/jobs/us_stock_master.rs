@@ -11,22 +11,32 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct UsStockMasterIngest;
 
 impl TaskHandler for UsStockMasterIngest {
-    const IDENTIFIER: &'static str = core_application::ingest_status::US_STOCK_MASTER_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.us_stock_master_source,
-                    "SEC US stock master source",
-                )?;
-                sync_us_stock_master(&state.dependencies.us_stock_master, source.as_ref()).await
-            },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for UsStockMasterIngest {
+    const IDENTIFIER: &'static str = core_application::ingest_status::US_STOCK_MASTER_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.us_stock_master_source,
+                        "SEC US stock master source",
+                    )?;
+                    sync_us_stock_master(&state.dependencies.us_stock_master, source.as_ref()).await
+                },
+            )
+            .await
+        })
     }
 }
 

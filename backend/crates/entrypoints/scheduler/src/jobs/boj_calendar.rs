@@ -11,21 +11,32 @@ use super::{
 pub struct BojCalendarEventIngest;
 
 impl TaskHandler for BojCalendarEventIngest {
-    const IDENTIFIER: &'static str = BOJ_CALENDAR_EVENT_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.boj_calendar_source,
-                    "BOJ calendar event source",
-                )?;
-                ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref()).await
-            },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for BojCalendarEventIngest {
+    const IDENTIFIER: &'static str = BOJ_CALENDAR_EVENT_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.boj_calendar_source,
+                        "BOJ calendar event source",
+                    )?;
+                    ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref())
+                        .await
+                },
+            )
+            .await
+        })
     }
 }
