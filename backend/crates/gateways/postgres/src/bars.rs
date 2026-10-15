@@ -8,14 +8,16 @@ use core_application::bars::{
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
     Statement,
 };
 
 use crate::DatabaseHandle;
-use crate::entities::{instruments, jquants_daily_bars_ingested_date};
+use crate::entities::{
+    instruments, jquants_daily_bars_ingested_date, us_stock_hourly_bar_ingest_progress,
+};
 use crate::persistence::persistence_error;
 use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQuery};
 use crate::transaction::transaction_ref as postgres_transaction_ref;
@@ -268,39 +270,25 @@ impl BarsRepository for PostgresBarsRepository {
             return Ok(());
         }
 
-        let values = instrument_ids
-            .iter()
-            .flat_map(|instrument_id| {
-                [
-                    instrument_id.clone().into(),
-                    completed_through.fixed_offset().into(),
-                ]
+        us_stock_hourly_bar_ingest_progress::Entity::insert_many(
+            instrument_ids.iter().map(|instrument_id| {
+                us_stock_hourly_bar_ingest_progress::ActiveModel {
+                    instrument_id: Set(instrument_id.clone()),
+                    completed_through: Set(completed_through.fixed_offset()),
+                }
             })
-            .collect::<Vec<sea_orm::Value>>();
-        let rows = instrument_ids
-            .iter()
-            .enumerate()
-            .map(|(index, _)| {
-                let instrument_parameter = index * 2 + 1;
-                let timestamp_parameter = instrument_parameter + 1;
-                format!("(${instrument_parameter}, ${timestamp_parameter})")
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        self.db
-            .execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                format!(
-                    "INSERT INTO us_stock_hourly_bar_ingest_progress \
-                     (instrument_id, completed_through) VALUES {rows} \
-                     ON CONFLICT (instrument_id) DO UPDATE \
-                     SET completed_through = GREATEST( \
-                         us_stock_hourly_bar_ingest_progress.completed_through, \
-                         EXCLUDED.completed_through \
-                     )"
-                ),
-                values,
-            ))
+        )
+            .on_conflict(
+                OnConflict::column(us_stock_hourly_bar_ingest_progress::Column::InstrumentId)
+                    .value(
+                        us_stock_hourly_bar_ingest_progress::Column::CompletedThrough,
+                        Expr::cust(
+                            "GREATEST(us_stock_hourly_bar_ingest_progress.completed_through, EXCLUDED.completed_through)",
+                        ),
+                    )
+                    .to_owned(),
+            )
+            .exec_without_returning(&self.db)
             .await
             .map(|_| ())
             .map_err(repository_error)
@@ -650,10 +638,14 @@ mod tests {
             .expect("latest minute timestamp");
         let repository = PostgresBarsRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db);
-        let hourly_history_completed_through = Utc
+        let earlier_hourly_history_completed_through = Utc
             .with_ymd_and_hms(2040, 1, 2, 14, 0, 0)
             .single()
-            .expect("hourly completion timestamp");
+            .expect("earlier hourly completion timestamp");
+        let hourly_history_completed_through = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 30, 0)
+            .single()
+            .expect("later hourly completion timestamp");
         repository
             .mark_us_stock_hourly_bar_history_completed(
                 std::slice::from_ref(&group_stock_id),
@@ -661,6 +653,13 @@ mod tests {
             )
             .await
             .expect("mark hourly history completed");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                earlier_hourly_history_completed_through,
+            )
+            .await
+            .expect("older progress does not move the completion cursor backward");
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         repository
             .upsert_bars(

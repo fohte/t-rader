@@ -18,6 +18,7 @@ pub struct FakeBarsRepository {
     pub instruments: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
+    pub fail_next_hourly_bar_upsert: Mutex<bool>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
@@ -243,6 +244,20 @@ impl BarsRepository for FakeBarsRepository {
         new_bars: Vec<Bar>,
     ) -> Result<(), BarsRepositoryError> {
         self.record_transaction(transaction).await?;
+        let mut fail_next_hourly_bar_upsert = self.fail_next_hourly_bar_upsert.lock().await;
+        if *fail_next_hourly_bar_upsert
+            && new_bars
+                .iter()
+                .any(|bar| bar.timeframe == Timeframe::Hourly)
+        {
+            *fail_next_hourly_bar_upsert = false;
+            return Err(BarsRepositoryError::Database(
+                crate::persistence::PersistenceError::Database(
+                    "injected hourly upsert failure".to_owned(),
+                ),
+            ));
+        }
+        drop(fail_next_hourly_bar_upsert);
         let mut bars = self.bars.lock().await;
         upsert_bar_batch(&mut bars, new_bars);
         Ok(())

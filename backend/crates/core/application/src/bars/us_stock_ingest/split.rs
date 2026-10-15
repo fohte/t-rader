@@ -44,7 +44,7 @@ impl BarsUseCases {
                     &UsStockSplitQuery {
                         instrument_ids: instrument_ids.to_vec(),
                         from: history_range.daily_from.date_naive(),
-                        to: history_range.daily_to.date_naive(),
+                        to: history_range.to.date_naive(),
                     },
                     max_requests,
                 )
@@ -61,7 +61,7 @@ impl BarsUseCases {
             }
             for split in batch.splits {
                 if target_ids.contains(&split.instrument_id)
-                    && split.ex_date <= history_range.daily_to.date_naive()
+                    && split.ex_date <= history_range.to.date_naive()
                 {
                     splits_by_instrument
                         .entry(split.instrument_id.clone())
@@ -107,8 +107,7 @@ impl BarsUseCases {
                         hourly_from: UsStockBarTimeframe::Hourly
                             .earliest_bar(target)
                             .unwrap_or(history_range.hourly_from),
-                        daily_to: history_range.daily_to,
-                        minute_to: history_range.minute_to,
+                        to: history_range.to,
                         hourly_to: history_range.hourly_to,
                     },
                     budget,
@@ -204,7 +203,7 @@ impl BarsUseCases {
                 UsStockBarTimeframe::Daily,
                 UsStockBarRange {
                     from: range.daily_from,
-                    to: range.daily_to,
+                    to: range.to,
                 },
                 budget,
                 stats,
@@ -236,7 +235,7 @@ impl BarsUseCases {
                 UsStockBarTimeframe::Minute,
                 UsStockBarRange {
                     from: range.minute_from,
-                    to: range.minute_to,
+                    to: range.to,
                 },
                 budget,
                 stats,
@@ -263,14 +262,14 @@ impl BarsUseCases {
             return Ok(false);
         };
 
-        self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
-            .await?;
-        self.persist_bars(split_bars, UsStockBarTimeframe::Daily, stats)
-            .await?;
         self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
             .await?;
         self.repository
             .mark_us_stock_hourly_bar_history_completed(instrument_ids, range.hourly_to)
+            .await?;
+        self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
+            .await?;
+        self.persist_bars(split_bars, UsStockBarTimeframe::Daily, stats)
             .await?;
         Ok(true)
     }
