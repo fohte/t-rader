@@ -18,8 +18,7 @@ const data: ScreenerResponse = {
 afterEach(cleanup)
 
 describe('ScreenerPageView', () => {
-  it('applies all selected screener conditions together', async () => {
-    const user = userEvent.setup()
+  it('applies all selected screener conditions together', () => {
     const onApplyFilters = vi.fn()
     const args = {
       search: {},
@@ -39,8 +38,11 @@ describe('ScreenerPageView', () => {
 
     render(<ScreenerPageView {...args} />)
 
-    await user.click(screen.getByRole('checkbox', { name: 'プライム' }))
-    await user.click(screen.getByRole('checkbox', { name: 'サンプル業' }))
+    const market = screen.getByRole('checkbox', { name: 'プライム' })
+    const sector = screen.getByRole('checkbox', { name: 'サンプル業' })
+    const applyButton = screen.getByRole('button', {
+      name: 'この条件で絞り込む',
+    })
 
     const ranges = [
       ['PER 下限', '8'],
@@ -54,14 +56,21 @@ describe('ScreenerPageView', () => {
       ['時価総額 下限', '500'],
       ['時価総額 上限', '10000'],
     ] as const
-    for (const [label, value] of ranges) {
-      fireEvent.change(
-        screen.getByRole<HTMLInputElement>('spinbutton', { name: label }),
-        { target: { value } },
-      )
+    const rangeInputs = ranges.map(
+      ([label, value]) =>
+        [
+          screen.getByRole<HTMLInputElement>('spinbutton', { name: label }),
+          value,
+        ] as const,
+    )
+
+    fireEvent.click(market)
+    fireEvent.click(sector)
+    for (const [input, value] of rangeInputs) {
+      fireEvent.change(input, { target: { value } })
     }
 
-    await user.click(screen.getByRole('button', { name: 'この条件で絞り込む' }))
+    fireEvent.click(applyButton)
 
     expect(onApplyFilters.mock.calls).toEqual([
       [
