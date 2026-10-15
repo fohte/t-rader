@@ -147,6 +147,7 @@ export function StockChartPageView({
           <Button
             variant={horizontalLineDrawingEnabled ? 'default' : 'outline'}
             size="icon-sm"
+            className="sm:w-auto sm:gap-1 sm:px-2.5"
             aria-label="水平線"
             aria-pressed={horizontalLineDrawingEnabled}
             disabled={pendingHorizontalLine != null}
@@ -156,7 +157,9 @@ export function StockChartPageView({
             }}
           >
             <span aria-hidden="true">─</span>
-            <span className="sr-only sm:not-sr-only">水平線</span>
+            <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+              水平線
+            </span>
           </Button>
           <TooltipProvider>
             <Tooltip>
