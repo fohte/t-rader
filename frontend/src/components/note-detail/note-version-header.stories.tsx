@@ -63,7 +63,14 @@ type Story = StoryObj<typeof meta>
 
 export const PendingReview: Story = {
   name: 'shows the metadata and change reason for a version awaiting review.',
-  args: { version: baseVersion },
+  args: {
+    version: {
+      ...baseVersion,
+      execution_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    },
+    noteKindLabel: null,
+    executionOrigin,
+  },
 }
 
 export const GeneratedByStrategy: Story = {

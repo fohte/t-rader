@@ -8,7 +8,6 @@ import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import type { components } from '#lib/api/schema.gen'
 import type { ExecutionOrigin } from '#lib/execution-origin'
 import { createStoryRouter } from '#storybook/story-router'
-import { executionOriginLinkName } from '#test/execution-origin-link-name'
 
 type Annotation = components['schemas']['Annotation']
 
@@ -125,6 +124,13 @@ function renderAnnotationDetail(
   render(<RouterProvider router={router} />)
 }
 
+function getExecutionOriginLinks() {
+  return [
+    ...screen.queryAllByRole('link', { name: '架空戦略' }),
+    ...screen.queryAllByRole('link', { name: '実行詳細 →' }),
+  ]
+}
+
 describe('AnnotationDetail', () => {
   it('passes the rejection reason input to its change callback', async () => {
     const user = userEvent.setup()
@@ -192,9 +198,7 @@ describe('AnnotationDetail', () => {
       renderAnnotationDetail(currentAnnotation, origin)
 
       await screen.findByText(annotation.text)
-      expect(
-        screen.queryAllByRole('link', { name: executionOriginLinkName }),
-      ).toEqual([])
+      expect(getExecutionOriginLinks()).toEqual([])
     },
   )
 })

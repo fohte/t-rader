@@ -192,6 +192,15 @@ export const NotFound: Story = {
 
 export const UnreadWithoutRelatedItems: Story = {
   name: 'shows an unread annotation without comments or a linked note.',
+  args: {
+    annotation: generatedAnnotation,
+    reviewNavigationState: {
+      navigation: null,
+      isPending: false,
+      isError: false,
+    },
+    executionOrigin,
+  },
 }
 
 export const GeneratedByStrategy: Story = {
