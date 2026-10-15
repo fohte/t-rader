@@ -63,8 +63,8 @@ mod tests {
             .read_comments(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "note_version".into(),
-                    target_id: note_version_id,
+                    target_kind: Some("note_version".into()),
+                    target_id: Some(note_version_id),
                     resolved: None,
                 },
             )
@@ -111,6 +111,110 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn read_comments_without_target_returns_unresolved_note_comments_with_targets(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+        let first_note_id = seed_note(&db, "first note").await;
+        let second_note_id = seed_note(&db, "second note").await;
+        let first_version_id = current_note_version_id(&db, first_note_id).await;
+        let second_version_id = current_note_version_id(&db, second_note_id).await;
+        let first_open =
+            seed_comment(&db, "note_version", first_version_id, None, "first open").await;
+        let first_resolved = seed_comment(
+            &db,
+            "note_version",
+            first_version_id,
+            None,
+            "first resolved",
+        )
+        .await;
+        let second_open =
+            seed_comment(&db, "note_version", second_version_id, None, "second open").await;
+        let annotation_id = seed_annotation(&db).await;
+        seed_comment(&db, "annotation", annotation_id, None, "annotation comment").await;
+        server
+            .resolve_comment(
+                strategy_id,
+                ResolveCommentParams {
+                    comment_id: first_resolved,
+                    resolved: true,
+                },
+            )
+            .await
+            .expect("resolve_comment");
+        let first_opened_at = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset();
+        for (id, created_at) in [
+            (first_open, first_opened_at),
+            (
+                first_resolved,
+                first_opened_at + chrono::Duration::seconds(1),
+            ),
+            (second_open, first_opened_at + chrono::Duration::seconds(2)),
+        ] {
+            comment::ActiveModel {
+                id: Set(id),
+                created_at: Set(created_at),
+                ..Default::default()
+            }
+            .update(&db)
+            .await
+            .expect("set comment time");
+        }
+
+        let result = server
+            .read_comments(
+                strategy_id,
+                ReadCommentsParams {
+                    target_kind: None,
+                    target_id: None,
+                    resolved: None,
+                },
+            )
+            .await
+            .expect("read_comments without target");
+
+        assert_eq!(
+            normalize_read_comments(result),
+            ReadCommentsResult {
+                comments: vec![
+                    CommentDto {
+                        comment_id: first_open,
+                        target_kind: "note_version".into(),
+                        target_id: first_version_id,
+                        parent_id: None,
+                        body: "first open".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                    CommentDto {
+                        comment_id: second_open,
+                        target_kind: "note_version".into(),
+                        target_id: second_version_id,
+                        parent_id: None,
+                        body: "second open".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                ],
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn read_comments_supports_annotation_target(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
@@ -121,8 +225,8 @@ mod tests {
             .read_comments(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "annotation".into(),
-                    target_id: annotation_id,
+                    target_kind: Some("annotation".into()),
+                    target_id: Some(annotation_id),
                     resolved: None,
                 },
             )
@@ -162,8 +266,8 @@ mod tests {
             .read_comments(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "annotation".into(),
-                    target_id: uuid::Uuid::new_v4(),
+                    target_kind: Some("annotation".into()),
+                    target_id: Some(uuid::Uuid::new_v4()),
                     resolved: None,
                 },
             )
@@ -185,8 +289,8 @@ mod tests {
             .read_comments(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "garbage".into(),
-                    target_id: uuid::Uuid::new_v4(),
+                    target_kind: Some("garbage".into()),
+                    target_id: Some(uuid::Uuid::new_v4()),
                     resolved: None,
                 },
             )
@@ -199,6 +303,40 @@ mod tests {
                 None,
             ),
         );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn read_comments_rejects_a_partial_target(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db, "x").await;
+        let server = build_server(db);
+        let kind_only = server
+            .read_comments(
+                strategy_id,
+                ReadCommentsParams {
+                    target_kind: Some("note_version".into()),
+                    target_id: None,
+                    resolved: None,
+                },
+            )
+            .await
+            .expect_err("incomplete target expected to be rejected");
+        let id_only = server
+            .read_comments(
+                strategy_id,
+                ReadCommentsParams {
+                    target_kind: None,
+                    target_id: Some(uuid::Uuid::new_v4()),
+                    resolved: None,
+                },
+            )
+            .await
+            .expect_err("incomplete target expected to be rejected");
+
+        let expected = rmcp::ErrorData::invalid_params(
+            "target_kind and target_id must be provided together",
+            None,
+        );
+        assert_eq!((kind_only, id_only), (expected.clone(), expected));
     }
 
     #[backend_test_macros::database_test]
@@ -216,8 +354,8 @@ mod tests {
             .read_comments(
                 strategy_a,
                 ReadCommentsParams {
-                    target_kind: "note_version".into(),
-                    target_id: note_version_id,
+                    target_kind: Some("note_version".into()),
+                    target_id: Some(note_version_id),
                     resolved: None,
                 },
             )
@@ -258,8 +396,8 @@ mod tests {
             .read_comments(
                 strategy_a,
                 ReadCommentsParams {
-                    target_kind: "annotation".into(),
-                    target_id: annotation_id,
+                    target_kind: Some("annotation".into()),
+                    target_id: Some(annotation_id),
                     resolved: None,
                 },
             )
@@ -305,13 +443,76 @@ mod tests {
             )
             .await
             .expect("resolve_comment");
+        let opened_at = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset();
+        for (id, created_at) in [
+            (open, opened_at),
+            (done, opened_at + chrono::Duration::seconds(1)),
+        ] {
+            comment::ActiveModel {
+                id: Set(id),
+                created_at: Set(created_at),
+                ..Default::default()
+            }
+            .update(&db)
+            .await
+            .expect("set comment time");
+        }
+
+        let both_states = server
+            .read_comments(
+                strategy_id,
+                ReadCommentsParams {
+                    target_kind: Some("note_version".into()),
+                    target_id: Some(note_version_id),
+                    resolved: None,
+                },
+            )
+            .await
+            .expect("read_comments");
+        assert_eq!(
+            normalize_read_comments(both_states),
+            ReadCommentsResult {
+                comments: vec![
+                    CommentDto {
+                        comment_id: open,
+                        target_kind: "note_version".into(),
+                        target_id: note_version_id,
+                        parent_id: None,
+                        body: "still open".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: false,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                    CommentDto {
+                        comment_id: done,
+                        target_kind: "note_version".into(),
+                        target_id: note_version_id,
+                        parent_id: None,
+                        body: "already fixed".into(),
+                        author_kind: "human".into(),
+                        author_label: "user".into(),
+                        resolved: true,
+                        created_at: ts_sentinel(),
+                        anchor_text: None,
+                        anchor_side: None,
+                        start_line: None,
+                        end_line: None,
+                    },
+                ],
+            },
+        );
 
         let unresolved_only = server
             .read_comments(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "note_version".into(),
-                    target_id: note_version_id,
+                    target_kind: Some("note_version".into()),
+                    target_id: Some(note_version_id),
                     resolved: Some(false),
                 },
             )
@@ -342,8 +543,8 @@ mod tests {
             .read_comments(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "note_version".into(),
-                    target_id: note_version_id,
+                    target_kind: Some("note_version".into()),
+                    target_id: Some(note_version_id),
                     resolved: Some(true),
                 },
             )

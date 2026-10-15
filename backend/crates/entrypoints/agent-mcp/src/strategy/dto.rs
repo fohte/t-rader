@@ -91,7 +91,7 @@ pub struct NoteLinkDto {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
-    /// 本文が属するバージョン ID。`read_comments` の `target_id` に使う。
+    /// 本文が属するバージョン ID。`read_comments` をこのバージョンで絞り込むときに使う。
     pub version_id: Uuid,
     /// ノート内のバージョン番号。
     pub version_no: i32,
@@ -157,9 +157,9 @@ pub struct ListNotesResult {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct ReadCommentsParams {
     /// "note_version" | "annotation"
-    pub target_kind: String,
-    pub target_id: Uuid,
-    /// true/false で絞り込み。省略時は全件
+    pub target_kind: Option<String>,
+    pub target_id: Option<Uuid>,
+    /// true/false で絞り込み。target 省略時は未解決のみ
     pub resolved: Option<bool>,
 }
 

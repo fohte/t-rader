@@ -7,7 +7,8 @@ mod use_cases;
 
 pub use error::{CommentRepositoryError, CommentUseCaseError};
 pub use query::{
-    CommentListQuery, CommentReadQuery, CommentReadQueryError, SharedCommentReadQuery,
+    CommentListQuery, CommentListTarget, CommentReadQuery, CommentReadQueryError,
+    SharedCommentReadQuery,
 };
 pub use read::{CommentReadUseCaseError, CommentReadUseCases};
 pub use repository::{CommentRepository, SharedCommentRepository};

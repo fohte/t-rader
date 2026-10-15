@@ -4,8 +4,8 @@
 
 use core_application::change_history::Actor;
 use core_application::comment::{
-    CommentListQuery, CommentReadQueryError, CommentReadUseCaseError, CommentTargetKind,
-    CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand,
+    CommentListQuery, CommentListTarget, CommentReadQueryError, CommentReadUseCaseError,
+    CommentTargetKind, CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand,
 };
 use rmcp::ErrorData as McpError;
 
@@ -38,24 +38,34 @@ impl StrategyServer {
         &self,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
-        let target_kind = CommentTargetKind::parse(&params.target_kind).ok_or_else(|| {
-            let expected = CommentTargetKind::ALL.map(CommentTargetKind::as_str);
-            invalid_params(format!(
-                "invalid target_kind: {} (expected one of {expected:?})",
-                params.target_kind
-            ))
-        })?;
+        let target = match (&params.target_kind, params.target_id) {
+            (None, None) => CommentListTarget::AllNoteVersions,
+            (Some(target_kind), Some(target_id)) => {
+                let target_kind = CommentTargetKind::parse(target_kind).ok_or_else(|| {
+                    let expected = CommentTargetKind::ALL.map(CommentTargetKind::as_str);
+                    invalid_params(format!(
+                        "invalid target_kind: {} (expected one of {expected:?})",
+                        target_kind
+                    ))
+                })?;
+                CommentListTarget::Target {
+                    target_kind,
+                    target_id,
+                }
+            }
+            _ => {
+                return Err(invalid_params(
+                    "target_kind and target_id must be provided together",
+                ));
+            }
+        };
+        let resolved = params
+            .resolved
+            .or_else(|| matches!(target, CommentListTarget::AllNoteVersions).then_some(false));
         let comments = self
             .dependencies
             .comment_reads
-            .list_comments(
-                CommentListQuery {
-                    target_kind,
-                    target_id: params.target_id,
-                    resolved: params.resolved,
-                },
-                true,
-            )
+            .list_comments(CommentListQuery { target, resolved }, true)
             .await
             .map_err(comment_read_error)?;
         Ok(ReadCommentsResult {
