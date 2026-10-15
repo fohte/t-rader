@@ -335,6 +335,34 @@ mod tests {
         .expect("insert widget valuation");
     }
 
+    async fn insert_market_aggregate_fixture(db: &DatabaseHandle) {
+        insert_stock(db, "D007", "Stock Eta").await;
+        insert_stock(db, "D008", "Stock Theta").await;
+        for id in ["D007", "D008"] {
+            insert_bar(db, id, 1, 100).await;
+        }
+        insert_bar(db, "D007", 2, 110).await;
+        insert_bar(db, "D008", 2, 120).await;
+        insert_valuation(db, "D007", 1_000).await;
+        insert_valuation(db, "D008", 3_000).await;
+    }
+
+    fn market_query(
+        metric: core_application::widget::WidgetMetric,
+        period: Option<core_application::widget::WidgetPeriod>,
+        agg: WidgetAggregation,
+    ) -> WidgetQuery {
+        WidgetQuery {
+            metric,
+            period,
+            by: WidgetBy::None,
+            axis: None,
+            indicator: None,
+            universe: None,
+            agg: Some(agg),
+        }
+    }
+
     async fn insert_group_axis(db: &DatabaseHandle, key: &str, name: &str) -> Uuid {
         let id = Uuid::new_v4();
         group_axis::ActiveModel {
@@ -522,76 +550,73 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn supports_sum_count_and_market_cap_queries(db: DatabaseHandle) {
-        insert_stock(&db, "D007", "Stock Eta").await;
-        insert_stock(&db, "D008", "Stock Theta").await;
-        for id in ["D007", "D008"] {
-            insert_bar(&db, id, 1, 100).await;
-        }
-        insert_bar(&db, "D007", 2, 110).await;
-        insert_bar(&db, "D008", 2, 120).await;
-        insert_valuation(&db, "D007", 1_000).await;
-        insert_valuation(&db, "D008", 3_000).await;
-
-        let source = PostgresWidgetQuerySource::new(db);
-        let sum_query = WidgetQuery {
-            metric: WidgetMetric::Change,
-            period: Some(WidgetPeriod::OneDay),
-            by: WidgetBy::None,
-            axis: None,
-            indicator: None,
-            universe: None,
-            agg: Some(WidgetAggregation::Sum),
-        };
-        let count_query = WidgetQuery {
-            agg: Some(WidgetAggregation::Count),
-            ..sum_query.clone()
-        };
-        let market_cap_query = WidgetQuery {
-            metric: WidgetMetric::MktCap,
-            period: None,
-            agg: Some(WidgetAggregation::Sum),
-            ..sum_query
-        };
-
-        let count_result = source
-            .query(date(2), &count_query)
-            .await
-            .expect("query count of market changes");
-        let market_cap_result = source
-            .query(date(2), &market_cap_query)
-            .await
-            .expect("query total market capitalization");
-        let sum_result = source
+    async fn sums_market_change_rates(db: DatabaseHandle) {
+        insert_market_aggregate_fixture(&db).await;
+        let result = PostgresWidgetQuerySource::new(db)
             .query(
                 date(2),
-                &WidgetQuery {
-                    agg: Some(WidgetAggregation::Sum),
-                    ..count_query.clone()
-                },
+                &market_query(
+                    WidgetMetric::Change,
+                    Some(WidgetPeriod::OneDay),
+                    WidgetAggregation::Sum,
+                ),
             )
             .await
             .expect("query sum of market changes");
 
         assert_eq!(
-            (count_result, market_cap_result, sum_result),
-            (
-                vec![WidgetQueryRow {
-                    key: WidgetRowKey::Market,
-                    name: "全体".to_string(),
-                    value: Decimal::from(2),
-                }],
-                vec![WidgetQueryRow {
-                    key: WidgetRowKey::Market,
-                    name: "全体".to_string(),
-                    value: Decimal::from(4_000),
-                }],
-                vec![WidgetQueryRow {
-                    key: WidgetRowKey::Market,
-                    name: "全体".to_string(),
-                    value: Decimal::new(3, 1),
-                }],
-            ),
+            result,
+            vec![WidgetQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                value: Decimal::new(3, 1),
+            }],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn counts_stocks_with_market_change_rates(db: DatabaseHandle) {
+        insert_market_aggregate_fixture(&db).await;
+        let result = PostgresWidgetQuerySource::new(db)
+            .query(
+                date(2),
+                &market_query(
+                    WidgetMetric::Change,
+                    Some(WidgetPeriod::OneDay),
+                    WidgetAggregation::Count,
+                ),
+            )
+            .await
+            .expect("query count of market changes");
+
+        assert_eq!(
+            result,
+            vec![WidgetQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                value: Decimal::from(2),
+            }],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn sums_market_capitalizations(db: DatabaseHandle) {
+        insert_market_aggregate_fixture(&db).await;
+        let result = PostgresWidgetQuerySource::new(db)
+            .query(
+                date(2),
+                &market_query(WidgetMetric::MktCap, None, WidgetAggregation::Sum),
+            )
+            .await
+            .expect("query total market capitalization");
+
+        assert_eq!(
+            result,
+            vec![WidgetQueryRow {
+                key: WidgetRowKey::Market,
+                name: "全体".to_string(),
+                value: Decimal::from(4_000),
+            }],
         );
     }
 
