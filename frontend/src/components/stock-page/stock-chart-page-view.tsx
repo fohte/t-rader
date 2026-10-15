@@ -243,9 +243,6 @@ export function StockChartPageView({
                 isDeleting={isDeletingAnnotation}
                 deleteError={annotationDeleteError}
                 className="min-h-0 flex-1 sm:h-0"
-                style={
-                  pendingHorizontalLine == null ? chartHeightStyle : undefined
-                }
                 onSelectAnnotation={onSelectAnnotation}
                 onDeleteAnnotation={onDeleteAnnotation}
               />
