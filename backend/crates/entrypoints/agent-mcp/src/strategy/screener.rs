@@ -13,6 +13,7 @@ impl StrategyServer {
         &self,
         params: ScreenStocksParams,
     ) -> Result<ScreenStocksResult, McpError> {
+        let default_query = ScreenerQuery::default();
         let query = ScreenerQuery {
             filters: ScreenerFilters {
                 markets: params.markets.unwrap_or_default(),
@@ -39,10 +40,16 @@ impl StrategyServer {
                 ),
             },
             sort: ScreenerSort {
-                field: params.sort_by.map(Into::into).unwrap_or_default(),
-                direction: params.sort_order.map(Into::into).unwrap_or_default(),
+                field: params
+                    .sort_by
+                    .map(Into::into)
+                    .unwrap_or(default_query.sort.field),
+                direction: params
+                    .sort_order
+                    .map(Into::into)
+                    .unwrap_or(default_query.sort.direction),
             },
-            page: params.page.unwrap_or(1),
+            page: params.page.unwrap_or(default_query.page),
         };
 
         let page = self

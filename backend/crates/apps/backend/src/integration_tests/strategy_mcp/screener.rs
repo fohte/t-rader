@@ -235,23 +235,9 @@ async fn screen_stocks_uses_screener_filters_and_preserves_missing_values(
         .invoke::<_, Value>("screen_stocks", strategy_id, json!({}), None, None)
         .await
         .map(|result| result.as_json().clone());
-    let reversed_range = server
-        .invoke::<_, Value>(
-            "screen_stocks",
-            strategy_id,
-            json!({"min_per": 12, "max_per": 8}),
-            None,
-            None,
-        )
-        .await
-        .map(|_| ());
-    let zero_page = server
-        .invoke::<_, Value>("screen_stocks", strategy_id, json!({"page": 0}), None, None)
-        .await
-        .map(|_| ());
 
     assert_eq!(
-        (filtered, unfiltered, reversed_range, zero_page),
+        (filtered, unfiltered),
         (
             Ok(json!({
                 "items": [
@@ -339,6 +325,33 @@ async fn screen_stocks_uses_screener_filters_and_preserves_missing_values(
                 "as_of": "2098-01-03",
                 "page": 1,
             })),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn screen_stocks_rejects_invalid_ranges_and_page(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "Demo strategy").await;
+    let server: StrategyServer = build_server(db);
+
+    let reversed_range = server
+        .invoke::<_, Value>(
+            "screen_stocks",
+            strategy_id,
+            json!({"min_per": 12, "max_per": 8}),
+            None,
+            None,
+        )
+        .await
+        .map(|_| ());
+    let zero_page = server
+        .invoke::<_, Value>("screen_stocks", strategy_id, json!({"page": 0}), None, None)
+        .await
+        .map(|_| ());
+
+    assert_eq!(
+        (reversed_range, zero_page),
+        (
             Err(rmcp::ErrorData::invalid_params(
                 "per minimum must be less than or equal to maximum",
                 None,
