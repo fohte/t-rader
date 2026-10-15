@@ -17,12 +17,12 @@
 
 ## Constraints
 
-| Name                          | Type        | Definition                                                             |
-| ----------------------------- | ----------- | ---------------------------------------------------------------------- |
-| event_chain_depth_check       | CHECK       | CHECK ((chain_depth >= 0))                                             |
-| event_event_type_format_check | CHECK       | CHECK ((event_type ~ '^[a-z][a-z0-9_]_([.][a-z][a-z0-9\_]_)+$'::text)) |
-| event_payload_object_check    | CHECK       | CHECK ((jsonb_typeof(payload) = 'object'::text))                       |
-| event_pkey                    | PRIMARY KEY | PRIMARY KEY (event_id)                                                 |
+| Name                          | Type        | Definition                                                                  |
+| ----------------------------- | ----------- | --------------------------------------------------------------------------- |
+| event_chain_depth_check       | CHECK       | CHECK ((chain_depth >= 0))                                                  |
+| event_event_type_format_check | CHECK       | CHECK ((event_type ~ '^[a-z][a-z0-9_]{0,}([.][a-z][a-z0-9_]{0,})+$'::text)) |
+| event_payload_object_check    | CHECK       | CHECK ((jsonb_typeof(payload) = 'object'::text))                            |
+| event_pkey                    | PRIMARY KEY | PRIMARY KEY (event_id)                                                      |
 
 ## Indexes
 

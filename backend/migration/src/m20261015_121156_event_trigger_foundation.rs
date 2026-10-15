@@ -1,5 +1,6 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[derive(DeriveIden)]
@@ -31,12 +32,6 @@ enum StrategyTask {
     TaskId,
 }
 
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261015_121156_event_trigger_foundation"
-    }
-}
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -56,7 +51,7 @@ impl MigrationTrait for Migration {
                  ALTER TABLE \"trigger\" ADD CONSTRAINT trigger_kind_shape_check CHECK (\
                     (kind = 'cron' AND schedule IS NOT NULL AND hook_slug IS NULL AND event_type IS NULL) \
                     OR (kind = 'hook' AND hook_slug IS NOT NULL AND schedule IS NULL AND event_type IS NULL) \
-                    OR (kind = 'event' AND event_type ~ '^[a-z][a-z0-9_]*([.][a-z][a-z0-9_]*)+$' AND schedule IS NULL AND hook_slug IS NULL)\
+                    OR (kind = 'event' AND event_type IS NOT NULL AND event_type ~ '^[a-z][a-z0-9_]{0,}([.][a-z][a-z0-9_]{0,})+$' AND schedule IS NULL AND hook_slug IS NULL)\
                  )",
             )
             .await?;
@@ -95,7 +90,7 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute_unprepared(
                 "ALTER TABLE event ADD CONSTRAINT event_event_type_format_check \
-                    CHECK (event_type ~ '^[a-z][a-z0-9_]*([.][a-z][a-z0-9_]*)+$'); \
+                    CHECK (event_type ~ '^[a-z][a-z0-9_]{0,}([.][a-z][a-z0-9_]{0,})+$'); \
                  ALTER TABLE event ADD CONSTRAINT event_payload_object_check \
                     CHECK (jsonb_typeof(payload) = 'object'); \
                  ALTER TABLE event ADD CONSTRAINT event_chain_depth_check CHECK (chain_depth >= 0)",

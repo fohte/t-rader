@@ -30,57 +30,35 @@ pub(super) fn validate_create(
         .map(str::to_string);
     let event_type = normalize_event_type(command.event_type.as_deref())?;
     validate_business_days_only(command.business_days_only.unwrap_or(false), &command.kind)?;
-    match command.kind {
-        TriggerKind::Cron => {
-            if schedule.as_deref().is_none_or(str::is_empty) {
-                return Err(TriggerUseCaseError::Validation(
-                    "schedule is required for kind=cron".into(),
-                ));
-            }
-            if hook_slug.is_some() {
-                return Err(TriggerUseCaseError::Validation(
-                    "hook_slug must be omitted for kind=cron".into(),
-                ));
-            }
-            if event_type.is_some() {
-                return Err(TriggerUseCaseError::Validation(
-                    "event_type must be omitted for kind=cron".into(),
-                ));
-            }
-        }
-        TriggerKind::Hook => {
-            if hook_slug.as_deref().is_none_or(str::is_empty) {
-                return Err(TriggerUseCaseError::Validation(
-                    "hook_slug is required for kind=hook".into(),
-                ));
-            }
-            if command.schedule.is_some() {
-                return Err(TriggerUseCaseError::Validation(
-                    "schedule must be omitted for kind=hook".into(),
-                ));
-            }
-            if event_type.is_some() {
-                return Err(TriggerUseCaseError::Validation(
-                    "event_type must be omitted for kind=hook".into(),
-                ));
-            }
-        }
-        TriggerKind::Event => {
-            if event_type.is_none() {
-                return Err(TriggerUseCaseError::Validation(
-                    "event_type is required for kind=event".into(),
-                ));
-            }
-            if schedule.is_some() {
-                return Err(TriggerUseCaseError::Validation(
-                    "schedule must be omitted for kind=event".into(),
-                ));
-            }
-            if hook_slug.is_some() {
-                return Err(TriggerUseCaseError::Validation(
-                    "hook_slug must be omitted for kind=event".into(),
-                ));
-            }
+    let required_field = match command.kind {
+        TriggerKind::Cron => "schedule",
+        TriggerKind::Hook => "hook_slug",
+        TriggerKind::Event => "event_type",
+    };
+    let required_value = match command.kind {
+        TriggerKind::Cron => &schedule,
+        TriggerKind::Hook => &hook_slug,
+        TriggerKind::Event => &event_type,
+    };
+    if required_value
+        .as_deref()
+        .is_none_or(|value| value.is_empty())
+    {
+        return Err(TriggerUseCaseError::Validation(format!(
+            "{required_field} is required for kind={}",
+            command.kind.as_str(),
+        )));
+    }
+    for (name, value) in [
+        ("schedule", &schedule),
+        ("hook_slug", &hook_slug),
+        ("event_type", &event_type),
+    ] {
+        if name != required_field && value.is_some() {
+            return Err(TriggerUseCaseError::Validation(format!(
+                "{name} must be omitted for kind={}",
+                command.kind.as_str(),
+            )));
         }
     }
     let prompt_template = validate_template(&command.prompt_template)?;

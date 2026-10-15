@@ -13,7 +13,6 @@ pub struct TriggerResponse {
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub event_type: Option<String>,
     #[schema(value_type = Option<HashMap<String, serde_json::Value>>)]
     pub event_match: Option<HashMap<String, serde_json::Value>>,
@@ -74,7 +73,7 @@ pub struct CreateTriggerRequest {
     /// kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子)
     pub hook_slug: Option<String>,
     /// kind=event 時に必須 (小文字のドット区切り識別子)
-    #[schema(pattern = r"^[a-z][a-z0-9_]*([.][a-z][a-z0-9_]*)+$")]
+    #[schema(pattern = r"^[a-z][a-z0-9_]{0,}([.][a-z][a-z0-9_]{0,})+$")]
     pub event_type: Option<String>,
     pub event_match: Option<serde_json::Value>,
     #[schema(min_length = 1, pattern = r"\S")]

@@ -9869,7 +9869,7 @@
               "null"
             ],
             "description": "kind=event 時に必須 (小文字のドット区切り識別子)",
-            "pattern": "^[a-z][a-z0-9_]*([.][a-z][a-z0-9_]*)+$"
+            "pattern": "^[a-z][a-z0-9_]{0,}([.][a-z][a-z0-9_]{0,})+$"
           },
           "hook_slug": {
             "type": [
