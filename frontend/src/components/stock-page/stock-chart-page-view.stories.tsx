@@ -81,6 +81,16 @@ const meta = {
     onPlaceHorizontalLine: () => undefined,
     onSaveHorizontalLine: () => undefined,
     onCancelHorizontalLine: () => undefined,
+    trendLineDrawingEnabled: false,
+    pendingTrendLineStart: null,
+    pendingTrendLinePreviewPoint: null,
+    pendingTrendLine: null,
+    isSavingTrendLine: false,
+    trendLineSaveError: null,
+    onToggleTrendLineDrawing: () => undefined,
+    onPlaceTrendLinePoint: () => undefined,
+    onSaveTrendLine: () => undefined,
+    onCancelTrendLine: () => undefined,
     isDeletingAnnotation: false,
     annotationDeleteError: null,
     onDeleteAnnotation: () => undefined,
@@ -123,6 +133,26 @@ export const DrawingHorizontalLine: Story = {
   args: { horizontalLineDrawingEnabled: true },
 }
 
+export const DrawingTrendLine: Story = {
+  name: 'トレンドラインツールを選び、2 点の配置を待つ。',
+  args: { trendLineDrawingEnabled: true },
+}
+
+export const PreviewingTrendLine: Story = {
+  name: '始点を置き、カーソル位置までの線を確認する。',
+  args: {
+    trendLineDrawingEnabled: true,
+    pendingTrendLineStart: {
+      timestamp: '2030-04-01T06:00:00Z',
+      price: 3390,
+    },
+    pendingTrendLinePreviewPoint: {
+      timestamp: '2030-04-02T06:00:00Z',
+      price: 3120,
+    },
+  },
+}
+
 export const EditingHorizontalLine: Story = {
   name: '置いた水平線の種別キーとメモを入力する。',
   args: {
@@ -142,6 +172,16 @@ export const EditingHorizontalLine: Story = {
     pendingHorizontalLine: {
       timestamp: '2030-04-02T06:00:00Z',
       price: 3140,
+    },
+  },
+}
+
+export const EditingTrendLine: Story = {
+  name: '置いたトレンドラインの種別キーとメモを入力する。',
+  args: {
+    pendingTrendLine: {
+      start: { timestamp: '2030-04-01T06:00:00Z', price: 3390 },
+      end: { timestamp: '2030-04-02T06:00:00Z', price: 3120 },
     },
   },
 }

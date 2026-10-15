@@ -230,6 +230,30 @@ type Story = StoryObj<typeof meta>
 
 const dateHighlightedBars = generateSampleBars(30)
 const dateHighlightedTimestamp = dateHighlightedBars[14]?.timestamp ?? ''
+const trendLineBars = generateSampleBars(30)
+const trendLineStartBar = trendLineBars[5]
+const trendLineEndBar = trendLineBars[18]
+const trendLineAnnotation: ChartAnnotation = {
+  id: 'annotation-trendline',
+  target_kind: 'sample-kind',
+  created_by_kind: 'human',
+  status: 'approved',
+  timestamp_start: trendLineStartBar?.timestamp ?? '',
+  price_start: trendLineStartBar?.high ?? 0,
+  timestamp: trendLineEndBar?.timestamp ?? '',
+  price: trendLineEndBar?.low ?? 0,
+  text: '架空の上値抵抗を記録するサンプル注釈です。',
+}
+const weeklyTrendLineBars = trendLineBars.slice(0, 5).map((bar, index) => ({
+  ...bar,
+  timeframe: '1w' as const,
+  timestamp: new Date(Date.UTC(2030, 3, 1 + index * 7)).toISOString(),
+}))
+const weeklyTrendLineAnnotation: ChartAnnotation = {
+  ...trendLineAnnotation,
+  timestamp_start: '2030-04-09T06:00:00Z',
+  timestamp: '2030-04-10T06:00:00Z',
+}
 
 export const Default: Story = {
   name: 'shows a candlestick chart with a full price history.',
@@ -395,6 +419,43 @@ export const SelectedPeriodWithoutPrice: Story = {
     annotations: [periodAnnotationWithoutPrice],
     selectedAnnotationId: periodAnnotationWithoutPrice.id,
     onSelectAnnotation: () => undefined,
+    className: 'h-full w-full',
+  },
+}
+
+export const WithHumanTrendLine: Story = {
+  name: '常時表示する自分のトレンドラインを描く。',
+  args: {
+    bars: trendLineBars,
+    annotations: [trendLineAnnotation],
+    selectedAnnotationId: null,
+    onSelectAnnotation: () => undefined,
+    className: 'h-full w-full',
+  },
+}
+
+export const PreviewingTrendLine: Story = {
+  name: '始点からカーソル位置まで未保存のトレンドラインを描く。',
+  args: {
+    bars: trendLineBars,
+    trendLineDrawingEnabled: true,
+    pendingTrendLineStart: {
+      timestamp: trendLineStartBar?.timestamp ?? '',
+      price: trendLineStartBar?.high ?? 0,
+    },
+    pendingTrendLinePreviewPoint: {
+      timestamp: trendLineEndBar?.timestamp ?? '',
+      price: trendLineEndBar?.low ?? 0,
+    },
+    className: 'h-full w-full',
+  },
+}
+
+export const WithCollapsedWeeklyTrendLine: Story = {
+  name: 'shows a band marker when both endpoints share one weekly bar.',
+  args: {
+    bars: weeklyTrendLineBars,
+    annotations: [weeklyTrendLineAnnotation],
     className: 'h-full w-full',
   },
 }

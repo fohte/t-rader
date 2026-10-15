@@ -4,14 +4,19 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { StockChartPageView } from '#components/stock-page/stock-chart-page-view'
 import { type Timeframe } from '#components/timeframe-selector'
-import type {
-  ChartAnnotation,
-  HorizontalLineAnnotationDraft,
-  HorizontalLinePoint,
+import {
+  addTrendLinePoint,
+  type ChartAnnotation,
+  type HorizontalLineAnnotationDraft,
+  type HorizontalLinePoint,
+  type TrendLineAnnotationDraft,
+  type TrendLineDrawingProgress,
+  type TrendLinePoint,
 } from '#lib/annotation-chart-utils'
 import {
   deleteChartAnnotation,
   saveHorizontalLineAnnotation,
+  saveTrendLineAnnotation,
 } from '#lib/annotation-mutation-utils'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
@@ -35,6 +40,10 @@ interface HorizontalLineDrawingState {
   pending: HorizontalLinePoint | null
 }
 
+interface TrendLineDrawingState extends TrendLineDrawingProgress {
+  stockId: string
+}
+
 function StockChartPage() {
   const { stockId } = Route.useParams()
   const [timeframe, setTimeframe] = useState<Timeframe>('1d')
@@ -51,6 +60,17 @@ function StockChartPage() {
   const [horizontalLineSaveError, setHorizontalLineSaveError] = useState<
     string | null
   >(null)
+  const [trendLineState, setTrendLineState] = useState<TrendLineDrawingState>(
+    () => ({
+      stockId,
+      enabled: false,
+      start: null,
+      pending: null,
+    }),
+  )
+  const [trendLineSaveError, setTrendLineSaveError] = useState<string | null>(
+    null,
+  )
   const [annotationDeleteError, setAnnotationDeleteError] = useState<
     string | null
   >(null)
@@ -95,6 +115,15 @@ function StockChartPage() {
   const pendingHorizontalLine = isCurrentDrawingStock
     ? horizontalLineState.pending
     : null
+  const isCurrentTrendLineStock = trendLineState.stockId === stockId
+  const trendLineDrawingEnabled =
+    isCurrentTrendLineStock && trendLineState.enabled
+  const pendingTrendLineStart = isCurrentTrendLineStock
+    ? trendLineState.start
+    : null
+  const pendingTrendLine = isCurrentTrendLineStock
+    ? trendLineState.pending
+    : null
   const { data: stock } = $api.useQuery('get', '/api/refs/stocks/{id}', {
     params: { path: { id: stockId } },
   })
@@ -121,10 +150,13 @@ function StockChartPage() {
             ? { ...current, enabled: false, pending: null }
             : current,
         )
+        setTrendLineState((current) =>
+          current.stockId === stockId
+            ? { ...current, enabled: false, start: null, pending: null }
+            : current,
+        )
         setHorizontalLineSaveError(null)
-      },
-      onError: () => {
-        setHorizontalLineSaveError('水平線の保存に失敗しました')
+        setTrendLineSaveError(null)
       },
     },
   )
@@ -150,6 +182,8 @@ function StockChartPage() {
 
   function toggleHorizontalLineDrawing() {
     setHorizontalLineSaveError(null)
+    setTrendLineSaveError(null)
+    setTrendLineState({ stockId, enabled: false, start: null, pending: null })
     setHorizontalLineState((current) => ({
       stockId,
       enabled: current.stockId === stockId ? !current.enabled : true,
@@ -167,11 +201,62 @@ function StockChartPage() {
     setHorizontalLineSaveError(null)
   }
 
+  function toggleTrendLineDrawing() {
+    setHorizontalLineState({ stockId, enabled: false, pending: null })
+    setHorizontalLineSaveError(null)
+    setTrendLineSaveError(null)
+    setTrendLineState((current) => {
+      const enabled = current.stockId === stockId ? !current.enabled : true
+      return {
+        stockId,
+        enabled,
+        start: enabled && current.stockId === stockId ? current.start : null,
+        pending: null,
+      }
+    })
+  }
+
+  function placeTrendLinePoint(point: TrendLinePoint) {
+    setTrendLineState((current) =>
+      current.stockId === stockId
+        ? { ...addTrendLinePoint(current, point), stockId }
+        : current,
+    )
+    setTrendLineSaveError(null)
+  }
+
+  function cancelTrendLine() {
+    setTrendLineState({ stockId, enabled: false, start: null, pending: null })
+    setTrendLineSaveError(null)
+  }
+
   function saveHorizontalLine(draft: HorizontalLineAnnotationDraft) {
     if (createAnnotationMutation.isPending) return
 
     saveHorizontalLineAnnotation(
-      createAnnotationMutation.mutate,
+      (variables) => {
+        createAnnotationMutation.mutate(variables, {
+          onError: () => {
+            setHorizontalLineSaveError('水平線の保存に失敗しました')
+          },
+        })
+      },
+      stockId,
+      draft,
+    )
+  }
+
+  function saveTrendLine(draft: TrendLineAnnotationDraft) {
+    if (createAnnotationMutation.isPending) return
+
+    saveTrendLineAnnotation(
+      (variables) => {
+        createAnnotationMutation.mutate(variables, {
+          onError: () => {
+            setTrendLineSaveError('トレンドラインの保存に失敗しました')
+          },
+        })
+      },
       stockId,
       draft,
     )
@@ -207,6 +292,15 @@ function StockChartPage() {
       onPlaceHorizontalLine={placeHorizontalLine}
       onSaveHorizontalLine={saveHorizontalLine}
       onCancelHorizontalLine={cancelHorizontalLine}
+      trendLineDrawingEnabled={trendLineDrawingEnabled}
+      pendingTrendLineStart={pendingTrendLineStart}
+      pendingTrendLine={pendingTrendLine}
+      isSavingTrendLine={createAnnotationMutation.isPending}
+      trendLineSaveError={trendLineSaveError}
+      onToggleTrendLineDrawing={toggleTrendLineDrawing}
+      onPlaceTrendLinePoint={placeTrendLinePoint}
+      onSaveTrendLine={saveTrendLine}
+      onCancelTrendLine={cancelTrendLine}
       isDeletingAnnotation={deleteAnnotationMutation.isPending}
       annotationDeleteError={annotationDeleteError}
       onDeleteAnnotation={deleteAnnotation}

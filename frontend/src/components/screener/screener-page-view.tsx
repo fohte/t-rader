@@ -3,6 +3,11 @@ import { ChevronDown, SlidersHorizontal, X } from 'lucide-react'
 import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
 
 import {
+  type SaveDialogState,
+  type SavedScreenDialogState,
+  SavedScreensControlView,
+} from '#components/screener/saved-screens-control-view'
+import {
   type ScreenerResultsStatus,
   ScreenerResultsView,
 } from '#components/screener/screener-results-view'
@@ -10,6 +15,8 @@ import type { components } from '#lib/api/schema.gen'
 import {
   countActiveScreenerFilters,
   getScreenerRangeError,
+  type SavedScreen,
+  savedScreenHasSearchChanges,
   SCREENER_MARKETS,
   SCREENER_RANGE_FIELDS,
   type ScreenerMarket,
@@ -79,11 +86,23 @@ export function ScreenerPageView({
   loadingMore = false,
   loadMoreError = false,
   mobileFiltersOpen: mobileFiltersInitiallyOpen = false,
+  savedScreens = [],
+  savedScreensPending = false,
+  savedScreensError = false,
+  savedScreensMenuOpen: savedScreensMenuInitiallyOpen = false,
+  savedScreenDialog = null,
+  savedScreenMutationPending = false,
+  savedScreenMutationError,
   onApplyFilters,
   onSort,
   onSortOrder,
   onLoadMore,
   onRetryLoadMore,
+  onSelectSavedScreen = () => {},
+  onSavedScreenDialogChange = () => {},
+  onSaveSavedScreen = () => {},
+  onOverwriteSavedScreen = () => {},
+  onDeleteSavedScreen = () => {},
 }: {
   search: ScreenerSearch
   data: ScreenerResponse | undefined
@@ -96,18 +115,43 @@ export function ScreenerPageView({
   loadingMore?: boolean
   loadMoreError?: boolean
   mobileFiltersOpen?: boolean
+  savedScreens?: SavedScreen[]
+  savedScreensPending?: boolean
+  savedScreensError?: boolean
+  savedScreensMenuOpen?: boolean
+  savedScreenDialog?: SavedScreenDialogState | null
+  savedScreenMutationPending?: boolean
+  savedScreenMutationError?: string
   onApplyFilters: (filters: ScreenerSearch) => void
   onSort: (field: ScreenerSortBy) => void
   onSortOrder: (order: ScreenerSortOrder) => void
   onLoadMore: () => void
   onRetryLoadMore: () => void
+  onSelectSavedScreen?: (savedScreen: SavedScreen) => void
+  onSavedScreenDialogChange?: (dialog: SavedScreenDialogState | null) => void
+  onSaveSavedScreen?: (
+    name: string,
+    dialog: SaveDialogState,
+    filters: ScreenerSearch,
+  ) => void
+  onOverwriteSavedScreen?: (filters: ScreenerSearch) => void
+  onDeleteSavedScreen?: (savedScreen: SavedScreen) => void
 }) {
   const [draft, setDraft] = useState(() => createDraft(search))
   const [validationError, setValidationError] = useState<string>()
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(
     mobileFiltersInitiallyOpen,
   )
+  const [savedScreensMenuOpen, setSavedScreensMenuOpen] = useState(
+    savedScreensMenuInitiallyOpen,
+  )
   const conditionCount = countActiveScreenerFilters(search)
+  const selectedSavedScreen = savedScreens.find(
+    (savedScreen) => savedScreen.id === search.screen,
+  )
+  const selectedScreenHasChanges =
+    selectedSavedScreen != null &&
+    savedScreenHasSearchChanges(selectedSavedScreen, search)
   const appliedFilterKey = JSON.stringify(createDraft(search))
   const previousAppliedFilterKey = useRef(appliedFilterKey)
 
@@ -303,27 +347,53 @@ export function ScreenerPageView({
             条件を組み合わせて銘柄を探す
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setMobileFiltersOpen(true)
-          }}
-          className="inline-flex items-center gap-2 border border-border bg-card px-3 py-2 text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground md:hidden"
-        >
-          <SlidersHorizontal aria-hidden="true" className="size-3.5" />
-          条件 ({conditionCount})
-          <ChevronDown aria-hidden="true" className="size-3.5" />
-        </button>
       </header>
 
       <form
         onSubmit={applyDraft}
-        className="mb-4 hidden border border-border bg-card p-3 md:block md:p-4"
+        className="mb-4 border-0 bg-transparent p-0 md:border md:border-border md:bg-card md:p-4"
       >
-        <h2 className="mb-3 border-b border-border pb-2 font-semibold tracking-wide">
-          <span className="mr-1 text-primary">&gt;</span>条件
-        </h2>
-        {renderFilterFields('desktop')}
+        <div className="mb-3 flex items-center justify-between gap-2 border-b border-border pb-2 md:mb-3">
+          <h2 className="hidden font-semibold tracking-wide md:block">
+            <span className="mr-1 text-primary">&gt;</span>条件
+          </h2>
+          <div className="flex min-w-0 flex-1 items-center justify-between gap-2 md:flex-none md:justify-end">
+            <SavedScreensControlView
+              savedScreens={savedScreens}
+              selectedScreen={selectedSavedScreen}
+              selectedScreenId={search.screen}
+              selectedScreenHasChanges={selectedScreenHasChanges}
+              menuOpen={savedScreensMenuOpen}
+              dialog={savedScreenDialog}
+              isPending={savedScreenMutationPending}
+              error={savedScreenMutationError}
+              savedScreensPending={savedScreensPending}
+              listError={savedScreensError}
+              onMenuOpenChange={setSavedScreensMenuOpen}
+              onDialogChange={onSavedScreenDialogChange}
+              onSelect={onSelectSavedScreen}
+              onSave={(name, dialog) => {
+                onSaveSavedScreen(name, dialog, readDraft(draft))
+              }}
+              onOverwrite={() => {
+                onOverwriteSavedScreen(readDraft(draft))
+              }}
+              onDelete={onDeleteSavedScreen}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setMobileFiltersOpen(true)
+              }}
+              className="inline-flex shrink-0 items-center gap-2 border border-border bg-card px-3 py-2 text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground md:hidden"
+            >
+              <SlidersHorizontal aria-hidden="true" className="size-3.5" />
+              条件 ({conditionCount})
+              <ChevronDown aria-hidden="true" className="size-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="hidden md:block">{renderFilterFields('desktop')}</div>
       </form>
       <ScreenerResultsView
         search={search}
