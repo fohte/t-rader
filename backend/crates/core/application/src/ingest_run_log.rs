@@ -19,7 +19,7 @@ pub trait IngestRunRepository: Send + Sync {
         status: &str,
         stats: Option<Value>,
         error: Option<String>,
-    ) -> Result<String, PersistenceError>;
+    ) -> Result<Option<String>, PersistenceError>;
 
     async fn fail_interrupted_before(
         &self,
@@ -99,6 +99,13 @@ impl IngestRunLogUseCases {
             .repository
             .finish(&transaction, run_id, status, stats.clone(), error.clone())
             .await?;
+        let Some(job) = job else {
+            self.unit_of_work
+                .commit(transaction)
+                .await
+                .map_err(|error| PersistenceError::Database(error.to_string()))?;
+            return Ok(());
+        };
         self.event_repository
             .create(
                 &transaction,

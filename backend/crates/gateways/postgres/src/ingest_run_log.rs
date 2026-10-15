@@ -3,7 +3,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use core_application::ingest_run_log::IngestRunRepository;
 use core_application::persistence::PersistenceError;
 use core_application::unit_of_work::UnitOfWorkTransaction;
-use sea_orm::ActiveValue::{Set, Unchanged};
+use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
@@ -45,7 +45,7 @@ impl IngestRunRepository for PostgresIngestRunRepository {
         status: &str,
         stats: Option<Value>,
         error: Option<String>,
-    ) -> Result<String, PersistenceError> {
+    ) -> Result<Option<String>, PersistenceError> {
         let connection = transaction_ref(transaction).ok_or_else(|| {
             PersistenceError::Database("transaction has an unexpected type".to_owned())
         })?;
@@ -56,18 +56,20 @@ impl IngestRunRepository for PostgresIngestRunRepository {
             .ok_or_else(|| {
                 PersistenceError::RecordNotUpdated(format!("ingest run {run_id} was not found"))
             })?;
-        ingest_run::Entity::update(ingest_run::ActiveModel {
-            id: Unchanged(run_id),
-            finished_at: Set(Some(Utc::now().fixed_offset())),
-            status: Set(status.to_owned()),
-            stats: Set(stats.clone()),
-            error: Set(error.clone()),
-            ..Default::default()
-        })
-        .exec(connection)
-        .await
-        .map_err(persistence_error)?;
-        Ok(run.job)
+        let result = ingest_run::Entity::update_many()
+            .set(ingest_run::ActiveModel {
+                finished_at: Set(Some(Utc::now().fixed_offset())),
+                status: Set(status.to_owned()),
+                stats: Set(stats),
+                error: Set(error),
+                ..Default::default()
+            })
+            .filter(ingest_run::Column::Id.eq(run_id))
+            .filter(ingest_run::Column::Status.eq("running"))
+            .exec(connection)
+            .await
+            .map_err(persistence_error)?;
+        Ok((result.rows_affected == 1).then_some(run.job))
     }
 
     async fn fail_interrupted_before(
@@ -516,6 +518,51 @@ mod tests {
                     committed: true,
                     event_count: 1,
                 }],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn finish_does_not_emit_an_event_for_a_run_failed_by_interrupted_recovery(
+        db: DatabaseHandle,
+    ) {
+        let (log, dispatch_observations) = log(db.clone());
+        let run_id = log.start("sample_ingest").await.expect("start run");
+        let started_at = row(&db, run_id).await.started_at;
+        let cutoff =
+            truncate_to_postgres_precision((Utc::now() + Duration::minutes(5)).fixed_offset());
+        let recovered = log
+            .fail_interrupted_before("sample_ingest", cutoff)
+            .await
+            .expect("recover interrupted run");
+
+        log.finish(run_id, Ok(json!({ "rows": 3 })))
+            .await
+            .expect("ignore finish for an already failed run");
+
+        let run = row(&db, run_id).await;
+        let events = events(&db).await;
+
+        assert_eq!(
+            (
+                recovered,
+                normalize_finished_at(run),
+                normalize_events(events),
+                read_dispatch_observations(&dispatch_observations),
+            ),
+            (
+                1,
+                ingest_run::Model {
+                    id: run_id,
+                    job: "sample_ingest".to_owned(),
+                    started_at,
+                    finished_at: Some(epoch()),
+                    status: "failed".to_owned(),
+                    stats: None,
+                    error: Some("interrupted".to_owned()),
+                },
+                Vec::new(),
+                Vec::new(),
             ),
         );
     }
