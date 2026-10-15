@@ -14,6 +14,10 @@ import {
 } from '#lib/note-change-reference'
 import { parseNotePriceReference } from '#lib/note-price-reference'
 import { REF_PREFIX_RE } from '#lib/note-utils'
+import {
+  parseNoteIndicatorObservationReference,
+  parseNoteValuationReference,
+} from '#lib/note-valuation-indicator-reference'
 
 const TOKEN_RE = /\[\[([^\]]+)\]\]/g
 const ANNO_RE = /^anno:([A-Za-z0-9][\w-]*)$/
@@ -187,18 +191,35 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
           })
         }
 
-        // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
-        if (
-          inner.startsWith('valuation:') ||
-          (inner.startsWith('indicator:') && inner.includes('@'))
-        ) {
+        if (inner.startsWith('valuation:')) {
+          const reference = parseNoteValuationReference(token)
+          if (reference == null) return false
           const value = resolvedPriceReferenceValue(
             resolvedPriceReferences,
             token,
           )
           return value == null
             ? false
-            : noteToken('note-price-reference', { value: String(value) })
+            : noteToken('note-valuation-reference', {
+                ...reference,
+                value: String(value),
+              })
+        }
+
+        // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
+        if (inner.startsWith('indicator:') && inner.includes('@')) {
+          const reference = parseNoteIndicatorObservationReference(token)
+          if (reference == null) return false
+          const value = resolvedPriceReferenceValue(
+            resolvedPriceReferences,
+            token,
+          )
+          return value == null
+            ? false
+            : noteToken('note-indicator-reference', {
+                ...reference,
+                value: String(value),
+              })
         }
 
         const priceReferenceValue = inner.startsWith('price:')

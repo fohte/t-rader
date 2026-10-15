@@ -9,7 +9,9 @@ import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
 import { ChangeReferenceFigure } from '#components/note-detail/change-reference-figure'
 import {
   NoteChangeReference,
+  NoteIndicatorObservationReference,
   NotePriceReference,
+  NoteValuationReference,
 } from '#components/note-detail/note-evidence-reference'
 import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { RefChip } from '#components/strategy-shell/ref-chip'
@@ -17,6 +19,10 @@ import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import type { components } from '#lib/api/schema.gen'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
 import type { ParsedNotePriceReference } from '#lib/note-price-reference'
+import type {
+  ParsedNoteIndicatorObservationReference,
+  ParsedNoteValuationReference,
+} from '#lib/note-valuation-indicator-reference'
 
 type ApiGraphDef = components['schemas']['GraphDef']
 type NoteLinkItem = components['schemas']['NoteLinkItem']
@@ -38,6 +44,12 @@ type NoteTokenComponents = {
   'note-link': ComponentType<{ noteId: string; token: string }>
   'note-price-reference': ComponentType<
     ParsedNotePriceReference & { value: string }
+  >
+  'note-valuation-reference': ComponentType<
+    ParsedNoteValuationReference & { value: string }
+  >
+  'note-indicator-reference': ComponentType<
+    ParsedNoteIndicatorObservationReference & { value: string }
   >
   'note-change-reference': ComponentType<
     ParsedNoteChangeReference & { token: string; value?: string }
@@ -249,6 +261,12 @@ export function MarkdownBody({
     ),
     'note-price-reference': (reference) => (
       <NotePriceReference {...reference} />
+    ),
+    'note-valuation-reference': (reference) => (
+      <NoteValuationReference {...reference} />
+    ),
+    'note-indicator-reference': (reference) => (
+      <NoteIndicatorObservationReference {...reference} />
     ),
     'note-change-reference': (reference) => (
       <NoteChangeReference {...reference} />

@@ -11,6 +11,10 @@ import {
 } from '#lib/note-change-evidence'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
 import type { ParsedNotePriceReference } from '#lib/note-price-reference'
+import type {
+  ParsedNoteIndicatorObservationReference,
+  ParsedNoteValuationReference,
+} from '#lib/note-valuation-indicator-reference'
 
 interface ResolvedNoteEvidenceReferenceProps {
   instrumentId: string
@@ -32,11 +36,13 @@ function ResolvedNoteEvidenceReference({
     <NoteEvidenceCardView
       open={open}
       onOpenChange={setOpen}
-      stockName={stock.name}
-      stockId={stock.id}
-      field={field}
       displayValue={displayValue}
-      evidence={evidence}
+      reference={{
+        ...evidence,
+        stockName: stock.name,
+        stockId: stock.id,
+        field,
+      }}
     />
   )
 }
@@ -54,6 +60,54 @@ export function NotePriceReference({
       field={field}
       displayValue={formatNoteEvidencePrice(numericValue)}
       evidence={{ kind: 'price', date }}
+    />
+  )
+}
+
+export function NoteValuationReference({
+  instrumentId,
+  date,
+  field,
+  value,
+}: ParsedNoteValuationReference & { value: string }) {
+  const [open, setOpen] = useState(false)
+  const stock = useResolveRef(`stock:${instrumentId}`)
+
+  return (
+    <NoteEvidenceCardView
+      open={open}
+      onOpenChange={setOpen}
+      displayValue={formatNoteEvidencePrice(Number(value))}
+      reference={{
+        kind: 'valuation',
+        date,
+        field,
+        stockName: stock.name,
+        stockId: stock.id,
+      }}
+    />
+  )
+}
+
+export function NoteIndicatorObservationReference({
+  indicatorId,
+  date,
+  value,
+}: ParsedNoteIndicatorObservationReference & { value: string }) {
+  const [open, setOpen] = useState(false)
+  const indicator = useResolveRef(`indicator:${indicatorId}`)
+
+  return (
+    <NoteEvidenceCardView
+      open={open}
+      onOpenChange={setOpen}
+      displayValue={formatNoteEvidencePrice(Number(value))}
+      reference={{
+        kind: 'indicator',
+        date,
+        indicatorName: indicator.name,
+        indicatorId: indicator.id,
+      }}
     />
   )
 }

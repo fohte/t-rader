@@ -60,8 +60,8 @@ describe('remarkNoteTokens', () => {
     })
   })
 
-  it('replaces resolved valuation and dated indicator tokens while keeping a plain indicator link', () => {
-    const valuationToken = '[[valuation:fictional-code@2030-01-02:per]]'
+  it('passes valuation and dated indicator details to evidence references', () => {
+    const valuationToken = '[[valuation:US:FICTIONAL-A@2030-01-02:per]]'
     const observationToken = '[[indicator:demo-indicator@2030-01-02]]'
     const tree = textTree(
       `PER ${valuationToken}、demo-rate ${observationToken}、指標 [[indicator:demo-indicator]]`,
@@ -82,16 +82,25 @@ describe('remarkNoteTokens', () => {
             {
               type: 'noteToken',
               data: {
-                hName: 'note-price-reference',
-                hProperties: { value: '27.5' },
+                hName: 'note-valuation-reference',
+                hProperties: {
+                  instrumentId: 'US:FICTIONAL-A',
+                  date: '2030-01-02',
+                  field: 'per',
+                  value: '27.5',
+                },
               },
             },
             { type: 'text', value: '、demo-rate ' },
             {
               type: 'noteToken',
               data: {
-                hName: 'note-price-reference',
-                hProperties: { value: '160.25' },
+                hName: 'note-indicator-reference',
+                hProperties: {
+                  indicatorId: 'demo-indicator',
+                  date: '2030-01-02',
+                  value: '160.25',
+                },
               },
             },
             { type: 'text', value: '、指標 ' },
@@ -108,21 +117,21 @@ describe('remarkNoteTokens', () => {
     })
   })
 
-  it('keeps a dated indicator token visible when it has no resolved value', () => {
-    const token = '[[indicator:demo-indicator@2030-01-02]]'
+  it.each([
+    {
+      name: 'valuation',
+      token: '[[valuation:demo-code@2030-01-02:per]]',
+    },
+    {
+      name: 'dated indicator',
+      token: '[[indicator:demo-indicator@2030-01-02]]',
+    },
+  ])('keeps an unresolved $name token visible', ({ token }) => {
     const tree = textTree(token)
 
     remarkNoteTokens()(tree)
 
-    expect(tree).toEqual({
-      type: 'root',
-      children: [
-        {
-          type: 'paragraph',
-          children: [{ type: 'text', value: token }],
-        },
-      ],
-    })
+    expect(tree).toEqual(textTree(token))
   })
 
   it.each([
