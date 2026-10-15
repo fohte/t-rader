@@ -48,7 +48,10 @@ pub enum AgentGraphError {
     InvalidYaml(String),
     #[error("phase key {0:?} is duplicated")]
     DuplicatePhaseKey(String),
-    #[error("{scope}: timeout_minutes must be between 1 and 360, got {value}")]
+    #[error(
+        "{scope}: timeout_minutes must be between 1 and {max}, got {value}",
+        max = MAX_TIMEOUT_MINUTES
+    )]
     TimeoutMinutesOutOfRange { scope: String, value: u32 },
     #[error("phase {phase:?}: for_each must be in the form \"<phase_key>.<field>\", got {value:?}")]
     InvalidForEachFormat { phase: String, value: String },

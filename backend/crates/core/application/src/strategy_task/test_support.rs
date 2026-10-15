@@ -11,6 +11,29 @@ use crate::strategy_task::{
 };
 use crate::unit_of_work::UnitOfWorkTransaction;
 
+pub(super) fn agent_graph_with_timeouts(
+    top_level_timeout_minutes: Option<u32>,
+    phase_timeout_minutes: Option<u32>,
+) -> String {
+    let top_level_timeout = top_level_timeout_minutes
+        .map(|minutes| format!("timeout_minutes: {minutes}\n"))
+        .unwrap_or_default();
+    let phase_timeout = phase_timeout_minutes
+        .map(|minutes| format!("    timeout_minutes: {minutes}\n"))
+        .unwrap_or_default();
+
+    format!(
+        indoc::indoc! {"
+            {0}phases:
+              - key: task
+                label: Task
+                model: example-model
+            {1}    prompt: prompt
+        "},
+        top_level_timeout, phase_timeout,
+    )
+}
+
 #[derive(Default)]
 pub(super) struct RepositoryState {
     pub(super) task: Option<StrategyTask>,

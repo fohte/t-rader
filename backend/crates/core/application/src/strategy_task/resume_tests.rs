@@ -5,7 +5,7 @@ use rstest::rstest;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient, SubmitAgentTask};
-use crate::strategy_task::test_support::FakeStrategyTaskRepository;
+use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
     ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskStep, StrategyTaskStepStatus,
     StrategyTaskUseCases,
@@ -111,20 +111,6 @@ impl ResumeHarness {
     }
 }
 
-fn graph_with_timeout(timeout_minutes: u32) -> String {
-    format!(
-        indoc::indoc! {"
-            timeout_minutes: {}
-            phases:
-              - key: task
-                label: Task
-                model: example-model
-                prompt: prompt
-        "},
-        timeout_minutes,
-    )
-}
-
 fn summarize_result(
     result: Result<crate::strategy_task::SubmittedTask, ResumeTaskError>,
 ) -> ResumeResult {
@@ -176,7 +162,7 @@ async fn resume_sets_deadline_from_agent_graph_at_resume_time() {
     let harness = ResumeHarness::new(Some(task), Vec::new());
     harness
         .repository
-        .set_agent_graph(&graph_with_timeout(40))
+        .set_agent_graph(&agent_graph_with_timeouts(Some(40), None))
         .await;
     harness
         .agent_client

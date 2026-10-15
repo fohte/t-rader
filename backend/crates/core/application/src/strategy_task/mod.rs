@@ -36,7 +36,7 @@ pub use types::{
 use crate::agent_config::graph::parse_agent_graph;
 use crate::unit_of_work::SharedUnitOfWork;
 
-pub const DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
+const DEFAULT_DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
 pub const DEFAULT_PURPOSE: &str = "default";
 
 pub(super) fn deadline_duration_from_agent_graph(
@@ -45,7 +45,7 @@ pub(super) fn deadline_duration_from_agent_graph(
     let timeout_minutes = parse_agent_graph(agent_graph)?
         .and_then(|config| config.timeout_minutes)
         .map(i64::from);
-    Ok(timeout_minutes.map_or(DEADLINE_DURATION, chrono::Duration::minutes))
+    Ok(timeout_minutes.map_or(DEFAULT_DEADLINE_DURATION, chrono::Duration::minutes))
 }
 
 #[derive(Clone)]

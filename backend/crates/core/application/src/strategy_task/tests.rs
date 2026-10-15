@@ -3,30 +3,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::agent_task_client::{AgentTaskError, FakeAgentTaskClient};
-use crate::strategy_task::test_support::FakeStrategyTaskRepository;
+use crate::strategy_task::test_support::{FakeStrategyTaskRepository, agent_graph_with_timeouts};
 use crate::strategy_task::{
     ResumeTaskError, StrategyTask, StrategyTaskPhase, StrategyTaskUseCases, SubmitTaskError,
     TaskSource,
 };
 use crate::unit_of_work::FakeUnitOfWork;
 use rstest::rstest;
-
-fn agent_graph_with_timeout(timeout_minutes: Option<u32>) -> String {
-    let Some(timeout_minutes) = timeout_minutes else {
-        return String::new();
-    };
-    format!(
-        indoc::indoc! {"
-            timeout_minutes: {}
-            phases:
-              - key: task
-                label: Task
-                model: example-model
-                prompt: prompt
-        "},
-        timeout_minutes,
-    )
-}
 
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
@@ -117,17 +100,22 @@ async fn submit_rejects_missing_default_purpose_before_inserting_a_task() {
 }
 
 #[rstest]
-#[case::default_timeout(None, 15)]
-#[case::configured_timeout(Some(42), 42)]
+#[case::default_timeout(None, None, 15)]
+#[case::phase_timeout_only(None, Some(42), 15)]
+#[case::configured_timeout(Some(42), None, 42)]
 #[tokio::test]
 async fn submit_sets_deadline_from_agent_graph(
-    #[case] timeout_minutes: Option<u32>,
+    #[case] top_level_timeout_minutes: Option<u32>,
+    #[case] phase_timeout_minutes: Option<u32>,
     #[case] expected_minutes: i64,
 ) {
     let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeStrategyTaskRepository::new(None, Vec::new()));
     repository
-        .set_agent_graph(&agent_graph_with_timeout(timeout_minutes))
+        .set_agent_graph(&agent_graph_with_timeouts(
+            top_level_timeout_minutes,
+            phase_timeout_minutes,
+        ))
         .await;
     let agent_client = FakeAgentTaskClient::new();
     let use_cases = StrategyTaskUseCases::new(unit_of_work, repository.clone());
