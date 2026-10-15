@@ -1,7 +1,7 @@
-use std::future::Future;
 use std::time::Duration;
+use std::{future::Future, pin::Pin};
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use chrono_tz::Asia::Tokyo;
 use core_application::ingest_run_log::IngestRunLog;
 use graphile_worker::WorkerContext;
@@ -41,6 +41,14 @@ pub mod valuation;
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
 
+pub(crate) type JobFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
+
+pub(crate) trait SchedulerJob {
+    const IDENTIFIER: &'static str;
+
+    fn run(state: SchedulerState) -> JobFuture;
+}
+
 pub(super) fn today_in_tokyo(now: DateTime<Utc>) -> NaiveDate {
     now.with_timezone(&Tokyo).date_naive()
 }
@@ -49,8 +57,23 @@ pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, Stri
     source.ok_or_else(|| format!("{name} is not configured"))
 }
 
-pub(super) async fn run_with_state<F, Fut>(
+pub(super) fn scheduler_state(context: &WorkerContext) -> Result<SchedulerState, String> {
+    context
+        .get_ext::<SchedulerState>()
+        .cloned()
+        .ok_or_else(|| "scheduler state is not configured".to_string())
+}
+
+pub(super) async fn run_from_worker_context(
     context: WorkerContext,
+    run: fn(SchedulerState) -> JobFuture,
+) -> Result<(), String> {
+    let state = scheduler_state(&context)?;
+    run(state).await
+}
+
+pub(super) async fn run_with_state<F, Fut>(
+    state: SchedulerState,
     task_name: &'static str,
     timeout: Duration,
     task: F,
@@ -59,11 +82,7 @@ where
     F: FnOnce(SchedulerState) -> Fut,
     Fut: Future<Output = Result<(), String>>,
 {
-    let Some(state) = context.get_ext::<SchedulerState>() else {
-        return Err("scheduler state is not configured".to_string());
-    };
-
-    match run_with_timeout(task_name, timeout, task(state.clone())).await {
+    match run_with_timeout(task_name, timeout, task(state)).await {
         TimedTaskResult::Completed(Ok(())) => {
             tracing::info!(task = task_name, "scheduled job completed");
             Ok(())
@@ -77,7 +96,7 @@ where
 }
 
 pub(super) async fn run_with_ingest_run_log_state<F, Fut, Stats>(
-    context: WorkerContext,
+    state: SchedulerState,
     task_name: &'static str,
     timeout: Duration,
     task: F,
@@ -87,21 +106,12 @@ where
     Fut: Future<Output = Result<Stats, String>>,
     Stats: Serialize,
 {
-    let Some(state) = context.get_ext::<SchedulerState>() else {
-        return Err("scheduler state is not configured".to_string());
-    };
-
-    run_with_ingest_run_log(
-        state.dependencies.ingest_run_log.as_ref(),
-        task_name,
-        timeout,
-        task(state.clone()),
-    )
-    .await
+    let ingest_run_log = state.dependencies.ingest_run_log.clone();
+    run_with_ingest_run_log(ingest_run_log.as_ref(), task_name, timeout, task(state)).await
 }
 
 pub(super) async fn run_with_ingest_run_log_state_and_failure_stats<F, Fut, Stats>(
-    context: WorkerContext,
+    state: SchedulerState,
     task_name: &'static str,
     duration: Duration,
     task: F,
@@ -111,15 +121,12 @@ where
     Fut: Future<Output = Result<Stats, (Stats, String)>>,
     Stats: Serialize,
 {
-    let Some(state) = context.get_ext::<SchedulerState>() else {
-        return Err("scheduler state is not configured".to_string());
-    };
-
+    let ingest_run_log = state.dependencies.ingest_run_log.clone();
     run_with_ingest_run_log_with_failure_stats(
-        state.dependencies.ingest_run_log.as_ref(),
+        ingest_run_log.as_ref(),
         task_name,
         duration,
-        task(state.clone()),
+        task(state),
     )
     .await
 }
@@ -272,6 +279,15 @@ where
     }
 }
 
+pub(crate) fn run_started_before(
+    now: DateTime<chrono::FixedOffset>,
+    duration: Duration,
+) -> Result<DateTime<chrono::FixedOffset>, String> {
+    let duration = ChronoDuration::from_std(duration)
+        .map_err(|error| format!("job timeout cannot be represented: {error}"))?;
+    Ok(now - duration)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -294,8 +310,8 @@ mod tests {
     use rstest::rstest;
 
     use super::{
-        TimedTaskResult, run_with_ingest_run_log, run_with_ingest_run_log_with_failure_stats,
-        run_with_timeout, today_in_tokyo,
+        TimedTaskResult, run_started_before, run_with_ingest_run_log,
+        run_with_ingest_run_log_with_failure_stats, run_with_timeout, today_in_tokyo,
     };
 
     const RUN_ID: Uuid = Uuid::from_u128(1);
@@ -332,6 +348,7 @@ mod tests {
     #[derive(Default)]
     struct FakeIngestRunLog {
         calls: Mutex<Vec<Call>>,
+        fail_recovery: bool,
         fail_start: bool,
         fail_finish: bool,
     }
@@ -394,7 +411,13 @@ mod tests {
             _job: &str,
             _started_before: chrono::DateTime<chrono::FixedOffset>,
         ) -> Result<u64, PersistenceError> {
-            Ok(0)
+            if self.fail_recovery {
+                Err(PersistenceError::Database(
+                    "database unavailable".to_string(),
+                ))
+            } else {
+                Ok(0)
+            }
         }
     }
 
@@ -462,6 +485,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn computes_the_recovery_cutoff_from_the_job_timeout() {
+        let now = Utc
+            .with_ymd_and_hms(2039, 5, 10, 16, 0, 0)
+            .single()
+            .expect("valid timestamp");
+
+        assert_eq!(
+            run_started_before(now.fixed_offset(), Duration::from_secs(3600)),
+            Ok((now - chrono::Duration::hours(1)).fixed_offset()),
+        );
+    }
+
     #[tokio::test]
     async fn records_partial_stats_when_the_job_fails_with_stats() {
         let log = Arc::new(FakeIngestRunLog::default());
@@ -522,8 +558,50 @@ mod tests {
                 Err("failed to start ingest run log: database unavailable".to_string()),
                 vec![Call::Start {
                     job: "sample_ingest".to_string(),
-                }],
+                },],
                 false,
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn does_not_recover_worker_runs_before_starting_the_job() {
+        let log = Arc::new(FakeIngestRunLog {
+            fail_recovery: true,
+            ..Default::default()
+        });
+        let task_started = Arc::new(AtomicBool::new(false));
+        let task_started_in_future = Arc::clone(&task_started);
+
+        let result = run_with_ingest_run_log(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(1),
+            async move {
+                task_started_in_future.store(true, Ordering::SeqCst);
+                Ok(IngestStats { rows: 3 })
+            },
+        )
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                log.calls.lock().await.clone(),
+                task_started.load(Ordering::SeqCst),
+            ),
+            (
+                Ok(()),
+                vec![
+                    Call::Start {
+                        job: "sample_ingest".to_string(),
+                    },
+                    Call::Finish {
+                        run_id: RUN_ID,
+                        result: Ok(json!({ "rows": 3 })),
+                    },
+                ],
+                true,
             ),
         );
     }

@@ -13,22 +13,33 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct FredReleaseDatesIngest;
 
 impl TaskHandler for FredReleaseDatesIngest {
-    const IDENTIFIER: &'static str = FRED_RELEASE_DATES_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.fred_calendar_event_source,
-                    "FRED release dates source",
-                )?;
-                ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref()).await
-            },
-        )
-        .await
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for FredReleaseDatesIngest {
+    const IDENTIFIER: &'static str = FRED_RELEASE_DATES_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.fred_calendar_event_source,
+                        "FRED release dates source",
+                    )?;
+                    ingest_calendar_events(&state.dependencies.calendar_events, source.as_ref())
+                        .await
+                },
+            )
+            .await
+        })
     }
 }
 

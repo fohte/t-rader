@@ -106,6 +106,66 @@ describe('MarkdownBody', () => {
     )
   })
 
+  it('keeps the line gutter outside table columns', () => {
+    const src = ['| item | value |', '| --- | ---: |', '| alpha | 1 |'].join(
+      '\n',
+    )
+    const { container } = render(
+      <MarkdownBody source={src} rangeComments={emptyRangeComments} />,
+    )
+
+    const getTableRows = () =>
+      [...container.querySelectorAll('tr[data-source-block="true"]')].map(
+        (row) => ({
+          cellCount: row.children.length,
+          gutterLabels: [...row.querySelectorAll('button')].map((button) =>
+            button.getAttribute('aria-label'),
+          ),
+          startLine: row.getAttribute('data-source-start-line'),
+        }),
+      )
+
+    expect(getTableRows()).toEqual([
+      {
+        cellCount: 2,
+        gutterLabels: ['行 1 にコメント'],
+        startLine: '1',
+      },
+      {
+        cellCount: 2,
+        gutterLabels: ['行 3 にコメント'],
+        startLine: '3',
+      },
+    ])
+  })
+
+  it('starts a comment with the source range of a table row', async () => {
+    const user = userEvent.setup()
+    const onStartComment = vi.fn()
+    const source = ['| item | value |', '| --- | ---: |', '| alpha | 1 |'].join(
+      '\n',
+    )
+
+    render(
+      <MarkdownBody
+        source={source}
+        rangeComments={{ ...emptyRangeComments, onStartComment }}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: '行 3 にコメント' }))
+
+    expect(onStartComment.mock.calls).toEqual([
+      [
+        {
+          side: 'new',
+          lineNumber: 3,
+          endLineNumber: 3,
+          text: '| alpha | 1 |',
+        },
+      ],
+    ])
+  })
+
   it('renders a link that opens in a new tab', () => {
     render(<MarkdownBody source="[記事](https://example.com/a)" />)
     const link = screen.getByRole('link', { name: '記事' })
@@ -196,6 +256,113 @@ describe('MarkdownBody', () => {
     expect(ranges).toEqual([
       ['1', '2'],
       ['2', '2'],
+    ])
+  })
+
+  it('renders a nested list comment once below its anchored item', () => {
+    const comment: NoteVersionComment = {
+      id: 'nested-list-comment',
+      target_kind: 'note_version',
+      target_id: 'sample-version',
+      parent_id: null,
+      body: '入れ子項目へのコメントです。',
+      author_kind: 'human',
+      author_label: 'レビュー担当者',
+      resolved: false,
+      anchor_text: '入れ子の項目',
+      anchor_side: 'new',
+      start_line: 2,
+      end_line: 2,
+      created_at: '2026-01-12T03:00:00Z',
+    }
+    const source = `- 親項目
+    - 入れ子の項目`
+    render(
+      <MarkdownBody
+        source={source}
+        rangeComments={{ ...emptyRangeComments, comments: [comment] }}
+      />,
+    )
+    const renderedComments = screen.getAllByText(comment.body)
+
+    expect(
+      renderedComments.map(
+        (renderedComment) =>
+          renderedComment
+            .closest('[data-source-block="true"]')
+            ?.getAttribute('data-source-start-line') ?? null,
+      ),
+    ).toEqual(['2'])
+  })
+
+  it.each([
+    { name: 'a blockquote', source: '> 引用文', line: 1 },
+    { name: 'a loose list item', source: '- 親項目\n\n- 次の項目', line: 1 },
+  ])('keeps comments visible on $name', ({ source, line }) => {
+    const comment: NoteVersionComment = {
+      id: 'nested-block-comment',
+      target_kind: 'note_version',
+      target_id: 'sample-version',
+      parent_id: null,
+      body: 'このブロックへのコメントです。',
+      author_kind: 'human',
+      author_label: 'レビュー担当者',
+      resolved: false,
+      anchor_text: '対象テキスト',
+      anchor_side: 'new',
+      start_line: line,
+      end_line: line,
+      created_at: '2026-01-12T03:00:00Z',
+    }
+    render(
+      <MarkdownBody
+        source={source}
+        rangeComments={{ ...emptyRangeComments, comments: [comment] }}
+      />,
+    )
+
+    expect(
+      screen
+        .queryAllByText(comment.body)
+        .map(
+          (renderedComment) =>
+            renderedComment
+              .closest('[data-source-block="true"]')
+              ?.getAttribute('data-source-start-line') ?? null,
+        ),
+    ).toEqual([String(line)])
+  })
+
+  it('keeps gutter controls inside nested list items', () => {
+    const { container } = render(
+      <MarkdownBody
+        source={'- top\n    1. nested\n'}
+        rangeComments={emptyRangeComments}
+      />,
+    )
+
+    const getListItems = () =>
+      [...container.querySelectorAll('li')].map((item) => ({
+        gutters: [...item.children]
+          .filter(
+            (child): child is HTMLButtonElement => child.tagName === 'BUTTON',
+          )
+          .map((button) => ({
+            label: button.getAttribute('aria-label'),
+            left: button.style.left,
+          })),
+        parentTag: item.parentElement?.tagName ?? null,
+      }))
+
+    expect(getListItems()).toEqual([
+      {
+        gutters: [{ label: '行 1 から 2 にコメント', left: 'calc(-4rem)' }],
+        parentTag: 'UL',
+      },
+      {
+        gutters: [{ label: '行 2 にコメント', left: 'calc(-5.25rem)' }],
+        parentTag: 'OL',
+      },
     ])
   })
 

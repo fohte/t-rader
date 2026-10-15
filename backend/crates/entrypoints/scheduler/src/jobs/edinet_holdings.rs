@@ -15,27 +15,37 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct ShareholdingStructureIngest;
 
 impl TaskHandler for ShareholdingStructureIngest {
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
+
+    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for ShareholdingStructureIngest {
     const IDENTIFIER: &'static str =
         core_application::ingest_status::SHAREHOLDING_STRUCTURE_INGEST_JOB;
 
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.shareholding_structure_source,
-                    "J-Quants shareholding structure source",
-                )?;
-                ingest_shareholding_structures(
-                    &state.dependencies.shareholding_structures,
-                    source.as_ref(),
-                )
-                .await
-            },
-        )
-        .await
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.shareholding_structure_source,
+                        "J-Quants shareholding structure source",
+                    )?;
+                    ingest_shareholding_structures(
+                        &state.dependencies.shareholding_structures,
+                        source.as_ref(),
+                    )
+                    .await
+                },
+            )
+            .await
+        })
     }
 }
 

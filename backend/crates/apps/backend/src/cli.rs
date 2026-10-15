@@ -22,6 +22,14 @@ impl RunMode {
 #[derive(Parser, Debug, PartialEq, Eq)]
 #[command(version, about)]
 pub struct Cli {
+    /// 定期ジョブを 1 回実行して終了する
+    #[arg(
+        long,
+        value_name = "NAME",
+        conflicts_with_all = ["run_mode", "dump_openapi", "backfill_twse_indices", "migrate_only"]
+    )]
+    pub run_job: Option<String>,
+
     /// 起動するコンポーネントを選択する (api | worker | both)
     #[arg(long, value_enum, default_value = "both")]
     pub run_mode: RunMode,
@@ -53,15 +61,16 @@ mod tests {
     }
 
     #[rstest]
-    #[case::no_flags(&["t-rader"], Cli { run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
-    #[case::api(&["t-rader", "--run-mode", "api"], Cli { run_mode: RunMode::Api, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
-    #[case::worker(&["t-rader", "--run-mode", "worker"], Cli { run_mode: RunMode::Worker, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
-    #[case::both(&["t-rader", "--run-mode", "both"], Cli { run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
-    #[case::dump_openapi(&["t-rader", "--dump-openapi"], Cli { run_mode: RunMode::Both, dump_openapi: true, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
-    #[case::backfill_twse_indices(&["t-rader", "--backfill-twse-indices"], Cli { run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: true, migrate_only: false, skip_migration: false })]
-    #[case::backfill_twse_indices_with_skip_migration(&["t-rader", "--backfill-twse-indices", "--skip-migration"], Cli { run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: true, migrate_only: false, skip_migration: true })]
-    #[case::migrate_only(&["t-rader", "--migrate-only"], Cli { run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: true, skip_migration: false })]
-    #[case::skip_migration(&["t-rader", "--skip-migration"], Cli { run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: true })]
+    #[case::no_flags(&["t-rader"], Cli { run_job: None, run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
+    #[case::api(&["t-rader", "--run-mode", "api"], Cli { run_job: None, run_mode: RunMode::Api, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
+    #[case::worker(&["t-rader", "--run-mode", "worker"], Cli { run_job: None, run_mode: RunMode::Worker, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
+    #[case::both(&["t-rader", "--run-mode", "both"], Cli { run_job: None, run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
+    #[case::dump_openapi(&["t-rader", "--dump-openapi"], Cli { run_job: None, run_mode: RunMode::Both, dump_openapi: true, backfill_twse_indices: false, migrate_only: false, skip_migration: false })]
+    #[case::backfill_twse_indices(&["t-rader", "--backfill-twse-indices"], Cli { run_job: None, run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: true, migrate_only: false, skip_migration: false })]
+    #[case::backfill_twse_indices_with_skip_migration(&["t-rader", "--backfill-twse-indices", "--skip-migration"], Cli { run_job: None, run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: true, migrate_only: false, skip_migration: true })]
+    #[case::migrate_only(&["t-rader", "--migrate-only"], Cli { run_job: None, run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: true, skip_migration: false })]
+    #[case::skip_migration(&["t-rader", "--skip-migration"], Cli { run_job: None, run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: true })]
+    #[case::run_job_with_skip_migration(&["t-rader", "--run-job", "sample_job", "--skip-migration"], Cli { run_job: Some("sample_job".to_string()), run_mode: RunMode::Both, dump_openapi: false, backfill_twse_indices: false, migrate_only: false, skip_migration: true })]
     fn test_parse_valid_flags(#[case] args: &[&str], #[case] expected: Cli) {
         let cli = parse(args);
         assert_eq!(cli.ok(), Some(expected));
@@ -89,6 +98,10 @@ mod tests {
     )]
     #[case::backfill_with_run_mode(
         &["t-rader", "--backfill-twse-indices", "--run-mode", "worker"],
+        clap::error::ErrorKind::ArgumentConflict,
+    )]
+    #[case::run_job_with_run_mode(
+        &["t-rader", "--run-job", "sample_job", "--run-mode", "worker"],
         clap::error::ErrorKind::ArgumentConflict,
     )]
     fn test_parse_invalid_flags(#[case] args: &[&str], #[case] expected: clap::error::ErrorKind) {

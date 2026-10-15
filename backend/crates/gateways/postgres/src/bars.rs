@@ -98,13 +98,13 @@ impl PostgresBarsRepository {
                 ORDER BY timestamp ASC LIMIT 1
             ) AS earliest_daily_bar ON TRUE
             LEFT JOIN LATERAL (
-                SELECT timestamp FROM minute_bars
-                WHERE instrument_id = instruments.id
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1m'
                 ORDER BY timestamp DESC LIMIT 1
             ) AS minute_bar ON TRUE
             LEFT JOIN LATERAL (
-                SELECT timestamp FROM minute_bars
-                WHERE instrument_id = instruments.id
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1m'
                 ORDER BY timestamp ASC LIMIT 1
             ) AS earliest_minute_bar ON TRUE
             WHERE instruments.market = 'US'
@@ -290,17 +290,6 @@ impl BarsRepository for PostgresBarsRepository {
     ) -> Result<(), BarsRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         bar_queries::upsert_bars(transaction, bars)
-            .await
-            .map_err(repository_error)
-    }
-
-    async fn upsert_minute_bars(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        bars: Vec<Bar>,
-    ) -> Result<(), BarsRepositoryError> {
-        let transaction = transaction_ref(transaction)?;
-        bar_queries::upsert_minute_bars(transaction, bars)
             .await
             .map_err(repository_error)
     }
@@ -610,14 +599,6 @@ mod tests {
                     ),
                     test_bar(&group_stock_id, Timeframe::Daily, daily_latest),
                     test_bar(&note_stock_id, Timeframe::Daily, note_daily_latest),
-                ],
-            )
-            .await
-            .expect("insert daily bars");
-        repository
-            .upsert_minute_bars(
-                &transaction,
-                vec![
                     test_bar(
                         &group_stock_id,
                         Timeframe::Minute,
@@ -626,10 +607,24 @@ mod tests {
                             .expect("prior minute timestamp"),
                     ),
                     test_bar(&group_stock_id, Timeframe::Minute, minute_latest),
+                    test_bar(
+                        &group_stock_id,
+                        Timeframe::Hourly,
+                        Utc.with_ymd_and_hms(2040, 1, 2, 15, 2, 0)
+                            .single()
+                            .expect("prior hourly timestamp"),
+                    ),
+                    test_bar(
+                        &group_stock_id,
+                        Timeframe::Hourly,
+                        Utc.with_ymd_and_hms(2040, 1, 2, 15, 5, 0)
+                            .single()
+                            .expect("latest hourly timestamp"),
+                    ),
                 ],
             )
             .await
-            .expect("insert minute bars");
+            .expect("insert bars");
         unit_of_work
             .commit(transaction)
             .await

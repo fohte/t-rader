@@ -2,14 +2,14 @@
 
 ## Description
 
-銘柄ごとの日足価格と出来高を保持する。
+銘柄ごとの 1 分足、1 時間足、日足の価格と出来高を保持する。
 
 ## Columns
 
 | Name              | Type                     | Default | Nullable | Children | Parents                                     | Comment                                                                                               |
 | ----------------- | ------------------------ | ------- | -------- | -------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | instrument_id     | varchar                  |         | false    |          | [public.instruments](public.instruments.md) | バーの銘柄コード。                                                                                    |
-| timeframe         | varchar                  |         | false    |          |                                             | バーの時間足。現行スキーマは日足のみ。                                                                |
+| timeframe         | varchar                  |         | false    |          |                                             | バーの時間足。1 分足、1 時間足、日足を区別する。                                                      |
 | timestamp         | timestamp with time zone |         | false    |          |                                             | バーの時刻。                                                                                          |
 | open              | numeric                  |         | false    |          |                                             | 調整後の始値。                                                                                        |
 | high              | numeric                  |         | false    |          |                                             | 調整後の高値。                                                                                        |
@@ -20,11 +20,11 @@
 
 ## Constraints
 
-| Name                    | Type        | Definition                                                               |
-| ----------------------- | ----------- | ------------------------------------------------------------------------ |
-| bars_timeframe_check    | CHECK       | CHECK (((timeframe)::text = '1d'::text))                                 |
-| bars_instrument_id_fkey | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE |
-| bars_pkey               | PRIMARY KEY | PRIMARY KEY (instrument_id, timeframe, "timestamp")                      |
+| Name                    | Type        | Definition                                                                                                                     |
+| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| bars_timeframe_check    | CHECK       | CHECK (((timeframe)::text = ANY ((ARRAY['1m'::character varying, '1h'::character varying, '1d'::character varying])::text[]))) |
+| bars_instrument_id_fkey | FOREIGN KEY | FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE                                                       |
+| bars_pkey               | PRIMARY KEY | PRIMARY KEY (instrument_id, timeframe, "timestamp")                                                                            |
 
 ## Indexes
 

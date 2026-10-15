@@ -1,8 +1,11 @@
-import { createContext } from 'react'
+import { createContext, type ReactNode } from 'react'
 
 import type { DiffCommentAnchor } from '#components/note-detail/note-version-line-comment-group'
 import type { SourceLineRange } from '#components/note-detail/use-markdown-body-comment-selection'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
+
+export const NOTE_BODY_INDENT_REM = 1.25
+export const NOTE_BODY_GUTTER_GAP_REM = 0.5
 
 export interface MarkdownBodyRangeCommentProps {
   comments: NoteVersionComment[]
@@ -35,5 +38,7 @@ export interface MarkdownBodyRangeCommentContextValue {
 
 export const MarkdownBodyRangeCommentContext =
   createContext<MarkdownBodyRangeCommentContextValue | null>(null)
+
+export const MarkdownBodyTableCellGutterContext = createContext<ReactNode>(null)
 
 export const MarkdownBodySourceBlockContext = createContext<string | null>(null)

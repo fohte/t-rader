@@ -31,6 +31,7 @@ t-rader-backend は Kubernetes クラスタに配備する。1 つの bin で `-
 | 任意 (api / both)                          | `TAVILY_API_KEY`                                                                           | MCP の `search_web` / `read_page` tools が Tavily API を呼び出すための API キー                                                                           | 未設定でも backend は起動するが、`search_web` / `read_page` はエラーを返す                                                                              |
 | 条件付き                                   | `IBKR_BASE_URL` 等                                                                         | `DATA_PROVIDER=ibkr` 時に Gateway 接続情報を設定                                                                                                          | デフォルト値で初期化を試行                                                                                                                              |
 | 任意 (api / both)                          | `BACKEND_PORT`                                                                             | API の listen port                                                                                                                                        | `3000` で listen。worker は参照しない                                                                                                                   |
+| 任意 (api / both)                          | `CRON_TRIGGER_TIMER_ENABLED`                                                               | `true` で cron trigger を予定時刻に評価する API timer を起動する                                                                                          | timer は無効                                                                                                                                            |
 | 任意                                       | `TRACE_URL_TEMPLATE`                                                                       | トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` プレースホルダ)。`GET /api/config` 経由で frontend に渡る                                   | トレースリンクを表示しない                                                                                                                              |
 
 kata-exec の追加の任意変数 (`KATA_EXEC_NAMESPACE`, `KATA_EXEC_IMAGE`, `KATA_EXEC_TOKEN`, `KATA_EXEC_DEFAULT_TIMEOUT_SECS`, `KATA_EXEC_MAX_OUTPUT_BYTES` 等) は gateway crate (`backend/crates/gateways/kata-exec/`) を参照。in-cluster で動かす場合 token / CA は ServiceAccount のものを自動で読む。
@@ -69,3 +70,43 @@ Pod spec 側の不変条件 (`automountServiceAccountToken: false`、`runAsNonRo
 ## マイグレーション
 
 `--skip-migration` を指定しない場合、起動時に SeaORM の `Migrator::up` と Graphile Worker schema (`graphile_worker`) の migration を実行する。`--migrate-only` は両方の migration を実行して終了するため、API / worker の起動前に initContainer などから実行できる。`--skip-migration` はこの工程をスキップする。worker 起動時は Graphile Worker 自身も schema を初期化するが、api-only で job を投入する場合は、事前に migration 済みの DB を使う必要がある。
+
+## 定期ジョブの単発実行
+
+`--run-job` は指定した定期ジョブを 1 回実行して終了する。API と worker は起動しない。DB は事前に migration 済みにし、次の形式で実行する。
+
+```sh
+backend --run-job <job-name> --skip-migration
+```
+
+`<job-name>` には次のいずれかを指定する。正常終了時は終了コード `0`、失敗時は非 `0` になる。
+
+```text
+alpha_vantage_calendar_ingest
+boj_calendar_event_ingest
+daily_bars_ingest
+e_stat_calendar_ingest
+earnings_schedule_ingest
+ecb_calendar_event_ingest
+shareholding_structure_ingest
+eoddata_kospi_ingest
+equity_master_ingest
+event_dispatch
+fed_calendar_event_ingest
+financial_summary_ingest
+fred_ingest
+fred_release_dates_ingest
+margin_ingest
+news_aggregation
+news_content_fetch
+paper_order_filling
+prediction_grading
+short_ratio_ingest
+short_sale_report_ingest
+strategy_task_reconcile
+twse_index_ingest
+us_stock_bars_ingest
+us_stock_minute_bars_ingest
+us_stock_master_ingest
+valuation_ingest
+```
