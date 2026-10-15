@@ -9,6 +9,16 @@ use super::types::SubagentDefinition;
 pub trait SubagentDefinitionRepository: Send + Sync {
     async fn list(&self) -> Result<Vec<SubagentDefinition>, SubagentDefinitionRepositoryError>;
 
+    async fn list_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<SubagentDefinition>, SubagentDefinitionRepositoryError>;
+
+    async fn acquire_agent_graph_reference_lock(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<(), SubagentDefinitionRepositoryError>;
+
     async fn find_by_key(
         &self,
         key: &str,

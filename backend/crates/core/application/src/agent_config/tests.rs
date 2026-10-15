@@ -32,6 +32,20 @@ impl SubagentDefinitionRepository for EmptySubagentDefinitionRepository {
         Ok(Vec::new())
     }
 
+    async fn list_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn acquire_agent_graph_reference_lock(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+    ) -> Result<(), SubagentDefinitionRepositoryError> {
+        Ok(())
+    }
+
     async fn find_by_key(
         &self,
         _key: &str,
@@ -84,6 +98,13 @@ impl FakeAgentConfigRepository {
 impl AgentConfigRepository for FakeAgentConfigRepository {
     async fn list(&self) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError> {
         Ok(self.configs().values().cloned().collect())
+    }
+
+    async fn list_in_transaction(
+        &self,
+        _transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError> {
+        self.list().await
     }
 
     async fn find_by_purpose(

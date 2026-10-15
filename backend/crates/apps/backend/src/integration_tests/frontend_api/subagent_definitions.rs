@@ -3,7 +3,14 @@ mod tests {
     use super::super::{assert_response_eq, create_agent_config};
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
+    use rstest::{fixture, rstest};
     use serde_json::{Value, json};
+
+    #[fixture]
+    async fn subagent_validation_server() -> axum_test::TestServer {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
+        create_test_server(db).await
+    }
 
     fn normalize(mut value: Value) -> Value {
         for key in ["id", "created_at", "updated_at"] {
@@ -132,6 +139,47 @@ mod tests {
             Some(json!({
                 "error": "subagent definition tools must not include 'run_subagent'"
             })),
+        );
+    }
+
+    #[rstest]
+    #[case::invalid_key(false, "key", json!("Researcher"), "subagent definition key must match ^[a-z0-9][a-z0-9_-]*$ (got 'Researcher')")]
+    #[case::timeout_below_minimum(false, "timeout_minutes", json!(0), "subagent definition timeout_minutes must be between 1 and 360, got 0")]
+    #[case::timeout_above_maximum(false, "timeout_minutes", json!(361), "subagent definition timeout_minutes must be between 1 and 360, got 361")]
+    #[case::non_positive_model_calls(false, "max_model_calls", json!(0), "subagent definition max_model_calls must be greater than 0, got 0")]
+    #[case::negative_tool_limit(false, "tool_limits", json!({ "search_web": -1 }), "subagent definition tool_limits must be non-negative (got search_web = -1)")]
+    #[case::update_rejects_negative_tool_limit(true, "tool_limits", json!({ "search_web": -1 }), "subagent definition tool_limits must be non-negative (got search_web = -1)")]
+    #[tokio::test]
+    async fn rejects_invalid_subagent_definition_fields(
+        #[future] subagent_validation_server: axum_test::TestServer,
+        #[case] update: bool,
+        #[case] field: &str,
+        #[case] value: Value,
+        #[case] expected_error: &str,
+    ) {
+        let server = subagent_validation_server.await;
+        if update {
+            let created = server
+                .post("/api/subagent-definitions")
+                .json(&create_body())
+                .await;
+            created.assert_status(StatusCode::CREATED);
+        }
+
+        let mut body = if update { update_body() } else { create_body() };
+        body[field] = value;
+        let response = if update {
+            server
+                .put("/api/subagent-definitions/researcher")
+                .json(&body)
+                .await
+        } else {
+            server.post("/api/subagent-definitions").json(&body).await
+        };
+        assert_response_eq(
+            &response,
+            StatusCode::BAD_REQUEST,
+            Some(json!({ "error": expected_error })),
         );
     }
 

@@ -33,6 +33,19 @@ impl AgentConfigRepository for PostgresAgentConfigRepository {
             .map_err(repository_error)
     }
 
+    async fn list_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        agent_config::Entity::find()
+            .order_by_asc(agent_config::Column::Purpose)
+            .all(transaction)
+            .await
+            .map(|rows| rows.into_iter().map(to_domain).collect())
+            .map_err(repository_error)
+    }
+
     async fn find_by_purpose(
         &self,
         purpose: &str,

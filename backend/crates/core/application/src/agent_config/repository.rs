@@ -9,6 +9,11 @@ use super::types::{AgentConfig, NewAgentConfig};
 pub trait AgentConfigRepository: Send + Sync {
     async fn list(&self) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError>;
 
+    async fn list_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError>;
+
     async fn find_by_purpose(
         &self,
         purpose: &str,

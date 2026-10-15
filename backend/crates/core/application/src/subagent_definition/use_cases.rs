@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::agent_config::{SharedAgentConfigRepository, graph::parse_agent_graph};
 use crate::persistence::PersistenceError;
+use crate::slug::is_valid_slug;
 use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::{SubagentDefinitionRepositoryError, SubagentDefinitionUseCaseError};
@@ -116,8 +117,11 @@ impl SubagentDefinitionUseCases {
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), SubagentDefinitionUseCaseError> {
-        self.ensure_not_referenced(key).await?;
         let transaction = self.unit_of_work.begin().await?;
+        self.repository
+            .acquire_agent_graph_reference_lock(&transaction)
+            .await?;
+        self.ensure_not_referenced(key, &transaction).await?;
         if !self.repository.delete(&transaction, key).await? {
             return Err(SubagentDefinitionUseCaseError::NotFound(key.to_string()));
         }
@@ -125,8 +129,16 @@ impl SubagentDefinitionUseCases {
         Ok(())
     }
 
-    async fn ensure_not_referenced(&self, key: &str) -> Result<(), SubagentDefinitionUseCaseError> {
-        for agent_config in self.agent_config_repository.list().await? {
+    async fn ensure_not_referenced(
+        &self,
+        key: &str,
+        transaction: &crate::unit_of_work::UnitOfWorkTransaction,
+    ) -> Result<(), SubagentDefinitionUseCaseError> {
+        for agent_config in self
+            .agent_config_repository
+            .list_in_transaction(transaction)
+            .await?
+        {
             let Some(graph) = parse_agent_graph(&agent_config.agent_graph)? else {
                 continue;
             };
@@ -148,19 +160,8 @@ fn validate(
     key: &str,
     fields: &SubagentDefinitionFields,
 ) -> Result<(), SubagentDefinitionUseCaseError> {
-    let mut chars = key.chars();
-    match chars.next() {
-        Some(first) if first.is_ascii_lowercase() || first.is_ascii_digit() => {
-            if !chars.all(|character| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || character == '_'
-                    || character == '-'
-            }) {
-                return Err(SubagentDefinitionUseCaseError::InvalidKey(key.to_string()));
-            }
-        }
-        _ => return Err(SubagentDefinitionUseCaseError::InvalidKey(key.to_string())),
+    if !is_valid_slug(key) {
+        return Err(SubagentDefinitionUseCaseError::InvalidKey(key.to_string()));
     }
     if fields.tools.iter().any(|tool| tool == "run_subagent") {
         return Err(SubagentDefinitionUseCaseError::RunSubagentToolNotAllowed);

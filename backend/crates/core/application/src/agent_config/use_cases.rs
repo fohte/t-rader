@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
+use crate::slug::is_valid_slug;
 use crate::subagent_definition::SharedSubagentDefinitionRepository;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
@@ -84,7 +85,7 @@ impl AgentConfigUseCases {
         purpose: &str,
         content: String,
     ) -> Result<String, AgentConfigUseCaseError> {
-        let transaction = self.unit_of_work.begin().await?;
+        let transaction = self.begin_reference_update().await?;
         let mut agent_config = self.find_in_transaction(&transaction, purpose).await?;
         let from_len = agent_config.agents_md.len();
         agent_config.agents_md = content;
@@ -112,7 +113,7 @@ impl AgentConfigUseCases {
         for name in skills.keys() {
             validate_skill_name(name)?;
         }
-        let transaction = self.unit_of_work.begin().await?;
+        let transaction = self.begin_reference_update().await?;
         let current = self.find_in_transaction(&transaction, purpose).await?;
         let map = skills
             .into_iter()
@@ -129,7 +130,7 @@ impl AgentConfigUseCases {
         content: String,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         validate_skill_name(name)?;
-        let transaction = self.unit_of_work.begin().await?;
+        let transaction = self.begin_reference_update().await?;
         let current = self.find_in_transaction(&transaction, purpose).await?;
         let mut patch = Map::new();
         patch.insert(name.to_string(), Value::String(content));
@@ -143,7 +144,7 @@ impl AgentConfigUseCases {
         purpose: &str,
         name: &str,
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
-        let transaction = self.unit_of_work.begin().await?;
+        let transaction = self.begin_reference_update().await?;
         let current = self.find_in_transaction(&transaction, purpose).await?;
         let mut skills = skills_object(&current.skills);
         if skills.remove(name).is_none() {
@@ -158,10 +159,13 @@ impl AgentConfigUseCases {
         purpose: &str,
         content: &str,
     ) -> Result<String, AgentConfigUseCaseError> {
-        if let Some(graph) = parse_agent_graph(content)? {
+        let graph = parse_agent_graph(content)?;
+        let transaction = self.begin_reference_update().await?;
+
+        if let Some(graph) = graph {
             let keys: std::collections::BTreeSet<_> = self
                 .subagent_definition_repository
-                .list()
+                .list_in_transaction(&transaction)
                 .await?
                 .into_iter()
                 .map(|definition| definition.key)
@@ -178,7 +182,6 @@ impl AgentConfigUseCases {
             }
         }
 
-        let transaction = self.unit_of_work.begin().await?;
         let mut agent_config = self.find_in_transaction(&transaction, purpose).await?;
         let from_len = agent_config.agent_graph.len();
         agent_config.agent_graph = content.to_string();
@@ -196,6 +199,16 @@ impl AgentConfigUseCases {
             "updated agent_config agent_graph"
         );
         Ok(saved.agent_graph)
+    }
+
+    async fn begin_reference_update(
+        &self,
+    ) -> Result<UnitOfWorkTransaction, AgentConfigUseCaseError> {
+        let transaction = self.unit_of_work.begin().await?;
+        self.subagent_definition_repository
+            .acquire_agent_graph_reference_lock(&transaction)
+            .await?;
+        Ok(transaction)
     }
 
     async fn find_in_transaction(
@@ -237,21 +250,6 @@ fn map_update_error(error: AgentConfigRepositoryError, purpose: &str) -> AgentCo
             AgentConfigUseCaseError::NotFound(purpose.to_string())
         }
         error => error.into(),
-    }
-}
-
-fn is_valid_slug(value: &str) -> bool {
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(first) if first.is_ascii_lowercase() || first.is_ascii_digit() => {
-            chars.all(|character| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || character == '_'
-                    || character == '-'
-            })
-        }
-        _ => false,
     }
 }
 

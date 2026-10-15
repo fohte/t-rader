@@ -4,7 +4,10 @@ use core_application::subagent_definition::{
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{Set, Unchanged};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
+    QueryOrder, Statement,
+};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 
@@ -12,6 +15,11 @@ use crate::DatabaseHandle;
 use crate::entities::subagent_definition;
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
+
+const AGENT_GRAPH_REFERENCE_LOCK_QUERY: &str = concat!(
+    "SELECT pg_advisory_xact_lock(",
+    "hashtextextended('t-rader:agent-graph-subagent-references', 0))",
+);
 
 #[derive(Clone)]
 pub struct PostgresSubagentDefinitionRepository {
@@ -33,6 +41,34 @@ impl SubagentDefinitionRepository for PostgresSubagentDefinitionRepository {
             .await
             .map_err(repository_error)?;
         models.into_iter().map(to_domain).collect()
+    }
+
+    async fn list_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<Vec<SubagentDefinition>, SubagentDefinitionRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let models = subagent_definition::Entity::find()
+            .order_by_asc(subagent_definition::Column::Key)
+            .all(transaction)
+            .await
+            .map_err(repository_error)?;
+        models.into_iter().map(to_domain).collect()
+    }
+
+    async fn acquire_agent_graph_reference_lock(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+    ) -> Result<(), SubagentDefinitionRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        transaction
+            .query_one_raw(Statement::from_string(
+                DbBackend::Postgres,
+                AGENT_GRAPH_REFERENCE_LOCK_QUERY.to_string(),
+            ))
+            .await
+            .map_err(repository_error)?;
+        Ok(())
     }
 
     async fn find_by_key(
