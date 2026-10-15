@@ -111,9 +111,42 @@ export const PartialResultsWithSearchError: Story = {
   },
 }
 
+export const SearchFailure: Story = {
+  name: 'shows an error when every search fails.',
+  args: {
+    value: '設定',
+    groups: [],
+    emptyMessage: '検索に失敗しました。',
+  },
+}
+
+export const SearchButtonOnDesktop: Story = {
+  name: 'shows the closed search button with its shortcut on desktop.',
+  args: { open: false },
+}
+
 export const SearchButtonOnMobile: Story = {
   name: 'shows only the search icon in the mobile header.',
   args: { open: false },
+  globals: { viewport: { value: 'quickSwitcherMobile' } },
+  parameters: {
+    viewport: {
+      options: {
+        quickSwitcherMobile: {
+          name: 'Quick switcher mobile',
+          styles: { width: '390px', height: '700px' },
+          type: 'mobile',
+        },
+      },
+    },
+    screenshot: {
+      viewport: { width: 390, height: 700 },
+    },
+  },
+}
+
+export const SearchPaletteOnMobile: Story = {
+  name: 'shows the open search palette without a footer on mobile.',
   globals: { viewport: { value: 'quickSwitcherMobile' } },
   parameters: {
     viewport: {

@@ -2,6 +2,7 @@ import type {
   CommandPaletteGroup,
   CommandPaletteItem,
 } from '@fohte/ui/command-palette'
+import { keepPreviousData } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -186,20 +187,38 @@ export function QuickSwitcher() {
   const shortcutLabel = shortcutPlatform === 'apple' ? '⌘K' : 'Ctrl+K'
   const normalizedQuery = value.trim()
   const hasQuery = normalizedQuery.length > 0
+  const [debouncedQuery, setDebouncedQuery] = useState(normalizedQuery)
+  const isDebouncing = open && hasQuery && normalizedQuery !== debouncedQuery
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedQuery(normalizedQuery)
+    }, 200)
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [normalizedQuery])
+
   const strategiesQuery = $api.useQuery('get', '/api/strategies', undefined, {
     enabled: open,
   })
   const stocksQuery = $api.useQuery(
     'get',
     '/api/refs/stocks',
-    { params: { query: { q: normalizedQuery } } },
-    { enabled: open && hasQuery },
+    { params: { query: { q: debouncedQuery } } },
+    {
+      enabled: open && hasQuery && !isDebouncing,
+      placeholderData: keepPreviousData,
+    },
   )
   const indicatorsQuery = $api.useQuery(
     'get',
     '/api/refs/indicators',
-    { params: { query: { q: normalizedQuery } } },
-    { enabled: open && hasQuery },
+    { params: { query: { q: debouncedQuery } } },
+    {
+      enabled: open && hasQuery && !isDebouncing,
+      placeholderData: keepPreviousData,
+    },
   )
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen)
@@ -309,10 +328,12 @@ export function QuickSwitcher() {
   const isLoading =
     open &&
     (strategiesQuery.isPending ||
-      (hasQuery && (stocksQuery.isFetching || indicatorsQuery.isFetching)))
+      (hasQuery &&
+        (isDebouncing || stocksQuery.isFetching || indicatorsQuery.isFetching)))
   const noResults = open && hasQuery && groups.length === 0 && !isLoading
   const searchFailed =
     open &&
+    !isDebouncing &&
     (strategiesQuery.isError ||
       (hasQuery && (stocksQuery.isError || indicatorsQuery.isError)))
 

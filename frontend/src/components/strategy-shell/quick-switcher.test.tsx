@@ -1,6 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Outlet, RouterProvider } from '@tanstack/react-router'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
@@ -46,8 +52,12 @@ const indicator: Indicator = {
   name: 'デモ指標',
 }
 
-function installQuickSwitcherMiddleware(failingPath?: string) {
+function installQuickSwitcherMiddleware(
+  failingPath?: string,
+  deferredQuery?: string,
+) {
   const requests: { path: string; query: string | null }[] = []
+  const deferredResponseResolvers: ((response: Response) => void)[] = []
   const middleware: Middleware = {
     onRequest({ request }) {
       const url = new URL(request.url)
@@ -58,6 +68,11 @@ function installQuickSwitcherMiddleware(failingPath?: string) {
         return new Response(JSON.stringify({ error: '検索に失敗しました。' }), {
           status: 500,
           headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (query === deferredQuery) {
+        return new Promise<Response>((resolve) => {
+          deferredResponseResolvers.push(resolve)
         })
       }
       const body =
@@ -77,6 +92,16 @@ function installQuickSwitcherMiddleware(failingPath?: string) {
   fetchClient.use(middleware)
   return {
     requests,
+    resolveDeferredQueries: () => {
+      for (const resolve of deferredResponseResolvers.splice(0)) {
+        resolve(
+          new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
+    },
     eject: () => {
       fetchClient.eject(middleware)
     },
@@ -97,9 +122,10 @@ function renderQuickSwitcher(
   initialPath = '/portfolio',
   platform = 'Linux',
   failingPath?: string,
+  deferredQuery?: string,
 ) {
   activeMiddleware?.eject()
-  activeMiddleware = installQuickSwitcherMiddleware(failingPath)
+  activeMiddleware = installQuickSwitcherMiddleware(failingPath, deferredQuery)
   setPlatform(platform)
 
   const queryClient = new QueryClient({
@@ -222,8 +248,17 @@ function getSearchFailureOutput(message: string) {
   }
 }
 
+function getReferenceSearchOutput<T>(
+  beforeDebounce: T,
+  firstSearch: T,
+  whileNextSearchIsPending: T,
+) {
+  return { beforeDebounce, firstSearch, whileNextSearchIsPending }
+}
+
 afterEach(() => {
   cleanup()
+  activeMiddleware?.resolveDeferredQueries()
   activeMiddleware?.eject()
   activeMiddleware = null
 })
@@ -284,14 +319,79 @@ describe('QuickSwitcher', () => {
           pathname: '/strategies/demo-strategy/performance',
           search: {},
         },
-        requests: [
-          { path: '/api/refs/indicators', query: 'demo-strategy' },
-          { path: '/api/refs/stocks', query: 'demo-strategy' },
-          { path: '/api/strategies', query: null },
-        ],
+        requests: [{ path: '/api/strategies', query: null }],
         closed: true,
       },
     })
+  })
+
+  it('debounces reference searches and keeps prior results while the next search loads', async () => {
+    const user = userEvent.setup()
+    renderQuickSwitcher('/portfolio', 'Linux', undefined, 'デモX')
+
+    await user.click(await screen.findByRole('button', { name: '探す' }))
+    await screen.findByText('デモ戦略')
+    const input = screen.getByRole('textbox', {
+      name: '画面・戦略・銘柄・指標を検索',
+    })
+
+    fireEvent.change(input, { target: { value: 'デ' } })
+    fireEvent.change(input, { target: { value: 'デモ' } })
+    await new Promise((resolve) => window.setTimeout(resolve, 150))
+    const beforeDebounce = {
+      referenceRequests: getRequestOutput().filter(({ path }) =>
+        path.startsWith('/api/refs/'),
+      ),
+      results: getPaletteResultLabels(),
+    }
+
+    await screen.findByText('デモ商事')
+    const firstSearch = {
+      referenceRequests: getRequestOutput().filter(({ path }) =>
+        path.startsWith('/api/refs/'),
+      ),
+      results: getPaletteResultLabels(),
+    }
+
+    fireEvent.change(input, { target: { value: 'デモX' } })
+    await new Promise((resolve) => window.setTimeout(resolve, 220))
+    const whileNextSearchIsPending = {
+      referenceRequests: getRequestOutput().filter(({ path }) =>
+        path.startsWith('/api/refs/'),
+      ),
+      results: getPaletteResultLabels(),
+    }
+
+    const expected = {
+      beforeDebounce: {
+        referenceRequests: [],
+        results: ['デモ戦略', '別のデモ戦略'],
+      },
+      firstSearch: {
+        referenceRequests: [
+          { path: '/api/refs/indicators', query: 'デモ' },
+          { path: '/api/refs/stocks', query: 'デモ' },
+        ],
+        results: ['デモ戦略', '別のデモ戦略', 'デモ商事', 'デモ指標'],
+      },
+      whileNextSearchIsPending: {
+        referenceRequests: [
+          { path: '/api/refs/indicators', query: 'デモ' },
+          { path: '/api/refs/indicators', query: 'デモX' },
+          { path: '/api/refs/stocks', query: 'デモ' },
+          { path: '/api/refs/stocks', query: 'デモX' },
+        ],
+        results: ['デモ商事', 'デモ指標'],
+      },
+    }
+
+    expect(
+      getReferenceSearchOutput(
+        beforeDebounce,
+        firstSearch,
+        whileNextSearchIsPending,
+      ),
+    ).toEqual(expected)
   })
 
   it.each([

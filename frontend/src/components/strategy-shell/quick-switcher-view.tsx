@@ -56,26 +56,8 @@ export function QuickSwitcherView({
         dialogLabel="探す"
         placeholder="画面・戦略・銘柄・指標を検索"
         prefix={<Search className="size-4" aria-hidden="true" />}
-        footer={
-          <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border px-4 py-2 font-mono text-2xs text-muted-foreground-ghost">
-            <KeyHint>↑↓</KeyHint>
-            <span>移動</span>
-            <KeyHint>Enter</KeyHint>
-            <span>開く</span>
-            <KeyHint>Esc</KeyHint>
-            <span>閉じる</span>
-          </div>
-        }
       />
     </>
-  )
-}
-
-function KeyHint({ children }: { children: ReactNode }) {
-  return (
-    <span className="inline-flex min-w-11 items-center justify-center rounded-(--keycap-radius) border border-border bg-secondary px-1.5 py-0.5 text-center text-foreground">
-      {children}
-    </span>
   )
 }
 
