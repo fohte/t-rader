@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use core_application::custom_indicator::CustomIndicator;
+use core_application::custom_indicator_evaluation::RecordCustomIndicatorEvaluationCommand;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
@@ -72,7 +73,8 @@ impl StrategyServer {
 
         let executor = self.kata_executor()?;
 
-        let stdin = serde_json::to_string(&serde_json::json!({ "args": params.args }))
+        let args = params.args;
+        let stdin = serde_json::to_string(&serde_json::json!({ "args": args.clone() }))
             .map_err(|e| internal_error(format!("failed to serialize args: {e}")))?;
         if stdin.len() > EXEC_MAX_STDIN_BYTES {
             return Err(invalid_params(format!(
@@ -106,9 +108,30 @@ impl StrategyServer {
             None
         };
 
+        let evaluation_id = match output.as_ref() {
+            Some(output) => Some(
+                self.dependencies
+                    .custom_indicator_evaluations
+                    .record(RecordCustomIndicatorEvaluationCommand {
+                        indicator_id: indicator.indicator_id,
+                        indicator_name: indicator.name.clone(),
+                        code: indicator.code.clone(),
+                        args,
+                        output: output.clone(),
+                    })
+                    .await
+                    .map_err(|e| {
+                        // 記録 ID がない成功結果を返すと、後から値を参照できない。
+                        internal_error(format!("failed to record indicator evaluation: {e}"))
+                    })?,
+            ),
+            None => None,
+        };
+
         Ok(EvalIndicatorResult {
             indicator_id: indicator.indicator_id,
             scope: indicator.scope,
+            evaluation_id,
             output,
             stdout: result.stdout,
             stderr: result.stderr,

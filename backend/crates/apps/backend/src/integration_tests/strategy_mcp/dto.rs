@@ -372,6 +372,7 @@ pub struct SearchWebArticle {
 pub struct EvalIndicatorResult {
     pub indicator_id: Uuid,
     pub scope: String,
+    pub evaluation_id: Option<Uuid>,
     #[serde(default)]
     pub output: Option<serde_json::Value>,
     pub stdout: String,

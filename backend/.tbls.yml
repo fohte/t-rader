@@ -328,6 +328,15 @@ comments:
       input_schema: '指標へ渡す入力値を検証する JSON Schema。'
       output_schema: '指標の出力値を検証する JSON Schema。'
       description: 'カスタム指標の説明。'
+  - table: custom_indicator_evaluation
+    tableComment: '自作指標の成功した計算結果を、実行時点の定義とともに保持する。'
+    columnComments:
+      indicator_id: '実行時点の自作指標の ID。定義への外部キーは持たない。'
+      indicator_name: '実行時点の自作指標の名称。'
+      code: '評価時に実行した自作指標のコード。'
+      args: '計算に渡した入力引数を保持する JSON 値。'
+      output: '自作指標が返した JSON 値。'
+      evaluated_at: '計算が成功した時刻。'
   - table: financial_summary
     tableComment: '銘柄ごとの決算開示内容と業績予想を保持する。'
     columnComments:
