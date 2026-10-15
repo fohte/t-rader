@@ -43,7 +43,7 @@ export function formatNoteEvidencePercentage(
   }).format(value)
 }
 
-export function calculateNoteChangeEvidence(
+function calculateNoteChangeEvidence(
   startValue: number,
   endValue: number,
   savedValue: number,

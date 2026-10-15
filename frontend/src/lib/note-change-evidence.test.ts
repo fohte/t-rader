@@ -1,52 +1,47 @@
 import { describe, expect, it } from 'vitest'
 
 import type { components } from '#lib/api/schema.gen'
-import {
-  calculateNoteChangeEvidence,
-  resolveNoteChangeEvidence,
-} from '#lib/note-change-evidence'
+import { resolveNoteChangeEvidence } from '#lib/note-change-evidence'
 import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
 
-describe('calculateNoteChangeEvidence', () => {
+describe('resolveNoteChangeEvidence', () => {
   it.each([
     {
-      name: 'matches the saved value at the displayed precision',
-      savedValue: 8.6199,
+      name: 'calculates the change from the requested bar field',
+      startValue: 100,
+      savedValue: 10,
       expected: {
-        startValue: 2900,
-        endValue: 3150,
-        changePercent: (250 / 2900) * 100,
+        startValue: 100,
+        endValue: 110,
+        changePercent: 10,
         matchesSavedValue: true,
       },
     },
     {
       name: 'flags a saved value that differs from the current bars',
-      savedValue: 7.5,
+      startValue: 100,
+      savedValue: 12,
       expected: {
-        startValue: 2900,
-        endValue: 3150,
-        changePercent: (250 / 2900) * 100,
+        startValue: 100,
+        endValue: 110,
+        changePercent: 10,
         matchesSavedValue: false,
       },
     },
-  ])('$name', ({ savedValue, expected }) => {
-    expect(calculateNoteChangeEvidence(2900, 3150, savedValue)).toEqual(
-      expected,
-    )
-  })
-
-  it('does not calculate a percentage from a zero starting value', () => {
-    expect(calculateNoteChangeEvidence(0, 3150, 8)).toBeUndefined()
-  })
-
-  it('uses the requested field on bars matching the Japan trading dates', () => {
+    {
+      name: 'returns undefined when the starting bar value is zero',
+      startValue: 0,
+      savedValue: 8,
+      expected: undefined,
+    },
+  ])('$name', ({ startValue, savedValue, expected }) => {
     const bars: components['schemas']['Bar'][] = [
       {
         instrument_id: '0000',
         timeframe: '1d',
         timestamp: '2030-01-01T15:00:00.000Z',
         open: 10,
-        high: 100,
+        high: startValue,
         low: 1,
         close: 500,
         volume: 1000,
@@ -69,11 +64,8 @@ describe('calculateNoteChangeEvidence', () => {
       field: 'high',
     }
 
-    expect(resolveNoteChangeEvidence(bars, reference, 10)).toEqual({
-      startValue: 100,
-      endValue: 110,
-      changePercent: 10,
-      matchesSavedValue: true,
-    })
+    expect(resolveNoteChangeEvidence(bars, reference, savedValue)).toEqual(
+      expected,
+    )
   })
 })
