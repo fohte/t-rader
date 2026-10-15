@@ -89,7 +89,7 @@ func (r *strategyTriggerResource) Schema(_ context.Context, _ resource.SchemaReq
 			},
 			"event_type": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "`kind = \"event\"` の場合に必要な event type。",
+				MarkdownDescription: "`kind = \"event\"` の場合に必要な、小文字のドット区切り識別子。",
 			},
 			"event_match": schema.DynamicAttribute{
 				Optional:            true,

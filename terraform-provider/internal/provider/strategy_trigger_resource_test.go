@@ -840,6 +840,18 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 				Config: attributeError("Unexpected event_type", "kind が cron または hook の場合は event_type を省略してください。"),
 			},
 		},
+		{
+			name:       "hook with event type fails",
+			kind:       "hook",
+			schedule:   types.StringNull(),
+			hookSlug:   types.StringValue("synthetic-hook"),
+			eventType:  types.StringValue(testTriggerEventType),
+			eventMatch: types.DynamicNull(),
+			want: triggerValidationOutput{
+				Kind:   []triggerTestDiagnostic{},
+				Config: attributeError("Unexpected event_type", "kind が cron または hook の場合は event_type を省略してください。"),
+			},
+		},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -908,20 +920,10 @@ func TestStrategyTriggerKindAndStrategyIDRequireReplacement(t *testing.T) {
 }
 
 func validateStrategyTriggerConfig(t *testing.T, kind string, schedule, hookSlug, eventType types.String, eventMatch types.Dynamic) triggerValidationOutput {
-	return validateStrategyTriggerConfigWithEventTypeAndBusinessDaysOnly(t, kind, schedule, hookSlug, eventType, eventMatch, types.BoolNull())
+	return validateStrategyTriggerConfigWithBusinessDaysOnly(t, kind, schedule, hookSlug, eventType, eventMatch, types.BoolNull())
 }
 
 func validateStrategyTriggerConfigWithBusinessDaysOnly(
-	t *testing.T,
-	kind string,
-	schedule, hookSlug types.String,
-	eventMatch types.Dynamic,
-	businessDaysOnly types.Bool,
-) triggerValidationOutput {
-	return validateStrategyTriggerConfigWithEventTypeAndBusinessDaysOnly(t, kind, schedule, hookSlug, types.StringNull(), eventMatch, businessDaysOnly)
-}
-
-func validateStrategyTriggerConfigWithEventTypeAndBusinessDaysOnly(
 	t *testing.T,
 	kind string,
 	schedule, hookSlug, eventType types.String,
@@ -974,6 +976,7 @@ func TestStrategyTriggerRejectsBusinessDaysOnlyForHook(t *testing.T) {
 		"hook",
 		types.StringNull(),
 		types.StringValue("synthetic-hook"),
+		types.StringNull(),
 		types.DynamicNull(),
 		types.BoolValue(true),
 	)
