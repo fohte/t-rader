@@ -33,18 +33,26 @@ describe('calculateChartIndicatorLines', () => {
   })
 
   it('maps an exponential moving average to a main chart line', () => {
+    const unevenBars: ChartIndicatorBar<string>[] = [
+      { time: '2026-01-01', close: 10 },
+      { time: '2026-01-02', close: 12 },
+      { time: '2026-01-03', close: 14 },
+      { time: '2026-01-04', close: 20 },
+      { time: '2026-01-05', close: 18 },
+    ]
+
     expect(
       calculateChartIndicatorLines(
         { id: 'indicator-ema', kind: 'ema', period: 3, color: '#38bdf8' },
-        bars,
+        unevenBars,
       ),
     ).toEqual([
       {
         variant: 'main',
         points: [
           { time: '2026-01-03', value: 12 },
-          { time: '2026-01-04', value: 14 },
-          { time: '2026-01-05', value: 16 },
+          { time: '2026-01-04', value: 16 },
+          { time: '2026-01-05', value: 17 },
         ],
       },
     ])
