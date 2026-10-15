@@ -18,6 +18,7 @@ mod news;
 mod paper_trade;
 mod portfolio;
 mod query_data;
+mod saved_screen;
 mod screen_stocks;
 pub use annotations::*;
 pub use financials::*;
@@ -26,6 +27,7 @@ pub use news::*;
 pub use paper_trade::*;
 pub use portfolio::*;
 pub use query_data::*;
+pub use saved_screen::*;
 pub use screen_stocks::*;
 
 fn any_json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

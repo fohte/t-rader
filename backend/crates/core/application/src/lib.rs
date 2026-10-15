@@ -40,6 +40,7 @@ pub mod portfolio_history;
 pub mod prediction;
 pub mod refs;
 pub mod rss_feed;
+pub mod saved_screen;
 pub mod screener;
 pub mod shareholding_structure;
 pub mod shareholding_structure_source;

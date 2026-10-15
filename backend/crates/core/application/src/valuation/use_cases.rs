@@ -7,7 +7,6 @@ use serde::Serialize;
 
 use crate::bars::{DailyBarAdjustmentFactor, SharedBarsRepository};
 use crate::daily_bar_source::DateRange;
-use crate::strategy_scope::StrategyScope;
 use crate::valuation_source::ValuationSource;
 
 use super::error::ValuationUseCaseError;
@@ -91,7 +90,6 @@ impl ValuationUseCases {
 
     pub async fn find_for_symbol(
         &self,
-        _scope: StrategyScope,
         symbol: &str,
         from: NaiveDate,
         to: NaiveDate,
@@ -183,87 +181,20 @@ fn recent_business_days_in_range(range: &DateRange, today: NaiveDate) -> Vec<Nai
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::sync::{Arc, Mutex};
 
+    use crate::daily_bar_source::DateRange;
+    use crate::valuation_source::{ValuationSource, ValuationSourceError};
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_domain::valuation::Valuation;
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
-    use uuid::Uuid;
-
-    use crate::daily_bar_source::DateRange;
-    use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
-    use crate::valuation_source::{ValuationSource, ValuationSourceError};
 
     use super::{IngestStats, ValuationUseCases};
     use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository};
-    use crate::valuation::{ValuationRepository, ValuationRepositoryError};
-
-    #[derive(Default)]
-    struct FakeValuationRepository {
-        ingested_dates: Mutex<HashSet<NaiveDate>>,
-        valuations: Mutex<Vec<Valuation>>,
-        ingested_date_queries: Mutex<Vec<NaiveDate>>,
-        read_query: Mutex<Option<(String, NaiveDate, NaiveDate)>>,
-    }
-
-    use std::collections::HashSet;
-
-    #[async_trait]
-    impl ValuationRepository for FakeValuationRepository {
-        async fn find_ingested_dates(
-            &self,
-            from: NaiveDate,
-        ) -> Result<Vec<NaiveDate>, ValuationRepositoryError> {
-            self.ingested_date_queries.lock().expect("lock").push(from);
-            Ok(self
-                .ingested_dates
-                .lock()
-                .expect("lock")
-                .iter()
-                .copied()
-                .collect())
-        }
-
-        async fn mark_ingested(&self, date: NaiveDate) -> Result<(), ValuationRepositoryError> {
-            self.ingested_dates.lock().expect("lock").insert(date);
-            Ok(())
-        }
-
-        async fn upsert(
-            &self,
-            valuations: Vec<Valuation>,
-        ) -> Result<usize, ValuationRepositoryError> {
-            let count = valuations.len();
-            self.valuations.lock().expect("lock").extend(valuations);
-            Ok(count)
-        }
-
-        async fn find_by_symbol_date_range(
-            &self,
-            symbol: &str,
-            from: NaiveDate,
-            to: NaiveDate,
-        ) -> Result<Vec<Valuation>, ValuationRepositoryError> {
-            *self.read_query.lock().expect("lock") = Some((symbol.to_string(), from, to));
-            Ok(self.valuations.lock().expect("lock").clone())
-        }
-
-        async fn find_latest_by_symbol(
-            &self,
-            symbol: &str,
-        ) -> Result<Option<Valuation>, ValuationRepositoryError> {
-            Ok(self
-                .valuations
-                .lock()
-                .expect("lock")
-                .iter()
-                .filter(|valuation| valuation.code.chars().take(4).collect::<String>() == symbol)
-                .max_by_key(|valuation| valuation.date)
-                .cloned())
-        }
-    }
+    use crate::valuation::FakeValuationRepository;
 
     struct FakeValuationSource {
         range: Option<DateRange>,
@@ -323,24 +254,6 @@ mod tests {
             pbr: None,
             mkt_cap: None,
         }
-    }
-
-    struct ExistingStrategy;
-
-    #[async_trait]
-    impl StrategyScopeSource for ExistingStrategy {
-        async fn existing_ids(
-            &self,
-            ids: &[Uuid],
-        ) -> Result<HashSet<Uuid>, StrategyScopeSourceError> {
-            Ok(ids.iter().copied().collect())
-        }
-    }
-
-    async fn strategy_scope() -> StrategyScope {
-        StrategyScope::verify(Uuid::nil(), &ExistingStrategy)
-            .await
-            .expect("scope succeeds")
     }
 
     #[rstest]
@@ -499,10 +412,10 @@ mod tests {
         let use_cases = ValuationUseCases::new(repository.clone(), bars_repository.clone());
 
         let result = use_cases
-            .find_for_symbol(strategy_scope().await, "ZZZZ", from, to)
+            .find_for_symbol("ZZZZ", from, to)
             .await
             .expect("read succeeds");
-        let valuation_query = repository.read_query.lock().expect("lock").clone();
+        let valuation_queries = repository.date_range_queries.lock().expect("lock").clone();
         let adjustment_factor_queries = bars_repository
             .daily_adjustment_factor_queries
             .lock()
@@ -510,11 +423,11 @@ mod tests {
             .clone();
 
         assert_eq!(
-            (result, (valuation_query, adjustment_factor_queries)),
+            (result, (valuation_queries, adjustment_factor_queries)),
             (
                 expected,
                 (
-                    Some(("ZZZZ".to_string(), from, to)),
+                    vec![("ZZZZ".to_string(), from, to)],
                     vec![("ZZZZ".to_string(), from)],
                 ),
             ),
@@ -591,7 +504,7 @@ mod tests {
         let use_cases = ValuationUseCases::new(repository, bars_repository);
 
         let result = use_cases
-            .find_for_symbol(strategy_scope().await, "ZZZZ", first_date, after_split_date)
+            .find_for_symbol("ZZZZ", first_date, after_split_date)
             .await
             .expect("read succeeds");
 

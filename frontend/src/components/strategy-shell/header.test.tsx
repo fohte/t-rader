@@ -33,6 +33,7 @@ function renderHeader(
       '/notes',
       '/annotations/$annoId',
       '/paper-trading',
+      '/screener',
       '/calendar',
       '/settings',
       '/settings/rss-feeds',
@@ -91,6 +92,11 @@ function getExpectedMenuOutput(
         label: 'ペーパートレード',
         href: '/paper-trading',
         active: activeLabel === 'ペーパートレード',
+      },
+      {
+        label: 'スクリーナー',
+        href: '/screener',
+        active: activeLabel === 'スクリーナー',
       },
       {
         label: 'カレンダー',
@@ -264,6 +270,7 @@ describe('Header', () => {
       { label: 'ノート', href: '/notes', active: false },
       { label: '戦略', href: '/strategies', active: false },
       { label: 'ペーパートレード', href: '/paper-trading', active: false },
+      { label: 'スクリーナー', href: '/screener', active: false },
       { label: 'カレンダー', href: '/calendar', active: false },
       { label: '全体の設定', href: '/settings', active: false },
     ])
@@ -315,6 +322,11 @@ describe('Header', () => {
       pageName: 'ペーパートレード',
       path: '/paper-trading',
       activeLabel: 'ペーパートレード',
+    },
+    {
+      pageName: 'スクリーナー',
+      path: '/screener',
+      activeLabel: 'スクリーナー',
     },
     { pageName: 'カレンダー', path: '/calendar', activeLabel: 'カレンダー' },
     {

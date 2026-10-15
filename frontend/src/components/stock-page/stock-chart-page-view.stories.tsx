@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { RouterProvider } from '@tanstack/react-router'
 
+import { lowerPaneIndicatorBars } from '#components/stock-page/stock-chart.fixtures'
 import { StockChartPageView } from '#components/stock-page/stock-chart-page-view'
 import type { components } from '#lib/api/schema.gen'
+import type { ChartIndicatorConfig } from '#lib/chart-indicator-settings'
 import { createStoryRouter } from '#storybook/story-router'
 
 type Bar = components['schemas']['Bar']
@@ -27,6 +29,18 @@ const bars: Bar[] = [
     low: 3030,
     close: 3110,
     volume: 12000,
+  },
+]
+
+const lowerPaneIndicators: ChartIndicatorConfig[] = [
+  { id: 'indicator-rsi', kind: 'rsi', period: 3, color: '#38bdf8' },
+  {
+    id: 'indicator-macd',
+    kind: 'macd',
+    fastPeriod: 2,
+    slowPeriod: 5,
+    signalPeriod: 3,
+    color: '#34d399',
   },
 ]
 
@@ -71,6 +85,11 @@ type Story = StoryObj<typeof meta>
 
 export const DailyChart: Story = {
   name: '銘柄名から銘柄ページへ戻れる全画面チャートを表示する。',
+}
+
+export const WithLowerPaneIndicators: Story = {
+  name: 'RSI と MACD の下段を追加した全画面チャートを表示する。',
+  args: { bars: lowerPaneIndicatorBars, chartIndicators: lowerPaneIndicators },
 }
 
 export const Loading: Story = {

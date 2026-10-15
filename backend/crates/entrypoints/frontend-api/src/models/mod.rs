@@ -22,6 +22,7 @@ pub mod prediction;
 pub mod refs;
 pub mod risk_policy;
 pub mod rss_feed;
+pub mod saved_screen;
 pub mod screener;
 pub mod short_ratio;
 pub mod short_sale_report;
@@ -68,7 +69,8 @@ pub use risk_policy::{AccountRiskPolicyResponse, PutAccountRiskPolicyRequest};
 pub use rss_feed::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
 };
-pub use screener::ScreenerResponse;
+pub use saved_screen::{SaveScreenRequest, SavedScreenResponse};
+pub use screener::{ScreenerResponse, ScreenerSectorResponse};
 pub use stock_info::{
     StockFinancialSummaryResponse, StockGroupMembershipResponse, StockNextEarningsResponse,
     StockValuationResponse,

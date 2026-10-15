@@ -38,6 +38,21 @@ pub struct ScreenerStockResponse {
     pub market_cap: Option<Decimal>,
 }
 
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ScreenerSectorResponse {
+    pub key: String,
+    pub name: String,
+}
+
+impl From<core_application::screener::ScreenerSector> for ScreenerSectorResponse {
+    fn from(sector: core_application::screener::ScreenerSector) -> Self {
+        Self {
+            key: sector.key,
+            name: sector.name,
+        }
+    }
+}
+
 impl From<ScreenerStock> for ScreenerStockResponse {
     fn from(stock: ScreenerStock) -> Self {
         Self {
