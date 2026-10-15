@@ -2,11 +2,13 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::change_history::{ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
+use crate::indicator_observation::IndicatorObservationUseCases;
 use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
 use crate::note::types::{Note, NoteSnapshot};
 use crate::strategy_task_step_evidence::SharedStrategyTaskStepEvidenceRepository;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
+use crate::valuation::ValuationUseCases;
 
 pub(super) fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCaseError> {
     if value.is_object() {
@@ -24,6 +26,8 @@ pub struct NoteUseCases {
     pub(super) repository: SharedNoteRepository,
     pub(super) change_history: SharedChangeHistoryPort,
     pub(super) strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
+    pub(super) valuations: ValuationUseCases,
+    pub(super) indicator_observations: IndicatorObservationUseCases,
 }
 
 impl NoteUseCases {
@@ -32,12 +36,16 @@ impl NoteUseCases {
         repository: SharedNoteRepository,
         change_history: SharedChangeHistoryPort,
         strategy_task_step_evidence: SharedStrategyTaskStepEvidenceRepository,
+        valuations: ValuationUseCases,
+        indicator_observations: IndicatorObservationUseCases,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
             change_history,
             strategy_task_step_evidence,
+            valuations,
+            indicator_observations,
         }
     }
 
