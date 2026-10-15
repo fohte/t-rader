@@ -44,6 +44,12 @@ impl MigrationTrait for Migration {
              CHECK (timeframe IN ('1m', '1h', '1d'))",
         )
         .await?;
+        db.execute_unprepared(
+            "INSERT INTO bars (instrument_id, timeframe, timestamp, open, high, low, close, volume) \
+             SELECT instrument_id, '1m', timestamp, open, high, low, close, volume \
+             FROM minute_bars",
+        )
+        .await?;
         db.execute_unprepared("SELECT set_chunk_time_interval('bars', INTERVAL '1 day')")
             .await?;
         db.execute_unprepared(
@@ -234,6 +240,13 @@ mod tests {
             )
             .await
             .expect("add minute_bars compression policy");
+        transaction
+            .execute_unprepared(
+                "INSERT INTO minute_bars (instrument_id, timestamp, open, high, low, close, volume) \
+                 VALUES ('US:DEMO-A', '2040-01-02T15:04:00Z', 200, 210, 190, 205, 20)",
+            )
+            .await
+            .expect("insert minute bar");
 
         Migration
             .up(&SchemaManager::new(&transaction))
@@ -242,12 +255,10 @@ mod tests {
         transaction
             .execute_unprepared(
                 "INSERT INTO bars (instrument_id, timeframe, timestamp, open, high, low, close, volume) \
-                 VALUES \
-                    ('US:DEMO-A', '1m', '2040-01-02T15:04:00Z', 200, 210, 190, 205, 20), \
-                    ('US:DEMO-A', '1h', '2040-01-02T15:00:00Z', 200, 220, 180, 210, 100)",
+                 VALUES ('US:DEMO-A', '1h', '2040-01-02T15:00:00Z', 200, 220, 180, 210, 100)",
             )
             .await
-            .expect("insert minute and hourly bars");
+            .expect("insert hourly bar");
         transaction
             .execute_unprepared("DELETE FROM bars WHERE timeframe = '1h'")
             .await
@@ -280,6 +291,14 @@ mod tests {
                               AND hypertable_name = 'bars'
                               AND proc_name = 'policy_compression'
                         ) AS compress_after,
+                        (
+                            SELECT concat_ws(
+                                '|', instrument_id, timeframe,
+                                to_char(timestamp AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISS'),
+                                open::text, high::text, low::text, close::text, volume::text
+                            )
+                            FROM bars WHERE timeframe = '1m'
+                        ) AS migrated_minute_bar,
                         to_regclass('minute_bars') IS NULL AS minute_table_removed
                     FROM timescaledb_information.hypertables
                     WHERE hypertable_schema = $1
@@ -306,6 +325,9 @@ mod tests {
                     .try_get::<Option<String>>("", "compress_after")
                     .expect("read compression policy"),
                 settings
+                    .try_get::<Option<String>>("", "migrated_minute_bar")
+                    .expect("read migrated minute bar"),
+                settings
                     .try_get::<bool>("", "minute_table_removed")
                     .expect("read minute_bars removal"),
             ),
@@ -314,6 +336,7 @@ mod tests {
                 Some("1 day".into()),
                 Some("instrument_id,timeframe".into()),
                 Some("7 days".into()),
+                Some("US:DEMO-A|1m|20400102150400|200|210|190|205|20".into()),
                 true,
             ),
         );
