@@ -1,10 +1,11 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Decorator, Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { http, HttpResponse } from 'msw'
 
 import { CHANGE_REFERENCE_BARS } from '#components/note-detail/change-reference-bars.fixtures'
 import { MarkdownBody } from '#components/note-detail/markdown-body'
+import { NoteBodyCard } from '#components/note-detail/note-body-card'
 import { getDiffCommentAnchorKey } from '#components/note-detail/note-version-line-comment-group'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { components } from '#lib/api/schema.gen'
@@ -51,10 +52,36 @@ const SAMPLE = `# サンプル銘柄の記録
     - 下限: 1,480
     - 上限: 1,640
 
+1. 最初の手順
+    - 子項目
+2. 次の手順
+
 \`\`\`python
 print("nsjail で集計したサンプル")
 \`\`\`
 `
+
+const GUTTER_LAYOUT_SAMPLE = `${'\n'.repeat(99)}${[
+  '# 行番号付きの本文',
+  '',
+  '## 見出しと段落',
+  '',
+  '本文の位置と字下げを保つ。',
+  '',
+  '- 箇条書き',
+  '    - 入れ子の項目',
+  '',
+  '1. 番号付きリスト',
+  '    1. 入れ子の番号付きリスト',
+  '',
+  '> 引用文',
+  '',
+  '    コード行',
+  '',
+  '| 項目 | 状態 |',
+  '| --- | --- |',
+  '| 表の行 | 対象 |',
+].join('\n')}`
 
 const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
   {
@@ -86,6 +113,39 @@ const rangeComment: NoteVersionComment = {
   end_line: 4,
   created_at: '2026-01-12T03:00:00Z',
 }
+
+const formattedNoteComments: NoteVersionComment[] = [
+  {
+    id: 'nested-list-comment',
+    target_kind: 'note_version',
+    target_id: 'sample-version',
+    parent_id: null,
+    body: '入れ子の項目を確認した。',
+    author_kind: 'human',
+    author_label: 'レビュー担当者',
+    resolved: false,
+    anchor_text: '入れ子の項目',
+    anchor_side: 'new',
+    start_line: 107,
+    end_line: 107,
+    created_at: '2026-01-12T03:00:00Z',
+  },
+  {
+    id: 'table-row-comment',
+    target_kind: 'note_version',
+    target_id: 'sample-version',
+    parent_id: null,
+    body: '表の行を確認した。',
+    author_kind: 'human',
+    author_label: 'レビュー担当者',
+    resolved: false,
+    anchor_text: '| 表の行 | 対象 |',
+    anchor_side: 'new',
+    start_line: 118,
+    end_line: 118,
+    created_at: '2026-01-12T03:00:00Z',
+  },
+]
 
 const rangeCommentProps = {
   comments: [rangeComment],
@@ -142,9 +202,40 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const withNoteBodyCard: Decorator = (Story) => (
+  <NoteBodyCard>
+    <Story />
+  </NoteBodyCard>
+)
+
 export const Default: Story = {
   name: 'renders a formatted note with links to fixed and current versions.',
   args: { source: SAMPLE, noteLinks: NOTE_LINKS },
+}
+
+export const WithRangeCommentGutter: Story = {
+  name: 'the formatted note keeps its body position beside the comment gutter.',
+  decorators: [withNoteBodyCard],
+  args: {
+    source: GUTTER_LAYOUT_SAMPLE,
+    noteLinks: NOTE_LINKS,
+    rangeComments: {
+      ...rangeCommentProps,
+      comments: formattedNoteComments,
+      activeCommentAnchor: {
+        side: 'new',
+        lineNumber: 118,
+        endLineNumber: 118,
+        text: '| 表の行 | 対象 |',
+      },
+      activeCommentKey: getDiffCommentAnchorKey({
+        side: 'new',
+        lineNumber: 118,
+        endLineNumber: 118,
+        text: '',
+      }),
+    },
+  },
 }
 
 export const WithResolvedPriceReferences: Story = {
@@ -178,6 +269,7 @@ export const WithUnresolvedDatedReferences: Story = {
 
 export const WithRangeCommentThread: Story = {
   name: 'shows a comment thread below the final block in its range.',
+  decorators: [withNoteBodyCard],
   args: {
     source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
     rangeComments: rangeCommentProps,
@@ -186,6 +278,7 @@ export const WithRangeCommentThread: Story = {
 
 export const WithCommentComposer: Story = {
   name: 'shows a comment composer below the selected source block.',
+  decorators: [withNoteBodyCard],
   args: {
     source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
     rangeComments: {
@@ -209,6 +302,7 @@ export const WithCommentComposer: Story = {
 
 export const CommentsLoading: Story = {
   name: 'shows a loading message while note comments are fetched.',
+  decorators: [withNoteBodyCard],
   args: {
     source: '# コメントを読み込み中の本文\n\nコメント付きの段落です。',
     rangeComments: {
@@ -221,6 +315,7 @@ export const CommentsLoading: Story = {
 
 export const CommentsLoadFailed: Story = {
   name: 'shows an error when note comments cannot be loaded.',
+  decorators: [withNoteBodyCard],
   args: {
     source: '# コメントを読み込めない本文\n\nコメント付きの段落です。',
     rangeComments: {
@@ -233,6 +328,7 @@ export const CommentsLoadFailed: Story = {
 
 export const ResolveFailed: Story = {
   name: 'shows an error when a comment cannot be resolved.',
+  decorators: [withNoteBodyCard],
   args: {
     source: '# 解決に失敗した本文\n\nコメント付きの段落です。',
     rangeComments: {

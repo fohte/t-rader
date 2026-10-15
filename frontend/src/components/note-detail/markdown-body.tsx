@@ -1,16 +1,25 @@
 import { Link } from '@tanstack/react-router'
-import { type ComponentType, type ReactNode, useEffect, useMemo } from 'react'
+import {
+  type ComponentType,
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+} from 'react'
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import Markdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
-import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
 import { ChangeReferenceFigure } from '#components/note-detail/change-reference-figure'
+import { toGraphDef } from '#components/note-detail/markdown-body-graph-def'
 import { MarkdownBodyRangeBlock } from '#components/note-detail/markdown-body-range-block'
 import {
   MarkdownBodyRangeCommentContext,
   type MarkdownBodyRangeCommentProps,
+  MarkdownBodyTableCellGutterContext,
+  NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdown-body-text-selection-action'
 import {
@@ -77,40 +86,7 @@ type NoteTokenComponents = {
   >
 }
 
-// backend は Option<T> を持つフィールドを `T | null` として返す。
-// GraphRenderer が期待する型 (graph/types.ts) は `T | undefined` なので、ここで正規化する。
-function toGraphNode(n: components['schemas']['GraphNode']): GraphNode {
-  return {
-    id: n.id,
-    label: n.label,
-    ref: n.ref ?? undefined,
-    value: n.value ?? undefined,
-    cite: n.cite ?? undefined,
-    parent: n.parent ?? undefined,
-    x: n.x ?? undefined,
-    y: n.y ?? undefined,
-  }
-}
-
-function toGraphEdge(e: components['schemas']['GraphEdge']): GraphEdge {
-  return {
-    source: e.source,
-    target: e.target,
-    label: e.label ?? undefined,
-    value: e.value ?? undefined,
-    cite: e.cite ?? undefined,
-  }
-}
-
-function toGraphDef(g: ApiGraphDef): GraphDef {
-  return {
-    id: g.id,
-    layout: g.layout,
-    title: g.title ?? undefined,
-    nodes: g.nodes.map(toGraphNode),
-    edges: g.edges.map(toGraphEdge),
-  }
-}
+const MarkdownBodyListDepthContext = createContext(0)
 
 function GraphNotice({ children }: { children: ReactNode }) {
   return (
@@ -189,6 +165,7 @@ export function MarkdownBody({
           onGutterPointerDown: selection.onGutterPointerDown,
           onGutterClick: selection.onGutterClick,
         }
+  const hasRangeComments = rangeComments != null
   const components = useMemo<Components & NoteTokenComponents>(
     () => ({
       h1: ({ children, node }) => (
@@ -245,21 +222,42 @@ export function MarkdownBody({
           }
         />
       ),
-      ul: ({ children }) => (
-        <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed">
-          {children}
-        </ul>
-      ),
-      ol: ({ children }) => (
-        <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed">
-          {children}
-        </ol>
-      ),
-      li: ({ children, node }) => (
-        <li className="my-1">
-          <MarkdownBodyRangeBlock node={node} element={<>{children}</>} />
-        </li>
-      ),
+      ul: ({ children }) => {
+        const listDepth = useContext(MarkdownBodyListDepthContext)
+        return (
+          <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
+            <ul
+              className="my-2.5 list-disc space-y-1 text-sm leading-relaxed"
+              style={{ marginLeft: `${String(NOTE_BODY_INDENT_REM)}rem` }}
+            >
+              {children}
+            </ul>
+          </MarkdownBodyListDepthContext.Provider>
+        )
+      },
+      ol: ({ children }) => {
+        const listDepth = useContext(MarkdownBodyListDepthContext)
+        return (
+          <MarkdownBodyListDepthContext.Provider value={listDepth + 1}>
+            <ol
+              className="my-2.5 list-decimal space-y-1 text-sm leading-relaxed"
+              style={{ marginLeft: `${String(NOTE_BODY_INDENT_REM)}rem` }}
+            >
+              {children}
+            </ol>
+          </MarkdownBodyListDepthContext.Provider>
+        )
+      },
+      li: ({ children, node }) => {
+        const listDepth = useContext(MarkdownBodyListDepthContext)
+        return (
+          <MarkdownBodyRangeBlock
+            node={node}
+            listDepth={listDepth}
+            element={<li className="my-1">{children}</li>}
+          />
+        )
+      },
       blockquote: ({ children, node }) => (
         <MarkdownBodyRangeBlock
           node={node}
@@ -302,8 +300,14 @@ export function MarkdownBody({
         </a>
       ),
       table: ({ children }) => (
-        <div className="my-3 overflow-x-auto border border-border">
-          <table className="w-full border-collapse text-sm">{children}</table>
+        <div
+          className={`my-3 overflow-x-auto ${hasRangeComments ? 'relative -ml-11 pl-11' : 'border border-border'}`}
+        >
+          <table
+            className={`w-full border-collapse text-sm ${hasRangeComments ? 'ring-1 ring-inset ring-border' : ''}`}
+          >
+            {children}
+          </table>
         </div>
       ),
       thead: ({ children }) => (
@@ -314,22 +318,30 @@ export function MarkdownBody({
           {children}
         </MarkdownBodyRangeBlock>
       ),
-      th: ({ children, node }) => (
-        <th
-          align={cellAlign(node?.properties.align)}
-          className="px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground"
-        >
-          {children}
-        </th>
-      ),
-      td: ({ children, node }) => (
-        <td
-          align={cellAlign(node?.properties.align)}
-          className="px-3 py-1.5 text-foreground"
-        >
-          {children}
-        </td>
-      ),
+      th: ({ children, node }) => {
+        const tableGutter = useContext(MarkdownBodyTableCellGutterContext)
+        return (
+          <th
+            align={cellAlign(node?.properties.align)}
+            className={`px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground ${tableGutter == null ? '' : 'relative'}`}
+          >
+            {children}
+            {tableGutter}
+          </th>
+        )
+      },
+      td: ({ children, node }) => {
+        const tableGutter = useContext(MarkdownBodyTableCellGutterContext)
+        return (
+          <td
+            align={cellAlign(node?.properties.align)}
+            className={`px-3 py-1.5 text-foreground ${tableGutter == null ? '' : 'relative'}`}
+          >
+            {children}
+            {tableGutter}
+          </td>
+        )
+      },
       'note-ref': ({ token }) => <RefChip token={token} onOpenRef={onRef} />,
       'note-link': ({ noteId, token }) => {
         const noteLink = noteLinks.find((link) => link.note_id === noteId)
@@ -421,13 +433,28 @@ export function MarkdownBody({
         )
       },
     }),
-    [graphs, noteLinks, onAnno, onRef, resolvedPriceReferences],
+    [
+      graphs,
+      hasRangeComments,
+      noteLinks,
+      onAnno,
+      onRef,
+      resolvedPriceReferences,
+    ],
   )
 
   return (
     <div
       ref={selection.rootRef}
       className="text-foreground"
+      style={
+        hasRangeComments
+          ? {
+              marginLeft: `-${String(NOTE_BODY_INDENT_REM)}rem`,
+              paddingLeft: `${String(NOTE_BODY_INDENT_REM)}rem`,
+            }
+          : undefined
+      }
       onMouseUp={selection.onMouseUp}
       onTouchEnd={selection.onTouchEnd}
       onPointerMove={selection.onPointerMove}
