@@ -14075,6 +14075,7 @@
       },
       "WidgetMetricRequest": {
         "type": "string",
+        "description": "スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。",
         "enum": [
           "change",
           "close",
@@ -14248,7 +14249,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。"
           }
         },
         "additionalProperties": false
@@ -14383,7 +14385,8 @@
               }
             }
           }
-        ]
+        ],
+        "description": "スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。"
       }
     }
   },

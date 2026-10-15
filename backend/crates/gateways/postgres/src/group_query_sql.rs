@@ -53,12 +53,14 @@ pub(super) const STOCK_CHANGE_CTES: &str = r#"
     )
 "#;
 
+/// `stock_change_window_rows` は `stock_id`, `start_at`, `end_before` を返す。
 pub(super) fn with_shared_market_ctes(
     requested_axes: &str,
-    before_stock_changes: &str,
+    before_stock_change_windows: &str,
+    stock_change_window_rows: &str,
     after_stock_changes: &str,
 ) -> String {
     format!(
-        "WITH requested_axes AS ({requested_axes}), {GROUP_MEMBERSHIP_CTES}, {before_stock_changes}, {STOCK_CHANGE_CTES}, {after_stock_changes}"
+        "WITH requested_axes AS ({requested_axes}), {GROUP_MEMBERSHIP_CTES}, {before_stock_change_windows}, stock_change_windows AS ({stock_change_window_rows}), {STOCK_CHANGE_CTES}, {after_stock_changes}"
     )
 }

@@ -8,11 +8,11 @@ use thiserror::Error;
 use crate::persistence::PersistenceError;
 
 use super::{
-    formula::parse_formula,
+    formula::FormulaExpression,
     types::{
         WidgetBy, WidgetDefinition, WidgetQuery, WidgetVisualization, WidgetVisualizationOrder,
     },
-    validation::WidgetValidationErrors,
+    validation::{WidgetValidationErrors, validate_widget},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -82,8 +82,6 @@ pub enum WidgetUseCaseError {
     NoData,
     #[error(transparent)]
     Query(#[from] WidgetQueryError),
-    #[error("validated formula could not be parsed: {0}")]
-    InvalidFormula(String),
 }
 
 #[derive(Clone)]
@@ -100,7 +98,7 @@ impl WidgetUseCases {
         &self,
         definition: WidgetDefinition,
     ) -> Result<WidgetQueryResponse, WidgetUseCaseError> {
-        definition.validate()?;
+        let parsed_formulas = validate_widget(&definition)?;
         let as_of = self
             .query_source
             .resolve_as_of(definition.time.as_of)
@@ -128,79 +126,97 @@ impl WidgetUseCases {
             query_values.insert(name.as_str(), values);
         }
 
-        for (name, query) in &definition.queries {
-            if query.by != WidgetBy::None {
-                continue;
-            }
-            let Some(value) = query_values
-                .get(name.as_str())
-                .and_then(|values| values.get(&WidgetRowKey::Market))
-                .map(|(_, value)| *value)
-            else {
-                continue;
-            };
-            for (key, row) in &mut result_rows {
-                if key != &WidgetRowKey::Market {
-                    row.values.insert(name.clone(), Some(value));
-                }
-            }
-        }
-
-        for (name, formula) in &definition.formulas {
-            let expression = parse_formula(formula).map_err(WidgetUseCaseError::InvalidFormula)?;
-            let references = expression.references();
-            let row_source = references.iter().find(|reference| {
-                definition
-                    .queries
-                    .get::<str>(*reference)
-                    .is_some_and(|query| query.by != WidgetBy::None)
-            });
-            let row_keys = match row_source {
-                Some(reference) => query_values
-                    .get(reference)
-                    .map(|values| values.keys().cloned().collect::<Vec<_>>())
-                    .unwrap_or_default(),
-                None if query_values
-                    .values()
-                    .any(|values| values.contains_key(&WidgetRowKey::Market)) =>
-                {
-                    vec![WidgetRowKey::Market]
-                }
-                None => Vec::new(),
-            };
-
-            for key in row_keys {
-                let referenced_values = references
-                    .iter()
-                    .map(|reference| {
-                        let query = definition.queries.get(*reference)?;
-                        let query_key = match query.by {
-                            WidgetBy::None => WidgetRowKey::Market,
-                            WidgetBy::Stock | WidgetBy::Group => key.clone(),
-                        };
-                        query_values
-                            .get(reference)
-                            .and_then(|values| values.get(&query_key))
-                            .map(|(_, value)| (*reference, *value))
-                    })
-                    .collect::<Option<BTreeMap<_, _>>>();
-                let Some(referenced_values) = referenced_values else {
-                    continue;
-                };
-
-                let Some(result_row) = result_rows.get_mut(&key) else {
-                    continue;
-                };
-
-                let value =
-                    expression.evaluate(&|reference| referenced_values.get(reference).copied());
-                result_row.values.insert(name.clone(), value);
-            }
-        }
+        broadcast_market_values(&definition, &query_values, &mut result_rows);
+        evaluate_formulas(
+            &definition,
+            &parsed_formulas,
+            &query_values,
+            &mut result_rows,
+        );
 
         let rows = project_visualization_rows(result_rows.into_values().collect(), &definition.viz);
 
         Ok(WidgetQueryResponse { as_of, rows })
+    }
+}
+
+type QueryValues<'a> = BTreeMap<&'a str, BTreeMap<WidgetRowKey, (String, Decimal)>>;
+
+fn broadcast_market_values(
+    definition: &WidgetDefinition,
+    query_values: &QueryValues<'_>,
+    result_rows: &mut BTreeMap<WidgetRowKey, WidgetValueRow>,
+) {
+    for (name, query) in &definition.queries {
+        if query.by != WidgetBy::None {
+            continue;
+        }
+        let Some(value) = query_values
+            .get(name.as_str())
+            .and_then(|values| values.get(&WidgetRowKey::Market))
+            .map(|(_, value)| *value)
+        else {
+            continue;
+        };
+        for (key, row) in result_rows.iter_mut() {
+            if key != &WidgetRowKey::Market {
+                row.values.insert(name.clone(), Some(value));
+            }
+        }
+    }
+}
+
+fn evaluate_formulas<'a>(
+    definition: &'a WidgetDefinition,
+    parsed_formulas: &BTreeMap<&'a str, FormulaExpression>,
+    query_values: &QueryValues<'a>,
+    result_rows: &mut BTreeMap<WidgetRowKey, WidgetValueRow>,
+) {
+    for name in definition.formulas.keys() {
+        let Some(expression) = parsed_formulas.get(name.as_str()) else {
+            continue;
+        };
+        let references = expression.references();
+        let row_source = references.iter().find(|reference| {
+            definition
+                .queries
+                .get::<str>(*reference)
+                .is_some_and(|query| query.by != WidgetBy::None)
+        });
+        let row_keys = match row_source {
+            Some(reference) => query_values
+                .get(reference)
+                .map(|values| values.keys().cloned().collect::<Vec<_>>())
+                .unwrap_or_default(),
+            None => result_rows.keys().cloned().collect(),
+        };
+
+        for key in row_keys {
+            let referenced_values = references
+                .iter()
+                .map(|reference| {
+                    let query = definition.queries.get(*reference)?;
+                    let query_key = match query.by {
+                        WidgetBy::None => WidgetRowKey::Market,
+                        WidgetBy::Stock | WidgetBy::Group => key.clone(),
+                    };
+                    query_values
+                        .get(reference)
+                        .and_then(|values| values.get(&query_key))
+                        .map(|(_, value)| (*reference, *value))
+                })
+                .collect::<Option<BTreeMap<_, _>>>();
+            let Some(referenced_values) = referenced_values else {
+                continue;
+            };
+
+            let Some(result_row) = result_rows.get_mut(&key) else {
+                continue;
+            };
+
+            let value = expression.evaluate(&|reference| referenced_values.get(reference).copied());
+            result_row.values.insert(name.clone(), value);
+        }
     }
 }
 
@@ -365,12 +381,18 @@ mod tests {
                 ),
             ]),
             formulas: BTreeMap::from([
+                (
+                    "arithmetic".to_string(),
+                    "(-sector + market) * 2 / 2".to_string(),
+                ),
+                ("division_by_zero".to_string(), "market / 0".to_string()),
+                ("market_level".to_string(), "market * 2".to_string()),
                 ("relative".to_string(), "sector - market".to_string()),
                 ("spread".to_string(), "sector - other".to_string()),
             ]),
             viz: WidgetVisualization::Treemap {
                 size: "sector".to_string(),
-                color: "relative".to_string(),
+                color: "market_level".to_string(),
             },
             time: WidgetTime {
                 as_of: Some(NaiveDate::from_ymd_opt(2098, 1, 5).expect("valid date")),
@@ -395,7 +417,10 @@ mod tests {
                         },
                         name: "Group Alpha".to_string(),
                         values: BTreeMap::from([
+                            ("arithmetic".to_string(), Some(Decimal::new(-5, 2))),
+                            ("division_by_zero".to_string(), None),
                             ("market".to_string(), Some(Decimal::new(-2, 2))),
+                            ("market_level".to_string(), Some(Decimal::new(-4, 2))),
                             ("other".to_string(), Some(Decimal::new(1, 2))),
                             ("relative".to_string(), Some(Decimal::new(5, 2))),
                             ("sector".to_string(), Some(Decimal::new(3, 2))),
@@ -409,7 +434,10 @@ mod tests {
                         },
                         name: "Group Beta".to_string(),
                         values: BTreeMap::from([
+                            ("arithmetic".to_string(), Some(Decimal::new(2, 2))),
+                            ("division_by_zero".to_string(), None),
                             ("market".to_string(), Some(Decimal::new(-2, 2))),
+                            ("market_level".to_string(), Some(Decimal::new(-4, 2))),
                             ("relative".to_string(), Some(Decimal::new(-2, 2))),
                             ("sector".to_string(), Some(Decimal::new(-4, 2))),
                         ]),

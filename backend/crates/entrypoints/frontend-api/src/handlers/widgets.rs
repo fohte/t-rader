@@ -20,9 +20,6 @@ fn map_error(error: WidgetUseCaseError) -> AppError {
             }
             error => error.into(),
         },
-        WidgetUseCaseError::InvalidFormula(message) => {
-            AppError::Internal(format!("validated formula could not be parsed: {message}"))
-        }
     }
 }
 

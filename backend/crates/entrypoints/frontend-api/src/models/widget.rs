@@ -68,6 +68,9 @@ impl From<WidgetQueryRequestDefinition> for WidgetQuery {
 
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[schema(
+    description = "スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。"
+)]
 pub enum WidgetMetricRequest {
     Change,
     Close,
@@ -173,6 +176,9 @@ impl From<WidgetAggregationRequest> for WidgetAggregation {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[schema(
+    description = "スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。"
+)]
 pub enum WidgetVisualizationRequest {
     Treemap {
         size: String,
@@ -230,6 +236,7 @@ impl From<WidgetVisualizationOrderRequest> for WidgetVisualizationOrder {
 #[serde(deny_unknown_fields)]
 pub struct WidgetTimeRequest {
     pub as_of: Option<NaiveDate>,
+    /// 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。
     pub range: Option<String>,
 }
 

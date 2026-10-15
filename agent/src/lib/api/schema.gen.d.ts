@@ -3114,7 +3114,10 @@ export interface components {
     WidgetAggregationRequest: 'mkt_cap_weighted' | 'mean' | 'sum' | 'count'
     /** @enum {string} */
     WidgetByRequest: 'none' | 'stock' | 'group'
-    /** @enum {string} */
+    /**
+     * @description スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。
+     * @enum {string}
+     */
     WidgetMetricRequest:
       'change' | 'close' | 'turnover' | 'mkt_cap' | 'per' | 'pbr' | 'indicator'
     /** @enum {string} */
@@ -3153,6 +3156,7 @@ export interface components {
     WidgetTimeRequest: {
       /** Format: date */
       as_of?: string | null
+      /** @description 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。 */
       range?: string | null
     }
     WidgetUniverseRequest:
@@ -3164,6 +3168,7 @@ export interface components {
         }
     /** @enum {string} */
     WidgetVisualizationOrderRequest: 'asc' | 'desc'
+    /** @description スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。 */
     WidgetVisualizationRequest:
       | {
           color: string

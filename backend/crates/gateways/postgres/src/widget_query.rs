@@ -43,24 +43,24 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                             AND universe_member.group_key = $8::text
                       )
                   )
-            ),
-            stock_change_windows AS (
-                SELECT candidate_stocks.id AS stock_id,
-                       period_start.start_at,
-                       (($1::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
-                FROM candidate_stocks
-                CROSS JOIN LATERAL (
-                    SELECT bars.timestamp AS start_at
-                    FROM bars
-                    WHERE bars.instrument_id = candidate_stocks.id
-                      AND bars.timeframe = '1d'
-                      AND bars.timestamp
-                          < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
-                    ORDER BY bars.timestamp DESC
-                    OFFSET ($2::bigint - 1)
-                    LIMIT 1
-                ) AS period_start
             )
+        "#,
+        r#"
+            SELECT candidate_stocks.id AS stock_id,
+                   period_start.start_at,
+                   (($1::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
+            FROM candidate_stocks
+            CROSS JOIN LATERAL (
+                SELECT bars.timestamp AS start_at
+                FROM bars
+                WHERE bars.instrument_id = candidate_stocks.id
+                  AND bars.timeframe = '1d'
+                  AND bars.timestamp
+                      < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+                ORDER BY bars.timestamp DESC
+                OFFSET ($2::bigint - 1)
+                LIMIT 1
+            ) AS period_start
         "#,
         r#"
             stock_values AS (
@@ -242,8 +242,7 @@ impl WidgetQuerySource for PostgresWidgetQuerySource {
 fn query_by_sql(by: WidgetBy) -> &'static str {
     match by {
         WidgetBy::None => "market",
-        WidgetBy::Stock => "stock",
-        WidgetBy::Group => "group",
+        WidgetBy::Stock | WidgetBy::Group => by.as_str(),
     }
 }
 
@@ -336,6 +335,48 @@ mod tests {
         .expect("insert widget valuation");
     }
 
+    async fn insert_group_axis(db: &DatabaseHandle, key: &str, name: &str) -> Uuid {
+        let id = Uuid::new_v4();
+        group_axis::ActiveModel {
+            id: Set(id),
+            key: Set(key.to_string()),
+            name: Set(name.to_string()),
+            description: Set("Demo group axis".to_string()),
+            derive_from: Set(None),
+        }
+        .insert(db)
+        .await
+        .expect("insert widget group axis");
+        id
+    }
+
+    async fn insert_group(db: &DatabaseHandle, axis_id: Uuid, key: &str, name: &str) -> Uuid {
+        let id = Uuid::new_v4();
+        stock_group::ActiveModel {
+            id: Set(id),
+            axis_id: Set(axis_id),
+            key: Set(key.to_string()),
+            name: Set(name.to_string()),
+            description: Set(None),
+            code: Set(None),
+        }
+        .insert(db)
+        .await
+        .expect("insert widget group");
+        id
+    }
+
+    async fn insert_group_member(db: &DatabaseHandle, stock_id: &str, group_id: Uuid) {
+        stock_group_member::ActiveModel {
+            stock_id: Set(stock_id.to_string()),
+            group_id: Set(group_id),
+            created_at: Default::default(),
+        }
+        .insert(db)
+        .await
+        .expect("insert widget group member");
+    }
+
     #[backend_test_macros::database_test]
     async fn weighted_change_uses_latest_market_cap_for_each_group(db: DatabaseHandle) {
         insert_stock(&db, "D001", "Stock Alpha").await;
@@ -351,38 +392,10 @@ mod tests {
         insert_valuation(&db, "D002", 3_000).await;
         insert_valuation(&db, "D003", 1_000).await;
 
-        let axis_id = Uuid::new_v4();
-        group_axis::ActiveModel {
-            id: Set(axis_id),
-            key: Set("demo-axis".to_string()),
-            name: Set("Demo Axis".to_string()),
-            description: Set("Demo group axis".to_string()),
-            derive_from: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert widget group axis");
-        let group_id = Uuid::new_v4();
-        stock_group::ActiveModel {
-            id: Set(group_id),
-            axis_id: Set(axis_id),
-            key: Set("group-alpha".to_string()),
-            name: Set("Group Alpha".to_string()),
-            description: Set(None),
-            code: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert widget group");
+        let axis_id = insert_group_axis(&db, "demo-axis", "Demo Axis").await;
+        let group_id = insert_group(&db, axis_id, "group-alpha", "Group Alpha").await;
         for id in ["D001", "D002"] {
-            stock_group_member::ActiveModel {
-                stock_id: Set(id.to_string()),
-                group_id: Set(group_id),
-                created_at: Default::default(),
-            }
-            .insert(&db)
-            .await
-            .expect("insert widget group member");
+            insert_group_member(&db, id, group_id).await;
         }
 
         let query = WidgetQuery {
@@ -419,37 +432,9 @@ mod tests {
             insert_bar(&db, "D004", day, close).await;
         }
 
-        let axis_id = Uuid::new_v4();
-        group_axis::ActiveModel {
-            id: Set(axis_id),
-            key: Set("demo-axis".to_string()),
-            name: Set("Demo Axis".to_string()),
-            description: Set("Demo group axis".to_string()),
-            derive_from: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert widget group axis");
-        let group_id = Uuid::new_v4();
-        stock_group::ActiveModel {
-            id: Set(group_id),
-            axis_id: Set(axis_id),
-            key: Set("group-delta".to_string()),
-            name: Set("Group Delta".to_string()),
-            description: Set(None),
-            code: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert widget group");
-        stock_group_member::ActiveModel {
-            stock_id: Set("D004".to_string()),
-            group_id: Set(group_id),
-            created_at: Default::default(),
-        }
-        .insert(&db)
-        .await
-        .expect("insert widget group member");
+        let axis_id = insert_group_axis(&db, "demo-axis", "Demo Axis").await;
+        let group_id = insert_group(&db, axis_id, "group-delta", "Group Delta").await;
+        insert_group_member(&db, "D004", group_id).await;
 
         let widget_query = WidgetQuery {
             metric: WidgetMetric::Change,
@@ -531,6 +516,51 @@ mod tests {
             vec![core_application::widget::WidgetQueryRow {
                 key: WidgetRowKey::Market,
                 name: "全体".to_string(),
+                value: Decimal::new(1, 1),
+            }],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn group_universe_filters_stocks_before_group_aggregation(db: DatabaseHandle) {
+        insert_stock(&db, "D005", "Stock Epsilon").await;
+        insert_stock(&db, "D006", "Stock Zeta").await;
+        for id in ["D005", "D006"] {
+            insert_bar(&db, id, 1, 100).await;
+        }
+        insert_bar(&db, "D005", 2, 110).await;
+        insert_bar(&db, "D006", 2, 90).await;
+
+        let axis_id = insert_group_axis(&db, "demo-axis", "Demo Axis").await;
+        let selected_group = insert_group(&db, axis_id, "group-epsilon", "Group Epsilon").await;
+        let other_group = insert_group(&db, axis_id, "group-zeta", "Group Zeta").await;
+        insert_group_member(&db, "D005", selected_group).await;
+        insert_group_member(&db, "D006", other_group).await;
+
+        let query = WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::OneDay),
+            by: WidgetBy::Group,
+            axis: Some("demo-axis".to_string()),
+            indicator: None,
+            universe: Some(WidgetUniverse::Group {
+                group: "demo-axis/group-epsilon".to_string(),
+            }),
+            agg: Some(WidgetAggregation::Mean),
+        };
+        let result = PostgresWidgetQuerySource::new(db)
+            .query(date(2), &query)
+            .await
+            .expect("query selected group change");
+
+        assert_eq!(
+            result,
+            vec![core_application::widget::WidgetQueryRow {
+                key: WidgetRowKey::Group {
+                    axis: "demo-axis".to_string(),
+                    key: "group-epsilon".to_string(),
+                },
+                name: "Group Epsilon".to_string(),
                 value: Decimal::new(1, 1),
             }],
         );

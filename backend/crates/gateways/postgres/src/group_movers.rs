@@ -20,14 +20,18 @@ static LIST_GROUP_MOVERS_SQL: LazyLock<String> = LazyLock::new(|| {
     with_shared_market_ctes(
         "SELECT $1::text AS axis_key",
         r#"
-            stock_change_windows AS (
-                SELECT DISTINCT group_members.stock_id,
-                       $2::date::timestamp AT TIME ZONE 'UTC' AS start_at,
-                       (($3::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
+            eligible_stocks AS (
+                SELECT DISTINCT group_members.stock_id
                 FROM group_members
                 WHERE group_members.axis_key = $1::text
                   AND group_members.stock_id IS NOT NULL
             )
+        "#,
+        r#"
+            SELECT eligible_stocks.stock_id,
+                   $2::date::timestamp AT TIME ZONE 'UTC' AS start_at,
+                   (($3::date + 1)::timestamp AT TIME ZONE 'UTC') AS end_before
+            FROM eligible_stocks
         "#,
         r#"
             avg_turnover AS (

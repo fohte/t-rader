@@ -13,96 +13,102 @@ use super::types::{WidgetPeriod, WidgetTime, WidgetVisualizationOrder};
 
 impl WidgetDefinition {
     pub fn validate(&self) -> Result<(), WidgetValidationErrors> {
-        let mut errors = Vec::new();
+        validate_widget(self).map(|_| ())
+    }
+}
 
-        if self.queries.is_empty() {
+pub(super) fn validate_widget(
+    definition: &WidgetDefinition,
+) -> Result<BTreeMap<&str, FormulaExpression>, WidgetValidationErrors> {
+    let mut errors = Vec::new();
+
+    if definition.queries.is_empty() {
+        errors.push(WidgetValidationError::new(
+            "queries",
+            "at least one query is required",
+        ));
+    }
+
+    let mut names = BTreeSet::new();
+    for (name, query) in &definition.queries {
+        if !is_identifier(name) {
             errors.push(WidgetValidationError::new(
-                "queries",
-                "at least one query is required",
-            ));
-        }
-
-        let mut names = BTreeSet::new();
-        for (name, query) in &self.queries {
-            if !is_identifier(name) {
-                errors.push(WidgetValidationError::new(
                     format!("queries.{name}"),
                     "name must contain only ASCII letters, digits, and underscores, and start with a letter or underscore",
                 ));
-            }
-            names.insert(name.as_str());
-            validate_query(name, query, &mut errors);
         }
+        names.insert(name.as_str());
+        validate_query(name, query, &mut errors);
+    }
 
-        let mut parsed_formulas = BTreeMap::new();
-        for (name, formula) in &self.formulas {
-            if !is_identifier(name) {
-                errors.push(WidgetValidationError::new(
+    let mut parsed_formulas = BTreeMap::new();
+    for (name, formula) in &definition.formulas {
+        if !is_identifier(name) {
+            errors.push(WidgetValidationError::new(
                     format!("formulas.{name}"),
                     "name must contain only ASCII letters, digits, and underscores, and start with a letter or underscore",
                 ));
-            }
-            if names.contains(name.as_str()) {
-                errors.push(WidgetValidationError::new(
-                    format!("formulas.{name}"),
-                    "formula name conflicts with a query name",
-                ));
-            }
-            match parse_formula(formula) {
-                Ok(expression) => {
-                    validate_formula_references(name, &expression, self, &mut errors);
-                    parsed_formulas.insert(name.as_str(), expression);
-                }
-                Err(message) => errors.push(WidgetValidationError::new(
-                    format!("formulas.{name}"),
-                    format!("invalid expression: {message}"),
-                )),
-            }
         }
-
-        match &self.viz {
-            WidgetVisualization::Treemap { size, color } => {
-                validate_value_reference("viz.size", size, self, &mut errors);
-                validate_value_reference("viz.color", color, self, &mut errors);
-                validate_matching_dimensions(
-                    "viz",
-                    [size.as_str(), color.as_str()],
-                    self,
-                    &parsed_formulas,
-                    &mut errors,
-                );
-            }
-            WidgetVisualization::Toplist { value, limit, .. } => {
-                validate_value_reference("viz.value", value, self, &mut errors);
-                if *limit == 0 {
-                    errors.push(WidgetValidationError::new(
-                        "viz.limit",
-                        "limit must be greater than zero",
-                    ));
-                }
-            }
-            WidgetVisualization::Table { .. } => errors.push(WidgetValidationError::new(
-                "viz.type",
-                "table visualization is not supported yet",
-            )),
-            WidgetVisualization::Line { .. } => errors.push(WidgetValidationError::new(
-                "viz.type",
-                "line visualization is not supported yet",
-            )),
-        }
-
-        if self.time.range.is_some() {
+        if names.contains(name.as_str()) {
             errors.push(WidgetValidationError::new(
-                "time.range",
-                "time ranges are not supported yet",
+                format!("formulas.{name}"),
+                "formula name conflicts with a query name",
             ));
         }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(WidgetValidationErrors(errors))
+        match parse_formula(formula) {
+            Ok(expression) => {
+                validate_formula_references(name, &expression, definition, &mut errors);
+                parsed_formulas.insert(name.as_str(), expression);
+            }
+            Err(message) => errors.push(WidgetValidationError::new(
+                format!("formulas.{name}"),
+                format!("invalid expression: {message}"),
+            )),
         }
+    }
+
+    match &definition.viz {
+        WidgetVisualization::Treemap { size, color } => {
+            validate_value_reference("viz.size", size, definition, &mut errors);
+            validate_value_reference("viz.color", color, definition, &mut errors);
+            validate_matching_dimensions(
+                "viz",
+                [size.as_str(), color.as_str()],
+                definition,
+                &parsed_formulas,
+                &mut errors,
+            );
+        }
+        WidgetVisualization::Toplist { value, limit, .. } => {
+            validate_value_reference("viz.value", value, definition, &mut errors);
+            if *limit == 0 {
+                errors.push(WidgetValidationError::new(
+                    "viz.limit",
+                    "limit must be greater than zero",
+                ));
+            }
+        }
+        WidgetVisualization::Table { .. } => errors.push(WidgetValidationError::new(
+            "viz.type",
+            "table visualization is not supported yet",
+        )),
+        WidgetVisualization::Line { .. } => errors.push(WidgetValidationError::new(
+            "viz.type",
+            "line visualization is not supported yet",
+        )),
+    }
+
+    if definition.time.range.is_some() {
+        errors.push(WidgetValidationError::new(
+            "time.range",
+            "time ranges are not supported yet",
+        ));
+    }
+
+    if errors.is_empty() {
+        Ok(parsed_formulas)
+    } else {
+        Err(WidgetValidationErrors(errors))
     }
 }
 
@@ -494,6 +500,74 @@ mod tests {
         assert_eq!(
             actual,
             Err("queries.value.metric: metric `close` is not supported yet; viz.type: line visualization is not supported yet".to_string()),
+        );
+    }
+
+    #[rstest]
+    #[case::trailing_operator(
+        "sector +",
+        "formulas.relative: invalid expression: expected a query name, number, or `(`"
+    )]
+    #[case::missing_parenthesis(
+        "(sector + 1",
+        "formulas.relative: invalid expression: expected `)`"
+    )]
+    #[case::unknown_character(
+        "sector ^ 2",
+        "formulas.relative: invalid expression: unexpected token at character 7"
+    )]
+    fn rejects_invalid_formulas_through_widget_validation(
+        #[case] formula: &str,
+        #[case] expected: &str,
+    ) {
+        let mut widget = definition();
+        widget
+            .formulas
+            .insert("relative".to_string(), formula.to_string());
+
+        assert_eq!(
+            widget.validate().map_err(|errors| errors.to_string()),
+            Err(expected.to_string()),
+        );
+    }
+
+    #[derive(Clone, Copy)]
+    enum FormulaLimit {
+        Length,
+        Nesting,
+        Operators,
+    }
+
+    #[rstest]
+    #[case::length(
+        FormulaLimit::Length,
+        "formulas.relative: invalid expression: formula must not exceed 1024 bytes"
+    )]
+    #[case::nesting(
+        FormulaLimit::Nesting,
+        "formulas.relative: invalid expression: formula nesting must not exceed 64 levels"
+    )]
+    #[case::operators(
+        FormulaLimit::Operators,
+        "formulas.relative: invalid expression: formula may contain at most 64 arithmetic operators"
+    )]
+    fn rejects_formulas_above_complexity_limits(
+        #[case] limit: FormulaLimit,
+        #[case] expected: &str,
+    ) {
+        let formula = match limit {
+            FormulaLimit::Length => "x".repeat(1025),
+            FormulaLimit::Nesting => {
+                format!("{}sector{}", "(".repeat(65), ")".repeat(65))
+            }
+            FormulaLimit::Operators => format!("{}sector", "sector+".repeat(65)),
+        };
+        let mut widget = definition();
+        widget.formulas.insert("relative".to_string(), formula);
+
+        assert_eq!(
+            widget.validate().map_err(|errors| errors.to_string()),
+            Err(expected.to_string()),
         );
     }
 

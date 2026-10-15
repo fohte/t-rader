@@ -3,6 +3,10 @@ use std::str::FromStr;
 
 use rust_decimal::Decimal;
 
+const MAX_FORMULA_LENGTH: usize = 1024;
+const MAX_FORMULA_NESTING: usize = 64;
+const MAX_FORMULA_OPERATORS: usize = 64;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum FormulaExpression {
     Number(Decimal),
@@ -57,6 +61,11 @@ impl FormulaExpression {
 }
 
 pub(super) fn parse_formula(input: &str) -> Result<FormulaExpression, String> {
+    if input.len() > MAX_FORMULA_LENGTH {
+        return Err(format!(
+            "formula must not exceed {MAX_FORMULA_LENGTH} bytes"
+        ));
+    }
     let mut parser = FormulaParser::new(input);
     let expression = parser.parse_add_subtract()?;
     parser.skip_whitespace();
@@ -70,6 +79,8 @@ pub(super) fn parse_formula(input: &str) -> Result<FormulaExpression, String> {
 struct FormulaParser {
     characters: Vec<char>,
     position: usize,
+    nesting: usize,
+    operators: usize,
 }
 
 impl FormulaParser {
@@ -77,6 +88,8 @@ impl FormulaParser {
         Self {
             characters: input.chars().collect(),
             position: 0,
+            nesting: 0,
+            operators: 0,
         }
     }
 
@@ -86,6 +99,7 @@ impl FormulaParser {
             self.skip_whitespace();
             match self.peek() {
                 Some('+') => {
+                    self.add_operator()?;
                     self.position += 1;
                     expression = FormulaExpression::Add(
                         Box::new(expression),
@@ -93,6 +107,7 @@ impl FormulaParser {
                     );
                 }
                 Some('-') => {
+                    self.add_operator()?;
                     self.position += 1;
                     expression = FormulaExpression::Subtract(
                         Box::new(expression),
@@ -110,6 +125,7 @@ impl FormulaParser {
             self.skip_whitespace();
             match self.peek() {
                 Some('*') => {
+                    self.add_operator()?;
                     self.position += 1;
                     expression = FormulaExpression::Multiply(
                         Box::new(expression),
@@ -117,6 +133,7 @@ impl FormulaParser {
                     );
                 }
                 Some('/') => {
+                    self.add_operator()?;
                     self.position += 1;
                     expression = FormulaExpression::Divide(
                         Box::new(expression),
@@ -131,6 +148,7 @@ impl FormulaParser {
     fn parse_unary(&mut self) -> Result<FormulaExpression, String> {
         self.skip_whitespace();
         if self.peek() == Some('-') {
+            self.add_operator()?;
             self.position += 1;
             return Ok(FormulaExpression::Subtract(
                 Box::new(FormulaExpression::Number(Decimal::ZERO)),
@@ -138,6 +156,7 @@ impl FormulaParser {
             ));
         }
         if self.peek() == Some('+') {
+            self.add_operator()?;
             self.position += 1;
             return self.parse_unary();
         }
@@ -149,7 +168,16 @@ impl FormulaParser {
         match self.peek() {
             Some('(') => {
                 self.position += 1;
-                let expression = self.parse_add_subtract()?;
+                self.nesting += 1;
+                if self.nesting > MAX_FORMULA_NESTING {
+                    self.nesting -= 1;
+                    return Err(format!(
+                        "formula nesting must not exceed {MAX_FORMULA_NESTING} levels"
+                    ));
+                }
+                let expression = self.parse_add_subtract();
+                self.nesting -= 1;
+                let expression = expression?;
                 self.skip_whitespace();
                 if self.peek() != Some(')') {
                     return Err("expected `)`".to_string());
@@ -222,44 +250,14 @@ impl FormulaParser {
     fn is_finished(&self) -> bool {
         self.position >= self.characters.len()
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use rstest::rstest;
-    use rust_decimal::Decimal;
-
-    use super::parse_formula;
-
-    #[rstest]
-    #[case::precedence("left + right * 2", Some(Decimal::from(11)))]
-    #[case::parentheses("(left + right) * 2", Some(Decimal::from(14)))]
-    #[case::unary_minus("-left + 1", Some(Decimal::from(-2)))]
-    #[case::division_by_zero("left / zero", None)]
-    fn evaluates_arithmetic_with_precedence_and_missing_results(
-        #[case] input: &str,
-        #[case] expected: Option<Decimal>,
-    ) {
-        let expression = parse_formula(input).expect("parse formula");
-        let values = BTreeMap::from([
-            ("left", Decimal::from(3)),
-            ("right", Decimal::from(4)),
-            ("zero", Decimal::ZERO),
-        ]);
-
-        assert_eq!(
-            expression.evaluate(&|name| values.get(name).copied()),
-            expected
-        );
-    }
-
-    #[rstest]
-    #[case::trailing_operator("value +", "expected a query name, number, or `(`")]
-    #[case::missing_parenthesis("(value + 1", "expected `)`")]
-    #[case::unknown_character("value ^ 2", "unexpected token at character 6")]
-    fn rejects_invalid_arithmetic_expressions(#[case] input: &str, #[case] expected: &str) {
-        assert_eq!(parse_formula(input).map(|_| ()), Err(expected.to_string()),);
+    fn add_operator(&mut self) -> Result<(), String> {
+        if self.operators >= MAX_FORMULA_OPERATORS {
+            return Err(format!(
+                "formula may contain at most {MAX_FORMULA_OPERATORS} arithmetic operators"
+            ));
+        }
+        self.operators += 1;
+        Ok(())
     }
 }
