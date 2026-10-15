@@ -115,23 +115,14 @@ function EvidenceRows({ reference }: { reference: NoteEvidenceCardReference }) {
           <span className="font-mono tabular-nums">{reference.date}</span>
         </>
       )}
-      {(reference.kind === 'valuation' || reference.kind === 'indicator') && (
-        <>
-          <span className="text-muted-foreground">計算</span>
-          <span>
-            {reference.kind === 'valuation' &&
-            VALUATION_SPLIT_ADJUSTED[reference.field]
-              ? 'なし (分割調整済み)'
-              : 'なし'}
-          </span>
-        </>
-      )}
       <span className="text-muted-foreground">出どころ</span>
       <span>
         {reference.kind === 'price' || reference.kind === 'change'
           ? '日足 (分割調整済み)'
           : reference.kind === 'valuation'
-            ? 'バリュエーション'
+            ? VALUATION_SPLIT_ADJUSTED[reference.field]
+              ? 'バリュエーション (分割調整済み)'
+              : 'バリュエーション'
             : 'マクロ指標'}
       </span>
     </div>

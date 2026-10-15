@@ -8,6 +8,22 @@ import { createStoryRouter } from '#storybook/story-router'
 
 afterEach(cleanup)
 
+async function noteEvidenceCardOutput(rowLabel: string) {
+  const links = await screen.findAllByRole('link')
+  const evidenceRows = screen.getByText(rowLabel).parentElement
+
+  return {
+    links: links.map((link) => ({
+      label: link.textContent,
+      href: link.getAttribute('href'),
+    })),
+    evidenceRows:
+      evidenceRows == null
+        ? []
+        : Array.from(evidenceRows.children, (child) => child.textContent),
+  }
+}
+
 describe('NoteEvidenceCardView', () => {
   it.each([
     {
@@ -22,6 +38,12 @@ describe('NoteEvidenceCardView', () => {
       },
       expectedHref: '/stocks/0000?date=2030-01-03',
       expectedLabel: '銘柄ページで 2030-01-03 を見る →',
+      expectedEvidenceRows: [
+        '時点',
+        '2030-01-03',
+        '出どころ',
+        '日足 (分割調整済み)',
+      ],
     },
     {
       name: 'uses the end date as the change destination date',
@@ -45,6 +67,12 @@ describe('NoteEvidenceCardView', () => {
       },
       expectedHref: '/stocks/0000?date=2030-01-03',
       expectedLabel: '銘柄ページで 2030-01-03 を見る →',
+      expectedEvidenceRows: [
+        '期間',
+        '2030-01-02 → 2030-01-03',
+        '出どころ',
+        '日足 (分割調整済み)',
+      ],
     },
     {
       name: 'uses the valuation date as the destination date',
@@ -58,6 +86,31 @@ describe('NoteEvidenceCardView', () => {
       },
       expectedHref: '/stocks/0000?date=2030-01-03',
       expectedLabel: '銘柄ページで 2030-01-03 を見る →',
+      expectedEvidenceRows: [
+        '時点',
+        '2030-01-03',
+        '出どころ',
+        'バリュエーション',
+      ],
+    },
+    {
+      name: 'shows split adjustment in the valuation source',
+      displayValue: '125',
+      reference: {
+        kind: 'valuation' as const,
+        stockName: 'デモ商事',
+        stockId: '0000',
+        field: 'eps' as const,
+        date: '2030-01-03',
+      },
+      expectedHref: '/stocks/0000?date=2030-01-03',
+      expectedLabel: '銘柄ページで 2030-01-03 を見る →',
+      expectedEvidenceRows: [
+        '時点',
+        '2030-01-03',
+        '出どころ',
+        'バリュエーション (分割調整済み)',
+      ],
     },
     {
       name: 'opens the indicator page',
@@ -70,10 +123,17 @@ describe('NoteEvidenceCardView', () => {
       },
       expectedHref: '/indicators/demo-indicator',
       expectedLabel: '指標ページを見る →',
+      expectedEvidenceRows: ['時点', '2030-01-03', '出どころ', 'マクロ指標'],
     },
   ])(
     '$name',
-    async ({ displayValue, reference, expectedHref, expectedLabel }) => {
+    async ({
+      displayValue,
+      reference,
+      expectedHref,
+      expectedLabel,
+      expectedEvidenceRows,
+    }) => {
       const router = createStoryRouter(
         () => (
           <NoteEvidenceCardView
@@ -90,13 +150,13 @@ describe('NoteEvidenceCardView', () => {
       )
       render(<RouterProvider router={router} />)
 
-      const links = await screen.findAllByRole('link')
-      expect(
-        links.map((link) => ({
-          label: link.textContent,
-          href: link.getAttribute('href'),
-        })),
-      ).toEqual([{ label: expectedLabel, href: expectedHref }])
+      const actual = await noteEvidenceCardOutput(
+        reference.kind === 'change' ? '期間' : '時点',
+      )
+      expect(actual).toEqual({
+        links: [{ label: expectedLabel, href: expectedHref }],
+        evidenceRows: expectedEvidenceRows,
+      })
     },
   )
 })

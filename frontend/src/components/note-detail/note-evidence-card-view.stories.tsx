@@ -154,7 +154,7 @@ export const Valuation: Story = {
 }
 
 export const SplitAdjustedValuation: Story = {
-  name: 'shows when an earnings valuation is adjusted for stock splits.',
+  name: 'shows split adjustment in the valuation source.',
   args: {
     displayValue: '125',
     reference: {
