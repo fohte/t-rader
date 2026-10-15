@@ -39,6 +39,7 @@ pub struct UsStockSplit {
 pub struct UsStockSplitBatch {
     pub splits: Vec<UsStockSplit>,
     pub requests_attempted: usize,
+    pub has_more: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -57,6 +58,7 @@ pub trait UsStockBarSource: Send + Sync {
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
+        max_requests: usize,
     ) -> Result<UsStockSplitBatch, UsStockBarSourceError>;
 }
 
