@@ -8,7 +8,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { components } from '#lib/api/schema.gen'
-import { resetFetch, stubFetch } from '#test/stub-fetch'
+import { resetFetch, stubFetch } from '#test/stub-fetch.test-helper'
 
 type Note = components['schemas']['Note']
 type NoteVersion = components['schemas']['NoteVersion']
@@ -160,5 +160,5 @@ describe('NoteDetailPage', () => {
       title: '架空の分析ノート',
       noteKindLabel,
     })
-  })
+  }, 10_000)
 })

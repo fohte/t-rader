@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { closeFloatingChat } from '#components/strategy-shell/floating-chat-store'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
-import { resetFetch, stubFetch } from '#test/stub-fetch'
+import { resetFetch, stubFetch } from '#test/stub-fetch.test-helper'
 
 type TradeDetail = components['schemas']['TradeDetailResponse']
 type Note = components['schemas']['Note']
