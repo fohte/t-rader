@@ -210,8 +210,9 @@ impl UsStockBarSource for AlpacaClient {
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
+        max_requests: usize,
     ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
-        self.fetch_splits_inner(query)
+        self.fetch_splits_inner(query, max_requests)
             .await
             .map_err(|error| UsStockBarSourceError::Failed(error.to_string()))
     }
@@ -255,9 +256,16 @@ impl AlpacaClient {
     async fn fetch_splits_inner(
         &self,
         query: &UsStockSplitQuery,
+        max_requests: usize,
     ) -> Result<UsStockSplitBatch, AlpacaError> {
         if query.instrument_ids.is_empty() {
             return Ok(UsStockSplitBatch::default());
+        }
+        if max_requests == 0 {
+            return Ok(UsStockSplitBatch {
+                has_more: true,
+                ..UsStockSplitBatch::default()
+            });
         }
 
         let mut instrument_ids = HashMap::new();
@@ -296,12 +304,20 @@ impl AlpacaClient {
                 return Ok(UsStockSplitBatch {
                     splits,
                     requests_attempted,
+                    has_more: false,
                 });
             };
             if page_token.as_ref() == Some(&next_page_token) {
                 return Err(AlpacaError::Parse(
                     "corporate actions pagination token did not advance".to_owned(),
                 ));
+            }
+            if requests_attempted >= max_requests {
+                return Ok(UsStockSplitBatch {
+                    splits,
+                    requests_attempted,
+                    has_more: true,
+                });
             }
             page_token = Some(next_page_token);
         }
@@ -590,11 +606,14 @@ mod tests {
             .expect("test client is configured");
 
         let actual = client
-            .fetch_splits(&UsStockSplitQuery {
-                instrument_ids: vec!["US:QZ-7".to_owned()],
-                from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
-                to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
-            })
+            .fetch_splits(
+                &UsStockSplitQuery {
+                    instrument_ids: vec!["US:QZ-7".to_owned()],
+                    from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                    to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
+                },
+                1,
+            )
             .await
             .expect("corporate actions response is valid");
 
@@ -616,13 +635,16 @@ mod tests {
                     },
                 ],
                 requests_attempted: 1,
+                has_more: false,
             },
         );
     }
 
     #[rstest]
+    #[case::stops_at_the_request_limit(1)]
+    #[case::fetches_all_pages(2)]
     #[tokio::test]
-    async fn fetches_all_pages_of_corporate_actions() {
+    async fn respects_the_corporate_action_request_limit(#[case] max_requests: usize) {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v1/corporate-actions"))
@@ -664,34 +686,44 @@ mod tests {
             .expect("test client is configured");
 
         let actual = client
-            .fetch_splits(&UsStockSplitQuery {
-                instrument_ids: vec!["US:QZ-7".to_owned()],
-                from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
-                to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
-            })
+            .fetch_splits(
+                &UsStockSplitQuery {
+                    instrument_ids: vec!["US:QZ-7".to_owned()],
+                    from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                    to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
+                },
+                max_requests,
+            )
             .await
             .expect("corporate actions pages are valid");
 
-        assert_eq!(
-            actual,
+        let first_split = UsStockSplit {
+            instrument_id: "US:QZ-7".to_owned(),
+            ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        };
+        let second_split = UsStockSplit {
+            instrument_id: "US:QZ-7".to_owned(),
+            ex_date: NaiveDate::from_ymd_opt(2039, 1, 2).expect("split date is valid"),
+            old_rate: Decimal::new(10, 0),
+            new_rate: Decimal::ONE,
+        };
+        let expected = if max_requests == 1 {
             UsStockSplitBatch {
-                splits: vec![
-                    UsStockSplit {
-                        instrument_id: "US:QZ-7".to_owned(),
-                        ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
-                        old_rate: Decimal::ONE,
-                        new_rate: Decimal::new(2, 0),
-                    },
-                    UsStockSplit {
-                        instrument_id: "US:QZ-7".to_owned(),
-                        ex_date: NaiveDate::from_ymd_opt(2039, 1, 2).expect("split date is valid"),
-                        old_rate: Decimal::new(10, 0),
-                        new_rate: Decimal::ONE,
-                    },
-                ],
+                splits: vec![first_split],
+                requests_attempted: 1,
+                has_more: true,
+            }
+        } else {
+            UsStockSplitBatch {
+                splits: vec![first_split, second_split],
                 requests_attempted: 2,
-            },
-        );
+                has_more: false,
+            }
+        };
+
+        assert_eq!(actual, expected,);
     }
 
     #[rstest]
