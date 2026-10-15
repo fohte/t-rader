@@ -1,5 +1,4 @@
-import { Link } from '@tanstack/react-router'
-
+import { ExecutionOriginLinks } from '#components/execution-origin-links'
 import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NoteVersion } from '#lib/api/note-version-types'
@@ -31,24 +30,7 @@ export function NoteVersionHeader({
           {version.created_by_kind === 'llm' && executionOrigin != null && (
             <>
               <span>·</span>
-              <Link
-                to="/strategies/$id"
-                params={{ id: executionOrigin.strategyId }}
-                className="hover:underline"
-              >
-                {executionOrigin.strategyName}
-              </Link>
-              <span>·</span>
-              <Link
-                to="/strategies/$id/runs/$taskId"
-                params={{
-                  id: executionOrigin.strategyId,
-                  taskId: executionOrigin.taskId,
-                }}
-                className="text-primary hover:underline"
-              >
-                実行詳細 →
-              </Link>
+              <ExecutionOriginLinks origin={executionOrigin} />
             </>
           )}
           <span>

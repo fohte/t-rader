@@ -75,6 +75,11 @@ export const GeneratedByStrategy: Story = {
   },
 }
 
+export const NoGenerationOrigin: Story = {
+  name: 'shows a version without a resolvable generation origin.',
+  args: { version: baseVersion, executionOrigin: null },
+}
+
 export const HumanCreated: Story = {
   name: 'shows the header for a version written by a user.',
   args: {

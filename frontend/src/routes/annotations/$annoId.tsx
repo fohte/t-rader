@@ -5,9 +5,9 @@ import { type SyntheticEvent, useState } from 'react'
 import { AnnotationDetail } from '#components/annotations/annotation-detail'
 import { reviewQueueItemKey } from '#components/review/review-queue-model'
 import { useReviewNavigation } from '#components/review/use-review-navigation'
+import { useExecutionOrigin } from '#hooks/use-execution-origin'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { $api } from '#lib/api/client'
-import type { ExecutionOrigin } from '#lib/execution-origin'
 
 export const Route = createFileRoute('/annotations/$annoId')({
   component: AnnotationDetailPage,
@@ -37,37 +37,10 @@ function AnnotationDetailPageContent({ annoId }: { annoId: string }) {
     params: { query: { target_kind: 'annotation', target_id: annoId } },
   })
 
-  const executionOriginQuery = $api.useQuery(
-    'get',
-    '/api/strategy-task-steps/{step_id}',
-    {
-      params: {
-        path: { step_id: annotation?.execution_step_id ?? '' },
-      },
-    },
-    {
-      enabled:
-        annotation?.created_by_kind === 'llm' &&
-        annotation.execution_step_id != null,
-    },
+  const executionOrigin = useExecutionOrigin(
+    annotation?.created_by_kind,
+    annotation?.execution_step_id,
   )
-  const { data: strategies = [] } = $api.useQuery(
-    'get',
-    '/api/strategies',
-    undefined,
-    { enabled: executionOriginQuery.data != null },
-  )
-  const originStrategy = strategies.find(
-    (strategy) => strategy.id === executionOriginQuery.data?.strategy_id,
-  )
-  const executionOrigin: ExecutionOrigin | null =
-    executionOriginQuery.data == null || originStrategy == null
-      ? null
-      : {
-          strategyId: originStrategy.id,
-          strategyName: originStrategy.name,
-          taskId: executionOriginQuery.data.task_id,
-        }
 
   const stockRef = useResolveRef(`stock:${annotation?.target_symbol ?? ''}`)
   const [rejectionReason, setRejectionReason] = useState('')

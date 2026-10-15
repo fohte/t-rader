@@ -133,6 +133,8 @@ const meta = {
               '/notes/$noteId',
               '/review',
               '/stocks/$stockId',
+              '/strategies/$id',
+              '/strategies/$id/runs/$taskId',
             ],
           },
         )}
@@ -195,6 +197,14 @@ export const GeneratedByStrategy: Story = {
       strategyName: '架空戦略',
       taskId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     },
+  },
+}
+
+export const NoGenerationOrigin: Story = {
+  name: 'shows an annotation without a resolvable generation origin.',
+  args: {
+    annotation: unreadAnnotation,
+    executionOrigin: null,
   },
 }
 

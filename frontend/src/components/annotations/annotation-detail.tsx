@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { SyntheticEvent } from 'react'
 
 import { DetailBackLink } from '#components/detail-back-link'
+import { ExecutionOriginLinks } from '#components/execution-origin-links'
 import { ReviewNavigationBand } from '#components/review/review-navigation-band'
 import type { ReviewNavigationViewState } from '#components/review/use-review-navigation'
 import { StockNameLink } from '#components/stocks/stock-name-link'
@@ -140,24 +141,7 @@ export function AnnotationDetail({
                   <>
                     <dt>生成元</dt>
                     <dd>
-                      <Link
-                        to="/strategies/$id"
-                        params={{ id: executionOrigin.strategyId }}
-                        className="hover:underline"
-                      >
-                        {executionOrigin.strategyName}
-                      </Link>
-                      <span> · </span>
-                      <Link
-                        to="/strategies/$id/runs/$taskId"
-                        params={{
-                          id: executionOrigin.strategyId,
-                          taskId: executionOrigin.taskId,
-                        }}
-                        className="text-primary hover:underline"
-                      >
-                        実行詳細 →
-                      </Link>
+                      <ExecutionOriginLinks origin={executionOrigin} />
                     </dd>
                   </>
                 )}

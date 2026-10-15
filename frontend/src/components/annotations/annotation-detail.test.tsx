@@ -118,19 +118,6 @@ function renderAnnotationDetail(
   render(<RouterProvider router={router} />)
 }
 
-async function readGenerationLinks() {
-  const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
-  const runLink = await screen.findByRole('link', { name: '実行詳細 →' })
-
-  return [
-    {
-      text: strategyLink.textContent,
-      href: strategyLink.getAttribute('href'),
-    },
-    { text: runLink.textContent, href: runLink.getAttribute('href') },
-  ]
-}
-
 describe('AnnotationDetail', () => {
   it('passes the rejection reason input to its change callback', async () => {
     const user = userEvent.setup()
@@ -166,7 +153,7 @@ describe('AnnotationDetail', () => {
     ])
   })
 
-  it('links the strategy and run that generated the annotation', async () => {
+  it('shows the strategy and run that generated the annotation', async () => {
     renderAnnotationDetail(
       {
         ...annotation,
@@ -179,16 +166,10 @@ describe('AnnotationDetail', () => {
       },
     )
 
-    expect(await readGenerationLinks()).toEqual([
-      {
-        text: '架空戦略',
-        href: '/strategies/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      },
-      {
-        text: '実行詳細 →',
-        href: '/strategies/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/runs/cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      },
-    ])
+    const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
+    expect(strategyLink.parentElement?.textContent).toEqual(
+      '架空戦略 · 実行詳細 →',
+    )
   })
 
   it('does not show a generation origin for an annotation written by a user', async () => {
@@ -202,6 +183,10 @@ describe('AnnotationDetail', () => {
     )
 
     await screen.findByText(annotation.text)
-    expect(screen.queryByText('生成元')).toBeNull()
+    expect(
+      screen.queryAllByRole('link', {
+        name: /^(架空戦略|実行詳細 →)$/,
+      }),
+    ).toEqual([])
   })
 })

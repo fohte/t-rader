@@ -26,21 +26,8 @@ const version: NoteVersion = {
 
 afterEach(cleanup)
 
-async function readGenerationLinks() {
-  const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
-  const runLink = await screen.findByRole('link', { name: '実行詳細 →' })
-
-  return [
-    {
-      text: strategyLink.textContent,
-      href: strategyLink.getAttribute('href'),
-    },
-    { text: runLink.textContent, href: runLink.getAttribute('href') },
-  ]
-}
-
 describe('NoteVersionHeader', () => {
-  it('links the strategy and run that generated the displayed version', async () => {
+  it('shows the strategy and run that generated the displayed version', async () => {
     const router = createStoryRouter(
       () => (
         <NoteVersionHeader
@@ -62,16 +49,10 @@ describe('NoteVersionHeader', () => {
     )
     render(<RouterProvider router={router} />)
 
-    expect(await readGenerationLinks()).toEqual([
-      {
-        text: '架空戦略',
-        href: '/strategies/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      },
-      {
-        text: '実行詳細 →',
-        href: '/strategies/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/runs/cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      },
-    ])
+    const strategyLink = await screen.findByRole('link', { name: '架空戦略' })
+    expect(strategyLink.parentElement?.textContent).toEqual(
+      '架空戦略 · 実行詳細 →',
+    )
   })
 
   it('does not show origin links for a version written by a user', async () => {
@@ -97,6 +78,10 @@ describe('NoteVersionHeader', () => {
     render(<RouterProvider router={router} />)
 
     await screen.findByRole('heading', { name: version.title })
-    expect(screen.queryByRole('link', { name: '実行詳細 →' })).toBeNull()
+    expect(
+      screen.queryAllByRole('link', {
+        name: /^(架空戦略|実行詳細 →)$/,
+      }),
+    ).toEqual([])
   })
 })
