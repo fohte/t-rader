@@ -565,13 +565,22 @@ func TestSubagentDefinitionResourceKeyValidator(t *testing.T) {
 			Detail:   "Key must match ^[a-z0-9][a-z0-9_-]*$.",
 			Path:     "key",
 		}}},
+		{name: "rejects a leading underscore", key: "_synthetic_subagent", want: []apiDiagnosticObservation{{
+			Severity: "Error",
+			Summary:  "Invalid subagent definition key",
+			Detail:   "Key must match ^[a-z0-9][a-z0-9_-]*$.",
+			Path:     "key",
+		}}},
 	}
+	attribute := subagentDefinitionResourceSchema(t).Schema.Attributes["key"].(schema.StringAttribute)
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			request := validator.StringRequest{Path: path.Root("key"), ConfigValue: types.StringValue(testCase.key)}
 			response := validator.StringResponse{}
-			subagentDefinitionKeyValidator{}.ValidateString(context.Background(), request, &response)
+			for _, valueValidator := range attribute.Validators {
+				valueValidator.ValidateString(context.Background(), request, &response)
+			}
 			got := apiResourceDiagnosticsOutput(response.Diagnostics)
 			if !reflect.DeepEqual(got, testCase.want) {
 				t.Fatalf("key validation mismatch: got=%#v want=%#v", got, testCase.want)
