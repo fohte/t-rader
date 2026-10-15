@@ -1,12 +1,16 @@
 import type { Message } from '@a2a-js/sdk'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { HumanMessage } from '@langchain/core/messages'
+import {
+  AIMessage,
+  type BaseMessage,
+  HumanMessage,
+} from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, createMiddleware } from 'langchain'
 import { errAsync, okAsync } from 'neverthrow'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { logger } from '#logger'
@@ -27,6 +31,7 @@ import type {
 } from '#strategy-agent/strategy-agent'
 import {
   createStrategyAgentDeps,
+  reasoningContentMiddleware,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
@@ -56,6 +61,8 @@ vi.mock('@langchain/mcp-adapters', () => ({
     capturedMcpClientConfig = config
   }),
 }))
+
+afterEach(() => vi.unstubAllGlobals())
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -814,6 +821,68 @@ describe('createStrategyAgentDeps', () => {
     if (typeof body !== 'string') throw new Error('expected string body')
     return body
   }
+
+  const invokeWithHistory = async (
+    messages: readonly BaseMessage[],
+  ): Promise<unknown[]> => {
+    let requestMessages: unknown[] = []
+    const fetch: ChatOpenAIFetch = (_url, init) => {
+      requestMessages = z
+        .object({
+          messages: z.array(z.record(z.string(), z.unknown())),
+        })
+        .parse(JSON.parse(getRequestBody(init))).messages
+      return Promise.resolve(new Response('', { status: 500 }))
+    }
+    vi.stubGlobal('fetch', fetch)
+
+    const deps = createStrategyAgentDeps(baseConfig)
+    const model = deps.createChatModel('test-model')
+    const agent = createAgent({
+      model,
+      middleware: [reasoningContentMiddleware],
+    })
+    await agent.invoke({ messages: [...messages] }).catch(() => undefined)
+    return requestMessages
+  }
+
+  it.each([
+    {
+      name: 'replays saved reasoning on its assistant message',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage({
+          content: 'intermediate response',
+          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'user', content: 'first input' },
+        {
+          role: 'assistant',
+          content: 'intermediate response',
+          reasoning_content: 'synthetic reasoning',
+        },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
+      name: 'leaves assistant messages without saved reasoning unchanged',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage('intermediate response'),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'user', content: 'first input' },
+        { role: 'assistant', content: 'intermediate response' },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+  ])('$name', async ({ messages, expected }) => {
+    expect(await invokeWithHistory(messages)).toEqual(expected)
+  })
 
   const getForcedSubmissionOutput = (
     structuredResponse: unknown,
