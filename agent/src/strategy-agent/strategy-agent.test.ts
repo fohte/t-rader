@@ -31,7 +31,6 @@ import type {
 } from '#strategy-agent/strategy-agent'
 import {
   createStrategyAgentDeps,
-  reasoningContentMiddleware,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
@@ -838,9 +837,10 @@ describe('createStrategyAgentDeps', () => {
 
     const deps = createStrategyAgentDeps(baseConfig)
     const model = deps.createChatModel('test-model')
-    const agent = createAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
-      middleware: [reasoningContentMiddleware],
+      tools: [],
+      systemPrompt: 'test system prompt',
     })
     await agent.invoke({ messages: [...messages] }).catch(() => undefined)
     return requestMessages
@@ -858,6 +858,7 @@ describe('createStrategyAgentDeps', () => {
         new HumanMessage('follow-up input'),
       ],
       expected: [
+        { role: 'system', content: 'test system prompt' },
         { role: 'user', content: 'first input' },
         {
           role: 'assistant',
@@ -875,8 +876,36 @@ describe('createStrategyAgentDeps', () => {
         new HumanMessage('follow-up input'),
       ],
       expected: [
+        { role: 'system', content: 'test system prompt' },
         { role: 'user', content: 'first input' },
         { role: 'assistant', content: 'intermediate response' },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
+      name: 'keeps later reasoning aligned after an audio message',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage({
+          content: 'spoken response',
+          additional_kwargs: { audio: { id: 'synthetic-audio-id' } },
+        }),
+        new AIMessage({
+          content: 'following response',
+          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        { role: 'assistant', content: 'spoken response' },
+        { role: 'assistant', audio: { id: 'synthetic-audio-id' } },
+        {
+          role: 'assistant',
+          content: 'following response',
+          reasoning_content: 'synthetic reasoning',
+        },
         { role: 'user', content: 'follow-up input' },
       ],
     },
