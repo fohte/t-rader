@@ -39,7 +39,11 @@ export function ChartIndicatorLegend({
               ? '表示中のチャート指標'
               : `下段 ${paneIndex.toString()} の表示中の指標`
           }
-          className="pointer-events-none absolute left-2 right-2 z-10 flex max-w-full flex-wrap gap-x-3 gap-y-1 rounded-sm bg-background/80 px-2 py-1 font-mono text-xs text-foreground backdrop-blur-sm"
+          className={`pointer-events-none absolute left-2 z-10 flex flex-wrap gap-x-3 gap-y-1 font-mono text-xs text-foreground ${
+            paneIndex === 0
+              ? 'right-2 max-w-full rounded-sm bg-background/80 px-2 py-1 backdrop-blur-sm'
+              : 'w-fit max-w-full bg-transparent'
+          }`}
           role="list"
           style={{ top: `${((paneTops[paneIndex] ?? 0) + 8).toString()}px` }}
         >

@@ -54,15 +54,19 @@ const annotations: ChartAnnotation[] = [
   },
 ]
 
-const indicatorBars: Bar[] = Array.from({ length: 12 }, (_, index) => {
-  const close = 3000 + index * 12 + (index % 3 === 0 ? 20 : 0)
+const indicatorCloses = [
+  3000, 3020, 3040, 3015, 3055, 3025, 3065, 3030, 3070, 3040, 3080, 3045,
+]
+
+const indicatorBars: Bar[] = indicatorCloses.map((close, index) => {
+  const open = indicatorCloses[index - 1] ?? close - 8
   return {
     instrument_id: 'demo-code',
     timeframe: '1d',
     timestamp: new Date(Date.UTC(2030, 3, index + 1, 6)).toISOString(),
-    open: close - 8,
-    high: close + 16,
-    low: close - 18,
+    open,
+    high: Math.max(open, close) + 16,
+    low: Math.min(open, close) - 18,
     close,
     volume: 10000 + index * 100,
   }
