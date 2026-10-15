@@ -3,6 +3,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import {
   AIMessage,
   type BaseMessage,
+  ChatMessage,
   HumanMessage,
 } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
@@ -24,6 +25,10 @@ import type {
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
+import {
+  createReasoningContentAwareFetch,
+  reasoningContentMiddleware,
+} from '#strategy-agent/reasoning-content-middleware'
 import type {
   McpToolsClient,
   RunStrategyAgentInput,
@@ -72,6 +77,33 @@ class FakeChatModel extends BaseChatModel {
     return Promise.reject(
       new Error('FakeChatModel should never be invoked directly in tests'),
     )
+  }
+}
+
+class RawBodyChatModel extends BaseChatModel {
+  constructor(
+    private readonly fetchImpl: ChatOpenAIFetch,
+    private readonly body: string,
+  ) {
+    super({})
+  }
+
+  override bindTools(
+    ...args: Parameters<NonNullable<BaseChatModel['bindTools']>>
+  ): ReturnType<NonNullable<BaseChatModel['bindTools']>> {
+    void args
+    return this
+  }
+
+  override _llmType(): string {
+    return 'fake'
+  }
+
+  override async _generate(): Promise<ChatResult> {
+    await this.fetchImpl('http://localhost', { body: this.body })
+    return {
+      generations: [{ text: 'done', message: new AIMessage('done') }],
+    }
   }
 }
 
@@ -278,6 +310,11 @@ const normalizeSuccessfulRetryWithWarnings = (
   ...normalizeSuccessfulRetry(result, requestBodies),
   retryWarnings,
 })
+
+const normalizeReasoningReplay = (
+  structuredResponse: unknown,
+  requestMessages: readonly unknown[][],
+) => ({ structuredResponse, requestMessages })
 
 const normalizeAttemptOutcome = (callCount: number, outcome: string) => ({
   callCount,
@@ -883,6 +920,62 @@ describe('createStrategyAgentDeps', () => {
       ],
     },
     {
+      name: 'replays saved reasoning on an assistant ChatMessage',
+      messages: [
+        new HumanMessage('first input'),
+        new ChatMessage({
+          content: 'intermediate response',
+          role: 'assistant',
+          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        {
+          role: 'assistant',
+          content: 'intermediate response',
+          reasoning_content: 'synthetic reasoning',
+        },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
+      name: 'omits null reasoning content',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage({
+          content: 'intermediate response',
+          additional_kwargs: { reasoning_content: null },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        { role: 'assistant', content: 'intermediate response' },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
+      name: 'omits empty reasoning content',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage({
+          content: 'intermediate response',
+          additional_kwargs: { reasoning_content: '' },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        { role: 'assistant', content: 'intermediate response' },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
       name: 'keeps later reasoning aligned after an audio message',
       messages: [
         new HumanMessage('first input'),
@@ -911,6 +1004,52 @@ describe('createStrategyAgentDeps', () => {
     },
   ])('$name', async ({ messages, expected }) => {
     expect(await invokeWithHistory(messages)).toEqual(expected)
+  })
+
+  it.each([
+    { name: 'non-JSON request bodies', body: 'not-json' },
+    {
+      name: 'request bodies whose messages are not arrays',
+      body: JSON.stringify({ messages: { role: 'assistant' } }),
+    },
+    {
+      name: 'request bodies with a different assistant count',
+      body: JSON.stringify({
+        messages: [
+          { role: 'assistant', content: 'first' },
+          { role: 'assistant', content: 'second' },
+        ],
+      }),
+    },
+  ])('passes through $name', async ({ body }) => {
+    const forwardedBodies: string[] = []
+    const fetchImpl: ChatOpenAIFetch = (_input, init) => {
+      const forwardedBody = init?.body
+      forwardedBodies.push(
+        typeof forwardedBody === 'string' ? forwardedBody : '',
+      )
+      return Promise.resolve(new Response(''))
+    }
+    const model = new RawBodyChatModel(
+      createReasoningContentAwareFetch(fetchImpl),
+      body,
+    )
+    const agent = createAgent({
+      model,
+      middleware: [reasoningContentMiddleware],
+    })
+
+    await agent.invoke({
+      messages: [
+        new AIMessage({
+          content: 'prior response',
+          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
+        }),
+        new HumanMessage('continue'),
+      ],
+    })
+
+    expect(forwardedBodies).toEqual([body])
   })
 
   const getForcedSubmissionOutput = (
@@ -1144,6 +1283,119 @@ describe('createStrategyAgentDeps', () => {
       headers: { 'content-type': 'text/event-stream' },
     })
   }
+
+  const buildReasoningToolCallStreamResponse = (callId: string): Response => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const delta of [
+          {
+            role: 'assistant',
+            reasoning_content: 'synthetic ',
+          },
+          {
+            reasoning_content: 'reasoning',
+            tool_calls: [
+              {
+                index: 0,
+                id: `${callId}-tool`,
+                type: 'function',
+                function: { name: 'search', arguments: '{}' },
+              },
+            ],
+          },
+        ]) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                id: callId,
+                model: 'example-model-test-stream',
+                choices: [{ index: 0, finish_reason: null, delta }],
+              })}\n\n`,
+            ),
+          )
+        }
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              id: callId,
+              model: 'example-model-test-stream',
+              choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }],
+            })}\n\n`,
+          ),
+        )
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      },
+    })
+    return new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })
+  }
+
+  it('replays reasoning joined from SSE deltas on the next model request', async () => {
+    const capturedRequestSchema = z.object({
+      messages: z.array(z.record(z.string(), z.unknown())),
+    })
+    const capturedRequests: z.infer<typeof capturedRequestSchema>[] = []
+    const fetchImpl: ChatOpenAIFetch = (_url, init) => {
+      const body = getRequestBody(init)
+      capturedRequests.push(capturedRequestSchema.parse(JSON.parse(body)))
+      const response =
+        capturedRequests.length === 1
+          ? buildReasoningToolCallStreamResponse('synthetic-response')
+          : buildStructuredOutputStreamResponse(
+              `synthetic-response-${String(capturedRequests.length)}`,
+              body,
+            )
+      return Promise.resolve(response)
+    }
+
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model: buildStubModel(createReasoningContentAwareFetch(fetchImpl), true),
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'test system prompt',
+    })
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    expect(
+      normalizeReasoningReplay(
+        result.structuredResponse,
+        capturedRequests.map(({ messages }) => messages),
+      ),
+    ).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestMessages: [
+        [
+          { role: 'system', content: 'test system prompt' },
+          { role: 'user', content: 'hi' },
+        ],
+        [
+          { role: 'system', content: 'test system prompt' },
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'synthetic-response-tool',
+                type: 'function',
+                function: { name: 'search', arguments: '{}' },
+              },
+            ],
+            reasoning_content: 'synthetic reasoning',
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'synthetic-response-tool',
+            content: 'unused in these tests',
+          },
+        ],
+      ],
+    })
+  }, 15_000)
 
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     captureWithFingerprintMock.mockClear()

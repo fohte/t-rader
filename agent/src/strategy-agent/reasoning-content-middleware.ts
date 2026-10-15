@@ -12,10 +12,15 @@ import { Result } from 'neverthrow'
 import { isPlainObject } from '#strategy-agent/agent-graph/json'
 
 export type ChatOpenAIFetch = NonNullable<
-  NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
->['fetch']
+  NonNullable<
+    NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
+  >['fetch']
+>
 
-const reasoningContentContext = new AsyncLocalStorage<readonly unknown[]>()
+// ChatOpenAI は fetch を呼び出し間で共有するため、履歴を model call ごとに分離する。
+const reasoningContentContext = new AsyncLocalStorage<
+  readonly (string | undefined)[]
+>()
 
 const parseJson = Result.fromThrowable(
   (body: string): unknown => JSON.parse(body),
@@ -34,16 +39,24 @@ const hasAudioId = (message: BaseMessage): boolean => {
 
 const getAssistantReasoningContents = (
   messages: readonly BaseMessage[],
-): readonly unknown[] => {
-  const contents: unknown[] = []
+): readonly (string | undefined)[] => {
+  const contents: (string | undefined)[] = []
   for (const message of messages) {
     if (
       AIMessage.isInstance(message) ||
       (ChatMessage.isInstance(message) && message.role === 'assistant')
     ) {
-      contents.push(message.additional_kwargs['reasoning_content'])
+      const reasoningContent = message.additional_kwargs['reasoning_content']
+      contents.push(
+        typeof reasoningContent === 'string' && reasoningContent.length > 0
+          ? reasoningContent
+          : undefined,
+      )
     }
-    if (hasAudioId(message)) contents.push(undefined)
+    if (hasAudioId(message)) {
+      // converter が audio.id を別の assistant entry に展開するため、後続の index をずらさない。
+      contents.push(undefined)
+    }
   }
   return contents
 }
@@ -73,11 +86,20 @@ export const createReasoningContentAwareFetch =
     const requestMessages = parsed.value['messages']
     if (!Array.isArray(requestMessages)) return fetchImpl(input, init)
 
+    const assistantMessageCount = requestMessages.filter(
+      (message) => isPlainObject(message) && message['role'] === 'assistant',
+    ).length
+    // output_version v1 の変換で件数が変わった場合、別の assistant に思考を付けない。
+    if (assistantMessageCount !== reasoningContents.length) {
+      return fetchImpl(input, init)
+    }
+
     let assistantMessageIndex = 0
     const messages = requestMessages.map((message: unknown) => {
       if (!isPlainObject(message) || message['role'] !== 'assistant') {
         return message
       }
+      // converter が assistant entry を履歴順に出すため、同じ順序で対応づける。
       const reasoningContent = reasoningContents[assistantMessageIndex]
       assistantMessageIndex += 1
       if (reasoningContent === undefined) return message
