@@ -257,6 +257,7 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
         _transaction: &UnitOfWorkTransaction,
         task_id: Uuid,
         now: DateTime<FixedOffset>,
+        deadline_at: DateTime<FixedOffset>,
         mark_auto_resumed: bool,
     ) -> Result<bool, StrategyTaskRepositoryError> {
         let mut state = self.state.lock().await;
@@ -273,6 +274,7 @@ impl StrategyTaskRepository for FakeStrategyTaskRepository {
         if can_claim {
             task.phase = StrategyTaskPhase::Running;
             task.a2a_task_id = None;
+            task.deadline_at = deadline_at;
             task.updated_at = now;
             if mark_auto_resumed {
                 task.auto_resumed_at = Some(now);

@@ -735,6 +735,7 @@ mod tests {
             _transaction: &UnitOfWorkTransaction,
             _task_id: Uuid,
             _now: chrono::DateTime<chrono::FixedOffset>,
+            _deadline_at: chrono::DateTime<chrono::FixedOffset>,
             _mark_auto_resumed: bool,
         ) -> Result<bool, StrategyTaskRepositoryError> {
             Ok(true)

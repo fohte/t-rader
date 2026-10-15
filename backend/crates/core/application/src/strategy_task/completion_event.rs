@@ -7,6 +7,12 @@ use super::error::StrategyTaskCompletionError;
 use super::repository::StrategyTaskApplyResult;
 use super::types::{StrategyTask, StrategyTaskPhase, StrategyTaskUpdate};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct AutoResumeClaimResult {
+    pub changed: bool,
+    pub claimed: bool,
+}
+
 impl StrategyTaskUseCases {
     pub(super) async fn apply_phase(
         &self,
@@ -71,6 +77,75 @@ impl StrategyTaskUseCases {
         }
 
         Ok(result)
+    }
+
+    pub(super) async fn apply_failed_and_claim_resumable(
+        &self,
+        task: &StrategyTask,
+        new_error: Option<String>,
+        new_result_text: Option<String>,
+        new_steps: Option<serde_json::Value>,
+        claim_now: chrono::DateTime<chrono::FixedOffset>,
+        deadline_at: chrono::DateTime<chrono::FixedOffset>,
+    ) -> Result<AutoResumeClaimResult, StrategyTaskCompletionError> {
+        let task_update = StrategyTaskUpdate {
+            task_id: task.task_id,
+            a2a_task_id: None,
+            phase: Some(StrategyTaskPhase::Failed),
+            error_summary: Some(new_error.clone()),
+            result_text: Some(new_result_text.clone()),
+            deadline_at: None,
+            auto_resumed_at: None,
+            updated_at: claim_now,
+        };
+        let transaction = self.unit_of_work.begin().await?;
+        let result = self
+            .repository
+            .apply_status_and_steps(
+                &transaction,
+                task.task_id,
+                task.a2a_task_id.as_deref(),
+                Some(task_update),
+                new_steps,
+            )
+            .await?;
+        let claimed = if result.task_updated {
+            self.repository
+                .claim_resumable(&transaction, task.task_id, claim_now, deadline_at, true)
+                .await?
+        } else {
+            false
+        };
+        let should_enqueue_dispatch = if result.task_updated && !claimed {
+            self.create_completion_event(
+                &transaction,
+                task,
+                StrategyTaskPhase::Failed,
+                true,
+                &new_error,
+                &new_result_text,
+            )
+            .await?
+        } else {
+            false
+        };
+
+        self.unit_of_work.commit(transaction).await?;
+        if should_enqueue_dispatch
+            && let Some(completion_events) = self.completion_events.as_ref()
+            && let Err(error) = completion_events.dispatch_job.enqueue_dispatch().await
+        {
+            tracing::warn!(
+                error = %error,
+                task_id = %task.task_id,
+                "failed to enqueue event dispatch; periodic dispatch will pick up the committed event",
+            );
+        }
+
+        Ok(AutoResumeClaimResult {
+            changed: result.changed(),
+            claimed,
+        })
     }
 
     async fn create_completion_event(

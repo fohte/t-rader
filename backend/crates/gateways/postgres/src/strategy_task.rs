@@ -129,18 +129,13 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         let task_update_attempted = task_update.is_some();
         let task_updated = match task_update {
             Some(task_update) => {
-                let mut update = strategy_task::Entity::update_many()
+                let update = strategy_task::Entity::update_many()
                     .set(update_active_model(task_update))
                     .filter(strategy_task::Column::TaskId.eq(task_id))
                     .filter(
                         strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]),
-                    );
-                update = match expected_a2a_task_id {
-                    Some(expected_a2a_task_id) => update.filter(
-                        strategy_task::Column::A2aTaskId.eq(expected_a2a_task_id.to_string()),
-                    ),
-                    None => update.filter(strategy_task::Column::A2aTaskId.is_null()),
-                };
+                    )
+                    .filter(a2a_task_id_condition(expected_a2a_task_id));
                 update
                     .exec(transaction)
                     .await
@@ -155,14 +150,10 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         let can_update_steps = if task_updated {
             true
         } else if !task_update_attempted && has_steps {
-            let mut select = strategy_task::Entity::find_by_id(task_id)
+            let select = strategy_task::Entity::find_by_id(task_id)
                 .filter(strategy_task::Column::Phase.is_in([DbPhase::Pending, DbPhase::Running]))
-                .lock(LockType::Update);
-            select = match expected_a2a_task_id {
-                Some(expected_a2a_task_id) => select
-                    .filter(strategy_task::Column::A2aTaskId.eq(expected_a2a_task_id.to_string())),
-                None => select.filter(strategy_task::Column::A2aTaskId.is_null()),
-            };
+                .lock(LockType::Update)
+                .filter(a2a_task_id_condition(expected_a2a_task_id));
             select
                 .one(transaction)
                 .await
@@ -283,6 +274,7 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
         transaction: &UnitOfWorkTransaction,
         task_id: Uuid,
         now: chrono::DateTime<chrono::FixedOffset>,
+        deadline_at: chrono::DateTime<chrono::FixedOffset>,
         mark_auto_resumed: bool,
     ) -> Result<bool, StrategyTaskRepositoryError> {
         let transaction = transaction_ref(transaction)?;
@@ -305,6 +297,7 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
                 strategy_task::Column::A2aTaskId,
                 Expr::value(None::<String>),
             )
+            .col_expr(strategy_task::Column::DeadlineAt, Expr::value(deadline_at))
             .col_expr(strategy_task::Column::UpdatedAt, Expr::value(now));
         let mut filter = sea_orm::Condition::all()
             .add(strategy_task::Column::TaskId.eq(task_id))
@@ -319,6 +312,15 @@ impl StrategyTaskRepository for PostgresStrategyTaskRepository {
             .await
             .map(|result| result.rows_affected > 0)
             .map_err(repository_error)
+    }
+}
+
+fn a2a_task_id_condition(expected_a2a_task_id: Option<&str>) -> sea_orm::sea_query::SimpleExpr {
+    match expected_a2a_task_id {
+        Some(expected_a2a_task_id) => {
+            strategy_task::Column::A2aTaskId.eq(expected_a2a_task_id.to_string())
+        }
+        None => strategy_task::Column::A2aTaskId.is_null(),
     }
 }
 
@@ -556,6 +558,7 @@ mod tests {
         claimed: bool,
         phase: StrategyTaskPhase,
         auto_resumed_at: Option<DateTime<FixedOffset>>,
+        deadline_at: DateTime<FixedOffset>,
     }
 
     struct ClaimCase {
@@ -680,6 +683,7 @@ mod tests {
         .expect("insert test strategy");
 
         let now = fixed_time();
+        let deadline_at = now + chrono::Duration::minutes(30);
         let previous_auto_resume = now + chrono::Duration::hours(1);
         let cases = [
             ClaimCase {
@@ -797,7 +801,13 @@ mod tests {
             let task_id = Uuid::from_u128(200 + index as u128);
             let transaction = unit_of_work.begin().await.expect("begin claim transaction");
             let claimed = repository
-                .claim_resumable(&transaction, task_id, now, case.mark_auto_resumed)
+                .claim_resumable(
+                    &transaction,
+                    task_id,
+                    now,
+                    deadline_at,
+                    case.mark_auto_resumed,
+                )
                 .await
                 .expect("claim resumable task");
             unit_of_work
@@ -814,6 +824,7 @@ mod tests {
                 claimed,
                 phase: task.phase,
                 auto_resumed_at: task.auto_resumed_at,
+                deadline_at: task.deadline_at,
             });
         }
 
@@ -826,6 +837,11 @@ mod tests {
                     claimed: case.expected_claimed,
                     phase: case.expected_phase,
                     auto_resumed_at: case.expected_auto_resumed_at,
+                    deadline_at: if case.expected_claimed {
+                        deadline_at
+                    } else {
+                        now
+                    },
                 })
                 .collect::<Vec<_>>(),
         );

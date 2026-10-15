@@ -85,6 +85,7 @@ pub trait StrategyTaskRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         task_id: Uuid,
         now: chrono::DateTime<chrono::FixedOffset>,
+        deadline_at: chrono::DateTime<chrono::FixedOffset>,
         mark_auto_resumed: bool,
     ) -> Result<bool, StrategyTaskRepositoryError>;
 }
