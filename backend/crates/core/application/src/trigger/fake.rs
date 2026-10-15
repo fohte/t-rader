@@ -226,7 +226,30 @@ impl TriggerRepository for FakeTriggerRepository {
             return Ok(false);
         }
         trigger.last_fired_at = Some(fired_at);
-        trigger.updated_at = fired_at;
+        Ok(true)
+    }
+
+    async fn release_cron_fire_claim(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+        previous_last_fired_at: Option<DateTime<FixedOffset>>,
+        expected_updated_at: DateTime<FixedOffset>,
+        fired_at: DateTime<FixedOffset>,
+    ) -> Result<bool, TriggerRepositoryError> {
+        self.record_transaction(transaction).await?;
+        let mut triggers = self.triggers.lock().await;
+        let Some(trigger) = triggers.get_mut(&trigger_id) else {
+            return Ok(false);
+        };
+        if trigger.kind != TriggerKind::Cron
+            || !trigger.enabled
+            || trigger.last_fired_at != Some(fired_at)
+            || trigger.updated_at != expected_updated_at
+        {
+            return Ok(false);
+        }
+        trigger.last_fired_at = previous_last_fired_at;
         Ok(true)
     }
 }

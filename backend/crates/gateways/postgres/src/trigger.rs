@@ -235,7 +235,6 @@ impl TriggerRepository for PostgresTriggerRepository {
         let transaction = transaction_ref(transaction)?;
         let mut query = trigger::Entity::update_many()
             .col_expr(trigger::Column::LastFiredAt, Expr::value(Some(fired_at)))
-            .col_expr(trigger::Column::UpdatedAt, Expr::value(fired_at))
             .filter(trigger::Column::TriggerId.eq(trigger_id))
             .filter(trigger::Column::Kind.eq(TriggerKind::Cron.as_str()))
             .filter(trigger::Column::Enabled.eq(true))
@@ -249,6 +248,35 @@ impl TriggerRepository for PostgresTriggerRepository {
             .await
             .map(|result| result.rows_affected == 1)
             .map_err(repository_error)
+    }
+
+    async fn release_cron_fire_claim(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+        previous_last_fired_at: Option<DateTime<FixedOffset>>,
+        expected_updated_at: DateTime<FixedOffset>,
+        fired_at: DateTime<FixedOffset>,
+    ) -> Result<bool, TriggerRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        let released = trigger::Entity::update_many()
+            .col_expr(
+                trigger::Column::LastFiredAt,
+                Expr::value(previous_last_fired_at),
+            )
+            .filter(trigger::Column::TriggerId.eq(trigger_id))
+            .filter(trigger::Column::Kind.eq(TriggerKind::Cron.as_str()))
+            .filter(trigger::Column::Enabled.eq(true))
+            .filter(trigger::Column::UpdatedAt.eq(expected_updated_at))
+            .filter(trigger::Column::LastFiredAt.eq(fired_at))
+            .exec(transaction)
+            .await
+            .map(|result| result.rows_affected == 1)
+            .map_err(repository_error)?;
+        if released {
+            notify_trigger_change(transaction).await?;
+        }
+        Ok(released)
     }
 }
 

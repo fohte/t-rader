@@ -3,6 +3,10 @@ use tokio::{sync::watch, task::JoinSet};
 
 use crate::startup::StartupError;
 
+mod cron_trigger_timer;
+
+pub(crate) use cron_trigger_timer::run as run_cron_trigger_timer;
+
 pub(super) async fn supervise(
     run_futures: Vec<BoxFuture<'static, Result<(), StartupError>>>,
     shutdown_tx: watch::Sender<bool>,

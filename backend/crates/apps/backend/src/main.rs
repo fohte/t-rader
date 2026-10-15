@@ -384,7 +384,7 @@ async fn main() -> Result<(), StartupError> {
     };
     let cron_trigger_timer = if cli.run_mode.starts_api() && cron_trigger_timer_enabled_from_env()?
     {
-        let listener = PostgresTriggerChangeListener::connect(db.get_postgres_connection_pool())
+        let listener = PostgresTriggerChangeListener::connect(&database_url)
             .await
             .map_err(|error| {
                 StartupError::Config(format!(
@@ -531,13 +531,8 @@ async fn main() -> Result<(), StartupError> {
     if let Some((triggers, agent_task_client, listener)) = cron_trigger_timer {
         let timer_shutdown = shutdown_rx.clone();
         run_futures.push(Box::pin(async move {
-            backend::services::cron_trigger_timer::run(
-                triggers,
-                agent_task_client,
-                listener,
-                timer_shutdown,
-            )
-            .await;
+            runtime::run_cron_trigger_timer(triggers, agent_task_client, listener, timer_shutdown)
+                .await;
             Ok(())
         }));
     }

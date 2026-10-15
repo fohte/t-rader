@@ -81,6 +81,15 @@ pub trait TriggerRepository: Send + Sync {
         expected_updated_at: DateTime<FixedOffset>,
         fired_at: DateTime<FixedOffset>,
     ) -> Result<bool, TriggerRepositoryError>;
+
+    async fn release_cron_fire_claim(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trigger_id: Uuid,
+        previous_last_fired_at: Option<DateTime<FixedOffset>>,
+        expected_updated_at: DateTime<FixedOffset>,
+        fired_at: DateTime<FixedOffset>,
+    ) -> Result<bool, TriggerRepositoryError>;
 }
 
 pub type SharedTriggerRepository = std::sync::Arc<dyn TriggerRepository + Send + Sync>;
