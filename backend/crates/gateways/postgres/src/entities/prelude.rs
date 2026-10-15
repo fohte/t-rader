@@ -12,6 +12,8 @@ pub use super::cross_shareholding_documents::Entity as CrossShareholdingDocument
 pub use super::custom_indicator::Entity as CustomIndicator;
 pub use super::custom_indicator_evaluation::Entity as CustomIndicatorEvaluation;
 pub use super::earnings_schedule_ingested_date::Entity as EarningsScheduleIngestedDate;
+pub use super::event::Entity as Event;
+pub use super::event_firing::Entity as EventFiring;
 pub use super::financial_summary::Entity as FinancialSummary;
 pub use super::group_axis::Entity as GroupAxis;
 pub use super::indicator::Entity as Indicator;

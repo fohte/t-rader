@@ -54,6 +54,7 @@ mod tests {
                     "kind": "hook",
                     "schedule": null,
                     "hook_slug": "sample-hook",
+                    "event_type": null,
                     "event_match": {"event": {"eq": "initial"}},
                     "prompt_template": "x",
                     "enabled": true,
@@ -112,6 +113,7 @@ mod tests {
                     "kind": "cron",
                     "schedule": "0 9 * * 1-5",
                     "hook_slug": null,
+                    "event_type": null,
                     "event_match": null,
                     "prompt_template": "morning briefing for {{strategy.name}}",
                     "enabled": true,
@@ -121,6 +123,146 @@ mod tests {
                     "updated_at": "<updated_at>",
                 }),
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_and_update_event_trigger_preserves_event_type(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let created = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "event",
+                "event_type": "sample_process.finished",
+                "event_match": {"state": {"eq": "ready"}},
+                "prompt_template": "x",
+            }))
+            .await;
+        let tid = created.json::<Value>()["trigger_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let updated = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({"event_type": "sample_process.failed"}))
+            .await;
+        let cleared = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({"event_type": null}))
+            .await;
+        let fetched = server.get(&format!("/api/triggers/{tid}")).await;
+
+        assert_eq!(
+            (
+                created.status_code(),
+                normalize_trigger(created.json(), false),
+                updated.status_code(),
+                normalize_trigger(updated.json(), true),
+                cleared.status_code(),
+                cleared.json::<Value>(),
+                fetched.status_code(),
+                normalize_trigger(fetched.json(), true),
+            ),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "trigger_id": "<trigger_id>",
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "event",
+                    "schedule": null,
+                    "hook_slug": null,
+                    "event_type": "sample_process.finished",
+                    "event_match": {"state": {"eq": "ready"}},
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "business_days_only": false,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+                StatusCode::OK,
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "event",
+                    "schedule": null,
+                    "hook_slug": null,
+                    "event_type": "sample_process.failed",
+                    "event_match": {"state": {"eq": "ready"}},
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "business_days_only": false,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+                StatusCode::BAD_REQUEST,
+                json!({"error": "event_type is required for kind=event"}),
+                StatusCode::OK,
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": null,
+                    "kind": "event",
+                    "schedule": null,
+                    "hook_slug": null,
+                    "event_type": "sample_process.failed",
+                    "event_match": {"state": {"eq": "ready"}},
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "business_days_only": false,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_event_trigger_validates_event_type_and_kind_shape(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let cases = [
+            (
+                json!({"kind": "event", "prompt_template": "x"}),
+                json!({"error": "event_type is required for kind=event"}),
+            ),
+            (
+                json!({"kind": "event", "event_type": "Sample_process.finished", "prompt_template": "x"}),
+                json!({"error": "event_type must be a lowercase dotted identifier"}),
+            ),
+            (
+                json!({"kind": "event", "event_type": "sample_process.finished", "schedule": "* * * * *", "prompt_template": "x"}),
+                json!({"error": "schedule must be omitted for kind=event"}),
+            ),
+            (
+                json!({"kind": "event", "event_type": "sample_process.finished", "business_days_only": true, "prompt_template": "x"}),
+                json!({"error": "business_days_only can only be true when kind=cron"}),
+            ),
+        ];
+        let mut actual = Vec::new();
+        for (body, _) in &cases {
+            let response = server
+                .post(&format!("/api/strategies/{sid}/triggers"))
+                .json(body)
+                .await;
+            actual.push((response.status_code(), response.json::<Value>()));
+        }
+
+        assert_eq!(
+            actual,
+            cases
+                .into_iter()
+                .map(|(_, body)| (StatusCode::BAD_REQUEST, body))
+                .collect::<Vec<_>>(),
         );
     }
 
@@ -154,6 +296,7 @@ mod tests {
                     "kind": "cron",
                     "schedule": "0 9 * * 1-5",
                     "hook_slug": null,
+                    "event_type": null,
                     "event_match": null,
                     "prompt_template": "x",
                     "enabled": true,
@@ -185,6 +328,7 @@ mod tests {
             "kind": "cron",
             "schedule": "0 9 * * 1-5",
             "hook_slug": null,
+            "event_type": null,
             "event_match": null,
             "prompt_template": "x",
             "enabled": true,
@@ -224,6 +368,7 @@ mod tests {
             "kind": "cron",
             "schedule": "0 9 * * 1-5",
             "hook_slug": null,
+            "event_type": null,
             "event_match": null,
             "prompt_template": "x",
             "enabled": true,
@@ -270,6 +415,7 @@ mod tests {
                     "kind": "cron",
                     "schedule": "0 9 * * 1-5",
                     "hook_slug": null,
+                    "event_type": null,
                     "event_match": null,
                     "prompt_template": "x",
                     "enabled": true,
@@ -306,6 +452,7 @@ mod tests {
                     "kind": "hook",
                     "schedule": null,
                     "hook_slug": "tv-alert",
+                    "event_type": null,
                     "event_match": {"event": {"eq": "fired"}},
                     "prompt_template": "alert: {{payload.symbol}}",
                     "enabled": true,
@@ -366,6 +513,7 @@ mod tests {
                     "kind": "hook",
                     "schedule": null,
                     "hook_slug": "sample-hook",
+                    "event_type": null,
                     "event_match": {"event": {"eq": "initial"}},
                     "prompt_template": "x",
                     "enabled": true,
@@ -506,6 +654,7 @@ mod tests {
                     "kind": "cron",
                     "schedule": "0 9 * * *",
                     "hook_slug": null,
+                    "event_type": null,
                     "event_match": null,
                     "prompt_template": "x",
                     "enabled": true,
@@ -540,7 +689,7 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "trigger_id": "<trigger_id>", "strategy_id": sid, "purpose": null,
-                    "kind": "hook", "schedule": null, "hook_slug": "dup",
+                    "kind": "hook", "schedule": null, "hook_slug": "dup", "event_type": null,
                     "event_match": null, "prompt_template": "x", "enabled": true, "business_days_only": false,
                     "last_fired_at": null, "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
@@ -576,7 +725,7 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "trigger_id": "<trigger_id>", "strategy_id": sid, "purpose": null,
-                    "kind": "cron", "schedule": "* * * * *", "hook_slug": null,
+                    "kind": "cron", "schedule": "* * * * *", "hook_slug": null, "event_type": null,
                     "event_match": null, "prompt_template": "c", "enabled": true, "business_days_only": false,
                     "last_fired_at": null, "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
@@ -597,7 +746,7 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "trigger_id": "<trigger_id>", "strategy_id": sid, "purpose": null,
-                    "kind": "hook", "schedule": null, "hook_slug": "h",
+                    "kind": "hook", "schedule": null, "hook_slug": "h", "event_type": null,
                     "event_match": null, "prompt_template": "h", "enabled": true, "business_days_only": false,
                     "last_fired_at": null, "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
@@ -624,6 +773,7 @@ mod tests {
                     "kind": "cron",
                     "schedule": "* * * * *",
                     "hook_slug": null,
+                    "event_type": null,
                     "event_match": null,
                     "prompt_template": "c",
                     "enabled": true,
@@ -654,7 +804,7 @@ mod tests {
                 StatusCode::CREATED,
                 json!({
                     "trigger_id": "<trigger_id>", "strategy_id": s1, "purpose": null,
-                    "kind": "cron", "schedule": "* * * * *", "hook_slug": null,
+                    "kind": "cron", "schedule": "* * * * *", "hook_slug": null, "event_type": null,
                     "event_match": null, "prompt_template": "x", "enabled": true, "business_days_only": false,
                     "last_fired_at": null, "created_at": "<created_at>",
                     "updated_at": "<updated_at>",
@@ -694,6 +844,7 @@ mod tests {
             "kind": "cron",
             "schedule": "0 9 * * 1-5",
             "hook_slug": null,
+            "event_type": null,
             "event_match": null,
             "prompt_template": "new",
             "enabled": false,
@@ -774,6 +925,7 @@ mod tests {
                         "kind": "cron",
                         "schedule": "0 9 * * *",
                         "hook_slug": null,
+                        "event_type": null,
                         "event_match": null,
                         "prompt_template": "x",
                         "enabled": true,
@@ -808,6 +960,7 @@ mod tests {
                     "kind": "hook",
                     "schedule": null,
                     "hook_slug": "sample-hook",
+                    "event_type": null,
                     "event_match": {"event": {"eq": "initial"}},
                     "prompt_template": "x",
                     "enabled": true,
@@ -841,6 +994,7 @@ mod tests {
                     "kind": "hook",
                     "schedule": null,
                     "hook_slug": "sample-hook",
+                    "event_type": null,
                     "event_match": null,
                     "prompt_template": "x",
                     "enabled": true,
@@ -876,6 +1030,7 @@ mod tests {
                     "kind": "hook",
                     "schedule": null,
                     "hook_slug": "sample-hook",
+                    "event_type": null,
                     "event_match": {"source": {"eq": "replacement"}},
                     "prompt_template": "x",
                     "enabled": true,

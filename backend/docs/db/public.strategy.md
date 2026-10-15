@@ -96,6 +96,7 @@ erDiagram
   timestamp_with_time_zone updated_at
   text purpose FK
   boolean business_days_only
+  text event_type
 }
 "public.custom_indicator" {
   uuid indicator_id

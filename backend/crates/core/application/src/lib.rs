@@ -13,6 +13,7 @@ pub mod earnings_schedule;
 pub mod earnings_schedule_source;
 pub mod equity_master;
 pub mod equity_master_source;
+pub mod event;
 pub mod financial_summary;
 pub mod financial_summary_source;
 pub mod group_axis;

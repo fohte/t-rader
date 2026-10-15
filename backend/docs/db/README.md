@@ -16,7 +16,7 @@
 | [public.change_history](public.change_history.md)                                           | 9       | 主要レコードに対する作成・更新・削除・状態変更を記録する監査履歴。                                     | BASE TABLE |
 | [public.trade](public.trade.md)                                                             | 12      | 戦略ごとの売買取引と約定内容を記録する。                                                               | BASE TABLE |
 | [public.strategy_task](public.strategy_task.md)                                             | 16      | 戦略に対して投入したエージェントタスクの内容と実行状態を記録する。                                     | BASE TABLE |
-| [public.trigger](public.trigger.md)                                                         | 13      | 時刻や外部 hook を契機にエージェントタスクを起動する設定。                                             | BASE TABLE |
+| [public.trigger](public.trigger.md)                                                         | 14      | 時刻、外部 hook、システム内イベントを契機にエージェント task を起動する設定。                          | BASE TABLE |
 | [public.custom_indicator](public.custom_indicator.md)                                       | 10      | 共有または戦略ごとに定義する実行可能なカスタム指標。                                                   | BASE TABLE |
 | [public.news_item](public.news_item.md)                                                     | 7       | RSS フィードなどから取得したニュース記事情報を保持する。                                               | BASE TABLE |
 | [public.rss_feed](public.rss_feed.md)                                                       | 8       | ニュース取り込み元となる RSS フィードを管理する。                                                      | BASE TABLE |
@@ -60,6 +60,8 @@
 | [public.paper_order_result](public.paper_order_result.md)                                   | 6       | 仮想注文を約定または却下した結果を保持する。                                                           | BASE TABLE |
 | [public.custom_indicator_evaluation](public.custom_indicator_evaluation.md)                 | 7       | 自作指標の成功した計算結果を、実行時点の定義とともに保持する。                                         | BASE TABLE |
 | [public.saved_screen](public.saved_screen.md)                                               | 6       | スクリーナーで保存した名前付き条件と並び順を保持する。                                                 | BASE TABLE |
+| [public.event](public.event.md)                                                             | 6       | システム内で発生したイベントと dispatch 状態を保持する。                                               | BASE TABLE |
+| [public.event_firing](public.event_firing.md)                                               | 3       | event と trigger の発火、および投入した task の対応を保持する。                                        | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -221,6 +223,9 @@ erDiagram
 "public.paper_order" }o--|| "public.note_version" : "FOREIGN KEY (note_version_id) REFERENCES note_version(id)"
 "public.paper_order" }o--|| "public.paper_account" : "FOREIGN KEY (account_id) REFERENCES paper_account(id) ON DELETE CASCADE"
 "public.paper_order_result" |o--|| "public.paper_order" : "FOREIGN KEY (order_id) REFERENCES paper_order(id) ON DELETE CASCADE"
+"public.event_firing" |o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id)"
+"public.event_firing" }o--|| "public.trigger" : "FOREIGN KEY (trigger_id) REFERENCES trigger(trigger_id) ON DELETE CASCADE"
+"public.event_firing" }o--|| "public.event" : "FOREIGN KEY (event_id) REFERENCES event(event_id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -363,6 +368,7 @@ erDiagram
   timestamp_with_time_zone updated_at
   text purpose FK
   boolean business_days_only
+  text event_type
 }
 "public.custom_indicator" {
   uuid indicator_id
@@ -788,6 +794,19 @@ erDiagram
   jsonb sort
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.event" {
+  uuid event_id
+  text event_type
+  jsonb payload
+  bigint chain_depth
+  timestamp_with_time_zone occurred_at
+  timestamp_with_time_zone dispatched_at
+}
+"public.event_firing" {
+  uuid event_id FK
+  uuid trigger_id FK
+  uuid task_id FK
 }
 ```
 
