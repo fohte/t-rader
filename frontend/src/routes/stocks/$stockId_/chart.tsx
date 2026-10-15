@@ -1,11 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { StockChartPageView } from '#components/stock-page/stock-chart-page-view'
 import { type Timeframe } from '#components/timeframe-selector'
 import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import { $api } from '#lib/api/client'
-import { getBarsRange } from '#lib/chart-range'
+import type { components } from '#lib/api/schema.gen'
+import {
+  getChartIndicatorLookbackBars,
+  useChartIndicators,
+} from '#lib/chart-indicator-settings'
+import { extendBarsRange, getBarsRange } from '#lib/chart-range'
 import { getChartCurrency } from '#lib/chart-utils'
 
 export const Route = createFileRoute('/stocks/$stockId_/chart')({
@@ -13,6 +18,7 @@ export const Route = createFileRoute('/stocks/$stockId_/chart')({
 })
 
 const emptyAnnotations: ChartAnnotation[] = []
+type Bar = components['schemas']['Bar']
 
 function StockChartPage() {
   const { stockId } = Route.useParams()
@@ -21,18 +27,40 @@ function StockChartPage() {
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<
     string | null
   >(null)
-  const { from, to } = useMemo(() => getBarsRange(timeframe), [timeframe])
+  const indicators = useChartIndicators()
+  const lookbackBars = getChartIndicatorLookbackBars(indicators)
+  const displayRange = useMemo(() => getBarsRange(timeframe), [timeframe])
+  const chartRange = useMemo(
+    () => extendBarsRange(displayRange, timeframe, lookbackBars),
+    [displayRange, lookbackBars, timeframe],
+  )
+  const chartBarsKey = JSON.stringify([
+    stockId,
+    timeframe,
+    displayRange.from,
+    displayRange.to,
+  ])
+  const [cachedChartBars, setCachedChartBars] = useState<{
+    key: string
+    bars: Bar[]
+  } | null>(null)
 
   const { data, isLoading, error } = $api.useQuery('get', '/api/bars', {
     params: {
       query: {
         instrument_id: stockId,
         timeframe,
-        from,
-        to,
+        ...chartRange,
       },
     },
   })
+  useEffect(() => {
+    if (data == null) return
+    setCachedChartBars({ key: chartBarsKey, bars: data })
+  }, [chartBarsKey, data])
+  const chartBars =
+    data ??
+    (cachedChartBars?.key === chartBarsKey ? cachedChartBars.bars : undefined)
   const { data: stock } = $api.useQuery('get', '/api/refs/stocks/{id}', {
     params: { path: { id: stockId } },
   })
@@ -48,7 +76,8 @@ function StockChartPage() {
     <StockChartPageView
       stockId={stockId}
       stockName={stock?.name ?? stockId}
-      bars={data ?? []}
+      bars={chartBars ?? []}
+      displayRangeStart={displayRange.from}
       annotations={annotations ?? emptyAnnotations}
       timeframe={timeframe}
       onTimeframeChange={setTimeframe}
@@ -59,8 +88,8 @@ function StockChartPage() {
       selectedAnnotationId={selectedAnnotationId}
       onSelectAnnotation={setSelectedAnnotationId}
       currency={getChartCurrency(stock?.market)}
-      isLoading={isLoading}
-      hasError={error != null}
+      isLoading={isLoading && chartBars == null}
+      hasError={error != null && chartBars == null}
       isAnnotationsLoading={isAnnotationsPending}
     />
   )

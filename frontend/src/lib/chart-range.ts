@@ -10,6 +10,17 @@ const LOOKBACK_DAYS: Record<Timeframe, number> = {
   '1w': 365 * 3,
 }
 
+const BARS_PER_TRADING_DAY: Record<Timeframe, number> = {
+  '1m': 330,
+  '5m': 66,
+  '15m': 22,
+  '1h': 5,
+  '4h': 2,
+  '1d': 1,
+  '1w': 1 / 5,
+}
+const CALENDAR_DAYS_PER_TRADING_DAY = 1.5
+
 export interface BarsRange {
   from: string
   to: string
@@ -28,6 +39,28 @@ export function getBarsRange(
   }
 
   return { from: fromDate.toISOString(), to: now.toISOString() }
+}
+
+export function extendBarsRange(
+  range: BarsRange,
+  timeframe: Timeframe,
+  additionalBars: number,
+): BarsRange {
+  if (!Number.isInteger(additionalBars) || additionalBars <= 0) return range
+
+  const additionalDays = Math.ceil(
+    (additionalBars / BARS_PER_TRADING_DAY[timeframe]) *
+      CALENDAR_DAYS_PER_TRADING_DAY,
+  )
+  const fromDate = new Date(range.from)
+  fromDate.setDate(fromDate.getDate() - additionalDays)
+
+  const from =
+    timeframe === '1d' || timeframe === '1w'
+      ? formatDate(fromDate)
+      : fromDate.toISOString()
+
+  return { from, to: range.to }
 }
 
 function formatDate(date: Date): string {
