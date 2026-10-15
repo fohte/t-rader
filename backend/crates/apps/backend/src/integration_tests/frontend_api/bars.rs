@@ -314,7 +314,7 @@ mod tests {
 
         let response = server
             .get(
-                "/api/bars?instrument_id=DEMO-WEEKLY-ALPHA&timeframe=1w&from=2025-01-06&to=2025-01-07",
+                "/api/bars?instrument_id=DEMO-WEEKLY-ALPHA&timeframe=1w&from=2025-01-08&to=2025-01-09",
             )
             .await;
         assert_response_eq(

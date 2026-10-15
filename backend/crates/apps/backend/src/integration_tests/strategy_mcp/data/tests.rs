@@ -339,8 +339,11 @@ async fn query_data_returns_weekly_bars_aggregated_from_daily_bars(
             strategy_id,
             None,
             QueryDataParams {
-                instrument_ids: vec!["fictional-instrument-a".into()],
-                from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
+                instrument_ids: vec![
+                    "fictional-instrument-a".into(),
+                    "fictional-instrument-b".into(),
+                ],
+                from: NaiveDate::from_ymd_opt(2025, 1, 7).expect("from"),
                 to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
                 timeframe: Some("1w".to_string()),
             },
@@ -351,20 +354,36 @@ async fn query_data_returns_weekly_bars_aggregated_from_daily_bars(
     assert_eq!(
         result,
         QueryDataResult {
-            results: vec![InstrumentBarsDto {
-                instrument_id: "fictional-instrument-a".to_string(),
-                bars: vec![BarDto {
-                    timestamp: NaiveDate::from_ymd_opt(2025, 1, 6)
-                        .and_then(|date| date.and_hms_opt(0, 0, 0))
-                        .map(|datetime| datetime.and_utc().fixed_offset())
-                        .expect("timestamp"),
-                    open: 100.0,
-                    high: 115.0,
-                    low: 90.0,
-                    close: 105.0,
-                    volume: 2_000,
-                }],
-            }],
+            results: vec![
+                InstrumentBarsDto {
+                    instrument_id: "fictional-instrument-a".to_string(),
+                    bars: vec![BarDto {
+                        timestamp: NaiveDate::from_ymd_opt(2025, 1, 6)
+                            .and_then(|date| date.and_hms_opt(0, 0, 0))
+                            .map(|datetime| datetime.and_utc().fixed_offset())
+                            .expect("timestamp"),
+                        open: 100.0,
+                        high: 115.0,
+                        low: 90.0,
+                        close: 105.0,
+                        volume: 2_000,
+                    }],
+                },
+                InstrumentBarsDto {
+                    instrument_id: "fictional-instrument-b".to_string(),
+                    bars: vec![BarDto {
+                        timestamp: NaiveDate::from_ymd_opt(2025, 1, 6)
+                            .and_then(|date| date.and_hms_opt(0, 0, 0))
+                            .map(|datetime| datetime.and_utc().fixed_offset())
+                            .expect("timestamp"),
+                        open: 200.0,
+                        high: 210.0,
+                        low: 190.0,
+                        close: 200.0,
+                        volume: 1_000,
+                    }],
+                },
+            ],
         }
     );
 }

@@ -111,7 +111,7 @@ function TimeframeButton({
   onChange: (value: Timeframe) => void
   className?: string
 }) {
-  const button = (
+  return (
     <Button
       variant={isSelected ? 'default' : 'outline'}
       size="xs"
@@ -124,6 +124,4 @@ function TimeframeButton({
       {timeframe.label}
     </Button>
   )
-
-  return button
 }
