@@ -17,152 +17,127 @@ type Stock = components['schemas']['Stock']
 type Indicator = components['schemas']['Indicator']
 type AppRouter = ReturnType<typeof useRouter>
 
-interface ScreenItem {
-  id: string
-  label: string
-  searchTerms: string[]
-  navigate: (router: AppRouter) => void
-}
-
-const SCREEN_ITEMS: ScreenItem[] = [
+const SCREEN_ITEMS = [
   {
     id: 'dashboard',
     label: 'ダッシュボード',
     searchTerms: ['dashboard', 'home'],
-    navigate: (router) => {
-      void router.navigate({ to: '/' })
-    },
+    to: '/',
   },
   {
     id: 'portfolio',
     label: '資産 · 保有',
     searchTerms: ['資産', '保有', 'portfolio'],
-    navigate: (router) => {
-      void router.navigate({ to: '/portfolio' })
-    },
+    to: '/portfolio',
   },
   {
     id: 'trades',
     label: '資産 · 取引',
     searchTerms: ['資産', '取引', 'trades'],
-    navigate: (router) => {
-      void router.navigate({ to: '/trades' })
-    },
+    to: '/trades',
   },
   {
     id: 'review',
     label: 'レビュー',
     searchTerms: ['review'],
-    navigate: (router) => {
-      void router.navigate({ to: '/review' })
-    },
+    to: '/review',
   },
   {
     id: 'notes',
     label: 'ノート',
     searchTerms: ['notes'],
-    navigate: (router) => {
-      void router.navigate({ to: '/notes' })
-    },
+    to: '/notes',
   },
   {
     id: 'annotations',
     label: 'アノテーション',
     searchTerms: ['annotation', 'annotations'],
-    navigate: (router) => {
-      void router.navigate({ to: '/notes', search: { tab: 'annotations' } })
-    },
+    to: '/notes',
+    search: { tab: 'annotations' },
   },
   {
     id: 'strategies',
     label: '戦略一覧',
     searchTerms: ['strategies'],
-    navigate: (router) => {
-      void router.navigate({ to: '/strategies' })
-    },
+    to: '/strategies',
   },
   {
     id: 'strategy-runs',
     label: '実行履歴',
     searchTerms: ['戦略', '実行', '履歴', 'runs'],
-    navigate: (router) => {
-      void router.navigate({
-        to: '/strategies',
-        search: { strategyTab: 'runs' },
-      })
-    },
+    to: '/strategies',
+    search: { strategyTab: 'runs' },
   },
   {
     id: 'paper-trading',
     label: 'ペーパートレード',
     searchTerms: ['paper', 'trading'],
-    navigate: (router) => {
-      void router.navigate({ to: '/paper-trading' })
-    },
+    to: '/paper-trading',
   },
   {
     id: 'calendar',
     label: 'カレンダー',
     searchTerms: ['calendar'],
-    navigate: (router) => {
-      void router.navigate({ to: '/calendar' })
-    },
+    to: '/calendar',
   },
   {
     id: 'settings',
     label: '全体の設定',
     searchTerms: ['設定', 'settings'],
-    navigate: (router) => {
-      void router.navigate({ to: '/settings' })
-    },
+    to: '/settings',
   },
   {
     id: 'agent-configs',
     label: 'Agent 設定',
     searchTerms: ['設定', 'agent', 'agents'],
-    navigate: (router) => {
-      void router.navigate({ to: '/settings/agent-configs' })
-    },
+    to: '/settings/agent-configs',
   },
   {
     id: 'rss-feeds',
     label: 'RSS フィード',
     searchTerms: ['設定', 'rss', 'feed'],
-    navigate: (router) => {
-      void router.navigate({ to: '/settings/rss-feeds' })
-    },
+    to: '/settings/rss-feeds',
   },
   {
     id: 'ingest-status',
     label: '取り込み状況',
     searchTerms: ['設定', 'ingest', 'status'],
-    navigate: (router) => {
-      void router.navigate({ to: '/settings/ingest-status' })
-    },
+    to: '/settings/ingest-status',
   },
   {
     id: 'risk-policy',
     label: 'リスク上限',
     searchTerms: ['設定', 'risk', 'limit'],
-    navigate: (router) => {
-      void router.navigate({ to: '/settings/risk-policy' })
-    },
+    to: '/settings/risk-policy',
   },
   {
     id: 'custom-indicators',
     label: '自作指標',
     searchTerms: ['設定', '指標', 'indicator'],
-    navigate: (router) => {
-      void router.navigate({ to: '/settings/indicators' })
-    },
+    to: '/settings/indicators',
   },
-]
+] as const
+
+type ScreenItem = (typeof SCREEN_ITEMS)[number]
 
 function matchesQuery(query: string, values: string[]) {
   const normalizedQuery = query.toLocaleLowerCase('ja')
   return values.some((value) =>
     value.toLocaleLowerCase('ja').includes(normalizedQuery),
   )
+}
+
+function navigateToScreen(router: AppRouter, item: ScreenItem) {
+  switch (item.id) {
+    case 'annotations':
+      void router.navigate({ to: item.to, search: item.search })
+      return
+    case 'strategy-runs':
+      void router.navigate({ to: item.to, search: item.search })
+      return
+    default:
+      void router.navigate({ to: item.to })
+  }
 }
 
 function createItem(
@@ -269,7 +244,7 @@ export function QuickSwitcher() {
     ).map((item) =>
       createItem(item.id, item.label, undefined, () => {
         handleOpenChange(false)
-        item.navigate(router)
+        navigateToScreen(router, item)
       }),
     )
     const strategies = (strategiesQuery.data ?? []).filter(
