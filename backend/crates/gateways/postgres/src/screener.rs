@@ -11,7 +11,12 @@ use crate::DatabaseHandle;
 use crate::persistence::persistence_error;
 
 const SCREEN_STOCKS_SQL: &str = r#"
-    WITH latest_daily_timestamp AS (
+    WITH latest_any_valuation AS MATERIALIZED (
+        SELECT MAX(valuation.date) AS date
+        FROM valuation
+        JOIN stock ON stock.id = LEFT(valuation.code, 4)
+    ),
+    latest_daily_timestamp AS (
         SELECT MAX(timestamp) AS timestamp
         FROM bars
         WHERE timeframe = '1d'
@@ -20,12 +25,9 @@ const SCREEN_STOCKS_SQL: &str = r#"
         SELECT latest_daily_timestamp.timestamp,
                COALESCE(
                    latest_daily_timestamp.timestamp::date,
-                   (
-                       SELECT MAX(valuation.date)
-                       FROM valuation
-                       JOIN stock ON stock.id = LEFT(valuation.code, 4)
-                   )
-               ) AS latest_date
+                   (SELECT date FROM latest_any_valuation)
+               ) AS latest_date,
+               30 AS lookback_days
         FROM latest_daily_timestamp
     ),
     latest_valuations AS (
@@ -39,7 +41,7 @@ const SCREEN_STOCKS_SQL: &str = r#"
         FROM valuation
         JOIN stock ON stock.id = LEFT(valuation.code, 4)
         CROSS JOIN latest_data
-        WHERE valuation.date >= latest_data.latest_date - 30
+        WHERE valuation.date >= latest_data.latest_date - latest_data.lookback_days
         ORDER BY LEFT(valuation.code, 4), valuation.date DESC, valuation.code DESC
     ),
     latest_bars AS (
@@ -49,17 +51,14 @@ const SCREEN_STOCKS_SQL: &str = r#"
         FROM bars
         CROSS JOIN latest_data
         WHERE bars.timeframe = '1d'
-          AND bars.timestamp >= latest_data.timestamp - INTERVAL '30 days'
+          AND bars.timestamp >= latest_data.timestamp
+              - latest_data.lookback_days * INTERVAL '1 day'
         ORDER BY bars.instrument_id, bars.timestamp DESC
     ),
     latest_valuation_date AS (
         SELECT COALESCE(
             (SELECT MAX(valuation_date) FROM latest_valuations),
-            (
-                SELECT MAX(valuation.date)
-                FROM valuation
-                JOIN stock ON stock.id = LEFT(valuation.code, 4)
-            )
+            (SELECT date FROM latest_any_valuation)
         ) AS as_of
     ),
     latest_financial_summaries AS (

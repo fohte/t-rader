@@ -3,7 +3,8 @@ use core_application::valuation::ValuationRepository;
 use core_domain::valuation::Valuation;
 use gateway_postgres::PostgresValuationRepository;
 use gateway_postgres::entities::{
-    bars, financial_summary, group_axis, instruments, stock, stock_group, stock_group_member,
+    bars, financial_summary, group_axis, instruments, minute_bars, stock, stock_group,
+    stock_group_member,
 };
 use rust_decimal::Decimal;
 use sea_orm::ActiveModelTrait;
@@ -545,6 +546,22 @@ async fn screener_endpoint_limits_latest_metrics_to_thirty_days(
         seed_instrument(&db, id).await;
     }
     seed_daily_bar_at(&db, "D901", date(3), 1200).await;
+    let latest_intraday_timestamp = date(3)
+        .and_hms_opt(0, 1, 0)
+        .map(|datetime| Utc.from_utc_datetime(&datetime).fixed_offset())
+        .expect("valid test timestamp");
+    minute_bars::Entity::insert(minute_bars::ActiveModel {
+        instrument_id: Set("D901".to_string()),
+        timestamp: Set(latest_intraday_timestamp),
+        open: Set(Decimal::from(1200)),
+        high: Set(Decimal::from(1250)),
+        low: Set(Decimal::from(1190)),
+        close: Set(Decimal::from(1250)),
+        volume: Set(100),
+    })
+    .exec_without_returning(&db)
+    .await
+    .expect("insert screener minute bar");
     seed_daily_bar_at(&db, "D902", days_before_latest(30), 2400).await;
     seed_daily_bar_at(&db, "D903", days_before_latest(31), 3600).await;
     PostgresValuationRepository::new(db.clone())
