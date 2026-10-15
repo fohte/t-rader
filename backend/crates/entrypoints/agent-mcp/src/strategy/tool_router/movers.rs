@@ -4,10 +4,27 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{tool, tool_router};
 
 use super::super::StrategyServer;
-use super::super::dto::{ListMoversParams, ListMoversResult};
+use super::super::dto::{
+    ListGroupMoversParams, ListGroupMoversResult, ListMoversParams, ListMoversResult,
+};
 
 #[tool_router(router = movers_tool_router, vis = "pub(super)")]
 impl StrategyServer {
+    /// 分類軸ごとのグループ騰落率を返す。
+    #[tool(
+        name = "list_group_movers",
+        description = "Rank groups in an axis by the absolute value of their median constituent return. Returns the constituent count, median return, turnover-weighted return, total average daily turnover, and the five constituents with the highest average daily turnover. Returns are latest close within the inclusive range divided by the previous available close before from, minus one; from=to therefore returns the daily change. min_avg_turnover filters individual constituents by their average daily close × volume during the range and defaults to 0. Turnover amounts use each stock's native currency.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_group_movers(
+        &self,
+        Parameters(params): Parameters<ListGroupMoversParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ListGroupMoversResult>, McpError> {
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.list_group_movers_inner(params).await.map(Json)
+    }
+
     /// 期間内の騰落率上位銘柄と戦略との接点を返す。
     #[tool(
         name = "list_movers",

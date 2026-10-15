@@ -3,6 +3,7 @@ package traderapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -145,6 +146,10 @@ func responseError(response *http.Response, body []byte) error {
 		body = body[:maxErrorBodyBytes]
 	}
 	message := strings.TrimSpace(string(body))
+	var errorResponse gen.ErrorResponse
+	if err := json.Unmarshal(body, &errorResponse); err == nil && errorResponse.Error != "" {
+		message = errorResponse.Error
+	}
 	if truncated {
 		message += " [truncated]"
 	}

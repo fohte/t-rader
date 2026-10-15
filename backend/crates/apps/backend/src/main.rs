@@ -32,7 +32,7 @@ use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
 use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
-use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
+use gateway_postgres::DatabaseHandle;
 use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
@@ -362,7 +362,7 @@ async fn main() -> Result<(), StartupError> {
         valuations: use_cases.valuations(),
         valuation_source,
         indicator_observations: use_cases.indicator_observations(),
-        ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
+        ingest_run_log: Arc::new(use_cases.ingest_run_log()),
         fred_source,
         eoddata_kospi_source,
         twse_source: twse::worker_source(cli.run_mode, &redis_url)?,
