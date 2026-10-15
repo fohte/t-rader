@@ -36,7 +36,6 @@ impl StrategyServer {
             .web_search_client
             .as_ref()
             .ok_or_else(|| internal_error("TAVILY_API_KEY is not configured"))?;
-        // x-execution-id ヘッダ欠落時は呼び出し回数の追跡をスキップする。
         self.reserve_tool_call_limits(&call_limits, TOOL_NAME)
             .await?;
 

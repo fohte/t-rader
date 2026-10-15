@@ -5,7 +5,6 @@ use axum::http::{HeaderMap, HeaderValue};
 use core_application::llm_client::{
     ChatMessage, ContentPart, LlmClient, LlmClientError, LlmModel, SharedLlmClient,
 };
-use core_application::subagent_definition::SubagentDefinitionFields;
 use core_application::web_search::{
     SharedWebSearchClient, WebSearchClient, WebSearchError, WebSearchResult, WebSearchTimeRange,
     WebSearchTopic,
@@ -13,13 +12,15 @@ use core_application::web_search::{
 use indoc::formatdoc;
 use rmcp::ErrorData as McpError;
 use rstest::rstest;
-use sea_orm::{ActiveModelTrait, ActiveValue};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto::{ReadPageParams, ReadPageResult};
-use super::tests_common::{insert_strategy, mock_db_with_strategy};
+use super::tests_common::{
+    create_task_with_subagent_limits, insert_strategy, insert_subagent_headers,
+    mock_db_with_strategy,
+};
 use crate::services::use_cases::build_use_cases;
 use entrypoint_agent_mcp::StrategyServer;
 
@@ -269,7 +270,8 @@ async fn read_page_uses_tool_model_and_truncates_extracted_content_at_100000_cha
 #[backend_test_macros::database_test]
 async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::DatabaseHandle) {
     let strategy_id = insert_strategy(&db, "example strategy").await;
-    let task_execution_id = create_task_with_subagent_limits(&db, strategy_id).await;
+    let task_execution_id =
+        create_task_with_subagent_limits(&db, strategy_id, "reader", "read_page", 1, 4).await;
     let (web_search_client, extracted_urls) = web_search_client("Example page");
     let (llm_client, llm) = llm_client();
     let server = server(db, Some(llm_client), Some(web_search_client));
@@ -335,72 +337,6 @@ async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::Datab
     );
 }
 
-async fn create_task_with_subagent_limits(
-    db: &gateway_postgres::DatabaseHandle,
-    strategy_id: Uuid,
-) -> String {
-    let purpose = format!("sample-purpose-{}", Uuid::new_v4());
-    crate::testing::agent_config::create(db, purpose.clone())
-        .await
-        .expect("create test agent config");
-    let use_cases = build_use_cases(db.clone());
-    use_cases
-        .subagent_definitions()
-        .create(
-            "reader".to_string(),
-            SubagentDefinitionFields {
-                description: String::new(),
-                model: "example-model-subagent".to_string(),
-                reasoning_effort: None,
-                prompt: "placeholder".to_string(),
-                tools: vec!["read_page".to_string()],
-                timeout_minutes: 1,
-                max_model_calls: 1,
-                tool_limits: std::collections::BTreeMap::from([("read_page".to_string(), 1)]),
-                output: serde_json::Map::new(),
-            },
-        )
-        .await
-        .expect("create test subagent definition");
-    use_cases
-        .agent_configs()
-        .save_agent_graph(
-            &purpose,
-            indoc::indoc! {"
-                tool_limits:
-                  read_page: 4
-                phases:
-                  - key: sample
-                    label: Sample
-                    model: example-model-phase
-                    prompt: ''
-                    subagents: [reader]
-            "},
-        )
-        .await
-        .expect("save test agent graph");
-
-    let task_execution_id = format!("task-{}", Uuid::new_v4());
-    let task_id = crate::testing::insert_test_strategy_task(
-        db,
-        strategy_id,
-        "sample task",
-        Some(&purpose),
-        chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
-    )
-    .await;
-    gateway_postgres::entities::strategy_task::ActiveModel {
-        task_id: ActiveValue::Set(task_id),
-        a2a_task_id: ActiveValue::Set(Some(task_execution_id.clone())),
-        ..Default::default()
-    }
-    .update(db)
-    .await
-    .expect("set test task execution ID");
-
-    task_execution_id
-}
-
 async fn invoke_read_page(
     server: &StrategyServer,
     strategy_id: Uuid,
@@ -411,16 +347,7 @@ async fn invoke_read_page(
         strategy_id,
         Some(format!("{task_execution_id}:example-step")),
     );
-    if let Some((execution_id, definition_key)) = subagent {
-        headers.insert(
-            "x-subagent-execution-id",
-            HeaderValue::from_str(execution_id).expect("valid subagent execution ID"),
-        );
-        headers.insert(
-            "x-subagent-definition-key",
-            HeaderValue::from_str(definition_key).expect("valid subagent definition key"),
-        );
-    }
+    insert_subagent_headers(&mut headers, subagent);
 
     call_tool_output_with_headers::<_, Value>(
         server,

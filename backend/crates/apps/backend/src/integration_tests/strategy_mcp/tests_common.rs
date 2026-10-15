@@ -1,7 +1,10 @@
 //! 戦略実行 MCP の統合テストで共有するヘルパー。
 
+use axum::http::{HeaderMap, HeaderValue};
 use chrono::{DateTime, FixedOffset};
 use core_application::change_history::Actor;
+use core_application::subagent_definition::SubagentDefinitionFields;
+use indoc::formatdoc;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, MockDatabase,
@@ -52,6 +55,90 @@ pub(super) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &s
     .await
     .expect("insert strategy");
     id
+}
+
+pub(super) async fn create_task_with_subagent_limits(
+    db: &gateway_postgres::DatabaseHandle,
+    strategy_id: Uuid,
+    definition_key: &str,
+    tool_name: &str,
+    subagent_max_calls: i64,
+    task_max_calls: u32,
+) -> String {
+    let purpose = format!("sample-purpose-{}", Uuid::new_v4());
+    crate::testing::agent_config::create(db, purpose.clone())
+        .await
+        .expect("create test agent config");
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+    use_cases
+        .subagent_definitions()
+        .create(
+            definition_key.to_string(),
+            SubagentDefinitionFields {
+                description: String::new(),
+                model: "example-model-subagent".to_string(),
+                reasoning_effort: None,
+                prompt: "placeholder".to_string(),
+                tools: vec![tool_name.to_string()],
+                timeout_minutes: 1,
+                max_model_calls: 1,
+                tool_limits: std::collections::BTreeMap::from([(
+                    tool_name.to_string(),
+                    subagent_max_calls,
+                )]),
+                output: serde_json::Map::new(),
+            },
+        )
+        .await
+        .expect("create test subagent definition");
+    let agent_graph = formatdoc! {"
+        tool_limits:
+          {tool_name}: {task_max_calls}
+        phases:
+          - key: sample
+            label: Sample
+            model: example-model-phase
+            prompt: ''
+            subagents: [{definition_key}]
+    "};
+    use_cases
+        .agent_configs()
+        .save_agent_graph(&purpose, &agent_graph)
+        .await
+        .expect("save test agent graph");
+
+    let task_execution_id = format!("task-{}", Uuid::new_v4());
+    let task_id = crate::testing::insert_test_strategy_task(
+        db,
+        strategy_id,
+        "sample task",
+        Some(&purpose),
+        chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
+    )
+    .await;
+    gateway_postgres::entities::strategy_task::ActiveModel {
+        task_id: sea_orm::ActiveValue::Set(task_id),
+        a2a_task_id: sea_orm::ActiveValue::Set(Some(task_execution_id.clone())),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("set test task execution ID");
+
+    task_execution_id
+}
+
+pub(super) fn insert_subagent_headers(headers: &mut HeaderMap, subagent: Option<(&str, &str)>) {
+    if let Some((execution_id, definition_key)) = subagent {
+        headers.insert(
+            "x-subagent-execution-id",
+            HeaderValue::from_str(execution_id).expect("valid subagent execution ID"),
+        );
+        headers.insert(
+            "x-subagent-definition-key",
+            HeaderValue::from_str(definition_key).expect("valid subagent definition key"),
+        );
+    }
 }
 
 pub(super) async fn insert_note_kind(

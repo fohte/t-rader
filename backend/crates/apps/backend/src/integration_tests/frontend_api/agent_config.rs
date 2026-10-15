@@ -277,6 +277,38 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn put_agent_graph_rejects_negative_tool_limit_without_saving(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        create_agent_config(&server, "explore").await;
+        let yaml = indoc::indoc! {"
+            tool_limits:
+              search_web: -1
+            phases:
+              - key: plan
+                label: Plan
+                model: example-model-plan
+                prompt: ''
+        "};
+
+        let put = server
+            .put("/api/agent-configs/explore/agent-graph")
+            .json(&json!({ "content": yaml }))
+            .await;
+        let get = server.get("/api/agent-configs/explore/agent-graph").await;
+
+        assert_eq!(
+            (put.status_code(), put.json(), get.json()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "agent_graph is not valid YAML: tool_limits.search_web: invalid type: integer `-1`, expected u32 at line 2 column 15" }),
+                json!({ "content": "" }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn get_agent_config_bundle_returns_agents_md_skills_and_agent_graph(
         db: gateway_postgres::DatabaseHandle,
     ) {
