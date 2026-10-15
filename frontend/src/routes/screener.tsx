@@ -19,7 +19,7 @@ export const Route = createFileRoute('/screener')({
 function ScreenerRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
-  const page = Number(search.page ?? 1)
+  const page = search.page ?? 1
   const rangeError = getScreenerRangeError(search)
   const pages = useQueries({
     queries:
