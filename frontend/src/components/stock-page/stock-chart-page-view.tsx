@@ -108,15 +108,6 @@ export function StockChartPageView({
         return
       }
 
-      if (
-        pendingHorizontalLine != null &&
-        (event.target instanceof HTMLInputElement ||
-          event.target instanceof HTMLTextAreaElement ||
-          event.target instanceof HTMLSelectElement)
-      ) {
-        return
-      }
-
       event.preventDefault()
       onCancelHorizontalLine()
     }

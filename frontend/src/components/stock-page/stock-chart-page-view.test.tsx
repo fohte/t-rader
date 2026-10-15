@@ -7,6 +7,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { StockChartPageView } from '#components/stock-page/stock-chart-page-view'
 import { createStoryRouter } from '#storybook/story-router'
 
+vi.mock('#components/candlestick-chart', () => ({
+  CandlestickChart: () => null,
+}))
+
 afterEach(cleanup)
 
 function renderChartPage(
@@ -82,22 +86,22 @@ describe('StockChartPageView', () => {
     expect(onCancelHorizontalLine.mock.calls).toEqual([[]])
   })
 
-  it('Esc で入力欄にフォーカス中の水平線を取り消さない', async () => {
+  it('Esc で種別キーとメモの入力中に水平線を取り消す', async () => {
     const user = userEvent.setup()
     const { onCancelHorizontalLine } = renderChartPage({
       pendingHorizontalLine: {
         timestamp: '2030-04-02T06:00:00Z',
         price: 3110,
       },
+      isLoading: false,
     })
-    const input = document.createElement('input')
-    document.body.append(input)
-    input.focus()
 
+    await user.click(await screen.findByRole('combobox', { name: '種別キー' }))
     await user.keyboard('{Escape}')
-    input.remove()
+    await user.click(await screen.findByRole('textbox', { name: 'メモ' }))
+    await user.keyboard('{Escape}')
 
-    expect(onCancelHorizontalLine.mock.calls).toEqual([])
+    expect(onCancelHorizontalLine.mock.calls).toEqual([[], []])
   })
 
   it('保存中は Esc で水平線を取り消さない', async () => {

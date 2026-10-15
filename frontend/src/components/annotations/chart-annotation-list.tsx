@@ -1,7 +1,4 @@
-import {
-  type ChartAnnotation,
-  isHumanHorizontalLine,
-} from '#lib/annotation-chart-utils'
+import type { ChartAnnotation } from '#lib/annotation-chart-utils'
 import { buildSnippet } from '#lib/note-utils'
 import { cn } from '#lib/utils'
 
@@ -113,7 +110,7 @@ export function ChartAnnotationList({
                   </span>
                 </button>
                 {isSelected &&
-                  isHumanHorizontalLine(annotation) &&
+                  annotation.created_by_kind === 'human' &&
                   onDeleteAnnotation != null && (
                     <button
                       type="button"

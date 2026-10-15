@@ -119,6 +119,40 @@ describe('ChartAnnotationList', () => {
     })
   })
 
+  it('deletes a selected human period annotation', async () => {
+    const onDeleteAnnotation = vi.fn()
+    const user = userEvent.setup()
+
+    render(
+      <ChartAnnotationList
+        annotations={[
+          {
+            id: 'annotation-human-period',
+            created_by_kind: 'human',
+            target_kind: 'sample-kind',
+            timestamp_start: '2025-01-02T00:00:00.000Z',
+            timestamp: '2025-01-04T00:00:00.000Z',
+            price: null,
+            price_start: null,
+            status: 'approved',
+            text: '架空の期間注釈です。',
+          },
+        ]}
+        selectedAnnotationId="annotation-human-period"
+        onSelectAnnotation={() => undefined}
+        onDeleteAnnotation={onDeleteAnnotation}
+      />,
+    )
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'sample-kind のアノテーションを削除',
+      }),
+    )
+
+    expect(onDeleteAnnotation.mock.calls).toEqual([['annotation-human-period']])
+  })
+
   it('does not offer deletion for a selected LLM horizontal annotation', () => {
     const onDeleteAnnotation = vi.fn()
 

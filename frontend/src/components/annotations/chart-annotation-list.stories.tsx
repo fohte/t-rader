@@ -15,6 +15,13 @@ const periodAnnotation: ChartAnnotation = {
   status: 'approved',
 }
 
+const humanPeriodAnnotation: ChartAnnotation = {
+  ...periodAnnotation,
+  id: 'annotation-c',
+  created_by_kind: 'human',
+  text: '架空の期間注釈です。',
+}
+
 const annotations: ChartAnnotation[] = [
   {
     id: 'annotation-a',
@@ -60,6 +67,14 @@ export const WithPeriodAnnotation: Story = {
   args: {
     annotations: [periodAnnotation],
     selectedAnnotationId: 'annotation-b',
+  },
+}
+
+export const WithDeletableHumanPeriodAnnotation: Story = {
+  name: 'shows deletion for a selected human period annotation.',
+  args: {
+    annotations: [humanPeriodAnnotation],
+    selectedAnnotationId: 'annotation-c',
   },
 }
 

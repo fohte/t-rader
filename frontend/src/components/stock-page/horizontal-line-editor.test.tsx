@@ -57,7 +57,7 @@ describe('HorizontalLineEditor', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '取消' }))
+    await user.click(screen.getByRole('button', { name: '取消 (Esc)' }))
 
     expect(onCancel.mock.calls).toEqual([[]])
   })

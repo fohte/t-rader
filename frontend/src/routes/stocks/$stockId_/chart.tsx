@@ -9,6 +9,10 @@ import type {
   HorizontalLineAnnotationDraft,
   HorizontalLinePoint,
 } from '#lib/annotation-chart-utils'
+import {
+  deleteChartAnnotation,
+  saveHorizontalLineAnnotation,
+} from '#lib/annotation-mutation-utils'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 import {
@@ -166,24 +170,18 @@ function StockChartPage() {
   function saveHorizontalLine(draft: HorizontalLineAnnotationDraft) {
     if (createAnnotationMutation.isPending) return
 
-    createAnnotationMutation.mutate({
-      body: {
-        target_kind: draft.target_kind,
-        target_symbol: stockId,
-        text: draft.text,
-        timestamp: draft.timestamp,
-        price: draft.price,
-        created_by_kind: 'human',
-        status: 'approved',
-      },
-    })
+    saveHorizontalLineAnnotation(
+      createAnnotationMutation.mutate,
+      stockId,
+      draft,
+    )
   }
 
   function deleteAnnotation(id: string) {
     if (deleteAnnotationMutation.isPending) return
 
     setAnnotationDeleteError(null)
-    deleteAnnotationMutation.mutate({ params: { path: { id } } })
+    deleteChartAnnotation(deleteAnnotationMutation.mutate, id)
   }
 
   return (
