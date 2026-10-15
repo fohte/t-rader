@@ -100,6 +100,20 @@ function resolvedPriceReferenceValue(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+function resolvedEvidenceToken(
+  token: string,
+  references: unknown,
+  reference: Record<string, string> | undefined,
+  hName: 'note-valuation-reference' | 'note-indicator-reference',
+): NoteToken | false {
+  if (reference == null) return false
+
+  const value = resolvedPriceReferenceValue(references, token)
+  return value == null
+    ? false
+    : noteToken(hName, { ...reference, value: String(value) })
+}
+
 // `[[graph:g1]]` は図 (ブロック要素) を指す。<p> の子には div を置けないため、
 // 段落全体がこのトークン 1 つだけで構成されている場合に限り、段落ごとブロック要素に差し替える。
 // 他のテキストと同じ段落に混在する場合は下の findAndReplace の対象外のまま素通りする。
@@ -192,34 +206,22 @@ export function remarkNoteTokens(resolvedPriceReferences?: unknown) {
         }
 
         if (inner.startsWith('valuation:')) {
-          const reference = parseNoteValuationReference(token)
-          if (reference == null) return false
-          const value = resolvedPriceReferenceValue(
-            resolvedPriceReferences,
+          return resolvedEvidenceToken(
             token,
+            resolvedPriceReferences,
+            parseNoteValuationReference(token),
+            'note-valuation-reference',
           )
-          return value == null
-            ? false
-            : noteToken('note-valuation-reference', {
-                ...reference,
-                value: String(value),
-              })
         }
 
         // 日付付き indicator は数値引用、日付なしは内部リンクとして扱う。
         if (inner.startsWith('indicator:') && inner.includes('@')) {
-          const reference = parseNoteIndicatorObservationReference(token)
-          if (reference == null) return false
-          const value = resolvedPriceReferenceValue(
-            resolvedPriceReferences,
+          return resolvedEvidenceToken(
             token,
+            resolvedPriceReferences,
+            parseNoteIndicatorObservationReference(token),
+            'note-indicator-reference',
           )
-          return value == null
-            ? false
-            : noteToken('note-indicator-reference', {
-                ...reference,
-                value: String(value),
-              })
         }
 
         const priceReferenceValue = inner.startsWith('price:')

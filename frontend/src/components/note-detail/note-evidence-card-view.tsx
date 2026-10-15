@@ -29,6 +29,18 @@ const VALUATION_FIELD_LABELS: Record<NoteValuationReferenceField, string> = {
   bps: 'BPS',
 }
 
+const VALUATION_SPLIT_ADJUSTED: Record<NoteValuationReferenceField, boolean> = {
+  per: false,
+  fwd_per: false,
+  pbr: false,
+  roe: false,
+  fwd_roe: false,
+  mkt_cap: false,
+  eps: true,
+  fwd_eps: true,
+  bps: true,
+}
+
 interface NoteEvidenceValuation {
   kind: 'valuation'
   date: string
@@ -108,7 +120,7 @@ function EvidenceRows({ reference }: { reference: NoteEvidenceCardReference }) {
           <span className="text-muted-foreground">計算</span>
           <span>
             {reference.kind === 'valuation' &&
-            ['eps', 'fwd_eps', 'bps'].includes(reference.field)
+            VALUATION_SPLIT_ADJUSTED[reference.field]
               ? 'なし (分割調整済み)'
               : 'なし'}
           </span>
@@ -172,6 +184,25 @@ function ChangeCalculation({
   )
 }
 
+function StockPageLink({
+  reference,
+}: {
+  reference: Exclude<NoteEvidenceCardReference, { kind: 'indicator' }>
+}) {
+  const linkDate = reference.kind === 'change' ? reference.end : reference.date
+
+  return (
+    <Link
+      to="/stocks/$stockId"
+      params={{ stockId: reference.stockId }}
+      search={{ date: linkDate }}
+      className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-primary hover:underline"
+    >
+      銘柄ページで {linkDate} を見る <span aria-hidden="true">→</span>
+    </Link>
+  )
+}
+
 export function NoteEvidenceCardView({
   open,
   onOpenChange,
@@ -216,19 +247,7 @@ export function NoteEvidenceCardView({
             指標ページを見る <span aria-hidden="true">→</span>
           </Link>
         ) : (
-          <Link
-            to="/stocks/$stockId"
-            params={{ stockId: reference.stockId }}
-            search={{
-              date:
-                reference.kind === 'change' ? reference.end : reference.date,
-            }}
-            className="inline-flex items-center gap-1 border-t border-border pt-2 font-mono text-primary hover:underline"
-          >
-            銘柄ページで{' '}
-            {reference.kind === 'change' ? reference.end : reference.date}{' '}
-            を見る <span aria-hidden="true">→</span>
-          </Link>
+          <StockPageLink reference={reference} />
         )}
       </PopoverContent>
     </Popover>
