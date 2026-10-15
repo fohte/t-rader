@@ -54,10 +54,12 @@ const args = {
   sectorOptionsPending: false,
   sectorOptionsError: false,
   status: 'results',
+  loadMoreError: false,
   onApplyFilters: () => {},
   onSort: () => {},
   onSortOrder: () => {},
   onLoadMore: () => {},
+  onRetryLoadMore: () => {},
 } satisfies ComponentProps<typeof ScreenerPageView>
 
 const meta = {
@@ -127,6 +129,11 @@ export const Error: Story = {
     status: 'error',
     errorMessage: '銘柄の取得に失敗しました。もう一度お試しください。',
   },
+}
+
+export const AdditionalPageError: Story = {
+  name: '追加の取得に失敗しても読み込み済みの銘柄を表示します。',
+  args: { ...args, loadMoreError: true },
 }
 
 export const MobileFilters: Story = {

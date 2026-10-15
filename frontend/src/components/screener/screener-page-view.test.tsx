@@ -29,10 +29,12 @@ describe('ScreenerPageView', () => {
       sectorOptionsPending: false,
       sectorOptionsError: false,
       status: 'results',
+      loadMoreError: false,
       onApplyFilters,
       onSort: () => {},
       onSortOrder: () => {},
       onLoadMore: () => {},
+      onRetryLoadMore: () => {},
     } satisfies ComponentProps<typeof ScreenerPageView>
 
     render(<ScreenerPageView {...args} />)
@@ -76,5 +78,71 @@ describe('ScreenerPageView', () => {
         },
       ],
     ])
+  })
+
+  it('keeps an unapplied filter draft when sorting and paging change', async () => {
+    const user = userEvent.setup()
+    const args = {
+      search: {},
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      onApplyFilters: () => {},
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    const { rerender } = render(<ScreenerPageView {...args} />)
+    const perLowerBound = screen.getByRole<HTMLInputElement>('spinbutton', {
+      name: 'PER 下限',
+    })
+    await user.type(perLowerBound, '12')
+    rerender(
+      <ScreenerPageView
+        {...args}
+        search={{ sort_by: 'per', sort_order: 'asc', page: 2 }}
+      />,
+    )
+
+    expect(perLowerBound.value).toBe('12')
+  })
+
+  it('shows reversed range validation and does not apply invalid filters', async () => {
+    const user = userEvent.setup()
+    const onApplyFilters = vi.fn()
+    const args = {
+      search: {},
+      data,
+      stocks: [],
+      sectorOptions: [],
+      sectorOptionsPending: false,
+      sectorOptionsError: false,
+      status: 'results',
+      onApplyFilters,
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore: () => {},
+    } satisfies ComponentProps<typeof ScreenerPageView>
+
+    render(<ScreenerPageView {...args} />)
+    await user.type(screen.getByRole('spinbutton', { name: 'PER 下限' }), '20')
+    await user.type(screen.getByRole('spinbutton', { name: 'PER 上限' }), '8')
+    await user.click(screen.getByRole('button', { name: 'この条件で絞り込む' }))
+
+    const actual = JSON.stringify({
+      error: screen.getByRole('alert').textContent,
+      calls: onApplyFilters.mock.calls,
+    })
+    const expected = JSON.stringify({
+      error: '下限は上限以下にしてください。',
+      calls: [],
+    })
+    expect(actual).toBe(expected)
   })
 })

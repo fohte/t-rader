@@ -36,9 +36,11 @@ const args = {
   data,
   stocks,
   status: 'results',
+  loadMoreError: false,
   onSort: () => {},
   onSortOrder: () => {},
   onLoadMore: () => {},
+  onRetryLoadMore: () => {},
 } satisfies ComponentProps<typeof ScreenerResultsView>
 
 const meta = {
@@ -88,4 +90,9 @@ export const Error: Story = {
     status: 'error',
     errorMessage: '銘柄の取得に失敗しました。もう一度お試しください。',
   },
+}
+
+export const AdditionalPageError: Story = {
+  name: '追加の取得に失敗しても読み込み済みの銘柄と再試行を表示します。',
+  args: { ...args, loadMoreError: true },
 }

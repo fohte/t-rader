@@ -36,18 +36,20 @@ function ScreenerRoute() {
     staleTime: 60 * 60 * 1000,
   })
 
-  const firstPage = pages[0]?.data
+  const firstPageQuery = pages[0]
+  const firstPage = firstPageQuery?.data
   const stocks = pages.flatMap((query) => query.data?.items ?? [])
-  const isPending = pages.some((query) => query.isPending)
-  const isError = pages.some((query) => query.isError)
+  const failedLaterQuery = pages
+    .slice(1)
+    .find((query) => query.isError && query.data == null)
   const status =
-    rangeError != null || isError
+    rangeError != null
       ? 'error'
-      : firstPage == null && isPending
-        ? 'loading'
-        : firstPage == null
-          ? 'error'
-          : 'results'
+      : firstPage != null
+        ? 'results'
+        : firstPageQuery?.isPending === true
+          ? 'loading'
+          : 'error'
   const sectorOptions = sectorsQuery.data
   const errorMessage =
     rangeError ??
@@ -68,7 +70,10 @@ function ScreenerRoute() {
       }
       status={status}
       errorMessage={errorMessage}
-      loadingMore={firstPage != null && isPending}
+      loadingMore={
+        firstPage != null && pages.slice(1).some((query) => query.isFetching)
+      }
+      loadMoreError={failedLaterQuery != null}
       onApplyFilters={(filters) => {
         void navigate({
           search: (previous) => ({ ...previous, ...filters, page: undefined }),
@@ -89,6 +94,9 @@ function ScreenerRoute() {
         void navigate({
           search: (previous) => ({ ...previous, page: page + 1 }),
         })
+      }}
+      onRetryLoadMore={() => {
+        if (failedLaterQuery != null) void failedLaterQuery.refetch()
       }}
     />
   )

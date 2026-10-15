@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
+import { formatScreenerMetric } from '#components/screener/format'
 import { ScreenerStockCard } from '#components/screener/screener-stock-card'
 import { formatYen } from '#components/trades/format'
 import { Skeleton } from '#components/ui/skeleton'
@@ -10,6 +11,7 @@ import type {
   ScreenerSortBy,
   ScreenerSortOrder,
 } from '#lib/screener-search'
+import { DEFAULT_SCREENER_SORT, isScreenerSortBy } from '#lib/screener-search'
 
 type ScreenerStock = components['schemas']['ScreenerStockResponse']
 type ScreenerResponse = components['schemas']['ScreenerResponse']
@@ -35,26 +37,12 @@ const MOBILE_SORT_OPTIONS: { key: ScreenerSortBy; label: string }[] = [
   ...SORTABLE_COLUMNS.map(({ key, label }) => ({ key, label })),
 ]
 
-function formatNumber(value: number | null | undefined): string {
-  return value == null
-    ? '—'
-    : value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })
-}
-
-function formatMetric(value: number | null | undefined, unit: string): string {
-  return value == null ? '—' : `${formatNumber(value)}${unit}`
-}
-
 function formatAsOf(value: string | null | undefined): string {
   if (value == null) return '—'
   const [, month, day] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) ?? []
   const displayMonth = Number(month).toString()
   const displayDay = Number(day).toString()
   return month == null || day == null ? value : `${displayMonth}/${displayDay}`
-}
-
-function isScreenerSortBy(value: string): value is ScreenerSortBy {
-  return MOBILE_SORT_OPTIONS.some((option) => option.key === value)
 }
 
 function isScreenerSortOrder(value: string): value is ScreenerSortOrder {
@@ -80,15 +68,15 @@ function getStockValue(stock: ScreenerStock, key: ScreenerSortBy): string {
     case 'close':
       return stock.close == null ? '—' : formatYen(stock.close)
     case 'per':
-      return formatMetric(stock.per, '倍')
+      return formatScreenerMetric(stock.per, '倍')
     case 'pbr':
-      return formatMetric(stock.pbr, '倍')
+      return formatScreenerMetric(stock.pbr, '倍')
     case 'roe':
-      return formatMetric(stock.roe, '%')
+      return formatScreenerMetric(stock.roe, '%')
     case 'dividend_yield':
-      return formatMetric(stock.dividend_yield, '%')
+      return formatScreenerMetric(stock.dividend_yield, '%')
     case 'market_cap':
-      return formatMetric(stock.market_cap, '億円')
+      return formatScreenerMetric(stock.market_cap, '億円')
   }
 }
 
@@ -99,9 +87,11 @@ export function ScreenerResultsView({
   status,
   errorMessage,
   loadingMore = false,
+  loadMoreError = false,
   onSort,
   onSortOrder,
   onLoadMore,
+  onRetryLoadMore,
 }: {
   search: Pick<ScreenerSearch, 'sort_by' | 'sort_order'>
   data: ScreenerResponse | undefined
@@ -109,12 +99,14 @@ export function ScreenerResultsView({
   status: ScreenerResultsStatus
   errorMessage?: string
   loadingMore?: boolean
+  loadMoreError?: boolean
   onSort: (field: ScreenerSortBy) => void
   onSortOrder: (order: ScreenerSortOrder) => void
   onLoadMore: () => void
+  onRetryLoadMore: () => void
 }) {
-  const sortField = search.sort_by ?? 'market_cap'
-  const sortOrder = search.sort_order ?? 'desc'
+  const sortField = search.sort_by ?? DEFAULT_SCREENER_SORT.sort_by
+  const sortOrder = search.sort_order ?? DEFAULT_SCREENER_SORT.sort_order
   const hasMore = data != null && stocks.length < data.total_count
   const nextCount =
     data == null ? 0 : Math.min(100, data.total_count - stocks.length)
@@ -301,18 +293,33 @@ export function ScreenerResultsView({
             ))}
           </ul>
 
-          {hasMore && (
-            <button
-              type="button"
-              onClick={onLoadMore}
-              disabled={loadingMore}
-              className="mt-3 w-full border border-border bg-card px-3 py-2.5 font-semibold text-muted-foreground-strong hover:border-muted-foreground hover:bg-surface-strong hover:text-foreground disabled:cursor-wait disabled:opacity-60"
-            >
-              {loadingMore
-                ? '追加の銘柄を読み込んでいます...'
-                : `さらに ${nextCount.toLocaleString('ja-JP')} 件を表示`}
-            </button>
-          )}
+          {hasMore &&
+            (loadMoreError ? (
+              <div className="mt-3 border border-destructive/50 bg-card px-3 py-3 text-center">
+                <p role="alert" className="text-destructive">
+                  追加の銘柄を取得できませんでした。
+                </p>
+                <button
+                  type="button"
+                  onClick={onRetryLoadMore}
+                  disabled={loadingMore}
+                  className="mt-2 border border-border px-3 py-1.5 font-semibold text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+                >
+                  {loadingMore ? '追加の銘柄を読み込んでいます...' : '再試行'}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onLoadMore}
+                disabled={loadingMore}
+                className="mt-3 w-full border border-border bg-card px-3 py-2.5 font-semibold text-muted-foreground-strong hover:border-muted-foreground hover:bg-surface-strong hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+              >
+                {loadingMore
+                  ? '追加の銘柄を読み込んでいます...'
+                  : `さらに ${nextCount.toLocaleString('ja-JP')} 件を表示`}
+              </button>
+            ))}
         </>
       )}
     </div>

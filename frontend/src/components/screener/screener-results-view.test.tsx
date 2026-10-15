@@ -67,9 +67,11 @@ describe('ScreenerResultsView', () => {
       data,
       stocks,
       status: 'results',
+      loadMoreError: false,
       onSort,
       onSortOrder,
       onLoadMore: () => {},
+      onRetryLoadMore: () => {},
     } satisfies ComponentProps<typeof ScreenerResultsView>
     const router = createStoryRouter(() => <ScreenerResultsView {...args} />, {
       paths: ['/stocks/$stockId'],
@@ -94,5 +96,39 @@ describe('ScreenerResultsView', () => {
       sort_order: 'asc',
       page: undefined,
     })
+  })
+
+  it('keeps loaded stocks visible and retries a failed later page', async () => {
+    const user = userEvent.setup()
+    const onRetryLoadMore = vi.fn()
+    const args = {
+      search: {},
+      data: { ...data, total_count: 2 },
+      stocks,
+      status: 'results',
+      loadMoreError: true,
+      onSort: () => {},
+      onSortOrder: () => {},
+      onLoadMore: () => {},
+      onRetryLoadMore,
+    } satisfies ComponentProps<typeof ScreenerResultsView>
+    const router = createStoryRouter(() => <ScreenerResultsView {...args} />, {
+      paths: ['/stocks/$stockId'],
+    })
+
+    render(<RouterProvider router={router} />)
+    await user.click(await screen.findByRole('button', { name: '再試行' }))
+
+    const actual = JSON.stringify({
+      stockHrefs: screen
+        .getAllByRole('link', { name: /架空商事/ })
+        .map((link) => link.getAttribute('href')),
+      retryCount: onRetryLoadMore.mock.calls.length,
+    })
+    const expected = JSON.stringify({
+      stockHrefs: ['/stocks/demo-code', '/stocks/demo-code'],
+      retryCount: 1,
+    })
+    expect(actual).toBe(expected)
   })
 })

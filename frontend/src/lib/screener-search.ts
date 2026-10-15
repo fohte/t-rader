@@ -9,6 +9,51 @@ export const SCREENER_MARKETS = [
   'グロース',
 ] as const
 export type ScreenerMarket = (typeof SCREENER_MARKETS)[number]
+export const DEFAULT_SCREENER_SORT = {
+  sort_by: 'market_cap',
+  sort_order: 'desc',
+} as const
+
+export const SCREENER_RANGE_FIELDS = [
+  {
+    key: 'per',
+    label: 'PER',
+    unit: '倍',
+    minField: 'min_per',
+    maxField: 'max_per',
+  },
+  {
+    key: 'pbr',
+    label: 'PBR',
+    unit: '倍',
+    minField: 'min_pbr',
+    maxField: 'max_pbr',
+  },
+  {
+    key: 'roe',
+    label: 'ROE',
+    unit: '%',
+    minField: 'min_roe',
+    maxField: 'max_roe',
+  },
+  {
+    key: 'dividend_yield',
+    label: '配当利回り (予)',
+    unit: '%',
+    minField: 'min_dividend_yield',
+    maxField: 'max_dividend_yield',
+  },
+  {
+    key: 'market_cap',
+    label: '時価総額',
+    unit: '億円',
+    minField: 'min_market_cap',
+    maxField: 'max_market_cap',
+  },
+] as const
+export type ScreenerRangeSearchKey =
+  | (typeof SCREENER_RANGE_FIELDS)[number]['minField']
+  | (typeof SCREENER_RANGE_FIELDS)[number]['maxField']
 
 export type ScreenerSearch = {
   markets?: ScreenerMarket[]
@@ -47,14 +92,11 @@ const SORT_FIELDS: readonly ScreenerSortBy[] = [
   'market_cap',
 ]
 
-const RANGE_FIELDS = [
-  ['min_per', 'max_per'],
-  ['min_pbr', 'max_pbr'],
-  ['min_roe', 'max_roe'],
-  ['min_dividend_yield', 'max_dividend_yield'],
-  ['min_market_cap', 'max_market_cap'],
-] as const
 const MAX_SCREENER_PAGE = 100
+
+export function isScreenerSortBy(value: string): value is ScreenerSortBy {
+  return SORT_FIELDS.some((field) => field === value)
+}
 
 function parseList(value: unknown): string[] | undefined {
   const values = Array.isArray(value) ? value : [value]
@@ -86,7 +128,10 @@ export function validateScreenerSearch(
     SCREENER_MARKETS.some((option) => option === market),
   )
   const sectors = parseList(search.sectors)
-  const sortBy = SORT_FIELDS.find((field) => field === search.sort_by)
+  const sortBy =
+    typeof search.sort_by === 'string' && isScreenerSortBy(search.sort_by)
+      ? search.sort_by
+      : undefined
 
   return {
     markets: markets == null || markets.length === 0 ? undefined : markets,
@@ -111,9 +156,9 @@ export function validateScreenerSearch(
 }
 
 export function getScreenerRangeError(
-  search: Pick<ScreenerSearch, (typeof RANGE_FIELDS)[number][number]>,
+  search: Pick<ScreenerSearch, ScreenerRangeSearchKey>,
 ): string | undefined {
-  return RANGE_FIELDS.some(([minField, maxField]) => {
+  return SCREENER_RANGE_FIELDS.some(({ minField, maxField }) => {
     const min = search[minField]
     const max = search[maxField]
     return min != null && max != null && min > max
@@ -126,11 +171,10 @@ export function countActiveScreenerFilters(search: ScreenerSearch): number {
   return [
     (search.markets?.length ?? 0) > 0,
     (search.sectors?.length ?? 0) > 0,
-    search.min_per != null || search.max_per != null,
-    search.min_pbr != null || search.max_pbr != null,
-    search.min_roe != null || search.max_roe != null,
-    search.min_dividend_yield != null || search.max_dividend_yield != null,
-    search.min_market_cap != null || search.max_market_cap != null,
+    ...SCREENER_RANGE_FIELDS.map(
+      ({ minField, maxField }) =>
+        search[minField] != null || search[maxField] != null,
+    ),
   ].filter(Boolean).length
 }
 
@@ -138,8 +182,8 @@ export function getNextScreenerSort(
   current: Pick<ScreenerSearch, 'sort_by' | 'sort_order'>,
   field: ScreenerSortBy,
 ): Pick<ScreenerSearch, 'sort_by' | 'sort_order'> {
-  const currentField = current.sort_by ?? 'market_cap'
-  const currentOrder = current.sort_order ?? 'desc'
+  const currentField = current.sort_by ?? DEFAULT_SCREENER_SORT.sort_by
+  const currentOrder = current.sort_order ?? DEFAULT_SCREENER_SORT.sort_order
   if (field === currentField) {
     return {
       sort_by: field,

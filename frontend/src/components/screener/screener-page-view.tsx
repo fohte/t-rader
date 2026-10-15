@@ -1,6 +1,6 @@
 import { Input } from '@fohte/ui/input'
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react'
-import { type SyntheticEvent, useEffect, useState } from 'react'
+import { type SyntheticEvent, useEffect, useRef, useState } from 'react'
 
 import {
   type ScreenerResultsStatus,
@@ -11,7 +11,9 @@ import {
   countActiveScreenerFilters,
   getScreenerRangeError,
   SCREENER_MARKETS,
+  SCREENER_RANGE_FIELDS,
   type ScreenerMarket,
+  type ScreenerRangeSearchKey,
   type ScreenerSearch,
   type ScreenerSectorOption,
   type ScreenerSortBy,
@@ -21,28 +23,10 @@ import {
 type ScreenerStock = components['schemas']['ScreenerStockResponse']
 type ScreenerResponse = components['schemas']['ScreenerResponse']
 
-type FilterDraft = Record<
-  | 'min_per'
-  | 'max_per'
-  | 'min_pbr'
-  | 'max_pbr'
-  | 'min_roe'
-  | 'max_roe'
-  | 'min_dividend_yield'
-  | 'max_dividend_yield'
-  | 'min_market_cap'
-  | 'max_market_cap',
-  string
-> & { markets: ScreenerMarket[]; sectors: string[] }
-type RangeDraftKey = Exclude<keyof FilterDraft, 'markets' | 'sectors'>
-
-const RANGE_FIELDS = [
-  { key: 'per', label: 'PER', unit: '倍' },
-  { key: 'pbr', label: 'PBR', unit: '倍' },
-  { key: 'roe', label: 'ROE', unit: '%' },
-  { key: 'dividend_yield', label: '配当利回り (予)', unit: '%' },
-  { key: 'market_cap', label: '時価総額', unit: '億円' },
-] as const
+type FilterDraft = Record<ScreenerRangeSearchKey, string> & {
+  markets: ScreenerMarket[]
+  sectors: string[]
+}
 
 function createDraft(search: ScreenerSearch): FilterDraft {
   return {
@@ -93,11 +77,13 @@ export function ScreenerPageView({
   status,
   errorMessage,
   loadingMore = false,
+  loadMoreError = false,
   mobileFiltersOpen: mobileFiltersInitiallyOpen = false,
   onApplyFilters,
   onSort,
   onSortOrder,
   onLoadMore,
+  onRetryLoadMore,
 }: {
   search: ScreenerSearch
   data: ScreenerResponse | undefined
@@ -108,11 +94,13 @@ export function ScreenerPageView({
   status: ScreenerResultsStatus
   errorMessage?: string
   loadingMore?: boolean
+  loadMoreError?: boolean
   mobileFiltersOpen?: boolean
   onApplyFilters: (filters: ScreenerSearch) => void
   onSort: (field: ScreenerSortBy) => void
   onSortOrder: (order: ScreenerSortOrder) => void
   onLoadMore: () => void
+  onRetryLoadMore: () => void
 }) {
   const [draft, setDraft] = useState(() => createDraft(search))
   const [validationError, setValidationError] = useState<string>()
@@ -120,11 +108,15 @@ export function ScreenerPageView({
     mobileFiltersInitiallyOpen,
   )
   const conditionCount = countActiveScreenerFilters(search)
+  const appliedFilterKey = JSON.stringify(createDraft(search))
+  const previousAppliedFilterKey = useRef(appliedFilterKey)
 
   useEffect(() => {
+    if (previousAppliedFilterKey.current === appliedFilterKey) return
+    previousAppliedFilterKey.current = appliedFilterKey
     setDraft(createDraft(search))
     setValidationError(undefined)
-  }, [search])
+  }, [appliedFilterKey, search])
 
   function toggleMarket(value: ScreenerMarket) {
     setDraft((previous) => ({
@@ -145,12 +137,11 @@ export function ScreenerPageView({
   }
 
   function renderRangeInput(
-    key: (typeof RANGE_FIELDS)[number]['key'],
+    field: ScreenerRangeSearchKey,
     label: string,
     unit: string,
     bound: 'min' | 'max',
   ) {
-    const field = `${bound}_${key}` as RangeDraftKey
     return (
       <div key={bound} className="relative min-w-0 flex-1">
         <Input
@@ -260,19 +251,23 @@ export function ScreenerPageView({
             </div>
           </fieldset>
 
-          {RANGE_FIELDS.map(({ key, label, unit }) => (
-            <fieldset
-              key={key}
-              className={isDesktop ? 'min-w-0 space-y-2' : 'space-y-2'}
-            >
-              <legend className="font-semibold text-foreground">{label}</legend>
-              <div className="flex items-center gap-2">
-                {renderRangeInput(key, label, unit, 'min')}
-                <span className="text-center text-muted-foreground">–</span>
-                {renderRangeInput(key, label, unit, 'max')}
-              </div>
-            </fieldset>
-          ))}
+          {SCREENER_RANGE_FIELDS.map(
+            ({ key, label, unit, minField, maxField }) => (
+              <fieldset
+                key={key}
+                className={isDesktop ? 'min-w-0 space-y-2' : 'space-y-2'}
+              >
+                <legend className="font-semibold text-foreground">
+                  {label}
+                </legend>
+                <div className="flex items-center gap-2">
+                  {renderRangeInput(minField, label, unit, 'min')}
+                  <span className="text-center text-muted-foreground">–</span>
+                  {renderRangeInput(maxField, label, unit, 'max')}
+                </div>
+              </fieldset>
+            ),
+          )}
         </div>
         <div
           className={
@@ -337,9 +332,11 @@ export function ScreenerPageView({
         status={status}
         errorMessage={errorMessage}
         loadingMore={loadingMore}
+        loadMoreError={loadMoreError}
         onSort={onSort}
         onSortOrder={onSortOrder}
         onLoadMore={onLoadMore}
+        onRetryLoadMore={onRetryLoadMore}
       />
 
       {mobileFiltersOpen && (

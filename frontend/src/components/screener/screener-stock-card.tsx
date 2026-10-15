@@ -1,15 +1,10 @@
 import { Link } from '@tanstack/react-router'
 
+import { formatScreenerMetric } from '#components/screener/format'
 import { formatYen } from '#components/trades/format'
 import type { components } from '#lib/api/schema.gen'
 
 type ScreenerStock = components['schemas']['ScreenerStockResponse']
-
-function formatMetric(value: number | null | undefined, unit: string): string {
-  return value == null
-    ? '—'
-    : `${value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}${unit}`
-}
 
 export function ScreenerStockCard({ stock }: { stock: ScreenerStock }) {
   return (
@@ -32,9 +27,9 @@ export function ScreenerStockCard({ stock }: { stock: ScreenerStock }) {
       </div>
       <dl className="mt-2 grid grid-cols-3 gap-2 border-t border-border pt-2 text-2xs">
         {[
-          ['PER', formatMetric(stock.per, '倍')],
-          ['PBR', formatMetric(stock.pbr, '倍')],
-          ['配当利回り', formatMetric(stock.dividend_yield, '%')],
+          ['PER', formatScreenerMetric(stock.per, '倍')],
+          ['PBR', formatScreenerMetric(stock.pbr, '倍')],
+          ['配当利回り', formatScreenerMetric(stock.dividend_yield, '%')],
         ].map(([label, value]) => (
           <div key={label}>
             <dt className="text-muted-foreground">{label}</dt>
