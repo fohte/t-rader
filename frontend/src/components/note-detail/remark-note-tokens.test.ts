@@ -60,6 +60,54 @@ describe('remarkNoteTokens', () => {
     })
   })
 
+  it('replaces resolved valuation and dated indicator tokens while keeping a plain indicator link', () => {
+    const valuationToken = '[[valuation:fictional-code@2030-01-02:per]]'
+    const observationToken = '[[indicator:demo-indicator@2030-01-02]]'
+    const tree = textTree(
+      `PER ${valuationToken}、USDJPY ${observationToken}、指標 [[indicator:demo-indicator]]`,
+    )
+
+    remarkNoteTokens({
+      [valuationToken]: { value: 27.5 },
+      [observationToken]: { value: 160.25 },
+    })(tree)
+
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: 'PER ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-price-reference',
+                hProperties: { value: '27.5' },
+              },
+            },
+            { type: 'text', value: '、USDJPY ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-price-reference',
+                hProperties: { value: '160.25' },
+              },
+            },
+            { type: 'text', value: '、指標 ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-ref',
+                hProperties: { token: 'indicator:demo-indicator' },
+              },
+            },
+          ],
+        },
+      ],
+    })
+  })
+
   it.each([
     { name: 'letter-leading', annoId: 'A2' },
     {

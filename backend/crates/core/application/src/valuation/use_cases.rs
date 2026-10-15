@@ -7,7 +7,6 @@ use serde::Serialize;
 
 use crate::bars::{DailyBarAdjustmentFactor, SharedBarsRepository};
 use crate::daily_bar_source::DateRange;
-use crate::strategy_scope::StrategyScope;
 use crate::valuation_source::ValuationSource;
 
 use super::error::ValuationUseCaseError;
@@ -91,7 +90,6 @@ impl ValuationUseCases {
 
     pub async fn find_for_symbol(
         &self,
-        _scope: StrategyScope,
         symbol: &str,
         from: NaiveDate,
         to: NaiveDate,
@@ -185,16 +183,13 @@ fn recent_business_days_in_range(range: &DateRange, today: NaiveDate) -> Vec<Nai
 mod tests {
     use std::sync::{Arc, Mutex};
 
+    use crate::daily_bar_source::DateRange;
+    use crate::valuation_source::{ValuationSource, ValuationSourceError};
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_domain::valuation::Valuation;
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
-    use uuid::Uuid;
-
-    use crate::daily_bar_source::DateRange;
-    use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
-    use crate::valuation_source::{ValuationSource, ValuationSourceError};
 
     use super::{IngestStats, ValuationUseCases};
     use crate::bars::{DailyBarAdjustmentFactor, FakeBarsRepository};
@@ -323,24 +318,6 @@ mod tests {
             pbr: None,
             mkt_cap: None,
         }
-    }
-
-    struct ExistingStrategy;
-
-    #[async_trait]
-    impl StrategyScopeSource for ExistingStrategy {
-        async fn existing_ids(
-            &self,
-            ids: &[Uuid],
-        ) -> Result<HashSet<Uuid>, StrategyScopeSourceError> {
-            Ok(ids.iter().copied().collect())
-        }
-    }
-
-    async fn strategy_scope() -> StrategyScope {
-        StrategyScope::verify(Uuid::nil(), &ExistingStrategy)
-            .await
-            .expect("scope succeeds")
     }
 
     #[rstest]
@@ -499,7 +476,7 @@ mod tests {
         let use_cases = ValuationUseCases::new(repository.clone(), bars_repository.clone());
 
         let result = use_cases
-            .find_for_symbol(strategy_scope().await, "ZZZZ", from, to)
+            .find_for_symbol("ZZZZ", from, to)
             .await
             .expect("read succeeds");
         let valuation_query = repository.read_query.lock().expect("lock").clone();
@@ -591,7 +568,7 @@ mod tests {
         let use_cases = ValuationUseCases::new(repository, bars_repository);
 
         let result = use_cases
-            .find_for_symbol(strategy_scope().await, "ZZZZ", first_date, after_split_date)
+            .find_for_symbol("ZZZZ", first_date, after_split_date)
             .await
             .expect("read succeeds");
 

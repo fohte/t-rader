@@ -92,6 +92,11 @@ fn classify_token(inner: &str) -> TokenClassification<'_> {
         return TokenClassification::RemovedRef;
     }
 
+    if matches!(kind, "price" | "change" | "valuation") || (kind == "indicator" && id.contains('@'))
+    {
+        return TokenClassification::PriceReference;
+    }
+
     if ALLOWED_REF_KINDS.contains(&kind) {
         let id = id.trim();
         if id.is_empty() {
@@ -124,10 +129,6 @@ fn classify_token(inner: &str) -> TokenClassification<'_> {
             note_id,
             follows_current,
         });
-    }
-
-    if matches!(kind, "price" | "change") {
-        return TokenClassification::PriceReference;
     }
 
     if kind == "anno" {
@@ -343,7 +344,7 @@ pub fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
     message.push('\n');
     message.push_str(&details);
     message.push('\n');
-    message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。");
+    message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。");
     message
 }
 
@@ -379,6 +380,17 @@ mod tests {
         assert_eq!(
             collect_note_refs("[[stock:KR:QZ9012]]", &[]),
             Ok(vec![("stock".into(), "KR:QZ9012".into())]),
+        );
+    }
+
+    #[test]
+    fn data_citations_are_not_collected_as_note_references() {
+        assert_eq!(
+            collect_note_refs(
+                "[[valuation:fictional-code@2030-01-02:per]] [[indicator:demo-indicator@2030-01-02]] [[indicator:demo-indicator]]",
+                &[],
+            ),
+            Ok(vec![("indicator".into(), "demo-indicator".into())]),
         );
     }
 
