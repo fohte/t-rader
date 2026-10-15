@@ -128,7 +128,6 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
           purpose: form.purpose === '' ? null : form.purpose,
           schedule: form.kind === 'cron' ? form.schedule.trim() : null,
           hook_slug: form.kind === 'hook' ? form.hookSlug.trim() : null,
-          event_type: form.kind === 'event' ? form.eventType.trim() : null,
           event_match: result.eventMatch,
           prompt_template: form.promptTemplate.trim(),
           enabled: form.enabled,
@@ -168,10 +167,8 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
     }
     if (form.kind === 'cron') {
       body.schedule = form.schedule.trim()
-    } else if (form.kind === 'hook') {
-      body.hook_slug = form.hookSlug.trim()
     } else {
-      body.event_type = form.eventType.trim()
+      body.hook_slug = form.hookSlug.trim()
     }
     updateMutation.mutate(
       {

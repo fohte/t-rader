@@ -19,10 +19,9 @@ type Trigger = components['schemas']['Trigger']
 
 interface CreateBody {
   purpose?: string | null
-  kind?: 'cron' | 'hook' | 'event'
+  kind?: 'cron' | 'hook'
   schedule?: string | null
   hook_slug?: string | null
-  event_type?: string | null
   event_match?: Record<string, never> | null
   prompt_template?: string
   enabled?: boolean
@@ -33,7 +32,6 @@ interface UpdateBody {
   purpose?: string | null
   schedule?: string | null
   hook_slug?: string | null
-  event_type?: string | null
   event_match?: Record<string, never> | null
   prompt_template?: string
   enabled?: boolean
@@ -118,7 +116,6 @@ function installMiddleware(initial: Trigger[] = []) {
             kind: body.kind ?? 'cron',
             schedule: body.schedule ?? null,
             hook_slug: body.hook_slug ?? null,
-            event_type: body.event_type ?? null,
             event_match: body.event_match ?? null,
             prompt_template: body.prompt_template ?? '',
             enabled: body.enabled ?? true,
@@ -158,10 +155,6 @@ function installMiddleware(initial: Trigger[] = []) {
               'hook_slug' in body
                 ? (body.hook_slug ?? null)
                 : current.hook_slug,
-            event_type:
-              'event_type' in body
-                ? (body.event_type ?? null)
-                : current.event_type,
             event_match:
               'event_match' in body
                 ? (body.event_match ?? null)
@@ -253,12 +246,6 @@ describe('TriggersTab', () => {
         hook_slug: 'tv-alert',
         prompt_template: 'hook fired',
       }),
-      makeTrigger({
-        trigger_id: 't-event',
-        kind: 'event',
-        event_type: 'synthetic_process.finished',
-        prompt_template: 'event fired',
-      }),
     ])
 
     const list = await screen.findByTestId('trigger-list')
@@ -266,9 +253,6 @@ describe('TriggersTab', () => {
       expect(within(list).getByText('0 9 * * 1-5')).toBeInTheDocument()
     })
     expect(within(list).getByText('tv-alert')).toBeInTheDocument()
-    expect(
-      within(list).getByText('synthetic_process.finished'),
-    ).toBeInTheDocument()
   })
 
   it('初期表示で先頭の trigger を選択しフォームに反映する', async () => {
@@ -322,7 +306,6 @@ describe('TriggersTab', () => {
           kind: 'cron',
           schedule: '0 9 * * 1-5',
           hook_slug: null,
-          event_type: null,
           event_match: null,
           prompt_template: 'morning briefing',
           enabled: true,
@@ -354,44 +337,6 @@ describe('TriggersTab', () => {
       'event_match の JSON が不正です',
     )
     expect(activeMiddleware?.store.createCalls).toEqual([])
-  })
-
-  it('event trigger を作成すると event_type を送る', async () => {
-    const user = userEvent.setup()
-    setup([])
-
-    await screen.findByTestId('trigger-list')
-    await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
-    await user.selectOptions(screen.getByLabelText('kind'), 'event')
-    await user.type(
-      screen.getByLabelText('event_type'),
-      'synthetic_process.finished',
-    )
-    await user.type(screen.getByLabelText('prompt_template'), 'event prompt')
-    await user.click(screen.getByRole('button', { name: '作成' }))
-
-    await waitFor(() => {
-      expect(
-        within(screen.getByTestId('trigger-list')).getByText(
-          'synthetic_process.finished',
-        ),
-      ).toBeInTheDocument()
-    })
-    expect(activeMiddleware?.store.createCalls).toEqual([
-      {
-        strategyId: 'strat-1',
-        body: {
-          purpose: null,
-          kind: 'event',
-          schedule: null,
-          hook_slug: null,
-          event_type: 'synthetic_process.finished',
-          event_match: null,
-          prompt_template: 'event prompt',
-          enabled: true,
-        },
-      },
-    ])
   })
 
   it('cron で schedule が空だと validation エラーになり API は呼ばれない', async () => {
@@ -442,40 +387,6 @@ describe('TriggersTab', () => {
             enabled: true,
             event_match: null,
             schedule: '0 9 * * 1-5',
-          },
-        },
-      ])
-    })
-  })
-
-  it('event trigger を編集して保存すると event_type を送る', async () => {
-    const user = userEvent.setup()
-    setup([
-      makeTrigger({
-        trigger_id: 't-event',
-        kind: 'event',
-        event_type: 'synthetic_process.finished',
-        prompt_template: 'event prompt',
-      }),
-    ])
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('event_type')).toHaveValue(
-        'synthetic_process.finished',
-      )
-    })
-    await user.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(activeMiddleware?.store.updateCalls).toEqual([
-        {
-          triggerId: 't-event',
-          body: {
-            purpose: null,
-            prompt_template: 'event prompt',
-            enabled: true,
-            event_match: null,
-            event_type: 'synthetic_process.finished',
           },
         },
       ])
