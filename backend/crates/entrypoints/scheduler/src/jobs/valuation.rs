@@ -6,7 +6,7 @@ use core_application::{
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
+use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state, today_in_tokyo};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ValuationIngest;
@@ -36,7 +36,7 @@ async fn ingest_valuations(
     source: &dyn ValuationSource,
 ) -> Result<ValuationIngestStats, String> {
     let stats = use_cases
-        .run_ingest_cycle(source, Utc::now().date_naive())
+        .run_ingest_cycle(source, today_in_tokyo(Utc::now()))
         .await
         .map_err(|error: ValuationUseCaseError| error.to_string())?;
     tracing::debug!(
