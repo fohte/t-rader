@@ -36,6 +36,11 @@ impl<'a> BatchIngestContext<'a> {
             skipped_instrument_ids: HashSet::new(),
         }
     }
+
+    fn record_skipped(&mut self, instrument_id: String, reason: String) {
+        self.skipped_instrument_ids.insert(instrument_id.clone());
+        record_skipped_instrument(self.stats, instrument_id, reason);
+    }
 }
 
 impl RequestBudget {
@@ -370,13 +375,15 @@ impl BarsUseCases {
             {
                 Ok(page) => page,
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
-                    let Some((first, second)) =
-                        split_rejected_batch(instrument_ids, reason, context.stats)
-                    else {
-                        context
-                            .skipped_instrument_ids
-                            .extend(instrument_ids.iter().cloned());
-                        return Ok(true);
+                    let (first, second) = match split_rejected_batch(instrument_ids, reason) {
+                        RejectedBatch::Split(first, second) => (first, second),
+                        RejectedBatch::Skipped {
+                            instrument_id,
+                            reason,
+                        } => {
+                            context.record_skipped(instrument_id, reason);
+                            return Ok(true);
+                        }
                     };
                     if !Box::pin(self.ingest_batch(source, first, timeframe, range, context))
                         .await?
@@ -389,10 +396,7 @@ impl BarsUseCases {
                 Err(error) => return Err(error.into()),
             };
             for skipped in page.skipped_instruments {
-                context
-                    .skipped_instrument_ids
-                    .insert(skipped.instrument_id.clone());
-                record_skipped_instrument(context.stats, skipped.instrument_id, skipped.reason);
+                context.record_skipped(skipped.instrument_id, skipped.reason);
             }
             let next_page_token = page.next_page_token;
             let mut bars = page.bars;
@@ -440,13 +444,15 @@ impl BarsUseCases {
             {
                 Ok(page) => page,
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
-                    let Some((first, second)) =
-                        split_rejected_batch(instrument_ids, reason, context.stats)
-                    else {
-                        context
-                            .skipped_instrument_ids
-                            .extend(instrument_ids.iter().cloned());
-                        return Ok(Some(pages));
+                    let (first, second) = match split_rejected_batch(instrument_ids, reason) {
+                        RejectedBatch::Split(first, second) => (first, second),
+                        RejectedBatch::Skipped {
+                            instrument_id,
+                            reason,
+                        } => {
+                            context.record_skipped(instrument_id, reason);
+                            return Ok(Some(pages));
+                        }
                     };
                     let Some(mut first_pages) =
                         Box::pin(self.fetch_batch_pages(source, first, timeframe, range, context))
@@ -466,10 +472,7 @@ impl BarsUseCases {
                 Err(error) => return Err(error.into()),
             };
             for skipped in page.skipped_instruments {
-                context
-                    .skipped_instrument_ids
-                    .insert(skipped.instrument_id.clone());
-                record_skipped_instrument(context.stats, skipped.instrument_id, skipped.reason);
+                context.record_skipped(skipped.instrument_id, skipped.reason);
             }
 
             pages.push(page.bars);
@@ -588,17 +591,24 @@ pub(super) fn record_skipped_instrument(
     });
 }
 
-fn split_rejected_batch<'a>(
-    instrument_ids: &'a [String],
-    reason: String,
-    stats: &mut UsStockBarsIngestStats,
-) -> Option<(&'a [String], &'a [String])> {
+enum RejectedBatch<'a> {
+    Split(&'a [String], &'a [String]),
+    Skipped {
+        instrument_id: String,
+        reason: String,
+    },
+}
+
+fn split_rejected_batch<'a>(instrument_ids: &'a [String], reason: String) -> RejectedBatch<'a> {
     if instrument_ids.len() == 1 {
-        record_skipped_instrument(stats, instrument_ids[0].clone(), reason);
-        return None;
+        return RejectedBatch::Skipped {
+            instrument_id: instrument_ids[0].clone(),
+            reason,
+        };
     }
     let split_at = instrument_ids.len() / 2;
-    Some(instrument_ids.split_at(split_at))
+    let (first, second) = instrument_ids.split_at(split_at);
+    RejectedBatch::Split(first, second)
 }
 
 #[cfg(all(test, feature = "test-support"))]
@@ -2083,6 +2093,129 @@ mod tests {
                     priced_bar(instrument_id, Timeframe::Hourly, latest_hourly, 100),
                 ],
                 Some(hourly_end),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn split_refetch_keeps_skipped_hourly_history_retryable(mut harness: Harness) {
+        let instrument_id = "US:QZ-SPLIT-SKIP";
+        let earliest_daily = date("2040-01-01T00:00:00Z");
+        let latest_daily = date("2040-01-02T00:00:00Z");
+        let earliest_hourly = date("2039-12-31T23:00:00Z");
+        let latest_hourly = date("2040-01-02T15:00:00Z");
+        let now = date("2041-03-02T12:00:00Z");
+        let hourly_end = date("2040-03-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![
+                bar(instrument_id, Timeframe::Daily, earliest_daily),
+                bar(instrument_id, Timeframe::Daily, latest_daily),
+                bar(instrument_id, Timeframe::Hourly, earliest_hourly),
+                bar(instrument_id, Timeframe::Hourly, latest_hourly),
+            ])
+            .await;
+        harness.source.skipped_instruments = vec![instrument_id.to_owned()];
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: earliest_daily.date_naive(),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+
+        let split_stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("split refetch can skip unsupported hourly symbols");
+        let split_calls = harness.source.calls.lock().await.clone();
+        let progress_after_split = harness
+            .repository
+            .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await
+            .get(instrument_id)
+            .copied();
+        harness.source.calls.lock().await.clear();
+        let retry_stats = harness
+            .use_cases
+            .ingest_us_stock_hourly_bars(&harness.source, now)
+            .await
+            .expect("hourly job retries history skipped during split refetch");
+        let retry_calls = harness.source.calls.lock().await.clone();
+        let progress_after_retry = harness
+            .repository
+            .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await
+            .get(instrument_id)
+            .copied();
+
+        assert_eq!(
+            (
+                split_stats,
+                split_calls,
+                progress_after_split,
+                retry_stats,
+                retry_calls,
+                progress_after_retry,
+            ),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 4,
+                    skipped_instruments: vec![SkippedUsStockInstrument {
+                        instrument_id: instrument_id.to_owned(),
+                        reason: "synthetic symbol conversion failure".to_owned(),
+                    }],
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: latest_daily,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: earliest_daily,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Hourly,
+                        from: earliest_hourly,
+                        to: hourly_end,
+                        page_token: None,
+                    },
+                ],
+                None,
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    skipped_instruments: vec![SkippedUsStockInstrument {
+                        instrument_id: instrument_id.to_owned(),
+                        reason: "synthetic symbol conversion failure".to_owned(),
+                    }],
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Hourly,
+                    from: latest_hourly,
+                    to: hourly_end,
+                    page_token: None,
+                }],
+                None,
             ),
         );
     }

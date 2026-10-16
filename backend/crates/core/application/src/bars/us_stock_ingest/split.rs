@@ -11,8 +11,8 @@ use super::super::us_stock_source::{
 };
 use super::super::use_cases::BarsUseCases;
 use super::{
-    BatchIngestContext, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
-    UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
+    BatchIngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange,
+    UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
 };
 
 impl BarsUseCases {
@@ -164,9 +164,15 @@ impl BarsUseCases {
                     return Ok(None);
                 }
                 stats.requests_attempted += 1;
-                let Some((first, second)) = split_rejected_batch(instrument_ids, reason, stats)
-                else {
-                    return Ok(Some(Vec::new()));
+                let (first, second) = match split_rejected_batch(instrument_ids, reason) {
+                    RejectedBatch::Split(first, second) => (first, second),
+                    RejectedBatch::Skipped {
+                        instrument_id,
+                        reason,
+                    } => {
+                        record_skipped_instrument(stats, instrument_id, reason);
+                        return Ok(Some(Vec::new()));
+                    }
                 };
                 let Some(mut first_splits) =
                     Box::pin(self.fetch_split_batch(source, first, from, to, budget, stats))
