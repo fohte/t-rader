@@ -4,33 +4,23 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub(super) trait BarsIngestClock: Send + Sync {
-    fn now(&self) -> Duration;
-
     fn instant(&self) -> Instant;
 
     async fn sleep(&self, duration: Duration);
 }
 
-pub(super) struct SystemBarsIngestClock {
-    started_at: Instant,
-}
+pub(super) struct SystemBarsIngestClock;
 
 impl SystemBarsIngestClock {
     pub(super) fn new() -> Self {
-        Self {
-            started_at: Instant::now(),
-        }
+        Self
     }
 }
 
 #[async_trait]
 impl BarsIngestClock for SystemBarsIngestClock {
-    fn now(&self) -> Duration {
-        self.started_at.elapsed()
-    }
-
     fn instant(&self) -> Instant {
-        self.started_at + self.now()
+        Instant::now()
     }
 
     async fn sleep(&self, duration: Duration) {

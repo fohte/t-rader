@@ -447,18 +447,18 @@ impl BarsUseCases {
         }
         let count = bars.len();
         let transaction = self.unit_of_work.begin().await?;
-        let write_started_at = self.clock.now();
+        let write_started_at = self.clock.instant();
         self.repository.upsert_bars(&transaction, bars).await?;
-        let commit_started_at = self.clock.now();
+        let commit_started_at = self.clock.instant();
         match timeframe {
             UsStockBarTimeframe::Daily => stats.daily_bars_upserted += count,
             UsStockBarTimeframe::Minute => stats.minute_bars_upserted += count,
             UsStockBarTimeframe::Hourly => stats.hourly_bars_upserted += count,
         }
         self.unit_of_work.commit(transaction).await?;
-        let completed_at = self.clock.now();
-        let write_duration = completed_at.saturating_sub(write_started_at);
-        let commit_duration = completed_at.saturating_sub(commit_started_at);
+        let completed_at = self.clock.instant();
+        let write_duration = completed_at.saturating_duration_since(write_started_at);
+        let commit_duration = completed_at.saturating_duration_since(commit_started_at);
         write_throttle.record_page(completed_at, write_duration, commit_duration);
         Ok(true)
     }
@@ -552,6 +552,10 @@ mod tests {
     }
 
     impl TestClock {
+        fn start_instant(&self) -> Instant {
+            self.started_at
+        }
+
         fn set_now_readings(&self, readings: impl IntoIterator<Item = Duration>) {
             *self
                 .now_readings
@@ -570,28 +574,20 @@ mod tests {
 
     #[async_trait]
     impl BarsIngestClock for TestClock {
-        fn now(&self) -> Duration {
+        fn instant(&self) -> Instant {
             let mut now = self
                 .now
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(reading) = self
+            let reading = self
                 .now_readings
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .pop_front()
-            {
+                .pop_front();
+            if let Some(reading) = reading {
                 *now = reading;
             }
-            *now
-        }
-
-        fn instant(&self) -> Instant {
-            let now = *self
-                .now
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            self.started_at + now
+            self.started_at + *now
         }
 
         async fn sleep(&self, duration: Duration) {
@@ -867,6 +863,9 @@ mod tests {
             .await;
         harness.clock.set_now_readings([
             Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::from_millis(250),
             Duration::from_millis(400),
         ]);
@@ -905,6 +904,9 @@ mod tests {
             .seed_us_stock_minute_targets(instrument_ids.clone())
             .await;
         harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::ZERO,
             Duration::from_millis(250),
             Duration::from_millis(400),
@@ -979,15 +981,14 @@ mod tests {
             old_rate: Decimal::ONE,
             new_rate: Decimal::new(2, 0),
         });
-        harness.clock.set_now_readings([
-            Duration::ZERO,
-            Duration::ZERO,
-            Duration::ZERO,
-            Duration::ZERO,
-            Duration::ZERO,
-            Duration::from_millis(250),
-            Duration::from_millis(400),
-        ]);
+        let zero_readings = if timeframe == Timeframe::Minute {
+            20
+        } else {
+            15
+        };
+        let mut readings = vec![Duration::ZERO; zero_readings];
+        readings.extend([Duration::from_millis(250), Duration::from_millis(400)]);
+        harness.clock.set_now_readings(readings);
 
         let stats = harness
             .use_cases
@@ -1052,6 +1053,14 @@ mod tests {
             new_rate: Decimal::new(2, 0),
         });
         harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::ZERO,
             Duration::from_millis(250),
             Duration::from_millis(400),
@@ -1496,12 +1505,16 @@ mod tests {
         harness.source.page_size = Some(1);
         harness.clock.set_now_readings([
             Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::from_millis(100),
+            Duration::from_millis(100),
             Duration::from_millis(100),
             Duration::from_millis(100),
         ]);
         let budget = RequestBudget::with_deadline(
             MAX_REQUESTS_PER_RUN,
-            harness.clock.instant() + Duration::from_millis(250),
+            harness.clock.start_instant() + Duration::from_millis(250),
         );
 
         let stats = harness

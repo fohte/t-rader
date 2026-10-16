@@ -1,5 +1,4 @@
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::clock::BarsIngestClock;
 use super::types::UsStockBarsIngestStats;
@@ -9,7 +8,7 @@ const COMMIT_LATENCY_TARGET: Duration = Duration::from_millis(100);
 
 #[derive(Default)]
 pub(super) struct WriteThrottle {
-    next_write_at: Option<Duration>,
+    next_write_at: Option<Instant>,
 }
 
 impl WriteThrottle {
@@ -22,19 +21,18 @@ impl WriteThrottle {
         let Some(next_write_at) = self.next_write_at.take() else {
             return clock.instant() < deadline;
         };
-        let sleep_started_at = clock.now();
-        let sleep_started_at_instant = clock.instant();
-        if sleep_started_at_instant >= deadline {
+        let sleep_started_at = clock.instant();
+        if sleep_started_at >= deadline {
             return false;
         }
 
-        let delay = next_write_at.saturating_sub(sleep_started_at);
-        let remaining = deadline.saturating_duration_since(sleep_started_at_instant);
+        let delay = next_write_at.saturating_duration_since(sleep_started_at);
+        let remaining = deadline.saturating_duration_since(sleep_started_at);
         let sleep_duration = delay.min(remaining);
 
         if !sleep_duration.is_zero() {
             clock.sleep(sleep_duration).await;
-            let waited = clock.now().saturating_sub(sleep_started_at);
+            let waited = clock.instant().saturating_duration_since(sleep_started_at);
             let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
             stats.write_throttle_wait_ms = stats.write_throttle_wait_ms.saturating_add(waited_ms);
         }
@@ -44,12 +42,12 @@ impl WriteThrottle {
 
     pub(super) fn record_page(
         &mut self,
-        completed_at: Duration,
+        completed_at: Instant,
         write_duration: Duration,
         commit_duration: Duration,
     ) {
         self.next_write_at =
-            Some(completed_at.saturating_add(page_cooldown(write_duration, commit_duration)));
+            completed_at.checked_add(page_cooldown(write_duration, commit_duration));
     }
 }
 
@@ -106,6 +104,10 @@ mod tests {
             };
         }
 
+        fn instant_at(&self, offset: Duration) -> Instant {
+            self.started_at + offset
+        }
+
         fn snapshot(&self) -> ClockState {
             self.state
                 .lock()
@@ -116,13 +118,6 @@ mod tests {
 
     #[async_trait::async_trait]
     impl BarsIngestClock for FakeClock {
-        fn now(&self) -> Duration {
-            self.state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .now
-        }
-
         fn instant(&self) -> Instant {
             self.started_at + self.snapshot().now
         }
@@ -151,7 +146,7 @@ mod tests {
         let mut stats = UsStockBarsIngestStats::default();
         let mut throttle = WriteThrottle::default();
         throttle.record_page(
-            Duration::ZERO,
+            clock.instant(),
             Duration::from_millis(write_ms),
             Duration::from_millis(commit_ms),
         );
@@ -180,7 +175,7 @@ mod tests {
         let mut stats = UsStockBarsIngestStats::default();
         let mut throttle = WriteThrottle::default();
         throttle.record_page(
-            Duration::from_millis(400),
+            clock.instant_at(Duration::from_millis(400)),
             Duration::from_millis(400),
             Duration::from_millis(150),
         );
@@ -208,7 +203,7 @@ mod tests {
         let mut stats = UsStockBarsIngestStats::default();
         let mut throttle = WriteThrottle::default();
         throttle.record_page(
-            Duration::ZERO,
+            clock.instant(),
             Duration::from_millis(300),
             Duration::from_millis(100),
         );
