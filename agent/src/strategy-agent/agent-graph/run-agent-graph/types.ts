@@ -4,6 +4,8 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 
 import type { ObjectJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import type { AgentGraphPhase } from '#strategy-agent/agent-graph/types'
+import type { ModelCallBudget } from '#strategy-agent/final-turn-middleware'
 import type { PhaseTimeout } from '#strategy-agent/phase-timeout'
 import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 
@@ -13,7 +15,10 @@ export interface BuildPhaseAgentOptions {
   readonly systemPrompt: string
   readonly responseSchema: ObjectJsonSchema
   readonly deadlineSignal?: AbortSignal
+  readonly agentSignal?: AbortSignal
   readonly phaseTimeout?: PhaseTimeout
+  readonly modelCallBudget?: ModelCallBudget
+  readonly captureMessagesOnAbort?: boolean
 }
 
 export interface CompiledPhaseAgent {
@@ -26,6 +31,7 @@ export interface CompiledPhaseAgent {
     executionStepId?: string
   }): Promise<{
     structuredResponse?: Record<string, unknown>
+    messages?: readonly BaseMessage[]
   }>
 }
 
@@ -45,6 +51,12 @@ export interface RunAgentGraphContext {
   // 実行ステップ 1 件だけを担う MCP client を組み立てる。同時に開いている
   // コネクション数を並列度で抑えるため、ステップの終了時に close される。
   readonly createStepMcpClient: (executionStepId: string) => McpToolsClient
+  readonly createSubagentTool?: (
+    phase: AgentGraphPhase,
+    parentExecutionStepId: string,
+    recorder: StepRecorder,
+    context: RunAgentGraphContext,
+  ) => DynamicStructuredTool
   readonly originalPromptText: string
   // 実行中のフェーズ/for_each 要素ごとの進捗を都度通知する。呼び出し側は
   // 受け取った配列全体を steps の最新状態として扱う (差分ではない)。

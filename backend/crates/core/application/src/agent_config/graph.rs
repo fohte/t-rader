@@ -54,6 +54,8 @@ pub enum AgentGraphError {
     InvalidYaml(String),
     #[error("phase key {0:?} is duplicated")]
     DuplicatePhaseKey(String),
+    #[error("phase {phase:?}: max_subagent_runs must be set when subagents are configured")]
+    MissingMaxSubagentRuns { phase: String },
     #[error(
         "{scope}: timeout_minutes must be between 1 and {max}, got {value}",
         max = MAX_TIMEOUT_MINUTES
@@ -106,6 +108,11 @@ fn validate(config: &AgentGraphConfig) -> Result<(), AgentGraphError> {
     for (i, phase) in config.phases.iter().enumerate() {
         if !seen.insert(phase.key.as_str()) {
             return Err(AgentGraphError::DuplicatePhaseKey(phase.key.clone()));
+        }
+        if !phase.subagents.is_empty() && phase.max_subagent_runs.is_none() {
+            return Err(AgentGraphError::MissingMaxSubagentRuns {
+                phase: phase.key.clone(),
+            });
         }
         if let Some(timeout_minutes) = phase.timeout_minutes {
             validate_timeout_minutes(&format!("phase {:?}", phase.key), timeout_minutes)?;
@@ -300,6 +307,25 @@ mod tests {
                     output: serde_json::Map::new(),
                 }],
             })),
+        );
+    }
+
+    #[rstest]
+    fn parse_rejects_subagents_without_max_subagent_runs() {
+        let yaml = indoc! {"
+            phases:
+              - key: inspect
+                label: Inspect
+                model: example-model-check
+                prompt: Inspect a question
+                subagents: [helper]
+        "};
+
+        assert_eq!(
+            parse_agent_graph(yaml),
+            Err(AgentGraphError::MissingMaxSubagentRuns {
+                phase: "inspect".to_string(),
+            }),
         );
     }
 

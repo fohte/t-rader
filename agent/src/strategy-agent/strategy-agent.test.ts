@@ -5,6 +5,7 @@ import {
   type BaseMessage,
   ChatMessage,
   HumanMessage,
+  ToolMessage,
 } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
@@ -35,6 +36,10 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+import type {
+  FetchSubagentDefinition,
+  SubagentDefinition,
+} from '#strategy-agent/subagent-definition-client'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
 import {
   type CaptureWithFingerprintMock,
@@ -156,14 +161,20 @@ const AGENT_CONFIG: AgentConfig = {
 interface BuildDepsOptions {
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
+  readonly fetchSubagentDefinition?: FetchSubagentDefinition
   readonly buildPhaseAgentInvoke?: (
     input: Parameters<CompiledPhaseAgent['invoke']>[0],
     calls: Calls,
+    buildOptions: BuildPhaseAgentOptions,
   ) => ReturnType<CompiledPhaseAgent['invoke']>
 }
 
 interface McpClientCall {
   readonly executionId: string
+  readonly subagentExecution?: {
+    readonly executionId: string
+    readonly definitionKey: string
+  }
   closed: boolean
 }
 
@@ -174,6 +185,7 @@ interface Calls {
   mcpClients: McpClientCall[]
   mcpClientToolModels: Readonly<Record<string, string>>[]
   capturedDeadlineSignal: AbortSignal | undefined
+  capturedAgentSignal: AbortSignal | undefined
 }
 
 const buildDeps = (
@@ -184,6 +196,7 @@ const buildDeps = (
     mcpClients: [],
     mcpClientToolModels: [],
     capturedDeadlineSignal: undefined,
+    capturedAgentSignal: undefined,
   }
   const chatModel = new FakeChatModel({})
 
@@ -195,9 +208,21 @@ const buildDeps = (
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
       })
     },
-    createMcpClient: (_strategyId, executionId, toolModels): McpToolsClient => {
+    fetchSubagentDefinition:
+      options.fetchSubagentDefinition ??
+      (() => errAsync(new Error('unexpected subagent definition fetch'))),
+    createMcpClient: (
+      _strategyId,
+      executionId,
+      toolModels,
+      subagentExecution,
+    ): McpToolsClient => {
       calls.mcpClientToolModels.push(toolModels)
-      const client: McpClientCall = { executionId, closed: false }
+      const client: McpClientCall = {
+        executionId,
+        closed: false,
+        ...(subagentExecution !== undefined ? { subagentExecution } : {}),
+      }
       calls.mcpClients.push(client)
       return {
         getTools: () => Promise.resolve([...(options.tools ?? [])]),
@@ -211,10 +236,11 @@ const buildDeps = (
     createChatModel: () => chatModel,
     buildPhaseAgent: (buildOptions) => {
       calls.capturedDeadlineSignal = buildOptions.deadlineSignal
+      calls.capturedAgentSignal = buildOptions.agentSignal
       return {
         invoke: (input) =>
           options.buildPhaseAgentInvoke !== undefined
-            ? options.buildPhaseAgentInvoke(input, calls)
+            ? options.buildPhaseAgentInvoke(input, calls, buildOptions)
             : Promise.resolve({ structuredResponse: {} }),
       }
     },
@@ -578,11 +604,20 @@ describe('runStrategyAgent', () => {
       buildRunInput({ deadlineSignal: controller.signal }),
     )
 
-    expect(result).toEqual({
-      status: 'completed',
-      message: '1フェーズの実行が完了しました (P)',
-    })
-    expect(calls.capturedDeadlineSignal).toBe(controller.signal)
+    const actual = Array.of<unknown>(
+      result,
+      calls.capturedDeadlineSignal,
+      calls.capturedAgentSignal,
+    )
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (P)',
+      },
+      controller.signal,
+      undefined,
+    ])
   })
 
   it('skips a completed phase on resume when a valid resume step is provided', async () => {
@@ -698,6 +733,98 @@ describe('runStrategyAgent', () => {
       { executionId: 'task-1:<step-1>', closed: true },
       { executionId: 'task-1:<step-2>', closed: true },
       { executionId: 'task-1:<step-3>', closed: true },
+    ])
+  })
+
+  it('resets max_subagent_runs for each for_each step', async () => {
+    const definition: SubagentDefinition = {
+      key: 'helper',
+      description: 'Investigate one item',
+      model: 'example-model-child',
+      prompt: 'Return a conclusion for the requested item.',
+      tools: ['search_web'],
+      timeoutMinutes: 5,
+      maxModelCalls: 3,
+      toolLimits: { search_web: 2 },
+      output: {
+        required: ['conclusion'],
+        conclusion: { type: 'string' },
+      },
+    }
+    const runsPerStep: number[] = []
+    const outputsPerStep: unknown[][] = []
+    const { deps, calls } = buildDeps({
+      tools: [buildFakeTool('search_web')],
+      fetchSubagentDefinition: () => okAsync(definition),
+      agentGraph: [
+        'phases:',
+        '  - key: plan',
+        '    label: Plan',
+        '    model: example-model-plan',
+        '    prompt: Plan items',
+        '    tools: []',
+        '    output:',
+        '      items:',
+        '        type: array',
+        '        items: { type: string }',
+        '  - key: work',
+        '    label: Work',
+        '    model: example-model-work',
+        '    prompt: Work on each item',
+        '    for_each: plan.items',
+        '    max_parallel: 1',
+        '    subagents: [helper]',
+        '    max_subagent_runs: 2',
+        '    tools: []',
+        '',
+      ].join('\n'),
+      buildPhaseAgentInvoke: async (_input, _calls, buildOptions) => {
+        const runSubagentTool = buildOptions.tools.find(
+          (tool) => tool.name === 'run_subagent',
+        )
+        if (runSubagentTool !== undefined) {
+          const outputs: unknown[] = []
+          for (let run = 0; run < 2; run++) {
+            outputs.push(
+              await runSubagentTool.invoke({
+                key: 'helper',
+                brief: 'Investigate the current item.',
+              }),
+            )
+          }
+          runsPerStep.push(outputs.length)
+          outputsPerStep.push(outputs)
+          return { structuredResponse: {} }
+        }
+        if (buildOptions.tools.some((tool) => tool.name === 'search_web')) {
+          return { structuredResponse: { conclusion: 'Evidence found.' } }
+        }
+        return { structuredResponse: { items: ['first', 'second'] } }
+      },
+    })
+
+    const result = await runStrategyAgent(deps, buildRunInput())
+
+    const actual = Array.of<unknown>(
+      result,
+      runsPerStep,
+      outputsPerStep,
+      calls.mcpClients.filter(
+        (client) => client.subagentExecution !== undefined,
+      ).length,
+    )
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Plan → Work)',
+      },
+      [2, 2],
+      [
+        [{ conclusion: 'Evidence found.' }, { conclusion: 'Evidence found.' }],
+        [{ conclusion: 'Evidence found.' }, { conclusion: 'Evidence found.' }],
+      ],
+      4,
     ])
   })
 
@@ -1368,6 +1495,54 @@ describe('createStrategyAgentDeps', () => {
     })
   })
 
+  it('enforces a shared per-subagent model-call budget', async () => {
+    const requestedToolCounts: number[] = []
+    let callCount = 0
+    const modelCallBudget = { maxModelCalls: 2, count: 0 }
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
+      requestedToolCounts.push(tools.length)
+      const toolCall =
+        tools.length === 1
+          ? {
+              name: tools[0]?.function.name,
+              arguments: JSON.stringify({
+                status: 'completed',
+                message: 'done',
+              }),
+            }
+          : { name: 'search', arguments: '{}' }
+      return Promise.resolve(
+        buildToolCallResponse(`call-${String(callCount)}`, toolCall),
+      )
+    })
+    const agent = buildPhaseAgentUnderTest(
+      createStrategyAgentDeps(baseConfig),
+      {
+        model,
+        tools: [buildFakeTool('search')],
+        systemPrompt: 'you are a helpful bot',
+        modelCallBudget,
+      },
+    )
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    const actual = Array.of<unknown>(
+      result.structuredResponse,
+      requestedToolCounts,
+      modelCallBudget,
+    )
+
+    expect(actual).toEqual([
+      { status: 'completed', message: 'done' },
+      [2, 1],
+      { maxModelCalls: 2, count: 2 },
+    ])
+  })
+
   it('logs immediately when the model ends without a structured-output tool call', async () => {
     // モデルが構造化出力 tool を一切呼ばずプレーンな文章で終える応答。
     const model = buildStubModel(() =>
@@ -1957,6 +2132,182 @@ describe('createStrategyAgentDeps', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  it('keeps the last streamed messages when a deadline aborts a later model call', async () => {
+    const controller = new AbortController()
+    let callCount = 0
+    let markSecondCallStarted = (): void => undefined
+    const secondCallStarted = new Promise<void>((resolve) => {
+      markSecondCallStarted = () => {
+        resolve()
+      }
+    })
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      if (callCount === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('stream-search-call', {
+            name: 'search',
+            arguments: '{}',
+          }),
+        )
+      }
+      markSecondCallStarted()
+      return new Promise((_resolve, reject) => {
+        const signal = init?.signal
+        if (signal == null) {
+          reject(new Error('expected the model request to receive a signal'))
+          return
+        }
+        const rejectOnAbort = (): void => {
+          reject(new Error('aborted'))
+        }
+        if (signal.aborted) {
+          rejectOnAbort()
+          return
+        }
+        signal.addEventListener('abort', rejectOnAbort, { once: true })
+      })
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+    const searchTool = new DynamicStructuredTool({
+      name: 'search',
+      description: 'Return synthetic search evidence.',
+      schema: z.object({}),
+      func: () => Promise.resolve('Collected synthetic evidence.'),
+    })
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [searchTool],
+      systemPrompt: 'test system prompt',
+      deadlineSignal: controller.signal,
+      captureMessagesOnAbort: true,
+    })
+    const resultPromise = agent.invoke({
+      messages: [new HumanMessage('Investigate the assigned question.')],
+    })
+    await secondCallStarted
+    controller.abort()
+    const result = await resultPromise
+    const streamedMessages = result.messages?.map((message) => {
+      if (message instanceof AIMessage) {
+        return {
+          role: 'assistant',
+          content: message.text,
+          toolCalls: (message.tool_calls ?? []).map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.name,
+            args: toolCall.args,
+          })),
+        }
+      }
+      if (message instanceof ToolMessage) {
+        return {
+          role: 'tool',
+          toolCallId: message.tool_call_id,
+          content: message.text,
+        }
+      }
+      return { role: message.type, content: message.text }
+    })
+    const actual = Array.of<unknown>(callCount, streamedMessages)
+
+    expect(actual).toEqual([
+      2,
+      [
+        { role: 'human', content: 'Investigate the assigned question.' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            {
+              id: 'stream-search-call',
+              name: 'search',
+              args: {},
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          toolCallId: 'stream-search-call',
+          content: 'Collected synthetic evidence.',
+        },
+      ],
+    ])
+  })
+
+  it('aborts a running tool when agentSignal aborts the graph', async () => {
+    const controller = new AbortController()
+    let markToolStarted = (): void => undefined
+    const toolStarted = new Promise<void>((resolve) => {
+      markToolStarted = () => {
+        resolve()
+      }
+    })
+    let toolSignal: AbortSignal | undefined
+    let toolAbortObserved = false
+    const model = buildStubModel(() =>
+      Promise.resolve(
+        buildToolCallResponse('active-search-call', {
+          name: 'search',
+          arguments: '{}',
+        }),
+      ),
+    )
+    const searchTool = new DynamicStructuredTool({
+      name: 'search',
+      description: 'Return synthetic search evidence.',
+      schema: z.object({}),
+      func: (_input, _runManager, config) => {
+        const signal = config?.signal
+        toolSignal = signal
+        markToolStarted()
+        if (signal === undefined) {
+          return Promise.reject(new Error('tool signal is missing'))
+        }
+        return new Promise((resolve) => {
+          const onAbort = (): void => {
+            toolAbortObserved = true
+            resolve('tool cancelled')
+          }
+          if (signal.aborted) {
+            onAbort()
+            return
+          }
+          signal.addEventListener('abort', onAbort, { once: true })
+        })
+      },
+    })
+    const agent = buildPhaseAgentUnderTest(
+      createStrategyAgentDeps(baseConfig),
+      {
+        model,
+        tools: [searchTool],
+        systemPrompt: 'test system prompt',
+        agentSignal: controller.signal,
+      },
+    )
+    const resultPromise = agent
+      .invoke({
+        messages: [new HumanMessage('Investigate the assigned question.')],
+      })
+      .then(
+        () => 'completed' as const,
+        () => 'rejected' as const,
+      )
+
+    await toolStarted
+    controller.abort()
+    const result = await resultPromise
+
+    const actual = Array.of<unknown>(
+      toolSignal !== undefined,
+      toolAbortObserved,
+      result,
+    )
+
+    expect(actual).toEqual([true, true, 'rejected'])
   })
 
   it('reports a phase timeout and does not retry the aborted model call', async () => {

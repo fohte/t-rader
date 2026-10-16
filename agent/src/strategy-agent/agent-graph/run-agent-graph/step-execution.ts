@@ -95,13 +95,15 @@ const createPhaseAgent = (
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
   tools: readonly DynamicStructuredTool[],
+  localTools: readonly DynamicStructuredTool[],
 ): CompiledPhaseAgent => {
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   const { tools: phaseTools } = phase
-  const filteredTools =
+  const filteredMcpTools =
     phaseTools === undefined
       ? tools
       : tools.filter((tool) => phaseTools.includes(tool.name))
+  const filteredTools = [...filteredMcpTools, ...localTools]
   const filteredSkills: Record<string, string> = {}
   for (const name of phase.skills) {
     const body = context.skills[name]
@@ -126,6 +128,24 @@ const createPhaseAgent = (
       ? { phaseTimeout: context.phaseTimeout }
       : {}),
   })
+}
+
+const resolveLocalTools = (
+  phase: AgentGraphPhase,
+  executionStepId: string,
+  recorder: StepRecorder,
+  context: RunAgentGraphContext,
+): Result<DynamicStructuredTool[], Error> => {
+  if (phase.subagents.length === 0) return ok([])
+  const factory = context.createSubagentTool
+  if (factory === undefined) {
+    return err(
+      new Error(
+        `phase ${phase.key} declares subagents but no subagent tool factory is configured`,
+      ),
+    )
+  }
+  return ok([factory(phase, executionStepId, recorder, context)])
 }
 
 // invoke() 自体の reject (usage limit・ツール失敗・ネットワークエラー等) は
@@ -231,20 +251,29 @@ export const invokeAndRecordStep = (
         .then(() => context.createStepMcpClient(executionStepId))
         .then((stepMcpClient) =>
           Promise.resolve()
-            .then(async () =>
-              invokePhaseWithRetry(
+            .then(async () => {
+              const mcpTools = await stepMcpClient.getTools()
+              const localTools = resolveLocalTools(
+                phase,
+                executionStepId,
+                recorder,
+                context,
+              )
+              if (localTools.isErr()) return err(localTools.error)
+              return invokePhaseWithRetry(
                 createPhaseAgent(
                   deps,
                   phase,
                   context,
-                  await stepMcpClient.getTools(),
+                  mcpTools,
+                  localTools.value,
                 ),
                 messages,
                 executionStepId,
                 requiredArrayFields,
                 phase.key,
-              ),
-            )
+              )
+            })
             .finally(() =>
               // close の失敗でステップの決着を取り消さない。
               stepMcpClient.close().catch((closeError: unknown) => {

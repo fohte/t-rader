@@ -270,6 +270,59 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it('adds the subagent tool alongside phase-scoped MCP tools', async () => {
+    const configuredTools: string[][] = []
+    const factoryCalls: string[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => new FakeChatModel({}),
+      buildPhaseAgent: (options): CompiledPhaseAgent => {
+        configuredTools.push(options.tools.map((tool) => tool.name))
+        return {
+          invoke: () => Promise.resolve({ structuredResponse: {} }),
+        }
+      },
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'sample-model',
+          prompt: 'do work',
+          subagents: ['researcher'],
+          skills: [],
+          tools: ['search_web'],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory([
+        buildFakeTool('search_web'),
+        buildFakeTool('read_page'),
+      ]),
+      createSubagentTool: (phase) => {
+        factoryCalls.push(phase.key)
+        return buildFakeTool('run_subagent')
+      },
+      originalPromptText: 'req',
+    })
+
+    const actual = Array.of<unknown>(result, configuredTools, factoryCalls)
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (Work)',
+      },
+      [['search_web', 'run_subagent']],
+      ['work'],
+    ])
+  })
+
   it('fails immediately without running any phase when deadlineSignal is already aborted', async () => {
     const { deps, calls } = buildDeps(() =>
       Promise.reject(new Error('phase should not be invoked')),

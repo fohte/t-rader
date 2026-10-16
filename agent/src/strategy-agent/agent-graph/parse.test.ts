@@ -215,6 +215,27 @@ phases:
     )
   })
 
+  it('rejects subagents when max_subagent_runs is omitted', () => {
+    const normalized = parseAgentGraph(`
+phases:
+  - key: research
+    label: Research
+    model: example-model-research
+    prompt: Investigate
+    subagents: [helper]
+`).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+
+    expect(normalized).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
   it('returns an AgentGraphParseError for invalid YAML', () => {
     const result = parseAgentGraph('phases: [')
 
