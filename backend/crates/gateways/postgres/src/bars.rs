@@ -35,8 +35,6 @@ pub struct PostgresBarsRepository {
     db: DatabaseHandle,
 }
 
-const REFERENCED_US_STOCK_SELECTION: &str = "EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)";
-
 impl PostgresBarsRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self { db }
@@ -79,11 +77,7 @@ impl PostgresBarsRepository {
             earliest_hourly_bar: Option<DateTime<FixedOffset>>,
         }
 
-        let selection = format!(
-            "EXISTS (SELECT 1 FROM stock WHERE stock.id = instruments.id AND stock.market IN ('Nasdaq', 'NYSE')) OR ({REFERENCED_US_STOCK_SELECTION})"
-        );
-        let query = format!(
-            r#"SELECT
+        let query = r#"SELECT
                 instruments.id AS instrument_id,
                 daily_bar.timestamp AS latest_daily_bar,
                 minute_bar.timestamp AS latest_minute_bar,
@@ -126,9 +120,24 @@ impl PostgresBarsRepository {
                 ORDER BY timestamp ASC LIMIT 1
             ) AS earliest_hourly_bar ON TRUE
             WHERE instruments.market = 'US'
-              AND ({selection})
+              AND (
+                  EXISTS (
+                      SELECT 1 FROM stock
+                      WHERE stock.id = instruments.id
+                        AND stock.market IN ('Nasdaq', 'NYSE')
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM stock_group_member
+                      WHERE stock_group_member.stock_id = instruments.id
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM note_ref
+                      WHERE note_ref.ref_kind = 'stock'
+                        AND note_ref.ref_id = instruments.id
+                  )
+              )
             ORDER BY instruments.id"#
-        );
+            .to_owned();
         let rows = self
             .db
             .query_all_raw(Statement::from_string(DatabaseBackend::Postgres, query))
