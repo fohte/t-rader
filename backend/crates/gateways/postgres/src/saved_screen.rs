@@ -103,7 +103,6 @@ fn to_json(value: impl Serialize) -> Result<serde_json::Value, SavedScreenReposi
 fn from_json<T: DeserializeOwned>(
     value: serde_json::Value,
 ) -> Result<T, SavedScreenRepositoryError> {
-    // Value 経由では指数表記の数値が f64 に変わり、Decimal で復元できないため JSON 文字列から解析する。
     serde_json::from_str(&value.to_string())
         .map_err(|error| SavedScreenRepositoryError::InvalidData(error.to_string()))
 }
