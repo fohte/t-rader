@@ -512,6 +512,78 @@ describe('createRunSubagentTool', () => {
     ])
   })
 
+  it('returns a schema-valid result from messages when timeout uses the model-call limit', async () => {
+    vi.useFakeTimers()
+    const buildOptions: BuildPhaseAgentOptions[] = []
+    const tool = createRunSubagentTool({
+      phase,
+      parentExecutionStepId: 'parent-step-id',
+      recorder: createStepRecorder(() => undefined),
+      fetchDefinition: () =>
+        okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 1 }),
+      createMcpClient: () => ({
+        getTools: () => Promise.resolve([buildFakeTool('search_web')]),
+        close: () => Promise.resolve(),
+      }),
+      deps: {
+        createChatModel: () => new FakeChatModel({}),
+        buildPhaseAgent: (options): CompiledPhaseAgent => {
+          buildOptions.push(options)
+          return {
+            invoke: ({ messages }) => {
+              const budget = options.modelCallBudget
+              const signal = options.deadlineSignal
+              if (budget === undefined || signal === undefined) {
+                return Promise.reject(new Error('child limits are missing'))
+              }
+              budget.count = budget.maxModelCalls
+              return new Promise((resolve) => {
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    resolve({
+                      messages: [
+                        ...messages,
+                        new AIMessage({
+                          tool_calls: [
+                            {
+                              id: 'partial-output-call',
+                              name: 'extract-result',
+                              args: {
+                                conclusion: 'A partial conclusion',
+                                sources: [],
+                              },
+                              type: 'tool_call',
+                            },
+                          ],
+                        }),
+                      ],
+                    })
+                  },
+                  { once: true },
+                )
+              })
+            },
+          }
+        },
+      },
+    })
+
+    const resultPromise = tool.invoke({
+      key: 'researcher',
+      brief: 'Find what can be established.',
+    })
+    await vi.advanceTimersByTimeAsync(60_001)
+    const result = await resultPromise
+
+    const actual = Array.of<unknown>(result, buildOptions.length)
+
+    expect(actual).toEqual([
+      { conclusion: 'A partial conclusion', sources: [] },
+      1,
+    ])
+  })
+
   it('records a failed child step when its definition cannot be fetched', async () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue(
       'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',

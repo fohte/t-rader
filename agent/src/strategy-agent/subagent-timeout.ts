@@ -4,8 +4,10 @@ import {
   HumanMessage,
   ToolMessage,
 } from '@langchain/core/messages'
-import { err, ok, type Result } from 'neverthrow'
+import { toolStrategy } from 'langchain'
+import { err, fromThrowable, ok, type Result } from 'neverthrow'
 
+import { buildOutputJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 import type { ModelCallBudget } from '#strategy-agent/final-turn-middleware'
 import {
   isPhaseTimeoutSignal,
@@ -32,6 +34,29 @@ const getStructuredResponse = (
     return result.structuredResponse
   })
 
+const getStructuredResponseFromMessages = (
+  definition: SubagentDefinition,
+  messages: readonly BaseMessage[],
+): Record<string, unknown> | undefined => {
+  const responseFormat = toolStrategy(
+    buildOutputJsonSchema(definition.output),
+  )[0]
+  if (responseFormat === undefined) return undefined
+  const parseStructuredOutput = fromThrowable(
+    (value: Record<string, unknown>) => responseFormat.parse(value),
+    toError,
+  )
+  for (const message of [...messages].reverse()) {
+    if (!(message instanceof AIMessage)) continue
+    for (const toolCall of [...(message.tool_calls ?? [])].reverse()) {
+      if (definition.tools.includes(toolCall.name)) continue
+      const parsed = parseStructuredOutput(toolCall.args)
+      if (parsed.isOk()) return parsed.value
+    }
+  }
+  return undefined
+}
+
 export const getParentDeadlineError = (
   options: CreateRunSubagentToolOptions,
 ): Error => {
@@ -55,6 +80,13 @@ export const finalizeTimedOutSubagent = (
     return Promise.resolve(err(getParentDeadlineError(options)))
   }
   if (modelCallBudget.count >= modelCallBudget.maxModelCalls) {
+    const structuredResponse = getStructuredResponseFromMessages(
+      definition,
+      messages,
+    )
+    if (structuredResponse !== undefined) {
+      return Promise.resolve(ok(structuredResponse))
+    }
     return Promise.resolve(
       err(
         new Error(
