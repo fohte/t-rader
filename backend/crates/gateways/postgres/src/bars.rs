@@ -24,7 +24,7 @@ use crate::transaction::transaction_ref as postgres_transaction_ref;
 
 mod us_stock_minute_bars_downsample;
 
-fn us_stock_hourly_history_cutoff(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
+fn current_hourly_history_cutoff_for(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
     matches!(timeframe, Timeframe::Hourly | Timeframe::FourHours)
         .then(|| core_application::bars::us_stock_hourly_history_cutoff(Utc::now()).fixed_offset())
 }
@@ -195,7 +195,7 @@ impl BarsRepository for PostgresBarsRepository {
                 return Ok(Vec::new());
             }
 
-            let hourly_history_cutoff = us_stock_hourly_history_cutoff(timeframe);
+            let hourly_history_cutoff = current_hourly_history_cutoff_for(timeframe);
             return bar_queries::find_intraday_bars(
                 &self.db,
                 to_postgres_query(query),
@@ -226,7 +226,7 @@ impl BarsRepository for PostgresBarsRepository {
                 &self.db,
                 &us_instrument_ids,
                 timeframe,
-                us_stock_hourly_history_cutoff(timeframe),
+                current_hourly_history_cutoff_for(timeframe),
                 query.from,
                 query.to,
             )

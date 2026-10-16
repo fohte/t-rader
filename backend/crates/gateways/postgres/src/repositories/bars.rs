@@ -271,22 +271,21 @@ pub async fn find_intraday_bars_by_instruments(
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
 ) -> Result<Vec<Bar>, DbErr> {
-    let (sql_template, interval) = match timeframe {
-        Timeframe::Minute => (FIND_ONE_MINUTE_BARS_SQL, None),
-        Timeframe::Hourly => {
-            let cutoff = hourly_history_cutoff.ok_or_else(|| {
-                DbErr::Custom("hourly history cutoff is required for hourly bars".to_owned())
-            })?;
+    let (sql_template, interval) = match (timeframe, hourly_history_cutoff) {
+        (Timeframe::Minute, _) => (FIND_ONE_MINUTE_BARS_SQL, None),
+        (Timeframe::Hourly, Some(cutoff)) => {
             return us_stock_intraday::find_hourly_bars(db, instrument_ids, cutoff, from, to).await;
         }
-        Timeframe::FourHours => {
-            let cutoff = hourly_history_cutoff.ok_or_else(|| {
-                DbErr::Custom("hourly history cutoff is required for four-hour bars".to_owned())
-            })?;
+        (Timeframe::FourHours, Some(cutoff)) => {
             return us_stock_intraday::find_four_hour_bars(db, instrument_ids, cutoff, from, to)
                 .await;
         }
-        timeframe => match timeframe.bucket_interval() {
+        (Timeframe::Hourly | Timeframe::FourHours, None) => {
+            return Err(DbErr::Custom(
+                "hourly history cutoff is required for intraday bars".to_owned(),
+            ));
+        }
+        (timeframe, _) => match timeframe.bucket_interval() {
             Some(interval) => (FIND_AGGREGATED_MINUTE_BARS_SQL, Some(interval)),
             None => return Ok(Vec::new()),
         },
