@@ -180,17 +180,25 @@ pub async fn find_bars(
     Ok(results)
 }
 
-/// 1 分足、保存済み 1 時間足、および 1 分足から集計した intraday bars を取得する。
+/// 1h は直近 12 か月を 1m から集計し、それより前は保存済み 1h を優先して欠損だけ 1m で補う。
 pub async fn find_intraday_bars(
     db: &impl ConnectionTrait,
     query: BarsQuery,
+    hourly_history_cutoff: Option<DateTime<FixedOffset>>,
 ) -> Result<Vec<Bar>, DbErr> {
     let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
         return Ok(Vec::new());
     };
 
-    find_intraday_bars_by_instruments(db, &[query.instrument_id], timeframe, query.from, query.to)
-        .await
+    find_intraday_bars_by_instruments(
+        db,
+        &[query.instrument_id],
+        timeframe,
+        hourly_history_cutoff,
+        query.from,
+        query.to,
+    )
+    .await
 }
 
 async fn find_bars_with_sql_template(
@@ -254,21 +262,29 @@ async fn find_bars_with_sql_template(
         .collect()
 }
 
-/// 複数銘柄の intraday bars を取得する。1h は保存済みの時間足を優先し、不足する時間だけ 1m から集計する。
+/// 複数銘柄の intraday bars を取得する。1h は直近 12 か月を 1m から集計し、それより前は保存済み 1h を優先して欠損だけ 1m で補う。4h はその結果から集計する。
 pub async fn find_intraday_bars_by_instruments(
     db: &impl ConnectionTrait,
     instrument_ids: &[String],
     timeframe: Timeframe,
+    hourly_history_cutoff: Option<DateTime<FixedOffset>>,
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
 ) -> Result<Vec<Bar>, DbErr> {
     let (sql_template, interval) = match timeframe {
         Timeframe::Minute => (FIND_ONE_MINUTE_BARS_SQL, None),
         Timeframe::Hourly => {
-            return us_stock_intraday::find_hourly_bars(db, instrument_ids, from, to).await;
+            let cutoff = hourly_history_cutoff.ok_or_else(|| {
+                DbErr::Custom("hourly history cutoff is required for hourly bars".to_owned())
+            })?;
+            return us_stock_intraday::find_hourly_bars(db, instrument_ids, cutoff, from, to).await;
         }
         Timeframe::FourHours => {
-            return us_stock_intraday::find_four_hour_bars(db, instrument_ids, from, to).await;
+            let cutoff = hourly_history_cutoff.ok_or_else(|| {
+                DbErr::Custom("hourly history cutoff is required for four-hour bars".to_owned())
+            })?;
+            return us_stock_intraday::find_four_hour_bars(db, instrument_ids, cutoff, from, to)
+                .await;
         }
         timeframe => match timeframe.bucket_interval() {
             Some(interval) => (FIND_AGGREGATED_MINUTE_BARS_SQL, Some(interval)),
@@ -540,6 +556,7 @@ mod tests {
                 from: None,
                 to: None,
             },
+            None,
         )
         .await
         .expect("find minute bars");
@@ -558,6 +575,7 @@ mod tests {
                 from: None,
                 to: None,
             },
+            None,
         )
         .await
         .expect("find aggregated bars");
@@ -593,6 +611,25 @@ mod tests {
         let bars = vec![
             bar(Timeframe::Hourly, timestamp(8, 0), 10, 15, 5, 12, 100),
             bar(Timeframe::Hourly, timestamp(9, 0), 12, 20, 11, 18, 200),
+            bar(Timeframe::Hourly, timestamp(10, 0), 30, 900, 1, 800, 9_000),
+            bar(
+                Timeframe::Hourly,
+                timestamp(11, 0),
+                40,
+                1_000,
+                2,
+                900,
+                10_000,
+            ),
+            bar(
+                Timeframe::Minute,
+                timestamp(9, 30),
+                800,
+                999,
+                700,
+                950,
+                5_000,
+            ),
             bar(
                 Timeframe::Minute,
                 timestamp(10, 30),
@@ -620,6 +657,7 @@ mod tests {
             &db,
             std::slice::from_ref(&instrument_id),
             Timeframe::Hourly,
+            Some(timestamp(10, 0).fixed_offset()),
             Some(timestamp(8, 0).fixed_offset()),
             Some(timestamp(11, 0).fixed_offset()),
         )
@@ -629,6 +667,7 @@ mod tests {
             &db,
             std::slice::from_ref(&instrument_id),
             Timeframe::FourHours,
+            Some(timestamp(10, 0).fixed_offset()),
             Some(timestamp(8, 0).fixed_offset()),
             Some(timestamp(8, 0).fixed_offset()),
         )

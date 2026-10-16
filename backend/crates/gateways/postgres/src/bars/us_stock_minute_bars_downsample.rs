@@ -66,6 +66,9 @@ pub(super) async fn downsample_minute_bar_range(
                     WHERE existing_hourly.instrument_id = aggregated.instrument_id
                       AND existing_hourly.timeframe = '1h'
                       AND existing_hourly.timestamp = aggregated.timestamp
+                      AND existing_hourly.timestamp >= time_bucket('1 hour', $1::timestamptz)
+                      AND existing_hourly.timestamp < $2
+                      AND existing_hourly.timestamp < $3
                )
             ON CONFLICT (instrument_id, timeframe, timestamp) DO NOTHING
             "#
@@ -90,6 +93,9 @@ pub(super) async fn downsample_minute_bar_range(
                     WHERE hourly.instrument_id = minute.instrument_id
                       AND hourly.timeframe = '1h'
                       AND hourly.timestamp = time_bucket('1 hour', minute.timestamp)
+                      AND hourly.timestamp >= time_bucket('1 hour', $1::timestamptz)
+                      AND hourly.timestamp < $2
+                      AND hourly.timestamp < $3
               )
             "#,
             values,

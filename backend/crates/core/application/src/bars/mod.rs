@@ -27,7 +27,7 @@ use chrono::{DateTime, Months, Timelike, Utc};
 
 pub(super) const HOURLY_HISTORY_MONTHS: u32 = 12;
 
-pub(super) fn hourly_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
+pub fn us_stock_hourly_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
     now.checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
         .unwrap_or(now)
 }

@@ -22,6 +22,7 @@ const FIND_HOURLY_BARS_SQL: &str = r#"
         FROM bars
         WHERE instrument_id IN ({instrument_ids})
           AND timeframe = '1h'
+          AND timestamp < $1
           AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
           AND (${to}::timestamptz IS NULL OR timestamp <= ${to})
         UNION ALL
@@ -33,6 +34,9 @@ const FIND_HOURLY_BARS_SQL: &str = r#"
             WHERE hourly.instrument_id = minute_bars.instrument_id
               AND hourly.timeframe = '1h'
               AND hourly.timestamp = minute_bars.timestamp
+              AND hourly.timestamp < $1
+              AND (${from}::timestamptz IS NULL OR hourly.timestamp >= ${from})
+              AND (${to}::timestamptz IS NULL OR hourly.timestamp <= ${to})
         )
     )
     SELECT instrument_id, timestamp, open, high, low, close, volume
@@ -59,6 +63,7 @@ const FIND_FOUR_HOUR_BARS_SQL: &str = r#"
         FROM bars
         WHERE instrument_id IN ({instrument_ids})
           AND timeframe = '1h'
+          AND timestamp < $1
           AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
           AND (${to}::timestamptz IS NULL OR timestamp < ${to} + INTERVAL '4 hours')
         UNION ALL
@@ -70,6 +75,9 @@ const FIND_FOUR_HOUR_BARS_SQL: &str = r#"
             WHERE hourly.instrument_id = minute_bars.instrument_id
               AND hourly.timeframe = '1h'
               AND hourly.timestamp = minute_bars.timestamp
+              AND hourly.timestamp < $1
+              AND (${from}::timestamptz IS NULL OR hourly.timestamp >= ${from})
+              AND (${to}::timestamptz IS NULL OR hourly.timestamp < ${to} + INTERVAL '4 hours')
         )
     ), aggregated AS (
         SELECT
@@ -100,6 +108,7 @@ struct AggregatedBarRow {
 pub(super) async fn find_hourly_bars(
     db: &impl ConnectionTrait,
     instrument_ids: &[String],
+    cutoff: DateTime<FixedOffset>,
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
 ) -> Result<Vec<Bar>, sea_orm::DbErr> {
@@ -108,6 +117,7 @@ pub(super) async fn find_hourly_bars(
         FIND_HOURLY_BARS_SQL,
         Timeframe::Hourly,
         instrument_ids,
+        cutoff,
         from,
         to,
     )
@@ -117,6 +127,7 @@ pub(super) async fn find_hourly_bars(
 pub(super) async fn find_four_hour_bars(
     db: &impl ConnectionTrait,
     instrument_ids: &[String],
+    cutoff: DateTime<FixedOffset>,
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
 ) -> Result<Vec<Bar>, sea_orm::DbErr> {
@@ -125,6 +136,7 @@ pub(super) async fn find_four_hour_bars(
         FIND_FOUR_HOUR_BARS_SQL,
         Timeframe::FourHours,
         instrument_ids,
+        cutoff,
         from,
         to,
     )
@@ -136,6 +148,7 @@ async fn query_bars(
     sql_template: &str,
     timeframe: Timeframe,
     instrument_ids: &[String],
+    cutoff: DateTime<FixedOffset>,
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
 ) -> Result<Vec<Bar>, sea_orm::DbErr> {
@@ -143,7 +156,7 @@ async fn query_bars(
         return Ok(Vec::new());
     }
 
-    let first_instrument_index = 1;
+    let first_instrument_index = 2;
     let instrument_placeholders = (first_instrument_index
         ..first_instrument_index + instrument_ids.len())
         .map(|index| format!("${index}"))
@@ -157,6 +170,7 @@ async fn query_bars(
         .replace("{from}", &from_index.to_string())
         .replace("{to}", &to_index.to_string());
     let mut values = Vec::with_capacity(to_index);
+    values.push(cutoff.into());
     values.extend(instrument_ids.iter().cloned().map(Into::into));
     values.push(from.into());
     values.push(to.into());

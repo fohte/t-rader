@@ -24,6 +24,11 @@ use crate::transaction::transaction_ref as postgres_transaction_ref;
 
 mod us_stock_minute_bars_downsample;
 
+fn us_stock_hourly_history_cutoff(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
+    matches!(timeframe, Timeframe::Hourly | Timeframe::FourHours)
+        .then(|| core_application::bars::us_stock_hourly_history_cutoff(Utc::now()).fixed_offset())
+}
+
 #[derive(Clone)]
 pub struct PostgresBarsRepository {
     db: DatabaseHandle,
@@ -190,9 +195,14 @@ impl BarsRepository for PostgresBarsRepository {
                 return Ok(Vec::new());
             }
 
-            return bar_queries::find_intraday_bars(&self.db, to_postgres_query(query))
-                .await
-                .map_err(repository_error);
+            let hourly_history_cutoff = us_stock_hourly_history_cutoff(timeframe);
+            return bar_queries::find_intraday_bars(
+                &self.db,
+                to_postgres_query(query),
+                hourly_history_cutoff,
+            )
+            .await
+            .map_err(repository_error);
         }
 
         bar_queries::find_bars(&self.db, to_postgres_query(query))
@@ -216,6 +226,7 @@ impl BarsRepository for PostgresBarsRepository {
                 &self.db,
                 &us_instrument_ids,
                 timeframe,
+                us_stock_hourly_history_cutoff(timeframe),
                 query.from,
                 query.to,
             )
@@ -970,15 +981,25 @@ mod tests {
             205,
             11,
         );
-        let inserted_hourly_bar = bar(
+        let existing_hourly_bar = bar(
             &us_instrument_id,
             Timeframe::Hourly,
             timestamp(6, 0),
-            10,
-            20,
-            8,
-            18,
-            300,
+            9,
+            25,
+            7,
+            19,
+            500,
+        );
+        let inserted_hourly_bar = bar(
+            &us_instrument_id,
+            Timeframe::Hourly,
+            timestamp(7, 0),
+            30,
+            45,
+            28,
+            38,
+            700,
         );
         let foreign_minute = bar(
             &foreign_instrument_id,
@@ -999,7 +1020,7 @@ mod tests {
                 bar(
                     &us_instrument_id,
                     Timeframe::Minute,
-                    timestamp(6, 0),
+                    timestamp(6, 30),
                     10,
                     15,
                     8,
@@ -1009,12 +1030,32 @@ mod tests {
                 bar(
                     &us_instrument_id,
                     Timeframe::Minute,
-                    timestamp(6, 1),
+                    timestamp(6, 31),
                     12,
                     20,
                     9,
                     18,
                     200,
+                ),
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(7, 0),
+                    30,
+                    35,
+                    28,
+                    32,
+                    400,
+                ),
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(7, 1),
+                    32,
+                    45,
+                    30,
+                    38,
+                    300,
                 ),
                 bar(
                     &us_instrument_id,
@@ -1036,6 +1077,7 @@ mod tests {
                     4,
                     3,
                 ),
+                existing_hourly_bar.clone(),
                 api_hourly_bar.clone(),
                 expected_latest_minute.clone(),
                 foreign_minute.clone(),
@@ -1051,7 +1093,7 @@ mod tests {
         let stats = repository
             .downsample_us_stock_minute_bar_range(
                 &transaction,
-                timestamp(6, 0),
+                timestamp(6, 30),
                 timestamp(10, 0),
                 cutoff,
             )
@@ -1066,6 +1108,7 @@ mod tests {
             &db,
             std::slice::from_ref(&us_instrument_id),
             Timeframe::Hourly,
+            Some(cutoff.fixed_offset()),
             None,
             None,
         )
@@ -1098,12 +1141,17 @@ mod tests {
         assert_eq!(
             (earliest, stats, hourly_bars, us_minutes, foreign_minutes),
             (
-                Some(timestamp(6, 0)),
+                Some(timestamp(6, 30)),
                 UsStockMinuteBarsDownsampleStats {
                     hourly_bars_inserted: 1,
-                    minute_bars_deleted: 4,
+                    minute_bars_deleted: 6,
                 },
-                vec![inserted_hourly_bar, api_hourly_bar, expected_latest_hourly],
+                vec![
+                    existing_hourly_bar,
+                    inserted_hourly_bar,
+                    api_hourly_bar,
+                    expected_latest_hourly,
+                ],
                 vec![expected_latest_minute],
                 vec![foreign_minute],
             ),
@@ -1168,6 +1216,7 @@ mod tests {
             &db,
             std::slice::from_ref(&instrument_id),
             Timeframe::Hourly,
+            Some(timestamp(11, 0).fixed_offset()),
             None,
             None,
         )

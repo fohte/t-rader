@@ -5,8 +5,8 @@ use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
 
 use super::error::BarsUseCaseError;
-use super::hourly_history_cutoff;
 use super::types::{BarsByInstrumentsQuery, UsStockBarTarget, UsStockBarsIngestStats};
+use super::us_stock_hourly_history_cutoff;
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
@@ -124,7 +124,7 @@ impl UsStockBarTimeframe {
 
     fn history_end(self, now: DateTime<Utc>) -> DateTime<Utc> {
         match self {
-            Self::Hourly => hourly_history_cutoff(now),
+            Self::Hourly => us_stock_hourly_history_cutoff(now),
             Self::Daily | Self::Minute => now,
         }
     }

@@ -229,7 +229,7 @@ pub(super) fn build_crontabs(
             "us_stock_minute_bars_downsample",
             0,
             5,
-            None,
+            Some(ALPACA_MINUTE_QUEUE),
         )?);
     }
     if configured.valuation {
@@ -606,7 +606,7 @@ mod tests {
                 CrontabTimer::daily_at(0, 5).ok(),
                 "us_stock_minute_bars_downsample",
                 CrontabFill::days(3),
-                None,
+                Some(ALPACA_MINUTE_QUEUE),
             ),
             expected_weekday_cron::<ValuationIngest>(
                 7,
@@ -810,7 +810,7 @@ mod tests {
                     Some("us_stock_minute_bars_downsample".to_string()),
                     Some(CrontabFill::days(3)),
                     Some(3),
-                    None,
+                    Some(ALPACA_MINUTE_QUEUE.to_string()),
                 ),
                 (
                     Some("valuation_ingest".to_string()),

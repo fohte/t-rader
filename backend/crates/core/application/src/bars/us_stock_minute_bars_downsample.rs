@@ -2,8 +2,8 @@ use chrono::{DateTime, Duration, Utc};
 
 use super::error::BarsUseCaseError;
 use super::hourly_bar_bucket_start;
-use super::hourly_history_cutoff;
 use super::types::UsStockMinuteBarsDownsampleStats;
+use super::us_stock_hourly_history_cutoff;
 use super::use_cases::BarsUseCases;
 
 const DOWNSAMPLE_BATCH_DAYS: i64 = 7;
@@ -13,7 +13,7 @@ impl BarsUseCases {
         &self,
         now: DateTime<Utc>,
     ) -> Result<UsStockMinuteBarsDownsampleStats, BarsUseCaseError> {
-        let cutoff = hourly_history_cutoff(now);
+        let cutoff = us_stock_hourly_history_cutoff(now);
         let Some(oldest_bar) = self
             .repository
             .find_earliest_us_stock_minute_bar_before(cutoff)
