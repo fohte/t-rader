@@ -64,7 +64,8 @@ impl CalendarEventRepository for PostgresCalendarEventRepository {
         let count = events.len();
         let models = events.into_iter().map(to_active_model).collect::<Vec<_>>();
         let columns_per_row = calendar_event::Column::iter().count();
-        let chunk_size = (u16::MAX as usize / columns_per_row).min(MAX_UPSERT_ROWS_PER_STATEMENT);
+        let chunk_size = crate::repositories::max_rows_per_statement(columns_per_row)
+            .min(MAX_UPSERT_ROWS_PER_STATEMENT);
 
         for chunk in models.chunks(chunk_size) {
             calendar_event::Entity::insert_many(chunk.to_vec())

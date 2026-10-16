@@ -130,20 +130,12 @@ pub async fn upsert_bars(
         return Ok(());
     }
 
-    let max_rows_per_statement = u16::MAX as usize / bars::Column::iter().count();
-    let mut bars_data = bars_data.into_iter();
-    loop {
-        // PostgreSQL の bind 数上限に合わせ、bars の列数から 1 文の最大行数を求める。
-        let batch: Vec<bars::ActiveModel> = bars_data
-            .by_ref()
-            .take(max_rows_per_statement)
-            .map(Into::into)
-            .collect();
-        if batch.is_empty() {
-            break;
-        }
+    // PostgreSQL の bind パラメータ数には u16::MAX の上限がある。
+    let chunk_size = crate::repositories::max_rows_per_statement(bars::Column::iter().count());
+    let active_models: Vec<bars::ActiveModel> = bars_data.into_iter().map(Into::into).collect();
 
-        bars::Entity::insert_many(batch)
+    for chunk in active_models.chunks(chunk_size) {
+        bars::Entity::insert_many(chunk.to_vec())
             .on_conflict(
                 OnConflict::columns([
                     bars::Column::InstrumentId,
