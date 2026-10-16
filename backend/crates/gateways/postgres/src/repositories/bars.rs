@@ -3,6 +3,8 @@ mod us_stock_intraday;
 
 pub use daily_adjustment_factors::find_daily_adjustment_factors_from;
 
+pub(crate) const OHLCV_AGGREGATES: &str = "first(open, timestamp) AS open, MAX(high) AS high, MIN(low) AS low, last(close, timestamp) AS close, SUM(volume)::bigint AS volume";
+
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
@@ -29,11 +31,7 @@ const FIND_AGGREGATED_MINUTE_BARS_SQL: &str = r#"
         SELECT
             instrument_id,
             time_bucket($1::interval, timestamp) AS timestamp,
-            first(open, timestamp) AS open,
-            MAX(high) AS high,
-            MIN(low) AS low,
-            last(close, timestamp) AS close,
-            SUM(volume)::bigint AS volume
+            {ohlcv_aggregates}
         FROM bars
         WHERE instrument_id IN ({instrument_ids})
           AND timeframe = '1m'
@@ -54,11 +52,7 @@ const FIND_AGGREGATED_DAILY_BARS_SQL: &str = r#"
         SELECT
             instrument_id,
             time_bucket($1::interval, timestamp) AS timestamp,
-            first(open, timestamp) AS open,
-            MAX(high) AS high,
-            MIN(low) AS low,
-            last(close, timestamp) AS close,
-            SUM(volume)::bigint AS volume
+            {ohlcv_aggregates}
         FROM bars
         WHERE instrument_id IN ({instrument_ids})
           AND timeframe = '1d'
@@ -186,25 +180,17 @@ pub async fn find_bars(
     Ok(results)
 }
 
-/// 1 分足、または 1 分足から集計した intraday bars を取得する。
+/// 1 分足、保存済み 1 時間足、および 1 分足から集計した intraday bars を取得する。
 pub async fn find_intraday_bars(
     db: &impl ConnectionTrait,
     query: BarsQuery,
-    minute_bar_cutover: DateTime<FixedOffset>,
 ) -> Result<Vec<Bar>, DbErr> {
     let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
         return Ok(Vec::new());
     };
 
-    find_intraday_bars_by_instruments(
-        db,
-        &[query.instrument_id],
-        timeframe,
-        query.from,
-        query.to,
-        minute_bar_cutover,
-    )
-    .await
+    find_intraday_bars_by_instruments(db, &[query.instrument_id], timeframe, query.from, query.to)
+        .await
 }
 
 async fn find_bars_with_sql_template(
@@ -229,6 +215,7 @@ async fn find_bars_with_sql_template(
     let from_index = first_instrument_index + instrument_ids.len();
     let to_index = from_index + 1;
     let sql = sql_template
+        .replace("{ohlcv_aggregates}", OHLCV_AGGREGATES)
         .replace("{instrument_ids}", &instrument_placeholders)
         .replace("{from}", &from_index.to_string())
         .replace("{to}", &to_index.to_string());
@@ -267,39 +254,23 @@ async fn find_bars_with_sql_template(
         .collect()
 }
 
-/// 複数銘柄について 1 分足、または 1 分足から集計した intraday bars を取得する。
+/// 複数銘柄の intraday bars を取得する。1h は保存済みの時間足を優先し、不足する時間だけ 1m から集計する。
 pub async fn find_intraday_bars_by_instruments(
     db: &impl ConnectionTrait,
     instrument_ids: &[String],
     timeframe: Timeframe,
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
-    minute_bar_cutover: DateTime<FixedOffset>,
 ) -> Result<Vec<Bar>, DbErr> {
-    if timeframe == Timeframe::Hourly {
-        return us_stock_intraday::find_hourly_bars(
-            db,
-            instrument_ids,
-            from,
-            to,
-            minute_bar_cutover,
-        )
-        .await;
-    }
-    if timeframe == Timeframe::FourHours {
-        return us_stock_intraday::find_four_hour_bars(
-            db,
-            instrument_ids,
-            from,
-            to,
-            minute_bar_cutover,
-        )
-        .await;
-    }
-
     let (sql_template, interval) = match timeframe {
         Timeframe::Minute => (FIND_ONE_MINUTE_BARS_SQL, None),
-        _ => match timeframe.bucket_interval() {
+        Timeframe::Hourly => {
+            return us_stock_intraday::find_hourly_bars(db, instrument_ids, from, to).await;
+        }
+        Timeframe::FourHours => {
+            return us_stock_intraday::find_four_hour_bars(db, instrument_ids, from, to).await;
+        }
+        timeframe => match timeframe.bucket_interval() {
             Some(interval) => (FIND_AGGREGATED_MINUTE_BARS_SQL, Some(interval)),
             None => return Ok(Vec::new()),
         },
@@ -569,7 +540,6 @@ mod tests {
                 from: None,
                 to: None,
             },
-            Utc::now().fixed_offset(),
         )
         .await
         .expect("find minute bars");
@@ -588,7 +558,6 @@ mod tests {
                 from: None,
                 to: None,
             },
-            Utc::now().fixed_offset(),
         )
         .await
         .expect("find aggregated bars");
@@ -600,7 +569,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn combines_hourly_and_minute_sources_across_the_history_boundary(
+    async fn combines_hourly_bars_and_minute_fallback_for_hourly_and_four_hour_queries(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let instrument_id = format!("US:DEMO-MIX-{}", uuid::Uuid::new_v4().simple());
@@ -621,12 +590,9 @@ mod tests {
                 .single()
                 .expect("fixture timestamp")
         };
-        let cutoff = timestamp(10, 30);
-        let minute_bar_cutover = timestamp(11, 0).fixed_offset();
         let bars = vec![
             bar(Timeframe::Hourly, timestamp(8, 0), 10, 15, 5, 12, 100),
             bar(Timeframe::Hourly, timestamp(9, 0), 12, 20, 11, 18, 200),
-            bar(Timeframe::Hourly, timestamp(10, 0), 18, 25, 17, 22, 300),
             bar(
                 Timeframe::Minute,
                 timestamp(10, 30),
@@ -656,7 +622,6 @@ mod tests {
             Timeframe::Hourly,
             Some(timestamp(8, 0).fixed_offset()),
             Some(timestamp(11, 0).fixed_offset()),
-            minute_bar_cutover,
         )
         .await
         .expect("find hourly bars");
@@ -666,29 +631,35 @@ mod tests {
             Timeframe::FourHours,
             Some(timestamp(8, 0).fixed_offset()),
             Some(timestamp(8, 0).fixed_offset()),
-            minute_bar_cutover,
         )
         .await
         .expect("find four-hour bars");
 
         assert_eq!(
-            (cutoff < minute_bar_cutover.to_utc(), hourly, four_hour),
+            (hourly, four_hour),
             (
-                true,
                 vec![
                     bar(Timeframe::Hourly, timestamp(8, 0), 10, 15, 5, 12, 100),
                     bar(Timeframe::Hourly, timestamp(9, 0), 12, 20, 11, 18, 200),
-                    bar(Timeframe::Hourly, timestamp(10, 0), 18, 25, 17, 22, 300),
+                    bar(
+                        Timeframe::Hourly,
+                        timestamp(10, 0),
+                        500,
+                        650,
+                        400,
+                        600,
+                        1800
+                    ),
                     bar(Timeframe::Hourly, timestamp(11, 0), 22, 31, 21, 29, 110),
                 ],
                 vec![bar(
                     Timeframe::FourHours,
                     timestamp(8, 0),
                     10,
-                    31,
+                    650,
                     5,
                     29,
-                    710,
+                    2210,
                 )],
             ),
         );

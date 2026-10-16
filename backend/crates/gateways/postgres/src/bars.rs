@@ -190,13 +190,9 @@ impl BarsRepository for PostgresBarsRepository {
                 return Ok(Vec::new());
             }
 
-            return bar_queries::find_intraday_bars(
-                &self.db,
-                to_postgres_query(query),
-                core_application::bars::us_stock_hourly_bar_cutover(Utc::now()).fixed_offset(),
-            )
-            .await
-            .map_err(repository_error);
+            return bar_queries::find_intraday_bars(&self.db, to_postgres_query(query))
+                .await
+                .map_err(repository_error);
         }
 
         bar_queries::find_bars(&self.db, to_postgres_query(query))
@@ -222,7 +218,6 @@ impl BarsRepository for PostgresBarsRepository {
                 timeframe,
                 query.from,
                 query.to,
-                core_application::bars::us_stock_hourly_bar_cutover(Utc::now()).fixed_offset(),
             )
             .await
             .map_err(repository_error);
@@ -1073,7 +1068,6 @@ mod tests {
             Timeframe::Hourly,
             None,
             None,
-            cutoff.fixed_offset(),
         )
         .await
         .expect("find hourly bars");
@@ -1112,6 +1106,79 @@ mod tests {
                 vec![inserted_hourly_bar, api_hourly_bar, expected_latest_hourly],
                 vec![expected_latest_minute],
                 vec![foreign_minute],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn unfinished_hour_remains_visible_between_downsample_runs(db: DatabaseHandle) {
+        let instrument_id = format!("US:DEMO-PARTIAL-{}", uuid::Uuid::new_v4().simple());
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(instrument_id.clone()),
+            name: Set(instrument_id.clone()),
+            market: Set("US".to_owned()),
+            sector: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert instrument");
+
+        let timestamp = |hour, minute| {
+            Utc.with_ymd_and_hms(2040, 1, 2, hour, minute, 0)
+                .single()
+                .expect("fixture timestamp")
+        };
+        let bar = |timeframe, at, open, high, low, close, volume| Bar {
+            instrument_id: instrument_id.clone(),
+            timeframe,
+            timestamp: at,
+            open: Decimal::new(open, 0),
+            high: Decimal::new(high, 0),
+            low: Decimal::new(low, 0),
+            close: Decimal::new(close, 0),
+            volume,
+            adjustment_factor: Decimal::ONE,
+        };
+        let minute_bars = vec![
+            bar(Timeframe::Minute, timestamp(10, 0), 10, 12, 9, 11, 100),
+            bar(Timeframe::Minute, timestamp(10, 1), 11, 15, 10, 14, 200),
+        ];
+        bar_queries::upsert_bars(&db, minute_bars)
+            .await
+            .expect("insert minute bars");
+
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let cutoff = timestamp(10, 30);
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        let stats = repository
+            .downsample_us_stock_minute_bar_range(
+                &transaction,
+                timestamp(10, 0),
+                timestamp(11, 0),
+                cutoff,
+            )
+            .await
+            .expect("downsample partial hour");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit downsample transaction");
+        let hourly_bars = bar_queries::find_intraday_bars_by_instruments(
+            &db,
+            std::slice::from_ref(&instrument_id),
+            Timeframe::Hourly,
+            None,
+            None,
+        )
+        .await
+        .expect("find hourly bars");
+
+        assert_eq!(
+            (stats, hourly_bars),
+            (
+                UsStockMinuteBarsDownsampleStats::default(),
+                vec![bar(Timeframe::Hourly, timestamp(10, 0), 10, 15, 9, 14, 300)],
             ),
         );
     }

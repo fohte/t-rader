@@ -3,20 +3,17 @@ use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 
+use super::OHLCV_AGGREGATES;
+
 const FIND_HOURLY_BARS_SQL: &str = r#"
     WITH minute_bars AS (
         SELECT
             instrument_id,
             time_bucket('1 hour', timestamp) AS timestamp,
-            first(open, timestamp) AS open,
-            MAX(high) AS high,
-            MIN(low) AS low,
-            last(close, timestamp) AS close,
-            SUM(volume)::bigint AS volume
+            {ohlcv_aggregates}
         FROM bars
         WHERE instrument_id IN ({instrument_ids})
           AND timeframe = '1m'
-          AND timestamp >= $1
           AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
           AND (${to}::timestamptz IS NULL OR timestamp < ${to} + INTERVAL '1 hour')
         GROUP BY instrument_id, time_bucket('1 hour', timestamp)
@@ -25,12 +22,18 @@ const FIND_HOURLY_BARS_SQL: &str = r#"
         FROM bars
         WHERE instrument_id IN ({instrument_ids})
           AND timeframe = '1h'
-          AND timestamp < $1
           AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
           AND (${to}::timestamptz IS NULL OR timestamp <= ${to})
         UNION ALL
         SELECT instrument_id, timestamp, open, high, low, close, volume
         FROM minute_bars
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM bars AS hourly
+            WHERE hourly.instrument_id = minute_bars.instrument_id
+              AND hourly.timeframe = '1h'
+              AND hourly.timestamp = minute_bars.timestamp
+        )
     )
     SELECT instrument_id, timestamp, open, high, low, close, volume
     FROM source_bars
@@ -40,32 +43,40 @@ const FIND_HOURLY_BARS_SQL: &str = r#"
 "#;
 
 const FIND_FOUR_HOUR_BARS_SQL: &str = r#"
-    WITH source_bars AS (
+    WITH minute_bars AS (
+        SELECT
+            instrument_id,
+            time_bucket('1 hour', timestamp) AS timestamp,
+            {ohlcv_aggregates}
+        FROM bars
+        WHERE instrument_id IN ({instrument_ids})
+          AND timeframe = '1m'
+          AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
+          AND (${to}::timestamptz IS NULL OR timestamp < ${to} + INTERVAL '4 hours')
+        GROUP BY instrument_id, time_bucket('1 hour', timestamp)
+    ), source_hours AS (
         SELECT instrument_id, timestamp, open, high, low, close, volume
         FROM bars
         WHERE instrument_id IN ({instrument_ids})
           AND timeframe = '1h'
-          AND timestamp < $1
           AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
           AND (${to}::timestamptz IS NULL OR timestamp < ${to} + INTERVAL '4 hours')
         UNION ALL
         SELECT instrument_id, timestamp, open, high, low, close, volume
-        FROM bars
-        WHERE instrument_id IN ({instrument_ids})
-          AND timeframe = '1m'
-          AND timestamp >= $1
-          AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
-          AND (${to}::timestamptz IS NULL OR timestamp < ${to} + INTERVAL '4 hours')
+        FROM minute_bars
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM bars AS hourly
+            WHERE hourly.instrument_id = minute_bars.instrument_id
+              AND hourly.timeframe = '1h'
+              AND hourly.timestamp = minute_bars.timestamp
+        )
     ), aggregated AS (
         SELECT
             instrument_id,
             time_bucket('4 hours', timestamp) AS timestamp,
-            first(open, timestamp) AS open,
-            MAX(high) AS high,
-            MIN(low) AS low,
-            last(close, timestamp) AS close,
-            SUM(volume)::bigint AS volume
-        FROM source_bars
+            {ohlcv_aggregates}
+        FROM source_hours
         GROUP BY instrument_id, time_bucket('4 hours', timestamp)
     )
     SELECT instrument_id, timestamp, open, high, low, close, volume
@@ -91,7 +102,6 @@ pub(super) async fn find_hourly_bars(
     instrument_ids: &[String],
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
-    minute_bar_cutover: DateTime<FixedOffset>,
 ) -> Result<Vec<Bar>, sea_orm::DbErr> {
     query_bars(
         db,
@@ -100,7 +110,6 @@ pub(super) async fn find_hourly_bars(
         instrument_ids,
         from,
         to,
-        minute_bar_cutover,
     )
     .await
 }
@@ -110,7 +119,6 @@ pub(super) async fn find_four_hour_bars(
     instrument_ids: &[String],
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
-    minute_bar_cutover: DateTime<FixedOffset>,
 ) -> Result<Vec<Bar>, sea_orm::DbErr> {
     query_bars(
         db,
@@ -119,7 +127,6 @@ pub(super) async fn find_four_hour_bars(
         instrument_ids,
         from,
         to,
-        minute_bar_cutover,
     )
     .await
 }
@@ -131,13 +138,12 @@ async fn query_bars(
     instrument_ids: &[String],
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
-    minute_bar_cutover: DateTime<FixedOffset>,
 ) -> Result<Vec<Bar>, sea_orm::DbErr> {
     if instrument_ids.is_empty() {
         return Ok(Vec::new());
     }
 
-    let first_instrument_index = 2;
+    let first_instrument_index = 1;
     let instrument_placeholders = (first_instrument_index
         ..first_instrument_index + instrument_ids.len())
         .map(|index| format!("${index}"))
@@ -146,11 +152,11 @@ async fn query_bars(
     let from_index = first_instrument_index + instrument_ids.len();
     let to_index = from_index + 1;
     let sql = sql_template
+        .replace("{ohlcv_aggregates}", OHLCV_AGGREGATES)
         .replace("{instrument_ids}", &instrument_placeholders)
         .replace("{from}", &from_index.to_string())
         .replace("{to}", &to_index.to_string());
     let mut values = Vec::with_capacity(to_index);
-    values.push(minute_bar_cutover.into());
     values.extend(instrument_ids.iter().cloned().map(Into::into));
     values.push(from.into());
     values.push(to.into());

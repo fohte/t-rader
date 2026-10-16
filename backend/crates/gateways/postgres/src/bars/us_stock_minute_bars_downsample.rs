@@ -2,6 +2,8 @@ use chrono::{DateTime, FixedOffset, Utc};
 use core_application::bars::UsStockMinuteBarsDownsampleStats;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 
+use crate::repositories::bars::OHLCV_AGGREGATES;
+
 #[derive(Debug, FromQueryResult)]
 struct TimestampRow {
     timestamp: Option<DateTime<FixedOffset>>,
@@ -44,11 +46,7 @@ pub(super) async fn downsample_minute_bar_range(
                 SELECT
                     instrument_id,
                     time_bucket('1 hour', timestamp) AS timestamp,
-                    first(open, timestamp) AS open,
-                    MAX(high) AS high,
-                    MIN(low) AS low,
-                    last(close, timestamp) AS close,
-                    SUM(volume)::bigint AS volume
+                    {ohlcv_aggregates}
                 FROM bars
                 WHERE instrument_id LIKE 'US:%'
                   AND timeframe = '1m'
@@ -70,7 +68,8 @@ pub(super) async fn downsample_minute_bar_range(
                       AND existing_hourly.timestamp = aggregated.timestamp
                )
             ON CONFLICT (instrument_id, timeframe, timestamp) DO NOTHING
-            "#,
+            "#
+            .replace("{ohlcv_aggregates}", OHLCV_AGGREGATES),
             values.clone(),
         ))
         .await?;
