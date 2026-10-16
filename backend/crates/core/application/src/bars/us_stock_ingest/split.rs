@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use chrono::NaiveDate;
-use core_domain::bar::Timeframe;
+use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
 
 use super::super::error::BarsUseCaseError;
 use super::super::types::{BarsQuery, UsStockBarTarget, UsStockBarsIngestStats};
 use super::super::us_stock_source::{
-    UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitQuery,
+    UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitQuery,
 };
 use super::super::use_cases::BarsUseCases;
 use super::{
@@ -16,6 +16,90 @@ use super::{
 };
 
 impl BarsUseCases {
+    pub(super) async fn fetch_batch_pages(
+        &self,
+        source: &dyn UsStockBarSource,
+        instrument_ids: &[String],
+        timeframe: UsStockBarTimeframe,
+        range: UsStockBarRange,
+        context: &mut BatchIngestContext<'_>,
+    ) -> Result<Option<Vec<Vec<Bar>>>, BarsUseCaseError> {
+        let mut page_token = None;
+        let mut pages = Vec::new();
+        loop {
+            if !context.budget.take(1) {
+                return Ok(None);
+            }
+            context.stats.requests_attempted += 1;
+            let page = match source
+                .fetch_page(&UsStockBarQuery {
+                    instrument_ids: instrument_ids.to_vec(),
+                    timeframe: timeframe.timeframe(),
+                    from: range.from,
+                    to: range.to,
+                    page_token: page_token.clone(),
+                })
+                .await
+            {
+                Ok(page) => page,
+                Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
+                    let (first, second) = match split_rejected_batch(instrument_ids, reason) {
+                        RejectedBatch::Split(first, second) => (first, second),
+                        RejectedBatch::Skipped {
+                            instrument_id,
+                            reason,
+                        } => {
+                            context.record_skipped(instrument_id, reason);
+                            return Ok(Some(pages));
+                        }
+                    };
+                    let Some(mut first_pages) =
+                        Box::pin(self.fetch_batch_pages(source, first, timeframe, range, context))
+                            .await?
+                    else {
+                        return Ok(None);
+                    };
+                    let Some(second_pages) =
+                        Box::pin(self.fetch_batch_pages(source, second, timeframe, range, context))
+                            .await?
+                    else {
+                        return Ok(None);
+                    };
+                    first_pages.extend(second_pages);
+                    return Ok(Some(first_pages));
+                }
+                Err(error) => return Err(error.into()),
+            };
+            for skipped in page.skipped_instruments {
+                context.record_skipped(skipped.instrument_id, skipped.reason);
+            }
+
+            pages.push(page.bars);
+
+            let Some(next_page_token) = page.next_page_token else {
+                return Ok(Some(pages));
+            };
+            if page_token.as_ref() == Some(&next_page_token) {
+                return Err(BarsUseCaseError::UsStockBarSource(
+                    UsStockBarSourceError::Failed("pagination token did not advance".to_owned()),
+                ));
+            }
+            page_token = Some(next_page_token);
+        }
+    }
+
+    pub(super) async fn persist_batch_pages(
+        &self,
+        pages: Vec<Vec<Bar>>,
+        timeframe: UsStockBarTimeframe,
+        stats: &mut UsStockBarsIngestStats,
+    ) -> Result<(), BarsUseCaseError> {
+        for page in pages {
+            self.persist_bars(page, timeframe, stats).await?;
+        }
+        Ok(())
+    }
+
     pub(super) async fn ingest_split_history(
         &self,
         source: &dyn UsStockBarSource,

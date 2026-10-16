@@ -1,21 +1,21 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use chrono::{DateTime, Months, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
-use rust_decimal::Decimal;
 
 use super::error::BarsUseCaseError;
-use super::types::{BarsByInstrumentsQuery, UsStockBarTarget, UsStockBarsIngestStats};
+use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::BarsUseCases;
 
+mod adjustment;
+mod hourly;
 mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
-const MINUTE_HISTORY_MONTHS: u32 = 24;
-const HOURLY_HISTORY_MONTHS: u32 = 12;
+const INTRADAY_HISTORY_BOUNDARY_MONTHS: u32 = 12;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
 
 struct RequestBudget {
@@ -113,7 +113,7 @@ impl UsStockBarTimeframe {
         match self {
             Self::Daily => Utc.timestamp_opt(0, 0).single().unwrap_or(now),
             Self::Minute => now
-                .checked_sub_months(Months::new(MINUTE_HISTORY_MONTHS))
+                .checked_sub_months(Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
                 .unwrap_or(now),
             Self::Hourly => Utc
                 .with_ymd_and_hms(2016, 1, 1, 0, 0, 0)
@@ -125,7 +125,7 @@ impl UsStockBarTimeframe {
     fn history_end(self, now: DateTime<Utc>) -> DateTime<Utc> {
         match self {
             Self::Hourly => now
-                .checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
+                .checked_sub_months(Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
                 .unwrap_or(now),
             Self::Daily | Self::Minute => now,
         }
@@ -157,13 +157,23 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_bars_for_timeframe(
-            source,
-            now,
-            UsStockBarTimeframe::Minute,
-            MAX_REQUESTS_PER_RUN,
-        )
-        .await
+        let mut ingest_result = self
+            .ingest_us_stock_bars_for_timeframe(
+                source,
+                now,
+                UsStockBarTimeframe::Minute,
+                MAX_REQUESTS_PER_RUN,
+            )
+            .await;
+        if let Err(error) = self.repository.compress_bars_older_than_policy(now).await {
+            let compression_error = error.to_string();
+            if let Ok(stats) = &mut ingest_result {
+                stats.compression_error = Some(compression_error);
+            } else {
+                tracing::error!(error = %compression_error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
+            }
+        }
+        ingest_result
     }
 
     pub async fn ingest_us_stock_hourly_bars(
@@ -191,7 +201,9 @@ impl BarsUseCases {
             UsStockBarTimeframe::Daily | UsStockBarTimeframe::Hourly => {
                 self.repository.find_us_stock_daily_bar_targets().await?
             }
-            UsStockBarTimeframe::Minute => self.repository.find_us_stock_bar_targets().await?,
+            UsStockBarTimeframe::Minute => {
+                self.repository.find_us_stock_minute_bar_targets().await?
+            }
         };
         let mut stats = UsStockBarsIngestStats {
             symbols_attempted: targets.len(),
@@ -327,28 +339,6 @@ impl BarsUseCases {
         Ok(completed)
     }
 
-    pub(super) async fn mark_hourly_history_completed(
-        &self,
-        instrument_ids: &[String],
-        completed_through: DateTime<Utc>,
-        skipped_instrument_ids: &HashSet<String>,
-    ) -> Result<(), BarsUseCaseError> {
-        let completed_instrument_ids = instrument_ids
-            .iter()
-            .filter(|instrument_id| !skipped_instrument_ids.contains(*instrument_id))
-            .cloned()
-            .collect::<Vec<_>>();
-        if !completed_instrument_ids.is_empty() {
-            self.repository
-                .mark_us_stock_hourly_bar_history_completed(
-                    &completed_instrument_ids,
-                    completed_through,
-                )
-                .await?;
-        }
-        Ok(())
-    }
-
     async fn ingest_batch(
         &self,
         source: &dyn UsStockBarSource,
@@ -417,90 +407,6 @@ impl BarsUseCases {
         }
     }
 
-    async fn fetch_batch_pages(
-        &self,
-        source: &dyn UsStockBarSource,
-        instrument_ids: &[String],
-        timeframe: UsStockBarTimeframe,
-        range: UsStockBarRange,
-        context: &mut BatchIngestContext<'_>,
-    ) -> Result<Option<Vec<Vec<Bar>>>, BarsUseCaseError> {
-        let mut page_token = None;
-        let mut pages = Vec::new();
-        loop {
-            if !context.budget.take(1) {
-                return Ok(None);
-            }
-            context.stats.requests_attempted += 1;
-            let page = match source
-                .fetch_page(&UsStockBarQuery {
-                    instrument_ids: instrument_ids.to_vec(),
-                    timeframe: timeframe.timeframe(),
-                    from: range.from,
-                    to: range.to,
-                    page_token: page_token.clone(),
-                })
-                .await
-            {
-                Ok(page) => page,
-                Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
-                    let (first, second) = match split_rejected_batch(instrument_ids, reason) {
-                        RejectedBatch::Split(first, second) => (first, second),
-                        RejectedBatch::Skipped {
-                            instrument_id,
-                            reason,
-                        } => {
-                            context.record_skipped(instrument_id, reason);
-                            return Ok(Some(pages));
-                        }
-                    };
-                    let Some(mut first_pages) =
-                        Box::pin(self.fetch_batch_pages(source, first, timeframe, range, context))
-                            .await?
-                    else {
-                        return Ok(None);
-                    };
-                    let Some(second_pages) =
-                        Box::pin(self.fetch_batch_pages(source, second, timeframe, range, context))
-                            .await?
-                    else {
-                        return Ok(None);
-                    };
-                    first_pages.extend(second_pages);
-                    return Ok(Some(first_pages));
-                }
-                Err(error) => return Err(error.into()),
-            };
-            for skipped in page.skipped_instruments {
-                context.record_skipped(skipped.instrument_id, skipped.reason);
-            }
-
-            pages.push(page.bars);
-
-            let Some(next_page_token) = page.next_page_token else {
-                return Ok(Some(pages));
-            };
-            if page_token.as_ref() == Some(&next_page_token) {
-                return Err(BarsUseCaseError::UsStockBarSource(
-                    UsStockBarSourceError::Failed("pagination token did not advance".to_owned()),
-                ));
-            }
-            page_token = Some(next_page_token);
-        }
-    }
-
-    async fn persist_batch_pages(
-        &self,
-        pages: Vec<Vec<Bar>>,
-        timeframe: UsStockBarTimeframe,
-        stats: &mut UsStockBarsIngestStats,
-    ) -> Result<(), BarsUseCaseError> {
-        for page in pages {
-            self.persist_bars(page, timeframe, stats).await?;
-        }
-        Ok(())
-    }
-
     async fn persist_bars(
         &self,
         bars: Vec<Bar>,
@@ -519,51 +425,6 @@ impl BarsUseCases {
             UsStockBarTimeframe::Hourly => stats.hourly_bars_upserted += count,
         }
         self.unit_of_work.commit(transaction).await?;
-        Ok(())
-    }
-
-    async fn preserve_adjustment_factors(&self, bars: &mut [Bar]) -> Result<(), BarsUseCaseError> {
-        if bars.is_empty() {
-            return Ok(());
-        }
-        let instrument_ids = bars
-            .iter()
-            .map(|bar| bar.instrument_id.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let from = bars
-            .iter()
-            .map(|bar| bar.timestamp)
-            .min()
-            .map(|timestamp| timestamp.fixed_offset());
-        let to = bars
-            .iter()
-            .map(|bar| bar.timestamp)
-            .max()
-            .map(|timestamp| timestamp.fixed_offset());
-        let stored_bars = self
-            .repository
-            .find_bars_by_instruments(BarsByInstrumentsQuery {
-                instrument_ids,
-                timeframe: Timeframe::Daily.to_string(),
-                from,
-                to,
-            })
-            .await?;
-        let stored_factors: HashMap<(String, DateTime<Utc>), Decimal> = stored_bars
-            .into_iter()
-            .filter(|bar| bar.adjustment_factor != Decimal::ONE)
-            .map(|bar| ((bar.instrument_id, bar.timestamp), bar.adjustment_factor))
-            .collect();
-        for bar in bars {
-            if bar.adjustment_factor == Decimal::ONE
-                && let Some(factor) =
-                    stored_factors.get(&(bar.instrument_id.clone(), bar.timestamp))
-            {
-                bar.adjustment_factor = *factor;
-            }
-        }
         Ok(())
     }
 }
@@ -630,7 +491,7 @@ mod tests {
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    use super::{MAX_REQUESTS_PER_RUN, MINUTE_HISTORY_MONTHS};
+    use super::{INTRADAY_HISTORY_BOUNDARY_MONTHS, MAX_REQUESTS_PER_RUN};
 
     struct Harness {
         use_cases: BarsUseCases,
@@ -665,6 +526,7 @@ mod tests {
         rejected_instruments: Vec<String>,
         skipped_instruments: Vec<String>,
         rejected_split_instruments: Vec<String>,
+        fetch_error: Option<String>,
     }
 
     struct PaginatedPages {
@@ -693,6 +555,9 @@ mod tests {
             query: &UsStockBarQuery,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
             self.calls.lock().await.push(query.clone());
+            if let Some(message) = &self.fetch_error {
+                return Err(UsStockBarSourceError::Failed(message.clone()));
+            }
             if query
                 .instrument_ids
                 .iter()
@@ -1200,7 +1065,7 @@ mod tests {
         let (daily_bars, minute_bars) =
             partition_daily_bars(harness.repository.bars.lock().await.clone());
         let expected_minute_start = now
-            .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
+            .checked_sub_months(chrono::Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
             .unwrap_or(now);
         let expected = (
             UsStockBarsIngestStats {
@@ -1211,6 +1076,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                compression_error: None,
             },
             UsStockBarsIngestStats {
                 symbols_attempted: 2,
@@ -1220,6 +1086,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                compression_error: None,
             },
             vec![
                 UsStockBarQuery {
@@ -1278,10 +1145,14 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn daily_and_hourly_targets_match_while_minute_targets_stay_referenced(harness: Harness) {
+    async fn minute_ingestion_uses_repository_selected_minute_targets(harness: Harness) {
         harness
             .repository
             .seed_us_stock_targets(vec!["US:QZ-MINUTE".to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_us_stock_minute_targets(vec!["US:QZ-DAILY".to_owned()])
             .await;
         harness
             .repository
@@ -1315,7 +1186,7 @@ mod tests {
             ),
             (
                 2,
-                1,
+                2,
                 2,
                 vec![
                     UsStockBarQuery {
@@ -1326,11 +1197,9 @@ mod tests {
                         page_token: None,
                     },
                     UsStockBarQuery {
-                        instrument_ids: vec!["US:QZ-MINUTE".to_owned()],
+                        instrument_ids: vec!["US:QZ-DAILY".to_owned(), "US:QZ-MINUTE".to_owned()],
                         timeframe: Timeframe::Minute,
-                        from: now
-                            .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
-                            .unwrap_or(now),
+                        from: date("2039-01-02T12:00:00Z"),
                         to: now,
                         page_token: None,
                     },
@@ -1342,6 +1211,84 @@ mod tests {
                         page_token: None,
                     },
                 ],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_requests_compression_using_current_time(harness: Harness) {
+        let now = date("2040-01-02T12:00:00Z");
+
+        harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("US stock minute bar ingestion succeeds");
+
+        assert_eq!(
+            *harness.repository.bar_compression_times.lock().await,
+            vec![now],
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_returns_ingest_stats_when_compression_fails(harness: Harness) {
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .fail_bar_compression_with("compression failed")
+            .await;
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("compression failure does not mask minute ingestion stats");
+
+        assert_eq!(
+            stats,
+            UsStockBarsIngestStats {
+                compression_error: Some("compression failed".to_owned()),
+                ..UsStockBarsIngestStats::default()
+            },
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_preserves_ingest_error_when_compression_fails(mut harness: Harness) {
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec!["US:QZ-MINUTE".to_owned()])
+            .await;
+        harness.source.fetch_error = Some("minute fetch failed".to_owned());
+        harness
+            .repository
+            .fail_bar_compression_with("compression failed")
+            .await;
+
+        let actual = (
+            harness
+                .use_cases
+                .ingest_us_stock_minute_bars(&harness.source, now)
+                .await
+                .expect_err("minute source failure is returned"),
+            harness
+                .repository
+                .bar_compression_times
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            (actual.0.to_string(), actual.1),
+            (
+                "US stock bar source error: minute fetch failed".to_owned(),
+                vec![now]
             ),
         );
     }
@@ -1383,6 +1330,7 @@ mod tests {
                         reason: "synthetic symbol rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -1497,7 +1445,7 @@ mod tests {
         let missing_latest = date("2040-01-04T11:59:00Z");
         let now = date("2040-01-04T12:00:00Z");
         let history_start = now
-            .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
+            .checked_sub_months(chrono::Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
             .unwrap_or(now);
         harness
             .repository
@@ -1578,6 +1526,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    compression_error: None,
                 },
                 UsStockBarsIngestStats {
                     symbols_attempted: 2,
@@ -1587,6 +1536,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 expected_calls,
                 vec![
@@ -1684,6 +1634,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    compression_error: None,
                 },
                 expected_calls,
                 vec![UsStockSplitQuery {
@@ -1756,6 +1707,7 @@ mod tests {
                         reason: "synthetic split rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -1870,6 +1822,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -2265,6 +2218,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![UsStockBarQuery {
                     instrument_ids: vec![instrument_id.to_owned()],
@@ -2342,6 +2296,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -2422,6 +2377,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![UsStockBarQuery {
                     instrument_ids: vec![instrument_id.to_owned()],
