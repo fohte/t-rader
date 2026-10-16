@@ -10,9 +10,11 @@ import type { SubagentDefinition } from '#strategy-agent/subagent-definition-cli
 import {
   buildSubagentAgent,
   type CreateRunSubagentToolOptions,
+  toError,
+} from '#strategy-agent/subagent-run'
+import {
   finalizeTimedOutSubagent,
   getParentDeadlineError,
-  toError,
 } from '#strategy-agent/subagent-timeout'
 
 const RUN_SUBAGENT_TOOL_NAME = 'run_subagent'

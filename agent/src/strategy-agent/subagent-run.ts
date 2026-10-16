@@ -1,0 +1,71 @@
+import { DynamicStructuredTool } from '@langchain/core/tools'
+
+import { buildOutputJsonSchema } from '#strategy-agent/agent-graph/output-schema'
+import type {
+  CompiledPhaseAgent,
+  RunAgentGraphDeps,
+  StepRecorder,
+} from '#strategy-agent/agent-graph/run-agent-graph/types'
+import type { AgentGraphPhase } from '#strategy-agent/agent-graph/types'
+import type { ModelCallBudget } from '#strategy-agent/final-turn-middleware'
+import type { PhaseTimeout } from '#strategy-agent/phase-timeout'
+import type { McpToolsClient } from '#strategy-agent/strategy-agent'
+import type {
+  FetchSubagentDefinition,
+  SubagentDefinition,
+} from '#strategy-agent/subagent-definition-client'
+
+export interface SubagentRunCounter {
+  count: number
+}
+
+export interface CreateRunSubagentToolOptions {
+  readonly phase: AgentGraphPhase
+  readonly parentExecutionStepId: string
+  readonly recorder: StepRecorder
+  readonly runCounter: SubagentRunCounter
+  readonly fetchDefinition: FetchSubagentDefinition
+  readonly createMcpClient: (
+    executionStepId: string,
+    definitionKey: string,
+  ) => McpToolsClient
+  readonly deps: RunAgentGraphDeps
+  readonly deadlineSignal?: AbortSignal
+  readonly phaseTimeout?: PhaseTimeout
+}
+
+export const toError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error))
+
+export const buildSubagentAgent = (
+  definition: SubagentDefinition,
+  deps: RunAgentGraphDeps,
+  tools: readonly DynamicStructuredTool[],
+  options: {
+    readonly deadlineSignal?: AbortSignal
+    readonly phaseTimeout?: PhaseTimeout
+    readonly modelCallBudget: ModelCallBudget
+    readonly systemPrompt?: string
+  },
+): CompiledPhaseAgent =>
+  deps.buildPhaseAgent({
+    model: deps.createChatModel(definition.model, {
+      ...(definition.reasoningEffort !== undefined
+        ? { reasoningEffort: definition.reasoningEffort }
+        : {}),
+    }),
+    tools,
+    systemPrompt: options.systemPrompt ?? definition.prompt,
+    responseSchema: buildOutputJsonSchema(definition.output),
+    modelCallBudget: options.modelCallBudget,
+    captureMessagesOnAbort: true,
+    ...(options.deadlineSignal !== undefined
+      ? { agentSignal: options.deadlineSignal }
+      : {}),
+    ...(options.deadlineSignal !== undefined
+      ? { deadlineSignal: options.deadlineSignal }
+      : {}),
+    ...(options.phaseTimeout !== undefined
+      ? { phaseTimeout: options.phaseTimeout }
+      : {}),
+  })
