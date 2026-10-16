@@ -5,6 +5,7 @@ import {
   type BaseMessage,
   ChatMessage,
   HumanMessage,
+  ToolMessage,
 } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
@@ -1416,7 +1417,6 @@ describe('createStrategyAgentDeps', () => {
         model,
         tools: [buildFakeTool('search')],
         systemPrompt: 'you are a helpful bot',
-        maxModelCalls: modelCallBudget.maxModelCalls,
         modelCallBudget,
       },
     )
@@ -2024,6 +2024,109 @@ describe('createStrategyAgentDeps', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  it('keeps the last streamed messages when a deadline aborts a later model call', async () => {
+    const controller = new AbortController()
+    let callCount = 0
+    let markSecondCallStarted = (): void => undefined
+    const secondCallStarted = new Promise<void>((resolve) => {
+      markSecondCallStarted = () => {
+        resolve()
+      }
+    })
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      if (callCount === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('stream-search-call', {
+            name: 'search',
+            arguments: '{}',
+          }),
+        )
+      }
+      markSecondCallStarted()
+      return new Promise((_resolve, reject) => {
+        const signal = init?.signal
+        if (signal == null) {
+          reject(new Error('expected the model request to receive a signal'))
+          return
+        }
+        const rejectOnAbort = (): void => {
+          reject(new Error('aborted'))
+        }
+        if (signal.aborted) {
+          rejectOnAbort()
+          return
+        }
+        signal.addEventListener('abort', rejectOnAbort, { once: true })
+      })
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+    const searchTool = new DynamicStructuredTool({
+      name: 'search',
+      description: 'Return synthetic search evidence.',
+      schema: z.object({}),
+      func: () => Promise.resolve('Collected synthetic evidence.'),
+    })
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [searchTool],
+      systemPrompt: 'test system prompt',
+      deadlineSignal: controller.signal,
+      captureMessagesOnAbort: true,
+    })
+    const resultPromise = agent.invoke({
+      messages: [new HumanMessage('Investigate the assigned question.')],
+    })
+    await secondCallStarted
+    controller.abort()
+    const result = await resultPromise
+    const streamedMessages = result.messages?.map((message) => {
+      if (message instanceof AIMessage) {
+        return {
+          role: 'assistant',
+          content: message.text,
+          toolCalls: (message.tool_calls ?? []).map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.name,
+            args: toolCall.args,
+          })),
+        }
+      }
+      if (message instanceof ToolMessage) {
+        return {
+          role: 'tool',
+          toolCallId: message.tool_call_id,
+          content: message.text,
+        }
+      }
+      return { role: message.type, content: message.text }
+    })
+    const actual = Array.of<unknown>(callCount, streamedMessages)
+
+    expect(actual).toEqual([
+      2,
+      [
+        { role: 'human', content: 'Investigate the assigned question.' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            {
+              id: 'stream-search-call',
+              name: 'search',
+              args: {},
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          toolCallId: 'stream-search-call',
+          content: 'Collected synthetic evidence.',
+        },
+      ],
+    ])
   })
 
   it('reports a phase timeout and does not retry the aborted model call', async () => {

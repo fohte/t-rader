@@ -1,7 +1,12 @@
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
-import { type BaseMessage, HumanMessage } from '@langchain/core/messages'
+import {
+  AIMessage,
+  type BaseMessage,
+  HumanMessage,
+  ToolMessage,
+} from '@langchain/core/messages'
 import { DynamicStructuredTool } from '@langchain/core/tools'
-import { err, ok, type Result } from 'neverthrow'
+import { err, ok, type Result, ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
 import { buildOutputJsonSchema } from '#strategy-agent/agent-graph/output-schema'
@@ -12,6 +17,7 @@ import type {
 } from '#strategy-agent/agent-graph/run-agent-graph/types'
 import { withPhaseSpan } from '#strategy-agent/agent-graph/tracing'
 import type { AgentGraphPhase } from '#strategy-agent/agent-graph/types'
+import type { ModelCallBudget } from '#strategy-agent/final-turn-middleware'
 import {
   isPhaseTimeoutSignal,
   type PhaseTimeout,
@@ -132,10 +138,7 @@ const buildSubagentAgent = (
   options: {
     readonly deadlineSignal?: AbortSignal
     readonly phaseTimeout?: PhaseTimeout
-    readonly modelCallBudget: {
-      readonly maxModelCalls: number
-      count: number
-    }
+    readonly modelCallBudget: ModelCallBudget
     readonly systemPrompt?: string
   },
 ): CompiledPhaseAgent =>
@@ -148,7 +151,6 @@ const buildSubagentAgent = (
     tools,
     systemPrompt: options.systemPrompt ?? definition.prompt,
     responseSchema: buildOutputJsonSchema(definition.output),
-    maxModelCalls: definition.maxModelCalls,
     modelCallBudget: options.modelCallBudget,
     captureMessagesOnAbort: true,
     ...(options.deadlineSignal !== undefined
@@ -175,7 +177,7 @@ const finalizeTimedOutSubagent = (
   definition: SubagentDefinition,
   executionStepId: string,
   options: CreateRunSubagentToolOptions,
-  modelCallBudget: { readonly maxModelCalls: number; count: number },
+  modelCallBudget: ModelCallBudget,
   messages: readonly BaseMessage[],
 ): Promise<Result<Record<string, unknown>, Error>> => {
   if (options.deadlineSignal?.aborted === true) {
@@ -204,10 +206,11 @@ const finalizeTimedOutSubagent = (
       '制限時間に達しました。これまでに得た情報だけを使って結果を返してください。',
     ].join('\n\n'),
   })
+  const completedToolCalls = completeInterruptedToolCalls(messages)
   return getStructuredResponse(
     finalizer,
     [
-      ...messages,
+      ...completedToolCalls,
       new HumanMessage(
         '制限時間に達しました。追加調査は行わず、ここまでの情報から指定形式の結果を返してください。',
       ),
@@ -217,6 +220,41 @@ const finalizeTimedOutSubagent = (
     (response) => ok(response),
     (error: unknown) => err(toError(error)),
   )
+}
+
+const completeInterruptedToolCalls = (
+  messages: readonly BaseMessage[],
+): BaseMessage[] => {
+  const pendingToolCalls = new Map<string, string>()
+  const completedMessages: BaseMessage[] = []
+  for (const message of messages) {
+    if (message instanceof AIMessage) {
+      const toolCalls = message.tool_calls ?? []
+      if (toolCalls.some((toolCall) => toolCall.id === undefined)) {
+        break
+      }
+      for (const toolCall of toolCalls) {
+        if (toolCall.id === undefined) continue
+        pendingToolCalls.set(toolCall.id, toolCall.name)
+      }
+    } else if (message instanceof ToolMessage) {
+      pendingToolCalls.delete(message.tool_call_id)
+    }
+    completedMessages.push(message)
+  }
+  if (pendingToolCalls.size === 0) return completedMessages
+  return [
+    ...completedMessages,
+    ...[...pendingToolCalls].map(
+      ([toolCallId, name]) =>
+        new ToolMessage({
+          name,
+          tool_call_id: toolCallId,
+          status: 'error',
+          content: '調査用 tool 呼び出しは制限時間で中断されました。',
+        }),
+    ),
+  ]
 }
 
 const runWithDefinition = (
@@ -345,36 +383,51 @@ export const createRunSubagentTool = (
         )
       }
       options.runCounter.count += 1
-      const fetched = await options.fetchDefinition(key)
-      if (fetched.isErr()) return Promise.reject(fetched.error)
-      const definition = fetched.value
-      if (definition.key !== key) {
-        return Promise.reject(
-          new Error(`subagent definition key mismatch for ${key}`),
-        )
-      }
-
       const executionStepId = crypto.randomUUID()
-      const spanName = `Subagent ${definition.key}`
+      const spanName = `Subagent ${key}`
       const result = await withPhaseSpan(
         spanName,
         {
           'phase.key': options.phase.key,
           'phase.execution_step_id': options.parentExecutionStepId,
-          'subagent.key': definition.key,
-          'subagent.model': definition.model,
+          'subagent.key': key,
         },
         async (spanIds) => {
-          const stepIndex = options.recorder.start({
-            phaseKey: `subagent:${definition.key}`,
-            executionStepId,
-            label: definition.description,
-            model: definition.model,
-            item: { brief },
-            startedAt: new Date().toISOString(),
-            traceId: spanIds.traceId,
-            spanId: spanIds.spanId,
-          })
+          const startStep = (label: string, model: string): number =>
+            options.recorder.start({
+              phaseKey: `subagent:${key}`,
+              executionStepId,
+              label,
+              model,
+              item: { brief },
+              startedAt: new Date().toISOString(),
+              traceId: spanIds.traceId,
+              spanId: spanIds.spanId,
+            })
+          const fetched = await ResultAsync.fromPromise(
+            Promise.resolve().then(() => options.fetchDefinition(key)),
+            toError,
+          ).andThen((result) => result)
+          if (fetched.isErr()) {
+            const stepIndex = startStep(key, 'unknown')
+            options.recorder.finish(stepIndex, {
+              status: 'failed',
+              error: fetched.error.message,
+            })
+            return err(fetched.error)
+          }
+          const definition = fetched.value
+          const stepIndex = startStep(definition.description, definition.model)
+          if (definition.key !== key) {
+            const error = new Error(
+              `subagent definition key mismatch for ${key}`,
+            )
+            options.recorder.finish(stepIndex, {
+              status: 'failed',
+              error: error.message,
+            })
+            return err(error)
+          }
           const output = await runWithDefinition(
             definition,
             brief,

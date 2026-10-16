@@ -1,8 +1,8 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { HumanMessage } from '@langchain/core/messages'
+import { AIMessage, ToolMessage } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
-import { okAsync } from 'neverthrow'
+import { errAsync, okAsync } from 'neverthrow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -144,7 +144,6 @@ describe('createRunSubagentTool', () => {
         tools: options.tools.map((toolItem) => toolItem.name),
         systemPrompt: options.systemPrompt,
         responseSchema: options.responseSchema,
-        maxModelCalls: options.maxModelCalls,
         modelCallBudget: options.modelCallBudget,
         captureMessagesOnAbort: options.captureMessagesOnAbort,
       })),
@@ -174,7 +173,6 @@ describe('createRunSubagentTool', () => {
             description:
               "Tool for extracting structured output from the model's response.",
           },
-          maxModelCalls: 3,
           modelCallBudget: { maxModelCalls: 3, count: 0 },
           captureMessagesOnAbort: true,
         },
@@ -290,6 +288,7 @@ describe('createRunSubagentTool', () => {
   it('finalizes the child conversation when its timeout aborts the run', async () => {
     vi.useFakeTimers()
     const buildOptions: BuildPhaseAgentOptions[] = []
+    const finalizerMessageHistory: unknown[][] = []
     const runAgentDeps: RunAgentGraphDeps = {
       createChatModel: () => new FakeChatModel({}),
       buildPhaseAgent: (options): CompiledPhaseAgent => {
@@ -297,6 +296,31 @@ describe('createRunSubagentTool', () => {
         return {
           invoke: ({ messages }) => {
             if (options.tools.length === 0) {
+              finalizerMessageHistory.push(
+                messages.map((message) => {
+                  if (message instanceof AIMessage) {
+                    return {
+                      role: 'assistant',
+                      toolCalls: (message.tool_calls ?? []).map((toolCall) => ({
+                        id: toolCall.id,
+                        name: toolCall.name,
+                        args: toolCall.args,
+                      })),
+                    }
+                  }
+                  if (message instanceof ToolMessage) {
+                    return {
+                      role: 'tool',
+                      toolCallId: message.tool_call_id,
+                      ...(message.status !== undefined
+                        ? { status: message.status }
+                        : {}),
+                      content: message.text,
+                    }
+                  }
+                  return { role: message.type, content: message.text }
+                }),
+              )
               return Promise.resolve({
                 structuredResponse: {
                   conclusion: 'A partial conclusion',
@@ -315,7 +339,26 @@ describe('createRunSubagentTool', () => {
                   resolve({
                     messages: [
                       ...messages,
-                      new HumanMessage('Collected partial evidence.'),
+                      new AIMessage({
+                        tool_calls: [
+                          {
+                            id: 'completed-search-call',
+                            name: 'search_web',
+                            args: { query: 'completed query' },
+                            type: 'tool_call',
+                          },
+                          {
+                            id: 'interrupted-search-call',
+                            name: 'search_web',
+                            args: { query: 'interrupted query' },
+                            type: 'tool_call',
+                          },
+                        ],
+                      }),
+                      new ToolMessage({
+                        tool_call_id: 'completed-search-call',
+                        content: 'Collected partial evidence.',
+                      }),
                     ],
                   })
                 },
@@ -351,15 +394,113 @@ describe('createRunSubagentTool', () => {
       result,
       buildOptions.map((options) => options.systemPrompt),
       buildOptions.map((options) => options.tools.length),
+      finalizerMessageHistory,
     )
 
     expect(actual).toEqual([
       { conclusion: 'A partial conclusion', sources: [] },
       [
         'Investigate the question and return evidence.',
-        'Investigate the question and return evidence.\n\n制限時間に達しました。これまでに得た情報だけを使って結果を返してください。',
+        `Investigate the question and return evidence.
+
+制限時間に達しました。これまでに得た情報だけを使って結果を返してください。`,
       ],
       [1, 0],
+      [
+        [
+          { role: 'human', content: 'Find what can be established.' },
+          {
+            role: 'assistant',
+            toolCalls: [
+              {
+                id: 'completed-search-call',
+                name: 'search_web',
+                args: { query: 'completed query' },
+              },
+              {
+                id: 'interrupted-search-call',
+                name: 'search_web',
+                args: { query: 'interrupted query' },
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            toolCallId: 'completed-search-call',
+            content: 'Collected partial evidence.',
+          },
+          {
+            role: 'tool',
+            toolCallId: 'interrupted-search-call',
+            status: 'error',
+            content: '調査用 tool 呼び出しは制限時間で中断されました。',
+          },
+          {
+            role: 'human',
+            content:
+              '制限時間に達しました。追加調査は行わず、ここまでの情報から指定形式の結果を返してください。',
+          },
+        ],
+      ],
+    ])
+  })
+
+  it('records a failed child step when its definition cannot be fetched', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    )
+    const notifications: (readonly StrategyTaskStep[])[] = []
+    const tool = createRunSubagentTool({
+      phase,
+      parentExecutionStepId: 'parent-step-id',
+      recorder: createStepRecorder((steps) => notifications.push(steps)),
+      runCounter: { count: 0 },
+      fetchDefinition: () => errAsync(new Error('definition unavailable')),
+      createMcpClient: () => ({
+        getTools: () => Promise.resolve([]),
+        close: () => Promise.resolve(),
+      }),
+      deps: {
+        createChatModel: () => new FakeChatModel({}),
+        buildPhaseAgent: () => ({
+          invoke: () => Promise.resolve({ structuredResponse: {} }),
+        }),
+      },
+    })
+    const outcome = await tool
+      .invoke({
+        key: 'researcher',
+        brief: 'Investigate the assigned question.',
+      })
+      .then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (error: unknown) => ({
+          status: 'rejected' as const,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      )
+    const actual = Array.of<unknown>(
+      outcome,
+      normalizeStepTimestamps(notifications.at(-1) ?? []),
+    )
+
+    expect(actual).toEqual([
+      { status: 'rejected', message: 'definition unavailable' },
+      [
+        {
+          phaseKey: 'subagent:researcher',
+          executionStepId: '<execution-step-id-1>',
+          label: 'researcher',
+          model: 'unknown',
+          status: 'failed',
+          item: { brief: 'Investigate the assigned question.' },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: '00000000000000000000000000000000',
+          spanId: '0000000000000000',
+          error: 'definition unavailable',
+        },
+      ],
     ])
   })
 

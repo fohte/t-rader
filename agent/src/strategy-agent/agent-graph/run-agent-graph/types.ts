@@ -5,6 +5,7 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 import type { ObjectJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { AgentGraphPhase } from '#strategy-agent/agent-graph/types'
+import type { ModelCallBudget } from '#strategy-agent/final-turn-middleware'
 import type { PhaseTimeout } from '#strategy-agent/phase-timeout'
 import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 
@@ -15,11 +16,7 @@ export interface BuildPhaseAgentOptions {
   readonly responseSchema: ObjectJsonSchema
   readonly deadlineSignal?: AbortSignal
   readonly phaseTimeout?: PhaseTimeout
-  readonly maxModelCalls?: number
-  readonly modelCallBudget?: {
-    readonly maxModelCalls: number
-    count: number
-  }
+  readonly modelCallBudget?: ModelCallBudget
   readonly captureMessagesOnAbort?: boolean
 }
 

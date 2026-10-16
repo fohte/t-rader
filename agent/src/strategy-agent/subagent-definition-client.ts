@@ -1,6 +1,7 @@
 import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 
 import type { components } from '#lib/api/schema.gen'
+import { isPlainObject } from '#strategy-agent/agent-graph/json'
 
 type SubagentDefinitionResponse =
   components['schemas']['SubagentDefinitionResponse']
@@ -26,17 +27,14 @@ class SubagentDefinitionFetchError extends Error {
 }
 
 const isRecordOfNumbers = (value: unknown): value is Record<string, number> =>
-  typeof value === 'object' &&
-  value !== null &&
-  !Array.isArray(value) &&
+  isPlainObject(value) &&
   Object.values(value).every((item) => typeof item === 'number')
 
 const isSubagentDefinitionResponse = (
   value: unknown,
 ): value is SubagentDefinitionResponse => {
-  if (typeof value !== 'object' || value === null) return false
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- API の未検証値を各フィールドの typeof で絞り込む。
-  const record = value as Record<string, unknown>
+  if (!isPlainObject(value)) return false
+  const record = value
   return (
     typeof record['id'] === 'string' &&
     typeof record['key'] === 'string' &&
@@ -51,9 +49,7 @@ const isSubagentDefinitionResponse = (
     typeof record['timeout_minutes'] === 'number' &&
     typeof record['max_model_calls'] === 'number' &&
     isRecordOfNumbers(record['tool_limits']) &&
-    typeof record['output'] === 'object' &&
-    record['output'] !== null &&
-    !Array.isArray(record['output']) &&
+    isPlainObject(record['output']) &&
     typeof record['created_at'] === 'string' &&
     typeof record['updated_at'] === 'string'
   )

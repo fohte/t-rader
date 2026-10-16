@@ -130,6 +130,24 @@ const createPhaseAgent = (
   })
 }
 
+const resolveLocalTools = (
+  phase: AgentGraphPhase,
+  executionStepId: string,
+  recorder: StepRecorder,
+  context: RunAgentGraphContext,
+): Result<DynamicStructuredTool[], Error> => {
+  if (phase.subagents.length === 0) return ok([])
+  const factory = context.createSubagentTool
+  if (factory === undefined) {
+    return err(
+      new Error(
+        `phase ${phase.key} declares subagents but no subagent tool factory is configured`,
+      ),
+    )
+  }
+  return ok([factory(phase, executionStepId, recorder, context)])
+}
+
 // invoke() 自体の reject (usage limit・ツール失敗・ネットワークエラー等) は
 // 再試行せず即座に伝播する。再試行するのは invoke が成功したにもかかわらず
 // structured response を欠く場合と、structured response はあるが
@@ -235,30 +253,21 @@ export const invokeAndRecordStep = (
           Promise.resolve()
             .then(async () => {
               const mcpTools = await stepMcpClient.getTools()
-              if (
-                phase.subagents.length > 0 &&
-                context.createSubagentTool === undefined
-              ) {
-                return err(
-                  new Error(
-                    `phase ${phase.key} declares subagents but no subagent tool factory is configured`,
-                  ),
-                )
-              }
-              const localTools =
-                phase.subagents.length > 0 &&
-                context.createSubagentTool !== undefined
-                  ? [
-                      context.createSubagentTool(
-                        phase,
-                        executionStepId,
-                        recorder,
-                        context,
-                      ),
-                    ]
-                  : []
+              const localTools = resolveLocalTools(
+                phase,
+                executionStepId,
+                recorder,
+                context,
+              )
+              if (localTools.isErr()) return err(localTools.error)
               return invokePhaseWithRetry(
-                createPhaseAgent(deps, phase, context, mcpTools, localTools),
+                createPhaseAgent(
+                  deps,
+                  phase,
+                  context,
+                  mcpTools,
+                  localTools.value,
+                ),
                 messages,
                 executionStepId,
                 requiredArrayFields,

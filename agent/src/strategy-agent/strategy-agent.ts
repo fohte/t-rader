@@ -13,6 +13,7 @@ import { extractMessageText } from '#a2a/message-text'
 import { logger } from '#logger'
 import type { FetchAgentConfig } from '#strategy-agent/agent-config-client'
 import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
+import { isPlainObject } from '#strategy-agent/agent-graph/json'
 import { parseAgentGraph } from '#strategy-agent/agent-graph/parse'
 import type {
   BuildPhaseAgentOptions,
@@ -121,20 +122,16 @@ const buildCompiledAgent = (
     responseFormat: ReturnType<typeof toolStrategy>
     deadlineSignal?: AbortSignal
     phaseTimeout?: BuildPhaseAgentOptions['phaseTimeout']
-    maxModelCalls?: number
     modelCallBudget?: ModelCallBudget
     captureMessagesOnAbort?: boolean
   },
 ): CompiledPhaseAgent => {
+  const maxModelCalls =
+    options.modelCallBudget?.maxModelCalls ?? MAX_MODEL_CALLS_PER_INVOKE
   const modelCallMiddleware =
     options.modelCallBudget !== undefined
-      ? createFinalTurnMiddleware(
-          options.maxModelCalls ?? options.modelCallBudget.maxModelCalls,
-          options.modelCallBudget,
-        )
-      : options.maxModelCalls !== undefined
-        ? createFinalTurnMiddleware(options.maxModelCalls)
-        : finalTurnMiddleware
+      ? createFinalTurnMiddleware(maxModelCalls, options.modelCallBudget)
+      : finalTurnMiddleware
   const agent = createAgent({
     model: options.model,
     tools: [...options.tools],
@@ -175,10 +172,7 @@ const buildCompiledAgent = (
   })
   return {
     invoke: async (input) => {
-      const recursionLimit =
-        (options.modelCallBudget?.maxModelCalls ??
-          options.maxModelCalls ??
-          MAX_MODEL_CALLS_PER_INVOKE) * 3
+      const recursionLimit = maxModelCalls * 3
       if (options.captureMessagesOnAbort === true) {
         let latestState: {
           readonly messages: readonly BaseMessage[]
@@ -237,9 +231,8 @@ const parseAgentState = (
       readonly structuredResponse?: Record<string, unknown>
     }
   | undefined => {
-  if (typeof value !== 'object' || value === null) return undefined
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent state の既知フィールドを個別に検証する。
-  const record = value as Record<string, unknown>
+  if (!isPlainObject(value)) return undefined
+  const record = value
   const messages = Array.isArray(record['messages'])
     ? record['messages'].filter(
         (message): message is BaseMessage => message instanceof BaseMessage,
@@ -248,14 +241,7 @@ const parseAgentState = (
   const structuredResponse = record['structuredResponse']
   return {
     messages,
-    ...(typeof structuredResponse === 'object' &&
-    structuredResponse !== null &&
-    !Array.isArray(structuredResponse)
-      ? {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- object/null/array を除外済みの structured response。
-          structuredResponse: structuredResponse as Record<string, unknown>,
-        }
-      : {}),
+    ...(isPlainObject(structuredResponse) ? { structuredResponse } : {}),
   }
 }
 
