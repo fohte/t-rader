@@ -165,7 +165,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use core_domain::business_day::latest_business_day;
     use rstest::{fixture, rstest};
@@ -305,6 +305,24 @@ mod tests {
             &self,
             _: BarsByInstrumentsQuery,
         ) -> Result<Vec<Bar>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn find_earliest_us_stock_minute_bar_before(
+            &self,
+            _: DateTime<Utc>,
+        ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn downsample_us_stock_minute_bar_range(
+            &self,
+            _: &UnitOfWorkTransaction,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+            _: DateTime<Utc>,
+        ) -> Result<super::super::types::UsStockMinuteBarsDownsampleStats, BarsRepositoryError>
+        {
             Err(database_error())
         }
 

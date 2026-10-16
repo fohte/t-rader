@@ -62,6 +62,12 @@ pub struct UsStockBarsIngestStats {
     pub interrupted_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+pub struct UsStockMinuteBarsDownsampleStats {
+    pub hourly_bars_inserted: u64,
+    pub minute_bars_deleted: u64,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct LatestPrices {
     /// `priced_at` と同じ観測日の終値だけを含む。

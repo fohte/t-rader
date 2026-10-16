@@ -1,4 +1,5 @@
 mod daily_adjustment_factors;
+mod us_stock_intraday;
 
 pub use daily_adjustment_factors::find_daily_adjustment_factors_from;
 
@@ -189,13 +190,21 @@ pub async fn find_bars(
 pub async fn find_intraday_bars(
     db: &impl ConnectionTrait,
     query: BarsQuery,
+    minute_bar_cutover: DateTime<FixedOffset>,
 ) -> Result<Vec<Bar>, DbErr> {
     let Ok(timeframe) = query.timeframe.parse::<Timeframe>() else {
         return Ok(Vec::new());
     };
 
-    find_intraday_bars_by_instruments(db, &[query.instrument_id], timeframe, query.from, query.to)
-        .await
+    find_intraday_bars_by_instruments(
+        db,
+        &[query.instrument_id],
+        timeframe,
+        query.from,
+        query.to,
+        minute_bar_cutover,
+    )
+    .await
 }
 
 async fn find_bars_with_sql_template(
@@ -265,7 +274,29 @@ pub async fn find_intraday_bars_by_instruments(
     timeframe: Timeframe,
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
+    minute_bar_cutover: DateTime<FixedOffset>,
 ) -> Result<Vec<Bar>, DbErr> {
+    if timeframe == Timeframe::Hourly {
+        return us_stock_intraday::find_hourly_bars(
+            db,
+            instrument_ids,
+            from,
+            to,
+            minute_bar_cutover,
+        )
+        .await;
+    }
+    if timeframe == Timeframe::FourHours {
+        return us_stock_intraday::find_four_hour_bars(
+            db,
+            instrument_ids,
+            from,
+            to,
+            minute_bar_cutover,
+        )
+        .await;
+    }
+
     let (sql_template, interval) = match timeframe {
         Timeframe::Minute => (FIND_ONE_MINUTE_BARS_SQL, None),
         _ => match timeframe.bucket_interval() {
@@ -538,6 +569,7 @@ mod tests {
                 from: None,
                 to: None,
             },
+            Utc::now().fixed_offset(),
         )
         .await
         .expect("find minute bars");
@@ -556,6 +588,7 @@ mod tests {
                 from: None,
                 to: None,
             },
+            Utc::now().fixed_offset(),
         )
         .await
         .expect("find aggregated bars");
@@ -563,6 +596,101 @@ mod tests {
         assert_eq!(
             (result, aggregated),
             (vec![updated_bar], vec![expected_five_minute_bar]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn combines_hourly_and_minute_sources_across_the_history_boundary(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let instrument_id = format!("US:DEMO-MIX-{}", uuid::Uuid::new_v4().simple());
+        insert_test_instrument(&db, &instrument_id).await;
+        let bar = |timeframe, timestamp, open, high, low, close, volume| Bar {
+            instrument_id: instrument_id.clone(),
+            timeframe,
+            timestamp,
+            open: Decimal::new(open, 0),
+            high: Decimal::new(high, 0),
+            low: Decimal::new(low, 0),
+            close: Decimal::new(close, 0),
+            volume,
+            adjustment_factor: Decimal::ONE,
+        };
+        let timestamp = |hour, minute| {
+            Utc.with_ymd_and_hms(2040, 1, 2, hour, minute, 0)
+                .single()
+                .expect("fixture timestamp")
+        };
+        let cutoff = timestamp(10, 30);
+        let minute_bar_cutover = timestamp(11, 0).fixed_offset();
+        let bars = vec![
+            bar(Timeframe::Hourly, timestamp(8, 0), 10, 15, 5, 12, 100),
+            bar(Timeframe::Hourly, timestamp(9, 0), 12, 20, 11, 18, 200),
+            bar(Timeframe::Hourly, timestamp(10, 0), 18, 25, 17, 22, 300),
+            bar(
+                Timeframe::Minute,
+                timestamp(10, 30),
+                500,
+                600,
+                400,
+                550,
+                900,
+            ),
+            bar(
+                Timeframe::Minute,
+                timestamp(10, 59),
+                550,
+                650,
+                450,
+                600,
+                900,
+            ),
+            bar(Timeframe::Minute, timestamp(11, 0), 22, 30, 21, 27, 50),
+            bar(Timeframe::Minute, timestamp(11, 59), 27, 31, 25, 29, 60),
+        ];
+        upsert_bars(&db, bars).await.expect("insert fixture bars");
+
+        let hourly = find_intraday_bars_by_instruments(
+            &db,
+            std::slice::from_ref(&instrument_id),
+            Timeframe::Hourly,
+            Some(timestamp(8, 0).fixed_offset()),
+            Some(timestamp(11, 0).fixed_offset()),
+            minute_bar_cutover,
+        )
+        .await
+        .expect("find hourly bars");
+        let four_hour = find_intraday_bars_by_instruments(
+            &db,
+            std::slice::from_ref(&instrument_id),
+            Timeframe::FourHours,
+            Some(timestamp(8, 0).fixed_offset()),
+            Some(timestamp(8, 0).fixed_offset()),
+            minute_bar_cutover,
+        )
+        .await
+        .expect("find four-hour bars");
+
+        assert_eq!(
+            (cutoff < minute_bar_cutover.to_utc(), hourly, four_hour),
+            (
+                true,
+                vec![
+                    bar(Timeframe::Hourly, timestamp(8, 0), 10, 15, 5, 12, 100),
+                    bar(Timeframe::Hourly, timestamp(9, 0), 12, 20, 11, 18, 200),
+                    bar(Timeframe::Hourly, timestamp(10, 0), 18, 25, 17, 22, 300),
+                    bar(Timeframe::Hourly, timestamp(11, 0), 22, 31, 21, 29, 110),
+                ],
+                vec![bar(
+                    Timeframe::FourHours,
+                    timestamp(8, 0),
+                    10,
+                    31,
+                    5,
+                    29,
+                    710,
+                )],
+            ),
         );
     }
 

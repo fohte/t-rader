@@ -5,6 +5,7 @@ use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
 
 use super::error::BarsUseCaseError;
+use super::hourly_history_cutoff;
 use super::types::{BarsByInstrumentsQuery, UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
@@ -15,7 +16,6 @@ mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
 const MINUTE_HISTORY_MONTHS: u32 = 24;
-const HOURLY_HISTORY_MONTHS: u32 = 12;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
 
 struct RequestBudget {
@@ -124,9 +124,7 @@ impl UsStockBarTimeframe {
 
     fn history_end(self, now: DateTime<Utc>) -> DateTime<Utc> {
         match self {
-            Self::Hourly => now
-                .checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
-                .unwrap_or(now),
+            Self::Hourly => hourly_history_cutoff(now),
             Self::Daily | Self::Minute => now,
         }
     }

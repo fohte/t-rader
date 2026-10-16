@@ -27,6 +27,19 @@ pub trait BarsRepository: Send + Sync {
         query: BarsByInstrumentsQuery,
     ) -> Result<Vec<Bar>, BarsRepositoryError>;
 
+    async fn find_earliest_us_stock_minute_bar_before(
+        &self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError>;
+
+    async fn downsample_us_stock_minute_bar_range(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<super::types::UsStockMinuteBarsDownsampleStats, BarsRepositoryError>;
+
     async fn find_latest_bar(
         &self,
         instrument_id: &str,
