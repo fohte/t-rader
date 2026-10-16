@@ -386,11 +386,15 @@ impl BarsUseCases {
                 context.record_skipped(skipped.instrument_id, skipped.reason);
             }
             let next_page_token = page.next_page_token;
+            let has_next_page = next_page_token
+                .as_ref()
+                .is_some_and(|next_page_token| page_token.as_ref() != Some(next_page_token));
             let mut bars = page.bars;
             if timeframe == UsStockBarTimeframe::Daily {
                 self.preserve_adjustment_factors(&mut bars).await?;
             }
-            self.persist_bars(bars, timeframe, context.stats).await?;
+            self.persist_bars(bars, timeframe, has_next_page, context.stats)
+                .await?;
 
             let Some(next_page_token) = next_page_token else {
                 return Ok(true);
@@ -408,6 +412,7 @@ impl BarsUseCases {
         &self,
         bars: Vec<Bar>,
         timeframe: UsStockBarTimeframe,
+        has_next_page: bool,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<(), BarsUseCaseError> {
         if bars.is_empty() {
@@ -427,7 +432,9 @@ impl BarsUseCases {
         let completed_at = self.clock.now();
         let write_duration = completed_at.saturating_sub(write_started_at);
         let commit_duration = completed_at.saturating_sub(commit_started_at);
-        wait_after_page(self.clock.as_ref(), write_duration, commit_duration, stats).await;
+        if has_next_page {
+            wait_after_page(self.clock.as_ref(), write_duration, commit_duration, stats).await;
+        }
         Ok(())
     }
 }
@@ -497,7 +504,7 @@ mod tests {
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    use super::{MAX_REQUESTS_PER_RUN, us_stock_hourly_history_cutoff};
+    use super::{MAX_REQUESTS_PER_RUN, UsStockBarTimeframe, us_stock_hourly_history_cutoff};
 
     #[derive(Default)]
     struct TestClock {
@@ -790,7 +797,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn ingestion_records_the_throttle_wait_after_persisting_a_page(harness: Harness) {
+    async fn ingestion_does_not_wait_after_the_final_page(harness: Harness) {
         let instrument_id = "US:EXAMPLE-THROTTLE";
         harness
             .repository
@@ -815,6 +822,122 @@ mod tests {
                     symbols_attempted: 1,
                     requests_attempted: 2,
                     daily_bars_upserted: 1,
+                    ..UsStockBarsIngestStats::default()
+                },
+                Vec::new(),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_waits_before_the_following_page(mut harness: Harness) {
+        let instrument_id = "US:EXAMPLE-THROTTLE";
+        let now = date("2040-01-02T00:00:00Z");
+        let from = us_stock_hourly_history_cutoff(now);
+        harness
+            .repository
+            .seed_us_stock_minute_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.source.pagination = Some(PaginatedPages {
+            instrument_id: instrument_id.to_owned(),
+            from,
+            total_pages: 2,
+            first_page_bars: vec![bar(instrument_id, Timeframe::Minute, now)],
+        });
+        harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::from_millis(250),
+            Duration::from_millis(400),
+        ]);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("minute ingestion succeeds");
+        let calls = harness.source.calls.lock().await.clone();
+
+        assert_eq!(
+            (stats, calls, harness.clock.sleeps()),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 2,
+                    minute_bars_upserted: 1,
+                    write_throttle_wait_ms: 1350,
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from,
+                        to: now,
+                        page_token: None,
+                    },
+                    UsStockBarQuery {
+                        instrument_ids: vec![instrument_id.to_owned()],
+                        timeframe: Timeframe::Minute,
+                        from,
+                        to: now,
+                        page_token: Some("1".to_owned()),
+                    },
+                ],
+                vec![Duration::from_millis(1350)],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::minute(UsStockBarTimeframe::Minute, Timeframe::Minute, 2, 0)]
+    #[case::hourly(UsStockBarTimeframe::Hourly, Timeframe::Hourly, 0, 2)]
+    #[tokio::test]
+    async fn split_batch_pages_wait_between_nonempty_pages(
+        #[case] timeframe: UsStockBarTimeframe,
+        #[case] bar_timeframe: Timeframe,
+        #[case] expected_minute_bars: usize,
+        #[case] expected_hourly_bars: usize,
+        harness: Harness,
+    ) {
+        let instrument_id = "US:EXAMPLE-THROTTLE";
+        let pages = vec![
+            vec![bar(
+                instrument_id,
+                bar_timeframe,
+                date("2040-01-02T00:00:00Z"),
+            )],
+            Vec::new(),
+            vec![bar(
+                instrument_id,
+                bar_timeframe,
+                date("2040-01-03T00:00:00Z"),
+            )],
+        ];
+        harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::from_millis(250),
+            Duration::from_millis(400),
+            Duration::from_millis(400),
+            Duration::from_millis(1750),
+            Duration::from_millis(2000),
+            Duration::from_millis(2150),
+            Duration::from_millis(2200),
+        ]);
+        let mut stats = UsStockBarsIngestStats::default();
+
+        harness
+            .use_cases
+            .persist_batch_pages(pages, timeframe, &mut stats)
+            .await
+            .expect("split history pages persist");
+
+        assert_eq!(
+            (stats, harness.clock.sleeps()),
+            (
+                UsStockBarsIngestStats {
+                    minute_bars_upserted: expected_minute_bars,
+                    hourly_bars_upserted: expected_hourly_bars,
                     write_throttle_wait_ms: 1350,
                     ..UsStockBarsIngestStats::default()
                 },

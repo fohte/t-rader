@@ -94,8 +94,10 @@ impl BarsUseCases {
         timeframe: UsStockBarTimeframe,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<(), BarsUseCaseError> {
-        for page in pages {
-            self.persist_bars(page, timeframe, stats).await?;
+        let mut pages = pages.into_iter().filter(|page| !page.is_empty()).peekable();
+        while let Some(page) = pages.next() {
+            self.persist_bars(page, timeframe, pages.peek().is_some(), stats)
+                .await?;
         }
         Ok(())
     }
@@ -428,7 +430,7 @@ impl BarsUseCases {
 
         self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
             .await?;
-        self.persist_bars(split_bars, UsStockBarTimeframe::Daily, stats)
+        self.persist_bars(split_bars, UsStockBarTimeframe::Daily, false, stats)
             .await?;
         Ok(true)
     }
