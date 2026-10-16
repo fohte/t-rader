@@ -5,6 +5,7 @@ use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
 };
+use core_application::persistence::PersistenceError;
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
@@ -322,7 +323,37 @@ impl BarsRepository for PostgresBarsRepository {
         .map_err(repository_error)
     }
 
-    async fn compress_bars_before(&self, cutoff: DateTime<Utc>) -> Result<(), BarsRepositoryError> {
+    async fn compress_bars_older_than_policy(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        #[derive(FromQueryResult)]
+        struct CompressionCutoff {
+            cutoff: DateTime<FixedOffset>,
+        }
+
+        let policy_row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT $1 - (config ->> 'compress_after')::interval AS cutoff
+                FROM timescaledb_information.jobs
+                WHERE hypertable_schema = current_schema()
+                  AND hypertable_name = 'bars'
+                  AND proc_name = 'policy_compression'"#,
+                [now.fixed_offset().into()],
+            ))
+            .await
+            .map_err(repository_error)?
+            .ok_or_else(|| {
+                BarsRepositoryError::Database(PersistenceError::Database(
+                    "bars compression policy is not configured".to_owned(),
+                ))
+            })?;
+        let cutoff = CompressionCutoff::from_query_result(&policy_row, "")
+            .map_err(repository_error)?
+            .cutoff;
+
         self.db
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -335,7 +366,7 @@ impl BarsRepository for PostgresBarsRepository {
                   AND hypertable_name = 'bars'
                   AND range_end < $1
                   AND is_compressed = FALSE"#,
-                [cutoff.fixed_offset().into()],
+                [cutoff.into()],
             ))
             .await
             .map(|_| ())
@@ -923,7 +954,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn minute_ingestion_keeps_all_references_and_limits_unreferenced_targets_by_id(
+    async fn minute_targets_keep_references_and_limit_eligible_unreferenced_stocks_by_id(
         db: DatabaseHandle,
     ) {
         let suffix = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
@@ -932,16 +963,24 @@ mod tests {
             .collect::<Vec<_>>();
         let group_stock_id = format!("US:ZZ-DEMO-GROUP-{suffix}");
         let note_stock_id = format!("US:ZZ-DEMO-NOTE-{suffix}");
+        let unreferenced_otc_id = format!("US:DEMO-{suffix}-000A-OTC");
+        let non_us_nasdaq_id = format!("CA:DEMO-{suffix}-NASDAQ");
 
-        for (id, exchange) in candidate_ids
+        for (id, instrument_market, exchange) in candidate_ids
             .iter()
-            .map(|id| (id, "Nasdaq"))
-            .chain([(&group_stock_id, "OTC"), (&note_stock_id, "OTC")])
+            .enumerate()
+            .map(|(index, id)| (id, "US", if index == 50 { "NYSE" } else { "Nasdaq" }))
+            .chain([
+                (&group_stock_id, "US", "OTC"),
+                (&note_stock_id, "US", "OTC"),
+                (&unreferenced_otc_id, "US", "OTC"),
+                (&non_us_nasdaq_id, "OTHER", "Nasdaq"),
+            ])
         {
             instruments::Entity::insert(instruments::ActiveModel {
                 id: Set(id.clone()),
                 name: Set(id.clone()),
-                market: Set("US".to_owned()),
+                market: Set(instrument_market.to_owned()),
                 sector: Set(None),
             })
             .exec_without_returning(&db)
@@ -1039,7 +1078,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn compresses_uncompressed_bar_chunks_older_than_the_cutoff(db: DatabaseHandle) {
+    async fn compresses_uncompressed_bar_chunks_older_than_the_policy_delay(db: DatabaseHandle) {
         let instrument_id = format!(
             "COMPRESSION-{}",
             uuid::Uuid::new_v4().simple().to_string().to_uppercase()
@@ -1047,7 +1086,6 @@ mod tests {
         let now = Utc::now();
         let old_bar_time = now - ChronoDuration::days(90);
         let recent_bar_time = now - ChronoDuration::days(2);
-        let cutoff = now - ChronoDuration::days(7);
         let repository = PostgresBarsRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("begin transaction");
@@ -1071,7 +1109,7 @@ mod tests {
             .expect("commit transaction");
 
         repository
-            .compress_bars_before(cutoff)
+            .compress_bars_older_than_policy(now)
             .await
             .expect("compress old bars");
 

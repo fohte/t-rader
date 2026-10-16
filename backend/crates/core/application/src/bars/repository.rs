@@ -53,7 +53,10 @@ pub trait BarsRepository: Send + Sync {
         completed_through: DateTime<Utc>,
     ) -> Result<(), BarsRepositoryError>;
 
-    async fn compress_bars_before(&self, cutoff: DateTime<Utc>) -> Result<(), BarsRepositoryError>;
+    async fn compress_bars_older_than_policy(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError>;
 
     async fn find_ingested_dates(
         &self,

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use chrono::{DateTime, Duration as ChronoDuration, Months, TimeZone, Utc};
+use chrono::{DateTime, Months, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 
 use super::error::BarsUseCaseError;
@@ -15,9 +15,8 @@ mod hourly;
 mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
-const HOURLY_HISTORY_MONTHS: u32 = 12;
+const INTRADAY_HISTORY_BOUNDARY_MONTHS: u32 = 12;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
-const BAR_COMPRESSION_DELAY_DAYS: i64 = 7;
 
 struct RequestBudget {
     remaining: usize,
@@ -114,7 +113,7 @@ impl UsStockBarTimeframe {
         match self {
             Self::Daily => Utc.timestamp_opt(0, 0).single().unwrap_or(now),
             Self::Minute => now
-                .checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
+                .checked_sub_months(Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
                 .unwrap_or(now),
             Self::Hourly => Utc
                 .with_ymd_and_hms(2016, 1, 1, 0, 0, 0)
@@ -126,7 +125,7 @@ impl UsStockBarTimeframe {
     fn history_end(self, now: DateTime<Utc>) -> DateTime<Utc> {
         match self {
             Self::Hourly => now
-                .checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
+                .checked_sub_months(Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
                 .unwrap_or(now),
             Self::Daily | Self::Minute => now,
         }
@@ -158,9 +157,6 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        let compression_cutoff = now
-            .checked_sub_signed(ChronoDuration::days(BAR_COMPRESSION_DELAY_DAYS))
-            .unwrap_or(now);
         let ingest_result = self
             .ingest_us_stock_bars_for_timeframe(
                 source,
@@ -169,9 +165,9 @@ impl BarsUseCases {
                 MAX_REQUESTS_PER_RUN,
             )
             .await;
-        self.repository
-            .compress_bars_before(compression_cutoff)
-            .await?;
+        if let Err(error) = self.repository.compress_bars_older_than_policy(now).await {
+            tracing::error!(error = %error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
+        }
         ingest_result
     }
 
@@ -477,7 +473,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, TimeZone, Utc};
+    use chrono::{DateTime, NaiveDate, TimeZone, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
@@ -490,7 +486,7 @@ mod tests {
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    use super::{HOURLY_HISTORY_MONTHS, MAX_REQUESTS_PER_RUN};
+    use super::{INTRADAY_HISTORY_BOUNDARY_MONTHS, MAX_REQUESTS_PER_RUN};
 
     struct Harness {
         use_cases: BarsUseCases,
@@ -525,6 +521,7 @@ mod tests {
         rejected_instruments: Vec<String>,
         skipped_instruments: Vec<String>,
         rejected_split_instruments: Vec<String>,
+        fetch_error: Option<String>,
     }
 
     struct PaginatedPages {
@@ -553,6 +550,9 @@ mod tests {
             query: &UsStockBarQuery,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
             self.calls.lock().await.push(query.clone());
+            if let Some(message) = &self.fetch_error {
+                return Err(UsStockBarSourceError::Failed(message.clone()));
+            }
             if query
                 .instrument_ids
                 .iter()
@@ -1060,7 +1060,7 @@ mod tests {
         let (daily_bars, minute_bars) =
             partition_daily_bars(harness.repository.bars.lock().await.clone());
         let expected_minute_start = now
-            .checked_sub_months(chrono::Months::new(HOURLY_HISTORY_MONTHS))
+            .checked_sub_months(chrono::Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
             .unwrap_or(now);
         let expected = (
             UsStockBarsIngestStats {
@@ -1138,10 +1138,14 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn minute_targets_include_referenced_and_daily_stocks(harness: Harness) {
+    async fn minute_ingestion_uses_repository_selected_minute_targets(harness: Harness) {
         harness
             .repository
             .seed_us_stock_targets(vec!["US:QZ-MINUTE".to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_us_stock_minute_targets(vec!["US:QZ-DAILY".to_owned()])
             .await;
         harness
             .repository
@@ -1206,7 +1210,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn minute_ingestion_compresses_bars_older_than_seven_days(harness: Harness) {
+    async fn minute_ingestion_requests_compression_using_current_time(harness: Harness) {
         let now = date("2040-01-02T12:00:00Z");
 
         harness
@@ -1216,8 +1220,63 @@ mod tests {
             .expect("US stock minute bar ingestion succeeds");
 
         assert_eq!(
-            *harness.repository.bar_compression_cutoffs.lock().await,
-            vec![now - ChronoDuration::days(7)],
+            *harness.repository.bar_compression_times.lock().await,
+            vec![now],
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_returns_ingest_stats_when_compression_fails(harness: Harness) {
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .fail_bar_compression_with("compression failed")
+            .await;
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("compression failure does not mask minute ingestion stats");
+
+        assert_eq!(stats, UsStockBarsIngestStats::default());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_preserves_ingest_error_when_compression_fails(mut harness: Harness) {
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec!["US:QZ-MINUTE".to_owned()])
+            .await;
+        harness.source.fetch_error = Some("minute fetch failed".to_owned());
+        harness
+            .repository
+            .fail_bar_compression_with("compression failed")
+            .await;
+
+        let actual = (
+            harness
+                .use_cases
+                .ingest_us_stock_minute_bars(&harness.source, now)
+                .await
+                .expect_err("minute source failure is returned"),
+            harness
+                .repository
+                .bar_compression_times
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            (actual.0.to_string(), actual.1),
+            (
+                "US stock bar source error: minute fetch failed".to_owned(),
+                vec![now]
+            ),
         );
     }
 
@@ -1372,7 +1431,7 @@ mod tests {
         let missing_latest = date("2040-01-04T11:59:00Z");
         let now = date("2040-01-04T12:00:00Z");
         let history_start = now
-            .checked_sub_months(chrono::Months::new(HOURLY_HISTORY_MONTHS))
+            .checked_sub_months(chrono::Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
             .unwrap_or(now);
         harness
             .repository

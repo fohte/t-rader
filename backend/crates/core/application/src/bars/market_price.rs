@@ -344,7 +344,7 @@ mod tests {
             Err(database_error())
         }
 
-        async fn compress_bars_before(
+        async fn compress_bars_older_than_policy(
             &self,
             _: chrono::DateTime<Utc>,
         ) -> Result<(), BarsRepositoryError> {
