@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::Timeframe;
 
-use super::US_STOCK_BARS_MAX_RUN_DURATION;
 use super::error::BarsUseCaseError;
 use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_hourly_history_cutoff;
@@ -12,6 +11,7 @@ use super::us_stock_source::{
 };
 use super::use_cases::BarsUseCases;
 use super::write_throttle::WriteThrottle;
+use super::{US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION};
 use request_budget::RequestBudget;
 
 mod adjustment;
@@ -140,7 +140,7 @@ impl BarsUseCases {
             UsStockBarTimeframe::Daily,
             RequestBudget::new(
                 MAX_REQUESTS_PER_RUN,
-                US_STOCK_BARS_MAX_RUN_DURATION,
+                US_STOCK_DAILY_BARS_MAX_RUN_DURATION,
                 self.clock.instant(),
             ),
         )
@@ -157,7 +157,7 @@ impl BarsUseCases {
             now,
             RequestBudget::new(
                 MAX_REQUESTS_PER_RUN,
-                US_STOCK_BARS_MAX_RUN_DURATION,
+                US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
                 self.clock.instant(),
             ),
         )
@@ -195,7 +195,7 @@ impl BarsUseCases {
             UsStockBarTimeframe::Hourly,
             RequestBudget::new(
                 MAX_REQUESTS_PER_RUN,
-                US_STOCK_BARS_MAX_RUN_DURATION,
+                US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
                 self.clock.instant(),
             ),
         )
