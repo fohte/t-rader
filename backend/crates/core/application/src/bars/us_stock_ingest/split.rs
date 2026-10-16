@@ -252,7 +252,7 @@ impl BarsUseCases {
                     return Ok(None);
                 }
                 if batch.has_more {
-                    budget.mark_interrupted();
+                    budget.mark_request_budget_exhausted();
                     return Ok(None);
                 }
                 Ok(Some(batch.splits))

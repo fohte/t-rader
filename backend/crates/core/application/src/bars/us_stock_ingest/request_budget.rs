@@ -1,7 +1,5 @@
 use std::time::{Duration, Instant};
 
-// scheduler の 2 時間 timeout より 30 分早く止め、圧縮と stats 記録の時間を確保する。
-pub(super) const MAX_RUN_DURATION: Duration = Duration::from_secs(90 * 60);
 const REQUEST_BUDGET_EXHAUSTED: &str = "request_budget_exhausted";
 const TIME_BUDGET_EXHAUSTED: &str = "time_budget_exhausted";
 
@@ -74,15 +72,10 @@ impl RequestBudget {
         self.interrupted_reason = Some(TIME_BUDGET_EXHAUSTED);
     }
 
-    pub(super) fn mark_interrupted(&mut self) {
-        if self.interrupted_reason.is_some() {
-            return;
+    pub(super) fn mark_request_budget_exhausted(&mut self) {
+        if self.interrupted_reason.is_none() {
+            self.interrupted_reason = Some(REQUEST_BUDGET_EXHAUSTED);
         }
-        self.interrupted_reason = Some(if self.remaining > 0 && Instant::now() >= self.deadline {
-            TIME_BUDGET_EXHAUSTED
-        } else {
-            REQUEST_BUDGET_EXHAUSTED
-        });
     }
 
     pub(super) fn deadline(&self) -> Instant {
