@@ -103,7 +103,7 @@ fn to_json(value: impl Serialize) -> Result<serde_json::Value, SavedScreenReposi
 fn from_json<T: DeserializeOwned>(
     value: serde_json::Value,
 ) -> Result<T, SavedScreenRepositoryError> {
-    serde_json::from_str(&value.to_string())
+    serde_json::from_value(value)
         .map_err(|error| SavedScreenRepositoryError::InvalidData(error.to_string()))
 }
 
