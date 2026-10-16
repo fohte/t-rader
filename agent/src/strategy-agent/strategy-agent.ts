@@ -51,6 +51,8 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
+const SUBAGENT_EXECUTION_ID_HEADER = 'x-subagent-execution-id'
+const SUBAGENT_DEFINITION_KEY_HEADER = 'x-subagent-definition-key'
 const TOOL_MODELS_HEADER = 'x-tool-models'
 const MCP_TOOL_TIMEOUT_MS = 150_000
 
@@ -71,12 +73,18 @@ export interface McpToolsClient {
   close(): Promise<void>
 }
 
+interface SubagentExecutionIdentity {
+  readonly executionId: string
+  readonly definitionKey: string
+}
+
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
   readonly createMcpClient: (
     strategyId: string,
     executionId: string,
     toolModels: Readonly<Record<string, string>>,
+    subagentExecution?: SubagentExecutionIdentity,
   ) => McpToolsClient
   readonly createChatModel: (
     model: string,
@@ -190,7 +198,7 @@ export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
 ): StrategyAgentDeps => ({
   fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
-  createMcpClient: (strategyId, executionId, toolModels) =>
+  createMcpClient: (strategyId, executionId, toolModels, subagentExecution) =>
     new MultiServerMCPClient({
       defaultToolTimeout: MCP_TOOL_TIMEOUT_MS,
       mcpServers: {
@@ -200,6 +208,13 @@ export const createStrategyAgentDeps = (
             [STRATEGY_ID_HEADER]: strategyId,
             [EXECUTION_ID_HEADER]: executionId,
             [TOOL_MODELS_HEADER]: JSON.stringify(toolModels),
+            ...(subagentExecution !== undefined
+              ? {
+                  [SUBAGENT_EXECUTION_ID_HEADER]: subagentExecution.executionId,
+                  [SUBAGENT_DEFINITION_KEY_HEADER]:
+                    subagentExecution.definitionKey,
+                }
+              : {}),
           },
         },
       },

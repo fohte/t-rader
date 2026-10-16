@@ -170,6 +170,9 @@ fn log_ingest_stats(
     result: Result<UsStockBarsIngestStats, BarsUseCaseError>,
 ) -> Result<UsStockBarsIngestStats, String> {
     let stats = result.map_err(|error| error.to_string())?;
+    if let Some(error) = &stats.compression_error {
+        tracing::error!(bar_timeframe, %error, "failed to compress old bars chunks after ingest");
+    }
     tracing::debug!(
         bar_timeframe,
         symbols_attempted = stats.symbols_attempted,

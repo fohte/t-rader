@@ -21,9 +21,33 @@ describe('parseAgentGraph', () => {
     )
   })
 
+  it.each([
+    { name: 'negative', value: '-1' },
+    { name: 'fractional', value: '1.5' },
+    { name: 'above the integer range', value: '4294967296' },
+  ])('rejects a task tool limit that is $name', ({ value }) => {
+    const result = parseAgentGraph(
+      `tool_limits:
+  search_web: ${value}
+phases: []`,
+    ).mapErr(
+      (error) => new AgentGraphParseError(normalizeZodMessage(error.message)),
+    )
+
+    expect(result).toEqual(
+      err(
+        new AgentGraphParseError(
+          'agent_graph does not match the expected shape: <zod-issues>',
+        ),
+      ),
+    )
+  })
+
   it('parses a valid multi-phase config into camelCase phases', () => {
     const yaml = `
 timeout_minutes: 30
+tool_limits:
+  search_web: 4
 tool_models:
   search_web: example-model-search
   query_youtube: example-model-youtube
@@ -54,6 +78,7 @@ phases:
     expect(parseAgentGraph(yaml)).toEqual(
       ok({
         timeoutMinutes: 30,
+        toolLimits: { search_web: 4 },
         toolModels: {
           search_web: 'example-model-search',
           query_youtube: 'example-model-youtube',

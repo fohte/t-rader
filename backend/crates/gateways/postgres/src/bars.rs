@@ -5,6 +5,7 @@ use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
 };
+use core_application::persistence::PersistenceError;
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
@@ -36,9 +37,12 @@ pub struct PostgresBarsRepository {
 
 #[derive(Clone, Copy)]
 enum UsStockBarTargetSelection {
-    Referenced,
     Daily,
+    Minute,
 }
+
+const MINUTE_BAR_UNREFERENCED_TARGET_LIMIT: usize = 100;
+const REFERENCED_US_STOCK_SELECTION: &str = "EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)";
 
 impl PostgresBarsRepository {
     pub fn new(db: DatabaseHandle) -> Self {
@@ -84,12 +88,30 @@ impl PostgresBarsRepository {
         }
 
         let selection = match selection {
-            UsStockBarTargetSelection::Referenced => {
-                "EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)"
-            }
-            UsStockBarTargetSelection::Daily => {
-                "EXISTS (SELECT 1 FROM stock WHERE stock.id = instruments.id AND stock.market IN ('Nasdaq', 'NYSE')) OR EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)"
-            }
+            UsStockBarTargetSelection::Daily => format!(
+                "EXISTS (SELECT 1 FROM stock WHERE stock.id = instruments.id AND stock.market IN ('Nasdaq', 'NYSE')) OR ({REFERENCED_US_STOCK_SELECTION})"
+            ),
+            UsStockBarTargetSelection::Minute => format!(
+                r#"({REFERENCED_US_STOCK_SELECTION}) OR instruments.id IN (
+                    SELECT candidate_stock.id
+                    FROM stock AS candidate_stock
+                    JOIN instruments AS candidate_instrument
+                        ON candidate_instrument.id = candidate_stock.id
+                    WHERE candidate_instrument.market = 'US'
+                      AND candidate_stock.market IN ('Nasdaq', 'NYSE')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM stock_group_member
+                          WHERE stock_group_member.stock_id = candidate_stock.id
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM note_ref
+                          WHERE note_ref.ref_kind = 'stock'
+                            AND note_ref.ref_id = candidate_stock.id
+                      )
+                    ORDER BY candidate_stock.id
+                    LIMIT {MINUTE_BAR_UNREFERENCED_TARGET_LIMIT}
+                )"#
+            ),
         };
         let query = format!(
             r#"SELECT
@@ -267,10 +289,10 @@ impl BarsRepository for PostgresBarsRepository {
             .map_err(repository_error)
     }
 
-    async fn find_us_stock_bar_targets(
+    async fn find_us_stock_minute_bar_targets(
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
-        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Referenced)
+        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Minute)
             .await
     }
 
@@ -339,6 +361,56 @@ impl BarsRepository for PostgresBarsRepository {
         .await
         .map(|_| ())
         .map_err(repository_error)
+    }
+
+    async fn compress_bars_older_than_policy(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        #[derive(FromQueryResult)]
+        struct CompressionCutoff {
+            cutoff: DateTime<FixedOffset>,
+        }
+
+        let policy_row = self
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT $1 - (config ->> 'compress_after')::interval AS cutoff
+                FROM timescaledb_information.jobs
+                WHERE hypertable_schema = current_schema()
+                  AND hypertable_name = 'bars'
+                  AND proc_name = 'policy_compression'"#,
+                [now.fixed_offset().into()],
+            ))
+            .await
+            .map_err(repository_error)?
+            .ok_or_else(|| {
+                BarsRepositoryError::Database(PersistenceError::Database(
+                    "bars compression policy is not configured".to_owned(),
+                ))
+            })?;
+        let cutoff = CompressionCutoff::from_query_result(&policy_row, "")
+            .map_err(repository_error)?
+            .cutoff;
+
+        self.db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT compress_chunk(
+                    format('%I.%I', chunk_schema, chunk_name)::regclass,
+                    if_not_compressed => TRUE
+                )
+                FROM timescaledb_information.chunks
+                WHERE hypertable_schema = current_schema()
+                  AND hypertable_name = 'bars'
+                  AND range_end < $1
+                  AND is_compressed = FALSE"#,
+                [cutoff.into()],
+            ))
+            .await
+            .map(|_| ())
+            .map_err(repository_error)
     }
 
     async fn find_ingested_dates(
@@ -436,7 +508,9 @@ fn repository_error(error: sea_orm::DbErr) -> BarsRepositoryError {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, NaiveDate, NaiveTime, TimeZone, Utc};
+    use chrono::{
+        DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc,
+    };
     use core_application::bars::{
         BarsQuery, BarsRepository, DailyBarAdjustmentFactor, UsStockBarTarget,
         UsStockMinuteBarsDownsampleStats,
@@ -445,7 +519,7 @@ mod tests {
     use core_domain::bar::{Bar, Timeframe};
     use rust_decimal::Decimal;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::EntityTrait;
+    use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, Statement};
     use std::collections::HashSet;
 
     use crate::entities::{
@@ -457,6 +531,17 @@ mod tests {
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
+    }
+
+    #[derive(Debug, FromQueryResult, PartialEq, Eq)]
+    struct BarChunkCompressionStatus {
+        old_chunk_compressed: bool,
+        recent_chunk_compressed: bool,
+    }
+
+    #[derive(Debug, FromQueryResult)]
+    struct CompressedChunkStatus {
+        is_compressed: bool,
     }
 
     #[backend_test_macros::database_test]
@@ -765,7 +850,7 @@ mod tests {
             .expect("ignore older hourly progress");
 
         let actual = repository
-            .find_us_stock_bar_targets()
+            .find_us_stock_minute_bar_targets()
             .await
             .expect("find US stock bar targets");
 
@@ -1229,6 +1314,295 @@ mod tests {
                 UsStockMinuteBarsDownsampleStats::default(),
                 vec![bar(Timeframe::Hourly, timestamp(10, 0), 10, 15, 9, 14, 300)],
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn minute_targets_keep_references_and_limit_eligible_unreferenced_stocks_by_id(
+        db: DatabaseHandle,
+    ) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
+        let candidate_ids = (0..102)
+            .map(|index| format!("US:DEMO-{suffix}-{index:03}"))
+            .collect::<Vec<_>>();
+        let group_stock_id = format!("US:ZZ-DEMO-GROUP-{suffix}");
+        let note_stock_id = format!("US:ZZ-DEMO-NOTE-{suffix}");
+        let unreferenced_otc_id = format!("US:DEMO-{suffix}-000A-OTC");
+        let non_us_nasdaq_id = format!("CA:DEMO-{suffix}-NASDAQ");
+
+        for (id, instrument_market, exchange) in candidate_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (id, "US", if index == 50 { "NYSE" } else { "Nasdaq" }))
+            .chain([
+                (&group_stock_id, "US", "OTC"),
+                (&note_stock_id, "US", "OTC"),
+                (&unreferenced_otc_id, "US", "OTC"),
+                (&non_us_nasdaq_id, "OTHER", "Nasdaq"),
+            ])
+        {
+            instruments::Entity::insert(instruments::ActiveModel {
+                id: Set(id.clone()),
+                name: Set(id.clone()),
+                market: Set(instrument_market.to_owned()),
+                sector: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert instrument");
+            stock::Entity::insert(stock::ActiveModel {
+                id: Set(id.clone()),
+                name: Set(id.clone()),
+                market: Set(Some(exchange.to_owned())),
+                created_at: NotSet,
+                updated_at: NotSet,
+                product_category: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert stock");
+        }
+
+        let axis_id = uuid::Uuid::new_v4();
+        group_axis::Entity::insert(group_axis::ActiveModel {
+            id: Set(axis_id),
+            key: Set(format!("synthetic-axis-{suffix}")),
+            name: Set("Synthetic Axis".to_owned()),
+            description: Set("Synthetic axis for a database test".to_owned()),
+            derive_from: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert group axis");
+        let group_id = uuid::Uuid::new_v4();
+        stock_group::Entity::insert(stock_group::ActiveModel {
+            id: Set(group_id),
+            axis_id: Set(axis_id),
+            key: Set(format!("synthetic-group-{suffix}")),
+            name: Set("Synthetic Group".to_owned()),
+            description: Set(None),
+            code: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert stock group");
+        stock_group_member::Entity::insert(stock_group_member::ActiveModel {
+            stock_id: Set(group_stock_id.clone()),
+            group_id: Set(group_id),
+            created_at: NotSet,
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert group membership");
+
+        let note_id = uuid::Uuid::new_v4();
+        note::Entity::insert(note::ActiveModel {
+            id: Set(note_id),
+            kind: Set(None),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+            execution_id: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert note");
+        note_ref::Entity::insert(note_ref::ActiveModel {
+            note_id: Set(note_id),
+            ref_kind: Set("stock".to_owned()),
+            ref_id: Set(note_stock_id.clone()),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert note reference");
+
+        let actual = PostgresBarsRepository::new(db)
+            .find_us_stock_minute_bar_targets()
+            .await
+            .expect("find US stock minute bar targets");
+        let mut expected_ids = candidate_ids[..100].to_vec();
+        expected_ids.extend([group_stock_id, note_stock_id]);
+        expected_ids.sort();
+        let expected = expected_ids
+            .into_iter()
+            .map(|instrument_id| UsStockBarTarget {
+                instrument_id,
+                latest_daily_bar: None,
+                latest_minute_bar: None,
+                latest_hourly_bar: None,
+                hourly_history_completed_through: None,
+                earliest_daily_bar: None,
+                earliest_minute_bar: None,
+                earliest_hourly_bar: None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn compresses_uncompressed_bar_chunks_older_than_the_policy_delay(db: DatabaseHandle) {
+        let instrument_id = format!(
+            "COMPRESSION-{}",
+            uuid::Uuid::new_v4().simple().to_string().to_uppercase()
+        );
+        let now = Utc::now();
+        let old_bar_time = now - ChronoDuration::days(90);
+        let recent_bar_time = now - ChronoDuration::days(2);
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        repository
+            .ensure_instruments_exist(&transaction, &HashSet::from([instrument_id.clone()]))
+            .await
+            .expect("ensure instrument");
+        repository
+            .upsert_bars(
+                &transaction,
+                vec![
+                    test_bar(&instrument_id, Timeframe::Minute, old_bar_time),
+                    test_bar(&instrument_id, Timeframe::Minute, recent_bar_time),
+                ],
+            )
+            .await
+            .expect("insert minute bars");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit transaction");
+
+        repository
+            .compress_bars_older_than_policy(now)
+            .await
+            .expect("compress old bars");
+
+        let status = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT
+                    (
+                        SELECT is_compressed
+                        FROM timescaledb_information.chunks
+                        WHERE hypertable_schema = current_schema()
+                          AND hypertable_name = 'bars'
+                          AND range_start <= $1
+                          AND range_end > $1
+                    ) AS old_chunk_compressed,
+                    (
+                        SELECT is_compressed
+                        FROM timescaledb_information.chunks
+                        WHERE hypertable_schema = current_schema()
+                          AND hypertable_name = 'bars'
+                          AND range_start <= $2
+                          AND range_end > $2
+                    ) AS recent_chunk_compressed"#,
+                [
+                    old_bar_time.fixed_offset().into(),
+                    recent_bar_time.fixed_offset().into(),
+                ],
+            ))
+            .await
+            .expect("read chunk compression status")
+            .expect("chunk compression status row");
+        let status = BarChunkCompressionStatus::from_query_result(&status, "")
+            .expect("decode chunk compression status");
+
+        assert_eq!(
+            status,
+            BarChunkCompressionStatus {
+                old_chunk_compressed: true,
+                recent_chunk_compressed: false,
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn upserts_minute_bar_in_a_compressed_chunk(db: DatabaseHandle) {
+        let instrument_id = format!(
+            "COMPRESSED-UPSERT-{}",
+            uuid::Uuid::new_v4().simple().to_string().to_uppercase()
+        );
+        let now = Utc::now();
+        let old_bar_time = now - ChronoDuration::days(90);
+        let old_bar_time = old_bar_time
+            .with_nanosecond(old_bar_time.timestamp_subsec_micros() * 1_000)
+            .expect("valid nanosecond");
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        repository
+            .ensure_instruments_exist(&transaction, &HashSet::from([instrument_id.clone()]))
+            .await
+            .expect("ensure instrument");
+        repository
+            .upsert_bars(
+                &transaction,
+                vec![test_bar(&instrument_id, Timeframe::Minute, old_bar_time)],
+            )
+            .await
+            .expect("insert minute bar");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit initial minute bar");
+
+        repository
+            .compress_bars_older_than_policy(now)
+            .await
+            .expect("compress old bar");
+
+        let mut updated_bar = test_bar(&instrument_id, Timeframe::Minute, old_bar_time);
+        updated_bar.open = Decimal::new(249, 1);
+        updated_bar.high = Decimal::new(251, 1);
+        updated_bar.low = Decimal::new(248, 1);
+        updated_bar.close = Decimal::new(250, 1);
+        updated_bar.volume = 40;
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        repository
+            .upsert_bars(&transaction, vec![updated_bar.clone()])
+            .await
+            .expect("upsert minute bar in compressed chunk");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit compressed chunk upsert");
+
+        let chunk_status = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT is_compressed
+                FROM timescaledb_information.chunks
+                WHERE hypertable_schema = current_schema()
+                  AND hypertable_name = 'bars'
+                  AND range_start <= $1
+                  AND range_end > $1"#,
+                [old_bar_time.fixed_offset().into()],
+            ))
+            .await
+            .expect("read compressed chunk status")
+            .expect("compressed chunk status row");
+        let chunk_status = CompressedChunkStatus::from_query_result(&chunk_status, "")
+            .expect("decode compressed chunk status");
+
+        let bars = bar_queries::find_bars(
+            &db,
+            PostgresBarsQuery {
+                instrument_id,
+                timeframe: "1m".to_owned(),
+                from: Some(old_bar_time.fixed_offset()),
+                to: Some(old_bar_time.fixed_offset()),
+            },
+        )
+        .await
+        .expect("read bars from compressed chunk")
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<Bar>>();
+
+        assert_eq!(
+            (chunk_status.is_compressed, bars),
+            (true, vec![updated_bar])
         );
     }
 

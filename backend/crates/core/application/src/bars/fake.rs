@@ -22,13 +22,16 @@ pub struct FakeBarsRepository {
     pub instruments: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_daily_targets: Mutex<HashSet<String>>,
+    pub us_stock_minute_targets: Mutex<HashSet<String>>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
+    pub bar_compression_times: Mutex<Vec<DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
     pub minute_bar_downsample_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub minute_bar_downsample_cutoffs: Mutex<Vec<DateTime<Utc>>>,
     hourly_upsert_error: Mutex<Option<String>>,
+    bar_compression_error: Mutex<Option<String>>,
 }
 
 impl FakeBarsRepository {
@@ -55,6 +58,13 @@ impl FakeBarsRepository {
             .extend(instrument_ids);
     }
 
+    pub async fn seed_us_stock_minute_targets(&self, instrument_ids: Vec<String>) {
+        self.us_stock_minute_targets
+            .lock()
+            .await
+            .extend(instrument_ids);
+    }
+
     pub async fn seed_daily_adjustment_factors(
         &self,
         instrument_id: impl Into<String>,
@@ -70,6 +80,10 @@ impl FakeBarsRepository {
 
     pub async fn fail_hourly_upserts_with(&self, message: impl Into<String>) {
         *self.hourly_upsert_error.lock().await = Some(message.into());
+    }
+
+    pub async fn fail_bar_compression_with(&self, message: impl Into<String>) {
+        *self.bar_compression_error.lock().await = Some(message.into());
     }
 
     async fn all_bars(&self) -> Vec<Bar> {
@@ -248,10 +262,11 @@ impl BarsRepository for FakeBarsRepository {
             .collect())
     }
 
-    async fn find_us_stock_bar_targets(
+    async fn find_us_stock_minute_bar_targets(
         &self,
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
-        let target_ids = self.us_stock_targets.lock().await.clone();
+        let mut target_ids = self.us_stock_targets.lock().await.clone();
+        target_ids.extend(self.us_stock_minute_targets.lock().await.iter().cloned());
         self.find_targets(target_ids).await
     }
 
@@ -277,6 +292,19 @@ impl BarsRepository for FakeBarsRepository {
                 .entry(instrument_id.clone())
                 .and_modify(|saved| *saved = (*saved).max(completed_through))
                 .or_insert(completed_through);
+        }
+        Ok(())
+    }
+
+    async fn compress_bars_older_than_policy(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        self.bar_compression_times.lock().await.push(now);
+        if let Some(message) = self.bar_compression_error.lock().await.take() {
+            return Err(BarsRepositoryError::Database(PersistenceError::Database(
+                message,
+            )));
         }
         Ok(())
     }

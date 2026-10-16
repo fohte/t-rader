@@ -9,7 +9,8 @@ use core_application::web_search::{WebSearchError, WebSearchTimeRange, WebSearch
 use rmcp::ErrorData as McpError;
 
 use super::dto::{SearchWebArticle, SearchWebParams, SearchWebResult};
-use super::{StrategyServer, internal_error, invalid_params, tool_call_count_error_to_mcp};
+use super::tool_call_limit::ToolCallLimitContext;
+use super::{StrategyServer, internal_error, invalid_params};
 
 pub(super) const TOOL_NAME: &str = "search_web";
 
@@ -18,10 +19,10 @@ pub(super) const TOOL_NAME: &str = "search_web";
 pub(super) const SEARCH_WEB_MAX_CALLS_PER_TASK: u32 = 20;
 
 impl StrategyServer {
-    pub(crate) async fn search_web_inner(
+    pub(super) async fn search_web_inner(
         &self,
         scope: impl Into<StrategyScope>,
-        task_execution_id: Option<String>,
+        call_limits: ToolCallLimitContext,
         params: SearchWebParams,
     ) -> Result<SearchWebResult, McpError> {
         let session_strategy_id = scope.into().id();
@@ -35,16 +36,8 @@ impl StrategyServer {
             .web_search_client
             .as_ref()
             .ok_or_else(|| internal_error("TAVILY_API_KEY is not configured"))?;
-        let tool_call_counts = &self.dependencies.mcp_tool_call_counts;
-
-        // task_execution_id はヘッダ欠落時 (手動呼び出し等) に None になる。その場合は
-        // 呼び出し回数の追跡をスキップし、fail-open で検索を実行する。
-        if let Some(task_execution_id) = task_execution_id.as_deref() {
-            tool_call_counts
-                .reserve(task_execution_id, TOOL_NAME, SEARCH_WEB_MAX_CALLS_PER_TASK)
-                .await
-                .map_err(tool_call_count_error_to_mcp)?;
-        }
+        self.reserve_tool_call_limits(&call_limits, TOOL_NAME)
+            .await?;
 
         tracing::info!(
             strategy_id = %session_strategy_id,
@@ -69,8 +62,7 @@ impl StrategyServer {
                     "search_web: web search request failed"
                 );
                 // 検索が実際には行われなかったので、予約した呼び出し回数を戻す。
-                self.release_tool_call_count_reservation(task_execution_id.as_deref(), TOOL_NAME)
-                    .await;
+                self.release_tool_call_limits(&call_limits, TOOL_NAME).await;
                 return Err(web_search_error_to_mcp(error));
             }
         };

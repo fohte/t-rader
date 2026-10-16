@@ -37,6 +37,7 @@ pub(super) mod short_sale_report;
 pub(super) mod stock_groups;
 pub(super) mod stock_registration;
 pub(super) mod strategy_earnings_targets;
+mod tool_call_limit;
 mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;
@@ -170,29 +171,6 @@ impl StrategyServer {
     ) -> Self {
         self.dependencies.web_search_client = web_search_client;
         self
-    }
-
-    pub(super) async fn release_tool_call_count_reservation(
-        &self,
-        task_execution_id: Option<&str>,
-        tool_name: &'static str,
-    ) {
-        let Some(task_execution_id) = task_execution_id else {
-            return;
-        };
-        if let Err(error) = self
-            .dependencies
-            .mcp_tool_call_counts
-            .release(task_execution_id, tool_name)
-            .await
-        {
-            tracing::warn!(
-                task_execution_id,
-                tool_name,
-                error = %error,
-                "failed to release tool call count reservation"
-            );
-        }
     }
 
     /// `KATA_EXEC_API_URL` が未設定だと executor は `None` のまま起動する。
