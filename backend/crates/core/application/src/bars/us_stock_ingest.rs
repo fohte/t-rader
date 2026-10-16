@@ -1,16 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use chrono::{DateTime, Duration as ChronoDuration, Months, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
-use rust_decimal::Decimal;
 
 use super::error::BarsUseCaseError;
-use super::types::{BarsByInstrumentsQuery, UsStockBarTarget, UsStockBarsIngestStats};
+use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::BarsUseCases;
 
+mod adjustment;
+mod hourly;
 mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
@@ -337,28 +338,6 @@ impl BarsUseCases {
         Ok(completed)
     }
 
-    pub(super) async fn mark_hourly_history_completed(
-        &self,
-        instrument_ids: &[String],
-        completed_through: DateTime<Utc>,
-        skipped_instrument_ids: &HashSet<String>,
-    ) -> Result<(), BarsUseCaseError> {
-        let completed_instrument_ids = instrument_ids
-            .iter()
-            .filter(|instrument_id| !skipped_instrument_ids.contains(*instrument_id))
-            .cloned()
-            .collect::<Vec<_>>();
-        if !completed_instrument_ids.is_empty() {
-            self.repository
-                .mark_us_stock_hourly_bar_history_completed(
-                    &completed_instrument_ids,
-                    completed_through,
-                )
-                .await?;
-        }
-        Ok(())
-    }
-
     async fn ingest_batch(
         &self,
         source: &dyn UsStockBarSource,
@@ -427,90 +406,6 @@ impl BarsUseCases {
         }
     }
 
-    async fn fetch_batch_pages(
-        &self,
-        source: &dyn UsStockBarSource,
-        instrument_ids: &[String],
-        timeframe: UsStockBarTimeframe,
-        range: UsStockBarRange,
-        context: &mut BatchIngestContext<'_>,
-    ) -> Result<Option<Vec<Vec<Bar>>>, BarsUseCaseError> {
-        let mut page_token = None;
-        let mut pages = Vec::new();
-        loop {
-            if !context.budget.take(1) {
-                return Ok(None);
-            }
-            context.stats.requests_attempted += 1;
-            let page = match source
-                .fetch_page(&UsStockBarQuery {
-                    instrument_ids: instrument_ids.to_vec(),
-                    timeframe: timeframe.timeframe(),
-                    from: range.from,
-                    to: range.to,
-                    page_token: page_token.clone(),
-                })
-                .await
-            {
-                Ok(page) => page,
-                Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
-                    let (first, second) = match split_rejected_batch(instrument_ids, reason) {
-                        RejectedBatch::Split(first, second) => (first, second),
-                        RejectedBatch::Skipped {
-                            instrument_id,
-                            reason,
-                        } => {
-                            context.record_skipped(instrument_id, reason);
-                            return Ok(Some(pages));
-                        }
-                    };
-                    let Some(mut first_pages) =
-                        Box::pin(self.fetch_batch_pages(source, first, timeframe, range, context))
-                            .await?
-                    else {
-                        return Ok(None);
-                    };
-                    let Some(second_pages) =
-                        Box::pin(self.fetch_batch_pages(source, second, timeframe, range, context))
-                            .await?
-                    else {
-                        return Ok(None);
-                    };
-                    first_pages.extend(second_pages);
-                    return Ok(Some(first_pages));
-                }
-                Err(error) => return Err(error.into()),
-            };
-            for skipped in page.skipped_instruments {
-                context.record_skipped(skipped.instrument_id, skipped.reason);
-            }
-
-            pages.push(page.bars);
-
-            let Some(next_page_token) = page.next_page_token else {
-                return Ok(Some(pages));
-            };
-            if page_token.as_ref() == Some(&next_page_token) {
-                return Err(BarsUseCaseError::UsStockBarSource(
-                    UsStockBarSourceError::Failed("pagination token did not advance".to_owned()),
-                ));
-            }
-            page_token = Some(next_page_token);
-        }
-    }
-
-    async fn persist_batch_pages(
-        &self,
-        pages: Vec<Vec<Bar>>,
-        timeframe: UsStockBarTimeframe,
-        stats: &mut UsStockBarsIngestStats,
-    ) -> Result<(), BarsUseCaseError> {
-        for page in pages {
-            self.persist_bars(page, timeframe, stats).await?;
-        }
-        Ok(())
-    }
-
     async fn persist_bars(
         &self,
         bars: Vec<Bar>,
@@ -529,51 +424,6 @@ impl BarsUseCases {
             UsStockBarTimeframe::Hourly => stats.hourly_bars_upserted += count,
         }
         self.unit_of_work.commit(transaction).await?;
-        Ok(())
-    }
-
-    async fn preserve_adjustment_factors(&self, bars: &mut [Bar]) -> Result<(), BarsUseCaseError> {
-        if bars.is_empty() {
-            return Ok(());
-        }
-        let instrument_ids = bars
-            .iter()
-            .map(|bar| bar.instrument_id.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        let from = bars
-            .iter()
-            .map(|bar| bar.timestamp)
-            .min()
-            .map(|timestamp| timestamp.fixed_offset());
-        let to = bars
-            .iter()
-            .map(|bar| bar.timestamp)
-            .max()
-            .map(|timestamp| timestamp.fixed_offset());
-        let stored_bars = self
-            .repository
-            .find_bars_by_instruments(BarsByInstrumentsQuery {
-                instrument_ids,
-                timeframe: Timeframe::Daily.to_string(),
-                from,
-                to,
-            })
-            .await?;
-        let stored_factors: HashMap<(String, DateTime<Utc>), Decimal> = stored_bars
-            .into_iter()
-            .filter(|bar| bar.adjustment_factor != Decimal::ONE)
-            .map(|bar| ((bar.instrument_id, bar.timestamp), bar.adjustment_factor))
-            .collect();
-        for bar in bars {
-            if bar.adjustment_factor == Decimal::ONE
-                && let Some(factor) =
-                    stored_factors.get(&(bar.instrument_id.clone(), bar.timestamp))
-            {
-                bar.adjustment_factor = *factor;
-            }
-        }
         Ok(())
     }
 }
