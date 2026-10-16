@@ -484,7 +484,7 @@ mod tests {
     };
     use crate::{DatabaseHandle, PostgresUnitOfWork};
 
-    use super::PostgresBarsRepository;
+    use super::{PostgresBarsQuery, PostgresBarsRepository, bar_queries};
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
@@ -1151,6 +1151,43 @@ mod tests {
                 recent_chunk_compressed: false,
             },
         );
+
+        let mut updated_old_bar = test_bar(&instrument_id, Timeframe::Minute, old_bar_time);
+        updated_old_bar.close = Decimal::new(250, 1);
+        let inserted_old_bar = test_bar(
+            &instrument_id,
+            Timeframe::Minute,
+            old_bar_time + ChronoDuration::minutes(1),
+        );
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        repository
+            .upsert_bars(
+                &transaction,
+                vec![updated_old_bar.clone(), inserted_old_bar.clone()],
+            )
+            .await
+            .expect("upsert bars into compressed chunk");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit compressed chunk upsert");
+
+        let actual = bar_queries::find_bars(
+            &db,
+            PostgresBarsQuery {
+                instrument_id,
+                timeframe: "1m".to_owned(),
+                from: Some(old_bar_time.fixed_offset()),
+                to: Some(inserted_old_bar.timestamp.fixed_offset()),
+            },
+        )
+        .await
+        .expect("read bars from compressed chunk")
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<Bar>>();
+
+        assert_eq!(actual, vec![updated_old_bar, inserted_old_bar]);
     }
 
     fn test_bar(instrument_id: &str, timeframe: Timeframe, timestamp: DateTime<Utc>) -> Bar {
