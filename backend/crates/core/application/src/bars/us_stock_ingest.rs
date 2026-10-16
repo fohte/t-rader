@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use chrono::{DateTime, Months, TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 
 use super::error::BarsUseCaseError;
@@ -16,7 +16,6 @@ mod hourly;
 mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
-const INTRADAY_HISTORY_BOUNDARY_MONTHS: u32 = 12;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
 
 struct RequestBudget {
@@ -113,9 +112,7 @@ impl UsStockBarTimeframe {
     fn history_start(self, now: DateTime<Utc>) -> DateTime<Utc> {
         match self {
             Self::Daily => Utc.timestamp_opt(0, 0).single().unwrap_or(now),
-            Self::Minute => now
-                .checked_sub_months(Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
-                .unwrap_or(now),
+            Self::Minute => us_stock_hourly_history_cutoff(now),
             Self::Hourly => Utc
                 .with_ymd_and_hms(2016, 1, 1, 0, 0, 0)
                 .single()
@@ -490,7 +487,7 @@ mod tests {
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    use super::{INTRADAY_HISTORY_BOUNDARY_MONTHS, MAX_REQUESTS_PER_RUN};
+    use super::{MAX_REQUESTS_PER_RUN, us_stock_hourly_history_cutoff};
 
     struct Harness {
         use_cases: BarsUseCases,
@@ -1063,9 +1060,7 @@ mod tests {
         let calls = harness.source.calls.lock().await.clone();
         let (daily_bars, minute_bars) =
             partition_daily_bars(harness.repository.bars.lock().await.clone());
-        let expected_minute_start = now
-            .checked_sub_months(chrono::Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
-            .unwrap_or(now);
+        let expected_minute_start = us_stock_hourly_history_cutoff(now);
         let expected = (
             UsStockBarsIngestStats {
                 symbols_attempted: 2,
@@ -1443,9 +1438,7 @@ mod tests {
         let existing_latest = date("2040-01-02T00:00:00Z");
         let missing_latest = date("2040-01-04T11:59:00Z");
         let now = date("2040-01-04T12:00:00Z");
-        let history_start = now
-            .checked_sub_months(chrono::Months::new(INTRADAY_HISTORY_BOUNDARY_MONTHS))
-            .unwrap_or(now);
+        let history_start = us_stock_hourly_history_cutoff(now);
         harness
             .repository
             .seed_us_stock_targets(vec![existing_id.to_owned(), missing_id.to_owned()])
