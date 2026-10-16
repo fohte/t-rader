@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -54,6 +55,8 @@ pub struct UsStockSplitBatch {
 pub enum UsStockBarSourceError {
     #[error("Alpaca rejected a stock symbol batch: {0}")]
     RejectedSymbols(String),
+    #[error("US stock bar run deadline exceeded")]
+    RunDeadlineExceeded,
     #[error("US stock bar source error: {0}")]
     Failed(String),
 }
@@ -63,12 +66,14 @@ pub trait UsStockBarSource: Send + Sync {
     async fn fetch_page(
         &self,
         query: &UsStockBarQuery,
+        deadline: Instant,
     ) -> Result<UsStockBarPage, UsStockBarSourceError>;
 
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
         max_requests: usize,
+        deadline: Instant,
     ) -> Result<UsStockSplitBatch, UsStockBarSourceError>;
 }
 
