@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::time::Instant;
 
 use chrono::NaiveDate;
 use core_domain::bar::{Bar, Timeframe};
@@ -32,16 +33,23 @@ impl BarsUseCases {
             }
             context.stats.requests_attempted += 1;
             let page = match source
-                .fetch_page(&UsStockBarQuery {
-                    instrument_ids: instrument_ids.to_vec(),
-                    timeframe: timeframe.timeframe(),
-                    from: range.from,
-                    to: range.to,
-                    page_token: page_token.clone(),
-                })
+                .fetch_page(
+                    &UsStockBarQuery {
+                        instrument_ids: instrument_ids.to_vec(),
+                        timeframe: timeframe.timeframe(),
+                        from: range.from,
+                        to: range.to,
+                        page_token: page_token.clone(),
+                    },
+                    context.budget.deadline(),
+                )
                 .await
             {
                 Ok(page) => page,
+                Err(UsStockBarSourceError::RunDeadlineExceeded) => {
+                    context.record_deadline_before_request();
+                    return Ok(None);
+                }
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
                     let (first, second) = match split_rejected_batch(instrument_ids, reason) {
                         RejectedBatch::Split(first, second) => (first, second),
@@ -212,10 +220,10 @@ impl BarsUseCases {
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<Option<Vec<UsStockSplit>>, BarsUseCaseError> {
-        let max_requests = budget.remaining();
-        if max_requests == 0 {
+        if !budget.can_start_request(Instant::now()) {
             return Ok(None);
         }
+        let max_requests = budget.remaining();
         let result = source
             .fetch_splits(
                 &UsStockSplitQuery {
@@ -224,11 +232,12 @@ impl BarsUseCases {
                     to,
                 },
                 max_requests,
+                budget.deadline(),
             )
             .await;
         match result {
             Ok(batch) => {
-                if !budget.take(batch.requests_attempted) {
+                if !budget.record(batch.requests_attempted) {
                     return Err(UsStockBarSourceError::Failed(
                         "source exceeded the request budget".to_owned(),
                     )
@@ -238,10 +247,19 @@ impl BarsUseCases {
                 for skipped in batch.skipped_instruments {
                     record_skipped_instrument(stats, skipped.instrument_id, skipped.reason);
                 }
+                if batch.deadline_exceeded {
+                    budget.mark_time_budget_exhausted();
+                    return Ok(None);
+                }
                 if batch.has_more {
+                    budget.mark_request_budget_exhausted();
                     return Ok(None);
                 }
                 Ok(Some(batch.splits))
+            }
+            Err(UsStockBarSourceError::RunDeadlineExceeded) => {
+                budget.mark_time_budget_exhausted();
+                Ok(None)
             }
             Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
                 if !budget.take(1) {
