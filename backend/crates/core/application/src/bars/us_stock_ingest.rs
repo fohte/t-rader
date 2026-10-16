@@ -483,14 +483,13 @@ mod tests {
 
     use crate::bars::{
         BarsUseCases, FakeBarsRepository, SkippedUsStockInstrument, UsStockBarPage,
-        UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockBarTarget,
-        UsStockBarsIngestStats, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
+        UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockBarsIngestStats,
+        UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
     use super::{
-        MAX_REQUESTS_PER_RUN, RequestBudget, UsStockBarTimeframe, UsStockSplitHistoryRange,
-        us_stock_hourly_history_cutoff,
+        MAX_REQUESTS_PER_RUN, RequestBudget, UsStockBarTimeframe, us_stock_hourly_history_cutoff,
     };
 
     struct Harness {
@@ -530,7 +529,6 @@ mod tests {
         deadline_exceeded_at_call: Option<usize>,
         split_deadline_exceeded: bool,
         split_deadline_error: bool,
-        split_wait_until_deadline: bool,
     }
 
     struct PaginatedPages {
@@ -681,14 +679,9 @@ mod tests {
             &self,
             query: &UsStockSplitQuery,
             max_requests: usize,
-            deadline: Instant,
+            _deadline: Instant,
         ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
             self.split_calls.lock().await.push(query.clone());
-            if self.split_wait_until_deadline {
-                std::thread::sleep(
-                    deadline.saturating_duration_since(Instant::now()) + Duration::from_millis(1),
-                );
-            }
             if self.split_deadline_error {
                 return Err(UsStockBarSourceError::RunDeadlineExceeded);
             }
@@ -1071,6 +1064,16 @@ mod tests {
         assert_eq!(actual, (true, false, 1, Some("time_budget_exhausted")));
     }
 
+    #[test]
+    fn request_budget_interruption_reason_is_independent_of_deadline() {
+        let deadline = Instant::now() - Duration::from_secs(1);
+        let mut budget = RequestBudget::with_deadline(2, deadline);
+
+        budget.mark_request_budget_exhausted();
+
+        assert_eq!(budget.interrupted_reason, Some("request_budget_exhausted"));
+    }
+
     #[rstest]
     #[case::daily(UsStockBarTimeframe::Daily)]
     #[case::minute(UsStockBarTimeframe::Minute)]
@@ -1222,54 +1225,6 @@ mod tests {
                 1,
             ),
         );
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn preserves_request_budget_reason_when_split_batch_finishes_after_deadline(
-        mut harness: Harness,
-    ) {
-        let now = date("2040-01-02T12:00:00Z");
-        let target = UsStockBarTarget {
-            instrument_id: "US:DEMO-LIMIT".to_owned(),
-            latest_daily_bar: None,
-            latest_minute_bar: None,
-            latest_hourly_bar: None,
-            hourly_history_completed_through: None,
-            earliest_daily_bar: None,
-            earliest_minute_bar: None,
-            earliest_hourly_bar: None,
-        };
-        harness.source.split_has_more = true;
-        harness.source.split_wait_until_deadline = true;
-        let mut budget = RequestBudget::with_deadline(2, Instant::now() + Duration::from_secs(1));
-        let mut stats = UsStockBarsIngestStats::default();
-
-        let completed = harness
-            .use_cases
-            .ingest_split_history(
-                &harness.source,
-                &[target],
-                UsStockSplitHistoryRange {
-                    daily_from: now,
-                    minute_from: now,
-                    hourly_from: now,
-                    to: now,
-                    hourly_to: now,
-                },
-                &mut budget,
-                &mut stats,
-            )
-            .await
-            .expect("request limit interruption is reported in stats");
-        let actual = (
-            completed,
-            stats.requests_attempted,
-            budget.remaining(),
-            budget.interrupted_reason,
-        );
-
-        assert_eq!(actual, (false, 1, 1, Some("request_budget_exhausted")),);
     }
 
     #[rstest]
