@@ -1,12 +1,17 @@
 import type { Message } from '@a2a-js/sdk'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { HumanMessage } from '@langchain/core/messages'
+import {
+  AIMessage,
+  type BaseMessage,
+  ChatMessage,
+  HumanMessage,
+} from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, createMiddleware } from 'langchain'
 import { errAsync, okAsync } from 'neverthrow'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { logger } from '#logger'
@@ -20,6 +25,7 @@ import type {
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
+import { createReasoningContentAwareFetch } from '#strategy-agent/reasoning-content-middleware'
 import type {
   McpToolsClient,
   RunStrategyAgentInput,
@@ -56,6 +62,8 @@ vi.mock('@langchain/mcp-adapters', () => ({
     capturedMcpClientConfig = config
   }),
 }))
+
+afterEach(() => vi.unstubAllGlobals())
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -272,6 +280,11 @@ const normalizeSuccessfulRetryWithWarnings = (
   ...normalizeSuccessfulRetry(result, requestBodies),
   retryWarnings,
 })
+
+const normalizeReasoningReplay = (
+  structuredResponse: unknown,
+  requestMessages: readonly unknown[][],
+) => ({ structuredResponse, requestMessages })
 
 const normalizeAttemptOutcome = (callCount: number, outcome: string) => ({
   callCount,
@@ -840,6 +853,120 @@ describe('createStrategyAgentDeps', () => {
     return body
   }
 
+  const invokeWithHistory = async (
+    messages: readonly BaseMessage[],
+  ): Promise<unknown[]> => {
+    let requestMessages: unknown[] = []
+    const fetch: ChatOpenAIFetch = (_url, init) => {
+      requestMessages = z
+        .object({
+          messages: z.array(z.record(z.string(), z.unknown())),
+        })
+        .parse(JSON.parse(getRequestBody(init))).messages
+      return Promise.resolve(new Response('', { status: 500 }))
+    }
+    vi.stubGlobal('fetch', fetch)
+
+    const deps = createStrategyAgentDeps(baseConfig)
+    const model = deps.createChatModel('test-model')
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model,
+      tools: [],
+      systemPrompt: 'test system prompt',
+    })
+    await agent.invoke({ messages: [...messages] }).catch(() => undefined)
+    return requestMessages
+  }
+
+  it.each([
+    {
+      name: 'replays saved reasoning on its assistant message',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage({
+          content: 'intermediate response',
+          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        {
+          role: 'assistant',
+          content: 'intermediate response',
+          reasoning_content: 'synthetic reasoning',
+        },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
+      name: 'leaves assistant messages without saved reasoning unchanged',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage('intermediate response'),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        { role: 'assistant', content: 'intermediate response' },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
+      name: 'replays saved reasoning on an assistant ChatMessage',
+      messages: [
+        new HumanMessage('first input'),
+        new ChatMessage({
+          content: 'intermediate response',
+          role: 'assistant',
+          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        {
+          role: 'assistant',
+          content: 'intermediate response',
+          reasoning_content: 'synthetic reasoning',
+        },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+    {
+      name: 'keeps later reasoning aligned after an audio message',
+      messages: [
+        new HumanMessage('first input'),
+        new AIMessage({
+          content: 'spoken response',
+          additional_kwargs: { audio: { id: 'synthetic-audio-id' } },
+        }),
+        new AIMessage({
+          content: 'following response',
+          additional_kwargs: { reasoning_content: 'synthetic reasoning' },
+        }),
+        new HumanMessage('follow-up input'),
+      ],
+      expected: [
+        { role: 'system', content: 'test system prompt' },
+        { role: 'user', content: 'first input' },
+        { role: 'assistant', content: 'spoken response' },
+        { role: 'assistant', audio: { id: 'synthetic-audio-id' } },
+        {
+          role: 'assistant',
+          content: 'following response',
+          reasoning_content: 'synthetic reasoning',
+        },
+        { role: 'user', content: 'follow-up input' },
+      ],
+    },
+  ])('$name', async ({ messages, expected }) => {
+    expect(await invokeWithHistory(messages)).toEqual(expected)
+  })
+
   const getForcedSubmissionOutput = (
     structuredResponse: unknown,
     requestedToolCounts: readonly number[],
@@ -1071,6 +1198,119 @@ describe('createStrategyAgentDeps', () => {
       headers: { 'content-type': 'text/event-stream' },
     })
   }
+
+  const buildReasoningToolCallStreamResponse = (callId: string): Response => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const delta of [
+          {
+            role: 'assistant',
+            reasoning_content: 'synthetic ',
+          },
+          {
+            reasoning_content: 'reasoning',
+            tool_calls: [
+              {
+                index: 0,
+                id: `${callId}-tool`,
+                type: 'function',
+                function: { name: 'search', arguments: '{}' },
+              },
+            ],
+          },
+        ]) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                id: callId,
+                model: 'example-model-test-stream',
+                choices: [{ index: 0, finish_reason: null, delta }],
+              })}\n\n`,
+            ),
+          )
+        }
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              id: callId,
+              model: 'example-model-test-stream',
+              choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }],
+            })}\n\n`,
+          ),
+        )
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      },
+    })
+    return new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })
+  }
+
+  it('replays reasoning joined from SSE deltas on the next model request', async () => {
+    const capturedRequestSchema = z.object({
+      messages: z.array(z.record(z.string(), z.unknown())),
+    })
+    const capturedRequests: z.infer<typeof capturedRequestSchema>[] = []
+    const fetchImpl: ChatOpenAIFetch = (_url, init) => {
+      const body = getRequestBody(init)
+      capturedRequests.push(capturedRequestSchema.parse(JSON.parse(body)))
+      const response =
+        capturedRequests.length === 1
+          ? buildReasoningToolCallStreamResponse('synthetic-response')
+          : buildStructuredOutputStreamResponse(
+              `synthetic-response-${String(capturedRequests.length)}`,
+              body,
+            )
+      return Promise.resolve(response)
+    }
+
+    const deps = createStrategyAgentDeps(baseConfig)
+    const agent = buildPhaseAgentUnderTest(deps, {
+      model: buildStubModel(createReasoningContentAwareFetch(fetchImpl), true),
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'test system prompt',
+    })
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    expect(
+      normalizeReasoningReplay(
+        result.structuredResponse,
+        capturedRequests.map(({ messages }) => messages),
+      ),
+    ).toEqual({
+      structuredResponse: { status: 'completed', message: 'done' },
+      requestMessages: [
+        [
+          { role: 'system', content: 'test system prompt' },
+          { role: 'user', content: 'hi' },
+        ],
+        [
+          { role: 'system', content: 'test system prompt' },
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'synthetic-response-tool',
+                type: 'function',
+                function: { name: 'search', arguments: '{}' },
+              },
+            ],
+            reasoning_content: 'synthetic reasoning',
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'synthetic-response-tool',
+            content: 'unused in these tests',
+          },
+        ],
+      ],
+    })
+  }, 15_000)
 
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     captureWithFingerprintMock.mockClear()

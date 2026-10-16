@@ -17,8 +17,8 @@ pub use types::{
     UsStockBarTarget, UsStockBarsIngestStats,
 };
 pub use us_stock_source::{
-    SharedUsStockBarSource, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
-    UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
+    SharedUsStockBarSource, SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery,
+    UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
 };
 pub use use_cases::BarsUseCases;
 

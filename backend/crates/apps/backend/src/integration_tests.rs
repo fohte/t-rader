@@ -18,11 +18,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, QueryFilter, Statement};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::services::use_cases::build_use_cases;
 use crate::testing::agent_config;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
@@ -38,133 +37,6 @@ use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::strategy_task;
 
 #[backend_test_macros::database_test]
-async fn postgres_queue_enqueues_one_keyed_strategy_task_reconcile_job(
-    db: gateway_postgres::DatabaseHandle,
-) {
-    use core_application::strategy_task::{
-        STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
-        StrategyTaskReconcileJobQueue,
-    };
-    use gateway_postgres::PostgresStrategyTaskReconcileJobQueue;
-
-    let pool = gateway_postgres::test_support::create_test_pool().await;
-    crate::migrations::migrate_graphile_worker_schema(pool)
-        .await
-        .expect("migrate Graphile Worker schema");
-    let queue = PostgresStrategyTaskReconcileJobQueue::new(db.clone());
-    queue
-        .enqueue_reconciliation()
-        .await
-        .expect("enqueue reconciliation job");
-    queue
-        .enqueue_reconciliation()
-        .await
-        .expect("deduplicate reconciliation job");
-
-    let statement = Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "SELECT tasks.identifier, jobs.payload::text AS payload, \
-                jobs.max_attempts::int AS max_attempts, jobs.key, queues.queue_name \
-         FROM graphile_worker._private_jobs AS jobs \
-         JOIN graphile_worker._private_tasks AS tasks ON tasks.id = jobs.task_id \
-         LEFT JOIN graphile_worker._private_job_queues AS queues ON queues.id = jobs.job_queue_id \
-         WHERE jobs.key = $1"
-            .to_string(),
-        [STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string().into()],
-    );
-    let rows = db.query_all_raw(statement).await.expect("read queued job");
-    let actual = rows
-        .into_iter()
-        .map(|row| {
-            (
-                row.try_get::<String>("", "identifier")
-                    .expect("job identifier"),
-                row.try_get::<String>("", "payload").expect("job payload"),
-                row.try_get::<i32>("", "max_attempts")
-                    .expect("maximum attempts"),
-                row.try_get::<Option<String>>("", "key").expect("job key"),
-                row.try_get::<Option<String>>("", "queue_name")
-                    .expect("queue name"),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(
-        actual,
-        vec![(
-            STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string(),
-            "{}".to_string(),
-            3,
-            Some(STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string()),
-            Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME.to_string()),
-        )],
-    );
-}
-
-#[backend_test_macros::database_test]
-async fn postgres_queue_enqueues_one_keyed_event_dispatch_job(
-    db: gateway_postgres::DatabaseHandle,
-) {
-    use core_application::event_dispatch_job::{
-        EVENT_DISPATCH_JOB_IDENTIFIER, EVENT_DISPATCH_QUEUE_NAME, EventDispatchJobQueue,
-    };
-    use gateway_postgres::PostgresEventDispatchJobQueue;
-
-    let pool = gateway_postgres::test_support::create_test_pool().await;
-    crate::migrations::migrate_graphile_worker_schema(pool)
-        .await
-        .expect("migrate Graphile Worker schema");
-    let queue = PostgresEventDispatchJobQueue::new(db.clone());
-    queue
-        .enqueue_dispatch()
-        .await
-        .expect("enqueue dispatch job");
-    queue
-        .enqueue_dispatch()
-        .await
-        .expect("deduplicate dispatch job");
-
-    let statement = Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "SELECT tasks.identifier, jobs.payload::text AS payload, \
-                jobs.max_attempts::int AS max_attempts, jobs.key, queues.queue_name \
-         FROM graphile_worker._private_jobs AS jobs \
-         JOIN graphile_worker._private_tasks AS tasks ON tasks.id = jobs.task_id \
-         LEFT JOIN graphile_worker._private_job_queues AS queues ON queues.id = jobs.job_queue_id \
-         WHERE jobs.key = $1"
-            .to_string(),
-        [EVENT_DISPATCH_JOB_IDENTIFIER.to_string().into()],
-    );
-    let rows = db.query_all_raw(statement).await.expect("read queued job");
-    let actual = rows
-        .into_iter()
-        .map(|row| {
-            (
-                row.try_get::<String>("", "identifier")
-                    .expect("job identifier"),
-                row.try_get::<String>("", "payload").expect("job payload"),
-                row.try_get::<i32>("", "max_attempts")
-                    .expect("maximum attempts"),
-                row.try_get::<Option<String>>("", "key").expect("job key"),
-                row.try_get::<Option<String>>("", "queue_name")
-                    .expect("queue name"),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(
-        actual,
-        vec![(
-            EVENT_DISPATCH_JOB_IDENTIFIER.to_string(),
-            "{}".to_string(),
-            3,
-            Some(EVENT_DISPATCH_JOB_IDENTIFIER.to_string()),
-            Some(EVENT_DISPATCH_QUEUE_NAME.to_string()),
-        )],
-    );
-}
-
-#[backend_test_macros::database_test]
 async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
     db: gateway_postgres::DatabaseHandle,
 ) {
@@ -176,7 +48,7 @@ async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
         .await
         .expect("insert test agent_config");
 
-    let use_cases = build_use_cases(db.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
     let mgmt = MgmtServer::new(crate::mcp::mgmt_dependencies(
         &use_cases,
         agent_client.clone(),
@@ -211,7 +83,7 @@ async fn five_non_event_submission_routes_converge_on_strategy_task_use_case(
         None,
     )
     .await;
-    let use_cases = build_use_cases(db.clone());
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone());
     let attempts = use_cases
         .triggers()
         .run_cron_tick(agent_client.as_ref(), Duration::from_secs(60))
@@ -354,11 +226,9 @@ async fn submitted_task_reaches_completed_with_result_text_after_scheduler_recon
     )
     .await;
 
-    let updated = entrypoint_scheduler::reconcile_in_flight_tasks(
-        &build_use_cases(db.clone()).strategy_tasks(),
-        agent_client.as_ref(),
-    )
-    .await;
+    let reconcile = crate::services::use_cases::build_use_cases(db.clone(), agent_client.clone())
+        .strategy_task_reconcile(crate::testing::test_strategy_task_reconcile_lock());
+    let updated = reconcile.reconcile().await;
     assert_eq!(updated, Ok(1));
 
     let res = server

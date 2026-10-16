@@ -12,12 +12,12 @@ use sea_orm::{
 };
 
 use crate::entities::bars;
-use crate::entities::minute_bars;
 
 const FIND_ONE_MINUTE_BARS_SQL: &str = r#"
     SELECT instrument_id, timestamp, open, high, low, close, volume
-    FROM minute_bars
+    FROM bars
     WHERE instrument_id IN ({instrument_ids})
+      AND timeframe = '1m'
       AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
       AND (${to}::timestamptz IS NULL OR timestamp <= ${to})
     ORDER BY instrument_id ASC, timestamp ASC
@@ -33,8 +33,9 @@ const FIND_AGGREGATED_MINUTE_BARS_SQL: &str = r#"
             MIN(low) AS low,
             last(close, timestamp) AS close,
             SUM(volume)::bigint AS volume
-        FROM minute_bars
+        FROM bars
         WHERE instrument_id IN ({instrument_ids})
+          AND timeframe = '1m'
           AND (${from}::timestamptz IS NULL OR timestamp >= ${from})
           -- 範囲内に開始する最後の bucket も全 OHLCV を集計する。
           AND (${to}::timestamptz IS NULL OR timestamp < ${to} + $1::interval)
@@ -145,45 +146,6 @@ pub async fn upsert_bars(
                 bars::Column::Close,
                 bars::Column::Volume,
                 bars::Column::AdjustmentFactor,
-            ])
-            .to_owned(),
-        )
-        .exec_without_returning(db)
-        .await?;
-
-    Ok(())
-}
-
-/// 1 分足を一括 upsert する。
-pub async fn upsert_minute_bars(
-    db: &impl sea_orm::ConnectionTrait,
-    bars_data: Vec<Bar>,
-) -> Result<(), DbErr> {
-    if bars_data.is_empty() {
-        return Ok(());
-    }
-
-    let active_models = bars_data.into_iter().map(|bar| minute_bars::ActiveModel {
-        instrument_id: Set(bar.instrument_id),
-        timestamp: Set(bar.timestamp.fixed_offset()),
-        open: Set(bar.open),
-        high: Set(bar.high),
-        low: Set(bar.low),
-        close: Set(bar.close),
-        volume: Set(bar.volume),
-    });
-    minute_bars::Entity::insert_many(active_models)
-        .on_conflict(
-            OnConflict::columns([
-                minute_bars::Column::InstrumentId,
-                minute_bars::Column::Timestamp,
-            ])
-            .update_columns([
-                minute_bars::Column::Open,
-                minute_bars::Column::High,
-                minute_bars::Column::Low,
-                minute_bars::Column::Close,
-                minute_bars::Column::Volume,
             ])
             .to_owned(),
         )
@@ -547,18 +509,24 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_minute_bars_updates_existing_records(db: gateway_postgres::DatabaseHandle) {
+    async fn upsert_bars_updates_existing_minute_records(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "US:QZ7").await;
         let timestamp = Utc
             .with_ymd_and_hms(2040, 1, 2, 15, 4, 0)
             .single()
             .expect("fixture timestamp");
         let updated_bar = make_test_minute_bar("US:QZ7", timestamp, 200);
+        let mut hourly_bar = updated_bar.clone();
+        hourly_bar.timeframe = Timeframe::Hourly;
+        hourly_bar.high = Decimal::new(999, 0);
 
-        upsert_minute_bars(&db, vec![make_test_minute_bar("US:QZ7", timestamp, 100)])
-            .await
-            .expect("insert minute bar");
-        upsert_minute_bars(&db, vec![updated_bar.clone()])
+        upsert_bars(
+            &db,
+            vec![make_test_minute_bar("US:QZ7", timestamp, 100), hourly_bar],
+        )
+        .await
+        .expect("insert bars");
+        upsert_bars(&db, vec![updated_bar.clone()])
             .await
             .expect("update minute bar");
 
@@ -574,7 +542,28 @@ mod tests {
         .await
         .expect("find minute bars");
 
-        assert_eq!(result, vec![updated_bar]);
+        let mut expected_five_minute_bar = updated_bar.clone();
+        expected_five_minute_bar.timeframe = Timeframe::FiveMinutes;
+        expected_five_minute_bar.timestamp = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 0, 0)
+            .single()
+            .expect("five-minute bucket timestamp");
+        let aggregated = find_intraday_bars(
+            &db,
+            BarsQuery {
+                instrument_id: "US:QZ7".to_owned(),
+                timeframe: "5m".to_owned(),
+                from: None,
+                to: None,
+            },
+        )
+        .await
+        .expect("find aggregated bars");
+
+        assert_eq!(
+            (result, aggregated),
+            (vec![updated_bar], vec![expected_five_minute_bar]),
+        );
     }
 
     #[backend_test_macros::database_test]

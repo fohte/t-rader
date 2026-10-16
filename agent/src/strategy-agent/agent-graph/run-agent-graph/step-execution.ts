@@ -64,9 +64,7 @@ const hasRequiredArrayFields = (
   response: Record<string, unknown>,
   requiredArrayFields: ReadonlySet<string>,
 ): boolean =>
-  [...requiredArrayFields].every(
-    (field) => Array.isArray(response[field]) && response[field].length > 0,
-  )
+  [...requiredArrayFields].every((field) => Array.isArray(response[field]))
 
 type StructuredOutputRejectionReason =
   'missing_structured_output' | 'missing_required_array_fields'
@@ -77,7 +75,7 @@ const buildRejectionMessage = (
 ): string =>
   reason === 'missing_structured_output'
     ? 'agent did not return a structured response'
-    : `agent's structured response did not resolve required for_each field(s) to a non-empty array: ${[...requiredArrayFields].join(', ')}`
+    : `agent's structured response did not resolve required for_each field(s) to an array: ${[...requiredArrayFields].join(', ')}`
 
 const buildRetryFeedbackMessage = (
   reason: StructuredOutputRejectionReason,
@@ -133,7 +131,7 @@ const createPhaseAgent = (
 // invoke() 自体の reject (usage limit・ツール失敗・ネットワークエラー等) は
 // 再試行せず即座に伝播する。再試行するのは invoke が成功したにもかかわらず
 // structured response を欠く場合と、structured response はあるが
-// requiredArrayFields (後続フェーズの for_each が要求する非空配列) を
+// requiredArrayFields (後続フェーズの for_each が要求する配列) を
 // 満たさない場合のみで、これが再試行で解消しうる唯一の失敗モードのため。
 //
 // invoke() は attempt ごとに新規の LangGraph 実行になり、前の attempt の

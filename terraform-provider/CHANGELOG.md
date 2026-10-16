@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.4...terraform-provider-v0.1.5) (2026-10-15)
+
+
+### Features
+
+* **terraform-provider:** event trigger を管理する ([#886](https://github.com/fohte/t-rader/issues/886)) ([c80f24c](https://github.com/fohte/t-rader/commit/c80f24c32841ef58818fff9c7a7e3bb57c224f3a))
+* **terraform-provider:** サブエージェント定義を管理する ([#895](https://github.com/fohte/t-rader/issues/895)) ([9ecf7c6](https://github.com/fohte/t-rader/commit/9ecf7c6bc59b6d883ee6e3eb415627a98533f25d))
+
 ## [0.1.4](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.3...terraform-provider-v0.1.4) (2026-10-10)
 
 

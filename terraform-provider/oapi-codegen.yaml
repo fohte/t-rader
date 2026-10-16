@@ -13,6 +13,7 @@ output-options:
     - paper_accounts
     - group_axes
     - rss_feeds
+    - subagent_definitions
     - strategies
     - triggers
     - refs

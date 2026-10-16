@@ -41,12 +41,14 @@ pub struct UsStockBarTarget {
     pub earliest_minute_bar: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 pub struct UsStockBarsIngestStats {
     pub symbols_attempted: usize,
     pub requests_attempted: usize,
     pub daily_bars_upserted: usize,
     pub minute_bars_upserted: usize,
+    pub skipped_instruments: Vec<super::us_stock_source::SkippedUsStockInstrument>,
+    pub interrupted_reason: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

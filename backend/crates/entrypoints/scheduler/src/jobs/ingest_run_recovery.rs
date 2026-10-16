@@ -1,4 +1,6 @@
-use chrono::{DateTime, Duration as ChronoDuration, FixedOffset, Utc};
+use std::time::Duration;
+
+use chrono::{DateTime, FixedOffset, Utc};
 use core_application::ingest_run_log::IngestRunLog;
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
@@ -32,18 +34,26 @@ async fn recover_interrupted_runs(
     let mut recovered = 0_u64;
 
     for (job, timeout) in RECOVERABLE_INGEST_JOBS {
-        let cutoff = now - ChronoDuration::seconds(timeout.as_secs() as i64);
-        recovered = recovered.saturating_add(
-            log.fail_interrupted_before(job, cutoff)
-                .await
-                .map_err(|error| error.to_string())?,
-        );
+        recovered =
+            recovered.saturating_add(recover_interrupted_run(log, job, timeout, now).await?);
     }
 
     if recovered > 0 {
         tracing::info!(recovered, "interrupted ingest runs recovered");
     }
     Ok(recovered)
+}
+
+pub(crate) async fn recover_interrupted_run(
+    log: &dyn IngestRunLog,
+    job: &str,
+    timeout: Duration,
+    now: DateTime<FixedOffset>,
+) -> Result<u64, String> {
+    let cutoff = super::run_started_before(now, timeout)?;
+    log.fail_interrupted_before(job, cutoff)
+        .await
+        .map_err(|error| format!("failed to recover interrupted ingest runs: {error}"))
 }
 
 #[cfg(test)]
@@ -101,7 +111,7 @@ mod tests {
         assert_eq!(
             (result, log.calls.lock().await.clone()),
             (
-                Ok(24),
+                Ok(25),
                 vec![
                     ("fred_ingest".to_string(), now - Duration::hours(2)),
                     ("eoddata_kospi_ingest".to_string(), now - Duration::hours(2)),
@@ -163,6 +173,10 @@ mod tests {
                         now - Duration::hours(2)
                     ),
                     ("us_stock_bars_ingest".to_string(), now - Duration::hours(2)),
+                    (
+                        "us_stock_minute_bars_ingest".to_string(),
+                        now - Duration::hours(2),
+                    ),
                 ],
             ),
         );

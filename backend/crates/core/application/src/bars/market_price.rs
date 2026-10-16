@@ -330,6 +330,12 @@ mod tests {
             Err(database_error())
         }
 
+        async fn find_us_stock_daily_bar_targets(
+            &self,
+        ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+            Err(database_error())
+        }
+
         async fn find_ingested_dates(
             &self,
             _: NaiveDate,
@@ -346,14 +352,6 @@ mod tests {
         }
 
         async fn upsert_bars(
-            &self,
-            _: &UnitOfWorkTransaction,
-            _: Vec<Bar>,
-        ) -> Result<(), BarsRepositoryError> {
-            Err(database_error())
-        }
-
-        async fn upsert_minute_bars(
             &self,
             _: &UnitOfWorkTransaction,
             _: Vec<Bar>,

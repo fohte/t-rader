@@ -18,6 +18,13 @@ pub struct UsStockBarQuery {
 pub struct UsStockBarPage {
     pub bars: Vec<Bar>,
     pub next_page_token: Option<String>,
+    pub skipped_instruments: Vec<SkippedUsStockInstrument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SkippedUsStockInstrument {
+    pub instrument_id: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,10 +46,14 @@ pub struct UsStockSplit {
 pub struct UsStockSplitBatch {
     pub splits: Vec<UsStockSplit>,
     pub requests_attempted: usize,
+    pub has_more: bool,
+    pub skipped_instruments: Vec<SkippedUsStockInstrument>,
 }
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum UsStockBarSourceError {
+    #[error("Alpaca rejected a stock symbol batch: {0}")]
+    RejectedSymbols(String),
     #[error("US stock bar source error: {0}")]
     Failed(String),
 }
@@ -57,6 +68,7 @@ pub trait UsStockBarSource: Send + Sync {
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
+        max_requests: usize,
     ) -> Result<UsStockSplitBatch, UsStockBarSourceError>;
 }
 

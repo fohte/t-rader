@@ -1,17 +1,19 @@
-use std::{collections::HashMap, str::FromStr, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDate};
 use core_application::bars::{
-    UsStockBarPage, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit,
-    UsStockSplitBatch, UsStockSplitQuery,
+    SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
+    UsStockBarSourceError, UsStockSplitBatch, UsStockSplitQuery,
 };
-use core_domain::bar::{Bar, Timeframe};
+use core_domain::bar::Timeframe;
 use core_domain::stock_id::ForeignStockId;
 use rate_limit::{Quota, RateLimitError, RateLimiter};
 use reqwest::{Url, header::HeaderValue};
-use rust_decimal::{Decimal, prelude::ToPrimitive};
-use serde::{Deserialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
+
+mod response;
+
+use response::{BarsResponse, CorporateActionsResponse};
 
 const API_URL: &str = "https://data.alpaca.markets/v2/stocks/bars";
 const CORPORATE_ACTIONS_RESPONSE_LIMIT: u32 = 1_000;
@@ -202,18 +204,17 @@ impl UsStockBarSource for AlpacaClient {
         &self,
         query: &UsStockBarQuery,
     ) -> Result<UsStockBarPage, UsStockBarSourceError> {
-        self.fetch_page_inner(query)
-            .await
-            .map_err(|error| UsStockBarSourceError::Failed(error.to_string()))
+        self.fetch_page_inner(query).await.map_err(source_error)
     }
 
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
+        max_requests: usize,
     ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
-        self.fetch_splits_inner(query)
+        self.fetch_splits_inner(query, max_requests)
             .await
-            .map_err(|error| UsStockBarSourceError::Failed(error.to_string()))
+            .map_err(source_error)
     }
 }
 
@@ -226,17 +227,27 @@ impl AlpacaClient {
             return Ok(UsStockBarPage::default());
         }
 
-        let response = self
-            .fetch_json::<BarsResponse>(&self.url, &request_params(query)?)
-            .await?;
-        let mut instrument_ids = HashMap::new();
-        for instrument_id in &query.instrument_ids {
-            instrument_ids.insert(alpaca_symbol(instrument_id)?, instrument_id.clone());
+        let (instrument_ids, symbols, skipped_instruments) = alpaca_symbols(&query.instrument_ids);
+        if instrument_ids.is_empty() {
+            return Ok(UsStockBarPage {
+                skipped_instruments: if query.page_token.is_none() {
+                    skipped_instruments
+                } else {
+                    Vec::new()
+                },
+                ..UsStockBarPage::default()
+            });
         }
+        let mut request_query = query.clone();
+        request_query.instrument_ids = instrument_ids;
+
+        let response = self
+            .fetch_json::<BarsResponse>(&self.url, &request_params(&request_query)?)
+            .await?;
 
         let mut bars = Vec::new();
         for (symbol, records) in response.bars {
-            let Some(instrument_id) = instrument_ids.get(&symbol) else {
+            let Some(instrument_id) = symbols.get(&symbol) else {
                 return Err(AlpacaError::Parse(format!(
                     "response included an unrequested symbol: {symbol}"
                 )));
@@ -249,22 +260,39 @@ impl AlpacaClient {
         Ok(UsStockBarPage {
             bars,
             next_page_token: response.next_page_token,
+            skipped_instruments: if query.page_token.is_none() {
+                skipped_instruments
+            } else {
+                Vec::new()
+            },
         })
     }
 
     async fn fetch_splits_inner(
         &self,
         query: &UsStockSplitQuery,
+        max_requests: usize,
     ) -> Result<UsStockSplitBatch, AlpacaError> {
         if query.instrument_ids.is_empty() {
             return Ok(UsStockSplitBatch::default());
         }
-
-        let mut instrument_ids = HashMap::new();
-        for instrument_id in &query.instrument_ids {
-            instrument_ids.insert(alpaca_symbol(instrument_id)?, instrument_id.clone());
+        if max_requests == 0 {
+            return Ok(UsStockSplitBatch {
+                has_more: true,
+                ..UsStockSplitBatch::default()
+            });
         }
-        let params = split_request_params(query)?;
+
+        let (instrument_ids, symbols, skipped_instruments) = alpaca_symbols(&query.instrument_ids);
+        if instrument_ids.is_empty() {
+            return Ok(UsStockSplitBatch {
+                skipped_instruments,
+                ..UsStockSplitBatch::default()
+            });
+        }
+        let mut request_query = query.clone();
+        request_query.instrument_ids = instrument_ids;
+        let params = split_request_params(&request_query)?;
         let mut page_token: Option<String> = None;
         let mut splits = Vec::new();
         let mut requests_attempted = 0;
@@ -283,7 +311,7 @@ impl AlpacaClient {
                 .into_iter()
                 .chain(response.reverse_splits)
             {
-                let Some(instrument_id) = instrument_ids.get(&split.symbol) else {
+                let Some(instrument_id) = symbols.get(&split.symbol) else {
                     return Err(AlpacaError::Parse(format!(
                         "response included an unrequested split symbol: {}",
                         split.symbol
@@ -296,6 +324,8 @@ impl AlpacaClient {
                 return Ok(UsStockSplitBatch {
                     splits,
                     requests_attempted,
+                    has_more: false,
+                    skipped_instruments,
                 });
             };
             if page_token.as_ref() == Some(&next_page_token) {
@@ -303,9 +333,85 @@ impl AlpacaClient {
                     "corporate actions pagination token did not advance".to_owned(),
                 ));
             }
+            if requests_attempted >= max_requests {
+                return Ok(UsStockSplitBatch {
+                    splits,
+                    requests_attempted,
+                    has_more: true,
+                    skipped_instruments,
+                });
+            }
             page_token = Some(next_page_token);
         }
     }
+}
+
+fn source_error(error: AlpacaError) -> UsStockBarSourceError {
+    match error {
+        AlpacaError::Api { status, message } if is_symbol_rejection(status, &message) => {
+            UsStockBarSourceError::RejectedSymbols(message)
+        }
+        error => UsStockBarSourceError::Failed(error.to_string()),
+    }
+}
+
+fn is_symbol_rejection(status: u16, message: &str) -> bool {
+    if !(400..500).contains(&status) || matches!(status, 401 | 403 | 429) {
+        return false;
+    }
+
+    let message = message.to_ascii_lowercase();
+    let identifies_instrument = ["symbol", "ticker", "asset", "instrument"]
+        .iter()
+        .any(|term| message.contains(term));
+    let indicates_rejection = [
+        "invalid",
+        "unknown",
+        "unsupported",
+        "not supported",
+        "not found",
+        "cannot be found",
+        "could not be found",
+        "does not exist",
+        "doesn't exist",
+        "not recognized",
+        "unrecognized",
+        "not active",
+        "inactive",
+        "not tradable",
+        "not tradeable",
+        "no such",
+        "rejected",
+    ]
+    .iter()
+    .any(|term| message.contains(term));
+
+    identifies_instrument && indicates_rejection
+}
+
+fn alpaca_symbols(
+    instrument_ids: &[String],
+) -> (
+    Vec<String>,
+    HashMap<String, String>,
+    Vec<SkippedUsStockInstrument>,
+) {
+    let mut valid_instrument_ids = Vec::new();
+    let mut symbols = HashMap::new();
+    let mut skipped_instruments = Vec::new();
+    for instrument_id in instrument_ids {
+        match alpaca_symbol(instrument_id) {
+            Ok(symbol) => {
+                valid_instrument_ids.push(instrument_id.clone());
+                symbols.insert(symbol, instrument_id.clone());
+            }
+            Err(error) => skipped_instruments.push(SkippedUsStockInstrument {
+                instrument_id: instrument_id.clone(),
+                reason: error.to_string(),
+            }),
+        }
+    }
+    (valid_instrument_ids, symbols, skipped_instruments)
 }
 
 fn split_request_params(
@@ -374,107 +480,12 @@ fn alpaca_symbol(instrument_id: &str) -> Result<String, AlpacaError> {
     Ok(ticker.replace('-', "."))
 }
 
-#[derive(Deserialize)]
-struct BarsResponse {
-    #[serde(default)]
-    bars: HashMap<String, Vec<AlpacaBar>>,
-    next_page_token: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct CorporateActionsResponse {
-    #[serde(default)]
-    forward_splits: Vec<AlpacaSplit>,
-    #[serde(default)]
-    reverse_splits: Vec<AlpacaSplit>,
-    next_page_token: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct AlpacaSplit {
-    symbol: String,
-    ex_date: String,
-    old_rate: AlpacaDecimal,
-    new_rate: AlpacaDecimal,
-}
-
-impl AlpacaSplit {
-    fn into_split(self, instrument_id: String) -> Result<UsStockSplit, AlpacaError> {
-        Ok(UsStockSplit {
-            instrument_id,
-            ex_date: NaiveDate::parse_from_str(&self.ex_date, "%Y-%m-%d")
-                .map_err(|error| AlpacaError::Parse(error.to_string()))?,
-            old_rate: self.old_rate.into_decimal()?,
-            new_rate: self.new_rate.into_decimal()?,
-        })
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum AlpacaDecimal {
-    String(String),
-    Number(serde_json::Number),
-}
-
-impl AlpacaDecimal {
-    fn into_decimal(self) -> Result<Decimal, AlpacaError> {
-        let value = match self {
-            Self::String(value) => value,
-            Self::Number(value) => value.to_string(),
-        };
-        Decimal::from_str(&value).map_err(|error| AlpacaError::Parse(error.to_string()))
-    }
-}
-
-#[derive(Deserialize)]
-struct AlpacaBar {
-    t: String,
-    o: serde_json::Number,
-    h: serde_json::Number,
-    l: serde_json::Number,
-    c: serde_json::Number,
-    v: serde_json::Number,
-}
-
-impl AlpacaBar {
-    fn into_bar(self, instrument_id: &str, timeframe: Timeframe) -> Result<Bar, AlpacaError> {
-        let timestamp = DateTime::parse_from_rfc3339(&self.t)
-            .map_err(|error| AlpacaError::Parse(error.to_string()))?
-            .to_utc();
-        let volume = decimal_from_number(self.v)?;
-        if volume.fract() != Decimal::ZERO {
-            return Err(AlpacaError::Parse(format!(
-                "bar volume must be an integer: {volume}"
-            )));
-        }
-
-        Ok(Bar {
-            instrument_id: instrument_id.to_owned(),
-            timeframe,
-            timestamp,
-            open: decimal_from_number(self.o)?,
-            high: decimal_from_number(self.h)?,
-            low: decimal_from_number(self.l)?,
-            close: decimal_from_number(self.c)?,
-            volume: volume.to_i64().ok_or_else(|| {
-                AlpacaError::Parse(format!("bar volume is out of range: {volume}"))
-            })?,
-            adjustment_factor: Decimal::ONE,
-        })
-    }
-}
-
-fn decimal_from_number(value: serde_json::Number) -> Result<Decimal, AlpacaError> {
-    Decimal::from_str(&value.to_string()).map_err(|error| AlpacaError::Parse(error.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
     use core_application::bars::{
-        UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitBatch,
-        UsStockSplitQuery,
+        SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
+        UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
     };
     use core_domain::bar::{Bar, Timeframe};
     use rstest::rstest;
@@ -527,7 +538,7 @@ mod tests {
 
         let page = client
             .fetch_page(&UsStockBarQuery {
-                instrument_ids: vec!["US:QZ-7".to_owned()],
+                instrument_ids: vec!["US:QZ-7".to_owned(), "KR:QZ7".to_owned()],
                 timeframe: Timeframe::Daily,
                 from: date("1970-01-01T00:00:00Z"),
                 to: date("2040-01-03T00:00:00Z"),
@@ -551,6 +562,12 @@ mod tests {
                     adjustment_factor: Decimal::ONE,
                 }],
                 next_page_token: Some("synthetic-page".to_owned()),
+                skipped_instruments: vec![SkippedUsStockInstrument {
+                    instrument_id: "KR:QZ7".to_owned(),
+                    reason:
+                        "invalid Alpaca API configuration: stock is not in the US market: KR:QZ7"
+                            .to_owned(),
+                }],
             },
         );
     }
@@ -590,11 +607,14 @@ mod tests {
             .expect("test client is configured");
 
         let actual = client
-            .fetch_splits(&UsStockSplitQuery {
-                instrument_ids: vec!["US:QZ-7".to_owned()],
-                from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
-                to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
-            })
+            .fetch_splits(
+                &UsStockSplitQuery {
+                    instrument_ids: vec!["US:QZ-7".to_owned()],
+                    from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                    to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
+                },
+                1,
+            )
             .await
             .expect("corporate actions response is valid");
 
@@ -616,13 +636,17 @@ mod tests {
                     },
                 ],
                 requests_attempted: 1,
+                has_more: false,
+                skipped_instruments: Vec::new(),
             },
         );
     }
 
     #[rstest]
+    #[case::stops_at_the_request_limit(1)]
+    #[case::fetches_all_pages(2)]
     #[tokio::test]
-    async fn fetches_all_pages_of_corporate_actions() {
+    async fn respects_the_corporate_action_request_limit(#[case] max_requests: usize) {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v1/corporate-actions"))
@@ -664,34 +688,46 @@ mod tests {
             .expect("test client is configured");
 
         let actual = client
-            .fetch_splits(&UsStockSplitQuery {
-                instrument_ids: vec!["US:QZ-7".to_owned()],
-                from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
-                to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
-            })
+            .fetch_splits(
+                &UsStockSplitQuery {
+                    instrument_ids: vec!["US:QZ-7".to_owned()],
+                    from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                    to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
+                },
+                max_requests,
+            )
             .await
             .expect("corporate actions pages are valid");
 
-        assert_eq!(
-            actual,
+        let first_split = UsStockSplit {
+            instrument_id: "US:QZ-7".to_owned(),
+            ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        };
+        let second_split = UsStockSplit {
+            instrument_id: "US:QZ-7".to_owned(),
+            ex_date: NaiveDate::from_ymd_opt(2039, 1, 2).expect("split date is valid"),
+            old_rate: Decimal::new(10, 0),
+            new_rate: Decimal::ONE,
+        };
+        let expected = if max_requests == 1 {
             UsStockSplitBatch {
-                splits: vec![
-                    UsStockSplit {
-                        instrument_id: "US:QZ-7".to_owned(),
-                        ex_date: NaiveDate::from_ymd_opt(2040, 1, 2).expect("split date is valid"),
-                        old_rate: Decimal::ONE,
-                        new_rate: Decimal::new(2, 0),
-                    },
-                    UsStockSplit {
-                        instrument_id: "US:QZ-7".to_owned(),
-                        ex_date: NaiveDate::from_ymd_opt(2039, 1, 2).expect("split date is valid"),
-                        old_rate: Decimal::new(10, 0),
-                        new_rate: Decimal::ONE,
-                    },
-                ],
+                splits: vec![first_split],
+                requests_attempted: 1,
+                has_more: true,
+                skipped_instruments: Vec::new(),
+            }
+        } else {
+            UsStockSplitBatch {
+                splits: vec![first_split, second_split],
                 requests_attempted: 2,
-            },
-        );
+                has_more: false,
+                skipped_instruments: Vec::new(),
+            }
+        };
+
+        assert_eq!(actual, expected,);
     }
 
     #[rstest]
@@ -734,7 +770,7 @@ mod tests {
         "invalid Alpaca API configuration: stock is not in the US market: KR:QZ7"
     )]
     #[tokio::test]
-    async fn rejects_stock_ids_that_are_not_us_prefixed(
+    async fn skips_stock_ids_that_cannot_be_converted_to_alpaca_symbols(
         #[case] instrument_id: &str,
         #[case] expected: &str,
     ) {
@@ -753,7 +789,60 @@ mod tests {
 
         assert_eq!(
             result,
-            Err(UsStockBarSourceError::Failed(expected.to_owned()))
+            Ok(UsStockBarPage {
+                bars: Vec::new(),
+                next_page_token: None,
+                skipped_instruments: vec![SkippedUsStockInstrument {
+                    instrument_id: instrument_id.to_owned(),
+                    reason: expected.to_owned(),
+                }],
+            }),
         );
+    }
+
+    #[rstest]
+    #[case::invalid_symbol_400(400, "invalid symbol: QZ7", true)]
+    #[case::unknown_asset_422(422, r#"{"code":42210000,"message":"asset QZ7 not found"}"#, true)]
+    #[case::subscription_error_422(
+        422,
+        r#"{"code":42210000,"message":"subscription does not permit querying recent SIP data"}"#,
+        false
+    )]
+    #[tokio::test]
+    async fn classifies_symbol_related_client_errors_for_batch_isolation(
+        #[case] status: u16,
+        #[case] response_body: &str,
+        #[case] rejected_symbols: bool,
+    ) {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v2/stocks/bars"))
+            .and(query_param("symbols", "QZ7"))
+            .respond_with(ResponseTemplate::new(status).set_body_string(response_body))
+            .mount(&server)
+            .await;
+        let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
+            .expect("test client is configured");
+
+        let actual = client
+            .fetch_page(&UsStockBarQuery {
+                instrument_ids: vec!["US:QZ7".to_owned()],
+                timeframe: Timeframe::Daily,
+                from: date("1970-01-01T00:00:00Z"),
+                to: date("2040-01-03T00:00:00Z"),
+                page_token: None,
+            })
+            .await;
+
+        let expected = if rejected_symbols {
+            Err(UsStockBarSourceError::RejectedSymbols(
+                response_body.to_owned(),
+            ))
+        } else {
+            Err(UsStockBarSourceError::Failed(format!(
+                "Alpaca API returned HTTP {status}: {response_body}"
+            )))
+        };
+        assert_eq!(actual, expected);
     }
 }

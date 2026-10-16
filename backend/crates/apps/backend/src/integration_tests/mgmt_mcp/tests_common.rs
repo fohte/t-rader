@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
-use crate::services::use_cases::build_use_cases;
+use crate::services::use_cases::build_use_cases_without_agent_task_client;
 use core_application::agent_task_client::FakeAgentTaskClient;
 use entrypoint_control_plane_mcp::{MgmtDependencies, MgmtServer};
 use gateway_postgres::entities::strategy;
@@ -35,7 +35,7 @@ pub(crate) fn build_server(
     db: impl Into<DatabaseHandle>,
     fake: Arc<FakeAgentTaskClient>,
 ) -> MgmtTestServer {
-    let use_cases = build_use_cases(db);
+    let use_cases = build_use_cases_without_agent_task_client(db);
     let dependencies = crate::mcp::mgmt_dependencies(&use_cases, fake as SharedAgentTaskClient);
     let server = MgmtServer::new(dependencies.clone());
     MgmtTestServer {

@@ -16,53 +16,64 @@ use super::{DAILY_TIMEOUT, run_with_ingest_run_log_state_and_failure_stats};
 pub struct TwseIndexIngest;
 
 impl TaskHandler for TwseIndexIngest {
-    const IDENTIFIER: &'static str = TWSE_INDEX_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state_and_failure_stats(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let Some(source) = state.dependencies.twse_source else {
-                    return Err((
-                        IndicatorObservationIngestResult {
-                            series: Vec::new(),
-                            errors: Vec::new(),
-                        },
-                        "TWSE source is not configured".to_string(),
-                    ));
-                };
-                let today = Utc::now().with_timezone(&Taipei).date_naive();
-                let result = state
-                    .dependencies
-                    .indicator_observations
-                    .ingest_batch(source.as_ref(), TWSE_SERIES, None, today)
-                    .await;
-                let mut failures: Vec<_> = result
-                    .errors
-                    .iter()
-                    .map(|error| format!("{}: {}", error.date, error.message))
-                    .collect();
-                failures.extend(
-                    result
-                        .series
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for TwseIndexIngest {
+    const IDENTIFIER: &'static str = TWSE_INDEX_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state_and_failure_stats(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let Some(source) = state.dependencies.twse_source else {
+                        return Err((
+                            IndicatorObservationIngestResult {
+                                series: Vec::new(),
+                                errors: Vec::new(),
+                            },
+                            "TWSE source is not configured".to_string(),
+                        ));
+                    };
+                    let today = Utc::now().with_timezone(&Taipei).date_naive();
+                    let result = state
+                        .dependencies
+                        .indicator_observations
+                        .ingest_batch(source.as_ref(), TWSE_SERIES, None, today)
+                        .await;
+                    let mut failures: Vec<_> = result
+                        .errors
                         .iter()
-                        .filter_map(|outcome| match outcome {
-                            IndicatorObservationIngestSeriesResult::Succeeded { .. } => None,
-                            IndicatorObservationIngestSeriesResult::Failed { series_id, error } => {
-                                Some(format!("{series_id}: {error}"))
-                            }
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                if failures.is_empty() {
-                    Ok(result)
-                } else {
-                    Err((result, failures.join("; ")))
-                }
-            },
-        )
-        .await
+                        .map(|error| format!("{}: {}", error.date, error.message))
+                        .collect();
+                    failures.extend(
+                        result
+                            .series
+                            .iter()
+                            .filter_map(|outcome| match outcome {
+                                IndicatorObservationIngestSeriesResult::Succeeded { .. } => None,
+                                IndicatorObservationIngestSeriesResult::Failed {
+                                    series_id,
+                                    error,
+                                } => Some(format!("{series_id}: {error}")),
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    if failures.is_empty() {
+                        Ok(result)
+                    } else {
+                        Err((result, failures.join("; ")))
+                    }
+                },
+            )
+            .await
+        })
     }
 }

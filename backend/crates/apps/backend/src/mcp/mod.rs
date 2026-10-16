@@ -100,6 +100,7 @@ pub(crate) fn strategy_server_dependencies(
         custom_indicator_evaluations: use_cases.custom_indicator_evaluations(),
         daily_bar_source,
         financial_summaries: use_cases.financial_summaries(),
+        group_movers: use_cases.group_movers(),
         indicator_observations: use_cases.indicator_observations(),
         kata_executor,
         llm_client,
@@ -260,7 +261,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -310,7 +311,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -376,7 +377,7 @@ mod tests {
 
         let session_id = {
             let server_a = TestServer::new(router(
-                crate::services::use_cases::build_use_cases(db.clone()),
+                crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
                 test_agent_client(),
                 None,
                 None,
@@ -401,7 +402,7 @@ mod tests {
 
         // server_a は drop されたので in-memory session も消えている。
         let server_b = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -482,7 +483,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -510,7 +511,7 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            crate::services::use_cases::build_use_cases(db.clone()),
+            crate::services::use_cases::build_use_cases_without_agent_task_client(db.clone()),
             test_agent_client(),
             None,
             None,

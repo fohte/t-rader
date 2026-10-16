@@ -13,7 +13,7 @@ async fn strategy_tool_call_uses_request_headers_without_a_session(
 ) {
     let strategy_id = insert_test_strategy(&db, "sample-strategy").await;
     let server = TestServer::new(crate::mcp::router(
-        crate::services::use_cases::build_use_cases(db),
+        crate::services::use_cases::build_use_cases_without_agent_task_client(db),
         Arc::new(DisabledAgentTaskClient),
         None,
         None,

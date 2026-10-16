@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 
+import { NoteBodyCard } from '#components/note-detail/note-body-card'
 import { NoteVersionBodyComments } from '#components/note-detail/note-version-body-comments'
 import type { NoteVersionComment } from '#lib/api/note-version-types'
 
@@ -44,8 +45,10 @@ const meta = {
   decorators: [
     (Story) => (
       <QueryClientProvider client={queryClient}>
-        <div className="max-w-3xl border border-border bg-card p-4 text-foreground">
-          <Story />
+        <div className="max-w-3xl bg-background p-5 text-foreground">
+          <NoteBodyCard>
+            <Story />
+          </NoteBodyCard>
         </div>
       </QueryClientProvider>
     ),

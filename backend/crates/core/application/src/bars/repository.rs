@@ -42,6 +42,10 @@ pub trait BarsRepository: Send + Sync {
     async fn find_us_stock_bar_targets(&self)
     -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
 
+    async fn find_us_stock_daily_bar_targets(
+        &self,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+
     async fn find_ingested_dates(
         &self,
         from: NaiveDate,
@@ -54,12 +58,6 @@ pub trait BarsRepository: Send + Sync {
     ) -> Result<(), BarsRepositoryError>;
 
     async fn upsert_bars(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        bars: Vec<Bar>,
-    ) -> Result<(), BarsRepositoryError>;
-
-    async fn upsert_minute_bars(
         &self,
         transaction: &UnitOfWorkTransaction,
         bars: Vec<Bar>,

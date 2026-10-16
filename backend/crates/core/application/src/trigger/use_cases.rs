@@ -1,7 +1,4 @@
-use std::time::Duration;
-
 use chrono::{DateTime, Utc};
-use futures_util::{FutureExt, StreamExt, stream};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -18,14 +15,12 @@ use self::commands::{apply_update, ensure_scope, validate_create};
 use self::validation::validate_event_match;
 use super::error::TriggerUseCaseError;
 use super::repository::SharedTriggerRepository;
-use super::schedule::{parse_schedule, should_fire_cron_trigger};
 use super::template::{build_standard_context, evaluate_event_match, expand_template};
 use super::types::{CreateTriggerCommand, NewTrigger, Trigger, TriggerKind, UpdateTriggerCommand};
 
 mod commands;
+mod cron_timer;
 mod validation;
-
-const MAX_CONCURRENT_FIRES: usize = 8;
 
 #[derive(Clone)]
 pub struct TriggerUseCases {
@@ -348,84 +343,6 @@ impl TriggerUseCases {
         }
     }
 
-    pub async fn run_cron_tick(
-        &self,
-        agent_client: &dyn AgentTaskClient,
-        interval: Duration,
-    ) -> usize {
-        let triggers = match self.repository.list_enabled_cron().await {
-            Ok(triggers) => triggers,
-            Err(error) => {
-                tracing::warn!(error = %error, "failed to list cron triggers");
-                return 0;
-            }
-        };
-
-        let now = Utc::now();
-        let targets: Vec<Uuid> = triggers
-            .into_iter()
-            .filter_map(|trigger| {
-                let Some(expression) = trigger.schedule.as_deref() else {
-                    tracing::warn!(trigger_id = %trigger.trigger_id, "cron trigger has no schedule; skip");
-                    return None;
-                };
-                match parse_schedule(expression) {
-                    Ok(schedule) => {
-                        let last_fired_at = trigger.last_fired_at.map(|value| value.with_timezone(&Utc));
-                        should_fire_cron_trigger(
-                            &schedule,
-                            last_fired_at,
-                            now,
-                            interval,
-                            trigger.business_days_only,
-                        )
-                            .then_some(trigger.trigger_id)
-                    }
-                    Err(error) => {
-                        tracing::warn!(
-                            trigger_id = %trigger.trigger_id,
-                            schedule = expression,
-                            error = %error,
-                            "failed to parse cron schedule; skip",
-                        );
-                        None
-                    }
-                }
-            })
-            .collect();
-
-        let attempted = targets.len();
-        let results = stream::iter(targets)
-            .map(|trigger_id| async move {
-                std::panic::AssertUnwindSafe(self.fire(
-                    agent_client,
-                    trigger_id,
-                    serde_json::json!({}),
-                    TaskSource::Cron,
-                ))
-                .catch_unwind()
-                .await
-                .map(|result| (trigger_id, result))
-                .map_err(|_| trigger_id)
-            })
-            .buffer_unordered(MAX_CONCURRENT_FIRES)
-            .collect::<Vec<_>>()
-            .await;
-        for result in results {
-            match result {
-                Ok((_, Ok(_))) => {}
-                Ok((_, Err(TriggerUseCaseError::Disabled(_)))) => {}
-                Ok((trigger_id, Err(error))) => {
-                    tracing::warn!(error = %error, trigger_id = %trigger_id, "cron trigger fire failed");
-                }
-                Err(trigger_id) => {
-                    tracing::error!(trigger_id = %trigger_id, "cron trigger worker task panicked");
-                }
-            }
-        }
-        attempted
-    }
-
     async fn validate_purpose(&self, purpose: String) -> Result<String, TriggerUseCaseError> {
         let purpose = purpose.trim().to_string();
         if purpose.is_empty() {
@@ -605,7 +522,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn cron_tick_continues_after_a_trigger_panics(harness: Harness) {
+    async fn cron_tick_retries_a_trigger_after_its_submission_panics(harness: Harness) {
         let strategy_id = Uuid::new_v4();
         harness
             .strategies
@@ -621,12 +538,25 @@ mod tests {
             .await;
         let agent_client = PanickingOnceAgentTaskClient::new();
 
-        let attempted = harness
+        let first_attempted = harness
             .use_cases
             .run_cron_tick(&agent_client, Duration::from_secs(60))
             .await;
-        let submitted = agent_client.inner.submitted.lock().await.len();
-        let fired = harness
+        let first_submitted = agent_client.inner.submitted.lock().await.len();
+        let first_fired = harness
+            .triggers
+            .triggers
+            .lock()
+            .await
+            .values()
+            .filter(|trigger| trigger.last_fired_at.is_some())
+            .count();
+        let second_attempted = harness
+            .use_cases
+            .run_cron_tick(&agent_client, Duration::from_secs(60))
+            .await;
+        let total_submitted = agent_client.inner.submitted.lock().await.len();
+        let final_fired = harness
             .triggers
             .triggers
             .lock()
@@ -635,7 +565,17 @@ mod tests {
             .filter(|trigger| trigger.last_fired_at.is_some())
             .count();
 
-        assert_eq!((attempted, submitted, fired), (2, 1, 1));
+        assert_eq!(
+            (
+                first_attempted,
+                first_submitted,
+                first_fired,
+                second_attempted,
+                total_submitted,
+                final_fired,
+            ),
+            (2, 1, 1, 1, 2, 2),
+        );
     }
 
     struct TestStrategyTaskRepository;
@@ -683,10 +623,12 @@ mod tests {
             &self,
             _transaction: &UnitOfWorkTransaction,
             _task_id: Uuid,
+            _expected_a2a_task_id: Option<&str>,
             _task_update: Option<StrategyTaskUpdate>,
             _steps: Option<serde_json::Value>,
-        ) -> Result<bool, StrategyTaskRepositoryError> {
-            Ok(false)
+        ) -> Result<crate::strategy_task::StrategyTaskApplyResult, StrategyTaskRepositoryError>
+        {
+            Ok(crate::strategy_task::StrategyTaskApplyResult::default())
         }
 
         async fn find_by_id(
@@ -733,6 +675,7 @@ mod tests {
             _transaction: &UnitOfWorkTransaction,
             _task_id: Uuid,
             _now: chrono::DateTime<chrono::FixedOffset>,
+            _deadline_at: chrono::DateTime<chrono::FixedOffset>,
             _mark_auto_resumed: bool,
         ) -> Result<bool, StrategyTaskRepositoryError> {
             Ok(true)

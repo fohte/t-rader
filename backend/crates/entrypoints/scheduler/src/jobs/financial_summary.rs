@@ -14,23 +14,36 @@ use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 pub struct FinancialSummaryIngest;
 
 impl TaskHandler for FinancialSummaryIngest {
-    const IDENTIFIER: &'static str = core_application::ingest_status::FINANCIAL_SUMMARY_INGEST_JOB;
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
     async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        run_with_ingest_run_log_state(
-            context,
-            Self::IDENTIFIER,
-            DAILY_TIMEOUT,
-            |state| async move {
-                let source = require_source(
-                    state.dependencies.financial_summary_source,
-                    "J-Quants financial summary source",
-                )?;
-                ingest_financial_summaries(&state.dependencies.financial_summaries, source.as_ref())
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for FinancialSummaryIngest {
+    const IDENTIFIER: &'static str = core_application::ingest_status::FINANCIAL_SUMMARY_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.financial_summary_source,
+                        "J-Quants financial summary source",
+                    )?;
+                    ingest_financial_summaries(
+                        &state.dependencies.financial_summaries,
+                        source.as_ref(),
+                    )
                     .await
-            },
-        )
-        .await
+                },
+            )
+            .await
+        })
     }
 }
 

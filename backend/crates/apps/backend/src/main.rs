@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use backend::cli::Cli;
+use backend::cli::{Cli, RunMode};
 use backend::{
     build_agent_webhook_state, build_external_webhook_state, build_http_state, create_router,
 };
@@ -20,6 +20,7 @@ use core_application::market_daily_bar_source::SharedMarketDailyBarSource;
 use core_application::news_aggregator::SharedNewsAggregator;
 use core_application::shareholding_structure_source::SharedShareholdingStructureSource;
 use core_application::short_selling_source::SharedShortSellingSource;
+use core_application::strategy_task::StrategyTaskReconcileLockUseCases;
 use core_application::valuation_source::SharedValuationSource;
 use core_application::web_search::SharedWebSearchClient;
 use entrypoint_frontend_api::FrontendApiState;
@@ -32,7 +33,9 @@ use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::JQuantsClient;
 use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
-use gateway_postgres::{DatabaseHandle, PostgresIngestRunLog};
+use gateway_postgres::{
+    DatabaseHandle, PostgresStrategyTaskReconcileLock, PostgresTriggerChangeListener,
+};
 use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
     AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
@@ -54,14 +57,24 @@ use logging::default_log_filter;
 use signals::{wait_for_os_shutdown_signal, wait_for_shutdown};
 use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
-    eoddata_kospi_source_from_env, initialize_news_and_central_bank_sources,
-    jquants_config_from_env, required_redis_url, us_stock_master_source,
-    worker_admin_ui_settings_from_env,
+    cron_trigger_timer_enabled_from_env, eoddata_kospi_source_from_env,
+    initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
+    us_stock_master_source, worker_admin_ui_settings_from_env,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), StartupError> {
     let cli = Cli::parse();
+    if let Some(job_name) = cli.run_job.as_deref()
+        && !entrypoint_scheduler::is_supported_job(job_name)
+    {
+        return Err(StartupError::Config(format!("unknown job: {job_name}")));
+    }
+    let run_mode = if cli.run_job.is_some() {
+        RunMode::Worker
+    } else {
+        cli.run_mode
+    };
 
     // --dump-openapi: OpenAPI スペックを JSON で標準出力に出力して終了する
     if cli.dump_openapi {
@@ -121,11 +134,12 @@ async fn main() -> Result<(), StartupError> {
         return Ok(());
     }
 
-    let admin_ui_settings = if cli.run_mode.starts_worker() && !cli.backfill_twse_indices {
-        Some(worker_admin_ui_settings_from_env()?)
-    } else {
-        None
-    };
+    let admin_ui_settings =
+        if cli.run_job.is_none() && run_mode.starts_worker() && !cli.backfill_twse_indices {
+            Some(worker_admin_ui_settings_from_env()?)
+        } else {
+            None
+        };
 
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
 
@@ -244,7 +258,12 @@ async fn main() -> Result<(), StartupError> {
         Arc::new(RssNewsAggregator::new(&redis_url).map_err(|err| {
             StartupError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
-    let use_cases = backend::services::use_cases::build_use_cases(db.clone());
+    let use_cases =
+        backend::services::use_cases::build_use_cases(db.clone(), agent_task_client.clone());
+    let strategy_task_reconcile =
+        use_cases.strategy_task_reconcile(StrategyTaskReconcileLockUseCases::new(Arc::new(
+            PostgresStrategyTaskReconcileLock::new(db.get_postgres_connection_pool().clone()),
+        )));
 
     let (fred_source, fred_calendar_event_source): (
         Option<SharedIndicatorObservationSource>,
@@ -299,15 +318,14 @@ async fn main() -> Result<(), StartupError> {
                 None
             }
         };
-    let sec_user_agent = if cli.run_mode.starts_worker() {
+    let sec_user_agent = if run_mode.starts_worker() {
         std::env::var("SEC_USER_AGENT").ok()
     } else {
         None
     };
-    let us_stock_master_source =
-        us_stock_master_source(cli.run_mode.starts_worker(), sec_user_agent)?;
+    let us_stock_master_source = us_stock_master_source(run_mode.starts_worker(), sec_user_agent)?;
     let us_stock_bar_source =
-        alpaca_us_stock_bar_source_from_env(cli.run_mode.starts_worker(), &redis_url)?;
+        alpaca_us_stock_bar_source_from_env(run_mode.starts_worker(), &redis_url)?;
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -362,10 +380,10 @@ async fn main() -> Result<(), StartupError> {
         valuations: use_cases.valuations(),
         valuation_source,
         indicator_observations: use_cases.indicator_observations(),
-        ingest_run_log: Arc::new(PostgresIngestRunLog::new(app_db.clone())),
+        ingest_run_log: Arc::new(use_cases.ingest_run_log()),
         fred_source,
         eoddata_kospi_source,
-        twse_source: twse::worker_source(cli.run_mode, &redis_url)?,
+        twse_source: twse::worker_source(run_mode, &redis_url)?,
         e_stat_calendar_source: Some(e_stat_calendar_source),
         alpha_vantage_calendar_source,
         fred_calendar_event_source,
@@ -376,13 +394,35 @@ async fn main() -> Result<(), StartupError> {
         margins: use_cases.margins(),
         short_selling_source,
         margin_source,
-        strategy_tasks: use_cases.strategy_tasks(),
+        strategy_task_reconcile: strategy_task_reconcile.clone(),
         event_dispatch: use_cases.event_dispatch(),
         triggers: use_cases.triggers(),
         agent_task_client: agent_task_client.clone(),
         strategy_task_reconcile_enabled,
     };
-    let app = if cli.run_mode.starts_api() {
+    if let Some(job_name) = cli.run_job.as_deref() {
+        entrypoint_scheduler::run_job(job_name, dependencies)
+            .await
+            .map_err(|error| {
+                StartupError::Runtime(format!("scheduled job '{job_name}' failed: {error}"))
+            })?;
+        return Ok(());
+    }
+
+    let cron_trigger_timer = if run_mode.starts_api() && cron_trigger_timer_enabled_from_env()? {
+        let listener = PostgresTriggerChangeListener::connect(&database_url)
+            .await
+            .map_err(|error| {
+                StartupError::Config(format!(
+                    "failed to initialize cron trigger timer listener: {error}"
+                ))
+            })?;
+        Some((use_cases.triggers(), agent_task_client.clone(), listener))
+    } else {
+        None
+    };
+
+    let app = if run_mode.starts_api() {
         // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
         // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
         // 合わさって空文字同士の一致で認証をすり抜けてしまう。
@@ -420,7 +460,8 @@ async fn main() -> Result<(), StartupError> {
             LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
         let web_search_client =
             TavilyClient::from_env().map(|client| Arc::new(client) as SharedWebSearchClient);
-        let agent_webhook_state = build_agent_webhook_state(&use_cases, agent_webhook_token);
+        let agent_webhook_state =
+            build_agent_webhook_state(strategy_task_reconcile, agent_webhook_token);
         let external_webhook_state =
             build_external_webhook_state(&use_cases, agent_task_client.clone());
         let state = build_http_state(
@@ -451,7 +492,7 @@ async fn main() -> Result<(), StartupError> {
         let _ = signal_tx.send(true);
     });
 
-    let worker = if cli.run_mode.starts_worker() {
+    let worker = if run_mode.starts_worker() {
         let worker = Scheduler::initialize(
             db.get_postgres_connection_pool().clone(),
             dependencies,
@@ -485,7 +526,7 @@ async fn main() -> Result<(), StartupError> {
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .map_err(|e| StartupError::Config(format!("failed to bind to {addr}: {e}")))?;
-        let server_shutdown = wait_for_shutdown(shutdown_rx);
+        let server_shutdown = wait_for_shutdown(shutdown_rx.clone());
         Some(Box::pin(async move {
             axum::serve(
                 listener,
@@ -512,6 +553,14 @@ async fn main() -> Result<(), StartupError> {
             server_run
                 .await
                 .map_err(|error| StartupError::Runtime(format!("server error: {error}")))
+        }));
+    }
+    if let Some((triggers, agent_task_client, listener)) = cron_trigger_timer {
+        let timer_shutdown = shutdown_rx.clone();
+        run_futures.push(Box::pin(async move {
+            runtime::run_cron_trigger_timer(triggers, agent_task_client, listener, timer_shutdown)
+                .await;
+            Ok(())
         }));
     }
     if let Some(admin_server_run) = admin_server_run {

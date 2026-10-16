@@ -14,10 +14,10 @@ use super::types::{BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, 
 #[derive(Default)]
 pub struct FakeBarsRepository {
     pub bars: Mutex<Vec<Bar>>,
-    pub minute_bars: Mutex<Vec<Bar>>,
     pub ingested_dates: Mutex<HashSet<NaiveDate>>,
     pub instruments: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
+    pub us_stock_daily_targets: Mutex<HashSet<String>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
@@ -29,11 +29,7 @@ impl FakeBarsRepository {
     }
 
     pub async fn seed_bars(&self, bars: Vec<Bar>) {
-        let (minute_bars, bars): (Vec<_>, Vec<_>) = bars
-            .into_iter()
-            .partition(|bar| bar.timeframe == Timeframe::Minute);
         self.bars.lock().await.extend(bars);
-        self.minute_bars.lock().await.extend(minute_bars);
     }
 
     pub async fn seed_ingested_dates(&self, dates: HashSet<NaiveDate>) {
@@ -42,6 +38,13 @@ impl FakeBarsRepository {
 
     pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
         self.us_stock_targets.lock().await.extend(instrument_ids);
+    }
+
+    pub async fn seed_us_stock_daily_targets(&self, instrument_ids: Vec<String>) {
+        self.us_stock_daily_targets
+            .lock()
+            .await
+            .extend(instrument_ids);
     }
 
     pub async fn seed_daily_adjustment_factors(
@@ -58,9 +61,50 @@ impl FakeBarsRepository {
     }
 
     async fn all_bars(&self) -> Vec<Bar> {
-        let mut bars = self.bars.lock().await.clone();
-        bars.extend(self.minute_bars.lock().await.iter().cloned());
-        bars
+        self.bars.lock().await.clone()
+    }
+
+    async fn find_targets(
+        &self,
+        target_ids: HashSet<String>,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+        let bars = self.bars.lock().await;
+        let mut targets = target_ids
+            .into_iter()
+            .map(|instrument_id| UsStockBarTarget {
+                latest_daily_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Daily
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                latest_minute_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                earliest_daily_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Daily
+                    })
+                    .min_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                earliest_minute_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
+                    })
+                    .min_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                instrument_id,
+            })
+            .collect::<Vec<_>>();
+        targets.sort_by(|left, right| left.instrument_id.cmp(&right.instrument_id));
+        Ok(targets)
     }
 }
 
@@ -143,44 +187,15 @@ impl BarsRepository for FakeBarsRepository {
         &self,
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
         let target_ids = self.us_stock_targets.lock().await.clone();
-        let daily_bars = self.bars.lock().await;
-        let minute_bars = self.minute_bars.lock().await;
-        let mut targets = target_ids
-            .into_iter()
-            .map(|instrument_id| UsStockBarTarget {
-                latest_daily_bar: daily_bars
-                    .iter()
-                    .filter(|bar| {
-                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Daily
-                    })
-                    .max_by_key(|bar| bar.timestamp)
-                    .map(|bar| bar.timestamp),
-                latest_minute_bar: minute_bars
-                    .iter()
-                    .filter(|bar| {
-                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
-                    })
-                    .max_by_key(|bar| bar.timestamp)
-                    .map(|bar| bar.timestamp),
-                earliest_daily_bar: daily_bars
-                    .iter()
-                    .filter(|bar| {
-                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Daily
-                    })
-                    .min_by_key(|bar| bar.timestamp)
-                    .map(|bar| bar.timestamp),
-                earliest_minute_bar: minute_bars
-                    .iter()
-                    .filter(|bar| {
-                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
-                    })
-                    .min_by_key(|bar| bar.timestamp)
-                    .map(|bar| bar.timestamp),
-                instrument_id,
-            })
-            .collect::<Vec<_>>();
-        targets.sort_by(|left, right| left.instrument_id.cmp(&right.instrument_id));
-        Ok(targets)
+        self.find_targets(target_ids).await
+    }
+
+    async fn find_us_stock_daily_bar_targets(
+        &self,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
+        let mut target_ids = self.us_stock_targets.lock().await.clone();
+        target_ids.extend(self.us_stock_daily_targets.lock().await.iter().cloned());
+        self.find_targets(target_ids).await
     }
 
     async fn find_ingested_dates(
@@ -215,17 +230,6 @@ impl BarsRepository for FakeBarsRepository {
         self.record_transaction(transaction).await?;
         let mut bars = self.bars.lock().await;
         upsert_bar_batch(&mut bars, new_bars);
-        Ok(())
-    }
-
-    async fn upsert_minute_bars(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        new_bars: Vec<Bar>,
-    ) -> Result<(), BarsRepositoryError> {
-        self.record_transaction(transaction).await?;
-        let mut minute_bars = self.minute_bars.lock().await;
-        upsert_bar_batch(&mut minute_bars, new_bars);
         Ok(())
     }
 

@@ -5,8 +5,6 @@ use utoipa::ToSchema;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("internal error: {0}")]
-    Internal(String),
     #[error("unauthorized: {0}")]
     Unauthorized(String),
 }
@@ -20,17 +18,12 @@ pub struct ErrorResponse {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, message) = match &self {
-            AppError::Internal(_) => {
-                tracing::error!("{self}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
-            }
-            AppError::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message.clone()),
-        };
+        let AppError::Unauthorized(message) = self;
 
-        (status, axum::Json(ErrorResponse { error: message })).into_response()
+        (
+            StatusCode::UNAUTHORIZED,
+            axum::Json(ErrorResponse { error: message }),
+        )
+            .into_response()
     }
 }

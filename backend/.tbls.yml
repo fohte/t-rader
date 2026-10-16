@@ -317,10 +317,10 @@ comments:
       last_fired_at: '最後に trigger が発火した時刻。'
       purpose: '実行に使用する agent_config の purpose キー。'
   - table: bars
-    tableComment: '銘柄ごとの日足価格と出来高を保持する。'
+    tableComment: '銘柄ごとの 1 分足、1 時間足、日足の価格と出来高を保持する。'
     columnComments:
       instrument_id: 'バーの銘柄コード。'
-      timeframe: 'バーの時間足。現行スキーマは日足のみ。'
+      timeframe: 'バーの時間足。1 分足、1 時間足、日足を区別する。'
       timestamp: 'バーの時刻。'
       open: '調整後の始値。'
       high: '調整後の高値。'
@@ -328,16 +328,6 @@ comments:
       close: '調整後の終値。'
       volume: '調整後の出来高。'
       adjustment_factor: '価格調整の発生日の日足に付与する係数。国内株は J-Quants、米国株は Alpaca の株式分割比率から設定する。'
-  - table: minute_bars
-    tableComment: '銘柄ごとの 1 分足価格と出来高を保持する。'
-    columnComments:
-      instrument_id: 'バーの銘柄 ID。'
-      timestamp: 'バーの時刻。'
-      open: 'バーの始値。'
-      high: 'バーの高値。'
-      low: 'バーの安値。'
-      close: 'バーの終値。'
-      volume: 'バーの出来高。'
   - table: cross_shareholding_documents
     tableComment: 'EDINET の政策保有株式に関する提出書類と明細を保持する。'
     columnComments:

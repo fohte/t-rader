@@ -605,6 +605,7 @@ mod tests {
                 ("get_news_content", Some(true)),
                 ("list_earnings_targets", Some(true)),
                 ("list_note_kinds", Some(true)),
+                ("list_group_movers", Some(true)),
                 ("list_movers", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_saved_screens", Some(true)),

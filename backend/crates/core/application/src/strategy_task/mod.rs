@@ -1,11 +1,14 @@
+mod completion_event;
 mod queries;
 mod reconcile;
 mod resume;
 mod submit;
 
 mod error;
-mod reconcile_job_queue;
-mod reconcile_job_use_cases;
+mod reconcile_job;
+mod reconcile_lock;
+mod reconcile_lock_use_cases;
+mod reconcile_use_cases;
 mod repository;
 mod types;
 
@@ -19,14 +22,17 @@ mod tests;
 pub use error::{
     GetTaskError, ListTasksError, ReconcileTaskError, ResumeTaskError, SubmitTaskError,
 };
-pub use reconcile_job_queue::{
+pub use reconcile_job::{
     STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
-    SharedStrategyTaskReconcileJobQueue, StrategyTaskReconcileJobQueue,
-    StrategyTaskReconcileJobQueueError,
 };
-pub use reconcile_job_use_cases::StrategyTaskReconcileJobUseCases;
+pub use reconcile_lock::{
+    SharedStrategyTaskReconcileLock, StrategyTaskReconcileLock, StrategyTaskReconcileLockGuard,
+};
+pub use reconcile_lock_use_cases::StrategyTaskReconcileLockUseCases;
+pub use reconcile_use_cases::StrategyTaskReconcileUseCases;
 pub use repository::{
-    SharedStrategyTaskRepository, StrategyTaskRepository, StrategyTaskRepositoryError,
+    SharedStrategyTaskRepository, StrategyTaskApplyResult, StrategyTaskRepository,
+    StrategyTaskRepositoryError,
 };
 pub(crate) use types::PreparedStrategyTaskSubmission;
 pub use types::{
@@ -36,6 +42,8 @@ pub use types::{
 };
 
 use crate::agent_config::graph::parse_agent_graph;
+use crate::event::SharedEventRepository;
+use crate::event_dispatch_job::EventDispatchJobUseCases;
 use crate::unit_of_work::SharedUnitOfWork;
 
 const DEFAULT_DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
@@ -58,6 +66,13 @@ pub(super) fn deadline_duration_from_agent_graph(agent_graph: &str) -> chrono::D
 pub struct StrategyTaskUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) repository: SharedStrategyTaskRepository,
+    completion_events: Option<CompletionEventDependencies>,
+}
+
+#[derive(Clone)]
+struct CompletionEventDependencies {
+    repository: SharedEventRepository,
+    dispatch_job: EventDispatchJobUseCases,
 }
 
 impl StrategyTaskUseCases {
@@ -65,6 +80,19 @@ impl StrategyTaskUseCases {
         Self {
             unit_of_work,
             repository,
+            completion_events: None,
         }
+    }
+
+    pub fn with_completion_events(
+        mut self,
+        repository: SharedEventRepository,
+        dispatch_job: EventDispatchJobUseCases,
+    ) -> Self {
+        self.completion_events = Some(CompletionEventDependencies {
+            repository,
+            dispatch_job,
+        });
+        self
     }
 }
