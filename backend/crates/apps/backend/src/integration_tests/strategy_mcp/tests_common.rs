@@ -101,6 +101,7 @@ pub(super) async fn create_task_with_subagent_limits(
             model: example-model-phase
             prompt: ''
             subagents: [{definition_key}]
+            max_subagent_runs: 2
     "};
     use_cases
         .agent_configs()
