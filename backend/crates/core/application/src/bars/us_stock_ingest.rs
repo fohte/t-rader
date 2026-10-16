@@ -490,9 +490,9 @@ mod tests {
 
     use crate::bars::clock::BarsIngestClock;
     use crate::bars::{
-        BarsUseCases, FakeBarsRepository, SkippedUsStockInstrument, UsStockBarPage,
-        UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockBarsIngestStats,
-        UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
+        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SkippedUsStockInstrument,
+        UsStockBarPage, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
+        UsStockBarsIngestStats, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
     };
     use crate::ingest_run_log::{IngestRunLog, SharedIngestRunLog};
     use crate::persistence::PersistenceError;
@@ -630,11 +630,13 @@ mod tests {
         clock: Arc<TestClock>,
         events: Arc<StdMutex<Vec<&'static str>>>,
         probe_durations: StdMutex<VecDeque<Duration>>,
+        probe_failures: StdMutex<usize>,
         probe_run_ids: StdMutex<Vec<Uuid>>,
     }
 
     struct SlowPageProbeScenario {
         probe_durations: Vec<Duration>,
+        probe_failures: usize,
         deadline_duration: Duration,
         expected_minute_bars: usize,
         expected_wait_ms: u64,
@@ -647,12 +649,14 @@ mod tests {
         fn new(
             clock: Arc<TestClock>,
             probe_durations: impl IntoIterator<Item = Duration>,
+            probe_failures: usize,
             events: Arc<StdMutex<Vec<&'static str>>>,
         ) -> Self {
             Self {
                 clock,
                 events,
                 probe_durations: StdMutex::new(probe_durations.into_iter().collect()),
+                probe_failures: StdMutex::new(probe_failures),
                 probe_run_ids: StdMutex::default(),
             }
         }
@@ -680,6 +684,21 @@ mod tests {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push("probe_commit");
+            let should_fail = {
+                let mut failures = self
+                    .probe_failures
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if *failures == 0 {
+                    false
+                } else {
+                    *failures -= 1;
+                    true
+                }
+            };
+            if should_fail {
+                return Err(PersistenceError::Database("probe failed".to_owned()));
+            }
             let duration = self
                 .probe_durations
                 .lock()
@@ -1020,9 +1039,18 @@ mod tests {
             Duration::from_millis(250),
             Duration::from_millis(400),
         ]);
-
-        let stats = harness
+        let ingest_run_log = Arc::new(TestIngestRunLog::new(
+            harness.clock.clone(),
+            [],
+            0,
+            harness.events.clone(),
+        ));
+        let ingest_run_log_shared: SharedIngestRunLog = ingest_run_log;
+        let use_cases = harness
             .use_cases
+            .for_ingest_run(Uuid::new_v4(), ingest_run_log_shared);
+
+        let stats = use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
             .expect("minute ingestion succeeds");
@@ -1656,6 +1684,7 @@ mod tests {
     #[case::probes_recover_before_next_page(
         SlowPageProbeScenario {
             probe_durations: vec![Duration::from_millis(120), Duration::from_millis(80)],
+            probe_failures: 0,
             deadline_duration: Duration::from_secs(10),
             expected_minute_bars: 2,
             expected_wait_ms: 810,
@@ -1667,12 +1696,25 @@ mod tests {
     #[case::deadline_stops_during_probe_wait(
         SlowPageProbeScenario {
             probe_durations: vec![Duration::from_millis(150)],
+            probe_failures: 0,
             deadline_duration: Duration::from_millis(800),
             expected_minute_bars: 1,
             expected_wait_ms: 500,
             expected_interruption: Some("time_budget_exhausted"),
             expected_sleeps: vec![Duration::from_millis(450), Duration::from_millis(50)],
             expected_events: vec!["page_commit", "probe_commit"],
+        },
+    )]
+    #[case::probe_failure_waits_again_before_retry(
+        SlowPageProbeScenario {
+            probe_durations: vec![Duration::from_millis(80)],
+            probe_failures: 1,
+            deadline_duration: Duration::from_secs(10),
+            expected_minute_bars: 2,
+            expected_wait_ms: 900,
+            expected_interruption: None,
+            expected_sleeps: vec![Duration::from_millis(450), Duration::from_millis(450)],
+            expected_events: vec!["page_commit", "probe_commit", "probe_commit", "page_commit"],
         },
     )]
     #[tokio::test]
@@ -1696,10 +1738,11 @@ mod tests {
         harness
             .unit_of_work
             .set_commit_duration(Duration::from_millis(150));
-        let probe_count = scenario.probe_durations.len();
+        let probe_count = scenario.probe_durations.len() + scenario.probe_failures;
         let ingest_run_log = Arc::new(TestIngestRunLog::new(
             harness.clock.clone(),
             scenario.probe_durations,
+            scenario.probe_failures,
             harness.events.clone(),
         ));
         let ingest_run_log_shared: SharedIngestRunLog = ingest_run_log.clone();
@@ -1755,6 +1798,43 @@ mod tests {
                 scenario.expected_events,
             ),
         );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn refuses_to_write_after_a_slow_commit_without_ingest_run_context(mut harness: Harness) {
+        let instrument_id = "US:DEMO-THROTTLE-CONTEXT";
+        let first_timestamp = date("2040-01-02T11:58:00Z");
+        let second_timestamp = date("2040-01-02T11:59:00Z");
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        let first_bar = bar(instrument_id, Timeframe::Daily, first_timestamp);
+        let second_bar = bar(instrument_id, Timeframe::Daily, second_timestamp);
+        *harness.source.bars.lock().await = vec![first_bar.clone(), second_bar];
+        harness.source.page_size = Some(1);
+        harness
+            .unit_of_work
+            .set_commit_duration(Duration::from_millis(150));
+
+        let result = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await;
+        let actual = (
+            matches!(result, Err(BarsUseCaseError::IngestRunContextRequired)),
+            harness.source.calls.lock().await.len(),
+            harness.repository.bars.lock().await.clone(),
+            harness
+                .events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone(),
+        );
+
+        assert_eq!(actual, (true, 2, vec![first_bar], vec!["page_commit"]));
     }
 
     #[rstest]

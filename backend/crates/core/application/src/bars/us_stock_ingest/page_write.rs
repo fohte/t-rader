@@ -62,10 +62,21 @@ impl BarsUseCases {
                 return Ok(true);
             }
             let Some((run_id, ingest_run_log)) = self.ingest_run.as_ref() else {
-                return Ok(true);
+                return Err(BarsUseCaseError::IngestRunContextRequired);
             };
-            let commit_duration = ingest_run_log.probe_commit(*run_id).await?;
-            write_throttle.record_probe_commit(self.clock.instant(), commit_duration);
+            match ingest_run_log.probe_commit(*run_id).await {
+                Ok(commit_duration) => {
+                    write_throttle.record_probe_commit(self.clock.instant(), commit_duration);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %run_id,
+                        %error,
+                        "米国株バー取り込みの commit probe に失敗しました。前回の commit 時間を基準に再試行します"
+                    );
+                    write_throttle.record_probe_failure(self.clock.instant());
+                }
+            }
         }
     }
 }

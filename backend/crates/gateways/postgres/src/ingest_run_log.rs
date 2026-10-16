@@ -47,7 +47,7 @@ impl IngestRunRepository for PostgresIngestRunRepository {
             PersistenceError::Database("transaction has an unexpected type".to_owned())
         })?;
         let result = ingest_run::Entity::update_many()
-            // probe では状態を維持しながら UPDATE と commit の書き込み時間を測る
+            // 状態を変えずに行を更新し、probe 用の WAL を発生させる。
             .col_expr(ingest_run::Column::Status, Expr::value("running"))
             .filter(ingest_run::Column::Id.eq(run_id))
             .filter(ingest_run::Column::Status.eq("running"))
@@ -352,6 +352,22 @@ mod tests {
         let after_probe = row(&db, run_id).await;
 
         assert_eq!((after_probe, events(&db).await), (before_probe, Vec::new()));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn probe_commit_leaves_a_failed_ingest_run_unchanged(db: DatabaseHandle) {
+        let (log, _) = log(db.clone());
+        let run_id = log.start("sample_ingest").await.expect("start run");
+        set_started_at(&db, run_id, epoch()).await;
+        log.fail_interrupted_before("sample_ingest", Utc::now().fixed_offset())
+            .await
+            .expect("mark stale run as failed");
+        let failed_run = row(&db, run_id).await;
+
+        let probe_result = log.probe_commit(run_id).await;
+        let after_probe = row(&db, run_id).await;
+
+        assert_eq!((probe_result.is_err(), after_probe), (true, failed_run));
     }
 
     #[backend_test_macros::database_test]

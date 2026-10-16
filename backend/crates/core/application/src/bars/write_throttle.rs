@@ -63,6 +63,12 @@ impl WriteThrottle {
             .then(|| completed_at.checked_add(commit_cooldown(commit_duration)))
             .flatten();
     }
+
+    pub(super) fn record_probe_failure(&mut self, completed_at: Instant) {
+        self.next_write_at = self
+            .last_commit_duration
+            .and_then(|duration| completed_at.checked_add(commit_cooldown(duration)));
+    }
 }
 
 fn page_cooldown(write_duration: Duration) -> Duration {
