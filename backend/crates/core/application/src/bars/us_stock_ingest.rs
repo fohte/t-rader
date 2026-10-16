@@ -10,17 +10,15 @@ use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::BarsUseCases;
+use request_budget::RequestBudget;
 
 mod adjustment;
 mod hourly;
+mod request_budget;
 mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
-
-struct RequestBudget {
-    remaining: usize,
-}
 
 struct BatchIngestContext<'a> {
     budget: &'a mut RequestBudget,
@@ -40,26 +38,6 @@ impl<'a> BatchIngestContext<'a> {
     fn record_skipped(&mut self, instrument_id: String, reason: String) {
         self.skipped_instrument_ids.insert(instrument_id.clone());
         record_skipped_instrument(self.stats, instrument_id, reason);
-    }
-}
-
-impl RequestBudget {
-    fn new(max_requests: usize) -> Self {
-        Self {
-            remaining: max_requests,
-        }
-    }
-
-    fn remaining(&self) -> usize {
-        self.remaining
-    }
-
-    fn take(&mut self, requests: usize) -> bool {
-        if requests > self.remaining {
-            return false;
-        }
-        self.remaining -= requests;
-        true
     }
 }
 
