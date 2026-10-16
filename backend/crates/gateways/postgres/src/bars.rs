@@ -468,7 +468,9 @@ fn repository_error(error: sea_orm::DbErr) -> BarsRepositoryError {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, TimeZone, Utc};
+    use chrono::{
+        DateTime, Duration as ChronoDuration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc,
+    };
     use core_application::bars::{
         BarsQuery, BarsRepository, DailyBarAdjustmentFactor, UsStockBarTarget,
     };
@@ -1166,6 +1168,9 @@ mod tests {
         );
         let now = Utc::now();
         let old_bar_time = now - ChronoDuration::days(90);
+        let old_bar_time = old_bar_time
+            .with_nanosecond(old_bar_time.timestamp_subsec_micros() * 1_000)
+            .expect("valid nanosecond");
         let repository = PostgresBarsRepository::new(db.clone());
         let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("begin transaction");
