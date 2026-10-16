@@ -44,9 +44,17 @@ pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
 pub(super) const US_STOCK_BARS_TIMEOUT: Duration = DAILY_TIMEOUT;
 
+// 分足・時間足 CronJob の activeDeadlineSeconds: 3300 は
+// fohte/infra/kubernetes/home/manifests/t-rader/values.yaml に定義。
+const US_STOCK_BARS_CRONJOB_DEADLINE: Duration = Duration::from_secs(3_300);
+
 const _: () = assert!(
     US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_TIMEOUT.as_secs(),
     "US stock bars budget must be shorter than the scheduler timeout",
+);
+const _: () = assert!(
+    US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_CRONJOB_DEADLINE.as_secs(),
+    "US stock bars budget must be shorter than the CronJob deadline",
 );
 
 pub(crate) type JobFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
