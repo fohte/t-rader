@@ -44,6 +44,13 @@ pub struct UsStockBarTarget {
     pub earliest_hourly_bar: Option<DateTime<Utc>>,
 }
 
+impl UsStockBarTarget {
+    /// 履歴 API は銘柄ごとに初回だけ呼ぶため、完了時刻の有無で判定する。
+    pub(crate) fn has_hourly_history_backfill(&self) -> bool {
+        self.hourly_history_completed_through.is_some()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 pub struct UsStockBarsIngestStats {
     pub symbols_attempted: usize,

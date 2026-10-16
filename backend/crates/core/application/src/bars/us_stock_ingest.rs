@@ -111,7 +111,8 @@ impl UsStockBarTimeframe {
     }
 
     fn is_complete(self, target: &UsStockBarTarget) -> bool {
-        self == Self::Hourly && target.hourly_history_completed_through.is_some()
+        // API は初回の履歴取得に使い、その後の時間足は古くなった分足から補う。
+        self == Self::Hourly && target.has_hourly_history_backfill()
     }
 }
 
@@ -1724,7 +1725,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn split_refetch_replaces_completed_hourly_history(harness: Harness) {
+    async fn split_refetch_retries_when_hourly_persistence_fails(harness: Harness) {
         let instrument_id = "US:DEMO-SPLIT";
         let earliest_daily = date("2040-01-01T00:00:00Z");
         let latest_daily = date("2040-01-02T00:00:00Z");
@@ -1753,6 +1754,7 @@ mod tests {
             .await
             .insert(instrument_id.to_owned(), old_progress);
         harness.source.bars.lock().await.extend([
+            bar(instrument_id, Timeframe::Daily, earliest_daily),
             bar(instrument_id, Timeframe::Daily, latest_daily),
             bar(instrument_id, Timeframe::Daily, now),
             priced_bar(instrument_id, Timeframe::Hourly, earliest_hourly, 100),
@@ -1765,12 +1767,58 @@ mod tests {
             new_rate: Decimal::new(2, 0),
         });
 
-        let stats = harness
+        harness
+            .repository
+            .fail_hourly_upserts_with("synthetic hourly persistence failure")
+            .await;
+        let failed_stats = harness
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("split detection refetches completed hourly history");
+            .expect("hourly persistence failure leaves the split pending");
+        let failed_progress = harness
+            .repository
+            .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await
+            .get(instrument_id)
+            .copied();
+        let failed_ex_date_factor = harness
+            .repository
+            .bars
+            .lock()
+            .await
+            .iter()
+            .find(|bar| bar.timeframe == Timeframe::Daily && bar.timestamp == earliest_daily)
+            .map(|bar| bar.adjustment_factor);
+        let mut failed_hourly_bars = harness
+            .repository
+            .bars
+            .lock()
+            .await
+            .iter()
+            .filter(|bar| bar.timeframe == Timeframe::Hourly)
+            .cloned()
+            .collect::<Vec<_>>();
+        failed_hourly_bars.sort_by_key(|bar| bar.timestamp);
+
+        harness.source.calls.lock().await.clear();
+        let retry_stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("the pending split is retried after hourly persistence recovers");
         let calls = harness.source.calls.lock().await.clone();
+        let mut daily_bars = harness
+            .repository
+            .bars
+            .lock()
+            .await
+            .iter()
+            .filter(|bar| bar.timeframe == Timeframe::Daily)
+            .cloned()
+            .collect::<Vec<_>>();
+        daily_bars.sort_by_key(|bar| bar.timestamp);
         let mut hourly_bars = harness
             .repository
             .bars
@@ -1788,10 +1836,34 @@ mod tests {
             .await
             .get(instrument_id)
             .copied();
+        let mut adjusted_ex_date = bar(instrument_id, Timeframe::Daily, earliest_daily);
+        adjusted_ex_date.adjustment_factor = Decimal::new(5, 1);
 
         assert_eq!(
-            (stats, calls, hourly_bars, completed_through),
             (
+                failed_stats,
+                failed_progress,
+                failed_ex_date_factor,
+                failed_hourly_bars,
+                retry_stats,
+                calls,
+                daily_bars,
+                hourly_bars,
+                completed_through,
+            ),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 4,
+                    daily_bars_upserted: 2,
+                    ..UsStockBarsIngestStats::default()
+                },
+                Some(old_progress),
+                Some(Decimal::ONE),
+                vec![
+                    bar(instrument_id, Timeframe::Hourly, earliest_hourly),
+                    bar(instrument_id, Timeframe::Hourly, latest_hourly),
+                ],
                 UsStockBarsIngestStats {
                     symbols_attempted: 1,
                     requests_attempted: 4,
@@ -1803,7 +1875,7 @@ mod tests {
                     UsStockBarQuery {
                         instrument_ids: vec![instrument_id.to_owned()],
                         timeframe: Timeframe::Daily,
-                        from: latest_daily,
+                        from: now,
                         to: now,
                         page_token: None,
                     },
@@ -1821,6 +1893,11 @@ mod tests {
                         to: hourly_end,
                         page_token: None,
                     },
+                ],
+                vec![
+                    adjusted_ex_date,
+                    bar(instrument_id, Timeframe::Daily, latest_daily),
+                    bar(instrument_id, Timeframe::Daily, now),
                 ],
                 vec![
                     priced_bar(instrument_id, Timeframe::Hourly, earliest_hourly, 100),

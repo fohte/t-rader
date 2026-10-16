@@ -89,14 +89,10 @@ impl BarsUseCases {
                     UsStockSplitHistoryRange {
                         daily_from: UsStockBarTimeframe::Daily
                             .earliest_bar(target)
-                            .unwrap_or_else(|| {
-                                UsStockBarTimeframe::Daily.history_start(history_range.to)
-                            }),
+                            .unwrap_or(history_range.daily_from),
                         minute_from: UsStockBarTimeframe::Minute
                             .earliest_bar(target)
-                            .unwrap_or_else(|| {
-                                UsStockBarTimeframe::Minute.history_start(history_range.to)
-                            }),
+                            .unwrap_or(history_range.minute_from),
                         hourly_from: UsStockBarTimeframe::Hourly
                             .earliest_bar(target)
                             .unwrap_or(history_range.hourly_from),
@@ -309,8 +305,7 @@ impl BarsUseCases {
             return Ok(false);
         }
 
-        if target.hourly_history_completed_through.is_some() || target.earliest_hourly_bar.is_some()
-        {
+        if target.has_hourly_history_backfill() || target.earliest_hourly_bar.is_some() {
             let Some(hourly_pages) = self
                 .fetch_batch_pages(
                     source,

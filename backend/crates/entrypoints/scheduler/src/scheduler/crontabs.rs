@@ -215,6 +215,7 @@ pub(super) fn build_crontabs(
             CrontabFill::hours(3),
             Some(ALPACA_MINUTE_QUEUE),
         )?);
+        // 新しく日足対象になった銘柄のバックフィルを始めるため、ジョブ自体は定期実行する。
         crontabs.push(hourly_cron::<UsStockHourlyBarsIngest>(
             "us_stock_hourly_bars_ingest",
             40,
