@@ -2,6 +2,7 @@
 mod tests {
     use axum::http::StatusCode;
     use axum_test::TestServer;
+    use indoc::indoc;
     use serde_json::{Value, json};
     use uuid::Uuid;
 
@@ -54,6 +55,7 @@ mod tests {
                     let decimal = number
                         .to_string()
                         .parse::<rust_decimal::Decimal>()
+                        .or_else(|_| rust_decimal::Decimal::from_scientific(&number.to_string()))
                         .expect("saved screen range is numeric");
                     row["filters"][field][bound] =
                         serde_json::from_str(&decimal.normalize().to_string())
@@ -100,6 +102,58 @@ mod tests {
             (
                 StatusCode::CREATED,
                 expected("condition-alpha", &["market-a"], Some(5), Some(12)),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn fractional_filter_bounds_round_trip_through_jsonb(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let body: Value = serde_json::from_str(indoc! {r#"
+            {
+              "name": "condition-fractional",
+              "filters": { "roe": { "min": 1.25e-8 } },
+              "sort": { "field": "market_cap", "direction": "desc" }
+            }
+        "#})
+        .expect("valid saved screen request");
+        let expected: Value = serde_json::from_str(indoc! {r#"
+            {
+              "id": "<id>",
+              "name": "condition-fractional",
+              "filters": {
+                "markets": [],
+                "sectors": [],
+                "per": null,
+                "pbr": null,
+                "roe": { "min": 1.25e-8, "max": null },
+                "dividend_yield": null,
+                "market_cap": null
+              },
+              "sort": { "field": "market_cap", "direction": "desc" },
+              "created_at": "<created_at>",
+              "updated_at": "<updated_at>"
+            }
+        "#})
+        .expect("valid saved screen response");
+
+        let created = server.post("/api/saved-screens").json(&body).await;
+        let listed = server.get("/api/saved-screens").await;
+
+        assert_eq!(
+            (
+                created.status_code(),
+                normalize_rows(created.json()),
+                listed.status_code(),
+                normalize_rows(listed.json()),
+            ),
+            (
+                StatusCode::CREATED,
+                normalize_rows(expected.clone()),
+                StatusCode::OK,
+                normalize_rows(json!([expected])),
             ),
         );
     }
