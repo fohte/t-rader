@@ -15,6 +15,7 @@ export interface BuildPhaseAgentOptions {
   readonly systemPrompt: string
   readonly responseSchema: ObjectJsonSchema
   readonly deadlineSignal?: AbortSignal
+  readonly agentSignal?: AbortSignal
   readonly phaseTimeout?: PhaseTimeout
   readonly modelCallBudget?: ModelCallBudget
   readonly captureMessagesOnAbort?: boolean

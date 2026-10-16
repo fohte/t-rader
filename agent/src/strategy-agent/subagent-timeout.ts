@@ -85,6 +85,9 @@ export const buildSubagentAgent = (
     modelCallBudget: options.modelCallBudget,
     captureMessagesOnAbort: true,
     ...(options.deadlineSignal !== undefined
+      ? { agentSignal: options.deadlineSignal }
+      : {}),
+    ...(options.deadlineSignal !== undefined
       ? { deadlineSignal: options.deadlineSignal }
       : {}),
     ...(options.phaseTimeout !== undefined

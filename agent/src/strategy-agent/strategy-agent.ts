@@ -121,6 +121,7 @@ const buildCompiledAgent = (
     systemPrompt: string
     responseFormat: ReturnType<typeof toolStrategy>
     deadlineSignal?: AbortSignal
+    agentSignal?: AbortSignal
     phaseTimeout?: BuildPhaseAgentOptions['phaseTimeout']
     modelCallBudget?: ModelCallBudget
     captureMessagesOnAbort?: boolean
@@ -166,8 +167,8 @@ const buildCompiledAgent = (
       // LangChain の戻り値検証前に assistant 以外の message を再試行可能なエラーへ変える。
       nonAssistantModelResponseMiddleware,
     ],
-    ...(options.deadlineSignal !== undefined
-      ? { signal: options.deadlineSignal }
+    ...(options.agentSignal !== undefined
+      ? { signal: options.agentSignal }
       : {}),
   })
   return {
@@ -401,7 +402,6 @@ export const runStrategyAgent = async (
           if (parsedGraph.isErr()) {
             return errAsync(parsedGraph.error)
           }
-          const subagentRunCounters = new Map<string, { count: number }>()
           return ResultAsync.fromPromise(
             runAgentGraph(deps, parsedGraph.value, {
               agentsMd: agentConfig.agentsMd,
@@ -418,16 +418,11 @@ export const runStrategyAgent = async (
                 recorder,
                 phaseContext,
               ) => {
-                let runCounter = subagentRunCounters.get(phase.key)
-                if (runCounter === undefined) {
-                  runCounter = { count: 0 }
-                  subagentRunCounters.set(phase.key, runCounter)
-                }
                 return createRunSubagentTool({
                   phase,
                   parentExecutionStepId,
                   recorder,
-                  runCounter,
+                  runCounter: { count: 0 },
                   fetchDefinition: deps.fetchSubagentDefinition,
                   createMcpClient: (executionStepId, definitionKey) =>
                     deps.createMcpClient(

@@ -394,6 +394,7 @@ describe('createRunSubagentTool', () => {
       result,
       buildOptions.map((options) => options.systemPrompt),
       buildOptions.map((options) => options.tools.length),
+      buildOptions.map((options) => options.agentSignal !== undefined),
       finalizerMessageHistory,
     )
 
@@ -406,6 +407,7 @@ describe('createRunSubagentTool', () => {
 制限時間に達しました。これまでに得た情報だけを使って結果を返してください。`,
       ],
       [1, 0],
+      [true, false],
       [
         [
           { role: 'human', content: 'Find what can be established.' },
@@ -442,6 +444,68 @@ describe('createRunSubagentTool', () => {
           },
         ],
       ],
+    ])
+  })
+
+  it('returns an available partial result when timeout reaches the model-call limit', async () => {
+    vi.useFakeTimers()
+    const buildOptions: BuildPhaseAgentOptions[] = []
+    const tool = createRunSubagentTool({
+      phase,
+      parentExecutionStepId: 'parent-step-id',
+      recorder: createStepRecorder(() => undefined),
+      runCounter: { count: 0 },
+      fetchDefinition: () =>
+        okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 1 }),
+      createMcpClient: () => ({
+        getTools: () => Promise.resolve([buildFakeTool('search_web')]),
+        close: () => Promise.resolve(),
+      }),
+      deps: {
+        createChatModel: () => new FakeChatModel({}),
+        buildPhaseAgent: (options): CompiledPhaseAgent => {
+          buildOptions.push(options)
+          return {
+            invoke: ({ messages }) => {
+              const budget = options.modelCallBudget
+              const signal = options.deadlineSignal
+              if (budget === undefined || signal === undefined) {
+                return Promise.reject(new Error('child limits are missing'))
+              }
+              budget.count = budget.maxModelCalls
+              return new Promise((resolve) => {
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    resolve({
+                      structuredResponse: {
+                        conclusion: 'A partial conclusion',
+                        sources: [],
+                      },
+                      messages,
+                    })
+                  },
+                  { once: true },
+                )
+              })
+            },
+          }
+        },
+      },
+    })
+
+    const resultPromise = tool.invoke({
+      key: 'researcher',
+      brief: 'Find what can be established.',
+    })
+    await vi.advanceTimersByTimeAsync(60_001)
+    const result = await resultPromise
+
+    const actual = Array.of<unknown>(result, buildOptions.length)
+
+    expect(actual).toEqual([
+      { conclusion: 'A partial conclusion', sources: [] },
+      1,
     ])
   })
 

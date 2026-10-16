@@ -36,7 +36,10 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
-import type { FetchSubagentDefinition } from '#strategy-agent/subagent-definition-client'
+import type {
+  FetchSubagentDefinition,
+  SubagentDefinition,
+} from '#strategy-agent/subagent-definition-client'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
 import {
   type CaptureWithFingerprintMock,
@@ -162,6 +165,7 @@ interface BuildDepsOptions {
   readonly buildPhaseAgentInvoke?: (
     input: Parameters<CompiledPhaseAgent['invoke']>[0],
     calls: Calls,
+    buildOptions: BuildPhaseAgentOptions,
   ) => ReturnType<CompiledPhaseAgent['invoke']>
 }
 
@@ -181,6 +185,7 @@ interface Calls {
   mcpClients: McpClientCall[]
   mcpClientToolModels: Readonly<Record<string, string>>[]
   capturedDeadlineSignal: AbortSignal | undefined
+  capturedAgentSignal: AbortSignal | undefined
 }
 
 const buildDeps = (
@@ -191,6 +196,7 @@ const buildDeps = (
     mcpClients: [],
     mcpClientToolModels: [],
     capturedDeadlineSignal: undefined,
+    capturedAgentSignal: undefined,
   }
   const chatModel = new FakeChatModel({})
 
@@ -230,10 +236,11 @@ const buildDeps = (
     createChatModel: () => chatModel,
     buildPhaseAgent: (buildOptions) => {
       calls.capturedDeadlineSignal = buildOptions.deadlineSignal
+      calls.capturedAgentSignal = buildOptions.agentSignal
       return {
         invoke: (input) =>
           options.buildPhaseAgentInvoke !== undefined
-            ? options.buildPhaseAgentInvoke(input, calls)
+            ? options.buildPhaseAgentInvoke(input, calls, buildOptions)
             : Promise.resolve({ structuredResponse: {} }),
       }
     },
@@ -597,11 +604,20 @@ describe('runStrategyAgent', () => {
       buildRunInput({ deadlineSignal: controller.signal }),
     )
 
-    expect(result).toEqual({
-      status: 'completed',
-      message: '1フェーズの実行が完了しました (P)',
-    })
-    expect(calls.capturedDeadlineSignal).toBe(controller.signal)
+    const actual = Array.of<unknown>(
+      result,
+      calls.capturedDeadlineSignal,
+      calls.capturedAgentSignal,
+    )
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '1フェーズの実行が完了しました (P)',
+      },
+      controller.signal,
+      undefined,
+    ])
   })
 
   it('skips a completed phase on resume when a valid resume step is provided', async () => {
@@ -717,6 +733,98 @@ describe('runStrategyAgent', () => {
       { executionId: 'task-1:<step-1>', closed: true },
       { executionId: 'task-1:<step-2>', closed: true },
       { executionId: 'task-1:<step-3>', closed: true },
+    ])
+  })
+
+  it('resets max_subagent_runs for each for_each step', async () => {
+    const definition: SubagentDefinition = {
+      key: 'helper',
+      description: 'Investigate one item',
+      model: 'example-model-child',
+      prompt: 'Return a conclusion for the requested item.',
+      tools: ['search_web'],
+      timeoutMinutes: 5,
+      maxModelCalls: 3,
+      toolLimits: { search_web: 2 },
+      output: {
+        required: ['conclusion'],
+        conclusion: { type: 'string' },
+      },
+    }
+    const runsPerStep: number[] = []
+    const outputsPerStep: unknown[][] = []
+    const { deps, calls } = buildDeps({
+      tools: [buildFakeTool('search_web')],
+      fetchSubagentDefinition: () => okAsync(definition),
+      agentGraph: [
+        'phases:',
+        '  - key: plan',
+        '    label: Plan',
+        '    model: example-model-plan',
+        '    prompt: Plan items',
+        '    tools: []',
+        '    output:',
+        '      items:',
+        '        type: array',
+        '        items: { type: string }',
+        '  - key: work',
+        '    label: Work',
+        '    model: example-model-work',
+        '    prompt: Work on each item',
+        '    for_each: plan.items',
+        '    max_parallel: 1',
+        '    subagents: [helper]',
+        '    max_subagent_runs: 2',
+        '    tools: []',
+        '',
+      ].join('\n'),
+      buildPhaseAgentInvoke: async (_input, _calls, buildOptions) => {
+        const runSubagentTool = buildOptions.tools.find(
+          (tool) => tool.name === 'run_subagent',
+        )
+        if (runSubagentTool !== undefined) {
+          const outputs: unknown[] = []
+          for (let run = 0; run < 2; run++) {
+            outputs.push(
+              await runSubagentTool.invoke({
+                key: 'helper',
+                brief: 'Investigate the current item.',
+              }),
+            )
+          }
+          runsPerStep.push(outputs.length)
+          outputsPerStep.push(outputs)
+          return { structuredResponse: {} }
+        }
+        if (buildOptions.tools.some((tool) => tool.name === 'search_web')) {
+          return { structuredResponse: { conclusion: 'Evidence found.' } }
+        }
+        return { structuredResponse: { items: ['first', 'second'] } }
+      },
+    })
+
+    const result = await runStrategyAgent(deps, buildRunInput())
+
+    const actual = Array.of<unknown>(
+      result,
+      runsPerStep,
+      outputsPerStep,
+      calls.mcpClients.filter(
+        (client) => client.subagentExecution !== undefined,
+      ).length,
+    )
+
+    expect(actual).toEqual([
+      {
+        status: 'completed',
+        message: '2フェーズの実行が完了しました (Plan → Work)',
+      },
+      [2, 2],
+      [
+        [{ conclusion: 'Evidence found.' }, { conclusion: 'Evidence found.' }],
+        [{ conclusion: 'Evidence found.' }, { conclusion: 'Evidence found.' }],
+      ],
+      4,
     ])
   })
 
