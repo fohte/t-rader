@@ -51,9 +51,7 @@ mod tests {
         for field in ["per", "pbr", "roe", "dividend_yield", "market_cap"] {
             for bound in ["min", "max"] {
                 if let Some(Value::Number(number)) = row["filters"][field].get(bound) {
-                    let decimal = number
-                        .to_string()
-                        .parse::<rust_decimal::Decimal>()
+                    let decimal: rust_decimal::Decimal = serde_json::from_str(&number.to_string())
                         .expect("saved screen range is numeric");
                     row["filters"][field][bound] =
                         serde_json::from_str(&decimal.normalize().to_string())
@@ -100,6 +98,48 @@ mod tests {
             (
                 StatusCode::CREATED,
                 expected("condition-alpha", &["market-a"], Some(5), Some(12)),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_and_list_preserve_exponent_decimal_filters(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let mut body = request("condition-decimal", &[], None, None);
+        body["filters"]["roe"] = json!({ "min": 1.25e-8, "max": null });
+        let created = server.post("/api/saved-screens").json(&body).await;
+        let listed = server.get("/api/saved-screens").await;
+        let expected_row = json!({
+            "id": "<id>",
+            "name": "condition-decimal",
+            "filters": {
+                "markets": [],
+                "sectors": [],
+                "per": null,
+                "pbr": null,
+                "roe": { "min": 1.25e-8, "max": null },
+                "dividend_yield": null,
+                "market_cap": null,
+            },
+            "sort": { "field": "market_cap", "direction": "desc" },
+            "created_at": "<created_at>",
+            "updated_at": "<updated_at>",
+        });
+
+        assert_eq!(
+            (
+                created.status_code(),
+                normalize_rows(created.json()),
+                listed.status_code(),
+                normalize_rows(listed.json()),
+            ),
+            (
+                StatusCode::CREATED,
+                normalize_row(expected_row.clone()),
+                StatusCode::OK,
+                json!([normalize_row(expected_row)]),
             ),
         );
     }
