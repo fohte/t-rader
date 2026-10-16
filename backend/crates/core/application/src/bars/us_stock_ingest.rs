@@ -167,9 +167,10 @@ impl BarsUseCases {
             .await;
         if let Err(error) = self.repository.compress_bars_older_than_policy(now).await {
             let compression_error = error.to_string();
-            tracing::error!(error = %compression_error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
             if let Ok(stats) = &mut ingest_result {
                 stats.compression_error = Some(compression_error);
+            } else {
+                tracing::error!(error = %compression_error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
             }
         }
         ingest_result
