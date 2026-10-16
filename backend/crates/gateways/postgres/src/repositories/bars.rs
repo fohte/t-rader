@@ -7,7 +7,7 @@ use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult, Iterable,
     QueryFilter, QueryOrder, Set, Statement,
 };
 
@@ -130,27 +130,39 @@ pub async fn upsert_bars(
         return Ok(());
     }
 
-    let active_models: Vec<bars::ActiveModel> = bars_data.into_iter().map(Into::into).collect();
+    let max_rows_per_statement = u16::MAX as usize / bars::Column::iter().count();
+    let mut bars_data = bars_data.into_iter();
+    loop {
+        // PostgreSQL の bind 数上限に合わせ、bars の列数から 1 文の最大行数を求める。
+        let batch: Vec<bars::ActiveModel> = bars_data
+            .by_ref()
+            .take(max_rows_per_statement)
+            .map(Into::into)
+            .collect();
+        if batch.is_empty() {
+            break;
+        }
 
-    bars::Entity::insert_many(active_models)
-        .on_conflict(
-            OnConflict::columns([
-                bars::Column::InstrumentId,
-                bars::Column::Timeframe,
-                bars::Column::Timestamp,
-            ])
-            .update_columns([
-                bars::Column::Open,
-                bars::Column::High,
-                bars::Column::Low,
-                bars::Column::Close,
-                bars::Column::Volume,
-                bars::Column::AdjustmentFactor,
-            ])
-            .to_owned(),
-        )
-        .exec_without_returning(db)
-        .await?;
+        bars::Entity::insert_many(batch)
+            .on_conflict(
+                OnConflict::columns([
+                    bars::Column::InstrumentId,
+                    bars::Column::Timeframe,
+                    bars::Column::Timestamp,
+                ])
+                .update_columns([
+                    bars::Column::Open,
+                    bars::Column::High,
+                    bars::Column::Low,
+                    bars::Column::Close,
+                    bars::Column::Volume,
+                    bars::Column::AdjustmentFactor,
+                ])
+                .to_owned(),
+            )
+            .exec_without_returning(db)
+            .await?;
+    }
 
     Ok(())
 }
@@ -467,6 +479,45 @@ mod tests {
         };
         let result = find_bars(&db, query).await.expect("find failed");
         assert_eq!(result.len(), 2);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn upsert_bars_inserts_more_than_ten_thousand_records(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let instrument_id = "TEST-BIND-LIMIT";
+        insert_test_instrument(&db, instrument_id).await;
+
+        let start_date = NaiveDate::from_ymd_opt(2040, 1, 1).expect("invalid date");
+        let expected: Vec<Bar> = (0..10_001)
+            .map(|day_offset| {
+                let date = start_date
+                    .checked_add_signed(chrono::Duration::days(day_offset))
+                    .expect("invalid date offset");
+                make_test_bar(instrument_id, date, day_offset)
+            })
+            .collect();
+
+        upsert_bars(&db, expected.clone())
+            .await
+            .expect("upsert failed");
+
+        let actual: Vec<Bar> = find_bars(
+            &db,
+            BarsQuery {
+                instrument_id: instrument_id.to_owned(),
+                timeframe: "1d".to_owned(),
+                from: None,
+                to: None,
+            },
+        )
+        .await
+        .expect("find failed")
+        .into_iter()
+        .map(Into::into)
+        .collect();
+
+        assert_eq!(actual, expected);
     }
 
     #[backend_test_macros::database_test]
