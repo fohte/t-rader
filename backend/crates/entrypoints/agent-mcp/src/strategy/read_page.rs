@@ -7,20 +7,18 @@ use core_application::web_search::WebSearchError;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{ReadPageParams, ReadPageResult};
-use super::{
-    StrategyServer, internal_error, invalid_params, litellm_error_to_mcp,
-    tool_call_count_error_to_mcp,
-};
+use super::tool_call_limit::ToolCallLimitContext;
+use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
 
 pub(super) const TOOL_NAME: &str = "read_page";
 pub(super) const READ_PAGE_MAX_CALLS_PER_TASK: u32 = 20;
 const MAX_PAGE_CONTENT_CHARS: usize = 100_000;
 
 impl StrategyServer {
-    pub(crate) async fn read_page_inner(
+    pub(super) async fn read_page_inner(
         &self,
         scope: impl Into<StrategyScope>,
-        task_execution_id: Option<String>,
+        call_limits: ToolCallLimitContext,
         model: String,
         params: ReadPageParams,
     ) -> Result<ReadPageResult, McpError> {
@@ -43,14 +41,8 @@ impl StrategyServer {
             .llm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
-        let tool_call_counts = &self.dependencies.mcp_tool_call_counts;
-
-        if let Some(task_execution_id) = task_execution_id.as_deref() {
-            tool_call_counts
-                .reserve(task_execution_id, TOOL_NAME, READ_PAGE_MAX_CALLS_PER_TASK)
-                .await
-                .map_err(tool_call_count_error_to_mcp)?;
-        }
+        self.reserve_tool_call_limits(&call_limits, TOOL_NAME)
+            .await?;
 
         let (page_content, page_content_truncated) = match page_client.extract_page(&url).await {
             Ok(content) => {
@@ -68,8 +60,7 @@ impl StrategyServer {
                     error = %error,
                     "read_page: page extraction failed"
                 );
-                self.release_tool_call_count_reservation(task_execution_id.as_deref(), TOOL_NAME)
-                    .await;
+                self.release_tool_call_limits(&call_limits, TOOL_NAME).await;
                 return Err(page_extraction_error_to_mcp(error));
             }
         };

@@ -38,11 +38,13 @@ use super::dto::{
     WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
+use super::read_page::READ_PAGE_MAX_CALLS_PER_TASK;
 use super::read_page::TOOL_NAME as READ_PAGE_TOOL_NAME;
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
+use super::web_search::{SEARCH_WEB_MAX_CALLS_PER_TASK, TOOL_NAME as SEARCH_WEB_TOOL_NAME};
 use super::youtube::TOOL_NAME as QUERY_YOUTUBE_TOOL_NAME;
 use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
@@ -254,7 +256,7 @@ impl StrategyServer {
     /// URL のページ本文をモデルに読ませ、質問への回答を返す
     #[tool(
         name = "read_page",
-        description = "Read a web page by URL and answer a prompt using the model configured for this tool in agent_graph.tool_models. Use search_web to find URLs, then use read_page to read an article. The answer must use only information in the page, preserve original numbers, dates, names, and quotes, and say when the answer is absent or the content is inaccessible. Calls are limited to 20 per strategy task execution.",
+        description = "Read a web page by URL and answer a prompt using the model configured for this tool in agent_graph.tool_models. Use search_web to find URLs, then use read_page to read an article. The answer must use only information in the page, preserve original numbers, dates, names, and quotes, and say when the answer is absent or the content is inaccessible. Calls are limited per strategy task execution (default 20); agent_graph.tool_limits can override this limit. When both x-subagent-execution-id and x-subagent-definition-key are provided, the matching subagent definition's tool_limits entry adds a per-subagent execution limit; when the tool has no entry, only the task limit applies.",
         annotations(read_only_hint = true)
     )]
     async fn read_page(
@@ -264,8 +266,14 @@ impl StrategyServer {
     ) -> Result<Json<ReadPageResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let model = tool_model_from_ctx(&ctx, READ_PAGE_TOOL_NAME)?;
-        let task_execution_id = execution_task_id_from_ctx(&ctx);
-        self.read_page_inner(scope, task_execution_id, model, params)
+        let call_limits = self
+            .tool_call_limit_context_from_ctx(
+                &ctx,
+                READ_PAGE_TOOL_NAME,
+                READ_PAGE_MAX_CALLS_PER_TASK,
+            )
+            .await?;
+        self.read_page_inner(scope, call_limits, model, params)
             .await
             .map(Json)
     }
@@ -273,7 +281,7 @@ impl StrategyServer {
     /// Tavily で web 検索し、記事の出典とスニペットを返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query. Set topic to general (default) or news. Use topic=news only for real-time major current events covered by mainstream media, such as politics or sports. For individual-stock research or Japanese/local-language sources, omit topic, even when searching for recent news; use time_range to limit recency. Optionally set time_range to day, week, month, or year. Returns source articles with their original URLs, publication dates, and snippets. Use search_web to find URLs, then use read_page to read an article. Use this to look into stocks, terms, or themes beyond the available reference data and RSS feeds, or to retrieve a search_news item whose content_status is not fetched by searching its title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are capped per strategy task execution; further calls after the cap return an error.",
+        description = "Search the web for a free-form query. Set topic to general (default) or news. Use topic=news only for real-time major current events covered by mainstream media, such as politics or sports. For individual-stock research or Japanese/local-language sources, omit topic, even when searching for recent news; use time_range to limit recency. Optionally set time_range to day, week, month, or year. Returns source articles with their original URLs, publication dates, and snippets. Use search_web to find URLs, then use read_page to read an article. Use this to look into stocks, terms, or themes beyond the available reference data and RSS feeds, or to retrieve a search_news item whose content_status is not fetched by searching its title and/or URL. For items with content_status=fetched, use get_news_content to read the stored article body. Calls are limited per strategy task execution (default 20); agent_graph.tool_limits can override this limit. When both x-subagent-execution-id and x-subagent-definition-key are provided, the matching subagent definition's tool_limits entry adds a per-subagent execution limit; when the tool has no entry, only the task limit applies.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -282,8 +290,14 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let task_execution_id = execution_task_id_from_ctx(&ctx);
-        self.search_web_inner(scope, task_execution_id, params)
+        let call_limits = self
+            .tool_call_limit_context_from_ctx(
+                &ctx,
+                SEARCH_WEB_TOOL_NAME,
+                SEARCH_WEB_MAX_CALLS_PER_TASK,
+            )
+            .await?;
+        self.search_web_inner(scope, call_limits, params)
             .await
             .map(Json)
     }

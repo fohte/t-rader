@@ -13,6 +13,8 @@ pub struct AgentGraphConfig {
     #[serde(default)]
     pub timeout_minutes: Option<u32>,
     #[serde(default)]
+    pub tool_limits: BTreeMap<String, u32>,
+    #[serde(default)]
     pub tool_models: BTreeMap<String, String>,
     pub phases: Vec<AgentGraphPhase>,
 }
@@ -181,6 +183,8 @@ mod tests {
     #[rstest]
     fn parse_valid_graph() {
         let yaml = indoc! {"
+            tool_limits:
+              search_web: 4
             tool_models:
               query_youtube: example-model-youtube
             phases:
@@ -211,6 +215,7 @@ mod tests {
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
                 timeout_minutes: None,
+                tool_limits: BTreeMap::from([("search_web".to_string(), 4)]),
                 tool_models: BTreeMap::from([(
                     "query_youtube".to_string(),
                     "example-model-youtube".to_string()
@@ -276,6 +281,7 @@ mod tests {
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
                 timeout_minutes: None,
+                tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),
@@ -321,6 +327,7 @@ mod tests {
             parse_agent_graph(&yaml),
             Ok(Some(AgentGraphConfig {
                 timeout_minutes: Some(timeout_minutes),
+                tool_limits: BTreeMap::new(),
                 tool_models: BTreeMap::new(),
                 phases: vec![AgentGraphPhase {
                     key: "plan".to_string(),

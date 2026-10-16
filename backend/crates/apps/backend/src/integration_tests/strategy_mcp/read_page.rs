@@ -17,7 +17,10 @@ use uuid::Uuid;
 
 use super::super::mcp_tool::call_tool_output_with_headers;
 use super::dto::{ReadPageParams, ReadPageResult};
-use super::tests_common::{insert_strategy, mock_db_with_strategy};
+use super::tests_common::{
+    create_task_with_subagent_limits, insert_strategy, insert_subagent_headers,
+    mock_db_with_strategy,
+};
 use crate::services::use_cases::build_use_cases_without_agent_task_client;
 use entrypoint_agent_mcp::StrategyServer;
 
@@ -262,6 +265,97 @@ async fn read_page_uses_tool_model_and_truncates_extracted_content_at_100000_cha
             }],
         ),
     );
+}
+
+#[backend_test_macros::database_test]
+async fn read_page_enforces_subagent_and_task_limits(db: gateway_postgres::DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "example strategy").await;
+    let task_execution_id =
+        create_task_with_subagent_limits(&db, strategy_id, "reader", "read_page", 1, 4).await;
+    let (web_search_client, extracted_urls) = web_search_client("Example page");
+    let (llm_client, llm) = llm_client();
+    let server = server(db, Some(llm_client), Some(web_search_client));
+
+    let first_subagent_call = invoke_read_page(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("reader-run-a", "reader")),
+    )
+    .await;
+    let repeated_subagent_call = invoke_read_page(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("reader-run-a", "reader")),
+    )
+    .await;
+    let other_subagent_call = invoke_read_page(
+        &server,
+        strategy_id,
+        &task_execution_id,
+        Some(("reader-run-b", "reader")),
+    )
+    .await;
+    let phase_call = invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+    let second_phase_call = invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+    let call_beyond_task_limit =
+        invoke_read_page(&server, strategy_id, &task_execution_id, None).await;
+
+    assert_eq!(
+        (
+            first_subagent_call,
+            repeated_subagent_call,
+            other_subagent_call,
+            phase_call,
+            second_phase_call,
+            call_beyond_task_limit,
+            extracted_urls.lock().expect("read extracted URLs").clone(),
+            llm.calls.lock().expect("read completion calls").len(),
+        ),
+        (
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Err(McpError::invalid_params(
+                "read_page call limit (1) exceeded for this subagent execution",
+                None,
+            )),
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Ok(json!({"url": PAGE_URL, "text": "page answer"})),
+            Err(McpError::invalid_params(
+                "read_page call limit (4) exceeded for this task execution",
+                None,
+            )),
+            vec![
+                PAGE_URL.into(),
+                PAGE_URL.into(),
+                PAGE_URL.into(),
+                PAGE_URL.into()
+            ],
+            4,
+        ),
+    );
+}
+
+async fn invoke_read_page(
+    server: &StrategyServer,
+    strategy_id: Uuid,
+    task_execution_id: &str,
+    subagent: Option<(&str, &str)>,
+) -> Result<Value, McpError> {
+    let mut headers = headers(
+        strategy_id,
+        Some(format!("{task_execution_id}:example-step")),
+    );
+    insert_subagent_headers(&mut headers, subagent);
+
+    call_tool_output_with_headers::<_, Value>(
+        server,
+        "read_page",
+        serde_json::to_value(params(PAGE_URL, "Summarize the page")).expect("serialize params"),
+        headers,
+    )
+    .await
 }
 
 #[rstest]
