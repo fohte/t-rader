@@ -8,6 +8,7 @@ mod us_stock_ingest;
 mod us_stock_minute_bars_downsample;
 mod us_stock_source;
 mod use_cases;
+mod write_throttle;
 
 #[cfg(feature = "test-support")]
 mod fake;

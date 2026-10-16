@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 
-use super::clock::wait_after_page;
 use super::error::BarsUseCaseError;
 use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_hourly_history_cutoff;
@@ -11,6 +10,7 @@ use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::BarsUseCases;
+use super::write_throttle::wait_after_page;
 
 mod adjustment;
 mod hourly;
@@ -477,8 +477,9 @@ fn split_rejected_batch<'a>(instrument_ids: &'a [String], reason: String) -> Rej
 
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
+    use std::collections::VecDeque;
     use std::collections::{HashMap, HashSet};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex as StdMutex};
     use std::time::Duration;
 
     use async_trait::async_trait;
@@ -498,21 +499,66 @@ mod tests {
 
     use super::{MAX_REQUESTS_PER_RUN, us_stock_hourly_history_cutoff};
 
-    struct NoopClock;
+    #[derive(Default)]
+    struct TestClock {
+        now: StdMutex<Duration>,
+        now_readings: StdMutex<VecDeque<Duration>>,
+        sleeps: StdMutex<Vec<Duration>>,
+    }
 
-    #[async_trait]
-    impl BarsIngestClock for NoopClock {
-        fn now(&self) -> Duration {
-            Duration::ZERO
+    impl TestClock {
+        fn set_now_readings(&self, readings: impl IntoIterator<Item = Duration>) {
+            *self
+                .now_readings
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                readings.into_iter().collect();
         }
 
-        async fn sleep(&self, _duration: Duration) {}
+        fn sleeps(&self) -> Vec<Duration> {
+            self.sleeps
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    #[async_trait]
+    impl BarsIngestClock for TestClock {
+        fn now(&self) -> Duration {
+            let mut now = self
+                .now
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(reading) = self
+                .now_readings
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .pop_front()
+            {
+                *now = reading;
+            }
+            *now
+        }
+
+        async fn sleep(&self, duration: Duration) {
+            self.sleeps
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(duration);
+            let mut now = self
+                .now
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *now = now.saturating_add(duration);
+        }
     }
 
     struct Harness {
         use_cases: BarsUseCases,
         repository: Arc<FakeBarsRepository>,
         source: FakeSource,
+        clock: Arc<TestClock>,
     }
 
     #[fixture]
@@ -522,14 +568,16 @@ mod tests {
         let repository_shared_trait: crate::bars::SharedBarsRepository = repository_shared;
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let unit_of_work_shared: SharedUnitOfWork = unit_of_work;
+        let clock = Arc::new(TestClock::default());
         Harness {
             use_cases: BarsUseCases::with_clock(
                 unit_of_work_shared,
                 repository_shared_trait,
-                Arc::new(NoopClock),
+                clock.clone(),
             ),
             repository,
             source: FakeSource::default(),
+            clock,
         }
     }
 
@@ -738,6 +786,41 @@ mod tests {
             volume: 25,
             adjustment_factor: Decimal::ONE,
         }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn ingestion_records_the_throttle_wait_after_persisting_a_page(harness: Harness) {
+        let instrument_id = "US:EXAMPLE-THROTTLE";
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::from_millis(250),
+            Duration::from_millis(400),
+        ]);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, date("2040-01-02T00:00:00Z"))
+            .await
+            .expect("daily ingestion succeeds");
+
+        assert_eq!(
+            (stats, harness.clock.sleeps()),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 2,
+                    daily_bars_upserted: 1,
+                    write_throttle_wait_ms: 1350,
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![Duration::from_millis(1350)],
+            ),
+        );
     }
 
     fn priced_bar(
