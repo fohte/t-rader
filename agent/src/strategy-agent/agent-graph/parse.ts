@@ -16,23 +16,33 @@ export class AgentGraphParseError extends Error {
   }
 }
 
-const agentGraphPhaseSchema = z.object({
-  key: z.string(),
-  label: z.string(),
-  model: z.string(),
-  reasoning_effort: z.string().optional(),
-  prompt: z.string(),
-  for_each: z.string().optional(),
-  label_field: z.string().optional(),
-  max_parallel: z.number().optional(),
-  timeout_minutes: timeoutMinutesSchema.optional(),
-  skills: z.array(z.string()).default([]),
-  subagents: z.array(z.string()).default([]),
-  max_subagent_runs: z.number().int().min(0).max(4_294_967_295).optional(),
-  // 省略 (undefined) と明示的な空配列を区別するため .default([]) は付けない。
-  tools: z.array(z.string()).optional(),
-  output: z.record(z.string(), z.unknown()).default({}),
-})
+const agentGraphPhaseSchema = z
+  .object({
+    key: z.string(),
+    label: z.string(),
+    model: z.string(),
+    reasoning_effort: z.string().optional(),
+    prompt: z.string(),
+    for_each: z.string().optional(),
+    label_field: z.string().optional(),
+    max_parallel: z.number().optional(),
+    timeout_minutes: timeoutMinutesSchema.optional(),
+    skills: z.array(z.string()).default([]),
+    subagents: z.array(z.string()).default([]),
+    max_subagent_runs: z.number().int().min(0).max(4_294_967_295).optional(),
+    // 省略 (undefined) と明示的な空配列を区別するため .default([]) は付けない。
+    tools: z.array(z.string()).optional(),
+    output: z.record(z.string(), z.unknown()).default({}),
+  })
+  .superRefine((phase, context) => {
+    if (phase.subagents.length > 0 && phase.max_subagent_runs === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'max_subagent_runs is required when subagents are configured',
+        path: ['max_subagent_runs'],
+      })
+    }
+  })
 
 const agentGraphConfigSchema = z.object({
   timeout_minutes: timeoutMinutesSchema.optional(),
