@@ -2237,6 +2237,79 @@ describe('createStrategyAgentDeps', () => {
     ])
   })
 
+  it('aborts a running tool when agentSignal aborts the graph', async () => {
+    const controller = new AbortController()
+    let markToolStarted = (): void => undefined
+    const toolStarted = new Promise<void>((resolve) => {
+      markToolStarted = () => {
+        resolve()
+      }
+    })
+    let toolSignal: AbortSignal | undefined
+    let toolAbortObserved = false
+    const model = buildStubModel(() =>
+      Promise.resolve(
+        buildToolCallResponse('active-search-call', {
+          name: 'search',
+          arguments: '{}',
+        }),
+      ),
+    )
+    const searchTool = new DynamicStructuredTool({
+      name: 'search',
+      description: 'Return synthetic search evidence.',
+      schema: z.object({}),
+      func: (_input, _runManager, config) => {
+        const signal = config?.signal
+        toolSignal = signal
+        markToolStarted()
+        if (signal === undefined) {
+          return Promise.reject(new Error('tool signal is missing'))
+        }
+        return new Promise((resolve) => {
+          const onAbort = (): void => {
+            toolAbortObserved = true
+            resolve('tool cancelled')
+          }
+          if (signal.aborted) {
+            onAbort()
+            return
+          }
+          signal.addEventListener('abort', onAbort, { once: true })
+        })
+      },
+    })
+    const agent = buildPhaseAgentUnderTest(
+      createStrategyAgentDeps(baseConfig),
+      {
+        model,
+        tools: [searchTool],
+        systemPrompt: 'test system prompt',
+        agentSignal: controller.signal,
+      },
+    )
+    const resultPromise = agent
+      .invoke({
+        messages: [new HumanMessage('Investigate the assigned question.')],
+      })
+      .then(
+        () => 'completed' as const,
+        () => 'rejected' as const,
+      )
+
+    await toolStarted
+    controller.abort()
+    const result = await resultPromise
+
+    const actual = Array.of<unknown>(
+      toolSignal !== undefined,
+      toolAbortObserved,
+      result,
+    )
+
+    expect(actual).toEqual([true, true, 'rejected'])
+  })
+
   it('reports a phase timeout and does not retry the aborted model call', async () => {
     const phaseTimeoutController = new AbortController()
     let capturedSignal: AbortSignal | undefined

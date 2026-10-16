@@ -180,8 +180,10 @@ export const createRunSubagentTool = (
   RunSubagentInput,
   z.input<typeof RUN_SUBAGENT_INPUT_SCHEMA>,
   RunSubagentToolOutput
-> =>
-  new DynamicStructuredTool<
+> => {
+  const runCounter = { count: 0 }
+
+  return new DynamicStructuredTool<
     typeof RUN_SUBAGENT_INPUT_SCHEMA,
     RunSubagentInput,
     z.input<typeof RUN_SUBAGENT_INPUT_SCHEMA>,
@@ -200,7 +202,7 @@ export const createRunSubagentTool = (
       }
       if (
         options.phase.maxSubagentRuns !== undefined &&
-        options.runCounter.count >= options.phase.maxSubagentRuns
+        runCounter.count >= options.phase.maxSubagentRuns
       ) {
         return Promise.reject(
           new Error(
@@ -208,7 +210,7 @@ export const createRunSubagentTool = (
           ),
         )
       }
-      options.runCounter.count += 1
+      runCounter.count += 1
       const executionStepId = crypto.randomUUID()
       const spanName = `Subagent ${key}`
       const result = await withPhaseSpan(
@@ -276,3 +278,4 @@ export const createRunSubagentTool = (
       )
     },
   })
+}

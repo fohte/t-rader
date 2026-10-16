@@ -113,7 +113,6 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder,
-      runCounter: { count: 0 },
       fetchDefinition: () => okAsync(definition),
       createMcpClient: (executionStepId, definitionKey): McpToolsClient => {
         createdMcpClients.push({ executionStepId, definitionKey })
@@ -205,13 +204,11 @@ describe('createRunSubagentTool', () => {
   })
 
   it('rejects a launch after max_subagent_runs is reached', async () => {
-    const runCounter = { count: 1 }
     const fetchDefinition = vi.fn(() => okAsync(definition))
     const tool = createRunSubagentTool({
       phase: { ...phase, maxSubagentRuns: 1 },
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
-      runCounter,
       fetchDefinition,
       createMcpClient: () => ({
         getTools: () => Promise.resolve([]),
@@ -224,6 +221,10 @@ describe('createRunSubagentTool', () => {
         }),
       },
     })
+    const result = await tool.invoke({
+      key: 'researcher',
+      brief: 'Continue the investigation.',
+    })
     const outcome = await tool
       .invoke({ key: 'researcher', brief: 'Continue the investigation.' })
       .then(
@@ -234,14 +235,19 @@ describe('createRunSubagentTool', () => {
         }),
       )
 
-    const actual = Array.of<unknown>(outcome, fetchDefinition.mock.calls.length)
+    const actual = Array.of<unknown>(
+      result,
+      outcome,
+      fetchDefinition.mock.calls.length,
+    )
 
     expect(actual).toEqual([
+      {},
       {
         status: 'rejected',
         message: 'phase research exceeded max_subagent_runs 1',
       },
-      0,
+      1,
     ])
   })
 
@@ -251,7 +257,6 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
-      runCounter: { count: 0 },
       fetchDefinition,
       createMcpClient: () => ({
         getTools: () => Promise.resolve([]),
@@ -373,7 +378,6 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
-      runCounter: { count: 0 },
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 3 }),
       createMcpClient: () => ({
@@ -454,7 +458,6 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
-      runCounter: { count: 0 },
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 1 }),
       createMcpClient: () => ({
@@ -518,7 +521,6 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder((steps) => notifications.push(steps)),
-      runCounter: { count: 0 },
       fetchDefinition: () => errAsync(new Error('definition unavailable')),
       createMcpClient: () => ({
         getTools: () => Promise.resolve([]),
@@ -590,7 +592,6 @@ describe('createRunSubagentTool', () => {
       phase,
       parentExecutionStepId: 'parent-step-id',
       recorder: createStepRecorder(() => undefined),
-      runCounter: { count: 0 },
       fetchDefinition: () =>
         okAsync({ ...definition, timeoutMinutes: 1, maxModelCalls: 3 }),
       createMcpClient: () => ({

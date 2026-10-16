@@ -422,7 +422,6 @@ export const runStrategyAgent = async (
                   phase,
                   parentExecutionStepId,
                   recorder,
-                  runCounter: { count: 0 },
                   fetchDefinition: deps.fetchSubagentDefinition,
                   createMcpClient: (executionStepId, definitionKey) =>
                     deps.createMcpClient(

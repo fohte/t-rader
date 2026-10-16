@@ -15,15 +15,10 @@ import type {
   SubagentDefinition,
 } from '#strategy-agent/subagent-definition-client'
 
-export interface SubagentRunCounter {
-  count: number
-}
-
 export interface CreateRunSubagentToolOptions {
   readonly phase: AgentGraphPhase
   readonly parentExecutionStepId: string
   readonly recorder: StepRecorder
-  readonly runCounter: SubagentRunCounter
   readonly fetchDefinition: FetchSubagentDefinition
   readonly createMcpClient: (
     executionStepId: string,
@@ -60,10 +55,10 @@ export const buildSubagentAgent = (
     modelCallBudget: options.modelCallBudget,
     captureMessagesOnAbort: true,
     ...(options.deadlineSignal !== undefined
-      ? { agentSignal: options.deadlineSignal }
-      : {}),
-    ...(options.deadlineSignal !== undefined
-      ? { deadlineSignal: options.deadlineSignal }
+      ? {
+          agentSignal: options.deadlineSignal,
+          deadlineSignal: options.deadlineSignal,
+        }
       : {}),
     ...(options.phaseTimeout !== undefined
       ? { phaseTimeout: options.phaseTimeout }
