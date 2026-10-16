@@ -1590,6 +1590,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/widgets/query': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** ウィジェット定義を評価して描画データを返す。 */
+    post: operations['query_widget']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -3093,6 +3110,92 @@ export interface components {
       schedule?: string | null
     }
     Value: unknown
+    /** @enum {string} */
+    WidgetAggregationRequest: 'mkt_cap_weighted' | 'mean' | 'sum' | 'count'
+    /** @enum {string} */
+    WidgetByRequest: 'none' | 'stock' | 'group'
+    /**
+     * @description スキーマには予約済みの指標を含みます。この API が現在対応する指標は `change` と `mkt_cap` です。それ以外の値は検証エラーを返します。
+     * @enum {string}
+     */
+    WidgetMetricRequest:
+      'change' | 'close' | 'turnover' | 'mkt_cap' | 'per' | 'pbr' | 'indicator'
+    /** @enum {string} */
+    WidgetPeriodRequest: '1d' | '5d' | '20d' | '60d'
+    WidgetQueryRequest: {
+      formulas?: {
+        [key: string]: string
+      }
+      queries: {
+        [key: string]: components['schemas']['WidgetQueryRequestDefinition']
+      }
+      time?: components['schemas']['WidgetTimeRequest']
+      viz: components['schemas']['WidgetVisualizationRequest']
+    }
+    WidgetQueryRequestDefinition: {
+      agg?: null | components['schemas']['WidgetAggregationRequest']
+      axis?: string | null
+      by: components['schemas']['WidgetByRequest']
+      indicator?: string | null
+      metric: components['schemas']['WidgetMetricRequest']
+      period?: null | components['schemas']['WidgetPeriodRequest']
+      universe?: null | components['schemas']['WidgetUniverseRequest']
+    }
+    WidgetQueryResponse: {
+      /** Format: date */
+      as_of: string
+      rows: components['schemas']['WidgetQueryResultRow'][]
+    }
+    WidgetQueryResultRow: {
+      key: string
+      name: string
+      values: {
+        [key: string]: number | null
+      }
+    }
+    WidgetTimeRequest: {
+      /** Format: date */
+      as_of?: string | null
+      /** @description 時系列表示用の予約フィールドです。この API は断面クエリのみ対応するため、値を指定すると検証エラーを返します。 */
+      range?: string | null
+    }
+    WidgetUniverseGroupRequest: {
+      group: string
+    }
+    WidgetUniverseRequest:
+      | components['schemas']['WidgetUniverseGroupRequest']
+      | components['schemas']['WidgetUniverseStocksRequest']
+    WidgetUniverseStocksRequest: {
+      stocks: string[]
+    }
+    /** @enum {string} */
+    WidgetVisualizationOrderRequest: 'asc' | 'desc'
+    /** @description スキーマには予約済みの `table` と `line` も含みます。この API が現在対応する表示形式は `treemap` と `toplist` です。それ以外は検証エラーを返します。 */
+    WidgetVisualizationRequest:
+      | {
+          color: string
+          size: string
+          /** @enum {string} */
+          type: 'treemap'
+        }
+      | {
+          /** Format: int32 */
+          limit: number
+          order: components['schemas']['WidgetVisualizationOrderRequest']
+          /** @enum {string} */
+          type: 'toplist'
+          value: string
+        }
+      | {
+          columns: string[]
+          /** @enum {string} */
+          type: 'table'
+        }
+      | {
+          series: string[]
+          /** @enum {string} */
+          type: 'line'
+        }
   }
   responses: never
   parameters: never
@@ -9766,6 +9869,71 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  query_widget: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['WidgetQueryRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['WidgetQueryResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストの Content-Type が application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }

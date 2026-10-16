@@ -26,6 +26,7 @@ mod event;
 mod financial_summary;
 mod group_axis;
 mod group_movers;
+mod group_query_sql;
 mod indicator_observation;
 mod ingest_run_log;
 mod ingest_status;
@@ -67,6 +68,7 @@ mod trigger_change_listener;
 mod unit_of_work;
 mod us_stock_master;
 mod valuation;
+mod widget_query;
 
 pub use account_risk_policy::PostgresAccountRiskPolicyRepository;
 pub use agent_config::PostgresAgentConfigRepository;
@@ -124,6 +126,7 @@ pub use trigger_change_listener::PostgresTriggerChangeListener;
 pub use unit_of_work::PostgresUnitOfWork;
 pub use us_stock_master::PostgresUsStockMasterRepository;
 pub use valuation::PostgresValuationRepository;
+pub use widget_query::PostgresWidgetQuerySource;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

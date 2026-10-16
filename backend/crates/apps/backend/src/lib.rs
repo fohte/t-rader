@@ -71,6 +71,7 @@ pub fn build_http_state(
         strategy_earnings_target_use_cases: use_cases.strategy_earnings_targets(),
         strategy_use_cases: use_cases.strategies(),
         trigger_use_cases,
+        widget_use_cases: use_cases.widgets(),
         trade_note_use_cases: use_cases.trade_notes(),
         trade_summary_use_cases: use_cases.trade_summaries(),
         trade_use_cases: use_cases.trades(),
