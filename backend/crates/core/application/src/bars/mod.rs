@@ -1,3 +1,4 @@
+mod clock;
 mod error;
 mod ingest;
 mod market_price;

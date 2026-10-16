@@ -180,6 +180,7 @@ fn log_ingest_stats(
         daily_bars_upserted = stats.daily_bars_upserted,
         minute_bars_upserted = stats.minute_bars_upserted,
         hourly_bars_upserted = stats.hourly_bars_upserted,
+        write_throttle_wait_ms = stats.write_throttle_wait_ms,
         skipped_instruments = stats.skipped_instruments.len(),
         interrupted_reason = ?stats.interrupted_reason,
         "US stock bar ingest cycle finished"

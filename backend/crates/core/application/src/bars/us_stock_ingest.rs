@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 
+use super::clock::wait_after_page;
 use super::error::BarsUseCaseError;
 use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_hourly_history_cutoff;
@@ -414,13 +415,19 @@ impl BarsUseCases {
         }
         let count = bars.len();
         let transaction = self.unit_of_work.begin().await?;
+        let write_started_at = self.clock.now();
         self.repository.upsert_bars(&transaction, bars).await?;
+        let commit_started_at = self.clock.now();
         match timeframe {
             UsStockBarTimeframe::Daily => stats.daily_bars_upserted += count,
             UsStockBarTimeframe::Minute => stats.minute_bars_upserted += count,
             UsStockBarTimeframe::Hourly => stats.hourly_bars_upserted += count,
         }
         self.unit_of_work.commit(transaction).await?;
+        let completed_at = self.clock.now();
+        let write_duration = completed_at.saturating_sub(write_started_at);
+        let commit_duration = completed_at.saturating_sub(commit_started_at);
+        wait_after_page(self.clock.as_ref(), write_duration, commit_duration, stats).await;
         Ok(())
     }
 }
@@ -472,6 +479,7 @@ fn split_rejected_batch<'a>(instrument_ids: &'a [String], reason: String) -> Rej
 mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::Arc;
+    use std::time::Duration;
 
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, TimeZone, Utc};
@@ -480,6 +488,7 @@ mod tests {
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
+    use crate::bars::clock::BarsIngestClock;
     use crate::bars::{
         BarsUseCases, FakeBarsRepository, SkippedUsStockInstrument, UsStockBarPage,
         UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockBarsIngestStats,
@@ -488,6 +497,17 @@ mod tests {
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
     use super::{MAX_REQUESTS_PER_RUN, us_stock_hourly_history_cutoff};
+
+    struct NoopClock;
+
+    #[async_trait]
+    impl BarsIngestClock for NoopClock {
+        fn now(&self) -> Duration {
+            Duration::ZERO
+        }
+
+        async fn sleep(&self, _duration: Duration) {}
+    }
 
     struct Harness {
         use_cases: BarsUseCases,
@@ -503,7 +523,11 @@ mod tests {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let unit_of_work_shared: SharedUnitOfWork = unit_of_work;
         Harness {
-            use_cases: BarsUseCases::new(unit_of_work_shared, repository_shared_trait),
+            use_cases: BarsUseCases::with_clock(
+                unit_of_work_shared,
+                repository_shared_trait,
+                Arc::new(NoopClock),
+            ),
             repository,
             source: FakeSource::default(),
         }
@@ -1070,6 +1094,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                write_throttle_wait_ms: 0,
                 compression_error: None,
             },
             UsStockBarsIngestStats {
@@ -1080,6 +1105,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                write_throttle_wait_ms: 0,
                 compression_error: None,
             },
             vec![
@@ -1324,6 +1350,7 @@ mod tests {
                         reason: "synthetic symbol rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 vec![
@@ -1518,6 +1545,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 UsStockBarsIngestStats {
@@ -1528,6 +1556,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 expected_calls,
@@ -1626,6 +1655,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 expected_calls,
@@ -1699,6 +1729,7 @@ mod tests {
                         reason: "synthetic split rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 vec![
@@ -1814,6 +1845,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 vec![
@@ -2210,6 +2242,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 vec![UsStockBarQuery {
@@ -2288,6 +2321,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 vec![
@@ -2369,6 +2403,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
                 vec![UsStockBarQuery {
