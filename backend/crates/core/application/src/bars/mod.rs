@@ -29,8 +29,12 @@ use chrono::{DateTime, Months, Timelike, Utc};
 
 pub(super) const HOURLY_HISTORY_MONTHS: u32 = 12;
 
-/// 取り込み後の圧縮と stats 記録に時間を残すため、取り込みを 45 分で打ち切る。
-pub const US_STOCK_BARS_MAX_RUN_DURATION: std::time::Duration =
+/// 日足取り込み後の stats 記録に時間を残すための上限。
+pub const US_STOCK_DAILY_BARS_MAX_RUN_DURATION: std::time::Duration =
+    std::time::Duration::from_secs(90 * 60);
+
+/// 分足・時間足の取り込み後に圧縮と stats 記録の時間を残すための上限。
+pub const US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION: std::time::Duration =
     std::time::Duration::from_secs(45 * 60);
 
 pub fn us_stock_hourly_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {

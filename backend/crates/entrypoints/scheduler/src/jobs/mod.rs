@@ -3,7 +3,9 @@ use std::{future::Future, pin::Pin};
 
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use chrono_tz::Asia::Tokyo;
-use core_application::bars::US_STOCK_BARS_MAX_RUN_DURATION;
+use core_application::bars::{
+    US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
+};
 use core_application::ingest_run_log::IngestRunLog;
 use graphile_worker::WorkerContext;
 use serde::Serialize;
@@ -49,12 +51,12 @@ pub(super) const US_STOCK_BARS_TIMEOUT: Duration = DAILY_TIMEOUT;
 const US_STOCK_BARS_CRONJOB_DEADLINE: Duration = Duration::from_secs(3_300);
 
 const _: () = assert!(
-    US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_TIMEOUT.as_secs(),
-    "US stock bars budget must be shorter than the scheduler timeout",
+    US_STOCK_DAILY_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_TIMEOUT.as_secs(),
+    "US stock daily bars budget must be shorter than the scheduler timeout",
 );
 const _: () = assert!(
-    US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_CRONJOB_DEADLINE.as_secs(),
-    "US stock bars budget must be shorter than the CronJob deadline",
+    US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_CRONJOB_DEADLINE.as_secs(),
+    "US stock intraday bars budget must be shorter than the CronJob deadline",
 );
 
 pub(crate) type JobFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
