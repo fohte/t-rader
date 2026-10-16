@@ -245,10 +245,6 @@ erDiagram
   bigint volume
   numeric adjustment_factor
 }
-"public.us_stock_hourly_bar_ingest_progress" {
-  text instrument_id FK
-  timestamp_with_time_zone completed_through
-}
 "public.strategy" {
   uuid id
   varchar name
@@ -818,6 +814,10 @@ erDiagram
   jsonb output
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.us_stock_hourly_bar_ingest_progress" {
+  text instrument_id FK
+  timestamp_with_time_zone completed_through
 }
 ```
 
