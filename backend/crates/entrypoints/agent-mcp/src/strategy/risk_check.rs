@@ -344,7 +344,7 @@ mod tests {
         assert_eq!(
             parse_account_risk_policy(serde_json::json!(true)),
             Err(rmcp::ErrorData::internal_error(
-                "database error: invalid risk_policy: invalid type: boolean `true`, expected struct AccountRiskPolicyData",
+                "database error: invalid risk_policy: invalid type: boolean `true`, expected struct AccountRiskPolicyData at line 1 column 4",
                 None,
             ))
         );
