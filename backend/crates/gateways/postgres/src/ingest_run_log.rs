@@ -38,6 +38,30 @@ impl IngestRunRepository for PostgresIngestRunRepository {
         .map_err(persistence_error)
     }
 
+    async fn probe_commit(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        run_id: Uuid,
+    ) -> Result<(), PersistenceError> {
+        let connection = transaction_ref(transaction).ok_or_else(|| {
+            PersistenceError::Database("transaction has an unexpected type".to_owned())
+        })?;
+        let result = ingest_run::Entity::update_many()
+            // probe では状態を維持しながら UPDATE と commit の書き込み時間を測る
+            .col_expr(ingest_run::Column::Status, Expr::value("running"))
+            .filter(ingest_run::Column::Id.eq(run_id))
+            .filter(ingest_run::Column::Status.eq("running"))
+            .exec(connection)
+            .await
+            .map_err(persistence_error)?;
+        if result.rows_affected != 1 {
+            return Err(PersistenceError::RecordNotUpdated(format!(
+                "ingest run {run_id} was not running"
+            )));
+        }
+        Ok(())
+    }
+
     async fn finish(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -313,6 +337,21 @@ mod tests {
                 Vec::new(),
             ),
         );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn probe_commit_writes_without_finishing_the_running_ingest_run(db: DatabaseHandle) {
+        let (log, _) = log(db.clone());
+        let run_id = log.start("sample_ingest").await.expect("start run");
+        let before_probe = row(&db, run_id).await;
+
+        let _probe_duration = log
+            .probe_commit(run_id)
+            .await
+            .expect("probe commit succeeds");
+        let after_probe = row(&db, run_id).await;
+
+        assert_eq!((after_probe, events(&db).await), (before_probe, Vec::new()));
     }
 
     #[backend_test_macros::database_test]

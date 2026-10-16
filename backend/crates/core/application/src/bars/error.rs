@@ -4,6 +4,7 @@ use thiserror::Error;
 use crate::bars::us_stock_source::UsStockBarSourceError;
 use crate::daily_bar_source::DailyBarSourceError;
 use crate::market_daily_bar_source::MarketDailyBarSourceError;
+use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkError;
 
 use super::repository::BarsRepositoryError;
@@ -18,6 +19,8 @@ pub enum BarsUseCaseError {
     Repository(#[from] BarsRepositoryError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
+    #[error(transparent)]
+    IngestRunLog(#[from] PersistenceError),
     #[error(transparent)]
     DailyBarSource(#[from] DailyBarSourceError),
     #[error(transparent)]

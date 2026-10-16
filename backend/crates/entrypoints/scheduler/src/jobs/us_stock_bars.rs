@@ -5,7 +5,10 @@ use core_application::bars::{
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, require_source, run_with_ingest_run_log_state};
+use super::{
+    DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, require_source, run_with_ingest_run_log_state,
+    run_with_ingest_run_log_state_with_run_id,
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UsStockBarsIngest;
@@ -32,21 +35,22 @@ impl super::SchedulerJob for UsStockBarsIngest {
 
     fn run(state: crate::state::SchedulerState) -> super::JobFuture {
         Box::pin(async move {
-            run_with_ingest_run_log_state(
+            run_with_ingest_run_log_state_with_run_id(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
                 US_STOCK_BARS_TIMEOUT,
-                |state| async move {
+                |state, run_id| async move {
+                    let bars = state
+                        .dependencies
+                        .bars
+                        .for_ingest_run(run_id, state.dependencies.ingest_run_log.clone());
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
                         "Alpaca US stock bar source",
                     )?;
                     log_ingest_stats(
                         "1d",
-                        state
-                            .dependencies
-                            .bars
-                            .ingest_us_stock_daily_bars(source.as_ref(), Utc::now())
+                        bars.ingest_us_stock_daily_bars(source.as_ref(), Utc::now())
                             .await,
                     )
                 },
@@ -70,21 +74,22 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
 
     fn run(state: crate::state::SchedulerState) -> super::JobFuture {
         Box::pin(async move {
-            run_with_ingest_run_log_state(
+            run_with_ingest_run_log_state_with_run_id(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
                 US_STOCK_BARS_TIMEOUT,
-                |state| async move {
+                |state, run_id| async move {
+                    let bars = state
+                        .dependencies
+                        .bars
+                        .for_ingest_run(run_id, state.dependencies.ingest_run_log.clone());
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
                         "Alpaca US stock bar source",
                     )?;
                     log_ingest_stats(
                         "1m",
-                        state
-                            .dependencies
-                            .bars
-                            .ingest_us_stock_minute_bars(source.as_ref(), Utc::now())
+                        bars.ingest_us_stock_minute_bars(source.as_ref(), Utc::now())
                             .await,
                     )
                 },
@@ -108,21 +113,22 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
 
     fn run(state: crate::state::SchedulerState) -> super::JobFuture {
         Box::pin(async move {
-            run_with_ingest_run_log_state(
+            run_with_ingest_run_log_state_with_run_id(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
                 US_STOCK_BARS_TIMEOUT,
-                |state| async move {
+                |state, run_id| async move {
+                    let bars = state
+                        .dependencies
+                        .bars
+                        .for_ingest_run(run_id, state.dependencies.ingest_run_log.clone());
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
                         "Alpaca US stock bar source",
                     )?;
                     log_ingest_stats(
                         "1h",
-                        state
-                            .dependencies
-                            .bars
-                            .ingest_us_stock_hourly_bars(source.as_ref(), Utc::now())
+                        bars.ingest_us_stock_hourly_bars(source.as_ref(), Utc::now())
                             .await,
                     )
                 },

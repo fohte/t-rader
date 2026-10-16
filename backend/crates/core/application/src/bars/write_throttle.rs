@@ -9,6 +9,7 @@ const COMMIT_LATENCY_TARGET: Duration = Duration::from_millis(100);
 #[derive(Default)]
 pub(super) struct WriteThrottle {
     next_write_at: Option<Instant>,
+    last_commit_duration: Option<Duration>,
 }
 
 impl WriteThrottle {
@@ -46,21 +47,30 @@ impl WriteThrottle {
         write_duration: Duration,
         commit_duration: Duration,
     ) {
-        self.next_write_at =
-            completed_at.checked_add(page_cooldown(write_duration, commit_duration));
+        self.last_commit_duration = Some(commit_duration);
+        self.next_write_at = completed_at.checked_add(page_cooldown(write_duration));
+    }
+
+    pub(super) fn commit_needs_probe(&self) -> bool {
+        self.last_commit_duration
+            .is_some_and(|duration| duration > COMMIT_LATENCY_TARGET)
+    }
+
+    pub(super) fn record_probe_commit(&mut self, completed_at: Instant, commit_duration: Duration) {
+        self.last_commit_duration = Some(commit_duration);
+        self.next_write_at = self
+            .commit_needs_probe()
+            .then(|| completed_at.checked_add(commit_cooldown(commit_duration)))
+            .flatten();
     }
 }
 
-fn page_cooldown(write_duration: Duration, commit_duration: Duration) -> Duration {
-    let base_delay = write_duration.saturating_mul(PAGE_COOLDOWN_MULTIPLIER);
-    let slow_commit_extension = if commit_duration > COMMIT_LATENCY_TARGET {
-        commit_duration
-            .saturating_sub(COMMIT_LATENCY_TARGET)
-            .saturating_mul(PAGE_COOLDOWN_MULTIPLIER)
-    } else {
-        Duration::ZERO
-    };
-    base_delay.saturating_add(slow_commit_extension)
+fn page_cooldown(write_duration: Duration) -> Duration {
+    write_duration.saturating_mul(PAGE_COOLDOWN_MULTIPLIER)
+}
+
+fn commit_cooldown(commit_duration: Duration) -> Duration {
+    commit_duration.saturating_mul(PAGE_COOLDOWN_MULTIPLIER)
 }
 
 #[cfg(test)]
@@ -135,9 +145,9 @@ mod tests {
     #[rstest]
     #[case::commit_below_target(100, 99, 300)]
     #[case::commit_at_target(100, 100, 300)]
-    #[case::commit_above_target(250, 150, 900)]
+    #[case::commit_above_target_waits_for_probe(100, 150, 300)]
     #[tokio::test]
-    async fn waits_three_times_the_write_duration_and_extends_for_slow_commits(
+    async fn waits_three_times_the_write_duration_before_the_next_operation(
         #[case] write_ms: u64,
         #[case] commit_ms: u64,
         #[case] expected_wait_ms: u64,
@@ -151,12 +161,18 @@ mod tests {
             Duration::from_millis(commit_ms),
         );
         let deadline = clock.instant() + Duration::from_secs(10);
+        let probe_needed = throttle.commit_needs_probe();
         let can_write = throttle
             .wait_before_write(&clock, deadline, &mut stats)
             .await;
 
         assert_eq!(
-            (can_write, clock.snapshot(), stats.write_throttle_wait_ms),
+            (
+                can_write,
+                clock.snapshot(),
+                stats.write_throttle_wait_ms,
+                probe_needed,
+            ),
             (
                 true,
                 ClockState {
@@ -164,6 +180,7 @@ mod tests {
                     sleeps: vec![Duration::from_millis(expected_wait_ms)],
                 },
                 expected_wait_ms,
+                commit_ms > 100,
             ),
         );
     }
@@ -189,10 +206,10 @@ mod tests {
             (
                 true,
                 ClockState {
-                    now: Duration::from_millis(1750),
-                    sleeps: vec![Duration::from_millis(850)],
+                    now: Duration::from_millis(1600),
+                    sleeps: vec![Duration::from_millis(700)],
                 },
-                850,
+                700,
             ),
         );
     }

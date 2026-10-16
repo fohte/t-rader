@@ -438,9 +438,9 @@ impl BarsUseCases {
         if bars.is_empty() {
             return Ok(true);
         }
-        if !write_throttle
-            .wait_before_write(self.clock.as_ref(), budget.deadline(), stats)
-            .await
+        if !self
+            .wait_for_page_write(write_throttle, budget, stats)
+            .await?
         {
             budget.mark_time_budget_exhausted();
             return Ok(false);
@@ -461,6 +461,30 @@ impl BarsUseCases {
         let commit_duration = completed_at.saturating_duration_since(commit_started_at);
         write_throttle.record_page(completed_at, write_duration, commit_duration);
         Ok(true)
+    }
+
+    async fn wait_for_page_write(
+        &self,
+        write_throttle: &mut WriteThrottle,
+        budget: &RequestBudget,
+        stats: &mut UsStockBarsIngestStats,
+    ) -> Result<bool, BarsUseCaseError> {
+        loop {
+            if !write_throttle
+                .wait_before_write(self.clock.as_ref(), budget.deadline(), stats)
+                .await
+            {
+                return Ok(false);
+            }
+            if !write_throttle.commit_needs_probe() {
+                return Ok(true);
+            }
+            let Some((run_id, ingest_run_log)) = self.ingest_run.as_ref() else {
+                return Ok(true);
+            };
+            let commit_duration = ingest_run_log.probe_commit(*run_id).await?;
+            write_throttle.record_probe_commit(self.clock.instant(), commit_duration);
+        }
     }
 }
 
@@ -515,11 +539,13 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use async_trait::async_trait;
-    use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+    use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
+    use serde_json::Value;
     use tokio::sync::Mutex;
+    use uuid::Uuid;
 
     use crate::bars::clock::BarsIngestClock;
     use crate::bars::{
@@ -527,7 +553,11 @@ mod tests {
         UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockBarsIngestStats,
         UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
     };
-    use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
+    use crate::ingest_run_log::{IngestRunLog, SharedIngestRunLog};
+    use crate::persistence::PersistenceError;
+    use crate::unit_of_work::{
+        FakeTransaction, SharedUnitOfWork, UnitOfWork, UnitOfWorkError, UnitOfWorkTransaction,
+    };
 
     use super::{
         MAX_REQUESTS_PER_RUN, RequestBudget, UsStockBarTimeframe, us_stock_hourly_history_cutoff,
@@ -564,6 +594,14 @@ mod tests {
                 readings.into_iter().collect();
         }
 
+        fn advance(&self, duration: Duration) {
+            let mut now = self
+                .now
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *now = now.saturating_add(duration);
+        }
+
         fn sleeps(&self) -> Vec<Duration> {
             self.sleeps
                 .lock()
@@ -595,11 +633,136 @@ mod tests {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(duration);
-            let mut now = self
-                .now
+            self.advance(duration);
+        }
+    }
+
+    struct TestUnitOfWork {
+        clock: Arc<TestClock>,
+        events: Arc<StdMutex<Vec<&'static str>>>,
+        commit_duration: StdMutex<Duration>,
+    }
+
+    impl TestUnitOfWork {
+        fn new(clock: Arc<TestClock>, events: Arc<StdMutex<Vec<&'static str>>>) -> Self {
+            Self {
+                clock,
+                events,
+                commit_duration: StdMutex::default(),
+            }
+        }
+
+        fn set_commit_duration(&self, duration: Duration) {
+            *self
+                .commit_duration
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = duration;
+        }
+    }
+
+    #[async_trait]
+    impl UnitOfWork for TestUnitOfWork {
+        async fn begin(&self) -> Result<UnitOfWorkTransaction, UnitOfWorkError> {
+            Ok(UnitOfWorkTransaction::new(FakeTransaction {
+                id: Uuid::new_v4(),
+            }))
+        }
+
+        async fn commit(&self, transaction: UnitOfWorkTransaction) -> Result<(), UnitOfWorkError> {
+            transaction
+                .downcast::<FakeTransaction>()
+                .map_err(|_| UnitOfWorkError::InvalidTransaction)?;
+            let commit_duration = *self
+                .commit_duration
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *now = now.saturating_add(duration);
+            self.clock.advance(commit_duration);
+            self.events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push("page_commit");
+            Ok(())
+        }
+    }
+
+    struct TestIngestRunLog {
+        clock: Arc<TestClock>,
+        events: Arc<StdMutex<Vec<&'static str>>>,
+        probe_durations: StdMutex<VecDeque<Duration>>,
+        probe_run_ids: StdMutex<Vec<Uuid>>,
+    }
+
+    struct SlowPageProbeScenario {
+        probe_durations: Vec<Duration>,
+        deadline_duration: Duration,
+        expected_minute_bars: usize,
+        expected_wait_ms: u64,
+        expected_interruption: Option<&'static str>,
+        expected_sleeps: Vec<Duration>,
+        expected_events: Vec<&'static str>,
+    }
+
+    impl TestIngestRunLog {
+        fn new(
+            clock: Arc<TestClock>,
+            probe_durations: impl IntoIterator<Item = Duration>,
+            events: Arc<StdMutex<Vec<&'static str>>>,
+        ) -> Self {
+            Self {
+                clock,
+                events,
+                probe_durations: StdMutex::new(probe_durations.into_iter().collect()),
+                probe_run_ids: StdMutex::default(),
+            }
+        }
+
+        fn probe_run_ids(&self) -> Vec<Uuid> {
+            self.probe_run_ids
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    #[async_trait]
+    impl IngestRunLog for TestIngestRunLog {
+        async fn start(&self, _job: &str) -> Result<Uuid, PersistenceError> {
+            Ok(Uuid::new_v4())
+        }
+
+        async fn probe_commit(&self, run_id: Uuid) -> Result<Duration, PersistenceError> {
+            self.probe_run_ids
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(run_id);
+            self.events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push("probe_commit");
+            let duration = self
+                .probe_durations
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .pop_front()
+                .unwrap_or_default();
+            self.clock.advance(duration);
+            Ok(duration)
+        }
+
+        async fn finish(
+            &self,
+            _run_id: Uuid,
+            _result: Result<Value, String>,
+        ) -> Result<(), PersistenceError> {
+            Ok(())
+        }
+
+        async fn fail_interrupted_before(
+            &self,
+            _job: &str,
+            _started_before: DateTime<FixedOffset>,
+        ) -> Result<u64, PersistenceError> {
+            Ok(0)
         }
     }
 
@@ -608,6 +771,8 @@ mod tests {
         repository: Arc<FakeBarsRepository>,
         source: FakeSource,
         clock: Arc<TestClock>,
+        unit_of_work: Arc<TestUnitOfWork>,
+        events: Arc<StdMutex<Vec<&'static str>>>,
     }
 
     #[fixture]
@@ -615,9 +780,10 @@ mod tests {
         let repository = Arc::new(FakeBarsRepository::new());
         let repository_shared = repository.clone();
         let repository_shared_trait: crate::bars::SharedBarsRepository = repository_shared;
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
-        let unit_of_work_shared: SharedUnitOfWork = unit_of_work;
         let clock = Arc::new(TestClock::default());
+        let events = Arc::new(StdMutex::default());
+        let unit_of_work = Arc::new(TestUnitOfWork::new(clock.clone(), events.clone()));
+        let unit_of_work_shared: SharedUnitOfWork = unit_of_work.clone();
         Harness {
             use_cases: BarsUseCases::with_clock(
                 unit_of_work_shared,
@@ -627,6 +793,8 @@ mod tests {
             repository,
             source: FakeSource::default(),
             clock,
+            unit_of_work,
+            events,
         }
     }
 
@@ -925,10 +1093,10 @@ mod tests {
                     symbols_attempted: 101,
                     requests_attempted: 2,
                     minute_bars_upserted: 101,
-                    write_throttle_wait_ms: 1350,
+                    write_throttle_wait_ms: 1200,
                     ..UsStockBarsIngestStats::default()
                 },
-                vec![Duration::from_millis(1350)],
+                vec![Duration::from_millis(1200)],
             ),
         );
     }
@@ -981,14 +1149,9 @@ mod tests {
             old_rate: Decimal::ONE,
             new_rate: Decimal::new(2, 0),
         });
-        let zero_readings = if timeframe == Timeframe::Minute {
-            20
-        } else {
-            15
-        };
-        let mut readings = vec![Duration::ZERO; zero_readings];
-        readings.extend([Duration::from_millis(250), Duration::from_millis(400)]);
-        harness.clock.set_now_readings(readings);
+        harness
+            .unit_of_work
+            .set_commit_duration(Duration::from_millis(100));
 
         let stats = harness
             .use_cases
@@ -996,6 +1159,7 @@ mod tests {
             .await
             .expect("split history refetch succeeds");
 
+        let expected_sleeps = vec![Duration::from_millis(300); 5];
         assert_eq!(
             (stats, harness.clock.sleeps()),
             (
@@ -1005,10 +1169,10 @@ mod tests {
                     daily_bars_upserted: 4,
                     minute_bars_upserted: expected_minute_bars,
                     hourly_bars_upserted: expected_hourly_bars,
-                    write_throttle_wait_ms: 1350,
+                    write_throttle_wait_ms: 1500,
                     ..UsStockBarsIngestStats::default()
                 },
-                vec![Duration::from_millis(1350)],
+                expected_sleeps,
             ),
         );
     }
@@ -1543,6 +1707,111 @@ mod tests {
                 2,
                 vec![first_bar],
                 vec![Duration::from_millis(150)],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::probes_recover_before_next_page(
+        SlowPageProbeScenario {
+            probe_durations: vec![Duration::from_millis(120), Duration::from_millis(80)],
+            deadline_duration: Duration::from_secs(10),
+            expected_minute_bars: 2,
+            expected_wait_ms: 810,
+            expected_interruption: None,
+            expected_sleeps: vec![Duration::from_millis(450), Duration::from_millis(360)],
+            expected_events: vec!["page_commit", "probe_commit", "probe_commit", "page_commit"],
+        },
+    )]
+    #[case::deadline_stops_during_probe_wait(
+        SlowPageProbeScenario {
+            probe_durations: vec![Duration::from_millis(150)],
+            deadline_duration: Duration::from_millis(800),
+            expected_minute_bars: 1,
+            expected_wait_ms: 500,
+            expected_interruption: Some("time_budget_exhausted"),
+            expected_sleeps: vec![Duration::from_millis(450), Duration::from_millis(50)],
+            expected_events: vec!["page_commit", "probe_commit"],
+        },
+    )]
+    #[tokio::test]
+    async fn slow_page_waits_for_probe_commits_before_writing_next_page(
+        #[case] scenario: SlowPageProbeScenario,
+        mut harness: Harness,
+    ) {
+        let instrument_id = "US:DEMO-THROTTLE-PROBE";
+        let first_timestamp = date("2040-01-02T11:58:00Z");
+        let second_timestamp = date("2040-01-02T11:59:00Z");
+        let now = date("2040-01-02T12:00:00Z");
+        let run_id = Uuid::new_v4();
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        let first_bar = bar(instrument_id, Timeframe::Minute, first_timestamp);
+        let second_bar = bar(instrument_id, Timeframe::Minute, second_timestamp);
+        *harness.source.bars.lock().await = vec![first_bar.clone(), second_bar.clone()];
+        harness.source.page_size = Some(1);
+        harness
+            .unit_of_work
+            .set_commit_duration(Duration::from_millis(150));
+        let probe_count = scenario.probe_durations.len();
+        let ingest_run_log = Arc::new(TestIngestRunLog::new(
+            harness.clock.clone(),
+            scenario.probe_durations,
+            harness.events.clone(),
+        ));
+        let ingest_run_log_shared: SharedIngestRunLog = ingest_run_log.clone();
+        let use_cases = harness
+            .use_cases
+            .for_ingest_run(run_id, ingest_run_log_shared);
+
+        let stats = use_cases
+            .ingest_us_stock_minute_bars_with_budget(
+                &harness.source,
+                now,
+                RequestBudget::with_deadline(
+                    MAX_REQUESTS_PER_RUN,
+                    harness.clock.start_instant() + scenario.deadline_duration,
+                ),
+            )
+            .await
+            .expect("probe waits finish or exhaust the run deadline");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.len(),
+            harness.repository.bars.lock().await.clone(),
+            harness.clock.sleeps(),
+            ingest_run_log.probe_run_ids(),
+            harness
+                .events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone(),
+        );
+        let expected_stats = UsStockBarsIngestStats {
+            symbols_attempted: 1,
+            requests_attempted: 2,
+            minute_bars_upserted: scenario.expected_minute_bars,
+            write_throttle_wait_ms: scenario.expected_wait_ms,
+            interrupted_reason: scenario.expected_interruption.map(str::to_owned),
+            ..UsStockBarsIngestStats::default()
+        };
+        let expected_bars = if scenario.expected_minute_bars == 2 {
+            vec![first_bar.clone(), second_bar]
+        } else {
+            vec![first_bar]
+        };
+
+        assert_eq!(
+            actual,
+            (
+                expected_stats,
+                2,
+                expected_bars,
+                scenario.expected_sleeps,
+                vec![run_id; probe_count],
+                scenario.expected_events,
             ),
         );
     }

@@ -200,6 +200,10 @@ mod tests {
             Ok(Uuid::from_u128(1))
         }
 
+        async fn probe_commit(&self, _run_id: Uuid) -> Result<Duration, PersistenceError> {
+            Ok(Duration::ZERO)
+        }
+
         async fn finish(
             &self,
             _run_id: Uuid,
