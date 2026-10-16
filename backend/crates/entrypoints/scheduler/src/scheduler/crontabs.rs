@@ -5,7 +5,8 @@ use core_application::{
     strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME,
 };
 use graphile_worker::{
-    Crontab, CrontabFill, CrontabTimer, CrontabTimerError, CrontabValue, TaskHandler,
+    CronJobKeyMode, Crontab, CrontabFill, CrontabTimer, CrontabTimerError, CrontabValue,
+    TaskHandler,
 };
 
 use crate::jobs::{
@@ -210,19 +211,21 @@ pub(super) fn build_crontabs(
             20,
             Some(ALPACA_QUEUE),
         )?);
-        crontabs.push(hourly_cron::<UsStockMinuteBarsIngest>(
+        let minute_bars_cron = hourly_cron::<UsStockMinuteBarsIngest>(
             "us_stock_minute_bars_ingest",
             20,
             CrontabFill::hours(3),
             Some(ALPACA_QUEUE),
-        )?);
+        )?;
+        crontabs.push(coalesce_pending_cron_job(minute_bars_cron));
         // 新しく日足対象になった銘柄のバックフィルを始めるため、ジョブ自体は定期実行する。
-        crontabs.push(hourly_cron::<UsStockHourlyBarsIngest>(
+        let hourly_bars_cron = hourly_cron::<UsStockHourlyBarsIngest>(
             "us_stock_hourly_bars_ingest",
             40,
             CrontabFill::hours(3),
             Some(ALPACA_QUEUE),
-        )?);
+        )?;
+        crontabs.push(coalesce_pending_cron_job(hourly_bars_cron));
         crontabs.push(daily_cron::<UsStockMinuteBarsDownsample>(
             "us_stock_minute_bars_downsample",
             0,
@@ -293,6 +296,17 @@ fn configure_cron<T: TaskHandler>(
     crontab.options.fill = fill;
     crontab.options.max = Some(MAX_ATTEMPTS);
     crontab.options.queue = queue.map(str::to_string);
+    crontab
+}
+
+fn coalesce_pending_cron_job(mut crontab: Crontab) -> Crontab {
+    // 直列 queue の処理中に同じ cron の未処理 job が増えないようにする。
+    crontab.options.job_key = crontab
+        .options
+        .id
+        .as_ref()
+        .map(|id| format!("scheduler:{id}"));
+    crontab.options.job_key_mode = Some(CronJobKeyMode::Replace);
     crontab
 }
 
@@ -409,7 +423,7 @@ mod tests {
     };
 
     use super::{
-        ALPACA_QUEUE, ConfiguredJobs, EODDATA_QUEUE, EVENT_DISPATCH_QUEUE_NAME,
+        ALPACA_QUEUE, ConfiguredJobs, CronJobKeyMode, EODDATA_QUEUE, EVENT_DISPATCH_QUEUE_NAME,
         FED_CALENDAR_EVENT_INGEST_JOB, FRED_QUEUE, JQUANTS_QUEUE, NEWS_CONTENT_QUEUE,
         STRATEGY_TASK_RECONCILE_QUEUE_NAME, TWSE_QUEUE, build_crontabs, configure_cron,
         every_minute_cron, hourly_cron,
@@ -448,6 +462,19 @@ mod tests {
         queue: Option<&str>,
     ) -> Option<Crontab> {
         Some(configure_cron::<T>(timer?, id, Some(fill), queue))
+    }
+
+    fn expected_cron_with_job_key<T: TaskHandler>(
+        timer: Option<CrontabTimer>,
+        id: &str,
+        fill: CrontabFill,
+        queue: Option<&str>,
+        job_key: &str,
+    ) -> Option<Crontab> {
+        let mut crontab = expected_cron::<T>(timer, id, fill, queue)?;
+        crontab.options.job_key = Some(job_key.to_string());
+        crontab.options.job_key_mode = Some(CronJobKeyMode::Replace);
+        Some(crontab)
     }
 
     fn expected_weekday_cron<T: TaskHandler>(
@@ -588,17 +615,19 @@ mod tests {
                 "us_stock_bars_ingest",
                 Some(ALPACA_QUEUE),
             ),
-            expected_cron::<UsStockMinuteBarsIngest>(
+            expected_cron_with_job_key::<UsStockMinuteBarsIngest>(
                 CrontabTimer::hourly_at(20).ok(),
                 "us_stock_minute_bars_ingest",
                 CrontabFill::hours(3),
                 Some(ALPACA_QUEUE),
+                "scheduler:us_stock_minute_bars_ingest",
             ),
-            expected_cron::<UsStockHourlyBarsIngest>(
+            expected_cron_with_job_key::<UsStockHourlyBarsIngest>(
                 CrontabTimer::hourly_at(40).ok(),
                 "us_stock_hourly_bars_ingest",
                 CrontabFill::hours(3),
                 Some(ALPACA_QUEUE),
+                "scheduler:us_stock_hourly_bars_ingest",
             ),
             expected_cron::<UsStockMinuteBarsDownsample>(
                 CrontabTimer::daily_at(0, 5).ok(),
@@ -896,6 +925,45 @@ mod tests {
         let expected_ids = Some(expected_ids);
 
         assert_eq!(actual_ids, expected_ids);
+    }
+
+    #[test]
+    fn coalesces_pending_us_stock_ingestion_cron_jobs() {
+        let actual = build_crontabs(ConfiguredJobs {
+            us_stock_bars: true,
+            ..ConfiguredJobs::default()
+        })
+        .ok()
+        .map(|crontabs| {
+            crontabs
+                .into_iter()
+                .filter_map(|crontab| {
+                    let id = crontab.options.id?;
+                    match id.as_str() {
+                        "us_stock_minute_bars_ingest" | "us_stock_hourly_bars_ingest" => {
+                            Some((id, crontab.options.job_key, crontab.options.job_key_mode))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect::<Vec<_>>()
+        });
+
+        assert_eq!(
+            actual,
+            Some(vec![
+                (
+                    "us_stock_minute_bars_ingest".to_string(),
+                    Some("scheduler:us_stock_minute_bars_ingest".to_string()),
+                    Some(CronJobKeyMode::Replace),
+                ),
+                (
+                    "us_stock_hourly_bars_ingest".to_string(),
+                    Some("scheduler:us_stock_hourly_bars_ingest".to_string()),
+                    Some(CronJobKeyMode::Replace),
+                ),
+            ])
+        );
     }
 
     #[test]
