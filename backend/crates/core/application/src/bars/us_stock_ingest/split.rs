@@ -11,7 +11,7 @@ use super::super::us_stock_source::{
 };
 use super::super::use_cases::BarsUseCases;
 use super::{
-    RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
+    BatchIngestContext, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
     UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
 };
 
@@ -253,8 +253,9 @@ impl BarsUseCases {
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<bool, BarsUseCaseError> {
         let instrument_ids = std::slice::from_ref(&target.instrument_id);
-        let Some(mut daily_pages) = self
-            .fetch_batch_pages(
+        let daily_pages = {
+            let mut context = BatchIngestContext::new(budget, stats);
+            self.fetch_batch_pages(
                 source,
                 instrument_ids,
                 UsStockBarTimeframe::Daily,
@@ -262,11 +263,11 @@ impl BarsUseCases {
                     from: range.daily_from,
                     to: range.to,
                 },
-                budget,
-                stats,
+                &mut context,
             )
             .await?
-        else {
+        };
+        let Some(mut daily_pages) = daily_pages else {
             return Ok(false);
         };
         let mut split_bars = Vec::new();
@@ -286,6 +287,7 @@ impl BarsUseCases {
         }
 
         let minute_history_complete = if target.earliest_minute_bar.is_some() {
+            let mut context = BatchIngestContext::new(budget, stats);
             self.ingest_batch(
                 source,
                 instrument_ids,
@@ -294,8 +296,7 @@ impl BarsUseCases {
                     from: range.minute_from,
                     to: range.to,
                 },
-                budget,
-                stats,
+                &mut context,
             )
             .await?
         } else {
@@ -306,27 +307,33 @@ impl BarsUseCases {
         }
 
         if target.has_hourly_history_backfill() || target.earliest_hourly_bar.is_some() {
-            let Some(hourly_pages) = self
-                .fetch_batch_pages(
-                    source,
-                    instrument_ids,
-                    UsStockBarTimeframe::Hourly,
-                    UsStockBarRange {
-                        from: range.hourly_from,
-                        to: range.hourly_to,
-                    },
-                    budget,
-                    stats,
-                )
-                .await?
-            else {
-                return Ok(false);
+            let (hourly_pages, skipped_hourly_instrument_ids) = {
+                let mut context = BatchIngestContext::new(budget, stats);
+                let Some(hourly_pages) = self
+                    .fetch_batch_pages(
+                        source,
+                        instrument_ids,
+                        UsStockBarTimeframe::Hourly,
+                        UsStockBarRange {
+                            from: range.hourly_from,
+                            to: range.hourly_to,
+                        },
+                        &mut context,
+                    )
+                    .await?
+                else {
+                    return Ok(false);
+                };
+                (hourly_pages, context.skipped_instrument_ids)
             };
             self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
                 .await?;
-            self.repository
-                .mark_us_stock_hourly_bar_history_completed(instrument_ids, range.hourly_to)
-                .await?;
+            self.mark_hourly_history_completed(
+                instrument_ids,
+                range.hourly_to,
+                &skipped_hourly_instrument_ids,
+            )
+            .await?;
         }
 
         self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
