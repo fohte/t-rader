@@ -38,6 +38,12 @@ impl<'a> BatchIngestContext<'a> {
         self.skipped_instrument_ids.insert(instrument_id.clone());
         record_skipped_instrument(self.stats, instrument_id, reason);
     }
+
+    fn record_deadline_before_request(&mut self) {
+        self.stats.requests_attempted -= 1;
+        self.budget.refund_request();
+        self.budget.mark_time_budget_exhausted();
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -349,8 +355,7 @@ impl BarsUseCases {
             {
                 Ok(page) => page,
                 Err(UsStockBarSourceError::RunDeadlineExceeded) => {
-                    context.stats.requests_attempted -= 1;
-                    context.budget.cancel_request();
+                    context.record_deadline_before_request();
                     return Ok(false);
                 }
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
@@ -519,6 +524,9 @@ mod tests {
         skipped_instruments: Vec<String>,
         rejected_split_instruments: Vec<String>,
         fetch_error: Option<String>,
+        deadline_exceeded_at_call: Option<usize>,
+        split_deadline_exceeded: bool,
+        split_deadline_error: bool,
     }
 
     struct PaginatedPages {
@@ -547,7 +555,14 @@ mod tests {
             query: &UsStockBarQuery,
             _deadline: Instant,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
-            self.calls.lock().await.push(query.clone());
+            let call_count = {
+                let mut calls = self.calls.lock().await;
+                calls.push(query.clone());
+                calls.len()
+            };
+            if self.deadline_exceeded_at_call == Some(call_count) {
+                return Err(UsStockBarSourceError::RunDeadlineExceeded);
+            }
             if let Some(message) = &self.fetch_error {
                 return Err(UsStockBarSourceError::Failed(message.clone()));
             }
@@ -665,6 +680,9 @@ mod tests {
             _deadline: Instant,
         ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
             self.split_calls.lock().await.push(query.clone());
+            if self.split_deadline_error {
+                return Err(UsStockBarSourceError::RunDeadlineExceeded);
+            }
             if query
                 .instrument_ids
                 .iter()
@@ -687,8 +705,9 @@ mod tests {
                     })
                     .cloned()
                     .collect(),
-                requests_attempted: usize::from(max_requests > 0),
-                has_more: self.split_has_more || max_requests == 0,
+                requests_attempted: usize::from(max_requests > 0 && !self.split_deadline_exceeded),
+                has_more: self.split_deadline_exceeded || self.split_has_more || max_requests == 0,
+                deadline_exceeded: self.split_deadline_exceeded,
                 skipped_instruments: Vec::new(),
             })
         }
@@ -1100,6 +1119,153 @@ mod tests {
                 },
                 0,
                 expected_compression_times,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn records_a_source_deadline_and_still_compresses_minute_bars(mut harness: Harness) {
+        let instrument_id = "US:DEMO-TIME";
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.source.deadline_exceeded_at_call = Some(1);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("source deadline is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.clone(),
+            harness
+                .repository
+                .bar_compression_times
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Minute,
+                    from: UsStockBarTimeframe::Minute.history_start(now),
+                    to: now,
+                    page_token: None,
+                }],
+                vec![now],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::source_returns_deadline_error(false, true)]
+    #[case::batch_reports_deadline(true, false)]
+    #[tokio::test]
+    async fn reports_time_budget_exhaustion_for_split_deadlines(
+        #[case] split_deadline_exceeded: bool,
+        #[case] split_deadline_error: bool,
+        mut harness: Harness,
+    ) {
+        let instrument_id = "US:DEMO-SPLIT-TIME";
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.source.split_deadline_exceeded = split_deadline_exceeded;
+        harness.source.split_deadline_error = split_deadline_error;
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("split deadline is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.len(),
+            harness.source.split_calls.lock().await.len(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    daily_bars_upserted: 1,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                1,
+                1,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn returns_time_budget_stats_when_split_refetch_page_expires(mut harness: Harness) {
+        let instrument_id = "US:DEMO-SPLIT-REFETCH";
+        let ex_date = date("2040-01-01T00:00:00Z");
+        let latest_daily = date("2040-01-02T00:00:00Z");
+        let now = date("2040-01-03T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![
+                priced_bar(instrument_id, Timeframe::Daily, ex_date, 100),
+                priced_bar(instrument_id, Timeframe::Daily, latest_daily, 100),
+            ])
+            .await;
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: ex_date.date_naive(),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+        harness.source.deadline_exceeded_at_call = Some(2);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("split refetch deadline is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.len(),
+            harness.source.split_calls.lock().await.len(),
+            harness.repository.bars.lock().await.len(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 2,
+                    daily_bars_upserted: 1,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                2,
+                1,
+                3,
             ),
         );
     }

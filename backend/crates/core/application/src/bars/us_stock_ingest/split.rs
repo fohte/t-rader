@@ -47,8 +47,7 @@ impl BarsUseCases {
             {
                 Ok(page) => page,
                 Err(UsStockBarSourceError::RunDeadlineExceeded) => {
-                    context.stats.requests_attempted -= 1;
-                    context.budget.cancel_request();
+                    context.record_deadline_before_request();
                     return Ok(None);
                 }
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
@@ -247,6 +246,10 @@ impl BarsUseCases {
                 stats.requests_attempted += batch.requests_attempted;
                 for skipped in batch.skipped_instruments {
                     record_skipped_instrument(stats, skipped.instrument_id, skipped.reason);
+                }
+                if batch.deadline_exceeded {
+                    budget.mark_time_budget_exhausted();
+                    return Ok(None);
                 }
                 if batch.has_more {
                     budget.mark_interrupted();

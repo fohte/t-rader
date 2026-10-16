@@ -48,6 +48,8 @@ enum AlpacaRateLimiter {
     Shared(RateLimiter),
     #[cfg(test)]
     TestNoop,
+    #[cfg(test)]
+    TestWaitExceeded,
 }
 
 impl AlpacaRateLimiter {
@@ -67,6 +69,10 @@ impl AlpacaRateLimiter {
             }
             #[cfg(test)]
             Self::TestNoop => Ok(()),
+            #[cfg(test)]
+            Self::TestWaitExceeded => Err(RateLimitError::MaxWaitExceeded {
+                max_wait: timeout + Duration::from_millis(1),
+            }),
         }
     }
 
@@ -77,6 +83,8 @@ impl AlpacaRateLimiter {
             }
             #[cfg(test)]
             Self::TestNoop => Ok(()),
+            #[cfg(test)]
+            Self::TestWaitExceeded => Ok(()),
         }
     }
 }
@@ -150,18 +158,15 @@ impl AlpacaClient {
         params: &[(&'static str, String)],
         deadline: Instant,
     ) -> Result<Option<reqwest::Response>, AlpacaError> {
-        if Instant::now() >= deadline {
-            return Ok(None);
-        }
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return Ok(None);
         }
-        if let Err(error) = self.rate_limiter.acquire(remaining).await {
-            if Instant::now() >= deadline {
-                return Ok(None);
-            }
-            return Err(AlpacaError::RateLimit(error.to_string()));
+        match self.rate_limiter.acquire(remaining).await {
+            Ok(()) => {}
+            Err(RateLimitError::MaxWaitExceeded { .. }) => return Ok(None),
+            Err(_) if Instant::now() >= deadline => return Ok(None),
+            Err(error) => return Err(AlpacaError::RateLimit(error.to_string())),
         }
         if Instant::now() >= deadline {
             return Ok(None);
@@ -345,6 +350,7 @@ impl AlpacaClient {
                     splits,
                     requests_attempted,
                     has_more: true,
+                    deadline_exceeded: true,
                     skipped_instruments,
                 });
             };
@@ -368,6 +374,7 @@ impl AlpacaClient {
                     splits,
                     requests_attempted,
                     has_more: false,
+                    deadline_exceeded: false,
                     skipped_instruments,
                 });
             };
@@ -381,6 +388,7 @@ impl AlpacaClient {
                     splits,
                     requests_attempted,
                     has_more: true,
+                    deadline_exceeded: false,
                     skipped_instruments,
                 });
             }
@@ -541,7 +549,7 @@ mod tests {
     use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::AlpacaClient;
+    use super::{AlpacaClient, AlpacaRateLimiter};
 
     fn date(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -551,6 +559,42 @@ mod tests {
 
     fn deadline() -> Instant {
         Instant::now() + Duration::from_secs(30)
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn returns_deadline_exceeded_when_rate_limit_wait_exceeds_remaining_time() {
+        let server = MockServer::start().await;
+        let client = AlpacaClient::build(
+            &format!("{}/v2/stocks/bars", server.uri()),
+            "synthetic-key-id",
+            "synthetic-secret",
+            AlpacaRateLimiter::TestWaitExceeded,
+        )
+        .expect("test client is configured");
+        let actual = (
+            client
+                .fetch_page(
+                    &UsStockBarQuery {
+                        instrument_ids: vec!["US:QZ7".to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: date("2040-01-03T00:00:00Z"),
+                        page_token: None,
+                    },
+                    deadline(),
+                )
+                .await,
+            server
+                .received_requests()
+                .await
+                .map(|requests| requests.len()),
+        );
+
+        assert_eq!(
+            actual,
+            (Err(UsStockBarSourceError::RunDeadlineExceeded), Some(0)),
+        );
     }
 
     #[rstest]
@@ -785,6 +829,7 @@ mod tests {
                 ],
                 requests_attempted: 1,
                 has_more: false,
+                deadline_exceeded: false,
                 skipped_instruments: Vec::new(),
             },
         );
@@ -865,6 +910,7 @@ mod tests {
                 splits: vec![first_split],
                 requests_attempted: 1,
                 has_more: true,
+                deadline_exceeded: false,
                 skipped_instruments: Vec::new(),
             }
         } else {
@@ -872,6 +918,7 @@ mod tests {
                 splits: vec![first_split, second_split],
                 requests_attempted: 2,
                 has_more: false,
+                deadline_exceeded: false,
                 skipped_instruments: Vec::new(),
             }
         };
@@ -1001,6 +1048,7 @@ mod tests {
                     splits: Vec::new(),
                     requests_attempted: 1,
                     has_more: true,
+                    deadline_exceeded: true,
                     skipped_instruments: Vec::new(),
                 }),
                 Some(1),

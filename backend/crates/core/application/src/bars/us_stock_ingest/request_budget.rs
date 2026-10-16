@@ -36,11 +36,10 @@ impl RequestBudget {
         if !self.can_start_request(now) {
             return false;
         }
-        if requests > self.remaining {
+        if !self.record(requests) {
             self.interrupted_reason = Some(REQUEST_BUDGET_EXHAUSTED);
             return false;
         }
-        self.remaining -= requests;
         true
     }
 
@@ -67,9 +66,8 @@ impl RequestBudget {
         true
     }
 
-    pub(super) fn cancel_request(&mut self) {
+    pub(super) fn refund_request(&mut self) {
         self.remaining = self.remaining.saturating_add(1);
-        self.mark_time_budget_exhausted();
     }
 
     pub(super) fn mark_time_budget_exhausted(&mut self) {
@@ -80,9 +78,7 @@ impl RequestBudget {
         if self.interrupted_reason.is_some() {
             return;
         }
-        self.interrupted_reason = Some(if self.remaining == 0 {
-            REQUEST_BUDGET_EXHAUSTED
-        } else if Instant::now() >= self.deadline {
+        self.interrupted_reason = Some(if self.remaining > 0 && Instant::now() >= self.deadline {
             TIME_BUDGET_EXHAUSTED
         } else {
             REQUEST_BUDGET_EXHAUSTED

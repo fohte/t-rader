@@ -48,6 +48,7 @@ pub struct UsStockSplitBatch {
     pub splits: Vec<UsStockSplit>,
     pub requests_attempted: usize,
     pub has_more: bool,
+    pub deadline_exceeded: bool,
     pub skipped_instruments: Vec<SkippedUsStockInstrument>,
 }
 
