@@ -39,12 +39,9 @@ gateway-tavily = { workspace = true }
 gateway-postgres = { workspace = true }
 entrypoint-scheduler = { workspace = true }
 rate-limit = { workspace = true }
-cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
 futures-util = { workspace = true }
-graphile_worker = { workspace = true }
-graphile_worker_admin_ui = { workspace = true }
 jsonschema = { workspace = true }
 migration = { path = "../../../migration" }
 percent-encoding = { workspace = true }
@@ -91,7 +88,6 @@ gateway-jquants = { workspace = true, features = ["test-support"] }
 gateway-postgres = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
-sqlx = { workspace = true, features = ["postgres"] }
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = { workspace = true }
 

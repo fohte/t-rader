@@ -5,7 +5,9 @@ use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use chrono_tz::Asia::Tokyo;
 use core_application::bars::US_STOCK_BARS_MAX_RUN_DURATION;
 use core_application::ingest_run_log::IngestRunLog;
-use graphile_worker::WorkerContext;
+use core_application::ingest_status::{
+    BOJ_CALENDAR_EVENT_INGEST_JOB, ECB_CALENDAR_EVENT_INGEST_JOB, FED_CALENDAR_EVENT_INGEST_JOB,
+};
 use serde::Serialize;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -22,19 +24,16 @@ pub mod ecb_calendar;
 pub mod edinet_holdings;
 pub mod eoddata_kospi;
 pub mod equity_master;
-pub mod event_dispatch;
 pub mod fed_calendar;
 pub mod financial_summary;
 pub mod fred;
 pub mod fred_release_dates;
-pub mod ingest_run_recovery;
 pub mod jquants;
 pub mod news;
 pub mod news_content;
 pub mod paper_order_filling;
 pub mod prediction;
 pub mod strategy_task_reconcile;
-pub mod trigger_evaluation;
 pub mod twse;
 pub mod us_stock_bars;
 pub mod us_stock_master;
@@ -43,6 +42,76 @@ pub mod valuation;
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
 pub(super) const US_STOCK_BARS_TIMEOUT: Duration = DAILY_TIMEOUT;
+pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 27] = [
+    (fred::FredIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (eoddata_kospi::EodDataKospiIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (twse::TwseIndexIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (
+        alpha_vantage::AlphaVantageCalendarIngest::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (
+        fred_release_dates::FredReleaseDatesIngest::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (
+        e_stat_calendar::EStatCalendarIngest::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (BOJ_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
+    (ECB_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
+    (FED_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
+    (jquants::ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (jquants::ShortSaleReportIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (jquants::MarginIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (prediction::PredictionGrading::IDENTIFIER, WEEKLY_TIMEOUT),
+    (
+        paper_order_filling::PaperOrderFilling::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (daily_bars::DailyBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (
+        earnings_schedule::EarningsScheduleIngest::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (
+        financial_summary::FinancialSummaryIngest::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (news::NewsAggregation::IDENTIFIER, DAILY_TIMEOUT),
+    (
+        news_content::NewsContentFetch::IDENTIFIER,
+        NEWS_CONTENT_JOB_TIMEOUT,
+    ),
+    (valuation::ValuationIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (equity_master::EquityMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (
+        edinet_holdings::ShareholdingStructureIngest::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (
+        us_stock_master::UsStockMasterIngest::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+    (
+        us_stock_bars::UsStockBarsIngest::IDENTIFIER,
+        US_STOCK_BARS_TIMEOUT,
+    ),
+    (
+        us_stock_bars::UsStockMinuteBarsIngest::IDENTIFIER,
+        US_STOCK_BARS_TIMEOUT,
+    ),
+    (
+        us_stock_bars::UsStockHourlyBarsIngest::IDENTIFIER,
+        US_STOCK_BARS_TIMEOUT,
+    ),
+    (
+        us_stock_bars::UsStockMinuteBarsDownsample::IDENTIFIER,
+        DAILY_TIMEOUT,
+    ),
+];
 
 const _: () = assert!(
     US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_TIMEOUT.as_secs(),
@@ -63,21 +132,6 @@ pub(super) fn today_in_tokyo(now: DateTime<Utc>) -> NaiveDate {
 
 pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, String> {
     source.ok_or_else(|| format!("{name} is not configured"))
-}
-
-pub(super) fn scheduler_state(context: &WorkerContext) -> Result<SchedulerState, String> {
-    context
-        .get_ext::<SchedulerState>()
-        .cloned()
-        .ok_or_else(|| "scheduler state is not configured".to_string())
-}
-
-pub(super) async fn run_from_worker_context(
-    context: WorkerContext,
-    run: fn(SchedulerState) -> JobFuture,
-) -> Result<(), String> {
-    let state = scheduler_state(&context)?;
-    run(state).await
 }
 
 pub(super) async fn run_with_state<F, Fut>(

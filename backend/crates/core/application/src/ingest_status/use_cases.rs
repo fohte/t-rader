@@ -30,20 +30,12 @@ impl IngestStatusUseCase {
                     .iter()
                     .find(|date| date.job == definition.identifier)
                     .and_then(|date| date.latest_data_date);
-                let worker_jobs = data
-                    .worker_jobs
-                    .iter()
-                    .filter(|job| job.job == definition.identifier)
-                    .cloned()
-                    .collect();
-
                 IngestJobStatus {
                     job: definition.identifier.to_string(),
                     latest_run: history.map(|history| history.latest_run.clone()),
                     last_succeeded_at: history.and_then(|history| history.last_succeeded_at),
                     latest_data_date,
                     expected_data_date: definition.has_data_date.then_some(expected_data_date),
-                    worker_jobs,
                 }
             })
             .collect();

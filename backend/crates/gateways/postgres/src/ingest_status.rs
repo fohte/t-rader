@@ -5,11 +5,10 @@ use core_application::indicator_observation::{
 };
 use core_application::ingest_status::{
     DAILY_BARS_INGEST_JOB, EARNINGS_SCHEDULE_INGEST_JOB, EODDATA_KOSPI_INGEST_JOB,
-    FINANCIAL_SUMMARY_INGEST_JOB, FRED_INGEST_JOB, INGEST_JOBS, IngestRun, IngestRunHistory,
-    IngestStatusData, IngestStatusJobDate, IngestStatusRepository, IngestWorkerJob,
-    MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB, SHAREHOLDING_STRUCTURE_INGEST_JOB,
-    SHORT_RATIO_INGEST_JOB, SHORT_SALE_REPORT_INGEST_JOB, TWSE_INDEX_INGEST_JOB,
-    VALUATION_INGEST_JOB,
+    FINANCIAL_SUMMARY_INGEST_JOB, FRED_INGEST_JOB, IngestRun, IngestRunHistory, IngestStatusData,
+    IngestStatusJobDate, IngestStatusRepository, MARGIN_INGEST_JOB, NEWS_AGGREGATION_JOB,
+    SHAREHOLDING_STRUCTURE_INGEST_JOB, SHORT_RATIO_INGEST_JOB, SHORT_SALE_REPORT_INGEST_JOB,
+    TWSE_INDEX_INGEST_JOB, VALUATION_INGEST_JOB,
 };
 use core_application::persistence::PersistenceError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, Value};
@@ -114,12 +113,10 @@ impl IngestStatusRepository for PostgresIngestStatusRepository {
     async fn read(&self) -> Result<IngestStatusData, PersistenceError> {
         let run_histories = read_run_histories(&self.db).await?;
         let latest_data_dates = read_latest_data_dates(&self.db).await?;
-        let worker_jobs = read_worker_jobs(&self.db).await?;
 
         Ok(IngestStatusData {
             run_histories,
             latest_data_dates,
-            worker_jobs,
         })
     }
 }
@@ -229,57 +226,6 @@ fn indicator_latest_date_query(
         "SELECT MAX(date) FROM public.indicator_observation \
          WHERE indicator_id IN ({placeholders})"
     )
-}
-
-async fn read_worker_jobs(db: &DatabaseHandle) -> Result<Vec<IngestWorkerJob>, PersistenceError> {
-    let placeholders = (1..=INGEST_JOBS.len())
-        .map(|index| format!("${index}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "SELECT id, task_identifier, \
-            CASE \
-                WHEN locked_at IS NOT NULL THEN 'running' \
-                WHEN attempts >= max_attempts THEN 'failed' \
-                ELSE 'waiting' \
-            END AS state, \
-            queue_name, run_at, attempts::int AS attempts, \
-            max_attempts::int AS max_attempts, last_error \
-         FROM graphile_worker.jobs \
-         WHERE task_identifier IN ({placeholders}) \
-         ORDER BY task_identifier, run_at, id"
-    );
-    let values: Vec<Value> = INGEST_JOBS
-        .iter()
-        .map(|definition| definition.identifier.to_owned().into())
-        .collect();
-    let statement = Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values);
-
-    db.query_all_raw(statement)
-        .await
-        .map_err(persistence_error)?
-        .into_iter()
-        .map(|row| {
-            Ok(IngestWorkerJob {
-                id: row.try_get("", "id").map_err(persistence_error)?,
-                job: row
-                    .try_get("", "task_identifier")
-                    .map_err(persistence_error)?,
-                state: row.try_get("", "state").map_err(persistence_error)?,
-                queue_name: row
-                    .try_get::<Option<String>>("", "queue_name")
-                    .map_err(persistence_error)?,
-                run_at: row
-                    .try_get::<DateTime<FixedOffset>>("", "run_at")
-                    .map_err(persistence_error)?,
-                attempts: row.try_get("", "attempts").map_err(persistence_error)?,
-                max_attempts: row.try_get("", "max_attempts").map_err(persistence_error)?,
-                last_error: row
-                    .try_get::<Option<String>>("", "last_error")
-                    .map_err(persistence_error)?,
-            })
-        })
-        .collect()
 }
 
 #[cfg(test)]

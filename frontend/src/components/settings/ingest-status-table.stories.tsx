@@ -19,18 +19,6 @@ const jobs: IngestJob[] = [
     last_succeeded_at: '2099-01-02T03:04:00Z',
     latest_data_date: '2099-01-01',
     expected_data_date: '2099-01-02',
-    worker_jobs: [
-      {
-        id: 101,
-        task_identifier: 'example-news-import',
-        state: 'waiting',
-        queue_name: 'example-queue',
-        run_at: '2099-01-02T05:00:00Z',
-        attempts: 0,
-        max_attempts: 3,
-        last_error: null,
-      },
-    ],
   },
   {
     job: 'example-reference-import',
@@ -45,18 +33,6 @@ const jobs: IngestJob[] = [
     last_succeeded_at: '2099-01-01T04:02:00Z',
     latest_data_date: null,
     expected_data_date: '2099-01-02',
-    worker_jobs: [
-      {
-        id: 102,
-        task_identifier: 'example-reference-import',
-        state: 'failed',
-        queue_name: null,
-        run_at: '2099-01-02T04:02:00Z',
-        attempts: 3,
-        max_attempts: 3,
-        last_error: '架空の worker エラーです。',
-      },
-    ],
   },
 ]
 
@@ -70,7 +46,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  name: 'shows recent ingest runs and queued or failed worker jobs.',
+  name: 'shows recent ingest runs and their data dates.',
   args: { jobs },
 }
 
@@ -91,13 +67,12 @@ export const Running: Story = {
         last_succeeded_at: null,
         latest_data_date: null,
         expected_data_date: '2099-01-01',
-        worker_jobs: [],
       },
     ],
   },
 }
 
 export const Empty: Story = {
-  name: 'shows empty states when no ingest or worker jobs are available.',
+  name: 'shows an empty state when no ingest runs are available.',
   args: { jobs: [] },
 }

@@ -139,23 +139,10 @@ pub struct IngestStatusJobDate {
     pub latest_data_date: Option<NaiveDate>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IngestWorkerJob {
-    pub id: i64,
-    pub job: String,
-    pub state: String,
-    pub queue_name: Option<String>,
-    pub run_at: DateTime<FixedOffset>,
-    pub attempts: i32,
-    pub max_attempts: i32,
-    pub last_error: Option<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct IngestStatusData {
     pub run_histories: Vec<IngestRunHistory>,
     pub latest_data_dates: Vec<IngestStatusJobDate>,
-    pub worker_jobs: Vec<IngestWorkerJob>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,7 +152,6 @@ pub struct IngestJobStatus {
     pub last_succeeded_at: Option<DateTime<FixedOffset>>,
     pub latest_data_date: Option<NaiveDate>,
     pub expected_data_date: Option<NaiveDate>,
-    pub worker_jobs: Vec<IngestWorkerJob>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -428,17 +428,6 @@ pub async fn create_test_server_with_db(db: DatabaseHandle) -> (DatabaseHandle, 
     (db, server)
 }
 
-/// Graphile Worker の schema を準備して TestServer を作成する。
-pub async fn create_test_server_with_graphile_worker(db: DatabaseHandle) -> TestServer {
-    let pool = gateway_postgres::test_support::create_test_pool().await;
-    crate::migrations::migrate_graphile_worker_schema(pool)
-        .await
-        .expect("migrate Graphile Worker schema");
-    let states = base_state(db.clone(), FrontendApiState::disabled_agent_task_client());
-    let router = create_test_router(states, db);
-    TestServer::new(router).expect("failed to create test server")
-}
-
 /// kata executor を差し替えて TestServer を作成する
 pub async fn create_test_server_with_kata(
     db: DatabaseHandle,

@@ -4,21 +4,10 @@ use core_application::{
     daily_bar_source::DailyBarSource,
     market_daily_bar_source::MarketDailyBarSource,
 };
-use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
-use serde::{Deserialize, Serialize};
 
 use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state, today_in_tokyo};
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct DailyBarsIngest;
-
-impl TaskHandler for DailyBarsIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
 
 impl super::SchedulerJob for DailyBarsIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::DAILY_BARS_INGEST_JOB;

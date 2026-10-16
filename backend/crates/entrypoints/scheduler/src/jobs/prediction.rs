@@ -1,18 +1,6 @@
-use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
-use serde::{Deserialize, Serialize};
-
 use super::{WEEKLY_TIMEOUT, run_with_ingest_run_log_state};
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct PredictionGrading;
-
-impl TaskHandler for PredictionGrading {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
 
 impl super::SchedulerJob for PredictionGrading {
     const IDENTIFIER: &'static str = core_application::ingest_status::PREDICTION_GRADING_JOB;

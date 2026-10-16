@@ -47,22 +47,22 @@ backend/crates/
 
 ## crate の責務
 
-| crate                | 責務                                                                                     |
-| -------------------- | ---------------------------------------------------------------------------------------- |
-| `core/domain`        | 値、エンティティ、ドメインルールを定義する。                                             |
-| `core/application`   | ユースケースと port を定義する。port は application が必要とする機能を表す。             |
-| `entrypoints/*`      | HTTP、MCP、webhook、定期実行などの入力を受け取り、application のユースケースを呼び出す。 |
-| `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                             |
-| `apps/backend`       | 各 crate を組み立て、アプリケーションを起動する。                                        |
-| `libs/rate-limit`    | Redis を使って process 間で共有する rate limit と cooldown を提供する。                  |
-| `libs/test-macros`   | DB test 用 proc macro を提供する。                                                       |
-| `backend/migration/` | SeaORM migration を管理する。                                                            |
+| crate                | 責務                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------ |
+| `core/domain`        | 値、エンティティ、ドメインルールを定義する。                                               |
+| `core/application`   | ユースケースと port を定義する。port は application が必要とする機能を表す。               |
+| `entrypoints/*`      | HTTP、MCP、webhook、単発ジョブなどの入力を受け取り、application のユースケースを呼び出す。 |
+| `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                               |
+| `apps/backend`       | 各 crate を組み立て、アプリケーションを起動する。                                          |
+| `libs/rate-limit`    | Redis を使って process 間で共有する rate limit と cooldown を提供する。                    |
+| `libs/test-macros`   | DB test 用 proc macro を提供する。                                                         |
+| `backend/migration/` | SeaORM migration を管理する。                                                              |
 
 composition root は `backend/crates/apps/backend/` にある。`src/main.rs` が外部接続、依存の組み立て、起動モードを管理し、`src/lib.rs` と `src/mcp/` が HTTP router、MCP の session 管理、allowed hosts、access log など複数の entrypoint を組み合わせる。`src/services/use_cases/` は gateway 実装から application のユースケースを組み立てる。
 
 entrypoint をまたぐ結合テストは composition root に置く。現在は `backend/crates/apps/backend/src/integration_tests/` がその場所である。
 
-`apps/backend` パッケージの bin は 1 つとし、`--run-mode` (`api` / `worker` / `both`, 既定は `both`) で HTTP / MCP API と `entrypoints/scheduler` の worker を切り替える。`both` では片方が終了するともう片方も停止する。
+`apps/backend` パッケージの bin は 1 つとする。`--run-mode api` で HTTP / MCP API を起動し、`--run-job <job-name>` で `entrypoints/scheduler` のジョブを 1 回実行して終了する。定期実行は Kubernetes CronJob から `--run-job` を呼び出す。
 
 ## crate 間の依存
 
@@ -88,7 +88,7 @@ entrypoint をまたぐ結合テストは composition root に置く。現在は
 
 各 entrypoint crate は、自身が使う `XUseCases` と必要な port だけを field に持つ依存 struct を定義する。struct は entrypoint crate に置き、composition root が組み立てて渡す。たとえば `entrypoint-frontend-api` は `FrontendApiState`、`entrypoint-agent-webhook` は `AgentWebhookState`、`entrypoint-external-webhook` は `ExternalWebhookState`、`entrypoint-agent-mcp` は `StrategyServerDependencies`、`entrypoint-control-plane-mcp` は `MgmtDependencies`、`entrypoint-scheduler` は `SchedulerDependencies` を持つ。composition root の具象 `UseCases` container 自体は entrypoint に渡さない。workspace crate への直接依存は `core/application` と `core/domain` に限り、`gateways/postgres` と `sea-orm` には依存させない。
 
-entrypoint ごとの DB 統合テストは composition root の `backend/crates/apps/backend/src/integration_tests/<entrypoint>/` に置く。HTTP と MCP は公開 router / server から検証し、scheduler は job の処理または scheduler use case の DB 永続化を検証する。entrypoint をまたぐシナリオと共有 helper は `integration_tests/` 直下に置く。DB を使わない unit test は、検証対象のコードと同じ entrypoint crate に置く。
+entrypoint ごとの DB 統合テストは composition root の `backend/crates/apps/backend/src/integration_tests/<entrypoint>/` に置く。HTTP と MCP は公開 router / server から検証し、scheduler は単発ジョブの処理または scheduler use case の DB 永続化を検証する。entrypoint をまたぐシナリオと共有 helper は `integration_tests/` 直下に置く。DB を使わない unit test は、検証対象のコードと同じ entrypoint crate に置く。
 
 entrypoint 間で必要になる小さな型 (`ErrorResponse`、`JsonBody`、`GraphDef` の DTO、`deserialize_nullable_option` など) は各 crate に複製する。DTO はプロトコルごとの表現 (`utoipa`、`schemars`) を持ち、domain 型への変換も各 crate が定義する。
 

@@ -5,21 +5,10 @@ use core_application::{
     },
     financial_summary_source::FinancialSummarySource,
 };
-use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
-use serde::{Deserialize, Serialize};
 
 use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct FinancialSummaryIngest;
-
-impl TaskHandler for FinancialSummaryIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
 
 impl super::SchedulerJob for FinancialSummaryIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::FINANCIAL_SUMMARY_INGEST_JOB;

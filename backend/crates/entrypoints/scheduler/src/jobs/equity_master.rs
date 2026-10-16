@@ -2,21 +2,10 @@ use core_application::{
     equity_master::{EquityMasterSyncStats, EquityMasterUseCaseError, EquityMasterUseCases},
     equity_master_source::EquityMasterSource,
 };
-use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
-use serde::{Deserialize, Serialize};
 
 use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct EquityMasterIngest;
-
-impl TaskHandler for EquityMasterIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
 
 impl super::SchedulerJob for EquityMasterIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::EQUITY_MASTER_INGEST_JOB;

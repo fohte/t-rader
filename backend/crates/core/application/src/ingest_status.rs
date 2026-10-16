@@ -8,7 +8,7 @@ mod tests;
 pub use repository::{IngestStatusRepository, SharedIngestStatusRepository};
 pub use types::{
     INGEST_JOBS, IngestJobDefinition, IngestJobStatus, IngestRun, IngestRunHistory, IngestStatus,
-    IngestStatusData, IngestStatusJobDate, IngestWorkerJob,
+    IngestStatusData, IngestStatusJobDate,
 };
 pub use use_cases::IngestStatusUseCase;
 

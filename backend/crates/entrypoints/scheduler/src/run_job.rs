@@ -1,5 +1,6 @@
 use std::{future::Future, time::Duration};
 
+use crate::jobs::RECOVERABLE_INGEST_JOBS;
 use chrono::{DateTime, FixedOffset, Utc};
 use core_application::ingest_run_log::IngestRunLog;
 
@@ -15,12 +16,10 @@ use crate::{
         edinet_holdings::ShareholdingStructureIngest,
         eoddata_kospi::EodDataKospiIngest,
         equity_master::EquityMasterIngest,
-        event_dispatch::EventDispatch,
         fed_calendar::FedCalendarEventIngest,
         financial_summary::FinancialSummaryIngest,
         fred::FredIngest,
         fred_release_dates::FredReleaseDatesIngest,
-        ingest_run_recovery::recover_interrupted_run,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         news_content::NewsContentFetch,
@@ -35,7 +34,6 @@ use crate::{
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
-    scheduler::RECOVERABLE_INGEST_JOBS,
     state::{SchedulerDependencies, SchedulerState},
 };
 
@@ -46,7 +44,7 @@ struct SupportedJob {
     run: JobRunner,
 }
 
-const SUPPORTED_JOBS: [SupportedJob; 29] = [
+const SUPPORTED_JOBS: [SupportedJob; 28] = [
     supported_job::<AlphaVantageCalendarIngest>(),
     supported_job::<BojCalendarEventIngest>(),
     supported_job::<DailyBarsIngest>(),
@@ -56,7 +54,6 @@ const SUPPORTED_JOBS: [SupportedJob; 29] = [
     supported_job::<ShareholdingStructureIngest>(),
     supported_job::<EodDataKospiIngest>(),
     supported_job::<EquityMasterIngest>(),
-    supported_job::<EventDispatch>(),
     supported_job::<FedCalendarEventIngest>(),
     supported_job::<FinancialSummaryIngest>(),
     supported_job::<FredIngest>(),
@@ -137,6 +134,18 @@ where
     run().await
 }
 
+async fn recover_interrupted_run(
+    log: &dyn IngestRunLog,
+    job: &str,
+    timeout: Duration,
+    now: DateTime<FixedOffset>,
+) -> Result<u64, String> {
+    let cutoff = crate::jobs::run_started_before(now, timeout)?;
+    log.fail_interrupted_before(job, cutoff)
+        .await
+        .map_err(|error| format!("failed to recover interrupted ingest runs: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -181,8 +190,7 @@ mod tests {
     #[case::us_stock_minute_bars_ingest("us_stock_minute_bars_ingest", true)]
     #[case::us_stock_hourly_bars_ingest("us_stock_hourly_bars_ingest", true)]
     #[case::us_stock_minute_bars_downsample("us_stock_minute_bars_downsample", true)]
-    #[case::trigger_evaluation("trigger_evaluation", false)]
-    #[case::ingest_run_recovery("ingest_run_recovery", false)]
+    #[case::event_dispatch("event_dispatch", false)]
     #[case::unknown("unknown_job", false)]
     fn rejects_jobs_outside_the_one_shot_contract(#[case] job_name: &str, #[case] expected: bool) {
         assert_eq!(is_supported_job(job_name), expected);
