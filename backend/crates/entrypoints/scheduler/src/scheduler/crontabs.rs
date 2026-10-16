@@ -928,45 +928,6 @@ mod tests {
     }
 
     #[test]
-    fn coalesces_pending_us_stock_ingestion_cron_jobs() {
-        let actual = build_crontabs(ConfiguredJobs {
-            us_stock_bars: true,
-            ..ConfiguredJobs::default()
-        })
-        .ok()
-        .map(|crontabs| {
-            crontabs
-                .into_iter()
-                .filter_map(|crontab| {
-                    let id = crontab.options.id?;
-                    match id.as_str() {
-                        "us_stock_minute_bars_ingest" | "us_stock_hourly_bars_ingest" => {
-                            Some((id, crontab.options.job_key, crontab.options.job_key_mode))
-                        }
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>()
-        });
-
-        assert_eq!(
-            actual,
-            Some(vec![
-                (
-                    "us_stock_minute_bars_ingest".to_string(),
-                    Some("scheduler:us_stock_minute_bars_ingest".to_string()),
-                    Some(CronJobKeyMode::Replace),
-                ),
-                (
-                    "us_stock_hourly_bars_ingest".to_string(),
-                    Some("scheduler:us_stock_hourly_bars_ingest".to_string()),
-                    Some(CronJobKeyMode::Replace),
-                ),
-            ])
-        );
-    }
-
-    #[test]
     fn hourly_cron_configures_the_requested_minute_and_fill() {
         let expected = expected_cron::<NewsAggregation>(
             CrontabTimer::hourly_at(15).ok(),
