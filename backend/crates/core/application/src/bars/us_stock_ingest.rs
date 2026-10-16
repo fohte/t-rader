@@ -1693,6 +1693,18 @@ mod tests {
             expected_events: vec!["page_commit", "probe_commit", "probe_commit", "page_commit"],
         },
     )]
+    #[case::probe_at_target_waits_before_recovery(
+        SlowPageProbeScenario {
+            probe_durations: vec![Duration::from_millis(100), Duration::from_millis(99)],
+            probe_failures: 0,
+            deadline_duration: Duration::from_secs(10),
+            expected_minute_bars: 2,
+            expected_wait_ms: 750,
+            expected_interruption: None,
+            expected_sleeps: vec![Duration::from_millis(450), Duration::from_millis(300)],
+            expected_events: vec!["page_commit", "probe_commit", "probe_commit", "page_commit"],
+        },
+    )]
     #[case::deadline_stops_during_probe_wait(
         SlowPageProbeScenario {
             probe_durations: vec![Duration::from_millis(150)],

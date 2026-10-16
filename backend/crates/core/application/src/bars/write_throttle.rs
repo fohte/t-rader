@@ -10,6 +10,7 @@ const COMMIT_LATENCY_TARGET: Duration = Duration::from_millis(100);
 pub(super) struct WriteThrottle {
     next_write_at: Option<Instant>,
     last_commit_duration: Option<Duration>,
+    probe_pending: bool,
 }
 
 impl WriteThrottle {
@@ -48,16 +49,17 @@ impl WriteThrottle {
         commit_duration: Duration,
     ) {
         self.last_commit_duration = Some(commit_duration);
+        self.probe_pending = commit_duration > COMMIT_LATENCY_TARGET;
         self.next_write_at = completed_at.checked_add(page_cooldown(write_duration));
     }
 
     pub(super) fn commit_needs_probe(&self) -> bool {
-        self.last_commit_duration
-            .is_some_and(|duration| duration > COMMIT_LATENCY_TARGET)
+        self.probe_pending
     }
 
     pub(super) fn record_probe_commit(&mut self, completed_at: Instant, commit_duration: Duration) {
         self.last_commit_duration = Some(commit_duration);
+        self.probe_pending = commit_duration >= COMMIT_LATENCY_TARGET;
         self.next_write_at = self
             .commit_needs_probe()
             .then(|| completed_at.checked_add(commit_cooldown(commit_duration)))
