@@ -20,6 +20,7 @@ pub struct FakeBarsRepository {
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_daily_targets: Mutex<HashSet<String>>,
     pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
+    pub bar_compression_cutoffs: Mutex<Vec<DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
@@ -209,10 +210,11 @@ impl BarsRepository for FakeBarsRepository {
             .collect())
     }
 
-    async fn find_us_stock_bar_targets(
+    async fn find_us_stock_minute_bar_targets(
         &self,
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
-        let target_ids = self.us_stock_targets.lock().await.clone();
+        let mut target_ids = self.us_stock_targets.lock().await.clone();
+        target_ids.extend(self.us_stock_daily_targets.lock().await.iter().cloned());
         self.find_targets(target_ids).await
     }
 
@@ -239,6 +241,11 @@ impl BarsRepository for FakeBarsRepository {
                 .and_modify(|saved| *saved = (*saved).max(completed_through))
                 .or_insert(completed_through);
         }
+        Ok(())
+    }
+
+    async fn compress_bars_before(&self, cutoff: DateTime<Utc>) -> Result<(), BarsRepositoryError> {
+        self.bar_compression_cutoffs.lock().await.push(cutoff);
         Ok(())
     }
 

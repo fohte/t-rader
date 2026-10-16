@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Months, TimeZone, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Months, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
 
@@ -14,9 +14,9 @@ use super::use_cases::BarsUseCases;
 mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
-const MINUTE_HISTORY_MONTHS: u32 = 24;
 const HOURLY_HISTORY_MONTHS: u32 = 12;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
+const BAR_COMPRESSION_DELAY_DAYS: i64 = 7;
 
 struct RequestBudget {
     remaining: usize,
@@ -113,7 +113,7 @@ impl UsStockBarTimeframe {
         match self {
             Self::Daily => Utc.timestamp_opt(0, 0).single().unwrap_or(now),
             Self::Minute => now
-                .checked_sub_months(Months::new(MINUTE_HISTORY_MONTHS))
+                .checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
                 .unwrap_or(now),
             Self::Hourly => Utc
                 .with_ymd_and_hms(2016, 1, 1, 0, 0, 0)
@@ -157,13 +157,21 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_bars_for_timeframe(
-            source,
-            now,
-            UsStockBarTimeframe::Minute,
-            MAX_REQUESTS_PER_RUN,
-        )
-        .await
+        let compression_cutoff = now
+            .checked_sub_signed(ChronoDuration::days(BAR_COMPRESSION_DELAY_DAYS))
+            .unwrap_or(now);
+        let ingest_result = self
+            .ingest_us_stock_bars_for_timeframe(
+                source,
+                now,
+                UsStockBarTimeframe::Minute,
+                MAX_REQUESTS_PER_RUN,
+            )
+            .await;
+        self.repository
+            .compress_bars_before(compression_cutoff)
+            .await?;
+        ingest_result
     }
 
     pub async fn ingest_us_stock_hourly_bars(
@@ -191,7 +199,9 @@ impl BarsUseCases {
             UsStockBarTimeframe::Daily | UsStockBarTimeframe::Hourly => {
                 self.repository.find_us_stock_daily_bar_targets().await?
             }
-            UsStockBarTimeframe::Minute => self.repository.find_us_stock_bar_targets().await?,
+            UsStockBarTimeframe::Minute => {
+                self.repository.find_us_stock_minute_bar_targets().await?
+            }
         };
         let mut stats = UsStockBarsIngestStats {
             symbols_attempted: targets.len(),
@@ -617,7 +627,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+    use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, TimeZone, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
@@ -630,7 +640,7 @@ mod tests {
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    use super::{MAX_REQUESTS_PER_RUN, MINUTE_HISTORY_MONTHS};
+    use super::{HOURLY_HISTORY_MONTHS, MAX_REQUESTS_PER_RUN};
 
     struct Harness {
         use_cases: BarsUseCases,
@@ -1200,7 +1210,7 @@ mod tests {
         let (daily_bars, minute_bars) =
             partition_daily_bars(harness.repository.bars.lock().await.clone());
         let expected_minute_start = now
-            .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
+            .checked_sub_months(chrono::Months::new(HOURLY_HISTORY_MONTHS))
             .unwrap_or(now);
         let expected = (
             UsStockBarsIngestStats {
@@ -1278,7 +1288,7 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn daily_and_hourly_targets_match_while_minute_targets_stay_referenced(harness: Harness) {
+    async fn minute_targets_include_referenced_and_daily_stocks(harness: Harness) {
         harness
             .repository
             .seed_us_stock_targets(vec!["US:QZ-MINUTE".to_owned()])
@@ -1315,7 +1325,7 @@ mod tests {
             ),
             (
                 2,
-                1,
+                2,
                 2,
                 vec![
                     UsStockBarQuery {
@@ -1326,11 +1336,9 @@ mod tests {
                         page_token: None,
                     },
                     UsStockBarQuery {
-                        instrument_ids: vec!["US:QZ-MINUTE".to_owned()],
+                        instrument_ids: vec!["US:QZ-DAILY".to_owned(), "US:QZ-MINUTE".to_owned()],
                         timeframe: Timeframe::Minute,
-                        from: now
-                            .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
-                            .unwrap_or(now),
+                        from: date("2039-01-02T12:00:00Z"),
                         to: now,
                         page_token: None,
                     },
@@ -1343,6 +1351,23 @@ mod tests {
                     },
                 ],
             ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn minute_ingestion_compresses_bars_older_than_seven_days(harness: Harness) {
+        let now = date("2040-01-02T12:00:00Z");
+
+        harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("US stock minute bar ingestion succeeds");
+
+        assert_eq!(
+            *harness.repository.bar_compression_cutoffs.lock().await,
+            vec![now - ChronoDuration::days(7)],
         );
     }
 
@@ -1497,7 +1522,7 @@ mod tests {
         let missing_latest = date("2040-01-04T11:59:00Z");
         let now = date("2040-01-04T12:00:00Z");
         let history_start = now
-            .checked_sub_months(chrono::Months::new(MINUTE_HISTORY_MONTHS))
+            .checked_sub_months(chrono::Months::new(HOURLY_HISTORY_MONTHS))
             .unwrap_or(now);
         harness
             .repository

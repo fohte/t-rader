@@ -324,7 +324,7 @@ mod tests {
             Err(database_error())
         }
 
-        async fn find_us_stock_bar_targets(
+        async fn find_us_stock_minute_bar_targets(
             &self,
         ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
             Err(database_error())
@@ -339,6 +339,13 @@ mod tests {
         async fn mark_us_stock_hourly_bar_history_completed(
             &self,
             _: &[String],
+            _: chrono::DateTime<Utc>,
+        ) -> Result<(), BarsRepositoryError> {
+            Err(database_error())
+        }
+
+        async fn compress_bars_before(
+            &self,
             _: chrono::DateTime<Utc>,
         ) -> Result<(), BarsRepositoryError> {
             Err(database_error())

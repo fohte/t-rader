@@ -39,8 +39,9 @@ pub trait BarsRepository: Send + Sync {
         from: NaiveDate,
     ) -> Result<Vec<DailyBarAdjustmentFactor>, BarsRepositoryError>;
 
-    async fn find_us_stock_bar_targets(&self)
-    -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
+    async fn find_us_stock_minute_bar_targets(
+        &self,
+    ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError>;
 
     async fn find_us_stock_daily_bar_targets(
         &self,
@@ -51,6 +52,8 @@ pub trait BarsRepository: Send + Sync {
         instrument_ids: &[String],
         completed_through: DateTime<Utc>,
     ) -> Result<(), BarsRepositoryError>;
+
+    async fn compress_bars_before(&self, cutoff: DateTime<Utc>) -> Result<(), BarsRepositoryError>;
 
     async fn find_ingested_dates(
         &self,
