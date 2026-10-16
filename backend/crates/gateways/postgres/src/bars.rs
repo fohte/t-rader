@@ -23,6 +23,13 @@ use crate::persistence::persistence_error;
 use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQuery};
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
+mod us_stock_minute_bars_downsample;
+
+fn current_hourly_history_cutoff_for(timeframe: Timeframe) -> Option<DateTime<FixedOffset>> {
+    matches!(timeframe, Timeframe::Hourly | Timeframe::FourHours)
+        .then(|| core_application::bars::us_stock_hourly_history_cutoff(Utc::now()).fixed_offset())
+}
+
 #[derive(Clone)]
 pub struct PostgresBarsRepository {
     db: DatabaseHandle,
@@ -210,9 +217,14 @@ impl BarsRepository for PostgresBarsRepository {
                 return Ok(Vec::new());
             }
 
-            return bar_queries::find_intraday_bars(&self.db, to_postgres_query(query))
-                .await
-                .map_err(repository_error);
+            let hourly_history_cutoff = current_hourly_history_cutoff_for(timeframe);
+            return bar_queries::find_intraday_bars(
+                &self.db,
+                to_postgres_query(query),
+                hourly_history_cutoff,
+            )
+            .await
+            .map_err(repository_error);
         }
 
         bar_queries::find_bars(&self.db, to_postgres_query(query))
@@ -236,6 +248,7 @@ impl BarsRepository for PostgresBarsRepository {
                 &self.db,
                 &us_instrument_ids,
                 timeframe,
+                current_hourly_history_cutoff_for(timeframe),
                 query.from,
                 query.to,
             )
@@ -288,6 +301,33 @@ impl BarsRepository for PostgresBarsRepository {
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
         self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Daily)
             .await
+    }
+
+    async fn find_earliest_us_stock_minute_bar_before(
+        &self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+        us_stock_minute_bars_downsample::find_earliest_minute_bar_before(&self.db, cutoff)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn downsample_us_stock_minute_bar_range(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<core_application::bars::UsStockMinuteBarsDownsampleStats, BarsRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        us_stock_minute_bars_downsample::downsample_minute_bar_range(
+            transaction,
+            from,
+            until,
+            cutoff,
+        )
+        .await
+        .map_err(repository_error)
     }
 
     async fn mark_us_stock_hourly_bar_history_completed(
@@ -473,6 +513,7 @@ mod tests {
     };
     use core_application::bars::{
         BarsQuery, BarsRepository, DailyBarAdjustmentFactor, UsStockBarTarget,
+        UsStockMinuteBarsDownsampleStats,
     };
     use core_application::unit_of_work::UnitOfWork;
     use core_domain::bar::{Bar, Timeframe};
@@ -957,6 +998,322 @@ mod tests {
                     earliest_hourly_bar: None,
                 },
             ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn downsampling_preserves_api_hourly_bars_and_deletes_only_saved_us_minutes(
+        db: DatabaseHandle,
+    ) {
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let us_instrument_id = format!("US:DEMO-DOWNSAMPLE-{suffix}");
+        let foreign_instrument_id = format!("JP-DEMO-DOWNSAMPLE-{suffix}");
+        for (id, market) in [(&us_instrument_id, "US"), (&foreign_instrument_id, "OTHER")] {
+            instruments::Entity::insert(instruments::ActiveModel {
+                id: Set(id.clone()),
+                name: Set(id.clone()),
+                market: Set(market.to_owned()),
+                sector: Set(None),
+            })
+            .exec_without_returning(&db)
+            .await
+            .expect("insert instrument");
+        }
+
+        let timestamp = |hour, minute| {
+            Utc.with_ymd_and_hms(2040, 1, 2, hour, minute, 0)
+                .single()
+                .expect("fixture timestamp")
+        };
+        let bar = |instrument_id: &str, timeframe, at, open, high, low, close, volume| Bar {
+            instrument_id: instrument_id.to_owned(),
+            timeframe,
+            timestamp: at,
+            open: Decimal::new(open, 0),
+            high: Decimal::new(high, 0),
+            low: Decimal::new(low, 0),
+            close: Decimal::new(close, 0),
+            volume,
+            adjustment_factor: Decimal::ONE,
+        };
+        let api_hourly_bar = bar(
+            &us_instrument_id,
+            Timeframe::Hourly,
+            timestamp(8, 0),
+            100,
+            110,
+            90,
+            105,
+            77,
+        );
+        let expected_latest_minute = bar(
+            &us_instrument_id,
+            Timeframe::Minute,
+            timestamp(9, 0),
+            200,
+            210,
+            190,
+            205,
+            11,
+        );
+        let expected_latest_hourly = bar(
+            &us_instrument_id,
+            Timeframe::Hourly,
+            timestamp(9, 0),
+            200,
+            210,
+            190,
+            205,
+            11,
+        );
+        let existing_hourly_bar = bar(
+            &us_instrument_id,
+            Timeframe::Hourly,
+            timestamp(6, 0),
+            9,
+            25,
+            7,
+            19,
+            500,
+        );
+        let inserted_hourly_bar = bar(
+            &us_instrument_id,
+            Timeframe::Hourly,
+            timestamp(7, 0),
+            30,
+            45,
+            28,
+            38,
+            700,
+        );
+        let foreign_minute = bar(
+            &foreign_instrument_id,
+            Timeframe::Minute,
+            timestamp(7, 0),
+            300,
+            310,
+            290,
+            305,
+            13,
+        );
+        let cutoff = timestamp(9, 0);
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        bar_queries::upsert_bars(
+            &db,
+            vec![
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(6, 30),
+                    10,
+                    15,
+                    8,
+                    12,
+                    100,
+                ),
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(6, 31),
+                    12,
+                    20,
+                    9,
+                    18,
+                    200,
+                ),
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(7, 0),
+                    30,
+                    35,
+                    28,
+                    32,
+                    400,
+                ),
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(7, 1),
+                    32,
+                    45,
+                    30,
+                    38,
+                    300,
+                ),
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(8, 0),
+                    1,
+                    5,
+                    0,
+                    3,
+                    2,
+                ),
+                bar(
+                    &us_instrument_id,
+                    Timeframe::Minute,
+                    timestamp(8, 1),
+                    3,
+                    6,
+                    2,
+                    4,
+                    3,
+                ),
+                existing_hourly_bar.clone(),
+                api_hourly_bar.clone(),
+                expected_latest_minute.clone(),
+                foreign_minute.clone(),
+            ],
+        )
+        .await
+        .expect("insert test bars");
+        let earliest = repository
+            .find_earliest_us_stock_minute_bar_before(cutoff)
+            .await
+            .expect("find earliest old US minute bar");
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        let stats = repository
+            .downsample_us_stock_minute_bar_range(
+                &transaction,
+                timestamp(6, 30),
+                timestamp(10, 0),
+                cutoff,
+            )
+            .await
+            .expect("downsample old US minute bars");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit downsample transaction");
+
+        let hourly_bars = crate::repositories::bars::find_intraday_bars_by_instruments(
+            &db,
+            std::slice::from_ref(&us_instrument_id),
+            Timeframe::Hourly,
+            Some(cutoff.fixed_offset()),
+            None,
+            None,
+        )
+        .await
+        .expect("find hourly bars");
+        let us_minutes = repository
+            .find_bars(BarsQuery {
+                instrument_id: us_instrument_id.clone(),
+                timeframe: "1m".to_owned(),
+                from: None,
+                to: None,
+            })
+            .await
+            .expect("find remaining US minute bars");
+        let foreign_minutes = bar_queries::find_bars(
+            &db,
+            PostgresBarsQuery {
+                instrument_id: foreign_instrument_id,
+                timeframe: "1m".to_owned(),
+                from: None,
+                to: None,
+            },
+        )
+        .await
+        .expect("find remaining foreign minute bars")
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<Bar>>();
+
+        assert_eq!(
+            (earliest, stats, hourly_bars, us_minutes, foreign_minutes),
+            (
+                Some(timestamp(6, 30)),
+                UsStockMinuteBarsDownsampleStats {
+                    hourly_bars_inserted: 1,
+                    minute_bars_deleted: 6,
+                },
+                vec![
+                    existing_hourly_bar,
+                    inserted_hourly_bar,
+                    api_hourly_bar,
+                    expected_latest_hourly,
+                ],
+                vec![expected_latest_minute],
+                vec![foreign_minute],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn unfinished_hour_remains_visible_between_downsample_runs(db: DatabaseHandle) {
+        let instrument_id = format!("US:DEMO-PARTIAL-{}", uuid::Uuid::new_v4().simple());
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(instrument_id.clone()),
+            name: Set(instrument_id.clone()),
+            market: Set("US".to_owned()),
+            sector: Set(None),
+        })
+        .exec_without_returning(&db)
+        .await
+        .expect("insert instrument");
+
+        let timestamp = |hour, minute| {
+            Utc.with_ymd_and_hms(2040, 1, 2, hour, minute, 0)
+                .single()
+                .expect("fixture timestamp")
+        };
+        let bar = |timeframe, at, open, high, low, close, volume| Bar {
+            instrument_id: instrument_id.clone(),
+            timeframe,
+            timestamp: at,
+            open: Decimal::new(open, 0),
+            high: Decimal::new(high, 0),
+            low: Decimal::new(low, 0),
+            close: Decimal::new(close, 0),
+            volume,
+            adjustment_factor: Decimal::ONE,
+        };
+        let minute_bars = vec![
+            bar(Timeframe::Minute, timestamp(10, 0), 10, 12, 9, 11, 100),
+            bar(Timeframe::Minute, timestamp(10, 1), 11, 15, 10, 14, 200),
+        ];
+        bar_queries::upsert_bars(&db, minute_bars)
+            .await
+            .expect("insert minute bars");
+
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let cutoff = timestamp(10, 30);
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        let stats = repository
+            .downsample_us_stock_minute_bar_range(
+                &transaction,
+                timestamp(10, 0),
+                timestamp(11, 0),
+                cutoff,
+            )
+            .await
+            .expect("downsample partial hour");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit downsample transaction");
+        let hourly_bars = bar_queries::find_intraday_bars_by_instruments(
+            &db,
+            std::slice::from_ref(&instrument_id),
+            Timeframe::Hourly,
+            Some(timestamp(11, 0).fixed_offset()),
+            None,
+            None,
+        )
+        .await
+        .expect("find hourly bars");
+
+        assert_eq!(
+            (stats, hourly_bars),
+            (
+                UsStockMinuteBarsDownsampleStats::default(),
+                vec![bar(Timeframe::Hourly, timestamp(10, 0), 10, 15, 9, 14, 300)],
+            ),
         );
     }
 

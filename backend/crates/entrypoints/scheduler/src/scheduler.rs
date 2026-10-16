@@ -36,7 +36,10 @@ use crate::{
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
         twse::TwseIndexIngest,
-        us_stock_bars::{UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsIngest},
+        us_stock_bars::{
+            UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsDownsample,
+            UsStockMinuteBarsIngest,
+        },
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
@@ -46,7 +49,7 @@ use crate::{
 pub const GRAPHILE_WORKER_SCHEMA: &str = "graphile_worker";
 const INGEST_RUN_RECOVERY_INTERVAL_MINUTES: u32 = 5;
 pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 26] = [
+pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 27] = [
     (FredIngest::IDENTIFIER, DAILY_TIMEOUT),
     (EodDataKospiIngest::IDENTIFIER, DAILY_TIMEOUT),
     (TwseIndexIngest::IDENTIFIER, DAILY_TIMEOUT),
@@ -73,6 +76,7 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 26] = [
     (UsStockBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
     (UsStockMinuteBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
     (UsStockHourlyBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (UsStockMinuteBarsDownsample::IDENTIFIER, DAILY_TIMEOUT),
 ];
 
 pub struct Scheduler {
@@ -134,6 +138,7 @@ impl Scheduler {
             .define_job::<UsStockBarsIngest>()
             .define_job::<UsStockMinuteBarsIngest>()
             .define_job::<UsStockHourlyBarsIngest>()
+            .define_job::<UsStockMinuteBarsDownsample>()
             .define_job::<ShareholdingStructureIngest>()
             .define_job::<FredIngest>()
             .define_job::<EodDataKospiIngest>()

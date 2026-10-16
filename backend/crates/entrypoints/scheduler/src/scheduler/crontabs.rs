@@ -31,7 +31,10 @@ use crate::jobs::{
     strategy_task_reconcile::StrategyTaskReconcile,
     trigger_evaluation::TriggerEvaluation,
     twse::TwseIndexIngest,
-    us_stock_bars::{UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsIngest},
+    us_stock_bars::{
+        UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsDownsample,
+        UsStockMinuteBarsIngest,
+    },
     us_stock_master::UsStockMasterIngest,
     valuation::ValuationIngest,
 };
@@ -222,6 +225,12 @@ pub(super) fn build_crontabs(
             CrontabFill::hours(3),
             Some(ALPACA_HOURLY_QUEUE),
         )?);
+        crontabs.push(daily_cron::<UsStockMinuteBarsDownsample>(
+            "us_stock_minute_bars_downsample",
+            0,
+            5,
+            Some(ALPACA_MINUTE_QUEUE),
+        )?);
     }
     if configured.valuation {
         crontabs.push(weekday_daily_cron::<ValuationIngest>(
@@ -393,7 +402,10 @@ mod tests {
         strategy_task_reconcile::StrategyTaskReconcile,
         trigger_evaluation::TriggerEvaluation,
         twse::TwseIndexIngest,
-        us_stock_bars::{UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsIngest},
+        us_stock_bars::{
+            UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsDownsample,
+            UsStockMinuteBarsIngest,
+        },
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     };
@@ -589,6 +601,12 @@ mod tests {
                 "us_stock_hourly_bars_ingest",
                 CrontabFill::hours(3),
                 Some(ALPACA_HOURLY_QUEUE),
+            ),
+            expected_cron::<UsStockMinuteBarsDownsample>(
+                CrontabTimer::daily_at(0, 5).ok(),
+                "us_stock_minute_bars_downsample",
+                CrontabFill::days(3),
+                Some(ALPACA_MINUTE_QUEUE),
             ),
             expected_weekday_cron::<ValuationIngest>(
                 7,
@@ -789,6 +807,12 @@ mod tests {
                     Some(ALPACA_HOURLY_QUEUE.to_string()),
                 ),
                 (
+                    Some("us_stock_minute_bars_downsample".to_string()),
+                    Some(CrontabFill::days(3)),
+                    Some(3),
+                    Some(ALPACA_MINUTE_QUEUE.to_string()),
+                ),
+                (
                     Some("valuation_ingest".to_string()),
                     Some(CrontabFill::hours(3)),
                     Some(10),
@@ -853,7 +877,7 @@ mod tests {
     #[case::valuation_only(ConfiguredJobs { valuation: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "valuation_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
     #[case::equity_master_only(ConfiguredJobs { equity_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "equity_master_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
     #[case::us_stock_master_only(ConfiguredJobs { us_stock_master: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_master_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
-    #[case::us_stock_bars_only(ConfiguredJobs { us_stock_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_bars_ingest", "us_stock_minute_bars_ingest", "us_stock_hourly_bars_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
+    #[case::us_stock_bars_only(ConfiguredJobs { us_stock_bars: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "us_stock_bars_ingest", "us_stock_minute_bars_ingest", "us_stock_hourly_bars_ingest", "us_stock_minute_bars_downsample", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
     #[case::shareholding_structure_only(ConfiguredJobs { shareholding_structure: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "shareholding_structure_ingest", "prediction_grading", "paper_order_filling", "event_dispatch", "trigger_evaluation"])]
     #[case::strategy_task_reconcile_enabled(ConfiguredJobs { strategy_task_reconcile: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "strategy_task_reconcile", "event_dispatch", "trigger_evaluation"])]
     #[case::news_content_enabled(ConfiguredJobs { news_content: true, ..ConfiguredJobs::default() }, vec!["news_aggregation", "prediction_grading", "paper_order_filling", "news_content_fetch", "event_dispatch", "trigger_evaluation"])]

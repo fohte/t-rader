@@ -107,6 +107,7 @@ strategy_task_reconcile
 twse_index_ingest
 us_stock_bars_ingest
 us_stock_minute_bars_ingest
+us_stock_minute_bars_downsample
 us_stock_hourly_bars_ingest
 us_stock_master_ingest
 valuation_ingest

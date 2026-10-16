@@ -28,7 +28,10 @@ use crate::{
         prediction::PredictionGrading,
         strategy_task_reconcile::StrategyTaskReconcile,
         twse::TwseIndexIngest,
-        us_stock_bars::{UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsIngest},
+        us_stock_bars::{
+            UsStockBarsIngest, UsStockHourlyBarsIngest, UsStockMinuteBarsDownsample,
+            UsStockMinuteBarsIngest,
+        },
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
@@ -43,7 +46,7 @@ struct SupportedJob {
     run: JobRunner,
 }
 
-const SUPPORTED_JOBS: [SupportedJob; 28] = [
+const SUPPORTED_JOBS: [SupportedJob; 29] = [
     supported_job::<AlphaVantageCalendarIngest>(),
     supported_job::<BojCalendarEventIngest>(),
     supported_job::<DailyBarsIngest>(),
@@ -70,6 +73,7 @@ const SUPPORTED_JOBS: [SupportedJob; 28] = [
     supported_job::<UsStockBarsIngest>(),
     supported_job::<UsStockHourlyBarsIngest>(),
     supported_job::<UsStockMinuteBarsIngest>(),
+    supported_job::<UsStockMinuteBarsDownsample>(),
     supported_job::<UsStockMasterIngest>(),
     supported_job::<ValuationIngest>(),
 ];
@@ -176,6 +180,7 @@ mod tests {
     #[rstest]
     #[case::us_stock_minute_bars_ingest("us_stock_minute_bars_ingest", true)]
     #[case::us_stock_hourly_bars_ingest("us_stock_hourly_bars_ingest", true)]
+    #[case::us_stock_minute_bars_downsample("us_stock_minute_bars_downsample", true)]
     #[case::trigger_evaluation("trigger_evaluation", false)]
     #[case::ingest_run_recovery("ingest_run_recovery", false)]
     #[case::unknown("unknown_job", false)]

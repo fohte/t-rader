@@ -10,7 +10,10 @@ use crate::persistence::PersistenceError;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{BarsRepository, BarsRepositoryError};
-use super::types::{BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget};
+use super::types::{
+    BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, UsStockBarTarget,
+    UsStockMinuteBarsDownsampleStats,
+};
 
 #[derive(Default)]
 pub struct FakeBarsRepository {
@@ -25,6 +28,8 @@ pub struct FakeBarsRepository {
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
+    pub minute_bar_downsample_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
+    pub minute_bar_downsample_cutoffs: Mutex<Vec<DateTime<Utc>>>,
     hourly_upsert_error: Mutex<Option<String>>,
     bar_compression_error: Mutex<Option<String>>,
 }
@@ -185,6 +190,40 @@ impl BarsRepository for FakeBarsRepository {
             .collect();
         bars.sort_by_key(|bar| (bar.instrument_id.clone(), bar.timestamp));
         Ok(bars)
+    }
+
+    async fn find_earliest_us_stock_minute_bar_before(
+        &self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Option<DateTime<Utc>>, BarsRepositoryError> {
+        Ok(self
+            .bars
+            .lock()
+            .await
+            .iter()
+            .filter(|bar| {
+                bar.instrument_id.starts_with("US:")
+                    && bar.timeframe == Timeframe::Minute
+                    && bar.timestamp < cutoff
+            })
+            .map(|bar| bar.timestamp)
+            .min())
+    }
+
+    async fn downsample_us_stock_minute_bar_range(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        from: DateTime<Utc>,
+        until: DateTime<Utc>,
+        cutoff: DateTime<Utc>,
+    ) -> Result<UsStockMinuteBarsDownsampleStats, BarsRepositoryError> {
+        self.record_transaction(transaction).await?;
+        self.minute_bar_downsample_ranges
+            .lock()
+            .await
+            .push((from, until));
+        self.minute_bar_downsample_cutoffs.lock().await.push(cutoff);
+        Ok(UsStockMinuteBarsDownsampleStats::default())
     }
 
     async fn find_latest_bar(
