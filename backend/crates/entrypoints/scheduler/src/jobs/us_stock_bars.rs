@@ -5,7 +5,7 @@ use core_application::bars::{
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
-use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
+use super::{DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, require_source, run_with_ingest_run_log_state};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UsStockBarsIngest;
@@ -35,7 +35,7 @@ impl super::SchedulerJob for UsStockBarsIngest {
             run_with_ingest_run_log_state(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
-                DAILY_TIMEOUT,
+                US_STOCK_BARS_TIMEOUT,
                 |state| async move {
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
@@ -73,7 +73,7 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
             run_with_ingest_run_log_state(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
-                DAILY_TIMEOUT,
+                US_STOCK_BARS_TIMEOUT,
                 |state| async move {
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
@@ -111,7 +111,7 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
             run_with_ingest_run_log_state(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
-                DAILY_TIMEOUT,
+                US_STOCK_BARS_TIMEOUT,
                 |state| async move {
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,

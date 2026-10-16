@@ -41,9 +41,10 @@ pub mod valuation;
 
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
+pub(super) const US_STOCK_BARS_TIMEOUT: Duration = DAILY_TIMEOUT;
 
 const _: () = assert!(
-    US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < DAILY_TIMEOUT.as_secs(),
+    US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_TIMEOUT.as_secs(),
     "US stock bars budget must be shorter than the scheduler timeout",
 );
 
