@@ -496,6 +496,11 @@ mod tests {
         recent_chunk_compressed: bool,
     }
 
+    #[derive(Debug, FromQueryResult)]
+    struct CompressedChunkStatus {
+        is_compressed: bool,
+    }
+
     #[backend_test_macros::database_test]
     async fn writes_bars_and_ingest_dates_through_the_same_transaction(db: DatabaseHandle) {
         let instrument_id = "SAMPLE-DB-ALPHA";
@@ -1151,34 +1156,80 @@ mod tests {
                 recent_chunk_compressed: false,
             },
         );
+    }
 
-        let mut updated_old_bar = test_bar(&instrument_id, Timeframe::Minute, old_bar_time);
-        updated_old_bar.close = Decimal::new(250, 1);
-        let inserted_old_bar = test_bar(
-            &instrument_id,
-            Timeframe::Minute,
-            old_bar_time + ChronoDuration::minutes(1),
+    #[backend_test_macros::database_test]
+    async fn upserts_minute_bar_in_a_compressed_chunk(db: DatabaseHandle) {
+        let instrument_id = format!(
+            "COMPRESSED-UPSERT-{}",
+            uuid::Uuid::new_v4().simple().to_string().to_uppercase()
         );
+        let now = Utc::now();
+        let old_bar_time = now - ChronoDuration::days(90);
+        let repository = PostgresBarsRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
         let transaction = unit_of_work.begin().await.expect("begin transaction");
+        repository
+            .ensure_instruments_exist(&transaction, &HashSet::from([instrument_id.clone()]))
+            .await
+            .expect("ensure instrument");
         repository
             .upsert_bars(
                 &transaction,
-                vec![updated_old_bar.clone(), inserted_old_bar.clone()],
+                vec![test_bar(&instrument_id, Timeframe::Minute, old_bar_time)],
             )
             .await
-            .expect("upsert bars into compressed chunk");
+            .expect("insert minute bar");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit initial minute bar");
+
+        repository
+            .compress_bars_older_than_policy(now)
+            .await
+            .expect("compress old bar");
+
+        let mut updated_bar = test_bar(&instrument_id, Timeframe::Minute, old_bar_time);
+        updated_bar.open = Decimal::new(249, 1);
+        updated_bar.high = Decimal::new(251, 1);
+        updated_bar.low = Decimal::new(248, 1);
+        updated_bar.close = Decimal::new(250, 1);
+        updated_bar.volume = 40;
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        repository
+            .upsert_bars(&transaction, vec![updated_bar.clone()])
+            .await
+            .expect("upsert minute bar in compressed chunk");
         unit_of_work
             .commit(transaction)
             .await
             .expect("commit compressed chunk upsert");
 
-        let actual = bar_queries::find_bars(
+        let chunk_status = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT is_compressed
+                FROM timescaledb_information.chunks
+                WHERE hypertable_schema = current_schema()
+                  AND hypertable_name = 'bars'
+                  AND range_start <= $1
+                  AND range_end > $1"#,
+                [old_bar_time.fixed_offset().into()],
+            ))
+            .await
+            .expect("read compressed chunk status")
+            .expect("compressed chunk status row");
+        let chunk_status = CompressedChunkStatus::from_query_result(&chunk_status, "")
+            .expect("decode compressed chunk status");
+
+        let bars = bar_queries::find_bars(
             &db,
             PostgresBarsQuery {
                 instrument_id,
                 timeframe: "1m".to_owned(),
                 from: Some(old_bar_time.fixed_offset()),
-                to: Some(inserted_old_bar.timestamp.fixed_offset()),
+                to: Some(old_bar_time.fixed_offset()),
             },
         )
         .await
@@ -1187,7 +1238,10 @@ mod tests {
         .map(Into::into)
         .collect::<Vec<Bar>>();
 
-        assert_eq!(actual, vec![updated_old_bar, inserted_old_bar]);
+        assert_eq!(
+            (chunk_status.is_compressed, bars),
+            (true, vec![updated_bar])
+        );
     }
 
     fn test_bar(instrument_id: &str, timeframe: Timeframe, timestamp: DateTime<Utc>) -> Bar {
