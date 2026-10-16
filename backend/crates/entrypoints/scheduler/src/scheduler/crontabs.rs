@@ -466,27 +466,8 @@ mod tests {
         Some(configure_cron::<T>(timer?, id, Some(fill), queue))
     }
 
-    fn expected_cron_with_job_key<T: TaskHandler>(
-        timer: Option<CrontabTimer>,
-        id: &str,
-        fill: CrontabFill,
-        queue: Option<&str>,
-        job_key: &str,
-    ) -> Option<Crontab> {
-        let mut crontab = expected_cron::<T>(timer, id, fill, queue)?;
-        crontab.options.job_key = Some(job_key.to_string());
-        crontab.options.job_key_mode = Some(CronJobKeyMode::Replace);
-        Some(crontab)
-    }
-
-    fn expected_weekday_cron_with_job_key<T: TaskHandler>(
-        hour: u32,
-        minute: u32,
-        id: &str,
-        queue: Option<&str>,
-        job_key: &str,
-    ) -> Option<Crontab> {
-        let mut crontab = expected_weekday_cron::<T>(hour, minute, id, queue)?;
+    fn with_job_key(crontab: Option<Crontab>, job_key: &str) -> Option<Crontab> {
+        let mut crontab = crontab?;
         crontab.options.job_key = Some(job_key.to_string());
         crontab.options.job_key_mode = Some(CronJobKeyMode::Replace);
         Some(crontab)
@@ -624,32 +605,40 @@ mod tests {
                 CrontabFill::days(3),
                 None,
             ),
-            expected_weekday_cron_with_job_key::<UsStockBarsIngest>(
-                22,
-                20,
-                "us_stock_bars_ingest",
-                Some(ALPACA_QUEUE),
+            with_job_key(
+                expected_weekday_cron::<UsStockBarsIngest>(
+                    22,
+                    20,
+                    "us_stock_bars_ingest",
+                    Some(ALPACA_QUEUE),
+                ),
                 "scheduler:us_stock_bars_ingest",
             ),
-            expected_cron_with_job_key::<UsStockMinuteBarsIngest>(
-                CrontabTimer::hourly_at(20).ok(),
-                "us_stock_minute_bars_ingest",
-                CrontabFill::hours(3),
-                Some(ALPACA_QUEUE),
+            with_job_key(
+                expected_cron::<UsStockMinuteBarsIngest>(
+                    CrontabTimer::hourly_at(20).ok(),
+                    "us_stock_minute_bars_ingest",
+                    CrontabFill::hours(3),
+                    Some(ALPACA_QUEUE),
+                ),
                 "scheduler:us_stock_minute_bars_ingest",
             ),
-            expected_cron_with_job_key::<UsStockHourlyBarsIngest>(
-                CrontabTimer::hourly_at(40).ok(),
-                "us_stock_hourly_bars_ingest",
-                CrontabFill::hours(3),
-                Some(ALPACA_QUEUE),
+            with_job_key(
+                expected_cron::<UsStockHourlyBarsIngest>(
+                    CrontabTimer::hourly_at(40).ok(),
+                    "us_stock_hourly_bars_ingest",
+                    CrontabFill::hours(3),
+                    Some(ALPACA_QUEUE),
+                ),
                 "scheduler:us_stock_hourly_bars_ingest",
             ),
-            expected_cron_with_job_key::<UsStockMinuteBarsDownsample>(
-                CrontabTimer::daily_at(0, 5).ok(),
-                "us_stock_minute_bars_downsample",
-                CrontabFill::days(3),
-                Some(ALPACA_QUEUE),
+            with_job_key(
+                expected_cron::<UsStockMinuteBarsDownsample>(
+                    CrontabTimer::daily_at(0, 5).ok(),
+                    "us_stock_minute_bars_downsample",
+                    CrontabFill::days(3),
+                    Some(ALPACA_QUEUE),
+                ),
                 "scheduler:us_stock_minute_bars_downsample",
             ),
             expected_weekday_cron::<ValuationIngest>(
