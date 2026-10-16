@@ -57,7 +57,7 @@ pub fn validate_group_ratios(values: &[GroupRatio]) -> Result<(), AccountRiskPol
 pub fn parse_risk_policy<T: serde::de::DeserializeOwned>(
     value: serde_json::Value,
 ) -> Result<T, AccountRiskPolicyDataError> {
-    serde_json::from_value(value).map_err(AccountRiskPolicyDataError::InvalidData)
+    serde_json::from_str(&value.to_string()).map_err(AccountRiskPolicyDataError::InvalidData)
 }
 
 /// 型付きデータを risk_policy JSONB カラムに書き込む値へシリアライズする。
@@ -145,6 +145,25 @@ mod tests {
             AccountRiskPolicyData {
                 schema_version: RISK_POLICY_SCHEMA_VERSION,
                 max_group_ratios: vec![],
+            },
+        );
+    }
+
+    #[test]
+    fn parse_risk_policy_reads_small_exponent_ratios() {
+        let value = serde_json::from_str(
+            r#"{"max_group_ratios":[{"axis":"sample-axis","ratio":1.25e-8}]}"#,
+        )
+        .expect("parse stored JSON");
+
+        assert_eq!(
+            parse_risk_policy::<AccountRiskPolicyData>(value).expect("parse policy"),
+            AccountRiskPolicyData {
+                schema_version: RISK_POLICY_SCHEMA_VERSION,
+                max_group_ratios: vec![GroupRatio {
+                    axis: "sample-axis".to_string(),
+                    ratio: Decimal::new(125, 10),
+                }],
             },
         );
     }
