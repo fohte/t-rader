@@ -6,22 +6,42 @@ use super::types::UsStockBarsIngestStats;
 const PAGE_COOLDOWN_MULTIPLIER: u32 = 3;
 const COMMIT_LATENCY_TARGET: Duration = Duration::from_millis(100);
 
-pub(super) async fn wait_after_page(
-    clock: &dyn BarsIngestClock,
-    write_duration: Duration,
-    commit_duration: Duration,
-    stats: &mut UsStockBarsIngestStats,
-) {
-    let delay = page_cooldown(write_duration, commit_duration);
-    if delay.is_zero() {
-        return;
+#[derive(Default)]
+pub(super) struct WriteThrottle {
+    next_write_at: Option<Duration>,
+}
+
+impl WriteThrottle {
+    pub(super) async fn wait_before_write(
+        &mut self,
+        clock: &dyn BarsIngestClock,
+        stats: &mut UsStockBarsIngestStats,
+    ) {
+        let Some(next_write_at) = self.next_write_at.take() else {
+            return;
+        };
+
+        let sleep_started_at = clock.now();
+        let delay = next_write_at.saturating_sub(sleep_started_at);
+        if delay.is_zero() {
+            return;
+        }
+
+        clock.sleep(delay).await;
+        let waited = clock.now().saturating_sub(sleep_started_at);
+        let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+        stats.write_throttle_wait_ms = stats.write_throttle_wait_ms.saturating_add(waited_ms);
     }
 
-    let sleep_started_at = clock.now();
-    clock.sleep(delay).await;
-    let waited = clock.now().saturating_sub(sleep_started_at);
-    let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
-    stats.write_throttle_wait_ms = stats.write_throttle_wait_ms.saturating_add(waited_ms);
+    pub(super) fn record_page(
+        &mut self,
+        completed_at: Duration,
+        write_duration: Duration,
+        commit_duration: Duration,
+    ) {
+        self.next_write_at =
+            Some(completed_at.saturating_add(page_cooldown(write_duration, commit_duration)));
+    }
 }
 
 fn page_cooldown(write_duration: Duration, commit_duration: Duration) -> Duration {
@@ -43,7 +63,7 @@ mod tests {
 
     use rstest::rstest;
 
-    use super::{BarsIngestClock, wait_after_page};
+    use super::{BarsIngestClock, WriteThrottle};
     use crate::bars::UsStockBarsIngestStats;
 
     #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -58,6 +78,16 @@ mod tests {
     }
 
     impl FakeClock {
+        fn set_now(&self, now: Duration) {
+            *self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = ClockState {
+                now,
+                ..ClockState::default()
+            };
+        }
+
         fn snapshot(&self) -> ClockState {
             self.state
                 .lock()
@@ -97,13 +127,13 @@ mod tests {
     ) {
         let clock = FakeClock::default();
         let mut stats = UsStockBarsIngestStats::default();
-        wait_after_page(
-            &clock,
+        let mut throttle = WriteThrottle::default();
+        throttle.record_page(
+            Duration::ZERO,
             Duration::from_millis(write_ms),
             Duration::from_millis(commit_ms),
-            &mut stats,
-        )
-        .await;
+        );
+        throttle.wait_before_write(&clock, &mut stats).await;
 
         assert_eq!(
             (clock.snapshot(), stats.write_throttle_wait_ms),
@@ -118,32 +148,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn records_total_wait_and_returns_to_the_base_delay_when_commit_latency_recovers() {
+    async fn sleeps_only_for_the_time_remaining_after_fetching_the_next_page() {
         let clock = FakeClock::default();
+        clock.set_now(Duration::from_millis(900));
         let mut stats = UsStockBarsIngestStats::default();
-        wait_after_page(
-            &clock,
-            Duration::from_millis(250),
+        let mut throttle = WriteThrottle::default();
+        throttle.record_page(
+            Duration::from_millis(400),
+            Duration::from_millis(400),
             Duration::from_millis(150),
-            &mut stats,
-        )
-        .await;
-        wait_after_page(
-            &clock,
-            Duration::from_millis(100),
-            Duration::from_millis(99),
-            &mut stats,
-        )
-        .await;
+        );
+        throttle.wait_before_write(&clock, &mut stats).await;
 
         assert_eq!(
             (clock.snapshot(), stats.write_throttle_wait_ms),
             (
                 ClockState {
-                    now: Duration::from_millis(1200),
-                    sleeps: vec![Duration::from_millis(900), Duration::from_millis(300)],
+                    now: Duration::from_millis(1750),
+                    sleeps: vec![Duration::from_millis(850)],
                 },
-                1200,
+                850,
             ),
         );
     }

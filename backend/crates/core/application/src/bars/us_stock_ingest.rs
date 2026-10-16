@@ -10,7 +10,7 @@ use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::BarsUseCases;
-use super::write_throttle::wait_after_page;
+use super::write_throttle::WriteThrottle;
 
 mod adjustment;
 mod hourly;
@@ -23,17 +23,25 @@ struct RequestBudget {
     remaining: usize,
 }
 
+struct IngestContext {
+    budget: RequestBudget,
+    stats: UsStockBarsIngestStats,
+    write_throttle: WriteThrottle,
+}
+
 struct BatchIngestContext<'a> {
     budget: &'a mut RequestBudget,
     stats: &'a mut UsStockBarsIngestStats,
+    write_throttle: &'a mut WriteThrottle,
     skipped_instrument_ids: HashSet<String>,
 }
 
 impl<'a> BatchIngestContext<'a> {
-    fn new(budget: &'a mut RequestBudget, stats: &'a mut UsStockBarsIngestStats) -> Self {
+    fn new(context: &'a mut IngestContext) -> Self {
         Self {
-            budget,
-            stats,
+            budget: &mut context.budget,
+            stats: &mut context.stats,
+            write_throttle: &mut context.write_throttle,
             skipped_instrument_ids: HashSet::new(),
         }
     }
@@ -202,11 +210,14 @@ impl BarsUseCases {
                 self.repository.find_us_stock_minute_bar_targets().await?
             }
         };
-        let mut stats = UsStockBarsIngestStats {
-            symbols_attempted: targets.len(),
-            ..UsStockBarsIngestStats::default()
+        let mut context = IngestContext {
+            budget: RequestBudget::new(max_requests),
+            stats: UsStockBarsIngestStats {
+                symbols_attempted: targets.len(),
+                ..UsStockBarsIngestStats::default()
+            },
+            write_throttle: WriteThrottle::default(),
         };
-        let mut budget = RequestBudget::new(max_requests);
 
         let completed = self
             .ingest_timeframe(
@@ -217,8 +228,7 @@ impl BarsUseCases {
                     from: timeframe.history_start(now),
                     to: timeframe.history_end(now),
                 },
-                &mut budget,
-                &mut stats,
+                &mut context,
             )
             .await?;
 
@@ -233,18 +243,17 @@ impl BarsUseCases {
                     to: now,
                     hourly_to: UsStockBarTimeframe::Hourly.history_end(now),
                 },
-                &mut budget,
-                &mut stats,
+                &mut context,
             )
             .await?
         } else {
             completed
         };
         if !completed {
-            stats.interrupted_reason = Some("request_budget_exhausted".to_owned());
+            context.stats.interrupted_reason = Some("request_budget_exhausted".to_owned());
         }
 
-        Ok(stats)
+        Ok(context.stats)
     }
 
     async fn ingest_timeframe(
@@ -253,8 +262,7 @@ impl BarsUseCases {
         targets: &[UsStockBarTarget],
         timeframe: UsStockBarTimeframe,
         range: UsStockBarRange,
-        budget: &mut RequestBudget,
-        stats: &mut UsStockBarsIngestStats,
+        context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
         let mut missing_history = Vec::new();
         let mut existing_history = Vec::new();
@@ -285,8 +293,7 @@ impl BarsUseCases {
                     &instrument_ids,
                     timeframe,
                     UsStockBarRange { from, to: range.to },
-                    budget,
-                    stats,
+                    context,
                 )
                 .await?
             {
@@ -296,14 +303,7 @@ impl BarsUseCases {
 
         for instrument_ids in missing_history.chunks(SYMBOLS_PER_REQUEST) {
             if !self
-                .ingest_batch_and_mark_progress(
-                    source,
-                    instrument_ids,
-                    timeframe,
-                    range,
-                    budget,
-                    stats,
-                )
+                .ingest_batch_and_mark_progress(source, instrument_ids, timeframe, range, context)
                 .await?
             {
                 return Ok(false);
@@ -319,15 +319,14 @@ impl BarsUseCases {
         instrument_ids: &[String],
         timeframe: UsStockBarTimeframe,
         range: UsStockBarRange,
-        budget: &mut RequestBudget,
-        stats: &mut UsStockBarsIngestStats,
+        context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
         let (completed, skipped_instrument_ids) = {
-            let mut context = BatchIngestContext::new(budget, stats);
+            let mut batch_context = BatchIngestContext::new(context);
             let completed = self
-                .ingest_batch(source, instrument_ids, timeframe, range, &mut context)
+                .ingest_batch(source, instrument_ids, timeframe, range, &mut batch_context)
                 .await?;
-            (completed, context.skipped_instrument_ids)
+            (completed, batch_context.skipped_instrument_ids)
         };
         if completed && timeframe == UsStockBarTimeframe::Hourly {
             self.mark_hourly_history_completed(instrument_ids, range.to, &skipped_instrument_ids)
@@ -386,14 +385,11 @@ impl BarsUseCases {
                 context.record_skipped(skipped.instrument_id, skipped.reason);
             }
             let next_page_token = page.next_page_token;
-            let has_next_page = next_page_token
-                .as_ref()
-                .is_some_and(|next_page_token| page_token.as_ref() != Some(next_page_token));
             let mut bars = page.bars;
             if timeframe == UsStockBarTimeframe::Daily {
                 self.preserve_adjustment_factors(&mut bars).await?;
             }
-            self.persist_bars(bars, timeframe, has_next_page, context.stats)
+            self.persist_bars(bars, timeframe, context.write_throttle, context.stats)
                 .await?;
 
             let Some(next_page_token) = next_page_token else {
@@ -412,12 +408,15 @@ impl BarsUseCases {
         &self,
         bars: Vec<Bar>,
         timeframe: UsStockBarTimeframe,
-        has_next_page: bool,
+        write_throttle: &mut WriteThrottle,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<(), BarsUseCaseError> {
         if bars.is_empty() {
             return Ok(());
         }
+        write_throttle
+            .wait_before_write(self.clock.as_ref(), stats)
+            .await;
         let count = bars.len();
         let transaction = self.unit_of_work.begin().await?;
         let write_started_at = self.clock.now();
@@ -432,9 +431,7 @@ impl BarsUseCases {
         let completed_at = self.clock.now();
         let write_duration = completed_at.saturating_sub(write_started_at);
         let commit_duration = completed_at.saturating_sub(commit_started_at);
-        if has_next_page {
-            wait_after_page(self.clock.as_ref(), write_duration, commit_duration, stats).await;
-        }
+        write_throttle.record_page(completed_at, write_duration, commit_duration);
         Ok(())
     }
 }
@@ -504,7 +501,7 @@ mod tests {
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    use super::{MAX_REQUESTS_PER_RUN, UsStockBarTimeframe, us_stock_hourly_history_cutoff};
+    use super::{MAX_REQUESTS_PER_RUN, us_stock_hourly_history_cutoff};
 
     #[derive(Default)]
     struct TestClock {
@@ -831,20 +828,17 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn minute_ingestion_waits_before_the_following_page(mut harness: Harness) {
-        let instrument_id = "US:EXAMPLE-THROTTLE";
+    async fn minute_ingestion_waits_between_symbol_batches_and_not_after_the_last_write(
+        harness: Harness,
+    ) {
+        let instrument_ids = (0..101)
+            .map(|index| format!("US:EXAMPLE-{index:03}"))
+            .collect::<Vec<_>>();
         let now = date("2040-01-02T00:00:00Z");
-        let from = us_stock_hourly_history_cutoff(now);
         harness
             .repository
-            .seed_us_stock_minute_targets(vec![instrument_id.to_owned()])
+            .seed_us_stock_minute_targets(instrument_ids.clone())
             .await;
-        harness.source.pagination = Some(PaginatedPages {
-            instrument_id: instrument_id.to_owned(),
-            from,
-            total_pages: 2,
-            first_page_bars: vec![bar(instrument_id, Timeframe::Minute, now)],
-        });
         harness.clock.set_now_readings([
             Duration::ZERO,
             Duration::from_millis(250),
@@ -856,92 +850,164 @@ mod tests {
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
             .expect("minute ingestion succeeds");
-        let calls = harness.source.calls.lock().await.clone();
 
         assert_eq!(
-            (stats, calls, harness.clock.sleeps()),
+            (stats, harness.clock.sleeps()),
             (
                 UsStockBarsIngestStats {
-                    symbols_attempted: 1,
+                    symbols_attempted: 101,
                     requests_attempted: 2,
-                    minute_bars_upserted: 1,
+                    minute_bars_upserted: 101,
                     write_throttle_wait_ms: 1350,
                     ..UsStockBarsIngestStats::default()
                 },
-                vec![
-                    UsStockBarQuery {
-                        instrument_ids: vec![instrument_id.to_owned()],
-                        timeframe: Timeframe::Minute,
-                        from,
-                        to: now,
-                        page_token: None,
-                    },
-                    UsStockBarQuery {
-                        instrument_ids: vec![instrument_id.to_owned()],
-                        timeframe: Timeframe::Minute,
-                        from,
-                        to: now,
-                        page_token: Some("1".to_owned()),
-                    },
-                ],
                 vec![Duration::from_millis(1350)],
             ),
         );
     }
 
     #[rstest]
-    #[case::minute(UsStockBarTimeframe::Minute, Timeframe::Minute, 2, 0)]
-    #[case::hourly(UsStockBarTimeframe::Hourly, Timeframe::Hourly, 0, 2)]
+    #[case::minute(Timeframe::Minute, 2, 0)]
+    #[case::hourly(Timeframe::Hourly, 0, 2)]
     #[tokio::test]
-    async fn split_batch_pages_wait_between_nonempty_pages(
-        #[case] timeframe: UsStockBarTimeframe,
-        #[case] bar_timeframe: Timeframe,
+    async fn split_refetch_waits_between_intraday_pages(
+        #[case] timeframe: Timeframe,
         #[case] expected_minute_bars: usize,
         #[case] expected_hourly_bars: usize,
-        harness: Harness,
+        mut harness: Harness,
     ) {
-        let instrument_id = "US:EXAMPLE-THROTTLE";
-        let pages = vec![
-            vec![bar(
-                instrument_id,
-                bar_timeframe,
-                date("2040-01-02T00:00:00Z"),
-            )],
-            Vec::new(),
-            vec![bar(
-                instrument_id,
-                bar_timeframe,
-                date("2040-01-03T00:00:00Z"),
-            )],
+        let instrument_id = "US:EXAMPLE-SPLIT-THROTTLE";
+        let earliest_daily = date("2039-12-31T00:00:00Z");
+        let ex_date = date("2040-01-01T00:00:00Z");
+        let latest_daily = date("2040-01-02T00:00:00Z");
+        let now = date("2041-03-02T12:00:00Z");
+        let intraday_range = if timeframe == Timeframe::Minute {
+            (date("2040-01-01T14:30:00Z"), date("2040-01-02T20:59:00Z"))
+        } else {
+            (date("2039-12-31T23:00:00Z"), date("2040-01-02T15:00:00Z"))
+        };
+        let mut saved_bars = vec![
+            bar(instrument_id, Timeframe::Daily, earliest_daily),
+            bar(instrument_id, Timeframe::Daily, ex_date),
+            bar(instrument_id, Timeframe::Daily, latest_daily),
         ];
+        let intraday_bars = vec![
+            bar(instrument_id, timeframe, intraday_range.0),
+            bar(instrument_id, timeframe, intraday_range.1),
+        ];
+        saved_bars.extend(intraday_bars.clone());
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.repository.seed_bars(saved_bars).await;
+        harness.source.page_size = Some(1);
+        harness.source.bars.lock().await.extend([
+            bar(instrument_id, Timeframe::Daily, earliest_daily),
+            bar(instrument_id, Timeframe::Daily, ex_date),
+            bar(instrument_id, Timeframe::Daily, latest_daily),
+        ]);
+        harness.source.bars.lock().await.extend(intraday_bars);
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: ex_date.date_naive(),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
         harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::ZERO,
             Duration::from_millis(250),
             Duration::from_millis(400),
-            Duration::from_millis(400),
-            Duration::from_millis(1750),
-            Duration::from_millis(2000),
-            Duration::from_millis(2150),
-            Duration::from_millis(2200),
         ]);
-        let mut stats = UsStockBarsIngestStats::default();
 
-        harness
+        let stats = harness
             .use_cases
-            .persist_batch_pages(pages, timeframe, &mut stats)
+            .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("split history pages persist");
+            .expect("split history refetch succeeds");
 
         assert_eq!(
             (stats, harness.clock.sleeps()),
             (
                 UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 7,
+                    daily_bars_upserted: 4,
                     minute_bars_upserted: expected_minute_bars,
                     hourly_bars_upserted: expected_hourly_bars,
                     write_throttle_wait_ms: 1350,
                     ..UsStockBarsIngestStats::default()
                 },
                 vec![Duration::from_millis(1350)],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn split_refetch_does_not_wait_after_a_trailing_empty_hourly_page(mut harness: Harness) {
+        let instrument_id = "US:EXAMPLE-SPLIT-THROTTLE";
+        let earliest_daily = date("2039-12-31T00:00:00Z");
+        let latest_daily = date("2040-01-02T00:00:00Z");
+        let earliest_hourly = date("2039-12-31T23:00:00Z");
+        let latest_hourly = date("2040-01-02T15:00:00Z");
+        let now = date("2041-03-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![
+                bar(instrument_id, Timeframe::Daily, earliest_daily),
+                bar(instrument_id, Timeframe::Daily, latest_daily),
+                bar(instrument_id, Timeframe::Hourly, earliest_hourly),
+                bar(instrument_id, Timeframe::Hourly, latest_hourly),
+            ])
+            .await;
+        harness.source.bars.lock().await.push(bar(
+            instrument_id,
+            Timeframe::Hourly,
+            earliest_hourly,
+        ));
+        harness.source.pagination = Some(PaginatedPages {
+            instrument_id: instrument_id.to_owned(),
+            from: earliest_hourly,
+            total_pages: 2,
+            first_page_bars: vec![bar(instrument_id, Timeframe::Hourly, earliest_hourly)],
+        });
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: NaiveDate::from_ymd_opt(2040, 1, 1).expect("split date is valid"),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+        harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::from_millis(250),
+            Duration::from_millis(400),
+        ]);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("split history refetch succeeds");
+
+        assert_eq!(
+            (stats, harness.clock.sleeps()),
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 5,
+                    hourly_bars_upserted: 1,
+                    ..UsStockBarsIngestStats::default()
+                },
+                Vec::new(),
             ),
         );
     }

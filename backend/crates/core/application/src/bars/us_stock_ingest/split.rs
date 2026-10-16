@@ -10,9 +10,11 @@ use super::super::us_stock_source::{
     UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitQuery,
 };
 use super::super::use_cases::BarsUseCases;
+use super::super::write_throttle::WriteThrottle;
 use super::{
-    BatchIngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange,
-    UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
+    BatchIngestContext, IngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST,
+    UsStockBarRange, UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument,
+    split_rejected_batch,
 };
 
 impl BarsUseCases {
@@ -92,11 +94,11 @@ impl BarsUseCases {
         &self,
         pages: Vec<Vec<Bar>>,
         timeframe: UsStockBarTimeframe,
+        write_throttle: &mut WriteThrottle,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<(), BarsUseCaseError> {
-        let mut pages = pages.into_iter().filter(|page| !page.is_empty()).peekable();
-        while let Some(page) = pages.next() {
-            self.persist_bars(page, timeframe, pages.peek().is_some(), stats)
+        for page in pages {
+            self.persist_bars(page, timeframe, write_throttle, stats)
                 .await?;
         }
         Ok(())
@@ -107,8 +109,7 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         targets: &[UsStockBarTarget],
         history_range: UsStockSplitHistoryRange,
-        budget: &mut RequestBudget,
-        stats: &mut UsStockBarsIngestStats,
+        context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
         if targets.is_empty() {
             return Ok(true);
@@ -127,8 +128,8 @@ impl BarsUseCases {
                     instrument_ids,
                     history_range.daily_from.date_naive(),
                     history_range.to.date_naive(),
-                    budget,
-                    stats,
+                    &mut context.budget,
+                    &mut context.stats,
                 )
                 .await?
             else {
@@ -185,8 +186,7 @@ impl BarsUseCases {
                         to: history_range.to,
                         hourly_to: history_range.hourly_to,
                     },
-                    budget,
-                    stats,
+                    context,
                 )
                 .await
             {
@@ -341,12 +341,11 @@ impl BarsUseCases {
         target: &UsStockBarTarget,
         split_factors: &BTreeMap<NaiveDate, Decimal>,
         range: UsStockSplitHistoryRange,
-        budget: &mut RequestBudget,
-        stats: &mut UsStockBarsIngestStats,
+        context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
         let instrument_ids = std::slice::from_ref(&target.instrument_id);
         let daily_pages = {
-            let mut context = BatchIngestContext::new(budget, stats);
+            let mut batch_context = BatchIngestContext::new(context);
             self.fetch_batch_pages(
                 source,
                 instrument_ids,
@@ -355,7 +354,7 @@ impl BarsUseCases {
                     from: range.daily_from,
                     to: range.to,
                 },
-                &mut context,
+                &mut batch_context,
             )
             .await?
         };
@@ -379,7 +378,7 @@ impl BarsUseCases {
         }
 
         let minute_history_complete = if target.earliest_minute_bar.is_some() {
-            let mut context = BatchIngestContext::new(budget, stats);
+            let mut batch_context = BatchIngestContext::new(context);
             self.ingest_batch(
                 source,
                 instrument_ids,
@@ -388,7 +387,7 @@ impl BarsUseCases {
                     from: range.minute_from,
                     to: range.to,
                 },
-                &mut context,
+                &mut batch_context,
             )
             .await?
         } else {
@@ -400,7 +399,7 @@ impl BarsUseCases {
 
         if target.has_hourly_history_backfill() || target.earliest_hourly_bar.is_some() {
             let (hourly_pages, skipped_hourly_instrument_ids) = {
-                let mut context = BatchIngestContext::new(budget, stats);
+                let mut batch_context = BatchIngestContext::new(context);
                 let Some(hourly_pages) = self
                     .fetch_batch_pages(
                         source,
@@ -410,16 +409,21 @@ impl BarsUseCases {
                             from: range.hourly_from,
                             to: range.hourly_to,
                         },
-                        &mut context,
+                        &mut batch_context,
                     )
                     .await?
                 else {
                     return Ok(false);
                 };
-                (hourly_pages, context.skipped_instrument_ids)
+                (hourly_pages, batch_context.skipped_instrument_ids)
             };
-            self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
-                .await?;
+            self.persist_batch_pages(
+                hourly_pages,
+                UsStockBarTimeframe::Hourly,
+                &mut context.write_throttle,
+                &mut context.stats,
+            )
+            .await?;
             self.mark_hourly_history_completed(
                 instrument_ids,
                 range.hourly_to,
@@ -428,10 +432,20 @@ impl BarsUseCases {
             .await?;
         }
 
-        self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
-            .await?;
-        self.persist_bars(split_bars, UsStockBarTimeframe::Daily, false, stats)
-            .await?;
+        self.persist_batch_pages(
+            daily_pages,
+            UsStockBarTimeframe::Daily,
+            &mut context.write_throttle,
+            &mut context.stats,
+        )
+        .await?;
+        self.persist_bars(
+            split_bars,
+            UsStockBarTimeframe::Daily,
+            &mut context.write_throttle,
+            &mut context.stats,
+        )
+        .await?;
         Ok(true)
     }
 }
