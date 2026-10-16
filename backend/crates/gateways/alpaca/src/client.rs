@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use core_application::bars::{
@@ -37,16 +40,20 @@ pub enum AlpacaError {
     Parse(String),
     #[error("Alpaca shared rate limit failed: {0}")]
     RateLimit(String),
+    #[error("US stock bar run deadline exceeded")]
+    RunDeadlineExceeded,
 }
 
 enum AlpacaRateLimiter {
     Shared(RateLimiter),
     #[cfg(test)]
     TestNoop,
+    #[cfg(test)]
+    TestWaitExceeded,
 }
 
 impl AlpacaRateLimiter {
-    async fn acquire(&self) -> Result<(), RateLimitError> {
+    async fn acquire(&self, timeout: Duration) -> Result<(), RateLimitError> {
         match self {
             Self::Shared(rate_limiter) => {
                 rate_limiter
@@ -56,12 +63,16 @@ impl AlpacaRateLimiter {
                             RATE_LIMIT_PER_MINUTE,
                             RATE_LIMIT_PERIOD,
                         )],
-                        Duration::MAX,
+                        timeout,
                     )
                     .await
             }
             #[cfg(test)]
             Self::TestNoop => Ok(()),
+            #[cfg(test)]
+            Self::TestWaitExceeded => Err(RateLimitError::MaxWaitExceeded {
+                max_wait: timeout + Duration::from_millis(1),
+            }),
         }
     }
 
@@ -72,6 +83,8 @@ impl AlpacaRateLimiter {
             }
             #[cfg(test)]
             Self::TestNoop => Ok(()),
+            #[cfg(test)]
+            Self::TestWaitExceeded => Ok(()),
         }
     }
 }
@@ -143,11 +156,21 @@ impl AlpacaClient {
         &self,
         url: &Url,
         params: &[(&'static str, String)],
-    ) -> Result<reqwest::Response, AlpacaError> {
-        self.rate_limiter
-            .acquire()
-            .await
-            .map_err(|error| AlpacaError::RateLimit(error.to_string()))?;
+        deadline: Instant,
+    ) -> Result<Option<reqwest::Response>, AlpacaError> {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Ok(None);
+        }
+        match self.rate_limiter.acquire(remaining).await {
+            Ok(()) => {}
+            Err(RateLimitError::MaxWaitExceeded { .. }) => return Ok(None),
+            Err(_) if Instant::now() >= deadline => return Ok(None),
+            Err(error) => return Err(AlpacaError::RateLimit(error.to_string())),
+        }
+        if Instant::now() >= deadline {
+            return Ok(None);
+        }
         let response = self
             .client
             .get(url.clone())
@@ -170,15 +193,18 @@ impl AlpacaClient {
                 .map_err(|error| AlpacaError::RateLimit(error.to_string()))?;
         }
 
-        Ok(response)
+        Ok(Some(response))
     }
 
     async fn fetch_json<T: DeserializeOwned>(
         &self,
         url: &Url,
         params: &[(&'static str, String)],
-    ) -> Result<T, AlpacaError> {
-        let response = self.fetch_response(url, params).await?;
+        deadline: Instant,
+    ) -> Result<Option<T>, AlpacaError> {
+        let Some(response) = self.fetch_response(url, params, deadline).await? else {
+            return Ok(None);
+        };
         let status = response.status();
         if !status.is_success() {
             let message = response
@@ -194,6 +220,7 @@ impl AlpacaClient {
         response
             .json::<T>()
             .await
+            .map(Some)
             .map_err(|error| AlpacaError::Parse(error.to_string()))
     }
 }
@@ -203,16 +230,20 @@ impl UsStockBarSource for AlpacaClient {
     async fn fetch_page(
         &self,
         query: &UsStockBarQuery,
+        deadline: Instant,
     ) -> Result<UsStockBarPage, UsStockBarSourceError> {
-        self.fetch_page_inner(query).await.map_err(source_error)
+        self.fetch_page_inner(query, deadline)
+            .await
+            .map_err(source_error)
     }
 
     async fn fetch_splits(
         &self,
         query: &UsStockSplitQuery,
         max_requests: usize,
+        deadline: Instant,
     ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
-        self.fetch_splits_inner(query, max_requests)
+        self.fetch_splits_inner(query, max_requests, deadline)
             .await
             .map_err(source_error)
     }
@@ -222,6 +253,7 @@ impl AlpacaClient {
     async fn fetch_page_inner(
         &self,
         query: &UsStockBarQuery,
+        deadline: Instant,
     ) -> Result<UsStockBarPage, AlpacaError> {
         if query.instrument_ids.is_empty() {
             return Ok(UsStockBarPage::default());
@@ -241,9 +273,12 @@ impl AlpacaClient {
         let mut request_query = query.clone();
         request_query.instrument_ids = instrument_ids;
 
-        let response = self
-            .fetch_json::<BarsResponse>(&self.url, &request_params(&request_query)?)
-            .await?;
+        let Some(response) = self
+            .fetch_json::<BarsResponse>(&self.url, &request_params(&request_query)?, deadline)
+            .await?
+        else {
+            return Err(AlpacaError::RunDeadlineExceeded);
+        };
 
         let mut bars = Vec::new();
         for (symbol, records) in response.bars {
@@ -272,6 +307,7 @@ impl AlpacaClient {
         &self,
         query: &UsStockSplitQuery,
         max_requests: usize,
+        deadline: Instant,
     ) -> Result<UsStockSplitBatch, AlpacaError> {
         if query.instrument_ids.is_empty() {
             return Ok(UsStockSplitBatch::default());
@@ -302,9 +338,22 @@ impl AlpacaClient {
             if let Some(page_token) = &page_token {
                 page_params.push(("page_token", page_token.clone()));
             }
-            let response = self
-                .fetch_json::<CorporateActionsResponse>(&self.corporate_actions_url, &page_params)
-                .await?;
+            let Some(response) = self
+                .fetch_json::<CorporateActionsResponse>(
+                    &self.corporate_actions_url,
+                    &page_params,
+                    deadline,
+                )
+                .await?
+            else {
+                return Ok(UsStockSplitBatch {
+                    splits,
+                    requests_attempted,
+                    has_more: true,
+                    deadline_exceeded: true,
+                    skipped_instruments,
+                });
+            };
             requests_attempted += 1;
             for split in response
                 .forward_splits
@@ -325,6 +374,7 @@ impl AlpacaClient {
                     splits,
                     requests_attempted,
                     has_more: false,
+                    deadline_exceeded: false,
                     skipped_instruments,
                 });
             };
@@ -338,6 +388,7 @@ impl AlpacaClient {
                     splits,
                     requests_attempted,
                     has_more: true,
+                    deadline_exceeded: false,
                     skipped_instruments,
                 });
             }
@@ -348,6 +399,7 @@ impl AlpacaClient {
 
 fn source_error(error: AlpacaError) -> UsStockBarSourceError {
     match error {
+        AlpacaError::RunDeadlineExceeded => UsStockBarSourceError::RunDeadlineExceeded,
         AlpacaError::Api { status, message } if is_symbol_rejection(status, &message) => {
             UsStockBarSourceError::RejectedSymbols(message)
         }
@@ -483,6 +535,8 @@ fn alpaca_symbol(instrument_id: &str) -> Result<String, AlpacaError> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use chrono::{DateTime, NaiveDate, Utc};
     use core_application::bars::{
         SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
@@ -495,12 +549,83 @@ mod tests {
     use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::AlpacaClient;
+    use super::{AlpacaClient, AlpacaRateLimiter};
 
     fn date(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
             .map(|timestamp| timestamp.to_utc())
             .unwrap_or_default()
+    }
+
+    fn deadline() -> Instant {
+        Instant::now() + Duration::from_secs(30)
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn returns_deadline_exceeded_when_rate_limit_wait_exceeds_remaining_time() {
+        let server = MockServer::start().await;
+        let client = AlpacaClient::build(
+            &format!("{}/v2/stocks/bars", server.uri()),
+            "synthetic-key-id",
+            "synthetic-secret",
+            AlpacaRateLimiter::TestWaitExceeded,
+        )
+        .expect("test client is configured");
+        let actual = (
+            client
+                .fetch_page(
+                    &UsStockBarQuery {
+                        instrument_ids: vec!["US:QZ7".to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: date("2040-01-03T00:00:00Z"),
+                        page_token: None,
+                    },
+                    deadline(),
+                )
+                .await,
+            server
+                .received_requests()
+                .await
+                .map(|requests| requests.len()),
+        );
+
+        assert_eq!(
+            actual,
+            (Err(UsStockBarSourceError::RunDeadlineExceeded), Some(0)),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn does_not_send_bar_request_after_the_deadline() {
+        let server = MockServer::start().await;
+        let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
+            .expect("test client is configured");
+        let actual = (
+            client
+                .fetch_page(
+                    &UsStockBarQuery {
+                        instrument_ids: vec!["US:QZ7".to_owned()],
+                        timeframe: Timeframe::Daily,
+                        from: date("1970-01-01T00:00:00Z"),
+                        to: date("2040-01-03T00:00:00Z"),
+                        page_token: None,
+                    },
+                    Instant::now() - Duration::from_secs(1),
+                )
+                .await,
+            server
+                .received_requests()
+                .await
+                .map(|requests| requests.len()),
+        );
+
+        assert_eq!(
+            actual,
+            (Err(UsStockBarSourceError::RunDeadlineExceeded), Some(0)),
+        );
     }
 
     #[rstest]
@@ -538,13 +663,16 @@ mod tests {
             .expect("test client is configured");
 
         let page = client
-            .fetch_page(&UsStockBarQuery {
-                instrument_ids: vec!["US:QZ-7".to_owned(), "KR:QZ7".to_owned()],
-                timeframe: Timeframe::Daily,
-                from: date("1970-01-01T00:00:00Z"),
-                to: date("2040-01-03T00:00:00Z"),
-                page_token: None,
-            })
+            .fetch_page(
+                &UsStockBarQuery {
+                    instrument_ids: vec!["US:QZ-7".to_owned(), "KR:QZ7".to_owned()],
+                    timeframe: Timeframe::Daily,
+                    from: date("1970-01-01T00:00:00Z"),
+                    to: date("2040-01-03T00:00:00Z"),
+                    page_token: None,
+                },
+                deadline(),
+            )
             .await
             .expect("bars response is valid");
 
@@ -602,13 +730,16 @@ mod tests {
             .expect("test client is configured");
 
         let page = client
-            .fetch_page(&UsStockBarQuery {
-                instrument_ids: vec!["US:QZ7".to_owned()],
-                timeframe: Timeframe::Hourly,
-                from: date("2016-01-01T00:00:00Z"),
-                to: date("2039-01-02T12:00:00Z"),
-                page_token: None,
-            })
+            .fetch_page(
+                &UsStockBarQuery {
+                    instrument_ids: vec!["US:QZ7".to_owned()],
+                    timeframe: Timeframe::Hourly,
+                    from: date("2016-01-01T00:00:00Z"),
+                    to: date("2039-01-02T12:00:00Z"),
+                    page_token: None,
+                },
+                deadline(),
+            )
             .await
             .expect("hourly bars response is valid");
 
@@ -674,6 +805,7 @@ mod tests {
                     to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
                 },
                 1,
+                deadline(),
             )
             .await
             .expect("corporate actions response is valid");
@@ -697,6 +829,7 @@ mod tests {
                 ],
                 requests_attempted: 1,
                 has_more: false,
+                deadline_exceeded: false,
                 skipped_instruments: Vec::new(),
             },
         );
@@ -755,6 +888,7 @@ mod tests {
                     to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
                 },
                 max_requests,
+                deadline(),
             )
             .await
             .expect("corporate actions pages are valid");
@@ -776,6 +910,7 @@ mod tests {
                 splits: vec![first_split],
                 requests_attempted: 1,
                 has_more: true,
+                deadline_exceeded: false,
                 skipped_instruments: Vec::new(),
             }
         } else {
@@ -783,6 +918,7 @@ mod tests {
                 splits: vec![first_split, second_split],
                 requests_attempted: 2,
                 has_more: false,
+                deadline_exceeded: false,
                 skipped_instruments: Vec::new(),
             }
         };
@@ -807,13 +943,16 @@ mod tests {
             .expect("test client is configured");
 
         let page = client
-            .fetch_page(&UsStockBarQuery {
-                instrument_ids: vec!["US:QZ7".to_owned()],
-                timeframe: Timeframe::Minute,
-                from: date("2038-01-02T00:00:00Z"),
-                to: date("2040-01-03T00:00:00Z"),
-                page_token: Some("synthetic-page".to_owned()),
-            })
+            .fetch_page(
+                &UsStockBarQuery {
+                    instrument_ids: vec!["US:QZ7".to_owned()],
+                    timeframe: Timeframe::Minute,
+                    from: date("2038-01-02T00:00:00Z"),
+                    to: date("2040-01-03T00:00:00Z"),
+                    page_token: Some("synthetic-page".to_owned()),
+                },
+                deadline(),
+            )
             .await
             .expect("subsequent page response is valid");
 
@@ -838,13 +977,16 @@ mod tests {
         let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
             .expect("test client is configured");
         let result = client
-            .fetch_page(&UsStockBarQuery {
-                instrument_ids: vec![instrument_id.to_owned()],
-                timeframe: Timeframe::Daily,
-                from: date("1970-01-01T00:00:00Z"),
-                to: date("2040-01-03T00:00:00Z"),
-                page_token: None,
-            })
+            .fetch_page(
+                &UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Daily,
+                    from: date("1970-01-01T00:00:00Z"),
+                    to: date("2040-01-03T00:00:00Z"),
+                    page_token: None,
+                },
+                deadline(),
+            )
             .await;
 
         assert_eq!(
@@ -857,6 +999,60 @@ mod tests {
                     reason: expected.to_owned(),
                 }],
             }),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn stops_corporate_action_pagination_before_the_next_request_after_deadline() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/corporate-actions"))
+            .and(query_param_is_missing("page_token"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(1_100))
+                    .set_body_json(json!({
+                        "forward_splits": [],
+                        "reverse_splits": [],
+                        "next_page_token": "synthetic-split-page"
+                    })),
+            )
+            .mount(&server)
+            .await;
+        let client = AlpacaClient::with_base_url(&format!("{}/v2/stocks/bars", server.uri()))
+            .expect("test client is configured");
+
+        let actual = (
+            client
+                .fetch_splits(
+                    &UsStockSplitQuery {
+                        instrument_ids: vec!["US:QZ7".to_owned()],
+                        from: NaiveDate::from_ymd_opt(1970, 1, 1).expect("start date is valid"),
+                        to: NaiveDate::from_ymd_opt(2040, 1, 3).expect("end date is valid"),
+                    },
+                    2,
+                    Instant::now() + Duration::from_secs(1),
+                )
+                .await,
+            server
+                .received_requests()
+                .await
+                .map(|requests| requests.len()),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                Ok(UsStockSplitBatch {
+                    splits: Vec::new(),
+                    requests_attempted: 1,
+                    has_more: true,
+                    deadline_exceeded: true,
+                    skipped_instruments: Vec::new(),
+                }),
+                Some(1),
+            ),
         );
     }
 
@@ -885,13 +1081,16 @@ mod tests {
             .expect("test client is configured");
 
         let actual = client
-            .fetch_page(&UsStockBarQuery {
-                instrument_ids: vec!["US:QZ7".to_owned()],
-                timeframe: Timeframe::Daily,
-                from: date("1970-01-01T00:00:00Z"),
-                to: date("2040-01-03T00:00:00Z"),
-                page_token: None,
-            })
+            .fetch_page(
+                &UsStockBarQuery {
+                    instrument_ids: vec!["US:QZ7".to_owned()],
+                    timeframe: Timeframe::Daily,
+                    from: date("1970-01-01T00:00:00Z"),
+                    to: date("2040-01-03T00:00:00Z"),
+                    page_token: None,
+                },
+                deadline(),
+            )
             .await;
 
         let expected = if rejected_symbols {

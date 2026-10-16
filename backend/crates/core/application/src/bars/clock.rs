@@ -6,6 +6,8 @@ use async_trait::async_trait;
 pub(super) trait BarsIngestClock: Send + Sync {
     fn now(&self) -> Duration;
 
+    fn instant(&self) -> Instant;
+
     async fn sleep(&self, duration: Duration);
 }
 
@@ -25,6 +27,10 @@ impl SystemBarsIngestClock {
 impl BarsIngestClock for SystemBarsIngestClock {
     fn now(&self) -> Duration {
         self.started_at.elapsed()
+    }
+
+    fn instant(&self) -> Instant {
+        self.started_at + self.now()
     }
 
     async fn sleep(&self, duration: Duration) {

@@ -29,6 +29,10 @@ use chrono::{DateTime, Months, Timelike, Utc};
 
 pub(super) const HOURLY_HISTORY_MONTHS: u32 = 12;
 
+/// 取り込み後の圧縮と stats 記録に時間を残すための上限。
+pub const US_STOCK_BARS_MAX_RUN_DURATION: std::time::Duration =
+    std::time::Duration::from_secs(90 * 60);
+
 pub fn us_stock_hourly_history_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
     now.checked_sub_months(Months::new(HOURLY_HISTORY_MONTHS))
         .unwrap_or(now)

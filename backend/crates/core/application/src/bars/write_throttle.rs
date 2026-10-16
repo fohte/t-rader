@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::time::Instant;
 
 use super::clock::BarsIngestClock;
 use super::types::UsStockBarsIngestStats;
@@ -15,22 +16,30 @@ impl WriteThrottle {
     pub(super) async fn wait_before_write(
         &mut self,
         clock: &dyn BarsIngestClock,
+        deadline: Instant,
         stats: &mut UsStockBarsIngestStats,
-    ) {
+    ) -> bool {
         let Some(next_write_at) = self.next_write_at.take() else {
-            return;
+            return clock.instant() < deadline;
         };
-
         let sleep_started_at = clock.now();
-        let delay = next_write_at.saturating_sub(sleep_started_at);
-        if delay.is_zero() {
-            return;
+        let sleep_started_at_instant = clock.instant();
+        if sleep_started_at_instant >= deadline {
+            return false;
         }
 
-        clock.sleep(delay).await;
-        let waited = clock.now().saturating_sub(sleep_started_at);
-        let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
-        stats.write_throttle_wait_ms = stats.write_throttle_wait_ms.saturating_add(waited_ms);
+        let delay = next_write_at.saturating_sub(sleep_started_at);
+        let remaining = deadline.saturating_duration_since(sleep_started_at_instant);
+        let sleep_duration = delay.min(remaining);
+
+        if !sleep_duration.is_zero() {
+            clock.sleep(sleep_duration).await;
+            let waited = clock.now().saturating_sub(sleep_started_at);
+            let waited_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+            stats.write_throttle_wait_ms = stats.write_throttle_wait_ms.saturating_add(waited_ms);
+        }
+
+        clock.instant() < deadline
     }
 
     pub(super) fn record_page(
@@ -59,7 +68,7 @@ fn page_cooldown(write_duration: Duration, commit_duration: Duration) -> Duratio
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use rstest::rstest;
 
@@ -72,9 +81,18 @@ mod tests {
         sleeps: Vec<Duration>,
     }
 
-    #[derive(Default)]
     struct FakeClock {
+        started_at: Instant,
         state: Mutex<ClockState>,
+    }
+
+    impl Default for FakeClock {
+        fn default() -> Self {
+            Self {
+                started_at: Instant::now(),
+                state: Mutex::default(),
+            }
+        }
     }
 
     impl FakeClock {
@@ -105,6 +123,10 @@ mod tests {
                 .now
         }
 
+        fn instant(&self) -> Instant {
+            self.started_at + self.snapshot().now
+        }
+
         async fn sleep(&self, duration: Duration) {
             let mut state = self
                 .state
@@ -133,11 +155,15 @@ mod tests {
             Duration::from_millis(write_ms),
             Duration::from_millis(commit_ms),
         );
-        throttle.wait_before_write(&clock, &mut stats).await;
+        let deadline = clock.instant() + Duration::from_secs(10);
+        let can_write = throttle
+            .wait_before_write(&clock, deadline, &mut stats)
+            .await;
 
         assert_eq!(
-            (clock.snapshot(), stats.write_throttle_wait_ms),
+            (can_write, clock.snapshot(), stats.write_throttle_wait_ms),
             (
+                true,
                 ClockState {
                     now: Duration::from_millis(expected_wait_ms),
                     sleeps: vec![Duration::from_millis(expected_wait_ms)],
@@ -158,17 +184,50 @@ mod tests {
             Duration::from_millis(400),
             Duration::from_millis(150),
         );
-        throttle.wait_before_write(&clock, &mut stats).await;
+        let deadline = clock.instant() + Duration::from_secs(10);
+        let can_write = throttle
+            .wait_before_write(&clock, deadline, &mut stats)
+            .await;
 
         assert_eq!(
-            (clock.snapshot(), stats.write_throttle_wait_ms),
+            (can_write, clock.snapshot(), stats.write_throttle_wait_ms),
             (
+                true,
                 ClockState {
                     now: Duration::from_millis(1750),
                     sleeps: vec![Duration::from_millis(850)],
                 },
                 850,
             ),
+        );
+    }
+
+    #[tokio::test]
+    async fn stops_waiting_when_the_run_deadline_is_reached() {
+        let clock = FakeClock::default();
+        let mut stats = UsStockBarsIngestStats::default();
+        let mut throttle = WriteThrottle::default();
+        throttle.record_page(
+            Duration::ZERO,
+            Duration::from_millis(300),
+            Duration::from_millis(100),
+        );
+        let deadline = clock.instant() + Duration::from_millis(200);
+
+        let can_write = throttle
+            .wait_before_write(&clock, deadline, &mut stats)
+            .await;
+
+        assert_eq!(
+            (can_write, clock.snapshot(), stats.write_throttle_wait_ms),
+            (
+                false,
+                ClockState {
+                    now: Duration::from_millis(200),
+                    sleeps: vec![Duration::from_millis(200)],
+                },
+                200,
+            )
         );
     }
 }

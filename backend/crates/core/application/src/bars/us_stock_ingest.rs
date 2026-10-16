@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::{Bar, Timeframe};
 
+use super::US_STOCK_BARS_MAX_RUN_DURATION;
 use super::error::BarsUseCaseError;
 use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_hourly_history_cutoff;
@@ -11,17 +12,15 @@ use super::us_stock_source::{
 };
 use super::use_cases::BarsUseCases;
 use super::write_throttle::WriteThrottle;
+use request_budget::RequestBudget;
 
 mod adjustment;
 mod hourly;
+mod request_budget;
 mod split;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
-
-struct RequestBudget {
-    remaining: usize,
-}
 
 struct IngestContext {
     budget: RequestBudget,
@@ -50,25 +49,11 @@ impl<'a> BatchIngestContext<'a> {
         self.skipped_instrument_ids.insert(instrument_id.clone());
         record_skipped_instrument(self.stats, instrument_id, reason);
     }
-}
 
-impl RequestBudget {
-    fn new(max_requests: usize) -> Self {
-        Self {
-            remaining: max_requests,
-        }
-    }
-
-    fn remaining(&self) -> usize {
-        self.remaining
-    }
-
-    fn take(&mut self, requests: usize) -> bool {
-        if requests > self.remaining {
-            return false;
-        }
-        self.remaining -= requests;
-        true
+    fn record_deadline_before_request(&mut self) {
+        self.stats.requests_attempted -= 1;
+        self.budget.refund_request();
+        self.budget.mark_time_budget_exhausted();
     }
 }
 
@@ -152,7 +137,11 @@ impl BarsUseCases {
             source,
             now,
             UsStockBarTimeframe::Daily,
-            MAX_REQUESTS_PER_RUN,
+            RequestBudget::new(
+                MAX_REQUESTS_PER_RUN,
+                US_STOCK_BARS_MAX_RUN_DURATION,
+                self.clock.instant(),
+            ),
         )
         .await
     }
@@ -162,13 +151,26 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        let mut ingest_result = self
-            .ingest_us_stock_bars_for_timeframe(
-                source,
-                now,
-                UsStockBarTimeframe::Minute,
+        self.ingest_us_stock_minute_bars_with_budget(
+            source,
+            now,
+            RequestBudget::new(
                 MAX_REQUESTS_PER_RUN,
-            )
+                US_STOCK_BARS_MAX_RUN_DURATION,
+                self.clock.instant(),
+            ),
+        )
+        .await
+    }
+
+    async fn ingest_us_stock_minute_bars_with_budget(
+        &self,
+        source: &dyn UsStockBarSource,
+        now: DateTime<Utc>,
+        budget: RequestBudget,
+    ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
+        let mut ingest_result = self
+            .ingest_us_stock_bars_for_timeframe(source, now, UsStockBarTimeframe::Minute, budget)
             .await;
         if let Err(error) = self.repository.compress_bars_older_than_policy(now).await {
             let compression_error = error.to_string();
@@ -190,7 +192,11 @@ impl BarsUseCases {
             source,
             now,
             UsStockBarTimeframe::Hourly,
-            MAX_REQUESTS_PER_RUN,
+            RequestBudget::new(
+                MAX_REQUESTS_PER_RUN,
+                US_STOCK_BARS_MAX_RUN_DURATION,
+                self.clock.instant(),
+            ),
         )
         .await
     }
@@ -200,7 +206,7 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
         timeframe: UsStockBarTimeframe,
-        max_requests: usize,
+        budget: RequestBudget,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
         let targets = match timeframe {
             UsStockBarTimeframe::Daily | UsStockBarTimeframe::Hourly => {
@@ -211,14 +217,13 @@ impl BarsUseCases {
             }
         };
         let mut context = IngestContext {
-            budget: RequestBudget::new(max_requests),
+            budget,
             stats: UsStockBarsIngestStats {
                 symbols_attempted: targets.len(),
                 ..UsStockBarsIngestStats::default()
             },
             write_throttle: WriteThrottle::default(),
         };
-
         let completed = self
             .ingest_timeframe(
                 source,
@@ -250,7 +255,8 @@ impl BarsUseCases {
             completed
         };
         if !completed {
-            context.stats.interrupted_reason = Some("request_budget_exhausted".to_owned());
+            context.budget.mark_request_budget_exhausted();
+            context.stats.interrupted_reason = context.budget.interrupted_reason.map(str::to_owned);
         }
 
         Ok(context.stats)
@@ -345,21 +351,28 @@ impl BarsUseCases {
     ) -> Result<bool, BarsUseCaseError> {
         let mut page_token = None;
         loop {
-            if !context.budget.take(1) {
+            if !context.budget.take_at(1, self.clock.instant()) {
                 return Ok(false);
             }
             context.stats.requests_attempted += 1;
             let page = match source
-                .fetch_page(&UsStockBarQuery {
-                    instrument_ids: instrument_ids.to_vec(),
-                    timeframe: timeframe.timeframe(),
-                    from: range.from,
-                    to: range.to,
-                    page_token: page_token.clone(),
-                })
+                .fetch_page(
+                    &UsStockBarQuery {
+                        instrument_ids: instrument_ids.to_vec(),
+                        timeframe: timeframe.timeframe(),
+                        from: range.from,
+                        to: range.to,
+                        page_token: page_token.clone(),
+                    },
+                    context.budget.deadline(),
+                )
                 .await
             {
                 Ok(page) => page,
+                Err(UsStockBarSourceError::RunDeadlineExceeded) => {
+                    context.record_deadline_before_request();
+                    return Ok(false);
+                }
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
                     let (first, second) = match split_rejected_batch(instrument_ids, reason) {
                         RejectedBatch::Split(first, second) => (first, second),
@@ -389,8 +402,18 @@ impl BarsUseCases {
             if timeframe == UsStockBarTimeframe::Daily {
                 self.preserve_adjustment_factors(&mut bars).await?;
             }
-            self.persist_bars(bars, timeframe, context.write_throttle, context.stats)
-                .await?;
+            if !self
+                .persist_bars(
+                    bars,
+                    timeframe,
+                    context.write_throttle,
+                    context.budget,
+                    context.stats,
+                )
+                .await?
+            {
+                return Ok(false);
+            }
 
             let Some(next_page_token) = next_page_token else {
                 return Ok(true);
@@ -409,14 +432,19 @@ impl BarsUseCases {
         bars: Vec<Bar>,
         timeframe: UsStockBarTimeframe,
         write_throttle: &mut WriteThrottle,
+        budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
-    ) -> Result<(), BarsUseCaseError> {
+    ) -> Result<bool, BarsUseCaseError> {
         if bars.is_empty() {
-            return Ok(());
+            return Ok(true);
         }
-        write_throttle
-            .wait_before_write(self.clock.as_ref(), stats)
-            .await;
+        if !write_throttle
+            .wait_before_write(self.clock.as_ref(), budget.deadline(), stats)
+            .await
+        {
+            budget.mark_time_budget_exhausted();
+            return Ok(false);
+        }
         let count = bars.len();
         let transaction = self.unit_of_work.begin().await?;
         let write_started_at = self.clock.now();
@@ -432,7 +460,7 @@ impl BarsUseCases {
         let write_duration = completed_at.saturating_sub(write_started_at);
         let commit_duration = completed_at.saturating_sub(commit_started_at);
         write_throttle.record_page(completed_at, write_duration, commit_duration);
-        Ok(())
+        Ok(true)
     }
 }
 
@@ -484,7 +512,7 @@ mod tests {
     use std::collections::VecDeque;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex as StdMutex};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use async_trait::async_trait;
     use chrono::{DateTime, NaiveDate, TimeZone, Utc};
@@ -501,13 +529,26 @@ mod tests {
     };
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 
-    use super::{MAX_REQUESTS_PER_RUN, us_stock_hourly_history_cutoff};
+    use super::{
+        MAX_REQUESTS_PER_RUN, RequestBudget, UsStockBarTimeframe, us_stock_hourly_history_cutoff,
+    };
 
-    #[derive(Default)]
     struct TestClock {
+        started_at: Instant,
         now: StdMutex<Duration>,
         now_readings: StdMutex<VecDeque<Duration>>,
         sleeps: StdMutex<Vec<Duration>>,
+    }
+
+    impl Default for TestClock {
+        fn default() -> Self {
+            Self {
+                started_at: Instant::now(),
+                now: StdMutex::default(),
+                now_readings: StdMutex::default(),
+                sleeps: StdMutex::default(),
+            }
+        }
     }
 
     impl TestClock {
@@ -543,6 +584,14 @@ mod tests {
                 *now = reading;
             }
             *now
+        }
+
+        fn instant(&self) -> Instant {
+            let now = *self
+                .now
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            self.started_at + now
         }
 
         async fn sleep(&self, duration: Duration) {
@@ -599,6 +648,9 @@ mod tests {
         skipped_instruments: Vec<String>,
         rejected_split_instruments: Vec<String>,
         fetch_error: Option<String>,
+        deadline_exceeded_at_call: Option<usize>,
+        split_deadline_exceeded: bool,
+        split_deadline_error: bool,
     }
 
     struct PaginatedPages {
@@ -625,8 +677,16 @@ mod tests {
         async fn fetch_page(
             &self,
             query: &UsStockBarQuery,
+            _deadline: Instant,
         ) -> Result<UsStockBarPage, UsStockBarSourceError> {
-            self.calls.lock().await.push(query.clone());
+            let call_count = {
+                let mut calls = self.calls.lock().await;
+                calls.push(query.clone());
+                calls.len()
+            };
+            if self.deadline_exceeded_at_call == Some(call_count) {
+                return Err(UsStockBarSourceError::RunDeadlineExceeded);
+            }
             if let Some(message) = &self.fetch_error {
                 return Err(UsStockBarSourceError::Failed(message.clone()));
             }
@@ -741,8 +801,12 @@ mod tests {
             &self,
             query: &UsStockSplitQuery,
             max_requests: usize,
+            _deadline: Instant,
         ) -> Result<UsStockSplitBatch, UsStockBarSourceError> {
             self.split_calls.lock().await.push(query.clone());
+            if self.split_deadline_error {
+                return Err(UsStockBarSourceError::RunDeadlineExceeded);
+            }
             if query
                 .instrument_ids
                 .iter()
@@ -765,8 +829,9 @@ mod tests {
                     })
                     .cloned()
                     .collect(),
-                requests_attempted: usize::from(max_requests > 0),
-                has_more: self.split_has_more || max_requests == 0,
+                requests_attempted: usize::from(max_requests > 0 && !self.split_deadline_exceeded),
+                has_more: self.split_deadline_exceeded || self.split_has_more || max_requests == 0,
+                deadline_exceeded: self.split_deadline_exceeded,
                 skipped_instruments: Vec::new(),
             })
         }
@@ -1321,6 +1386,297 @@ mod tests {
                     },
                 ],
                 Some(hourly_end),
+            ),
+        );
+    }
+
+    #[test]
+    fn request_budget_stops_after_the_deadline_without_spending_another_request() {
+        let start = Instant::now();
+        let deadline = start + Duration::from_secs(1);
+        let mut budget = RequestBudget::with_deadline(2, deadline);
+
+        let actual = (
+            budget.take_at(1, start),
+            budget.take_at(1, deadline),
+            budget.remaining(),
+            budget.interrupted_reason,
+        );
+
+        assert_eq!(actual, (true, false, 1, Some("time_budget_exhausted")));
+    }
+
+    #[test]
+    fn request_budget_interruption_reason_is_independent_of_deadline() {
+        let deadline = Instant::now() - Duration::from_secs(1);
+        let mut budget = RequestBudget::with_deadline(2, deadline);
+
+        budget.mark_request_budget_exhausted();
+
+        assert_eq!(budget.interrupted_reason, Some("request_budget_exhausted"));
+    }
+
+    #[rstest]
+    #[case::daily(UsStockBarTimeframe::Daily)]
+    #[case::minute(UsStockBarTimeframe::Minute)]
+    #[case::hourly(UsStockBarTimeframe::Hourly)]
+    #[tokio::test]
+    async fn reports_time_budget_exhaustion_for_each_timeframe(
+        #[case] timeframe: UsStockBarTimeframe,
+        harness: Harness,
+    ) {
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec!["US:QZ-TIME-BUDGET".to_owned()])
+            .await;
+        let budget = RequestBudget::with_deadline(
+            MAX_REQUESTS_PER_RUN,
+            Instant::now() - Duration::from_secs(1),
+        );
+
+        let stats = if timeframe == UsStockBarTimeframe::Minute {
+            harness
+                .use_cases
+                .ingest_us_stock_minute_bars_with_budget(&harness.source, now, budget)
+                .await
+        } else {
+            harness
+                .use_cases
+                .ingest_us_stock_bars_for_timeframe(&harness.source, now, timeframe, budget)
+                .await
+        }
+        .expect("time budget exhaustion is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.len(),
+            harness
+                .repository
+                .bar_compression_times
+                .lock()
+                .await
+                .clone(),
+        );
+        let expected_compression_times = if timeframe == UsStockBarTimeframe::Minute {
+            vec![now]
+        } else {
+            Vec::new()
+        };
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                0,
+                expected_compression_times,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn throttle_stops_before_writing_when_the_deadline_arrives_during_wait(
+        mut harness: Harness,
+    ) {
+        let instrument_id = "US:DEMO-THROTTLE-DEADLINE";
+        let first_timestamp = date("2040-01-02T11:58:00Z");
+        let second_timestamp = date("2040-01-02T11:59:00Z");
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        let first_bar = bar(instrument_id, Timeframe::Minute, first_timestamp);
+        let second_bar = bar(instrument_id, Timeframe::Minute, second_timestamp);
+        *harness.source.bars.lock().await = vec![first_bar.clone(), second_bar];
+        harness.source.page_size = Some(1);
+        harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::from_millis(100),
+            Duration::from_millis(100),
+        ]);
+        let budget = RequestBudget::with_deadline(
+            MAX_REQUESTS_PER_RUN,
+            harness.clock.instant() + Duration::from_millis(250),
+        );
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars_with_budget(&harness.source, now, budget)
+            .await
+            .expect("throttle deadline is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.len(),
+            harness.repository.bars.lock().await.clone(),
+            harness.clock.sleeps(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 2,
+                    minute_bars_upserted: 1,
+                    write_throttle_wait_ms: 150,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                2,
+                vec![first_bar],
+                vec![Duration::from_millis(150)],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn records_a_source_deadline_and_still_compresses_minute_bars(mut harness: Harness) {
+        let instrument_id = "US:DEMO-TIME";
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.source.deadline_exceeded_at_call = Some(1);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("source deadline is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.clone(),
+            harness
+                .repository
+                .bar_compression_times
+                .lock()
+                .await
+                .clone(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![UsStockBarQuery {
+                    instrument_ids: vec![instrument_id.to_owned()],
+                    timeframe: Timeframe::Minute,
+                    from: UsStockBarTimeframe::Minute.history_start(now),
+                    to: now,
+                    page_token: None,
+                }],
+                vec![now],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[case::source_returns_deadline_error(false, true)]
+    #[case::batch_reports_deadline(true, false)]
+    #[tokio::test]
+    async fn reports_time_budget_exhaustion_for_split_deadlines(
+        #[case] split_deadline_exceeded: bool,
+        #[case] split_deadline_error: bool,
+        mut harness: Harness,
+    ) {
+        let instrument_id = "US:DEMO-SPLIT-TIME";
+        let now = date("2040-01-02T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness.source.split_deadline_exceeded = split_deadline_exceeded;
+        harness.source.split_deadline_error = split_deadline_error;
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("split deadline is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.len(),
+            harness.source.split_calls.lock().await.len(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 1,
+                    daily_bars_upserted: 1,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                1,
+                1,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn returns_time_budget_stats_when_split_refetch_page_expires(mut harness: Harness) {
+        let instrument_id = "US:DEMO-SPLIT-REFETCH";
+        let ex_date = date("2040-01-01T00:00:00Z");
+        let latest_daily = date("2040-01-02T00:00:00Z");
+        let now = date("2040-01-03T12:00:00Z");
+        harness
+            .repository
+            .seed_us_stock_targets(vec![instrument_id.to_owned()])
+            .await;
+        harness
+            .repository
+            .seed_bars(vec![
+                priced_bar(instrument_id, Timeframe::Daily, ex_date, 100),
+                priced_bar(instrument_id, Timeframe::Daily, latest_daily, 100),
+            ])
+            .await;
+        harness.source.splits.lock().await.push(UsStockSplit {
+            instrument_id: instrument_id.to_owned(),
+            ex_date: ex_date.date_naive(),
+            old_rate: Decimal::ONE,
+            new_rate: Decimal::new(2, 0),
+        });
+        harness.source.deadline_exceeded_at_call = Some(2);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, now)
+            .await
+            .expect("split refetch deadline is reported in stats");
+        let actual = (
+            stats,
+            harness.source.calls.lock().await.len(),
+            harness.source.split_calls.lock().await.len(),
+            harness.repository.bars.lock().await.len(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    symbols_attempted: 1,
+                    requests_attempted: 2,
+                    daily_bars_upserted: 1,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                2,
+                1,
+                3,
             ),
         );
     }

@@ -12,7 +12,7 @@ use crontabs::{ConfiguredJobs, build_crontabs};
 
 use crate::{
     jobs::{
-        DAILY_TIMEOUT, WEEKLY_TIMEOUT,
+        DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, WEEKLY_TIMEOUT,
         alpha_vantage::AlphaVantageCalendarIngest,
         boj_calendar::BojCalendarEventIngest,
         daily_bars::DailyBarsIngest,
@@ -73,9 +73,9 @@ pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 27] = [
     (EquityMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
     (ShareholdingStructureIngest::IDENTIFIER, DAILY_TIMEOUT),
     (UsStockMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (UsStockBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (UsStockMinuteBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (UsStockHourlyBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
+    (UsStockBarsIngest::IDENTIFIER, US_STOCK_BARS_TIMEOUT),
+    (UsStockMinuteBarsIngest::IDENTIFIER, US_STOCK_BARS_TIMEOUT),
+    (UsStockHourlyBarsIngest::IDENTIFIER, US_STOCK_BARS_TIMEOUT),
     (UsStockMinuteBarsDownsample::IDENTIFIER, DAILY_TIMEOUT),
 ];
 

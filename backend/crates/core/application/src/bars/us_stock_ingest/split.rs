@@ -1,8 +1,7 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
-
 use chrono::NaiveDate;
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::super::error::BarsUseCaseError;
 use super::super::types::{BarsQuery, UsStockBarTarget, UsStockBarsIngestStats};
@@ -10,7 +9,6 @@ use super::super::us_stock_source::{
     UsStockBarQuery, UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitQuery,
 };
 use super::super::use_cases::BarsUseCases;
-use super::super::write_throttle::WriteThrottle;
 use super::{
     BatchIngestContext, IngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST,
     UsStockBarRange, UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument,
@@ -29,21 +27,28 @@ impl BarsUseCases {
         let mut page_token = None;
         let mut pages = Vec::new();
         loop {
-            if !context.budget.take(1) {
+            if !context.budget.take_at(1, self.clock.instant()) {
                 return Ok(None);
             }
             context.stats.requests_attempted += 1;
             let page = match source
-                .fetch_page(&UsStockBarQuery {
-                    instrument_ids: instrument_ids.to_vec(),
-                    timeframe: timeframe.timeframe(),
-                    from: range.from,
-                    to: range.to,
-                    page_token: page_token.clone(),
-                })
+                .fetch_page(
+                    &UsStockBarQuery {
+                        instrument_ids: instrument_ids.to_vec(),
+                        timeframe: timeframe.timeframe(),
+                        from: range.from,
+                        to: range.to,
+                        page_token: page_token.clone(),
+                    },
+                    context.budget.deadline(),
+                )
                 .await
             {
                 Ok(page) => page,
+                Err(UsStockBarSourceError::RunDeadlineExceeded) => {
+                    context.record_deadline_before_request();
+                    return Ok(None);
+                }
                 Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
                     let (first, second) = match split_rejected_batch(instrument_ids, reason) {
                         RejectedBatch::Split(first, second) => (first, second),
@@ -94,14 +99,23 @@ impl BarsUseCases {
         &self,
         pages: Vec<Vec<Bar>>,
         timeframe: UsStockBarTimeframe,
-        write_throttle: &mut WriteThrottle,
-        stats: &mut UsStockBarsIngestStats,
-    ) -> Result<(), BarsUseCaseError> {
+        context: &mut IngestContext,
+    ) -> Result<bool, BarsUseCaseError> {
         for page in pages {
-            self.persist_bars(page, timeframe, write_throttle, stats)
-                .await?;
+            if !self
+                .persist_bars(
+                    page,
+                    timeframe,
+                    &mut context.write_throttle,
+                    &mut context.budget,
+                    &mut context.stats,
+                )
+                .await?
+            {
+                return Ok(false);
+            }
         }
-        Ok(())
+        Ok(true)
     }
 
     pub(super) async fn ingest_split_history(
@@ -214,10 +228,10 @@ impl BarsUseCases {
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<Option<Vec<UsStockSplit>>, BarsUseCaseError> {
-        let max_requests = budget.remaining();
-        if max_requests == 0 {
+        if !budget.can_start_request(self.clock.instant()) {
             return Ok(None);
         }
+        let max_requests = budget.remaining();
         let result = source
             .fetch_splits(
                 &UsStockSplitQuery {
@@ -226,11 +240,12 @@ impl BarsUseCases {
                     to,
                 },
                 max_requests,
+                budget.deadline(),
             )
             .await;
         match result {
             Ok(batch) => {
-                if !budget.take(batch.requests_attempted) {
+                if !budget.record(batch.requests_attempted) {
                     return Err(UsStockBarSourceError::Failed(
                         "source exceeded the request budget".to_owned(),
                     )
@@ -240,13 +255,22 @@ impl BarsUseCases {
                 for skipped in batch.skipped_instruments {
                     record_skipped_instrument(stats, skipped.instrument_id, skipped.reason);
                 }
+                if batch.deadline_exceeded {
+                    budget.mark_time_budget_exhausted();
+                    return Ok(None);
+                }
                 if batch.has_more {
+                    budget.mark_request_budget_exhausted();
                     return Ok(None);
                 }
                 Ok(Some(batch.splits))
             }
+            Err(UsStockBarSourceError::RunDeadlineExceeded) => {
+                budget.mark_time_budget_exhausted();
+                Ok(None)
+            }
             Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
-                if !budget.take(1) {
+                if !budget.take_at(1, self.clock.instant()) {
                     return Ok(None);
                 }
                 stats.requests_attempted += 1;
@@ -417,13 +441,12 @@ impl BarsUseCases {
                 };
                 (hourly_pages, batch_context.skipped_instrument_ids)
             };
-            self.persist_batch_pages(
-                hourly_pages,
-                UsStockBarTimeframe::Hourly,
-                &mut context.write_throttle,
-                &mut context.stats,
-            )
-            .await?;
+            if !self
+                .persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, context)
+                .await?
+            {
+                return Ok(false);
+            }
             self.mark_hourly_history_completed(
                 instrument_ids,
                 range.hourly_to,
@@ -432,20 +455,24 @@ impl BarsUseCases {
             .await?;
         }
 
-        self.persist_batch_pages(
-            daily_pages,
-            UsStockBarTimeframe::Daily,
-            &mut context.write_throttle,
-            &mut context.stats,
-        )
-        .await?;
-        self.persist_bars(
-            split_bars,
-            UsStockBarTimeframe::Daily,
-            &mut context.write_throttle,
-            &mut context.stats,
-        )
-        .await?;
+        if !self
+            .persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, context)
+            .await?
+        {
+            return Ok(false);
+        }
+        if !self
+            .persist_bars(
+                split_bars,
+                UsStockBarTimeframe::Daily,
+                &mut context.write_throttle,
+                &mut context.budget,
+                &mut context.stats,
+            )
+            .await?
+        {
+            return Ok(false);
+        }
         Ok(true)
     }
 }
