@@ -60,6 +60,7 @@ pub struct UsStockBarsIngestStats {
     pub hourly_bars_upserted: usize,
     pub skipped_instruments: Vec<super::us_stock_source::SkippedUsStockInstrument>,
     pub interrupted_reason: Option<String>,
+    pub compression_error: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

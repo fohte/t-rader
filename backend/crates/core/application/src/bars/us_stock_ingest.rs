@@ -157,7 +157,7 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        let ingest_result = self
+        let mut ingest_result = self
             .ingest_us_stock_bars_for_timeframe(
                 source,
                 now,
@@ -166,7 +166,11 @@ impl BarsUseCases {
             )
             .await;
         if let Err(error) = self.repository.compress_bars_older_than_policy(now).await {
-            tracing::error!(error = %error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
+            let compression_error = error.to_string();
+            tracing::error!(error = %compression_error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
+            if let Ok(stats) = &mut ingest_result {
+                stats.compression_error = Some(compression_error);
+            }
         }
         ingest_result
     }
@@ -1071,6 +1075,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                compression_error: None,
             },
             UsStockBarsIngestStats {
                 symbols_attempted: 2,
@@ -1080,6 +1085,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                compression_error: None,
             },
             vec![
                 UsStockBarQuery {
@@ -1240,7 +1246,13 @@ mod tests {
             .await
             .expect("compression failure does not mask minute ingestion stats");
 
-        assert_eq!(stats, UsStockBarsIngestStats::default());
+        assert_eq!(
+            stats,
+            UsStockBarsIngestStats {
+                compression_error: Some("compression failed".to_owned()),
+                ..UsStockBarsIngestStats::default()
+            },
+        );
     }
 
     #[rstest]
@@ -1317,6 +1329,7 @@ mod tests {
                         reason: "synthetic symbol rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -1512,6 +1525,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    compression_error: None,
                 },
                 UsStockBarsIngestStats {
                     symbols_attempted: 2,
@@ -1521,6 +1535,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 expected_calls,
                 vec![
@@ -1618,6 +1633,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    compression_error: None,
                 },
                 expected_calls,
                 vec![UsStockSplitQuery {
@@ -1690,6 +1706,7 @@ mod tests {
                         reason: "synthetic split rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -1804,6 +1821,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -2199,6 +2217,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![UsStockBarQuery {
                     instrument_ids: vec![instrument_id.to_owned()],
@@ -2276,6 +2295,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![
                     UsStockBarQuery {
@@ -2356,6 +2376,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    compression_error: None,
                 },
                 vec![UsStockBarQuery {
                     instrument_ids: vec![instrument_id.to_owned()],

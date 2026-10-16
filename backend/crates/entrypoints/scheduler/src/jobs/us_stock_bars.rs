@@ -141,6 +141,7 @@ fn log_ingest_stats(
         hourly_bars_upserted = stats.hourly_bars_upserted,
         skipped_instruments = stats.skipped_instruments.len(),
         interrupted_reason = ?stats.interrupted_reason,
+        compression_error = ?stats.compression_error,
         "US stock bar ingest cycle finished"
     );
     Ok(stats)
