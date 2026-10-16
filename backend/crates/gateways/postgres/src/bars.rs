@@ -35,15 +35,6 @@ pub struct PostgresBarsRepository {
     db: DatabaseHandle,
 }
 
-#[derive(Clone, Copy)]
-enum UsStockBarTargetSelection {
-    Daily,
-    Minute,
-}
-
-const MINUTE_BAR_UNREFERENCED_TARGET_LIMIT: usize = 100;
-const REFERENCED_US_STOCK_SELECTION: &str = "EXISTS (SELECT 1 FROM stock_group_member WHERE stock_group_member.stock_id = instruments.id) OR EXISTS (SELECT 1 FROM note_ref WHERE note_ref.ref_kind = 'stock' AND note_ref.ref_id = instruments.id)";
-
 impl PostgresBarsRepository {
     pub fn new(db: DatabaseHandle) -> Self {
         Self { db }
@@ -71,9 +62,8 @@ impl PostgresBarsRepository {
             .map_err(repository_error)
     }
 
-    async fn find_us_stock_bar_targets_matching(
+    async fn find_us_stock_bar_targets(
         &self,
-        selection: UsStockBarTargetSelection,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
         #[derive(FromQueryResult)]
         struct TargetRow {
@@ -87,34 +77,7 @@ impl PostgresBarsRepository {
             earliest_hourly_bar: Option<DateTime<FixedOffset>>,
         }
 
-        let selection = match selection {
-            UsStockBarTargetSelection::Daily => format!(
-                "EXISTS (SELECT 1 FROM stock WHERE stock.id = instruments.id AND stock.market IN ('Nasdaq', 'NYSE')) OR ({REFERENCED_US_STOCK_SELECTION})"
-            ),
-            UsStockBarTargetSelection::Minute => format!(
-                r#"({REFERENCED_US_STOCK_SELECTION}) OR instruments.id IN (
-                    SELECT candidate_stock.id
-                    FROM stock AS candidate_stock
-                    JOIN instruments AS candidate_instrument
-                        ON candidate_instrument.id = candidate_stock.id
-                    WHERE candidate_instrument.market = 'US'
-                      AND candidate_stock.market IN ('Nasdaq', 'NYSE')
-                      AND NOT EXISTS (
-                          SELECT 1 FROM stock_group_member
-                          WHERE stock_group_member.stock_id = candidate_stock.id
-                      )
-                      AND NOT EXISTS (
-                          SELECT 1 FROM note_ref
-                          WHERE note_ref.ref_kind = 'stock'
-                            AND note_ref.ref_id = candidate_stock.id
-                      )
-                    ORDER BY candidate_stock.id
-                    LIMIT {MINUTE_BAR_UNREFERENCED_TARGET_LIMIT}
-                )"#
-            ),
-        };
-        let query = format!(
-            r#"SELECT
+        let query = r#"SELECT
                 instruments.id AS instrument_id,
                 daily_bar.timestamp AS latest_daily_bar,
                 minute_bar.timestamp AS latest_minute_bar,
@@ -157,9 +120,24 @@ impl PostgresBarsRepository {
                 ORDER BY timestamp ASC LIMIT 1
             ) AS earliest_hourly_bar ON TRUE
             WHERE instruments.market = 'US'
-              AND ({selection})
+              AND (
+                  EXISTS (
+                      SELECT 1 FROM stock
+                      WHERE stock.id = instruments.id
+                        AND stock.market IN ('Nasdaq', 'NYSE')
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM stock_group_member
+                      WHERE stock_group_member.stock_id = instruments.id
+                  )
+                  OR EXISTS (
+                      SELECT 1 FROM note_ref
+                      WHERE note_ref.ref_kind = 'stock'
+                        AND note_ref.ref_id = instruments.id
+                  )
+              )
             ORDER BY instruments.id"#
-        );
+            .to_owned();
         let rows = self
             .db
             .query_all_raw(Statement::from_string(DatabaseBackend::Postgres, query))
@@ -292,15 +270,13 @@ impl BarsRepository for PostgresBarsRepository {
     async fn find_us_stock_minute_bar_targets(
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
-        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Minute)
-            .await
+        self.find_us_stock_bar_targets().await
     }
 
     async fn find_us_stock_daily_bar_targets(
         &self,
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
-        self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Daily)
-            .await
+        self.find_us_stock_bar_targets().await
     }
 
     async fn find_earliest_us_stock_minute_bar_before(
@@ -1318,7 +1294,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn minute_targets_keep_references_and_limit_eligible_unreferenced_stocks_by_id(
+    async fn minute_targets_match_daily_targets_for_all_eligible_stocks_and_references(
         db: DatabaseHandle,
     ) {
         let suffix = uuid::Uuid::new_v4().simple().to_string().to_uppercase();
@@ -1417,11 +1393,16 @@ mod tests {
         .await
         .expect("insert note reference");
 
-        let actual = PostgresBarsRepository::new(db)
+        let repository = PostgresBarsRepository::new(db);
+        let actual_minute = repository
             .find_us_stock_minute_bar_targets()
             .await
             .expect("find US stock minute bar targets");
-        let mut expected_ids = candidate_ids[..100].to_vec();
+        let actual_daily = repository
+            .find_us_stock_daily_bar_targets()
+            .await
+            .expect("find US stock daily bar targets");
+        let mut expected_ids = candidate_ids;
         expected_ids.extend([group_stock_id, note_stock_id]);
         expected_ids.sort();
         let expected = expected_ids
@@ -1438,7 +1419,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(actual, expected);
+        assert_eq!((actual_minute, actual_daily), (expected.clone(), expected));
     }
 
     #[backend_test_macros::database_test]
