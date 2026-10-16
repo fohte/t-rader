@@ -18,6 +18,8 @@ pub enum BarsUseCaseError {
     Repository(#[from] BarsRepositoryError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
+    #[error("米国株バーの commit probe に必要な取り込み実行コンテキストがありません")]
+    IngestRunContextRequired,
     #[error(transparent)]
     DailyBarSource(#[from] DailyBarSourceError),
     #[error(transparent)]

@@ -8,6 +8,7 @@ use core_application::ingest_run_log::IngestRunLog;
 use graphile_worker::WorkerContext;
 use serde::Serialize;
 use tokio::time::timeout;
+use uuid::Uuid;
 
 use crate::state::SchedulerState;
 
@@ -117,6 +118,27 @@ where
     run_with_ingest_run_log(ingest_run_log.as_ref(), task_name, timeout, task(state)).await
 }
 
+pub(super) async fn run_with_ingest_run_log_state_with_run_id<F, Fut, Stats>(
+    state: SchedulerState,
+    task_name: &'static str,
+    timeout: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: FnOnce(SchedulerState, Uuid) -> Fut,
+    Fut: Future<Output = Result<Stats, String>>,
+    Stats: Serialize,
+{
+    let ingest_run_log = state.dependencies.ingest_run_log.clone();
+    run_with_ingest_run_log_inner(
+        ingest_run_log.as_ref(),
+        task_name,
+        timeout,
+        move |run_id| async move { task(state, run_id).await.map_err(IngestTaskFailure::Error) },
+    )
+    .await
+}
+
 pub(super) async fn run_with_ingest_run_log_state_and_failure_stats<F, Fut, Stats>(
     state: SchedulerState,
     task_name: &'static str,
@@ -172,7 +194,7 @@ where
     F: Future<Output = Result<Stats, String>>,
     Stats: Serialize,
 {
-    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, async move {
+    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, move |_| async move {
         task.await.map_err(IngestTaskFailure::Error)
     })
     .await
@@ -188,7 +210,7 @@ where
     F: Future<Output = Result<Stats, (Stats, String)>>,
     Stats: Serialize,
 {
-    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, async move {
+    run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, move |_| async move {
         task.await
             .map_err(|(stats, error)| IngestTaskFailure::ErrorWithStats { stats, error })
     })
@@ -200,14 +222,15 @@ enum IngestTaskFailure<Stats> {
     ErrorWithStats { stats: Stats, error: String },
 }
 
-async fn run_with_ingest_run_log_inner<F, Stats>(
+async fn run_with_ingest_run_log_inner<F, Fut, Stats>(
     ingest_run_log: &dyn IngestRunLog,
     task_name: &'static str,
     duration: Duration,
     task: F,
 ) -> Result<(), String>
 where
-    F: Future<Output = Result<Stats, IngestTaskFailure<Stats>>>,
+    F: FnOnce(Uuid) -> Fut,
+    Fut: Future<Output = Result<Stats, IngestTaskFailure<Stats>>>,
     Stats: Serialize,
 {
     let run_id = match ingest_run_log.start(task_name).await {
@@ -219,7 +242,7 @@ where
         }
     };
 
-    let (recorded_result, failure_stats, timed_out) = match timeout(duration, task).await {
+    let (recorded_result, failure_stats, timed_out) = match timeout(duration, task(run_id)).await {
         Ok(Ok(stats)) => (
             serde_json::to_value(stats)
                 .map_err(|error| format!("failed to serialize job stats: {error}")),
@@ -373,6 +396,10 @@ mod tests {
             } else {
                 Ok(RUN_ID)
             }
+        }
+
+        async fn probe_commit(&self, _run_id: Uuid) -> Result<Duration, PersistenceError> {
+            Ok(Duration::ZERO)
         }
 
         async fn finish(

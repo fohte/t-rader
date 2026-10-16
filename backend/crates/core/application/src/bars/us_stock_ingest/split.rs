@@ -1,9 +1,7 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::time::Instant;
-
 use chrono::NaiveDate;
 use core_domain::bar::{Bar, Timeframe};
 use rust_decimal::Decimal;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::super::error::BarsUseCaseError;
 use super::super::types::{BarsQuery, UsStockBarTarget, UsStockBarsIngestStats};
@@ -12,8 +10,9 @@ use super::super::us_stock_source::{
 };
 use super::super::use_cases::BarsUseCases;
 use super::{
-    BatchIngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange,
-    UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
+    BatchIngestContext, IngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST,
+    UsStockBarRange, UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument,
+    split_rejected_batch,
 };
 
 impl BarsUseCases {
@@ -28,7 +27,7 @@ impl BarsUseCases {
         let mut page_token = None;
         let mut pages = Vec::new();
         loop {
-            if !context.budget.take(1) {
+            if !context.budget.take_at(1, self.clock.instant()) {
                 return Ok(None);
             }
             context.stats.requests_attempted += 1;
@@ -100,12 +99,23 @@ impl BarsUseCases {
         &self,
         pages: Vec<Vec<Bar>>,
         timeframe: UsStockBarTimeframe,
-        stats: &mut UsStockBarsIngestStats,
-    ) -> Result<(), BarsUseCaseError> {
+        context: &mut IngestContext,
+    ) -> Result<bool, BarsUseCaseError> {
         for page in pages {
-            self.persist_bars(page, timeframe, stats).await?;
+            if !self
+                .persist_bars(
+                    page,
+                    timeframe,
+                    &mut context.write_throttle,
+                    &mut context.budget,
+                    &mut context.stats,
+                )
+                .await?
+            {
+                return Ok(false);
+            }
         }
-        Ok(())
+        Ok(true)
     }
 
     pub(super) async fn ingest_split_history(
@@ -113,8 +123,7 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         targets: &[UsStockBarTarget],
         history_range: UsStockSplitHistoryRange,
-        budget: &mut RequestBudget,
-        stats: &mut UsStockBarsIngestStats,
+        context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
         if targets.is_empty() {
             return Ok(true);
@@ -133,8 +142,8 @@ impl BarsUseCases {
                     instrument_ids,
                     history_range.daily_from.date_naive(),
                     history_range.to.date_naive(),
-                    budget,
-                    stats,
+                    &mut context.budget,
+                    &mut context.stats,
                 )
                 .await?
             else {
@@ -191,8 +200,7 @@ impl BarsUseCases {
                         to: history_range.to,
                         hourly_to: history_range.hourly_to,
                     },
-                    budget,
-                    stats,
+                    context,
                 )
                 .await
             {
@@ -220,7 +228,7 @@ impl BarsUseCases {
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<Option<Vec<UsStockSplit>>, BarsUseCaseError> {
-        if !budget.can_start_request(Instant::now()) {
+        if !budget.can_start_request(self.clock.instant()) {
             return Ok(None);
         }
         let max_requests = budget.remaining();
@@ -262,7 +270,7 @@ impl BarsUseCases {
                 Ok(None)
             }
             Err(UsStockBarSourceError::RejectedSymbols(reason)) => {
-                if !budget.take(1) {
+                if !budget.take_at(1, self.clock.instant()) {
                     return Ok(None);
                 }
                 stats.requests_attempted += 1;
@@ -357,12 +365,11 @@ impl BarsUseCases {
         target: &UsStockBarTarget,
         split_factors: &BTreeMap<NaiveDate, Decimal>,
         range: UsStockSplitHistoryRange,
-        budget: &mut RequestBudget,
-        stats: &mut UsStockBarsIngestStats,
+        context: &mut IngestContext,
     ) -> Result<bool, BarsUseCaseError> {
         let instrument_ids = std::slice::from_ref(&target.instrument_id);
         let daily_pages = {
-            let mut context = BatchIngestContext::new(budget, stats);
+            let mut batch_context = BatchIngestContext::new(context);
             self.fetch_batch_pages(
                 source,
                 instrument_ids,
@@ -371,7 +378,7 @@ impl BarsUseCases {
                     from: range.daily_from,
                     to: range.to,
                 },
-                &mut context,
+                &mut batch_context,
             )
             .await?
         };
@@ -395,7 +402,7 @@ impl BarsUseCases {
         }
 
         let minute_history_complete = if target.earliest_minute_bar.is_some() {
-            let mut context = BatchIngestContext::new(budget, stats);
+            let mut batch_context = BatchIngestContext::new(context);
             self.ingest_batch(
                 source,
                 instrument_ids,
@@ -404,7 +411,7 @@ impl BarsUseCases {
                     from: range.minute_from,
                     to: range.to,
                 },
-                &mut context,
+                &mut batch_context,
             )
             .await?
         } else {
@@ -416,7 +423,7 @@ impl BarsUseCases {
 
         if target.has_hourly_history_backfill() || target.earliest_hourly_bar.is_some() {
             let (hourly_pages, skipped_hourly_instrument_ids) = {
-                let mut context = BatchIngestContext::new(budget, stats);
+                let mut batch_context = BatchIngestContext::new(context);
                 let Some(hourly_pages) = self
                     .fetch_batch_pages(
                         source,
@@ -426,16 +433,20 @@ impl BarsUseCases {
                             from: range.hourly_from,
                             to: range.hourly_to,
                         },
-                        &mut context,
+                        &mut batch_context,
                     )
                     .await?
                 else {
                     return Ok(false);
                 };
-                (hourly_pages, context.skipped_instrument_ids)
+                (hourly_pages, batch_context.skipped_instrument_ids)
             };
-            self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
-                .await?;
+            if !self
+                .persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, context)
+                .await?
+            {
+                return Ok(false);
+            }
             self.mark_hourly_history_completed(
                 instrument_ids,
                 range.hourly_to,
@@ -444,10 +455,24 @@ impl BarsUseCases {
             .await?;
         }
 
-        self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)
-            .await?;
-        self.persist_bars(split_bars, UsStockBarTimeframe::Daily, stats)
-            .await?;
+        if !self
+            .persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, context)
+            .await?
+        {
+            return Ok(false);
+        }
+        if !self
+            .persist_bars(
+                split_bars,
+                UsStockBarTimeframe::Daily,
+                &mut context.write_throttle,
+                &mut context.budget,
+                &mut context.stats,
+            )
+            .await?
+        {
+            return Ok(false);
+        }
         Ok(true)
     }
 }

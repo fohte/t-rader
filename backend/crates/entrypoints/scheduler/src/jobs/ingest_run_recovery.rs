@@ -64,6 +64,7 @@ mod tests {
     use chrono::{DateTime, Duration, FixedOffset};
     use core_application::{ingest_run_log::IngestRunLog, persistence::PersistenceError};
     use serde_json::Value;
+    use std::time::Duration as StdDuration;
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
@@ -78,6 +79,10 @@ mod tests {
     impl IngestRunLog for FakeIngestRunLog {
         async fn start(&self, _job: &str) -> Result<Uuid, PersistenceError> {
             Ok(Uuid::from_u128(1))
+        }
+
+        async fn probe_commit(&self, _run_id: Uuid) -> Result<StdDuration, PersistenceError> {
+            Ok(StdDuration::ZERO)
         }
 
         async fn finish(

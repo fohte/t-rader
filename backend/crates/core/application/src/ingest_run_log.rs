@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
 use serde_json::Value;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::event::{NewEvent, SharedEventRepository};
@@ -11,6 +12,12 @@ use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 #[async_trait]
 pub trait IngestRunRepository: Send + Sync {
     async fn start(&self, job: &str) -> Result<Uuid, PersistenceError>;
+
+    async fn probe_commit(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        run_id: Uuid,
+    ) -> Result<(), PersistenceError>;
 
     async fn finish(
         &self,
@@ -33,6 +40,8 @@ pub type SharedIngestRunRepository = std::sync::Arc<dyn IngestRunRepository + Se
 #[async_trait]
 pub trait IngestRunLog: Send + Sync {
     async fn start(&self, job: &str) -> Result<Uuid, PersistenceError>;
+
+    async fn probe_commit(&self, run_id: Uuid) -> Result<Duration, PersistenceError>;
 
     async fn finish(
         &self,
@@ -148,6 +157,21 @@ impl IngestRunLogUseCases {
 impl IngestRunLog for IngestRunLogUseCases {
     async fn start(&self, job: &str) -> Result<Uuid, PersistenceError> {
         self.repository.start(job).await
+    }
+
+    async fn probe_commit(&self, run_id: Uuid) -> Result<Duration, PersistenceError> {
+        let transaction = self
+            .unit_of_work
+            .begin()
+            .await
+            .map_err(|error| PersistenceError::Database(error.to_string()))?;
+        self.repository.probe_commit(&transaction, run_id).await?;
+        let commit_started_at = std::time::Instant::now();
+        self.unit_of_work
+            .commit(transaction)
+            .await
+            .map_err(|error| PersistenceError::Database(error.to_string()))?;
+        Ok(commit_started_at.elapsed())
     }
 
     async fn finish(

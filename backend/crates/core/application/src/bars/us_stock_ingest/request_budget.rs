@@ -10,8 +10,8 @@ pub(super) struct RequestBudget {
 }
 
 impl RequestBudget {
-    pub(super) fn new(max_requests: usize, max_duration: Duration) -> Self {
-        Self::with_deadline(max_requests, Instant::now() + max_duration)
+    pub(super) fn new(max_requests: usize, max_duration: Duration, started_at: Instant) -> Self {
+        Self::with_deadline(max_requests, started_at + max_duration)
     }
 
     pub(super) fn with_deadline(max_requests: usize, deadline: Instant) -> Self {
@@ -24,10 +24,6 @@ impl RequestBudget {
 
     pub(super) fn remaining(&self) -> usize {
         self.remaining
-    }
-
-    pub(super) fn take(&mut self, requests: usize) -> bool {
-        self.take_at(requests, Instant::now())
     }
 
     pub(super) fn take_at(&mut self, requests: usize, now: Instant) -> bool {

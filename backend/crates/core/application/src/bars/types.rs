@@ -58,6 +58,7 @@ pub struct UsStockBarsIngestStats {
     pub daily_bars_upserted: usize,
     pub minute_bars_upserted: usize,
     pub hourly_bars_upserted: usize,
+    pub write_throttle_wait_ms: u64,
     pub skipped_instruments: Vec<super::us_stock_source::SkippedUsStockInstrument>,
     pub interrupted_reason: Option<String>,
     /// 分足取り込みに成功した場合だけ、古い chunk の圧縮失敗を記録する。
