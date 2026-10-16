@@ -1,12 +1,7 @@
 use sea_orm_migration::prelude::*;
 
+#[derive(DeriveMigrationName)]
 pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20261016_193609_drop_graphile_worker_schema"
-    }
-}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {

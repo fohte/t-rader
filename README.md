@@ -51,7 +51,6 @@ docker compose -f docker-compose.app.yml up
 
 # 割り当てられたポートを確認 (アプリコンテナの一覧: docker compose -f docker-compose.app.yml ps)
 docker compose -f docker-compose.app.yml port backend 3000
-docker compose -f docker-compose.app.yml port backend 3001
 docker compose -f docker-compose.app.yml port frontend 5173
 docker compose -f docker-compose.app.yml port agent 8080
 ```

@@ -5,9 +5,6 @@ use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use chrono_tz::Asia::Tokyo;
 use core_application::bars::US_STOCK_BARS_MAX_RUN_DURATION;
 use core_application::ingest_run_log::IngestRunLog;
-use core_application::ingest_status::{
-    BOJ_CALENDAR_EVENT_INGEST_JOB, ECB_CALENDAR_EVENT_INGEST_JOB, FED_CALENDAR_EVENT_INGEST_JOB,
-};
 use serde::Serialize;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -43,75 +40,6 @@ pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
 pub(super) const US_STOCK_BARS_TIMEOUT: Duration = DAILY_TIMEOUT;
 pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-
-pub(crate) const RECOVERABLE_INGEST_JOBS: [(&str, Duration); 27] = [
-    (fred::FredIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (eoddata_kospi::EodDataKospiIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (twse::TwseIndexIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (
-        alpha_vantage::AlphaVantageCalendarIngest::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (
-        fred_release_dates::FredReleaseDatesIngest::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (
-        e_stat_calendar::EStatCalendarIngest::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (BOJ_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
-    (ECB_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
-    (FED_CALENDAR_EVENT_INGEST_JOB, DAILY_TIMEOUT),
-    (jquants::ShortRatioIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (jquants::ShortSaleReportIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (jquants::MarginIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (prediction::PredictionGrading::IDENTIFIER, WEEKLY_TIMEOUT),
-    (
-        paper_order_filling::PaperOrderFilling::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (daily_bars::DailyBarsIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (
-        earnings_schedule::EarningsScheduleIngest::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (
-        financial_summary::FinancialSummaryIngest::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (news::NewsAggregation::IDENTIFIER, DAILY_TIMEOUT),
-    (
-        news_content::NewsContentFetch::IDENTIFIER,
-        NEWS_CONTENT_JOB_TIMEOUT,
-    ),
-    (valuation::ValuationIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (equity_master::EquityMasterIngest::IDENTIFIER, DAILY_TIMEOUT),
-    (
-        edinet_holdings::ShareholdingStructureIngest::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (
-        us_stock_master::UsStockMasterIngest::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-    (
-        us_stock_bars::UsStockBarsIngest::IDENTIFIER,
-        US_STOCK_BARS_TIMEOUT,
-    ),
-    (
-        us_stock_bars::UsStockMinuteBarsIngest::IDENTIFIER,
-        US_STOCK_BARS_TIMEOUT,
-    ),
-    (
-        us_stock_bars::UsStockHourlyBarsIngest::IDENTIFIER,
-        US_STOCK_BARS_TIMEOUT,
-    ),
-    (
-        us_stock_bars::UsStockMinuteBarsDownsample::IDENTIFIER,
-        DAILY_TIMEOUT,
-    ),
-];
 
 const _: () = assert!(
     US_STOCK_BARS_MAX_RUN_DURATION.as_secs() < US_STOCK_BARS_TIMEOUT.as_secs(),

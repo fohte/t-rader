@@ -4,7 +4,7 @@ t-rader-backend は Kubernetes クラスタに配備する。backend Deployment 
 
 ## Service と接続経路
 
-- API は port `3000` を listen する (`BACKEND_PORT` で変更可)。本番 backend Deployment は `--run-mode api --skip-migration` を指定し、API のみを起動して起動時 migration を省略する。DB migration は API と CronJob の起動前に別途適用する。CronJob は同じ backend bin を `--run-job <job-name> --skip-migration` で起動する。
+- API は port `3000` を listen する (`BACKEND_PORT` で変更可)。API を起動する Deployment は `--run-mode api` を指定する。`--skip-migration` を付ける場合は、API と CronJob の起動前に DB migration を別途適用する。CronJob は同じ backend bin を `--run-job <job-name> --skip-migration` で起動する。
 - frontend Pod 内 nginx が `/api` を backend Service にリバースプロキシし、SPA から見て同一オリジン構成にする (frontend の Dockerfile と `nginx.conf.template` 参照)。
 - MCP クライアントは MCP path (`/mcp/strategy`, `/mcp/mgmt`) を叩く。戦略 Agent は in-cluster Service DNS 経由、管理 MCP の外部コントロールプレーンクライアントは Ingress/Tunnel 経由の公開ホスト名を叩くことが多い。いずれの場合も、クライアントが実際に送る `Host` ヘッダの値を `MCP_ALLOWED_HOSTS` に追加しないと `rmcp` の DNS rebinding 保護で 403 になる ([`docs/mcp.md`](./mcp.md))。
 - backend Service への外部からの経路は環境に応じて構成する (例: `/mcp/mgmt` のみ Ingress/Tunnel で外部公開し、他は frontend 経由に閉じる)。`MCP_ALLOWED_HOSTS` は DNS rebinding 対策の `Host` ヘッダ allowlist であり認証機構ではないため、外部公開時は Ingress/Tunnel 側で別途認証を課すこと ([`docs/mcp.md`](./mcp.md) の管理 MCP 節を参照)。
@@ -67,7 +67,7 @@ Pod spec 側の不変条件 (`automountServiceAccountToken: false`、`runAsNonRo
 
 ## マイグレーション
 
-`--skip-migration` を指定しない場合、起動時に SeaORM の `Migrator::up` を実行する。`--migrate-only` は migration を実行して終了するため、API や CronJob の起動前に initContainer などから実行できる。`--skip-migration` は起動時の migration を省略する。backend Deployment と CronJob に `--skip-migration` を指定する場合は、接続先 DB に必要な migration を事前に適用する。本番 backend Deployment は `--run-mode api --skip-migration` を指定する。
+`--skip-migration` を指定しない場合、起動時に SeaORM の `Migrator::up` を実行する。`--migrate-only` は migration を実行して終了するため、API や CronJob の起動前に initContainer などから実行できる。`--skip-migration` を付けて起動する場合は、接続先 DB に必要な migration を事前に適用する。
 
 ## 定期ジョブの単発実行
 
@@ -109,3 +109,5 @@ us_stock_hourly_bars_ingest
 us_stock_master_ingest
 valuation_ingest
 ```
+
+CronJob の schedule と retry 設定は deployment manifest で管理する。本番構成では `Asia/Tokyo` を使い、`strategy_task_reconcile` と `news_aggregation` を毎時、`news_content_fetch` を 10 分ごとに実行する。未完了タスクの再開とイベントの dispatch / cleanup に `strategy_task_reconcile` が必要なため、必ず定期実行する。ニュース取得、外部データ取得、paper trade のジョブは利用する機能に応じて有効化し、外部データソースの更新時刻に合わせて schedule を設定する。
