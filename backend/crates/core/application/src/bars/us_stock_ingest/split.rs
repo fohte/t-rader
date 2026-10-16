@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use core_domain::bar::Timeframe;
 use rust_decimal::Decimal;
 
@@ -11,8 +11,8 @@ use super::super::us_stock_source::{
 };
 use super::super::use_cases::BarsUseCases;
 use super::{
-    RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange, UsStockBarTimeframe,
-    UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
+    BatchIngestContext, RejectedBatch, RequestBudget, SYMBOLS_PER_REQUEST, UsStockBarRange,
+    UsStockBarTimeframe, UsStockSplitHistoryRange, record_skipped_instrument, split_rejected_batch,
 };
 
 impl BarsUseCases {
@@ -20,8 +20,7 @@ impl BarsUseCases {
         &self,
         source: &dyn UsStockBarSource,
         targets: &[UsStockBarTarget],
-        from: NaiveDate,
-        to: DateTime<Utc>,
+        history_range: UsStockSplitHistoryRange,
         budget: &mut RequestBudget,
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<bool, BarsUseCaseError> {
@@ -37,13 +36,22 @@ impl BarsUseCases {
         let mut splits_by_instrument: HashMap<String, Vec<UsStockSplit>> = HashMap::new();
         for instrument_ids in instrument_ids.chunks(SYMBOLS_PER_REQUEST) {
             let Some(batch_splits) = self
-                .fetch_split_batch(source, instrument_ids, from, to.date_naive(), budget, stats)
+                .fetch_split_batch(
+                    source,
+                    instrument_ids,
+                    history_range.daily_from.date_naive(),
+                    history_range.to.date_naive(),
+                    budget,
+                    stats,
+                )
                 .await?
             else {
                 return Ok(false);
             };
             for split in batch_splits {
-                if target_ids.contains(&split.instrument_id) && split.ex_date <= to.date_naive() {
+                if target_ids.contains(&split.instrument_id)
+                    && split.ex_date <= history_range.to.date_naive()
+                {
                     splits_by_instrument
                         .entry(split.instrument_id.clone())
                         .or_default()
@@ -81,11 +89,15 @@ impl BarsUseCases {
                     UsStockSplitHistoryRange {
                         daily_from: UsStockBarTimeframe::Daily
                             .earliest_bar(target)
-                            .unwrap_or_else(|| UsStockBarTimeframe::Daily.history_start(to)),
+                            .unwrap_or(history_range.daily_from),
                         minute_from: UsStockBarTimeframe::Minute
                             .earliest_bar(target)
-                            .unwrap_or_else(|| UsStockBarTimeframe::Minute.history_start(to)),
-                        to,
+                            .unwrap_or(history_range.minute_from),
+                        hourly_from: UsStockBarTimeframe::Hourly
+                            .earliest_bar(target)
+                            .unwrap_or(history_range.hourly_from),
+                        to: history_range.to,
+                        hourly_to: history_range.hourly_to,
                     },
                     budget,
                     stats,
@@ -152,9 +164,15 @@ impl BarsUseCases {
                     return Ok(None);
                 }
                 stats.requests_attempted += 1;
-                let Some((first, second)) = split_rejected_batch(instrument_ids, reason, stats)
-                else {
-                    return Ok(Some(Vec::new()));
+                let (first, second) = match split_rejected_batch(instrument_ids, reason) {
+                    RejectedBatch::Split(first, second) => (first, second),
+                    RejectedBatch::Skipped {
+                        instrument_id,
+                        reason,
+                    } => {
+                        record_skipped_instrument(stats, instrument_id, reason);
+                        return Ok(Some(Vec::new()));
+                    }
                 };
                 let Some(mut first_splits) =
                     Box::pin(self.fetch_split_batch(source, first, from, to, budget, stats))
@@ -241,8 +259,9 @@ impl BarsUseCases {
         stats: &mut UsStockBarsIngestStats,
     ) -> Result<bool, BarsUseCaseError> {
         let instrument_ids = std::slice::from_ref(&target.instrument_id);
-        let Some(mut daily_pages) = self
-            .fetch_batch_pages(
+        let daily_pages = {
+            let mut context = BatchIngestContext::new(budget, stats);
+            self.fetch_batch_pages(
                 source,
                 instrument_ids,
                 UsStockBarTimeframe::Daily,
@@ -250,11 +269,11 @@ impl BarsUseCases {
                     from: range.daily_from,
                     to: range.to,
                 },
-                budget,
-                stats,
+                &mut context,
             )
             .await?
-        else {
+        };
+        let Some(mut daily_pages) = daily_pages else {
             return Ok(false);
         };
         let mut split_bars = Vec::new();
@@ -274,6 +293,7 @@ impl BarsUseCases {
         }
 
         let minute_history_complete = if target.earliest_minute_bar.is_some() {
+            let mut context = BatchIngestContext::new(budget, stats);
             self.ingest_batch(
                 source,
                 instrument_ids,
@@ -282,8 +302,7 @@ impl BarsUseCases {
                     from: range.minute_from,
                     to: range.to,
                 },
-                budget,
-                stats,
+                &mut context,
             )
             .await?
         } else {
@@ -291,6 +310,36 @@ impl BarsUseCases {
         };
         if !minute_history_complete {
             return Ok(false);
+        }
+
+        if target.has_hourly_history_backfill() || target.earliest_hourly_bar.is_some() {
+            let (hourly_pages, skipped_hourly_instrument_ids) = {
+                let mut context = BatchIngestContext::new(budget, stats);
+                let Some(hourly_pages) = self
+                    .fetch_batch_pages(
+                        source,
+                        instrument_ids,
+                        UsStockBarTimeframe::Hourly,
+                        UsStockBarRange {
+                            from: range.hourly_from,
+                            to: range.hourly_to,
+                        },
+                        &mut context,
+                    )
+                    .await?
+                else {
+                    return Ok(false);
+                };
+                (hourly_pages, context.skipped_instrument_ids)
+            };
+            self.persist_batch_pages(hourly_pages, UsStockBarTimeframe::Hourly, stats)
+                .await?;
+            self.mark_hourly_history_completed(
+                instrument_ids,
+                range.hourly_to,
+                &skipped_hourly_instrument_ids,
+            )
+            .await?;
         }
 
         self.persist_batch_pages(daily_pages, UsStockBarTimeframe::Daily, stats)

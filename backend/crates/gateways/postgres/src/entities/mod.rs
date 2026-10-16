@@ -59,5 +59,6 @@ pub mod subagent_definition;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;
+pub mod us_stock_hourly_bar_ingest_progress;
 pub mod valuation;
 pub mod valuation_ingested_date;

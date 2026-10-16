@@ -1,21 +1,23 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use chrono::{DateTime, FixedOffset, NaiveDate};
+use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use core_application::bars::{
     BarsByInstrumentsQuery, BarsQuery, BarsRepository, BarsRepositoryError,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
     Statement,
 };
 
 use crate::DatabaseHandle;
-use crate::entities::{instruments, jquants_daily_bars_ingested_date};
+use crate::entities::{
+    instruments, jquants_daily_bars_ingested_date, us_stock_hourly_bar_ingest_progress,
+};
 use crate::persistence::persistence_error;
 use crate::repositories::bars::{self as bar_queries, BarsQuery as PostgresBarsQuery};
 use crate::transaction::transaction_ref as postgres_transaction_ref;
@@ -67,8 +69,11 @@ impl PostgresBarsRepository {
             instrument_id: String,
             latest_daily_bar: Option<DateTime<FixedOffset>>,
             latest_minute_bar: Option<DateTime<FixedOffset>>,
+            latest_hourly_bar: Option<DateTime<FixedOffset>>,
+            hourly_history_completed_through: Option<DateTime<FixedOffset>>,
             earliest_daily_bar: Option<DateTime<FixedOffset>>,
             earliest_minute_bar: Option<DateTime<FixedOffset>>,
+            earliest_hourly_bar: Option<DateTime<FixedOffset>>,
         }
 
         let selection = match selection {
@@ -84,8 +89,11 @@ impl PostgresBarsRepository {
                 instruments.id AS instrument_id,
                 daily_bar.timestamp AS latest_daily_bar,
                 minute_bar.timestamp AS latest_minute_bar,
+                hourly_bar.timestamp AS latest_hourly_bar,
+                hourly_progress.completed_through AS hourly_history_completed_through,
                 earliest_daily_bar.timestamp AS earliest_daily_bar,
-                earliest_minute_bar.timestamp AS earliest_minute_bar
+                earliest_minute_bar.timestamp AS earliest_minute_bar,
+                earliest_hourly_bar.timestamp AS earliest_hourly_bar
             FROM instruments
             LEFT JOIN LATERAL (
                 SELECT timestamp FROM bars
@@ -104,9 +112,21 @@ impl PostgresBarsRepository {
             ) AS minute_bar ON TRUE
             LEFT JOIN LATERAL (
                 SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1h'
+                ORDER BY timestamp DESC LIMIT 1
+            ) AS hourly_bar ON TRUE
+            LEFT JOIN us_stock_hourly_bar_ingest_progress AS hourly_progress
+                ON hourly_progress.instrument_id = instruments.id
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
                 WHERE instrument_id = instruments.id AND timeframe = '1m'
                 ORDER BY timestamp ASC LIMIT 1
             ) AS earliest_minute_bar ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT timestamp FROM bars
+                WHERE instrument_id = instruments.id AND timeframe = '1h'
+                ORDER BY timestamp ASC LIMIT 1
+            ) AS earliest_hourly_bar ON TRUE
             WHERE instruments.market = 'US'
               AND ({selection})
             ORDER BY instruments.id"#
@@ -124,9 +144,16 @@ impl PostgresBarsRepository {
                     instrument_id: row.instrument_id,
                     latest_daily_bar: row.latest_daily_bar.map(|timestamp| timestamp.to_utc()),
                     latest_minute_bar: row.latest_minute_bar.map(|timestamp| timestamp.to_utc()),
+                    latest_hourly_bar: row.latest_hourly_bar.map(|timestamp| timestamp.to_utc()),
+                    hourly_history_completed_through: row
+                        .hourly_history_completed_through
+                        .map(|timestamp| timestamp.to_utc()),
                     earliest_daily_bar: row.earliest_daily_bar.map(|timestamp| timestamp.to_utc()),
                     earliest_minute_bar: row
                         .earliest_minute_bar
+                        .map(|timestamp| timestamp.to_utc()),
+                    earliest_hourly_bar: row
+                        .earliest_hourly_bar
                         .map(|timestamp| timestamp.to_utc()),
                 })
             })
@@ -239,6 +266,39 @@ impl BarsRepository for PostgresBarsRepository {
     ) -> Result<Vec<core_application::bars::UsStockBarTarget>, BarsRepositoryError> {
         self.find_us_stock_bar_targets_matching(UsStockBarTargetSelection::Daily)
             .await
+    }
+
+    async fn mark_us_stock_hourly_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        if instrument_ids.is_empty() {
+            return Ok(());
+        }
+
+        us_stock_hourly_bar_ingest_progress::Entity::insert_many(
+            instrument_ids.iter().map(|instrument_id| {
+                us_stock_hourly_bar_ingest_progress::ActiveModel {
+                    instrument_id: Set(instrument_id.clone()),
+                    completed_through: Set(completed_through.fixed_offset()),
+                }
+            }),
+        )
+        .on_conflict(
+            OnConflict::column(us_stock_hourly_bar_ingest_progress::Column::InstrumentId)
+                .value(
+                    us_stock_hourly_bar_ingest_progress::Column::CompletedThrough,
+                    Expr::cust(
+                        "GREATEST(us_stock_hourly_bar_ingest_progress.completed_through, EXCLUDED.completed_through)",
+                    ),
+                )
+                .to_owned(),
+        )
+        .exec_without_returning(&self.db)
+        .await
+        .map(|_| ())
+        .map_err(repository_error)
     }
 
     async fn find_ingested_dates(
@@ -629,6 +689,39 @@ mod tests {
             .commit(transaction)
             .await
             .expect("commit transaction");
+        let initial_hourly_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 10, 0)
+            .single()
+            .expect("hourly progress timestamp");
+        let later_hourly_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 20, 0)
+            .single()
+            .expect("later hourly progress timestamp");
+        let older_hourly_progress = Utc
+            .with_ymd_and_hms(2040, 1, 2, 15, 0, 0)
+            .single()
+            .expect("older hourly progress timestamp");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                initial_hourly_progress,
+            )
+            .await
+            .expect("mark initial hourly progress");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                later_hourly_progress,
+            )
+            .await
+            .expect("mark later hourly progress");
+        repository
+            .mark_us_stock_hourly_bar_history_completed(
+                std::slice::from_ref(&group_stock_id),
+                older_hourly_progress,
+            )
+            .await
+            .expect("ignore older hourly progress");
 
         let actual = repository
             .find_us_stock_bar_targets()
@@ -642,6 +735,12 @@ mod tests {
                     instrument_id: group_stock_id,
                     latest_daily_bar: Some(daily_latest),
                     latest_minute_bar: Some(minute_latest),
+                    latest_hourly_bar: Some(
+                        Utc.with_ymd_and_hms(2040, 1, 2, 15, 5, 0)
+                            .single()
+                            .expect("latest hourly timestamp"),
+                    ),
+                    hourly_history_completed_through: Some(later_hourly_progress),
                     earliest_daily_bar: Some(
                         Utc.with_ymd_and_hms(2040, 1, 1, 0, 0, 0)
                             .single()
@@ -652,13 +751,21 @@ mod tests {
                             .single()
                             .expect("earliest minute timestamp"),
                     ),
+                    earliest_hourly_bar: Some(
+                        Utc.with_ymd_and_hms(2040, 1, 2, 15, 2, 0)
+                            .single()
+                            .expect("earliest hourly timestamp"),
+                    ),
                 },
                 UsStockBarTarget {
                     instrument_id: note_stock_id,
                     latest_daily_bar: Some(note_daily_latest),
                     latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
                     earliest_daily_bar: Some(note_daily_latest),
                     earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
                 },
             ],
         );
@@ -738,22 +845,31 @@ mod tests {
                     instrument_id: nasdaq_id,
                     latest_daily_bar: None,
                     latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
                     earliest_daily_bar: None,
                     earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
                 },
                 UsStockBarTarget {
                     instrument_id: nyse_id,
                     latest_daily_bar: None,
                     latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
                     earliest_daily_bar: None,
                     earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
                 },
                 UsStockBarTarget {
                     instrument_id: referenced_otc_id,
                     latest_daily_bar: None,
                     latest_minute_bar: None,
+                    latest_hourly_bar: None,
+                    hourly_history_completed_through: None,
                     earliest_daily_bar: None,
                     earliest_minute_bar: None,
+                    earliest_hourly_bar: None,
                 },
             ],
         );

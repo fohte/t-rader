@@ -6,12 +6,12 @@
 
 ## Columns
 
-| Name   | Type    | Default | Nullable | Children                      | Parents | Comment                                             |
-| ------ | ------- | ------- | -------- | ----------------------------- | ------- | --------------------------------------------------- |
-| id     | varchar |         | false    | [public.bars](public.bars.md) |         |                                                     |
-| name   | varchar |         | false    |                               |         | 金融商品の名称。                                    |
-| market | varchar |         | false    |                               |         | 金融商品が上場する市場。TSE、US、OTHER のいずれか。 |
-| sector | varchar |         | true     |                               |         | 金融商品に設定された業種名。                        |
+| Name   | Type    | Default | Nullable | Children                                                                                                                  | Parents | Comment                                             |
+| ------ | ------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------- |
+| id     | varchar |         | false    | [public.bars](public.bars.md) [public.us_stock_hourly_bar_ingest_progress](public.us_stock_hourly_bar_ingest_progress.md) |         |                                                     |
+| name   | varchar |         | false    |                                                                                                                           |         | 金融商品の名称。                                    |
+| market | varchar |         | false    |                                                                                                                           |         | 金融商品が上場する市場。TSE、US、OTHER のいずれか。 |
+| sector | varchar |         | true     |                                                                                                                           |         | 金融商品に設定された業種名。                        |
 
 ## Constraints
 
@@ -32,6 +32,7 @@
 erDiagram
 
 "public.bars" }o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
+"public.us_stock_hourly_bar_ingest_progress" |o--|| "public.instruments" : "FOREIGN KEY (instrument_id) REFERENCES instruments(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -49,6 +50,10 @@ erDiagram
   numeric close
   bigint volume
   numeric adjustment_factor
+}
+"public.us_stock_hourly_bar_ingest_progress" {
+  text instrument_id FK
+  timestamp_with_time_zone completed_through
 }
 ```
 

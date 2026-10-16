@@ -11,6 +11,9 @@ pub struct UsStockBarsIngest;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UsStockMinuteBarsIngest;
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UsStockHourlyBarsIngest;
+
 impl TaskHandler for UsStockBarsIngest {
     const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
 
@@ -86,6 +89,44 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
     }
 }
 
+impl TaskHandler for UsStockHourlyBarsIngest {
+    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
+
+    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
+        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
+    }
+}
+
+impl super::SchedulerJob for UsStockHourlyBarsIngest {
+    const IDENTIFIER: &'static str =
+        core_application::ingest_status::US_STOCK_HOURLY_BARS_INGEST_JOB;
+
+    fn run(state: crate::state::SchedulerState) -> super::JobFuture {
+        Box::pin(async move {
+            run_with_ingest_run_log_state(
+                state,
+                <Self as super::SchedulerJob>::IDENTIFIER,
+                DAILY_TIMEOUT,
+                |state| async move {
+                    let source = require_source(
+                        state.dependencies.us_stock_bar_source,
+                        "Alpaca US stock bar source",
+                    )?;
+                    log_ingest_stats(
+                        "1h",
+                        state
+                            .dependencies
+                            .bars
+                            .ingest_us_stock_hourly_bars(source.as_ref(), Utc::now())
+                            .await,
+                    )
+                },
+            )
+            .await
+        })
+    }
+}
+
 fn log_ingest_stats(
     bar_timeframe: &'static str,
     result: Result<UsStockBarsIngestStats, BarsUseCaseError>,
@@ -97,6 +138,7 @@ fn log_ingest_stats(
         requests_attempted = stats.requests_attempted,
         daily_bars_upserted = stats.daily_bars_upserted,
         minute_bars_upserted = stats.minute_bars_upserted,
+        hourly_bars_upserted = stats.hourly_bars_upserted,
         skipped_instruments = stats.skipped_instruments.len(),
         interrupted_reason = ?stats.interrupted_reason,
         "US stock bar ingest cycle finished"

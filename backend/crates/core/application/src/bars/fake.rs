@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use core_domain::bar::{Bar, Timeframe};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::persistence::PersistenceError;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{BarsRepository, BarsRepositoryError};
@@ -18,9 +19,11 @@ pub struct FakeBarsRepository {
     pub instruments: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_daily_targets: Mutex<HashSet<String>>,
+    pub us_stock_hourly_bar_history_completed_through: Mutex<HashMap<String, DateTime<Utc>>>,
     pub write_transaction_ids: Mutex<Vec<Uuid>>,
     pub daily_adjustment_factors: Mutex<HashMap<String, Vec<DailyBarAdjustmentFactor>>>,
     pub daily_adjustment_factor_queries: Mutex<Vec<(String, NaiveDate)>>,
+    hourly_upsert_error: Mutex<Option<String>>,
 }
 
 impl FakeBarsRepository {
@@ -60,6 +63,10 @@ impl FakeBarsRepository {
             .extend(factors);
     }
 
+    pub async fn fail_hourly_upserts_with(&self, message: impl Into<String>) {
+        *self.hourly_upsert_error.lock().await = Some(message.into());
+    }
+
     async fn all_bars(&self) -> Vec<Bar> {
         self.bars.lock().await.clone()
     }
@@ -69,6 +76,10 @@ impl FakeBarsRepository {
         target_ids: HashSet<String>,
     ) -> Result<Vec<UsStockBarTarget>, BarsRepositoryError> {
         let bars = self.bars.lock().await;
+        let hourly_progress = self
+            .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await;
         let mut targets = target_ids
             .into_iter()
             .map(|instrument_id| UsStockBarTarget {
@@ -86,6 +97,14 @@ impl FakeBarsRepository {
                     })
                     .max_by_key(|bar| bar.timestamp)
                     .map(|bar| bar.timestamp),
+                latest_hourly_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Hourly
+                    })
+                    .max_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                hourly_history_completed_through: hourly_progress.get(&instrument_id).copied(),
                 earliest_daily_bar: bars
                     .iter()
                     .filter(|bar| {
@@ -97,6 +116,13 @@ impl FakeBarsRepository {
                     .iter()
                     .filter(|bar| {
                         bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Minute
+                    })
+                    .min_by_key(|bar| bar.timestamp)
+                    .map(|bar| bar.timestamp),
+                earliest_hourly_bar: bars
+                    .iter()
+                    .filter(|bar| {
+                        bar.instrument_id == instrument_id && bar.timeframe == Timeframe::Hourly
                     })
                     .min_by_key(|bar| bar.timestamp)
                     .map(|bar| bar.timestamp),
@@ -198,6 +224,24 @@ impl BarsRepository for FakeBarsRepository {
         self.find_targets(target_ids).await
     }
 
+    async fn mark_us_stock_hourly_bar_history_completed(
+        &self,
+        instrument_ids: &[String],
+        completed_through: DateTime<Utc>,
+    ) -> Result<(), BarsRepositoryError> {
+        let mut progress = self
+            .us_stock_hourly_bar_history_completed_through
+            .lock()
+            .await;
+        for instrument_id in instrument_ids {
+            progress
+                .entry(instrument_id.clone())
+                .and_modify(|saved| *saved = (*saved).max(completed_through))
+                .or_insert(completed_through);
+        }
+        Ok(())
+    }
+
     async fn find_ingested_dates(
         &self,
         from: NaiveDate,
@@ -228,6 +272,15 @@ impl BarsRepository for FakeBarsRepository {
         new_bars: Vec<Bar>,
     ) -> Result<(), BarsRepositoryError> {
         self.record_transaction(transaction).await?;
+        if new_bars
+            .iter()
+            .any(|bar| bar.timeframe == Timeframe::Hourly)
+            && let Some(message) = self.hourly_upsert_error.lock().await.take()
+        {
+            return Err(BarsRepositoryError::Database(PersistenceError::Database(
+                message,
+            )));
+        }
         let mut bars = self.bars.lock().await;
         upsert_bar_batch(&mut bars, new_bars);
         Ok(())
