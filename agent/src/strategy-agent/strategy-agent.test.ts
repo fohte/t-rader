@@ -35,6 +35,7 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+import type { FetchSubagentDefinition } from '#strategy-agent/subagent-definition-client'
 import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
 import {
   type CaptureWithFingerprintMock,
@@ -156,6 +157,7 @@ const AGENT_CONFIG: AgentConfig = {
 interface BuildDepsOptions {
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
+  readonly fetchSubagentDefinition?: FetchSubagentDefinition
   readonly buildPhaseAgentInvoke?: (
     input: Parameters<CompiledPhaseAgent['invoke']>[0],
     calls: Calls,
@@ -164,6 +166,10 @@ interface BuildDepsOptions {
 
 interface McpClientCall {
   readonly executionId: string
+  readonly subagentExecution?: {
+    readonly executionId: string
+    readonly definitionKey: string
+  }
   closed: boolean
 }
 
@@ -195,9 +201,21 @@ const buildDeps = (
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
       })
     },
-    createMcpClient: (_strategyId, executionId, toolModels): McpToolsClient => {
+    fetchSubagentDefinition:
+      options.fetchSubagentDefinition ??
+      (() => errAsync(new Error('unexpected subagent definition fetch'))),
+    createMcpClient: (
+      _strategyId,
+      executionId,
+      toolModels,
+      subagentExecution,
+    ): McpToolsClient => {
       calls.mcpClientToolModels.push(toolModels)
-      const client: McpClientCall = { executionId, closed: false }
+      const client: McpClientCall = {
+        executionId,
+        closed: false,
+        ...(subagentExecution !== undefined ? { subagentExecution } : {}),
+      }
       calls.mcpClients.push(client)
       return {
         getTools: () => Promise.resolve([...(options.tools ?? [])]),
@@ -1366,6 +1384,55 @@ describe('createStrategyAgentDeps', () => {
         },
       ],
     })
+  })
+
+  it('enforces a shared per-subagent model-call budget', async () => {
+    const requestedToolCounts: number[] = []
+    let callCount = 0
+    const modelCallBudget = { maxModelCalls: 2, count: 0 }
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
+      requestedToolCounts.push(tools.length)
+      const toolCall =
+        tools.length === 1
+          ? {
+              name: tools[0]?.function.name,
+              arguments: JSON.stringify({
+                status: 'completed',
+                message: 'done',
+              }),
+            }
+          : { name: 'search', arguments: '{}' }
+      return Promise.resolve(
+        buildToolCallResponse(`call-${String(callCount)}`, toolCall),
+      )
+    })
+    const agent = buildPhaseAgentUnderTest(
+      createStrategyAgentDeps(baseConfig),
+      {
+        model,
+        tools: [buildFakeTool('search')],
+        systemPrompt: 'you are a helpful bot',
+        maxModelCalls: modelCallBudget.maxModelCalls,
+        modelCallBudget,
+      },
+    )
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    const actual = Array.of<unknown>(
+      result.structuredResponse,
+      requestedToolCounts,
+      modelCallBudget,
+    )
+
+    expect(actual).toEqual([
+      { status: 'completed', message: 'done' },
+      [2, 1],
+      { maxModelCalls: 2, count: 2 },
+    ])
   })
 
   it('logs immediately when the model ends without a structured-output tool call', async () => {

@@ -2,7 +2,7 @@ import type { Message } from '@a2a-js/sdk'
 import { createGenAiTracingMiddleware } from '@fohte/service-kit/langchain-genai'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { SystemMessage } from '@langchain/core/messages'
+import { BaseMessage, SystemMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
@@ -28,8 +28,10 @@ import { withAsOf } from '#strategy-agent/as-of'
 import { createCallDurationMiddleware } from '#strategy-agent/call-duration-middleware'
 import { createDeadlineMiddleware } from '#strategy-agent/deadline-middleware'
 import {
+  createFinalTurnMiddleware,
   finalTurnMiddleware,
   MAX_MODEL_CALLS_PER_INVOKE,
+  type ModelCallBudget,
 } from '#strategy-agent/final-turn-middleware'
 import { createModelCallRetryMiddleware } from '#strategy-agent/model-call-retry-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
@@ -39,6 +41,9 @@ import {
   reasoningContentMiddleware,
 } from '#strategy-agent/reasoning-content-middleware'
 import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
+import type { FetchSubagentDefinition } from '#strategy-agent/subagent-definition-client'
+import { createSubagentDefinitionFetcher } from '#strategy-agent/subagent-definition-client'
+import { createRunSubagentTool } from '#strategy-agent/subagent-tool'
 import {
   createToolCallCapMiddleware,
   MAX_TOOL_CALLS_PER_MODEL_CALL,
@@ -80,6 +85,7 @@ interface SubagentExecutionIdentity {
 
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
+  readonly fetchSubagentDefinition: FetchSubagentDefinition
   readonly createMcpClient: (
     strategyId: string,
     executionId: string,
@@ -115,8 +121,20 @@ const buildCompiledAgent = (
     responseFormat: ReturnType<typeof toolStrategy>
     deadlineSignal?: AbortSignal
     phaseTimeout?: BuildPhaseAgentOptions['phaseTimeout']
+    maxModelCalls?: number
+    modelCallBudget?: ModelCallBudget
+    captureMessagesOnAbort?: boolean
   },
 ): CompiledPhaseAgent => {
+  const modelCallMiddleware =
+    options.modelCallBudget !== undefined
+      ? createFinalTurnMiddleware(
+          options.maxModelCalls ?? options.modelCallBudget.maxModelCalls,
+          options.modelCallBudget,
+        )
+      : options.maxModelCalls !== undefined
+        ? createFinalTurnMiddleware(options.maxModelCalls)
+        : finalTurnMiddleware
   const agent = createAgent({
     model: options.model,
     tools: [...options.tools],
@@ -129,7 +147,7 @@ const buildCompiledAgent = (
       // tracing middleware の wrapToolCall は tool error を自動復旧しないため、
       // 通常の ToolMessage に戻しつつ MCP の通信障害を記録する。
       createStrategyToolErrorMiddleware(),
-      finalTurnMiddleware,
+      modelCallMiddleware,
       // finalTurnMiddleware より内側に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
@@ -151,16 +169,49 @@ const buildCompiledAgent = (
       // LangChain の戻り値検証前に assistant 以外の message を再試行可能なエラーへ変える。
       nonAssistantModelResponseMiddleware,
     ],
+    ...(options.deadlineSignal !== undefined
+      ? { signal: options.deadlineSignal }
+      : {}),
   })
   return {
     invoke: async (input) => {
+      const recursionLimit =
+        (options.modelCallBudget?.maxModelCalls ??
+          options.maxModelCalls ??
+          MAX_MODEL_CALLS_PER_INVOKE) * 3
+      if (options.captureMessagesOnAbort === true) {
+        let latestState: {
+          readonly messages: readonly BaseMessage[]
+          readonly structuredResponse?: Record<string, unknown>
+        } = { messages: [...input.messages] }
+        const stream = agent
+          .stream(
+            { messages: [...input.messages] },
+            { streamMode: 'values', recursionLimit },
+          )
+          .then(async (values) => {
+            for await (const value of values) {
+              latestState = parseAgentState(value) ?? latestState
+            }
+            return latestState
+          })
+        return stream.then(
+          (state) => state,
+          (error: unknown) => {
+            if (options.deadlineSignal?.aborted === true) return latestState
+            return Promise.reject(
+              error instanceof Error ? error : new Error(String(error)),
+            )
+          },
+        )
+      }
       const result = await agent.invoke(
         { messages: [...input.messages] },
         {
           // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
           // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
           // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
-          recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3,
+          recursionLimit,
         },
       )
       // createAgent の推論型では structuredResponse は常に存在する扱いだが、
@@ -175,6 +226,36 @@ const buildCompiledAgent = (
       if (structuredResponse === undefined) return {}
       return { structuredResponse }
     },
+  }
+}
+
+const parseAgentState = (
+  value: unknown,
+):
+  | {
+      readonly messages: readonly BaseMessage[]
+      readonly structuredResponse?: Record<string, unknown>
+    }
+  | undefined => {
+  if (typeof value !== 'object' || value === null) return undefined
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent state の既知フィールドを個別に検証する。
+  const record = value as Record<string, unknown>
+  const messages = Array.isArray(record['messages'])
+    ? record['messages'].filter(
+        (message): message is BaseMessage => message instanceof BaseMessage,
+      )
+    : []
+  const structuredResponse = record['structuredResponse']
+  return {
+    messages,
+    ...(typeof structuredResponse === 'object' &&
+    structuredResponse !== null &&
+    !Array.isArray(structuredResponse)
+      ? {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- object/null/array を除外済みの structured response。
+          structuredResponse: structuredResponse as Record<string, unknown>,
+        }
+      : {}),
   }
 }
 
@@ -198,6 +279,9 @@ export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
 ): StrategyAgentDeps => ({
   fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
+  fetchSubagentDefinition: createSubagentDefinitionFetcher(
+    config.backendApiBaseUrl,
+  ),
   createMcpClient: (strategyId, executionId, toolModels, subagentExecution) =>
     new MultiServerMCPClient({
       defaultToolTimeout: MCP_TOOL_TIMEOUT_MS,
@@ -331,6 +415,7 @@ export const runStrategyAgent = async (
           if (parsedGraph.isErr()) {
             return errAsync(parsedGraph.error)
           }
+          const subagentRunCounters = new Map<string, { count: number }>()
           return ResultAsync.fromPromise(
             runAgentGraph(deps, parsedGraph.value, {
               agentsMd: agentConfig.agentsMd,
@@ -341,6 +426,39 @@ export const runStrategyAgent = async (
                   `${taskId}:${executionStepId}`,
                   parsedGraph.value.toolModels ?? {},
                 ),
+              createSubagentTool: (
+                phase,
+                parentExecutionStepId,
+                recorder,
+                phaseContext,
+              ) => {
+                let runCounter = subagentRunCounters.get(phase.key)
+                if (runCounter === undefined) {
+                  runCounter = { count: 0 }
+                  subagentRunCounters.set(phase.key, runCounter)
+                }
+                return createRunSubagentTool({
+                  phase,
+                  parentExecutionStepId,
+                  recorder,
+                  runCounter,
+                  fetchDefinition: deps.fetchSubagentDefinition,
+                  createMcpClient: (executionStepId, definitionKey) =>
+                    deps.createMcpClient(
+                      strategyId,
+                      `${taskId}:${executionStepId}`,
+                      parsedGraph.value.toolModels ?? {},
+                      { executionId: executionStepId, definitionKey },
+                    ),
+                  deps,
+                  ...(phaseContext.deadlineSignal !== undefined
+                    ? { deadlineSignal: phaseContext.deadlineSignal }
+                    : {}),
+                  ...(phaseContext.phaseTimeout !== undefined
+                    ? { phaseTimeout: phaseContext.phaseTimeout }
+                    : {}),
+                })
+              },
               originalPromptText: promptText,
               ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
               ...(previousSteps !== undefined ? { previousSteps } : {}),
