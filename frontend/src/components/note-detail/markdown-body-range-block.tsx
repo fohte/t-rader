@@ -101,8 +101,7 @@ function descendantSourceBlockRanges(
 
 interface RangeBlockGutterButtonProps {
   range: SourceLineRange
-  isSelected: boolean
-  isCommented: boolean
+  isMarked: boolean
   onPointerDown: (range: SourceLineRange) => void
   onClick: (range: SourceLineRange, shiftKey: boolean) => void
   className: string
@@ -111,8 +110,7 @@ interface RangeBlockGutterButtonProps {
 
 function RangeBlockGutterButton({
   range,
-  isSelected,
-  isCommented,
+  isMarked,
   onPointerDown,
   onClick,
   className,
@@ -148,12 +146,12 @@ function RangeBlockGutterButton({
       className={className}
       style={style}
     >
-      {isSelected || isCommented ? (
+      {isMarked ? (
         <span aria-hidden="true">●</span>
       ) : (
         <span
           aria-hidden="true"
-          className="opacity-0 group-hover:opacity-100 group-hover:text-primary"
+          className="opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary"
         >
           +
         </span>
@@ -240,21 +238,21 @@ export function MarkdownBodyRangeBlock({
   const renderedContent = textHighlight?.children ?? content
   const { props } = context
   const showThread = presentation.isActive || presentation.comments.length > 0
-  const gutterButtonClassName = `z-10 min-h-7 w-11 select-none text-right font-mono text-2xs ${presentation.isSelected || presentation.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`
-  const commentMarker =
-    presentation.isSelected || presentation.isCommented ? (
-      <span
-        aria-hidden="true"
-        data-comment-text-ignore="true"
-        className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary"
-        style={{
-          left:
-            sourceBlockTag === 'li'
-              ? `calc(-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`
-              : `-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem`,
-        }}
-      />
-    ) : null
+  const isMarked = presentation.isSelected || presentation.isCommented
+  const gutterButtonClassName = `z-10 min-h-7 w-11 select-none text-right font-mono text-2xs ${isMarked ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`
+  const commentMarker = isMarked ? (
+    <span
+      aria-hidden="true"
+      data-comment-text-ignore="true"
+      className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary"
+      style={{
+        left:
+          sourceBlockTag === 'li'
+            ? `calc(-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem - ${String(listDepth * NOTE_BODY_INDENT_REM)}rem)`
+            : `-${String(NOTE_BODY_GUTTER_CARD_PADDING_REM)}rem`,
+      }}
+    />
+  ) : null
   const commentThread = showThread ? (
     <RangeBlockCommentThread presentation={presentation} props={props} />
   ) : null
@@ -268,8 +266,7 @@ export function MarkdownBodyRangeBlock({
       <>
         <RangeBlockGutterButton
           range={range}
-          isSelected={presentation.isSelected}
-          isCommented={presentation.isCommented}
+          isMarked={isMarked}
           onPointerDown={context.onGutterPointerDown}
           onClick={context.onGutterClick}
           className={`absolute -left-11 top-1.5 ${gutterButtonClassName}`}
@@ -344,8 +341,7 @@ export function MarkdownBodyRangeBlock({
   const gutterButton = (
     <RangeBlockGutterButton
       range={range}
-      isSelected={presentation.isSelected}
-      isCommented={presentation.isCommented}
+      isMarked={isMarked}
       onPointerDown={context.onGutterPointerDown}
       onClick={context.onGutterClick}
       className={`absolute ${gutterButtonClassName}`}

@@ -223,7 +223,9 @@ describe('NoteVersionBodyComments', () => {
   })
 
   it('does not start a comment when a touch pointer taps the gutter', () => {
-    const source = '# サンプル見出し\n\n対象の段落です。'
+    const source = `# サンプル見出し
+
+対象の段落です。`
     renderNoteBodyComments(source)
 
     const gutter = screen.getByRole('button', { name: '行 3 にコメント' })
@@ -233,12 +235,16 @@ describe('NoteVersionBodyComments', () => {
 
     const getTouchGutterResult = () => ({
       label: gutter.getAttribute('aria-label'),
+      marker: gutter.firstElementChild?.textContent ?? null,
+      buttonIsHighlighted: gutter.classList.contains('text-primary'),
       composerCount: screen.queryAllByRole('textbox', { name: '行コメント' })
         .length,
       requests: apiRequests,
     })
     expect(getTouchGutterResult()).toEqual({
       label: '行 3 にコメント',
+      marker: '+',
+      buttonIsHighlighted: false,
       composerCount: 0,
       requests: [],
     })

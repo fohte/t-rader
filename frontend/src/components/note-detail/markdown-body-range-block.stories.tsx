@@ -1,9 +1,10 @@
-import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { Decorator, Meta, StoryObj } from '@storybook/react-vite'
 import type { ExtraProps } from 'react-markdown'
 
 import { MarkdownBodyRangeBlock } from '#components/note-detail/markdown-body-range-block'
 import {
   MarkdownBodyRangeCommentContext,
+  type MarkdownBodyRangeCommentContextValue,
   type MarkdownBodyRangeCommentProps,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { getDiffCommentAnchorKey } from '#components/note-detail/note-version-line-comment-group'
@@ -73,20 +74,25 @@ const selectedContextValue = {
   ...emptyContextValue,
   selectedRange: { startLine: 3, endLine: 4 },
 }
+const withRangeContext =
+  (value: MarkdownBodyRangeCommentContextValue): Decorator =>
+  (Story) => (
+    <MarkdownBodyRangeCommentContext.Provider value={value}>
+      <div className="max-w-3xl border border-border bg-background p-4 text-foreground">
+        <Story />
+      </div>
+    </MarkdownBodyRangeCommentContext.Provider>
+  )
 
 const meta = {
   title: 'NoteDetail/MarkdownBodyRangeBlock',
   component: MarkdownBodyRangeBlock,
   parameters: { layout: 'padded' },
-  decorators: [
-    (Story) => (
-      <MarkdownBodyRangeCommentContext.Provider value={contextValue}>
-        <div className="max-w-3xl border border-border bg-background p-4 text-foreground">
-          <Story />
-        </div>
-      </MarkdownBodyRangeCommentContext.Provider>
-    ),
-  ],
+  args: {
+    node,
+    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
+  },
+  decorators: [withRangeContext(contextValue)],
 } satisfies Meta<typeof MarkdownBodyRangeBlock>
 
 export default meta
@@ -94,59 +100,26 @@ type Story = StoryObj<typeof meta>
 
 export const BlockShowsItsCommentThread: Story = {
   name: 'the gutter marks the block and shows its comment thread.',
-  args: {
-    node,
-    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
-  },
 }
 
 export const GutterIsEmptyWithoutComments: Story = {
   name: 'the gutter stays empty when no comment is attached.',
-  args: {
-    node,
-    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
-  },
-  decorators: [
-    (Story) => (
-      <MarkdownBodyRangeCommentContext.Provider value={emptyContextValue}>
-        <div className="max-w-3xl border border-border bg-background p-4 text-foreground">
-          <Story />
-        </div>
-      </MarkdownBodyRangeCommentContext.Provider>
-    ),
-  ],
+  decorators: [withRangeContext(emptyContextValue)],
 }
 
 export const GutterMarksSelectedBlock: Story = {
   name: 'the gutter marks the selected source range.',
-  args: {
-    node,
-    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
-  },
-  decorators: [
-    (Story) => (
-      <MarkdownBodyRangeCommentContext.Provider value={selectedContextValue}>
-        <div className="max-w-3xl border border-border bg-background p-4 text-foreground">
-          <Story />
-        </div>
-      </MarkdownBodyRangeCommentContext.Provider>
-    ),
-  ],
+  decorators: [withRangeContext(selectedContextValue)],
 }
 
 export const BlockShowsItsCommentThreadWithoutGutter: Story = {
   name: 'shows the thread beneath the block without a gutter.',
-  args: {
-    node,
-    showGutter: false,
-    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
-  },
+  args: { showGutter: false },
 }
 
 export const TableRowShowsItsCommentThread: Story = {
   name: 'shows the thread below a table row in the range.',
   args: {
-    node,
     variant: 'table-row',
     children: [
       <td key="item" className="px-3 py-1.5">
@@ -170,10 +143,6 @@ export const TableRowShowsItsCommentThread: Story = {
 
 export const BlockShowsItsCommentComposer: Story = {
   name: 'shows the composer below the selected source range.',
-  args: {
-    node,
-    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
-  },
   decorators: [
     (Story) => {
       const activeCommentAnchor = {

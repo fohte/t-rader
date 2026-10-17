@@ -155,9 +155,37 @@ describe('MarkdownBodyRangeBlock', () => {
       marker: '+',
       markerAccessible: 'true',
       markerClassName:
-        'opacity-0 group-hover:opacity-100 group-hover:text-primary',
+        'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary',
       buttonIsHighlighted: false,
     })
+  })
+
+  it('limits the hover marker to the nested list item under the pointer', () => {
+    renderNestedList({ ...rangeCommentProps, comments: [] })
+
+    const getGutterMarkerClasses = () =>
+      screen
+        .getAllByRole('button')
+        .filter(
+          (button) =>
+            button.getAttribute('aria-label')?.includes('にコメント') ?? false,
+        )
+        .map((button) => ({
+          label: button.getAttribute('aria-label'),
+          markerClassName: button.firstElementChild?.className ?? null,
+        }))
+    expect(getGutterMarkerClasses()).toEqual([
+      {
+        label: '行 2 にコメント',
+        markerClassName:
+          'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary',
+      },
+      {
+        label: '行 1 から 2 にコメント',
+        markerClassName:
+          'opacity-0 group-[:hover:not(:has([data-source-block]:hover))]:opacity-100 group-[:hover:not(:has([data-source-block]:hover))]:text-primary',
+      },
+    ])
   })
 
   it('shows a marker instead of a line number for a commented block', () => {
