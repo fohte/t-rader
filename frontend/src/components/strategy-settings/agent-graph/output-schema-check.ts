@@ -75,15 +75,14 @@ function hasStringType(node: {
 }
 
 // agent 側が type-less なフィールドマップとして扱う条件を再現する
-function isFieldSchemaMap(
-  node: { items: { key: unknown; value: unknown }[] },
-  reserveRequired = true,
-): boolean {
+function isFieldSchemaMap(node: {
+  items: { key: unknown; value: unknown }[]
+}): boolean {
   if (hasStringType(node)) return false
 
   const requiredPair = node.items.find((pair) => scalarKey(pair) === 'required')
   const requiredIsMetadata =
-    reserveRequired && requiredPair !== undefined && !isMap(requiredPair.value)
+    requiredPair !== undefined && !isMap(requiredPair.value)
   const fieldPairs = node.items.filter(
     (pair) => !(requiredIsMetadata && pair === requiredPair),
   )
@@ -116,14 +115,6 @@ function checkFieldSchema(
     )
     const requiredIsMetadata =
       requiredPair !== undefined && !isMap(requiredPair.value)
-    if (requiredIsMetadata) {
-      checkRequired(
-        lineCounter,
-        requiredPair.value,
-        `${label}.required`,
-        issues,
-      )
-    }
     checkFieldsMap(lineCounter, node, requiredIsMetadata, issues, label)
     return
   }
@@ -168,36 +159,7 @@ function checkItems(
   fieldLabel: string,
   issues: OutputSchemaIssue[],
 ): void {
-  const label = `${fieldLabel}.items`
-  if (!isMap(node)) {
-    pushIssue(
-      lineCounter,
-      node,
-      `${label} はオブジェクトである必要があります`,
-      issues,
-    )
-    return
-  }
-  if (hasStringType(node)) {
-    checkFieldSchema(lineCounter, node, label, issues)
-  } else if (isFieldSchemaMap(node)) {
-    const requiredPair = node.items.find(
-      (pair) => scalarKey(pair) === 'required',
-    )
-    const requiredIsMetadata =
-      requiredPair !== undefined && !isMap(requiredPair.value)
-    if (requiredIsMetadata) {
-      checkRequired(
-        lineCounter,
-        requiredPair.value,
-        `${label}.required`,
-        issues,
-      )
-    }
-    checkFieldsMap(lineCounter, node, requiredIsMetadata, issues, label)
-  } else {
-    checkFieldSchema(lineCounter, node, label, issues)
-  }
+  checkFieldSchema(lineCounter, node, `${fieldLabel}.items`, issues)
 }
 
 // フィールド名 -> フィールドスキーマのマップ (output 自身、または object 配列の items) を検査する
