@@ -14,7 +14,7 @@ use crate::group_query_sql::with_shared_market_ctes;
 use crate::persistence::persistence_error;
 
 const RESOLVE_AS_OF_SQL: &str = r#"
-    SELECT MAX((timestamp AT TIME ZONE 'UTC')::date) AS as_of
+    SELECT (MAX(timestamp) AT TIME ZONE 'UTC')::date AS as_of
     FROM bars
     WHERE timeframe = '1d'
       AND ($1::date IS NULL
@@ -57,6 +57,11 @@ static QUERY_WIDGET_SQL: LazyLock<String> = LazyLock::new(|| {
                   AND bars.timeframe = '1d'
                   AND bars.timestamp
                       < (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+                  -- 休場日を含む期間内で取引日数を探し、古い bar のチャンク走査を避ける。
+                  AND bars.timestamp >= (
+                      (($1::date + 1)::timestamp AT TIME ZONE 'UTC')
+                      - (($2::integer * 2 + 14) * INTERVAL '1 day')
+                  )
                 ORDER BY bars.timestamp DESC
                 OFFSET ($2::bigint - 1)
                 LIMIT 1
@@ -347,6 +352,28 @@ mod tests {
         insert_valuation(db, "D008", 3_000).await;
     }
 
+    #[backend_test_macros::database_test]
+    async fn resolves_as_of_from_the_latest_daily_bar(db: DatabaseHandle) {
+        insert_stock(&db, "D009", "Stock Iota").await;
+        for day in [1, 3, 5] {
+            insert_bar(&db, "D009", day, 100).await;
+        }
+
+        let source = PostgresWidgetQuerySource::new(db);
+        let result = (
+            source
+                .resolve_as_of(None)
+                .await
+                .expect("resolve latest as-of"),
+            source
+                .resolve_as_of(Some(date(3)))
+                .await
+                .expect("resolve requested as-of"),
+        );
+
+        assert_eq!(result, (Some(date(5)), Some(date(3))));
+    }
+
     fn market_query(
         metric: core_application::widget::WidgetMetric,
         period: Option<core_application::widget::WidgetPeriod>,
@@ -510,6 +537,39 @@ mod tests {
                     }],
                 }],
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn excludes_stocks_with_only_bars_before_the_lookback_window(db: DatabaseHandle) {
+        insert_stock(&db, "D011", "Stock Kappa").await;
+        insert_stock(&db, "D012", "Stock Lambda").await;
+        insert_bar(&db, "D011", 1, 100).await;
+        insert_bar(&db, "D011", 2, 120).await;
+        insert_bar(&db, "D012", 19, 100).await;
+        insert_bar(&db, "D012", 20, 110).await;
+
+        let query = WidgetQuery {
+            metric: WidgetMetric::Change,
+            period: Some(WidgetPeriod::OneDay),
+            by: WidgetBy::Stock,
+            axis: None,
+            indicator: None,
+            universe: None,
+            agg: None,
+        };
+        let result = PostgresWidgetQuerySource::new(db)
+            .query(date(20), &query)
+            .await
+            .expect("query widget stock changes");
+
+        assert_eq!(
+            result,
+            vec![WidgetQueryRow {
+                key: WidgetRowKey::Stock("D012".to_string()),
+                name: "Stock Lambda".to_string(),
+                value: Decimal::new(1, 1),
+            }],
         );
     }
 

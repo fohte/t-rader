@@ -34,10 +34,13 @@ pub(super) const STOCK_CHANGE_CTES: &str = r#"
                end_prices.close / NULLIF(start_prices.close, 0) - 1 AS change_rate
         FROM stock_change_windows
         CROSS JOIN LATERAL (
-            SELECT period_bars.close
-            FROM period_bars
-            WHERE period_bars.instrument_id = stock_change_windows.stock_id
-            ORDER BY period_bars.timestamp DESC
+            SELECT bars.close
+            FROM bars
+            WHERE bars.instrument_id = stock_change_windows.stock_id
+              AND bars.timeframe = '1d'
+              AND bars.timestamp >= stock_change_windows.start_at
+              AND bars.timestamp < stock_change_windows.end_before
+            ORDER BY bars.timestamp DESC
             LIMIT 1
         ) AS end_prices
         CROSS JOIN LATERAL (
