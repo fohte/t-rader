@@ -42,6 +42,7 @@ mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;
 pub(super) mod web_search;
+pub(super) mod widget;
 pub(super) mod youtube;
 
 use std::collections::BTreeMap;

@@ -13,6 +13,7 @@ mod screener;
 mod stock_groups;
 mod stock_registration;
 mod strategy_earnings_targets;
+mod widgets;
 
 use std::borrow::Cow;
 
@@ -86,7 +87,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference matching daily (1d) bars already stored for those dates; query_data is not required. Fields are open, high, low, close, or volume, and change resolves to a percentage. Use [[valuation:<id>@<date>:<field>]] for valuation fields per, fwd_per, pbr, roe, fwd_roe, mkt_cap, eps, fwd_eps, or bps, and [[indicator:<id>@<date>]] for an indicator observation. These values resolve from the specified date without query_data. Use [[eval:<evaluation-uuid>:<output-name>]] to reference a numeric output by its top-level key. Keep [[indicator:<id>]] for a plain reference link. The references remain in the body while their values are saved separately. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Use graphs to show relationships, causal links, branches, and procedures instead of listing them in prose. Do not repeat graph content in the body; use the body for information that cannot be represented in a graph, such as judgments, reasons, and sources for numeric values. The warnings array lists all detected warnings. A write is rejected until each warning is fixed or covered by warning_dispositions with its id and a non-empty reason; a successful write means all warnings were covered. IDs use warning type, exact text, and occurrence order. If earlier identical warnings are removed, prior IDs for that same warning type and text still count toward the remaining occurrences. Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to any existing note. Supply note_id to update; omit it to create. Set kind only when creating a note. Store optional free-form tags in frontmatter_json.tags as an array of strings (for example, [\"sample-label\"]); omit tags when unused. Use [[price:<id>@<date>:<field>]] or [[change:<id>@<start>..<end>:<field>]] to reference matching daily (1d) bars already stored for those dates; query_data is not required. Fields are open, high, low, close, or volume, and change resolves to a percentage. Use [[valuation:<id>@<date>:<field>]] for valuation fields per, fwd_per, pbr, roe, fwd_roe, mkt_cap, eps, fwd_eps, or bps, and [[indicator:<id>@<date>]] for an indicator observation. These values resolve from the specified date without query_data. Use [[eval:<evaluation-uuid>:<output-name>]] to reference a numeric output by its top-level key. Keep [[indicator:<id>]] for a plain reference link. The references remain in the body while their values are saved separately. Use ```widget fenced blocks in body_md to embed widget definitions; every block must pass widget validation and include time.as_of. Call query_widget with the same YAML to inspect its values. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Use graphs to show relationships, causal links, branches, and procedures instead of listing them in prose. Do not repeat graph content in the body; use the body for information that cannot be represented in a graph, such as judgments, reasons, and sources for numeric values. The warnings array lists all detected warnings. A write is rejected until each warning is fixed or covered by warning_dispositions with its id and a non-empty reason; a successful write means all warnings were covered. IDs use warning type, exact text, and occurrence order. If earlier identical warnings are removed, prior IDs for that same warning type and text still count toward the remaining occurrences. Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -514,6 +515,7 @@ impl StrategyServer {
             + Self::predictions_tool_router()
             + Self::paper_trade_tool_router()
             + Self::news_tool_router()
+            + Self::widget_tool_router()
     }
 
     /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
@@ -612,6 +614,7 @@ mod tests {
                 ("list_predictions", Some(true)),
                 ("list_stock_group_members", Some(true)),
                 ("query_data", Some(true)),
+                ("query_widget", Some(true)),
                 ("query_youtube", Some(true)),
                 ("place_paper_order", None),
                 ("read_annotations", Some(true)),

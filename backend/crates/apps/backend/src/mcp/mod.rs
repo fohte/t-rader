@@ -130,6 +130,7 @@ pub(crate) fn strategy_server_dependencies(
         trades: use_cases.trades(),
         valuations: use_cases.valuations(),
         web_search_client,
+        widgets: use_cases.widgets(),
     }
 }
 

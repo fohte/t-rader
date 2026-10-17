@@ -39,6 +39,7 @@ use core_application::subagent_definition::SubagentDefinitionUseCases;
 use core_application::trade::TradeUseCases;
 use core_application::valuation::ValuationUseCases;
 use core_application::web_search::SharedWebSearchClient;
+use core_application::widget::WidgetUseCases;
 
 #[derive(Clone)]
 pub struct StrategyServerDependencies {
@@ -84,4 +85,5 @@ pub struct StrategyServerDependencies {
     pub trades: TradeUseCases,
     pub valuations: ValuationUseCases,
     pub web_search_client: Option<SharedWebSearchClient>,
+    pub widgets: WidgetUseCases,
 }
