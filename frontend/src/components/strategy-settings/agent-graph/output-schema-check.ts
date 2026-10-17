@@ -131,8 +131,7 @@ function checkFieldSchema(
   // 配列フィールドの required は、items がフィールドマップの場合にだけ有効
   const itemsPair = node.items.find((p) => scalarKey(p) === 'items')
   const itemsValue: unknown = itemsPair?.value
-  const requiredIsEffective =
-    isMap(itemsValue) && isFieldSchemaMap(itemsValue, false)
+  const requiredIsEffective = isMap(itemsValue) && isFieldSchemaMap(itemsValue)
 
   for (const pair of node.items) {
     const key = scalarKey(pair)
@@ -181,8 +180,21 @@ function checkItems(
   }
   if (hasStringType(node)) {
     checkFieldSchema(lineCounter, node, label, issues)
-  } else if (isFieldSchemaMap(node, false)) {
-    checkFieldsMap(lineCounter, node, false, issues, label)
+  } else if (isFieldSchemaMap(node)) {
+    const requiredPair = node.items.find(
+      (pair) => scalarKey(pair) === 'required',
+    )
+    const requiredIsMetadata =
+      requiredPair !== undefined && !isMap(requiredPair.value)
+    if (requiredIsMetadata) {
+      checkRequired(
+        lineCounter,
+        requiredPair.value,
+        `${label}.required`,
+        issues,
+      )
+    }
+    checkFieldsMap(lineCounter, node, requiredIsMetadata, issues, label)
   } else {
     checkFieldSchema(lineCounter, node, label, issues)
   }

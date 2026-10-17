@@ -84,6 +84,35 @@ describe('checkOutputSchemaText', () => {
     })
   })
 
+  it('ネストした object 内で items に書かれた required を有効として扱う', () => {
+    const text = `packet:
+  entries:
+    type: array
+    items:
+      required: [code, quantity]
+      code:
+        type: string
+      quantity:
+        type: number
+`
+
+    expect(checkOutputSchemaText(text)).toEqual({
+      issues: [],
+      output: {
+        packet: {
+          entries: {
+            type: 'array',
+            items: {
+              required: ['code', 'quantity'],
+              code: { type: 'string' },
+              quantity: { type: 'number' },
+            },
+          },
+        },
+      },
+    })
+  })
+
   it('enum フィールドが配列でなければ issue を出すが output は commit される', () => {
     const text = `verdict:
   enum: supported

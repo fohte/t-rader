@@ -131,6 +131,44 @@ describe('buildOutputJsonSchema', () => {
     })
   })
 
+  it('uses required from object array items inside a nested object field', () => {
+    const output = {
+      packet: {
+        entries: {
+          type: 'array',
+          items: {
+            required: ['code', 'quantity'],
+            code: { type: 'string' },
+            quantity: { type: 'number' },
+          },
+        },
+      },
+    }
+
+    expect(buildOutputJsonSchema(output)).toEqual({
+      type: 'object',
+      properties: {
+        packet: {
+          type: 'object',
+          properties: {
+            entries: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  quantity: { type: 'number' },
+                },
+                required: ['code', 'quantity'],
+              },
+            },
+          },
+        },
+      },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+    })
+  })
+
   it('preserves a type-less enum schema in array items', () => {
     const output = {
       labels: {

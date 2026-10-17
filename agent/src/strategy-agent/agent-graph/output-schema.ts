@@ -80,7 +80,7 @@ const toItemsSchema = (items: unknown, required: unknown): JsonSchemaObject => {
   const fieldMap = toFieldSchemaMap(items)
   return fieldMap === undefined
     ? toFieldSchema(items)
-    : toObjectSchema(fieldMap.fields, required)
+    : toObjectSchema(fieldMap.fields, required ?? fieldMap.required)
 }
 
 // toolStrategy は raw JSON Schema に description を自動補完しないため、
