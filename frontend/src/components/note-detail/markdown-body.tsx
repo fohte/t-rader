@@ -1,6 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import {
+  Children,
   createContext,
+  isValidElement,
   type ReactNode,
   useCallback,
   useContext,
@@ -26,6 +28,7 @@ import type {
   MarkdownBodyProps,
   NoteTokenComponents,
 } from '#components/note-detail/markdown-body-types'
+import { MarkdownBodyWidget } from '#components/note-detail/markdown-body-widget'
 import {
   NoteChangeReference,
   NoteEvaluationEvidenceReference,
@@ -233,24 +236,44 @@ export function MarkdownBody({
           }
         />
       ),
-      pre: ({ children, node }) => (
-        <MarkdownBodyRangeBlock
-          node={node}
-          element={
-            <pre className="my-3 overflow-x-auto border border-border bg-surface-strong p-3 font-mono text-xs leading-relaxed text-foreground [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-xs">
-              {children}
-            </pre>
-          }
-        />
-      ),
-      code: ({ children }) => (
-        // text-em-88 は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
-        // ため、周辺テキストに追従する相対値のまま残す。固定トークンに丸めると
-        // 見出し内で不自然に縮小する。
-        <code className="border border-border bg-surface-strong px-1 py-px font-mono text-em-88">
-          {children}
-        </code>
-      ),
+      pre: ({ children, node }) => {
+        const firstChild = Children.toArray(children)[0]
+        const isWidgetBlock =
+          isValidElement(firstChild) && firstChild.type === MarkdownBodyWidget
+        return (
+          <MarkdownBodyRangeBlock
+            node={node}
+            element={
+              isWidgetBlock ? (
+                <div className="my-3">{children}</div>
+              ) : (
+                <pre className="my-3 overflow-x-auto border border-border bg-surface-strong p-3 font-mono text-xs leading-relaxed text-foreground [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-xs">
+                  {children}
+                </pre>
+              )
+            }
+          />
+        )
+      },
+      code: ({ children, className }) => {
+        if (className === 'language-widget') {
+          return (
+            <MarkdownBodyWidget
+              source={Children.toArray(children)
+                .map((child) => (typeof child === 'string' ? child : ''))
+                .join('')}
+            />
+          )
+        }
+        return (
+          // text-em-88 は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
+          // ため、周辺テキストに追従する相対値のまま残す。固定トークンに丸めると
+          // 見出し内で不自然に縮小する。
+          <code className="border border-border bg-surface-strong px-1 py-px font-mono text-em-88">
+            {children}
+          </code>
+        )
+      },
       strong: ({ children }) => (
         <strong className="font-semibold">{children}</strong>
       ),
