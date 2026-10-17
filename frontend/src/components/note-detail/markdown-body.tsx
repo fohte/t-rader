@@ -239,7 +239,8 @@ export function MarkdownBody({
       pre: ({ children, node }) => {
         const firstChild = Children.toArray(children)[0]
         const isWidgetBlock =
-          isValidElement(firstChild) && firstChild.type === MarkdownBodyWidget
+          isValidElement<{ className?: string }>(firstChild) &&
+          firstChild.props.className === 'language-widget'
         return (
           <MarkdownBodyRangeBlock
             node={node}

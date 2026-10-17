@@ -19,9 +19,11 @@ const VALID_WIDGET_SOURCE = [
   '    by: group',
   '    axis: demo-axis',
   '    agg: mean',
+  'formulas:',
+  '  doubled: daily * 2',
   'viz:',
   '  type: toplist',
-  '  value: daily',
+  '  value: doubled',
   '  order: desc',
   '  limit: 5',
   'time:',
@@ -35,7 +37,7 @@ const RESULT: WidgetQueryResponse = {
     {
       key: 'group:demo-axis/demo-group',
       name: 'デモグループ',
-      values: { daily: 2.1 },
+      values: { doubled: 2.1 },
     },
   ],
 }
@@ -73,7 +75,8 @@ describe('MarkdownBody widget blocks', () => {
                 agg: 'mean',
               },
             },
-            viz: { type: 'toplist', value: 'daily', order: 'desc', limit: 5 },
+            formulas: { doubled: 'daily * 2' },
+            viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
             time: { as_of: '2099-01-05' },
           },
         },
@@ -91,12 +94,14 @@ describe('MarkdownBody widget blocks', () => {
     })
     render(<MarkdownBody source={VALID_WIDGET_SOURCE} />)
 
-    expect(
-      screen
-        .getByRole('region', { name: 'ノート内ウィジェット' })
-        .textContent.replace(/\s+/g, ' ')
-        .trim(),
-    ).toEqual('ウィジェット基準日 2099-01-051デモグループ2.1')
+    const widget = screen.getByRole('region', { name: 'ノート内ウィジェット' })
+    const renderedWidget = [
+      widget.textContent.replace(/\s+/g, ' ').trim(),
+      widget.closest('pre') === null ? 'outside <pre>' : 'inside <pre>',
+    ].join('\n')
+    expect(renderedWidget).toEqual(
+      'ウィジェット基準日 2099-01-051デモグループ2.1\noutside <pre>',
+    )
   })
 
   it('disables the request when time.as_of is missing', () => {
