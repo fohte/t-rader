@@ -16,7 +16,7 @@ export type WidgetDefinitionResult =
       ok: true
       request: WidgetQueryRequest
       viz: WidgetVisualization
-      asOf: string
+      asOf?: string
     }
   | { ok: false; message: string }
 
@@ -102,10 +102,14 @@ export function parseWidgetQueryRequest(
   if (!isVisualization(value.viz)) {
     return { ok: false, message: 'viz.type は文字列で指定してください。' }
   }
-  if (!isRecord(value.time) || typeof value.time.as_of !== 'string') {
+  if (value.time !== undefined && !isRecord(value.time)) {
+    return { ok: false, message: 'time はオブジェクトにしてください。' }
+  }
+  const time = isRecord(value.time) ? value.time : undefined
+  if (time !== undefined && !isOptionalString(time.as_of)) {
     return { ok: false, message: 'time.as_of は文字列で指定してください。' }
   }
-  if (Object.hasOwn(value.time, 'range')) {
+  if (time !== undefined && Object.hasOwn(time, 'range')) {
     return {
       ok: false,
       message: 'time.range は現在のウィジェットでは使えません。',
@@ -115,7 +119,8 @@ export function parseWidgetQueryRequest(
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- enum 値と範囲は API に検証させるため、生成型にない値も保持する
   const request = value as unknown as WidgetQueryRequest
   const viz = request.viz
-  return { ok: true, request, viz, asOf: value.time.as_of }
+  const asOf = typeof time?.as_of === 'string' ? time.as_of : undefined
+  return { ok: true, request, viz, asOf }
 }
 
 export function parseWidgetDefinition(source: string): WidgetDefinitionResult {

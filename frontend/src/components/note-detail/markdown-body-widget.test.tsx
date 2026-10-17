@@ -31,6 +31,20 @@ const VALID_WIDGET_SOURCE = [
   '```',
 ].join('\n')
 
+const WIDGET_SOURCES_WITHOUT_AS_OF = [
+  {
+    name: 'time',
+    source: VALID_WIDGET_SOURCE.replace('time:\n  as_of: 2099-01-05\n', ''),
+  },
+  {
+    name: 'time.as_of',
+    source: VALID_WIDGET_SOURCE.replace(
+      'time:\n  as_of: 2099-01-05',
+      'time: {}',
+    ),
+  },
+]
+
 const RESULT: WidgetQueryResponse = {
   as_of: '2099-01-05',
   rows: [
@@ -104,40 +118,45 @@ describe('MarkdownBody widget blocks', () => {
     )
   })
 
-  it('disables the request when time.as_of is missing', () => {
-    const source = VALID_WIDGET_SOURCE.replace('  as_of: 2099-01-05', '')
-    render(<MarkdownBody source={source} />)
+  it.each(WIDGET_SOURCES_WITHOUT_AS_OF)(
+    'disables the request when $name is missing',
+    ({ source }) => {
+      render(<MarkdownBody source={source} />)
 
-    expect(useApiQuery.mock.calls).toEqual([
-      [
-        'post',
-        '/api/widgets/query',
-        {
-          body: {
-            queries: {},
-            viz: {
-              type: 'toplist',
-              value: 'placeholder',
-              order: 'desc',
-              limit: 0,
+      expect(useApiQuery.mock.calls).toEqual([
+        [
+          'post',
+          '/api/widgets/query',
+          {
+            body: {
+              queries: {},
+              viz: {
+                type: 'toplist',
+                value: 'placeholder',
+                order: 'desc',
+                limit: 0,
+              },
             },
           },
-        },
-        { enabled: false },
-      ],
-    ])
-  })
+          { enabled: false },
+        ],
+      ])
+    },
+  )
 
-  it('shows a local validation error when time.as_of is missing', () => {
-    const source = VALID_WIDGET_SOURCE.replace('  as_of: 2099-01-05', '')
-    render(<MarkdownBody source={source} />)
+  it.each(WIDGET_SOURCES_WITHOUT_AS_OF)(
+    'shows a local validation error when $name is missing',
+    ({ source }) => {
+      render(<MarkdownBody source={source} />)
 
-    expect(
-      screen.getByRole('region', { name: 'ノート内ウィジェット' }).textContent,
-    ).toEqual(
-      'ウィジェットウィジェットの定義を表示できません: time.as_of は文字列で指定してください。',
-    )
-  })
+      expect(
+        screen.getByRole('region', { name: 'ノート内ウィジェット' })
+          .textContent,
+      ).toEqual(
+        'ウィジェットウィジェットの定義を表示できません: time.as_of はノート内ウィジェットで必須です。',
+      )
+    },
+  )
 
   it('shows the API validation error and keeps the configured base date', () => {
     useApiQuery.mockReturnValue({

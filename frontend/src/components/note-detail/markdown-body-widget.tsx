@@ -44,7 +44,17 @@ function messageOf(error: unknown): string {
 }
 
 export function MarkdownBodyWidget({ source }: { source: string }) {
-  const parsed = useMemo(() => parseWidgetDefinition(source), [source])
+  const parsed = useMemo(() => {
+    const definition = parseWidgetDefinition(source)
+    if (!definition.ok) return definition
+    if (definition.asOf === undefined) {
+      return {
+        ok: false as const,
+        message: 'time.as_of はノート内ウィジェットで必須です。',
+      }
+    }
+    return { ...definition, asOf: definition.asOf }
+  }, [source])
   const query = $api.useQuery(
     'post',
     '/api/widgets/query',

@@ -40,6 +40,17 @@ const VALID_WIDGET_VALUE = {
   time: { as_of: '2099-01-05' },
 }
 
+const VALID_WIDGET_VALUE_WITHOUT_TIME = {
+  queries: VALID_WIDGET_VALUE.queries,
+  formulas: VALID_WIDGET_VALUE.formulas,
+  viz: VALID_WIDGET_VALUE.viz,
+}
+
+const VALID_WIDGET_VALUE_WITHOUT_AS_OF = {
+  ...VALID_WIDGET_VALUE,
+  time: {},
+}
+
 const VALID_RESULT = {
   ok: true,
   request: {
@@ -67,6 +78,26 @@ describe('parseWidgetDefinition', () => {
 
   it('converts an already parsed widget mapping into a query request', () => {
     expect(parseWidgetQueryRequest(VALID_WIDGET_VALUE)).toEqual(VALID_RESULT)
+  })
+
+  it.each([
+    {
+      name: 'time',
+      value: VALID_WIDGET_VALUE_WITHOUT_TIME,
+      request: VALID_WIDGET_VALUE_WITHOUT_TIME,
+    },
+    {
+      name: 'time.as_of',
+      value: VALID_WIDGET_VALUE_WITHOUT_AS_OF,
+      request: VALID_WIDGET_VALUE_WITHOUT_AS_OF,
+    },
+  ])('allows omitted $name', ({ value, request }) => {
+    expect(parseWidgetQueryRequest(value)).toEqual({
+      ok: true,
+      request,
+      viz: VALID_WIDGET_VALUE.viz,
+      asOf: undefined,
+    })
   })
 
   it('passes semantic validation values through for the API to validate', () => {
@@ -136,8 +167,11 @@ describe('parseWidgetDefinition', () => {
       message: 'formulas は文字列のマップにしてください。',
     },
     {
-      name: 'a widget without time.as_of',
-      source: VALID_WIDGET_DEFINITION.replace('  as_of: 2099-01-05', ''),
+      name: 'a widget with a non-string time.as_of',
+      source: VALID_WIDGET_DEFINITION.replace(
+        '  as_of: 2099-01-05',
+        '  as_of: 1',
+      ),
       message: 'time.as_of は文字列で指定してください。',
     },
     {
