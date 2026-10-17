@@ -11,6 +11,7 @@ pub(crate) mod mcp_tool;
 mod mgmt_mcp;
 mod prediction_grading;
 mod scheduler;
+pub(crate) mod screener_test_support;
 mod strategy_mcp;
 mod trigger;
 

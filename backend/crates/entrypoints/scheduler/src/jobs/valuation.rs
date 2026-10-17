@@ -4,7 +4,10 @@ use core_application::{
     valuation_source::ValuationSource,
 };
 
-use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state, today_in_tokyo};
+use super::{
+    DAILY_TIMEOUT, require_source, run_and_refresh_screener_snapshot,
+    run_with_ingest_run_log_state, today_in_tokyo,
+};
 
 pub struct ValuationIngest;
 
@@ -22,7 +25,11 @@ impl super::SchedulerJob for ValuationIngest {
                         state.dependencies.valuation_source,
                         "J-Quants valuation source",
                     )?;
-                    ingest_valuations(&state.dependencies.valuations, source.as_ref()).await
+                    run_and_refresh_screener_snapshot(
+                        &state.dependencies.screener_snapshot,
+                        ingest_valuations(&state.dependencies.valuations, source.as_ref()),
+                    )
+                    .await
                 },
             )
             .await

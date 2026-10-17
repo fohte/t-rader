@@ -361,6 +361,7 @@ async fn main() -> Result<(), StartupError> {
         us_stock_bar_source,
         shareholding_structures: use_cases.shareholding_structures(),
         shareholding_structure_source,
+        screener_snapshot: use_cases.screener_snapshot(),
         valuations: use_cases.valuations(),
         valuation_source,
         indicator_observations: use_cases.indicator_observations(),

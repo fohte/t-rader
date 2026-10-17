@@ -7,6 +7,7 @@ use core_application::bars::{
     US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
 };
 use core_application::ingest_run_log::IngestRunLog;
+use core_application::screener::ScreenerSnapshotUseCases;
 use serde::Serialize;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -70,6 +71,27 @@ pub(super) fn today_in_tokyo(now: DateTime<Utc>) -> NaiveDate {
 
 pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, String> {
     source.ok_or_else(|| format!("{name} is not configured"))
+}
+
+pub(super) async fn refresh_screener_snapshot(
+    use_cases: &ScreenerSnapshotUseCases,
+) -> Result<(), String> {
+    use_cases
+        .refresh_snapshot()
+        .await
+        .map_err(|error| format!("failed to refresh screener snapshot: {error}"))
+}
+
+pub(super) async fn run_and_refresh_screener_snapshot<T, Fut>(
+    use_cases: &ScreenerSnapshotUseCases,
+    ingest: Fut,
+) -> Result<T, String>
+where
+    Fut: Future<Output = Result<T, String>>,
+{
+    let stats = ingest.await?;
+    refresh_screener_snapshot(use_cases).await?;
+    Ok(stats)
 }
 
 pub(super) async fn run_with_state<F, Fut>(
@@ -327,14 +349,18 @@ mod tests {
         future::pending,
         sync::{
             Arc,
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
         time::Duration,
     };
 
     use async_trait::async_trait;
     use chrono::{NaiveDate, TimeZone, Utc};
-    use core_application::{ingest_run_log::IngestRunLog, persistence::PersistenceError};
+    use core_application::{
+        ingest_run_log::IngestRunLog,
+        persistence::PersistenceError,
+        screener::{ScreenerSnapshotRefresher, ScreenerSnapshotUseCases},
+    };
     use serde::Serialize;
     use serde_json::{Value, json};
     use tokio::sync::Mutex;
@@ -343,11 +369,54 @@ mod tests {
     use rstest::rstest;
 
     use super::{
-        TimedTaskResult, run_started_before, run_with_ingest_run_log,
-        run_with_ingest_run_log_with_failure_stats, run_with_timeout, today_in_tokyo,
+        TimedTaskResult, run_and_refresh_screener_snapshot, run_started_before,
+        run_with_ingest_run_log, run_with_ingest_run_log_with_failure_stats, run_with_timeout,
+        today_in_tokyo,
     };
 
     const RUN_ID: Uuid = Uuid::from_u128(1);
+
+    struct FakeScreenerSnapshotRefresher {
+        calls: Arc<AtomicUsize>,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl ScreenerSnapshotRefresher for FakeScreenerSnapshotRefresher {
+        async fn refresh_snapshot(&self) -> Result<(), PersistenceError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail {
+                Err(PersistenceError::Database("refresh failed".to_owned()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[rstest]
+    #[case::refreshes_after_success(Ok(5), false, Ok(5), 1)]
+    #[case::skips_refresh_after_ingest_failure(Err("ingest failed".to_owned()), false, Err("ingest failed".to_owned()), 0)]
+    #[case::returns_refresh_failure(Ok(5), true, Err("failed to refresh screener snapshot: refresh failed".to_owned()), 1)]
+    #[tokio::test]
+    async fn refreshes_screener_snapshot_after_successful_ingestion(
+        #[case] ingest_result: Result<usize, String>,
+        #[case] refresh_fails: bool,
+        #[case] expected_result: Result<usize, String>,
+        #[case] expected_refresh_count: usize,
+    ) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let use_cases = ScreenerSnapshotUseCases::new(Arc::new(FakeScreenerSnapshotRefresher {
+            calls: calls.clone(),
+            fail: refresh_fails,
+        }));
+
+        let result = run_and_refresh_screener_snapshot(&use_cases, async { ingest_result }).await;
+
+        assert_eq!(
+            (result, calls.load(Ordering::SeqCst)),
+            (expected_result, expected_refresh_count),
+        );
+    }
 
     #[test]
     fn today_in_tokyo_uses_the_tokyo_calendar_date() {

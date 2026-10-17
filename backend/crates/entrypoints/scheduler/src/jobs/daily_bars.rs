@@ -5,7 +5,10 @@ use core_application::{
     market_daily_bar_source::MarketDailyBarSource,
 };
 
-use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state, today_in_tokyo};
+use super::{
+    DAILY_TIMEOUT, require_source, run_and_refresh_screener_snapshot,
+    run_with_ingest_run_log_state, today_in_tokyo,
+};
 
 pub struct DailyBarsIngest;
 
@@ -27,10 +30,13 @@ impl super::SchedulerJob for DailyBarsIngest {
                         state.dependencies.daily_bar_source,
                         "J-Quants daily bar source",
                     )?;
-                    ingest_daily_bars(
-                        &state.dependencies.bars,
-                        source.as_ref(),
-                        instrument_source.as_ref(),
+                    run_and_refresh_screener_snapshot(
+                        &state.dependencies.screener_snapshot,
+                        ingest_daily_bars(
+                            &state.dependencies.bars,
+                            source.as_ref(),
+                            instrument_source.as_ref(),
+                        ),
                     )
                     .await
                 },

@@ -544,6 +544,20 @@ comments:
       name: '保存条件を識別する一意な名前。'
       filters: 'ScreenerFilters 形式の絞り込み条件。'
       sort: 'ScreenerSort 形式の並び順。'
+  - table: screener_stock_snapshot
+    tableComment: 'スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。データと銘柄マスタの取り込み成功後に再生成し、個別登録銘柄は次回の再生成後に反映する。'
+    columnComments:
+      name: '銘柄名。'
+      market: '市場区分名または外国株の取引所名。'
+      sector_key: '銘柄が属する東証 33 業種グループのキー。'
+      sector: '銘柄が属する東証 33 業種グループ名。'
+      close: '最新日足の終値。'
+      per: '最新の株価収益率。'
+      pbr: '最新の株価純資産倍率。'
+      roe: '最新の自己資本利益率。パーセント単位。'
+      dividend_yield: '最新の年間配当予想に基づく配当利回り。パーセント単位。'
+      market_cap: '最新の時価総額。億円単位。'
+      as_of: 'スクリーナー全体の最新評価基準日。'
   - table: short_ratio
     tableComment: '33 業種ごとの売買代金を日付別に保持する。'
     columnComments:
