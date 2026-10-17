@@ -15,7 +15,7 @@ interface TextHighlightOptions {
 
 export interface TextHighlightResult {
   children: ReactNode
-  match: 'missing' | 'partial' | 'full'
+  match: 'missing' | 'found'
 }
 
 function isTextBoundary(
@@ -152,9 +152,8 @@ export function highlightFirstTextMatch(
   if (start === -1) return { children, match: 'missing' }
 
   const end = start + text.length
-  const match = start === 0 && end === content.length ? 'full' : 'partial'
   return {
     children: withHighlight(children, start, end, { value: 0 }, refChipTexts),
-    match,
+    match: 'found',
   }
 }
