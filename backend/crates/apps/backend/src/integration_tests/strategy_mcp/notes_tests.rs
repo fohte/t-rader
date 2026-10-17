@@ -35,6 +35,18 @@ mod tests {
         "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
 
+    fn widget_write_note_params(note_id: Option<Uuid>, body_md: &str) -> WriteNoteParams {
+        WriteNoteParams {
+            note_id,
+            title: note_id.is_none().then(|| "widget note".into()),
+            body_md: Some(body_md.into()),
+            kind: None,
+            frontmatter_json: None,
+            change_reason: None,
+            graphs: None,
+        }
+    }
+
     fn test_node(id: &str) -> GraphNode {
         GraphNode {
             id: id.to_string(),
@@ -80,6 +92,249 @@ mod tests {
                 cite: None,
             }],
         }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_invalid_widget_definitions_without_creating_a_note(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "widget-validation").await;
+        let server = build_server(db.clone());
+        let body_md = indoc::indoc! {"
+            ```widget
+            queries:
+              daily:
+                metric: change
+                by: stock
+            viz:
+              type: toplist
+              value: daily
+              order: desc
+              limit: 5
+            time:
+              as_of: 2099-01-05
+            ```
+        "};
+
+        let error = server
+            .write_note(strategy_id, None, widget_write_note_params(None, body_md))
+            .await
+            .expect_err("invalid widget definitions should be rejected");
+        let notes = server
+            .list_notes(strategy_id, ListNotesParams::default())
+            .await
+            .expect("list notes");
+
+        assert_eq!(
+            (
+                error.code,
+                error.message.to_string(),
+                normalize_list_notes(notes).into_value(),
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "widget block 1: queries.daily.period: period is required for change metrics"
+                    .to_string(),
+                super::super::dto::ListNotesResult { notes: vec![] },
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_widget_without_as_of_and_keeps_existing_body(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "widget-as-of").await;
+        let server = build_server(db.clone());
+        let created = server
+            .write_note(
+                strategy_id,
+                None,
+                widget_write_note_params(None, "original body"),
+            )
+            .await
+            .expect("create note");
+        let body_md = indoc::indoc! {"
+            ```widget
+            queries:
+              cap:
+                metric: mkt_cap
+                by: group
+                axis: demo-axis
+                agg: sum
+            viz:
+              type: toplist
+              value: cap
+              order: desc
+              limit: 5
+            ```
+        "};
+
+        let error = server
+            .write_note(
+                strategy_id,
+                None,
+                widget_write_note_params(Some(created.note_id), body_md),
+            )
+            .await
+            .expect_err("widget without a reference date should be rejected");
+        let note = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: created.note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read note");
+
+        assert_eq!(
+            (
+                error.code,
+                error.message.to_string(),
+                normalize_note(note).into_value(),
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "widget block 1: time.as_of is required".to_string(),
+                NoteDto {
+                    note_id: created.note_id,
+                    version_id: Uuid::nil(),
+                    version_no: 1,
+                    title: "widget note".into(),
+                    body_md: Some("original body".into()),
+                    frontmatter_json: serde_json::Map::new(),
+                    tags: vec![],
+                    kind: None,
+                    status: "unread".into(),
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                    graphs: vec![],
+                    links: Some(vec![]),
+                },
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_saves_valid_widget_fenced_blocks(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db, "widget-save").await;
+        let server = build_server(db.clone());
+        let body_md = indoc::indoc! {"
+            Market movement summary.
+
+            ```widget
+            queries:
+              daily:
+                metric: change
+                period: 1d
+                by: group
+                axis: demo-axis
+                agg: mean
+            viz:
+              type: toplist
+              value: daily
+              order: desc
+              limit: 5
+            time:
+              as_of: 2099-01-05
+            ```
+        "};
+
+        let created = server
+            .write_note(strategy_id, None, widget_write_note_params(None, body_md))
+            .await
+            .expect("save valid widget definition");
+        let note = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: created.note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read note");
+
+        assert_eq!(
+            normalize_note(note),
+            NoteDto {
+                note_id: created.note_id,
+                version_id: Uuid::nil(),
+                version_no: 1,
+                title: "widget note".into(),
+                body_md: Some(body_md.to_string()),
+                frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
+                kind: None,
+                status: "unread".into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: Some(vec![]),
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_ignores_widget_fences_inside_other_fenced_blocks(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "widget-fence").await;
+        let server = build_server(db.clone());
+        let body_md = indoc::indoc! {"
+            Quoted Markdown example:
+
+            ````markdown
+            ```widget
+            this is only documentation
+            ```
+            ````
+
+            Indented Markdown example:
+
+                ```widget
+                this is only documentation
+                ```
+        "};
+
+        let created = server
+            .write_note(strategy_id, None, widget_write_note_params(None, body_md))
+            .await
+            .expect("ignore widget fence inside another fenced block");
+        let note = server
+            .read_note(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: created.note_id,
+                    version_id: None,
+                },
+            )
+            .await
+            .expect("read note");
+
+        assert_eq!(
+            normalize_note(note),
+            NoteDto {
+                note_id: created.note_id,
+                version_id: Uuid::nil(),
+                version_no: 1,
+                title: "widget note".into(),
+                body_md: Some(body_md.to_string()),
+                frontmatter_json: serde_json::Map::new(),
+                tags: vec![],
+                kind: None,
+                status: "unread".into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: Some(vec![]),
+            },
+        );
     }
 
     struct PendingNoteFixture {

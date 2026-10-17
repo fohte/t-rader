@@ -111,6 +111,21 @@ impl StrategyServer {
         .await
     }
 
+    pub(super) async fn query_widget(
+        &self,
+        scope: impl Into<StrategyScope>,
+        definition_yaml: &str,
+    ) -> Result<ToolOutput<Value>, McpError> {
+        self.invoke(
+            "query_widget",
+            scope.into().id(),
+            serde_json::json!({"definition_yaml": definition_yaml}),
+            None,
+            None,
+        )
+        .await
+    }
+
     pub(super) async fn write_note(
         &self,
         scope: impl Into<StrategyScope>,
