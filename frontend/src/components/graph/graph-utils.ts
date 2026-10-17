@@ -11,6 +11,16 @@ import type {
 
 const NODE_WIDTH_BASE = 160
 export const NODE_HEIGHT = 56
+const NODE_HORIZONTAL_PADDING = 26
+const NODE_VERTICAL_PADDING = 18
+const NODE_LABEL_FONT_SIZE = 14
+const NODE_LABEL_LINE_HEIGHT = 20
+const NODE_CONTENT_GAP = 6
+const REF_CHIP_HEIGHT = 20
+const EDGE_LABEL_FONT_SIZE = 12
+const EDGE_LABEL_HEIGHT = 20
+const EDGE_LABEL_HORIZONTAL_PADDING = 12
+const textSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
 const EDGE_STROKE_MIN = 1.5
 const EDGE_STROKE_MAX = 5
@@ -19,6 +29,60 @@ const EDGE_STROKE_MAX = 5
 export function nodeWidth(node: GraphNode): number {
   if (typeof node.value !== 'number') return NODE_WIDTH_BASE
   return NODE_WIDTH_BASE + Math.min(node.value, 100) * 0.8
+}
+
+function isWideCharacter(character: string): boolean {
+  const codePoint = character.codePointAt(0) ?? 0
+  return (
+    (codePoint >= 0x2e80 && codePoint <= 0xa4cf) ||
+    (codePoint >= 0xac00 && codePoint <= 0xd7af) ||
+    (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+    (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+    (codePoint >= 0xff01 && codePoint <= 0xff60) ||
+    (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+    (codePoint >= 0x1f000 && codePoint <= 0x1faff) ||
+    (codePoint >= 0x20000 && codePoint <= 0x3ffff)
+  )
+}
+
+function estimateTextWidth(text: string, fontSize: number): number {
+  let width = 0
+  for (const { segment: character } of textSegmenter.segment(text)) {
+    if (/\s/u.test(character)) {
+      width += fontSize * 0.3
+      continue
+    }
+    width += fontSize * (isWideCharacter(character) ? 1 : 0.62)
+  }
+  return width
+}
+
+/** Dagre と描画側で同じ高さを使い、ラベルの折り返し後にノードが動かないようにする */
+export function nodeHeight(node: GraphNode): number {
+  const contentWidth = nodeWidth(node) - NODE_HORIZONTAL_PADDING
+  const labelLines = Math.max(
+    1,
+    Math.ceil(
+      estimateTextWidth(node.label, NODE_LABEL_FONT_SIZE) / contentWidth,
+    ),
+  )
+  return (
+    NODE_VERTICAL_PADDING +
+    labelLines * NODE_LABEL_LINE_HEIGHT +
+    (node.ref == null ? 0 : NODE_CONTENT_GAP + REF_CHIP_HEIGHT)
+  )
+}
+
+export function estimateEdgeLabelSize(label: string): {
+  width: number
+  height: number
+} {
+  return {
+    width:
+      Math.ceil(estimateTextWidth(label, EDGE_LABEL_FONT_SIZE)) +
+      EDGE_LABEL_HORIZONTAL_PADDING,
+    height: EDGE_LABEL_HEIGHT,
+  }
 }
 
 /** tree のみ縦方向 (Bottom→Top)、それ以外は横方向 (Right→Left) に Handle を置く */
@@ -109,6 +173,7 @@ export function buildFlowEdges(
 
     return {
       id: `${edge.source}-${edge.target}-${String(index)}`,
+      type: 'graphEdge',
       source: edge.source,
       target: edge.target,
       label,

@@ -56,6 +56,7 @@ describe('buildChainLayout', () => {
       edges: [
         {
           id: 'a-b-0',
+          type: 'graphEdge',
           source: 'a',
           target: 'b',
           label: undefined,

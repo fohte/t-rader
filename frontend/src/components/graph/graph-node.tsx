@@ -4,7 +4,11 @@ import { CiteBadge } from '#components/graph/cite-badge'
 import type { GraphFlowNode } from '#components/graph/flow-types'
 import { getGraphHighlightClass } from '#components/graph/graph-highlight'
 import { useGraphRenderContext } from '#components/graph/graph-render-context'
-import { handlePositions, nodeWidth } from '#components/graph/graph-utils'
+import {
+  handlePositions,
+  nodeHeight,
+  nodeWidth,
+} from '#components/graph/graph-utils'
 import { RefChip } from '#components/strategy-shell/ref-chip'
 
 const CHAIN_BAR_MAX_HEIGHT = 64
@@ -22,12 +26,17 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
   const showBar =
     layout === 'chain' && typeof data.value === 'number' && maxNodeValue > 0
   const highlightClass = getGraphHighlightClass(id, highlightedNodeIds)
+  const dagreHeight =
+    layout === 'flow' || layout === 'tree' ? nodeHeight(data) : undefined
 
   return (
     <div
       data-slot="graph-node"
       className={`border-border bg-card text-card-foreground relative flex flex-col gap-1.5 rounded-md border px-3 py-2 text-sm ${highlightClass}`}
-      style={{ width: nodeWidth(data) }}
+      style={{
+        width: nodeWidth(data),
+        ...(dagreHeight == null ? {} : { minHeight: dagreHeight }),
+      }}
     >
       <Handle
         type="target"
@@ -43,7 +52,7 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
         />
       )}
 
-      <div className="font-medium">{data.label}</div>
+      <div className="font-medium break-words">{data.label}</div>
       {data.ref != null && (
         <RefChip token={data.ref} pill onOpenRef={onOpenRef} />
       )}
