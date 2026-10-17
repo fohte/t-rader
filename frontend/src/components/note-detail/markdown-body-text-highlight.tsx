@@ -70,7 +70,7 @@ function withHighlight(
   offset: { value: number },
   refChipTexts: Record<string, string>,
 ): ReactNode {
-  return Children.map(node, (child) => {
+  const highlightedChildren = Children.map(node, (child) => {
     if (typeof child === 'string' || typeof child === 'number') {
       const text = String(child)
       const childStart = offset.value
@@ -131,6 +131,9 @@ function withHighlight(
       withHighlight(props.children, start, end, offset, refChipTexts),
     )
   })
+  return isValidElement(node) && Array.isArray(highlightedChildren)
+    ? (highlightedChildren[0] ?? node)
+    : highlightedChildren
 }
 
 export function highlightFirstTextMatch(
@@ -151,10 +154,7 @@ export function highlightFirstTextMatch(
   const end = start + text.length
   const match = start === 0 && end === content.length ? 'full' : 'partial'
   return {
-    children:
-      match === 'partial'
-        ? withHighlight(children, start, end, { value: 0 }, refChipTexts)
-        : children,
+    children: withHighlight(children, start, end, { value: 0 }, refChipTexts),
     match,
   }
 }

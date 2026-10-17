@@ -283,24 +283,25 @@ describe('MarkdownBody', () => {
     ])
   })
 
-  it('renders a nested list comment once below its anchored item', () => {
+  it('highlights a nested list quote without highlighting its comment thread', () => {
+    const anchorText = '試験用の子項目'
     const comment: NoteVersionComment = {
       id: 'nested-list-comment',
       target_kind: 'note_version',
       target_id: 'sample-version',
       parent_id: null,
-      body: '入れ子項目へのコメントです。',
+      body: '試験用のコメントです。',
       author_kind: 'human',
       author_label: 'レビュー担当者',
       resolved: false,
-      anchor_text: '入れ子の項目',
+      anchor_text: anchorText,
       anchor_side: 'new',
       start_line: 2,
       end_line: 2,
       created_at: '2026-01-12T03:00:00Z',
     }
     const source = `- 親項目
-    - 入れ子の項目`
+    - ${anchorText}`
     const { container } = render(
       <MarkdownBody
         source={source}
@@ -314,6 +315,9 @@ describe('MarkdownBody', () => {
       line: item.getAttribute('data-source-start-line'),
       highlighted: item.classList.contains('bg-primary/10'),
     }))
+    const highlightedText = [
+      ...container.querySelectorAll('mark[data-comment-text-highlight="true"]'),
+    ].map((mark) => mark.textContent)
 
     const getNestedCommentState = () => ({
       commentLines: renderedComments.map(
@@ -323,13 +327,15 @@ describe('MarkdownBody', () => {
             ?.getAttribute('data-source-start-line') ?? null,
       ),
       highlightedItems,
+      highlightedText,
     })
     expect(getNestedCommentState()).toEqual({
       commentLines: ['2'],
       highlightedItems: [
         { line: '1', highlighted: false },
-        { line: '2', highlighted: true },
+        { line: '2', highlighted: false },
       ],
+      highlightedText: [anchorText],
     })
   })
 

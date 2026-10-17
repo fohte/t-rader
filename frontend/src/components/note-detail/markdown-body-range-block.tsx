@@ -317,11 +317,9 @@ export function MarkdownBodyRangeBlock({
             : undefined,
           refChipTexts: context.refChipTexts,
         })
-  const isTextHighlightPartial = textHighlight?.match === 'partial'
   const isBlockSelected =
-    (presentation.isSelected &&
-      (!presentation.isTextSelection || !isTextHighlightPartial)) ||
-    (textHighlight != null && textHighlight.match !== 'partial')
+    (presentation.isSelected && !presentation.isTextSelection) ||
+    textHighlight?.match === 'missing'
   const renderedContent = textHighlight?.children ?? content
   const { props } = context
   const showThread = presentation.isActive || presentation.comments.length > 0
