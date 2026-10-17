@@ -2,6 +2,7 @@ import { Handle, type NodeProps } from '@xyflow/react'
 
 import { CiteBadge } from '#components/graph/cite-badge'
 import type { GraphFlowNode } from '#components/graph/flow-types'
+import { getGraphHighlightClass } from '#components/graph/graph-highlight'
 import { useGraphRenderContext } from '#components/graph/graph-render-context'
 import { handlePositions, nodeWidth } from '#components/graph/graph-utils'
 import { RefChip } from '#components/strategy-shell/ref-chip'
@@ -20,10 +21,7 @@ export function GraphNodeView({ id, data }: NodeProps<GraphFlowNode>) {
 
   const showBar =
     layout === 'chain' && typeof data.value === 'number' && maxNodeValue > 0
-  const highlightClass =
-    highlightedNodeIds == null || highlightedNodeIds.has(id)
-      ? 'opacity-100'
-      : 'opacity-30 transition-opacity'
+  const highlightClass = getGraphHighlightClass(id, highlightedNodeIds)
 
   return (
     <div

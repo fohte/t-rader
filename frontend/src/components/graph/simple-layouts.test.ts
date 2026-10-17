@@ -111,6 +111,7 @@ describe('buildScatterLayout', () => {
       {
         id: '__scatter_background__',
         type: 'graphScatterBackground',
+        className: 'pointer-events-none',
         position: { x: 0, y: 0 },
         style: { width: 560, height: 560 },
         zIndex: -1,

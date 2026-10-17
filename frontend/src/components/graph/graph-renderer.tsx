@@ -16,6 +16,10 @@ import type {
   ScatterBackgroundFlowNode,
 } from '#components/graph/flow-types'
 import { GraphGroupNodeView } from '#components/graph/graph-group-node'
+import {
+  GRAPH_DIMMED_CLASS,
+  GRAPH_HIGHLIGHT_CLASS,
+} from '#components/graph/graph-highlight'
 import { GraphNodeView } from '#components/graph/graph-node'
 import { GraphRenderContextProvider } from '#components/graph/graph-render-context'
 import { GraphScatterBackgroundView } from '#components/graph/graph-scatter-background'
@@ -32,9 +36,6 @@ const nodeTypes: NodeTypes = {
   graphGroup: GraphGroupNodeView,
   graphScatterBackground: GraphScatterBackgroundView,
 }
-
-const HIGHLIGHT_CLASS = 'opacity-100'
-const DIMMED_CLASS = 'opacity-30 transition-opacity'
 
 export interface GraphRendererProps {
   def: GraphDef
@@ -120,8 +121,8 @@ function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
           neighborIds == null ||
           edge.source === hoveredId ||
           edge.target === hoveredId
-            ? HIGHLIGHT_CLASS
-            : DIMMED_CLASS,
+            ? GRAPH_HIGHLIGHT_CLASS
+            : GRAPH_DIMMED_CLASS,
       })),
     [rawEdges, neighborIds, hoveredId],
   )

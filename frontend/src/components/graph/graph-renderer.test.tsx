@@ -142,6 +142,19 @@ describe('GraphRenderer', () => {
     ])
   })
 
+  it('hover した group node 自身をハイライトする', () => {
+    const { nodeA, nodeB, nodeC, nodeGroup } = renderHoverNodes()
+
+    fireEvent.mouseEnter(screen.getByTestId('rf__node-group'))
+
+    expect(highlightState(nodeA, nodeB, nodeC, nodeGroup)).toEqual([
+      ['opacity-30', 'transition-opacity'],
+      ['opacity-30', 'transition-opacity'],
+      ['opacity-30', 'transition-opacity'],
+      ['opacity-100'],
+    ])
+  })
+
   it('mouseLeave で元のハイライトに戻す', () => {
     const { nodeA, nodeB, nodeC, nodeGroup, nodeAWrapper } = renderHoverNodes()
 
