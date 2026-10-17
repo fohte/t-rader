@@ -10,20 +10,31 @@ use super::clock::{BarsIngestClock, SystemBarsIngestClock};
 use super::error::BarsUseCaseError;
 use super::repository::SharedBarsRepository;
 use super::types::{BarsByInstrumentsQuery, BarsQuery};
+use super::write_lock::{SharedUsStockBarsWriteLock, no_op_write_lock};
 
 #[derive(Clone)]
 pub struct BarsUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) repository: SharedBarsRepository,
+    pub(super) us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
     pub(super) clock: Arc<dyn BarsIngestClock>,
     pub(super) ingest_run: Option<(Uuid, SharedIngestRunLog)>,
 }
 
 impl BarsUseCases {
     pub fn new(unit_of_work: SharedUnitOfWork, repository: SharedBarsRepository) -> Self {
+        Self::new_with_us_stock_bars_write_lock(unit_of_work, repository, no_op_write_lock())
+    }
+
+    pub fn new_with_us_stock_bars_write_lock(
+        unit_of_work: SharedUnitOfWork,
+        repository: SharedBarsRepository,
+        us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
+    ) -> Self {
         Self::with_clock(
             unit_of_work,
             repository,
+            us_stock_bars_write_lock,
             Arc::new(SystemBarsIngestClock::new()),
         )
     }
@@ -31,11 +42,13 @@ impl BarsUseCases {
     pub(super) fn with_clock(
         unit_of_work: SharedUnitOfWork,
         repository: SharedBarsRepository,
+        us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
         clock: Arc<dyn BarsIngestClock>,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
+            us_stock_bars_write_lock,
             clock,
             ingest_run: None,
         }

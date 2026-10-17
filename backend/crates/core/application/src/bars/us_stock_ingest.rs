@@ -4,12 +4,13 @@ use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::Timeframe;
 
 use super::error::BarsUseCaseError;
-use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
+use super::types::{UsStockBarTarget, UsStockBarsIngestResult, UsStockBarsIngestStats};
 use super::us_stock_hourly_history_cutoff;
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::BarsUseCases;
+use super::write_lock::UsStockBarsWriteLockGuard;
 use super::write_throttle::WriteThrottle;
 use super::{US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION};
 use request_budget::RequestBudget;
@@ -134,17 +135,33 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_bars_for_timeframe(
-            source,
-            now,
-            UsStockBarTimeframe::Daily,
-            RequestBudget::new(
-                MAX_REQUESTS_PER_RUN,
-                US_STOCK_DAILY_BARS_MAX_RUN_DURATION,
-                self.clock.instant(),
-            ),
-        )
-        .await
+        self.ingest_us_stock_daily_bars_with_write_lock(source, now)
+            .await
+            .map(|result| result.stats)
+    }
+
+    pub async fn ingest_us_stock_daily_bars_with_write_lock(
+        &self,
+        source: &dyn UsStockBarSource,
+        now: DateTime<Utc>,
+    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
+        let mut budget = RequestBudget::new(
+            MAX_REQUESTS_PER_RUN,
+            US_STOCK_DAILY_BARS_MAX_RUN_DURATION,
+            self.clock.instant(),
+        );
+        let mut lock_wait_stats = UsStockBarsIngestStats::default();
+        let Some(write_lock_guard) = self
+            .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
+            .await?
+        else {
+            return Ok(UsStockBarsIngestResult::new(lock_wait_stats, None));
+        };
+        let mut stats = self
+            .ingest_us_stock_bars_for_timeframe(source, now, UsStockBarTimeframe::Daily, budget)
+            .await?;
+        stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
+        Ok(UsStockBarsIngestResult::new(stats, Some(write_lock_guard)))
     }
 
     pub async fn ingest_us_stock_minute_bars(
@@ -164,15 +181,53 @@ impl BarsUseCases {
         .await
     }
 
+    pub async fn ingest_us_stock_minute_bars_with_write_lock(
+        &self,
+        source: &dyn UsStockBarSource,
+        now: DateTime<Utc>,
+    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
+        self.ingest_us_stock_minute_bars_with_budget_and_write_lock(
+            source,
+            now,
+            RequestBudget::new(
+                MAX_REQUESTS_PER_RUN,
+                US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
+                self.clock.instant(),
+            ),
+        )
+        .await
+    }
+
     async fn ingest_us_stock_minute_bars_with_budget(
         &self,
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
         budget: RequestBudget,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
+        self.ingest_us_stock_minute_bars_with_budget_and_write_lock(source, now, budget)
+            .await
+            .map(|result| result.stats)
+    }
+
+    async fn ingest_us_stock_minute_bars_with_budget_and_write_lock(
+        &self,
+        source: &dyn UsStockBarSource,
+        now: DateTime<Utc>,
+        mut budget: RequestBudget,
+    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
+        let mut lock_wait_stats = UsStockBarsIngestStats::default();
+        let Some(write_lock_guard) = self
+            .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
+            .await?
+        else {
+            return Ok(UsStockBarsIngestResult::new(lock_wait_stats, None));
+        };
         let mut ingest_result = self
             .ingest_us_stock_bars_for_timeframe(source, now, UsStockBarTimeframe::Minute, budget)
             .await;
+        if let Ok(stats) = &mut ingest_result {
+            stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
+        }
         if let Err(error) = self.repository.compress_bars_older_than_policy(now).await {
             let compression_error = error.to_string();
             if let Ok(stats) = &mut ingest_result {
@@ -181,7 +236,7 @@ impl BarsUseCases {
                 tracing::error!(error = %compression_error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
             }
         }
-        ingest_result
+        ingest_result.map(|stats| UsStockBarsIngestResult::new(stats, Some(write_lock_guard)))
     }
 
     pub async fn ingest_us_stock_hourly_bars(
@@ -189,17 +244,66 @@ impl BarsUseCases {
         source: &dyn UsStockBarSource,
         now: DateTime<Utc>,
     ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_bars_for_timeframe(
-            source,
-            now,
-            UsStockBarTimeframe::Hourly,
-            RequestBudget::new(
-                MAX_REQUESTS_PER_RUN,
-                US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
-                self.clock.instant(),
-            ),
-        )
-        .await
+        self.ingest_us_stock_hourly_bars_with_write_lock(source, now)
+            .await
+            .map(|result| result.stats)
+    }
+
+    pub async fn ingest_us_stock_hourly_bars_with_write_lock(
+        &self,
+        source: &dyn UsStockBarSource,
+        now: DateTime<Utc>,
+    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
+        let mut budget = RequestBudget::new(
+            MAX_REQUESTS_PER_RUN,
+            US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
+            self.clock.instant(),
+        );
+        let mut lock_wait_stats = UsStockBarsIngestStats::default();
+        let Some(write_lock_guard) = self
+            .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
+            .await?
+        else {
+            return Ok(UsStockBarsIngestResult::new(lock_wait_stats, None));
+        };
+        let mut stats = self
+            .ingest_us_stock_bars_for_timeframe(source, now, UsStockBarTimeframe::Hourly, budget)
+            .await?;
+        stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
+        Ok(UsStockBarsIngestResult::new(stats, Some(write_lock_guard)))
+    }
+
+    async fn acquire_us_stock_bars_write_lock(
+        &self,
+        budget: &mut RequestBudget,
+        stats: &mut UsStockBarsIngestStats,
+    ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, BarsUseCaseError> {
+        let acquire_started_at = self.clock.instant();
+        if !budget.can_start_request(acquire_started_at) {
+            stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
+            return Ok(None);
+        }
+
+        let wait_timeout = budget
+            .deadline()
+            .saturating_duration_since(acquire_started_at);
+        let lock = self.us_stock_bars_write_lock.acquire(wait_timeout).await?;
+        let completed_at = self.clock.instant();
+        let waited = completed_at.saturating_duration_since(acquire_started_at);
+        stats.write_lock_wait_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+
+        match lock {
+            Some(guard) if budget.can_start_request(completed_at) => Ok(Some(guard)),
+            Some(_) => {
+                stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
+                Ok(None)
+            }
+            None => {
+                budget.mark_time_budget_exhausted();
+                stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
+                Ok(None)
+            }
+        }
     }
 
     async fn ingest_us_stock_bars_for_timeframe(
@@ -490,9 +594,10 @@ mod tests {
 
     use crate::bars::clock::BarsIngestClock;
     use crate::bars::{
-        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SkippedUsStockInstrument,
-        UsStockBarPage, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
-        UsStockBarsIngestStats, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
+        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock,
+        SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
+        UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsWriteLock,
+        UsStockBarsWriteLockGuard, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
     };
     use crate::ingest_run_log::{IngestRunLog, SharedIngestRunLog};
     use crate::persistence::PersistenceError;
@@ -575,6 +680,52 @@ mod tests {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(duration);
             self.advance(duration);
+        }
+    }
+
+    struct TestUsStockBarsWriteLock {
+        clock: Arc<TestClock>,
+        wait_before_acquire: StdMutex<Duration>,
+    }
+
+    impl TestUsStockBarsWriteLock {
+        fn new(clock: Arc<TestClock>) -> Self {
+            Self {
+                clock,
+                wait_before_acquire: StdMutex::default(),
+            }
+        }
+
+        fn wait_before_acquire(&self, duration: Duration) {
+            *self
+                .wait_before_acquire
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = duration;
+        }
+    }
+
+    struct TestUsStockBarsWriteLockGuard;
+
+    impl UsStockBarsWriteLockGuard for TestUsStockBarsWriteLockGuard {}
+
+    #[async_trait]
+    impl UsStockBarsWriteLock for TestUsStockBarsWriteLock {
+        async fn acquire(
+            &self,
+            wait_timeout: Duration,
+        ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
+            let wait_duration = *self
+                .wait_before_acquire
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if wait_duration >= wait_timeout {
+                self.clock.sleep(wait_timeout).await;
+                return Ok(None);
+            }
+            if !wait_duration.is_zero() {
+                self.clock.sleep(wait_duration).await;
+            }
+            Ok(Some(Box::new(TestUsStockBarsWriteLockGuard)))
         }
     }
 
@@ -732,6 +883,7 @@ mod tests {
         source: FakeSource,
         clock: Arc<TestClock>,
         unit_of_work: Arc<TestUnitOfWork>,
+        write_lock: Arc<TestUsStockBarsWriteLock>,
         events: Arc<StdMutex<Vec<&'static str>>>,
     }
 
@@ -741,6 +893,8 @@ mod tests {
         let repository_shared = repository.clone();
         let repository_shared_trait: crate::bars::SharedBarsRepository = repository_shared;
         let clock = Arc::new(TestClock::default());
+        let write_lock = Arc::new(TestUsStockBarsWriteLock::new(clock.clone()));
+        let write_lock_shared: SharedUsStockBarsWriteLock = write_lock.clone();
         let events = Arc::new(StdMutex::default());
         let unit_of_work = Arc::new(TestUnitOfWork::new(clock.clone(), events.clone()));
         let unit_of_work_shared: SharedUnitOfWork = unit_of_work.clone();
@@ -748,12 +902,14 @@ mod tests {
             use_cases: BarsUseCases::with_clock(
                 unit_of_work_shared,
                 repository_shared_trait,
+                write_lock_shared,
                 clock.clone(),
             ),
             repository,
             source: FakeSource::default(),
             clock,
             unit_of_work,
+            write_lock,
             events,
         }
     }
@@ -994,6 +1150,8 @@ mod tests {
             Duration::ZERO,
             Duration::ZERO,
             Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::from_millis(250),
             Duration::from_millis(400),
         ]);
@@ -1032,6 +1190,8 @@ mod tests {
             .seed_us_stock_minute_targets(instrument_ids.clone())
             .await;
         harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::ZERO,
             Duration::ZERO,
             Duration::ZERO,
@@ -1186,6 +1346,8 @@ mod tests {
             new_rate: Decimal::new(2, 0),
         });
         harness.clock.set_now_readings([
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::ZERO,
             Duration::ZERO,
             Duration::ZERO,
@@ -1599,22 +1761,85 @@ mod tests {
                 .await
                 .clone(),
         );
-        let expected_compression_times = if timeframe == UsStockBarTimeframe::Minute {
-            vec![now]
-        } else {
-            Vec::new()
-        };
+        let expected_compression_times = Vec::new();
 
         assert_eq!(
             actual,
             (
                 UsStockBarsIngestStats {
-                    symbols_attempted: 1,
+                    symbols_attempted: usize::from(timeframe != UsStockBarTimeframe::Minute),
                     interrupted_reason: Some("time_budget_exhausted".to_owned()),
                     ..UsStockBarsIngestStats::default()
                 },
                 0,
                 expected_compression_times,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn records_time_spent_acquiring_the_shared_write_lock(harness: Harness) {
+        let wait = Duration::from_millis(1_500);
+        harness.write_lock.wait_before_acquire(wait);
+
+        let stats = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, date("2040-01-02T12:00:00Z"))
+            .await
+            .expect("daily ingestion succeeds");
+        let actual = (stats, harness.clock.sleeps());
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    write_lock_wait_ms: 1_500,
+                    ..UsStockBarsIngestStats::default()
+                },
+                vec![wait],
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn ends_successfully_without_ingesting_when_the_write_lock_uses_the_budget(
+        harness: Harness,
+    ) {
+        harness
+            .write_lock
+            .wait_before_acquire(Duration::from_secs(60 * 60));
+        let now = date("2040-01-02T12:00:00Z");
+
+        let result = harness
+            .use_cases
+            .ingest_us_stock_minute_bars(&harness.source, now)
+            .await
+            .expect("lock timeout is reported in stats");
+        let actual = (
+            result,
+            harness.source.calls.lock().await.len(),
+            harness
+                .repository
+                .bar_compression_times
+                .lock()
+                .await
+                .clone(),
+            harness.clock.sleeps(),
+        );
+
+        assert_eq!(
+            actual,
+            (
+                UsStockBarsIngestStats {
+                    write_lock_wait_ms: 45 * 60 * 1_000,
+                    interrupted_reason: Some("time_budget_exhausted".to_owned()),
+                    ..UsStockBarsIngestStats::default()
+                },
+                0,
+                Vec::new(),
+                vec![Duration::from_secs(45 * 60)],
             ),
         );
     }
@@ -1640,7 +1865,9 @@ mod tests {
             Duration::ZERO,
             Duration::ZERO,
             Duration::ZERO,
-            Duration::from_millis(100),
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
             Duration::from_millis(100),
             Duration::from_millis(100),
             Duration::from_millis(100),
@@ -2037,6 +2264,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                write_lock_wait_ms: 0,
                 write_throttle_wait_ms: 0,
                 compression_error: None,
             },
@@ -2048,6 +2276,7 @@ mod tests {
                 hourly_bars_upserted: 0,
                 skipped_instruments: Vec::new(),
                 interrupted_reason: None,
+                write_lock_wait_ms: 0,
                 write_throttle_wait_ms: 0,
                 compression_error: None,
             },
@@ -2293,6 +2522,7 @@ mod tests {
                         reason: "synthetic symbol rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -2488,6 +2718,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -2499,6 +2730,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -2598,6 +2830,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: Some("request_budget_exhausted".to_owned()),
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -2672,6 +2905,7 @@ mod tests {
                         reason: "synthetic split rejection".to_owned(),
                     }],
                     interrupted_reason: None,
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -2788,6 +3022,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -3185,6 +3420,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -3264,6 +3500,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },
@@ -3346,6 +3583,7 @@ mod tests {
                     hourly_bars_upserted: 0,
                     skipped_instruments: Vec::new(),
                     interrupted_reason: None,
+                    write_lock_wait_ms: 0,
                     write_throttle_wait_ms: 0,
                     compression_error: None,
                 },

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use rust_decimal::Decimal;
@@ -58,12 +59,101 @@ pub struct UsStockBarsIngestStats {
     pub daily_bars_upserted: usize,
     pub minute_bars_upserted: usize,
     pub hourly_bars_upserted: usize,
+    pub write_lock_wait_ms: u64,
     pub write_throttle_wait_ms: u64,
     pub skipped_instruments: Vec<super::us_stock_source::SkippedUsStockInstrument>,
     pub interrupted_reason: Option<String>,
     /// 分足取り込みに成功した場合だけ、古い chunk の圧縮失敗を記録する。
     /// 取り込み自体が失敗した場合は stats を返さない。
     pub compression_error: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct UsStockBarsIngestResult {
+    #[serde(flatten)]
+    pub stats: UsStockBarsIngestStats,
+    #[serde(skip)]
+    pub(super) _write_lock_guard: Option<Box<dyn super::write_lock::UsStockBarsWriteLockGuard>>,
+}
+
+impl UsStockBarsIngestResult {
+    pub(super) fn new(
+        stats: UsStockBarsIngestStats,
+        write_lock_guard: Option<Box<dyn super::write_lock::UsStockBarsWriteLockGuard>>,
+    ) -> Self {
+        Self {
+            stats,
+            _write_lock_guard: write_lock_guard,
+        }
+    }
+}
+
+impl Deref for UsStockBarsIngestResult {
+    type Target = UsStockBarsIngestStats;
+
+    fn deref(&self) -> &Self::Target {
+        &self.stats
+    }
+}
+
+impl std::fmt::Debug for UsStockBarsIngestResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.stats.fmt(formatter)
+    }
+}
+
+impl PartialEq for UsStockBarsIngestResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.stats == other.stats
+    }
+}
+
+impl Eq for UsStockBarsIngestResult {}
+
+impl PartialEq<UsStockBarsIngestStats> for UsStockBarsIngestResult {
+    fn eq(&self, other: &UsStockBarsIngestStats) -> bool {
+        self.stats == *other
+    }
+}
+
+impl PartialEq<UsStockBarsIngestResult> for UsStockBarsIngestStats {
+    fn eq(&self, other: &UsStockBarsIngestResult) -> bool {
+        *self == other.stats
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{UsStockBarsIngestResult, UsStockBarsIngestStats};
+
+    #[test]
+    fn ingest_result_serializes_stats_as_a_flat_object() {
+        let result = UsStockBarsIngestResult::new(
+            UsStockBarsIngestStats {
+                write_lock_wait_ms: 1234,
+                ..UsStockBarsIngestStats::default()
+            },
+            None,
+        );
+
+        assert_eq!(
+            serde_json::to_value(result).expect("result serializes"),
+            json!({
+                "symbols_attempted": 0,
+                "requests_attempted": 0,
+                "daily_bars_upserted": 0,
+                "minute_bars_upserted": 0,
+                "hourly_bars_upserted": 0,
+                "write_lock_wait_ms": 1234,
+                "write_throttle_wait_ms": 0,
+                "skipped_instruments": [],
+                "interrupted_reason": null,
+                "compression_error": null,
+            }),
+        );
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]

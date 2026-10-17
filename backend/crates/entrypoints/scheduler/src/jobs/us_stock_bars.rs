@@ -1,6 +1,6 @@
 use chrono::Utc;
 use core_application::bars::{
-    BarsUseCaseError, UsStockBarsIngestStats, UsStockMinuteBarsDownsampleStats,
+    BarsUseCaseError, UsStockBarsIngestResult, UsStockMinuteBarsDownsampleStats,
 };
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
@@ -50,8 +50,11 @@ impl super::SchedulerJob for UsStockBarsIngest {
                     )?;
                     log_ingest_stats(
                         "1d",
-                        bars.ingest_us_stock_daily_bars(source.as_ref(), Utc::now())
-                            .await,
+                        bars.ingest_us_stock_daily_bars_with_write_lock(
+                            source.as_ref(),
+                            Utc::now(),
+                        )
+                        .await,
                     )
                 },
             )
@@ -89,8 +92,11 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
                     )?;
                     log_ingest_stats(
                         "1m",
-                        bars.ingest_us_stock_minute_bars(source.as_ref(), Utc::now())
-                            .await,
+                        bars.ingest_us_stock_minute_bars_with_write_lock(
+                            source.as_ref(),
+                            Utc::now(),
+                        )
+                        .await,
                     )
                 },
             )
@@ -128,8 +134,11 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
                     )?;
                     log_ingest_stats(
                         "1h",
-                        bars.ingest_us_stock_hourly_bars(source.as_ref(), Utc::now())
-                            .await,
+                        bars.ingest_us_stock_hourly_bars_with_write_lock(
+                            source.as_ref(),
+                            Utc::now(),
+                        )
+                        .await,
                     )
                 },
             )
@@ -173,8 +182,8 @@ impl super::SchedulerJob for UsStockMinuteBarsDownsample {
 
 fn log_ingest_stats(
     bar_timeframe: &'static str,
-    result: Result<UsStockBarsIngestStats, BarsUseCaseError>,
-) -> Result<UsStockBarsIngestStats, String> {
+    result: Result<UsStockBarsIngestResult, BarsUseCaseError>,
+) -> Result<UsStockBarsIngestResult, String> {
     let stats = result.map_err(|error| error.to_string())?;
     if let Some(error) = &stats.compression_error {
         tracing::error!(bar_timeframe, %error, "failed to compress old bars chunks after ingest");
@@ -186,6 +195,7 @@ fn log_ingest_stats(
         daily_bars_upserted = stats.daily_bars_upserted,
         minute_bars_upserted = stats.minute_bars_upserted,
         hourly_bars_upserted = stats.hourly_bars_upserted,
+        write_lock_wait_ms = stats.write_lock_wait_ms,
         write_throttle_wait_ms = stats.write_throttle_wait_ms,
         skipped_instruments = stats.skipped_instruments.len(),
         interrupted_reason = ?stats.interrupted_reason,
