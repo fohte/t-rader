@@ -65,7 +65,7 @@ describe('buildDagreLayout', () => {
                 { x: 235, y: 19 },
                 { x: 310, y: 19 },
               ],
-              labelPosition: { x: 235, y: 39 },
+              labelPosition: { x: 235, y: 19 },
             },
           },
         },
@@ -93,19 +93,19 @@ describe('buildDagreLayout', () => {
     expect(result.value.edges.map(({ data }) => data.dagre)).toEqual([
       {
         points: [
-          { x: 160, y: 30.49425287356322 },
-          { x: 254, y: 44 },
-          { x: 348, y: 30.49425287356322 },
+          { x: 160, y: 39.195402298850574 },
+          { x: 254, y: 50 },
+          { x: 348, y: 39.195402298850574 },
         ],
-        labelPosition: { x: 254, y: 64 },
+        labelPosition: { x: 254, y: 50 },
       },
       {
         points: [
-          { x: 160, y: 7.505747126436782 },
-          { x: 254, y: -6 },
-          { x: 348, y: 7.505747126436782 },
+          { x: 160, y: 20.804597701149426 },
+          { x: 254, y: 10 },
+          { x: 348, y: 20.804597701149426 },
         ],
-        labelPosition: { x: 254, y: 14 },
+        labelPosition: { x: 254, y: 10 },
       },
     ])
   })
@@ -118,15 +118,54 @@ describe('buildDagreLayout', () => {
         { id: 'a', label: 'A' },
         { id: 'b', label: 'B' },
       ],
-      edges: [{ source: 'a', target: 'b' }],
+      edges: [{ source: 'a', target: 'b', label: 'factor' }],
     }
     const result = buildDagreLayout(def, 'TB', new Map())
     expect(result.isOk()).toBe(true)
     if (!result.isOk()) return
-    expect(result.value.nodes.map((n) => n.position)).toEqual([
-      { x: 0, y: 0 },
-      { x: 0, y: 128 },
-    ])
+    expect(result.value).toEqual({
+      nodes: [
+        {
+          id: 'a',
+          type: 'graphNode',
+          position: { x: 0, y: 0 },
+          parentId: undefined,
+          extent: undefined,
+          data: { id: 'a', label: 'A' },
+        },
+        {
+          id: 'b',
+          type: 'graphNode',
+          position: { x: 0, y: 148 },
+          parentId: undefined,
+          extent: undefined,
+          data: { id: 'b', label: 'B' },
+        },
+      ],
+      edges: [
+        {
+          id: 'a-b-0',
+          type: 'graphEdge',
+          source: 'a',
+          target: 'b',
+          label: 'factor',
+          style: { strokeWidth: 1.5 },
+          data: {
+            source: 'a',
+            target: 'b',
+            label: 'factor',
+            dagre: {
+              points: [
+                { x: 80, y: 38 },
+                { x: 80, y: 93 },
+                { x: 80, y: 148 },
+              ],
+              labelPosition: { x: 80, y: 93 },
+            },
+          },
+        },
+      ],
+    })
   })
 
   it('parent が循環参照していれば err を返す (throw させない)', () => {

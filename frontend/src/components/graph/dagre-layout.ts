@@ -66,11 +66,11 @@ export function buildDagreLayout(
         if (node.parent != null) g.setParent(node.id, node.parent)
       }
       for (const [index, edge] of edges.entries()) {
-        const labelSize =
+        const label: EdgeLabel =
           typeof edge.label !== 'string' || edge.label === ''
             ? {}
-            : estimateEdgeLabelSize(edge.label)
-        g.setEdge(edge.source, edge.target, labelSize, String(index))
+            : { ...estimateEdgeLabelSize(edge.label), labelpos: 'c' }
+        g.setEdge(edge.source, edge.target, label, String(index))
       }
       dagre.layout(g)
     },
