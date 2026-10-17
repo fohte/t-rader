@@ -69,7 +69,7 @@ const edges: GraphFlowEdge[] = [
           { x: 470, y: 78 },
           { x: 500, y: 78 },
         ],
-        labelPosition: { x: 390, y: 20 },
+        labelPosition: { x: 390, y: 39 },
       },
     },
   },

@@ -48,9 +48,6 @@ export function GraphFlowEdgeView({
       label={label}
       labelX={labelPosition?.x ?? fallbackLabelX}
       labelY={labelPosition?.y ?? fallbackLabelY}
-      labelShowBg={label != null}
-      labelStyle={{ fill: 'var(--foreground)' }}
-      labelBgStyle={{ fill: 'var(--card)' }}
     />
   )
 }
