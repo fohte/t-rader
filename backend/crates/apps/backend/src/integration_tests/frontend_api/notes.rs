@@ -37,6 +37,36 @@ mod tests {
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
         "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`, `[[price:<id>@<date>:<field>]]`, `[[change:<id>@<start>..<end>:<field>]]`, `[[valuation:<id>@<date>:<field>]]`, `[[indicator:<id>@<date>]]`, `[[eval:<evaluation-uuid>:<output-name>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
+    const INVALID_WIDGET_BODY: &str = indoc::indoc! {"
+        ```widget
+        queries:
+          daily:
+            metric: change
+            by: stock
+        viz:
+          type: toplist
+          value: daily
+          order: desc
+          limit: 5
+        time:
+          as_of: 2099-01-05
+        ```
+    "};
+    const WIDGET_BODY_WITHOUT_AS_OF: &str = indoc::indoc! {"
+        ```widget
+        queries:
+          cap:
+            metric: mkt_cap
+            by: group
+            axis: demo-axis
+            agg: sum
+        viz:
+          type: toplist
+          value: cap
+          order: desc
+          limit: 5
+        ```
+    "};
 
     fn normalize_note_version(mut value: Value) -> Value {
         for key in ["id", "note_id", "created_at", "reviewed_at"] {
@@ -923,6 +953,50 @@ mod tests {
         assert_eq!(
             (response.status_code(), response.json::<Value>()),
             (StatusCode::BAD_REQUEST, json!({ "error": expected_error }),),
+        );
+    }
+
+    #[fixture]
+    async fn widget_block_validation_test_context() -> (gateway_postgres::DatabaseHandle, TestServer)
+    {
+        let db = gateway_postgres::test_support::create_test_transaction().await;
+        let server = create_test_server_with_db(db.clone()).await.1;
+        (db, server)
+    }
+
+    #[rstest]
+    #[case::invalid_definition(
+        INVALID_WIDGET_BODY,
+        "widget block 1: queries.daily.period: period is required for change metrics"
+    )]
+    #[case::missing_as_of(WIDGET_BODY_WITHOUT_AS_OF, "widget block 1: time.as_of is required")]
+    #[tokio::test]
+    async fn create_note_rejects_invalid_widget_blocks(
+        #[future] widget_block_validation_test_context: (
+            gateway_postgres::DatabaseHandle,
+            TestServer,
+        ),
+        #[case] body_md: &str,
+        #[case] expected_error: &str,
+    ) {
+        let (db, server) = widget_block_validation_test_context.await;
+        let response = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "widget validation",
+                "body_md": body_md,
+            }))
+            .await;
+        let response_body = response.json::<Value>();
+        let saved_notes = note::Entity::find().all(&db).await.unwrap();
+
+        assert_eq!(
+            (response.status_code(), response_body, saved_notes.len()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": expected_error }),
+                0,
+            ),
         );
     }
 
