@@ -408,8 +408,16 @@ mod tests {
         ],
     )]
     #[case::relative_inline_link_url_is_not_scanned("[記事](/articles/2030/12345678)", vec![])]
+    #[case::angle_delimited_relative_inline_link_url_is_not_scanned(
+        "[記事](</articles/2030/12345678>)",
+        vec![],
+    )]
     #[case::autolink_url_is_not_scanned("<https://news.example.com/change/6.0%25>", vec![])]
     #[case::bare_url_is_not_scanned("https://example.com/12345678.", vec![])]
+    #[case::bare_url_with_japanese_path_is_not_scanned(
+        "https://news.example.com/73本/12345678.",
+        vec![],
+    )]
     #[case::japanese_punctuation_ends_bare_url(
         "https://example.com/a。次は5000円",
         vec![

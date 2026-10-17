@@ -329,13 +329,21 @@ fn next_url_start(body: &str, search_from: usize) -> Option<usize> {
 
 fn url_end(body: &str, start: usize) -> usize {
     let mut end = start;
+    let mut non_ascii_path_segment_end = 0;
     let mut parenthesis_depth = 0;
 
     for (offset, character) in body[start..].char_indices() {
-        if !character.is_ascii()
-            || character.is_whitespace()
-            || matches!(character, '<' | '>' | '`' | '"' | '\'')
-        {
+        let position = start + offset;
+        if !character.is_ascii() && position >= non_ascii_path_segment_end {
+            let Some((offset, '/')) = body[position..]
+                .char_indices()
+                .find(|(_, candidate)| candidate.is_ascii())
+            else {
+                break;
+            };
+            non_ascii_path_segment_end = position + offset + 1;
+        }
+        if character.is_whitespace() || matches!(character, '<' | '>' | '`' | '"' | '\'') {
             break;
         }
         match character {
@@ -344,7 +352,7 @@ fn url_end(body: &str, start: usize) -> usize {
             ')' => parenthesis_depth -= 1,
             _ => {}
         }
-        end = start + offset + character.len_utf8();
+        end = position + character.len_utf8();
     }
 
     trim_url_trailing_punctuation(body, start, end)
