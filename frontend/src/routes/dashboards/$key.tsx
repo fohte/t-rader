@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
-import { getTokyoDate } from '#components/calendar/calendar-date'
 import { parseDashboardConfig } from '#components/dashboard-pages/dashboard-config'
 import { DashboardPageView } from '#components/dashboard-pages/dashboard-page-view'
 import { useDashboardPageData } from '#components/dashboard-pages/use-dashboard-page-data'
@@ -24,9 +23,8 @@ function DashboardDetailRoute() {
         : parseDashboardConfig(dashboardQuery.data.config),
     [dashboardQuery.data?.config],
   )
-  const defaultDate = useMemo(() => getTokyoDate(), [])
   const config = parsedConfig?.ok === true ? parsedConfig.value : null
-  const dashboardData = useDashboardPageData(config, key, defaultDate)
+  const dashboardData = useDashboardPageData(config, key)
 
   if (dashboardQuery.isPending) {
     return <DashboardPageView state={{ status: 'loading', title: key }} />

@@ -2,14 +2,13 @@ import { Result } from 'neverthrow'
 import { parseDocument } from 'yaml'
 
 import type { components } from '#lib/api/schema.gen'
+import {
+  isSupportedWidgetVisualization,
+  parseWidgetQueryRequest,
+} from '#lib/widget-definition'
 
 type WidgetQueryRequest = components['schemas']['WidgetQueryRequest']
 type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
-type SupportedWidgetMetric = Extract<
-  components['schemas']['WidgetMetricRequest'],
-  'change' | 'mkt_cap'
->
-
 type SupportedWidgetVisualization = Extract<
   WidgetVisualization,
   { type: 'treemap' | 'toplist' }
@@ -39,150 +38,8 @@ export type DashboardConfigResult =
   | { ok: true; value: DashboardConfig }
   | { ok: false; issues: DashboardConfigIssue[] }
 
-const supportedMetrics = new Set<SupportedWidgetMetric>(['change', 'mkt_cap'])
-const supportedPeriods = new Set(
-  Object.keys({
-    '1d': true,
-    '5d': true,
-    '20d': true,
-    '60d': true,
-  } satisfies Record<components['schemas']['WidgetPeriodRequest'], true>),
-)
-const supportedDimensions = new Set(
-  Object.keys({
-    none: true,
-    stock: true,
-    group: true,
-  } satisfies Record<components['schemas']['WidgetByRequest'], true>),
-)
-const supportedAggregations = new Set(
-  Object.keys({
-    mkt_cap_weighted: true,
-    mean: true,
-    sum: true,
-    count: true,
-  } satisfies Record<components['schemas']['WidgetAggregationRequest'], true>),
-)
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isOneOf(value: unknown, values: Set<string>): value is string {
-  return typeof value === 'string' && values.has(value)
-}
-
-function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
-  return Object.keys(value).every((key) => keys.includes(key))
-}
-
-function isDate(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false
-  }
-
-  const parsed = new Date(`${value}T00:00:00.000Z`)
-  return (
-    !Number.isNaN(parsed.getTime()) &&
-    parsed.toISOString().slice(0, 10) === value
-  )
-}
-
-function isWidgetQuery(value: unknown): boolean {
-  if (!isRecord(value)) return false
-  if (
-    !hasOnlyKeys(value, [
-      'metric',
-      'period',
-      'by',
-      'axis',
-      'indicator',
-      'universe',
-      'agg',
-    ])
-  ) {
-    return false
-  }
-  if (
-    !isOneOf(value['metric'], supportedMetrics) ||
-    !isOneOf(value['by'], supportedDimensions)
-  ) {
-    return false
-  }
-  if (value['period'] != null && !isOneOf(value['period'], supportedPeriods)) {
-    return false
-  }
-  if (value['agg'] != null && !isOneOf(value['agg'], supportedAggregations)) {
-    return false
-  }
-  if (value['axis'] != null && typeof value['axis'] !== 'string') {
-    return false
-  }
-  if (value['indicator'] != null && typeof value['indicator'] !== 'string') {
-    return false
-  }
-  if ('universe' in value && value['universe'] != null) {
-    const universe = value['universe']
-    if (!isRecord(universe)) return false
-    if (
-      typeof universe['group'] === 'string' &&
-      Object.keys(universe).length === 1
-    ) {
-      return true
-    }
-    return (
-      Array.isArray(universe['stocks']) &&
-      universe['stocks'].every((stock) => typeof stock === 'string') &&
-      Object.keys(universe).length === 1
-    )
-  }
-  return true
-}
-
-function isWidgetDefinition(
-  value: unknown,
-): value is DashboardWidgetDefinition {
-  if (!isRecord(value) || !isRecord(value['queries'])) return false
-  if (!hasOnlyKeys(value, ['queries', 'formulas', 'viz', 'time'])) return false
-  if (
-    Object.keys(value['queries']).length === 0 ||
-    !Object.values(value['queries']).every(isWidgetQuery)
-  ) {
-    return false
-  }
-  if (
-    'formulas' in value &&
-    (!isRecord(value['formulas']) ||
-      !Object.values(value['formulas']).every(
-        (formula) => typeof formula === 'string',
-      ))
-  ) {
-    return false
-  }
-
-  const viz = value['viz']
-  if (!isRecord(viz)) return false
-  const isSupportedViz =
-    (viz['type'] === 'treemap' &&
-      hasOnlyKeys(viz, ['type', 'size', 'color']) &&
-      typeof viz['size'] === 'string' &&
-      typeof viz['color'] === 'string') ||
-    (viz['type'] === 'toplist' &&
-      hasOnlyKeys(viz, ['type', 'value', 'order', 'limit']) &&
-      typeof viz['value'] === 'string' &&
-      (viz['order'] === 'asc' || viz['order'] === 'desc') &&
-      typeof viz['limit'] === 'number' &&
-      Number.isInteger(viz['limit']))
-  if (!isSupportedViz) return false
-
-  if ('time' in value) {
-    const time = value['time']
-    if (!isRecord(time) || !hasOnlyKeys(time, ['as_of', 'range'])) return false
-    if (time['as_of'] != null && !isDate(time['as_of'])) return false
-    if (time['range'] != null) return false
-  }
-
-  return true
 }
 
 function validateDashboard(value: unknown): DashboardConfigResult {
@@ -227,14 +84,6 @@ function validateDashboard(value: unknown): DashboardConfigResult {
       return
     }
 
-    for (const key of Object.keys(rawWidget)) {
-      if (
-        !['title', 'width', 'queries', 'formulas', 'viz', 'time'].includes(key)
-      ) {
-        issues.push({ path: `${path}.${key}`, message: '未対応の項目です。' })
-      }
-    }
-
     const widgetTitle = rawWidget['title']
     if (typeof widgetTitle !== 'string' || widgetTitle.trim() === '') {
       issues.push({
@@ -256,11 +105,18 @@ function validateDashboard(value: unknown): DashboardConfigResult {
         ([key]) => key !== 'title' && key !== 'width',
       ),
     )
-    if (!isWidgetDefinition(definition)) {
+    const parsedDefinition = parseWidgetQueryRequest(definition)
+    if (!parsedDefinition.ok) {
       issues.push({
         path,
-        message:
-          'queries と treemap または toplist の viz を含むウィジェット定義が必要です。',
+        message: parsedDefinition.message,
+      })
+      return
+    }
+    if (!isSupportedWidgetVisualization(parsedDefinition.viz)) {
+      issues.push({
+        path: `${path}.viz`,
+        message: 'viz.type は treemap または toplist を指定してください。',
       })
       return
     }
@@ -269,7 +125,11 @@ function validateDashboard(value: unknown): DashboardConfigResult {
       typeof widgetTitle === 'string' &&
       (width === 'half' || width === 'full')
     ) {
-      widgets.push({ title: widgetTitle, width, definition })
+      widgets.push({
+        title: widgetTitle,
+        width,
+        definition: { ...parsedDefinition.request, viz: parsedDefinition.viz },
+      })
     }
   })
 
@@ -360,19 +220,4 @@ export function parseDashboardPreviewHash(hash: string): DashboardConfigResult {
     }
   }
   return parseDashboardConfig(yamlText)
-}
-
-export function getInitialDashboardDate(
-  config: DashboardConfig,
-  fallbackDate: string,
-): string | null {
-  const dates = config.widgets.map((widget) =>
-    isDate(widget.definition.time?.as_of) ? widget.definition.time.as_of : null,
-  )
-  if (dates.length === 0 || dates.every((date) => date == null)) {
-    return fallbackDate
-  }
-
-  const firstDate = dates[0] ?? null
-  return dates.every((date) => date === firstDate) ? firstDate : null
 }

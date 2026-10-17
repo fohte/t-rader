@@ -1,7 +1,6 @@
 import { createFileRoute, useLocation } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
-import { getTokyoDate } from '#components/calendar/calendar-date'
 import { parseDashboardPreviewHash } from '#components/dashboard-pages/dashboard-config'
 import { DashboardPageView } from '#components/dashboard-pages/dashboard-page-view'
 import { useDashboardPageData } from '#components/dashboard-pages/use-dashboard-page-data'
@@ -13,13 +12,13 @@ export const Route = createFileRoute('/dashboards/preview')({
 function DashboardPreviewRoute() {
   const hash = useLocation({ select: (location) => location.hash })
   const parsedConfig = useMemo(() => parseDashboardPreviewHash(hash), [hash])
-  const defaultDate = useMemo(() => getTokyoDate(), [])
   const config = parsedConfig.ok ? parsedConfig.value : null
-  const dashboardData = useDashboardPageData(config, hash, defaultDate)
+  const dashboardData = useDashboardPageData(config, hash)
 
   if (!parsedConfig.ok) {
     return (
       <DashboardPageView
+        showDashboardListLink={false}
         state={{
           status: 'invalid',
           title: 'プレビュー',
@@ -31,6 +30,7 @@ function DashboardPreviewRoute() {
 
   return (
     <DashboardPageView
+      showDashboardListLink={false}
       state={{
         status: 'ready',
         title: parsedConfig.value.title,

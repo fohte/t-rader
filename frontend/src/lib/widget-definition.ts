@@ -70,7 +70,9 @@ function errorMessage(error: unknown): string {
     : 'YAML を解析できませんでした。'
 }
 
-function parseWidgetQueryRequest(value: unknown): WidgetDefinitionResult {
+export function parseWidgetQueryRequest(
+  value: unknown,
+): WidgetDefinitionResult {
   if (!isRecord(value)) {
     return {
       ok: false,

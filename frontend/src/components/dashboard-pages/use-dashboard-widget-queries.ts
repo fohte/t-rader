@@ -5,6 +5,19 @@ import type { DashboardWidgetPageState } from '#components/dashboard-pages/dashb
 import { $api } from '#lib/api/client'
 import { getApiErrorMessage, getApiErrorStatus } from '#lib/api/error'
 
+function createWidgetQueryBody(
+  definition: DashboardConfig['widgets'][number]['definition'],
+  asOf: string | null,
+) {
+  const { queries, formulas, viz, time } = definition
+  return {
+    queries,
+    ...(formulas == null ? {} : { formulas }),
+    viz,
+    ...(asOf == null ? {} : { time: { ...time, as_of: asOf } }),
+  }
+}
+
 export function useDashboardWidgetQueries(
   config: DashboardConfig | null,
   asOf: string | null,
@@ -13,12 +26,7 @@ export function useDashboardWidgetQueries(
     queries:
       config?.widgets.map((widget) =>
         $api.queryOptions('post', '/api/widgets/query', {
-          body: {
-            ...widget.definition,
-            ...(asOf == null
-              ? {}
-              : { time: { ...widget.definition.time, as_of: asOf } }),
-          },
+          body: createWidgetQueryBody(widget.definition, asOf),
         }),
       ) ?? [],
   })

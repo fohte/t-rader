@@ -109,6 +109,16 @@ export const Widgets: Story = {
   args: { state: readyState },
 }
 
+export const Latest: Story = {
+  name: '最新のデータを表示します。',
+  args: { state: { ...readyState, asOf: '' } },
+}
+
+export const Preview: Story = {
+  name: '保存前の設定を一覧へのリンクなしで表示します。',
+  args: { state: readyState, showDashboardListLink: false },
+}
+
 export const Loading: Story = {
   name: 'ダッシュボードを読み込んでいる状態を表示します。',
   args: { state: { status: 'loading', title: '市場の動き' } },
@@ -144,6 +154,18 @@ export const InvalidConfig: Story = {
         },
       ],
     },
+  },
+}
+
+export const SyntaxError: Story = {
+  name: 'YAML の構文エラーを表示します。',
+  args: {
+    state: {
+      status: 'invalid',
+      title: 'プレビュー',
+      issues: [{ path: '$', message: 'YAML の構文を確認してください。' }],
+    },
+    showDashboardListLink: false,
   },
 }
 

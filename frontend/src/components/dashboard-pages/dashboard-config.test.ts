@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  getInitialDashboardDate,
   parseDashboardConfig,
   parseDashboardPreviewHash,
 } from '#components/dashboard-pages/dashboard-config'
@@ -93,26 +92,36 @@ describe('parseDashboardConfig', () => {
 
   it.each([
     {
-      name: '未対応の指標',
-      yaml: dashboardYaml.replace('metric: change', 'metric: close'),
+      name: '不正なクエリ',
+      yaml: dashboardYaml.replace('metric: change', 'metric: 1'),
+      issue: {
+        path: 'widgets[0]',
+        message: 'queries.movement の形式が正しくありません。',
+      },
     },
     {
-      name: '未対応の期間',
+      name: '時間範囲',
       yaml: dashboardYaml.replace(
         "      as_of: '2099-01-05'",
         "      as_of: '2099-01-05'\n      range: 1d",
       ),
+      issue: {
+        path: 'widgets[0]',
+        message: 'time.range は現在のウィジェットでは使えません。',
+      },
     },
-  ])('$name を検証エラーとして返す', ({ yaml }) => {
+    {
+      name: '非対応の viz',
+      yaml: dashboardYaml.replace('type: toplist', 'type: heatmap'),
+      issue: {
+        path: 'widgets[0].viz',
+        message: 'viz.type は treemap または toplist を指定してください。',
+      },
+    },
+  ])('$name を検証エラーとして返す', ({ yaml, issue }) => {
     expect(parseDashboardConfig(yaml)).toEqual({
       ok: false,
-      issues: [
-        {
-          path: 'widgets[0]',
-          message:
-            'queries と treemap または toplist の viz を含むウィジェット定義が必要です。',
-        },
-      ],
+      issues: [issue],
     })
   })
 
@@ -132,42 +141,5 @@ describe('parseDashboardConfig', () => {
         },
       ],
     })
-  })
-
-  it('同じ基準日のウィジェットにはその日付を使う', () => {
-    const parsed = parseDashboardConfig(dashboardYaml)
-    expect(
-      parsed.ok ? getInitialDashboardDate(parsed.value, '2099-02-01') : null,
-    ).toEqual('2099-01-05')
-  })
-
-  it('異なる基準日のウィジェットには一括基準日を表示しない', () => {
-    const parsed = parseDashboardConfig(
-      `${dashboardYaml}  - title: 時価総額
-    width: half
-    queries:
-      capitalization:
-        metric: mkt_cap
-        by: stock
-        universe:
-          stocks: [DEMO-B]
-    viz:
-      type: toplist
-      value: capitalization
-      order: desc
-      limit: 5
-    time:
-      as_of: '2098-12-01'
-`,
-    )
-    expect(
-      parsed.ok ? getInitialDashboardDate(parsed.value, '2099-02-01') : null,
-    ).toEqual(null)
-  })
-
-  it('基準日を持つウィジェットがなければ fallback を返す', () => {
-    expect(
-      getInitialDashboardDate({ title: '空', widgets: [] }, '2099-02-01'),
-    ).toEqual('2099-02-01')
   })
 })

@@ -73,7 +73,7 @@ afterEach(() => {
 })
 
 describe('useDashboardPageData', () => {
-  it('選んだ基準日をすべてのウィジェットの API リクエストに適用する', async () => {
+  it('初期表示では最新を使い、日付指定後に最新へ戻せる', async () => {
     activeMiddleware = installWidgetQueryCapture()
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -86,8 +86,7 @@ describe('useDashboardPageData', () => {
       )
     }
     const hook = renderHook(
-      () =>
-        useDashboardPageData(dashboardConfig, 'sample-market', '2099-02-01'),
+      () => useDashboardPageData(dashboardConfig, 'sample-market'),
       { wrapper: Wrapper },
     )
 
@@ -102,64 +101,102 @@ describe('useDashboardPageData', () => {
     })
 
     await waitFor(() => {
-      expect(activeMiddleware?.requests).toEqual([
-        {
-          queries: {
-            movement: {
-              metric: 'change',
-              period: '1d',
-              by: 'stock',
-              universe: { stocks: ['DEMO-A'] },
-            },
-          },
-          viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
-          time: { as_of: '2099-01-05' },
-        },
-        {
-          queries: {
-            capitalization: {
-              metric: 'mkt_cap',
-              by: 'stock',
-              universe: { stocks: ['DEMO-B'] },
-            },
-          },
-          viz: {
-            type: 'toplist',
-            value: 'capitalization',
-            order: 'desc',
-            limit: 5,
-          },
-          time: { as_of: '2098-12-01' },
-        },
-        {
-          queries: {
-            movement: {
-              metric: 'change',
-              period: '1d',
-              by: 'stock',
-              universe: { stocks: ['DEMO-A'] },
-            },
-          },
-          viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
-          time: { as_of: '2099-03-01' },
-        },
-        {
-          queries: {
-            capitalization: {
-              metric: 'mkt_cap',
-              by: 'stock',
-              universe: { stocks: ['DEMO-B'] },
-            },
-          },
-          viz: {
-            type: 'toplist',
-            value: 'capitalization',
-            order: 'desc',
-            limit: 5,
-          },
-          time: { as_of: '2099-03-01' },
-        },
-      ])
+      if (activeMiddleware?.requests.length !== 4) {
+        throw new Error('selected-date requests are not complete')
+      }
     })
+
+    act(() => {
+      hook.result.current.onAsOfChange('')
+    })
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 6) {
+        throw new Error('latest-date requests are not complete')
+      }
+    })
+
+    expect(activeMiddleware.requests).toEqual([
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '1d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
+      },
+      {
+        queries: {
+          capitalization: {
+            metric: 'mkt_cap',
+            by: 'stock',
+            universe: { stocks: ['DEMO-B'] },
+          },
+        },
+        viz: {
+          type: 'toplist',
+          value: 'capitalization',
+          order: 'desc',
+          limit: 5,
+        },
+      },
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '1d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
+        time: { as_of: '2099-03-01' },
+      },
+      {
+        queries: {
+          capitalization: {
+            metric: 'mkt_cap',
+            by: 'stock',
+            universe: { stocks: ['DEMO-B'] },
+          },
+        },
+        viz: {
+          type: 'toplist',
+          value: 'capitalization',
+          order: 'desc',
+          limit: 5,
+        },
+        time: { as_of: '2099-03-01' },
+      },
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '1d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
+      },
+      {
+        queries: {
+          capitalization: {
+            metric: 'mkt_cap',
+            by: 'stock',
+            universe: { stocks: ['DEMO-B'] },
+          },
+        },
+        viz: {
+          type: 'toplist',
+          value: 'capitalization',
+          order: 'desc',
+          limit: 5,
+        },
+      },
+    ])
   })
 })

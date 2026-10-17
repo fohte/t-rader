@@ -6,7 +6,6 @@ import type {
   SavedScreenDialogState,
 } from '#components/screener/saved-screens-control-view'
 import { $api } from '#lib/api/client'
-import { getApiErrorMessage } from '#lib/api/error'
 import {
   getScreenerRangeError,
   type SavedScreen,
@@ -115,7 +114,7 @@ export function useSavedScreens({
           },
           onError: (mutationError: unknown) => {
             setError(
-              getApiErrorMessage(
+              getSavedScreenErrorMessage(
                 mutationError,
                 '保存した条件の名前を変更できませんでした。',
               ),
@@ -142,7 +141,7 @@ export function useSavedScreens({
         },
         onError: (mutationError: unknown) => {
           setError(
-            getApiErrorMessage(
+            getSavedScreenErrorMessage(
               mutationError,
               '保存した条件を作成できませんでした。',
             ),
@@ -175,7 +174,7 @@ export function useSavedScreens({
         },
         onError: (mutationError: unknown) => {
           setError(
-            getApiErrorMessage(
+            getSavedScreenErrorMessage(
               mutationError,
               '保存した条件を上書きできませんでした。',
             ),
@@ -197,7 +196,7 @@ export function useSavedScreens({
         },
         onError: (mutationError: unknown) => {
           setError(
-            getApiErrorMessage(
+            getSavedScreenErrorMessage(
               mutationError,
               '保存した条件を削除できませんでした。',
             ),
@@ -219,4 +218,22 @@ export function useSavedScreens({
     onOverwrite,
     onDelete,
   }
+}
+
+function getSavedScreenErrorMessage(error: unknown, fallback: string): string {
+  if (error != null && typeof error === 'object') {
+    if ('error' in error && typeof error.error === 'string') return error.error
+    if (
+      'data' in error &&
+      error.data != null &&
+      typeof error.data === 'object' &&
+      'error' in error.data &&
+      typeof error.data.error === 'string'
+    ) {
+      return error.data.error
+    }
+  }
+  return error instanceof Error && error.message !== ''
+    ? error.message
+    : fallback
 }

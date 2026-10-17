@@ -38,16 +38,24 @@ export type DashboardPageState =
       widgets: DashboardWidgetPageState[]
     }
 
-function PageHeading({ title }: { title: string }) {
+function PageHeading({
+  title,
+  showDashboardListLink,
+}: {
+  title: string
+  showDashboardListLink: boolean
+}) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div className="space-y-2">
-        <Link
-          className="inline-flex items-center font-mono text-2xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-          to="/dashboards"
-        >
-          ← ダッシュボード一覧
-        </Link>
+        {showDashboardListLink ? (
+          <Link
+            className="inline-flex items-center font-mono text-2xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            to="/dashboards"
+          >
+            ← ダッシュボード一覧
+          </Link>
+        ) : null}
         <h1 className="text-2xl font-bold leading-tight tracking-tight">
           <span className="font-mono text-primary">&gt;</span> {title}
         </h1>
@@ -60,14 +68,19 @@ function StateMessage({
   title,
   message,
   role,
+  showDashboardListLink,
 }: {
   title: string
   message: string
   role: 'status' | 'alert'
+  showDashboardListLink: boolean
 }) {
   return (
     <main className="space-y-5 font-sans text-foreground">
-      <PageHeading title={title} />
+      <PageHeading
+        title={title}
+        showDashboardListLink={showDashboardListLink}
+      />
       <p
         className="border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground"
         role={role}
@@ -116,19 +129,31 @@ function WidgetCard({ widget }: { widget: DashboardWidgetPageState }) {
   )
 }
 
-export function DashboardPageView({ state }: { state: DashboardPageState }) {
+export function DashboardPageView({
+  state,
+  showDashboardListLink = true,
+}: {
+  state: DashboardPageState
+  showDashboardListLink?: boolean
+}) {
   if (state.status === 'loading') {
     return (
       <StateMessage
         title={state.title}
         message="ダッシュボードを読み込んでいます。"
         role="status"
+        showDashboardListLink={showDashboardListLink}
       />
     )
   }
   if (state.status === 'error') {
     return (
-      <StateMessage title={state.title} message={state.message} role="alert" />
+      <StateMessage
+        title={state.title}
+        message={state.message}
+        role="alert"
+        showDashboardListLink={showDashboardListLink}
+      />
     )
   }
   if (state.status === 'not-found') {
@@ -137,13 +162,17 @@ export function DashboardPageView({ state }: { state: DashboardPageState }) {
         title={state.title}
         message="指定したダッシュボードは見つかりませんでした。"
         role="alert"
+        showDashboardListLink={showDashboardListLink}
       />
     )
   }
   if (state.status === 'invalid') {
     return (
       <main className="space-y-5 font-sans text-foreground">
-        <PageHeading title={state.title} />
+        <PageHeading
+          title={state.title}
+          showDashboardListLink={showDashboardListLink}
+        />
         <section
           aria-labelledby="dashboard-config-errors-title"
           className="border border-destructive/50 bg-card p-4"
@@ -172,23 +201,38 @@ export function DashboardPageView({ state }: { state: DashboardPageState }) {
 
   return (
     <main className="space-y-5 font-sans text-foreground">
-      <PageHeading title={state.title} />
+      <PageHeading
+        title={state.title}
+        showDashboardListLink={showDashboardListLink}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
         <p className="font-mono text-xs text-muted-foreground">
-          初期表示はウィジェットごとの設定日を使い、選択した基準日は全ウィジェットに適用します。
+          基準日の初期値は最新です。日付を選ぶと全ウィジェットに適用します。
         </p>
-        <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground-strong">
-          基準日
-          <input
-            aria-label="基準日"
-            className="border border-border bg-background px-2 py-1 text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-            onChange={(event) => {
-              state.onAsOfChange(event.currentTarget.value)
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground-strong">
+            基準日
+            <input
+              aria-label="基準日"
+              className="border border-border bg-background px-2 py-1 text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              onChange={(event) => {
+                state.onAsOfChange(event.currentTarget.value)
+              }}
+              type="date"
+              value={state.asOf}
+            />
+          </label>
+          <button
+            aria-pressed={state.asOf === ''}
+            className="border border-border px-2 py-1 font-mono text-xs text-muted-foreground-strong hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-muted aria-pressed:text-foreground"
+            onClick={() => {
+              state.onAsOfChange('')
             }}
-            type="date"
-            value={state.asOf}
-          />
-        </label>
+            type="button"
+          >
+            最新
+          </button>
+        </div>
       </div>
 
       {state.widgets.length === 0 ? (
