@@ -76,6 +76,7 @@ pub(crate) fn mgmt_dependencies(
         note_status_change_aggregate: use_cases.note_status_change_aggregate(),
         annotation_reads: use_cases.annotation_reads(),
         rss_feeds: use_cases.rss_feeds(),
+        widgets: use_cases.widgets(),
         agent_client,
     }
 }
@@ -130,6 +131,7 @@ pub(crate) fn strategy_server_dependencies(
         trades: use_cases.trades(),
         valuations: use_cases.valuations(),
         web_search_client,
+        widgets: use_cases.widgets(),
     }
 }
 

@@ -5,8 +5,8 @@ use utoipa_axum::routes;
 use crate::api_doc::ApiDoc;
 use crate::handlers::{
     agent_config, agent_options, annotations, bars, calendar, comments, config,
-    custom_indicator_evaluations, custom_indicators, group_axes, history, imports, ingest_status,
-    note_kinds, note_links, note_predictions, note_versions, notes, paper_accounts,
+    custom_indicator_evaluations, custom_indicators, dashboards, group_axes, history, imports,
+    ingest_status, note_kinds, note_links, note_predictions, note_versions, notes, paper_accounts,
     portfolio_history, refs, risk_policy, rss_feeds, saved_screens, screener, stock_info,
     strategies, strategy_task_steps, subagent_definitions, tasks, trade_notes, trades, triggers,
     widgets,
@@ -26,6 +26,15 @@ pub fn router() -> OpenApiRouter<FrontendApiState> {
         .routes(routes!(
             saved_screens::update_saved_screen,
             saved_screens::delete_saved_screen
+        ))
+        .routes(routes!(
+            dashboards::list_dashboards,
+            dashboards::create_dashboard
+        ))
+        .routes(routes!(
+            dashboards::get_dashboard,
+            dashboards::update_dashboard,
+            dashboards::delete_dashboard
         ))
         .routes(routes!(calendar::list_calendar_events))
         .routes(routes!(calendar::list_other_earnings))

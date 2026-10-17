@@ -11,6 +11,7 @@ mod types;
 mod use_cases;
 mod version_review;
 mod version_write;
+mod widget_blocks;
 
 pub const INITIAL_NOTE_STATUS: &str = "unread";
 

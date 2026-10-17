@@ -1392,10 +1392,12 @@ dependencies = [
 name = "entrypoint-control-plane-mcp"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "core-application",
  "rmcp",
  "rstest",
+ "rust_decimal",
  "schemars 1.2.2",
  "serde",
  "serde_json",

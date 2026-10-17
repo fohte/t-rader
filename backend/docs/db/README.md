@@ -63,6 +63,7 @@
 | [public.event_firing](public.event_firing.md)                                               | 3       | event と trigger の発火、および投入した task の対応を保持する。                                        | BASE TABLE        |
 | [public.subagent_definition](public.subagent_definition.md)                                 | 13      | 戦略設定から独立したサブエージェント定義を保持する。                                                   | BASE TABLE        |
 | [public.us_stock_hourly_bar_ingest_progress](public.us_stock_hourly_bar_ingest_progress.md) | 2       | 米国株の 1 時間足を取得済みの終端時刻を保持する。                                                      | BASE TABLE        |
+| [public.dashboard](public.dashboard.md)                                                     | 4       | ユーザーが作成したダッシュボードの YAML 設定を保持する。                                               | BASE TABLE        |
 | [public.screener_stock_snapshot](public.screener_stock_snapshot.md)                         | 12      | スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。                                           | MATERIALIZED VIEW |
 
 ## Stored procedures and functions
@@ -819,6 +820,12 @@ erDiagram
 "public.us_stock_hourly_bar_ingest_progress" {
   text instrument_id FK
   timestamp_with_time_zone completed_through
+}
+"public.dashboard" {
+  text key
+  text config
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
 }
 "public.screener_stock_snapshot" {
   varchar id

@@ -399,6 +399,43 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/dashboards': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ダッシュボード一覧を取得する。 */
+    get: operations['list_dashboards']
+    put?: never
+    /** ダッシュボードを作成する。 */
+    post: operations['create_dashboard']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/dashboards/{key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 指定 key のダッシュボードを取得する。 */
+    get: operations['get_dashboard']
+    /** ダッシュボード設定を置き換える。 */
+    put: operations['update_dashboard']
+    post?: never
+    /** ダッシュボードを削除する。 */
+    delete: operations['delete_dashboard']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/group-axes': {
     parameters: {
       query?: never
@@ -1857,6 +1894,10 @@ export interface components {
         [key: string]: unknown
       }
     }
+    CreateDashboardRequest: {
+      config: string
+      key: string
+    }
     CreateGroupAxisRequest: {
       derive_from?: string | null
       description: string
@@ -2002,6 +2043,14 @@ export interface components {
       id: string
       indicator_name: string
       output: unknown
+    }
+    Dashboard: {
+      config: string
+      /** Format: date-time */
+      created_at: string
+      key: string
+      /** Format: date-time */
+      updated_at: string
     }
     /** @description API エラーレスポンスの JSON 構造 */
     ErrorResponse: {
@@ -3006,6 +3055,9 @@ export interface components {
       output_schema?: {
         [key: string]: unknown
       } | null
+    }
+    UpdateDashboardRequest: {
+      config: string
     }
     UpdateGroupAxisRequest: {
       derive_from?: string | null
@@ -4787,6 +4839,259 @@ export interface operations {
         }
       }
       /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_dashboards: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Dashboard'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_dashboard: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateDashboardRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Dashboard']
+        }
+      }
+      /** @description ダッシュボード設定が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 同じ key のダッシュボードが存在 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストの Content-Type が application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_dashboard: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ダッシュボード key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Dashboard']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_dashboard: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ダッシュボード key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateDashboardRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Dashboard']
+        }
+      }
+      /** @description ダッシュボード設定が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストの Content-Type が application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_dashboard: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ダッシュボード key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
       400: {
         headers: {
           [name: string]: unknown

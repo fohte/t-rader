@@ -2185,6 +2185,324 @@
         }
       }
     },
+    "/api/dashboards": {
+      "get": {
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "ダッシュボード一覧を取得する。",
+        "operationId": "list_dashboards",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Dashboard"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "ダッシュボードを作成する。",
+        "operationId": "create_dashboard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDashboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ダッシュボード設定が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "同じ key のダッシュボードが存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "リクエストの Content-Type が application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dashboards/{key}": {
+      "get": {
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "指定 key のダッシュボードを取得する。",
+        "operationId": "get_dashboard",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "ダッシュボード key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "ダッシュボード設定を置き換える。",
+        "operationId": "update_dashboard",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "ダッシュボード key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDashboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ダッシュボード設定が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "リクエストの Content-Type が application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "dashboards"
+        ],
+        "summary": "ダッシュボードを削除する。",
+        "operationId": "delete_dashboard",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "ダッシュボード key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/group-axes": {
       "get": {
         "tags": [
@@ -9999,6 +10317,22 @@
         },
         "additionalProperties": false
       },
+      "CreateDashboardRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateGroupAxisRequest": {
         "type": "object",
         "required": [
@@ -10502,6 +10836,31 @@
             "type": "string"
           },
           "output": {}
+        }
+      },
+      "Dashboard": {
+        "type": "object",
+        "required": [
+          "key",
+          "config",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "config": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "key": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "ErrorResponse": {
@@ -13652,6 +14011,18 @@
         },
         "additionalProperties": false
       },
+      "UpdateDashboardRequest": {
+        "type": "object",
+        "required": [
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdateGroupAxisRequest": {
         "type": "object",
         "properties": {
@@ -14360,6 +14731,10 @@
     {
       "name": "saved_screens",
       "description": "保存したスクリーナー条件"
+    },
+    {
+      "name": "dashboards",
+      "description": "保存済みダッシュボード"
     },
     {
       "name": "calendar",

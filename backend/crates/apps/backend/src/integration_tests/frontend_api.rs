@@ -160,6 +160,7 @@ mod calendar;
 mod comments;
 mod config;
 mod custom_indicators;
+mod dashboards;
 mod group_axes;
 mod history;
 mod ingest_status;

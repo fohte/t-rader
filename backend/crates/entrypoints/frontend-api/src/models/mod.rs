@@ -9,6 +9,7 @@ pub mod comment;
 pub mod config;
 pub mod custom_indicator;
 pub mod custom_indicator_evaluation;
+pub mod dashboard;
 pub mod group_axis;
 pub mod import;
 pub mod ingest_status;
@@ -53,6 +54,7 @@ pub use custom_indicator::{
     PreviewIndicatorResponse, UpdateCustomIndicatorRequest,
 };
 pub use custom_indicator_evaluation::CustomIndicatorEvaluationResponse;
+pub use dashboard::{CreateDashboardRequest, DashboardResponse, UpdateDashboardRequest};
 pub use group_axis::GroupAxisResponse;
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiPreviewIssue, SbiPreviewResponse, SbiPreviewRow,

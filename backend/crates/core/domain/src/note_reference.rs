@@ -9,7 +9,7 @@ mod markdown;
 
 pub(crate) use markdown::prose_segments;
 pub(crate) use markdown::tokens_outside_code;
-pub use markdown::{NoteToken, extract_tokens};
+pub use markdown::{FencedCodeBlock, NoteToken, extract_tokens, fenced_code_blocks};
 
 pub const ALLOWED_REF_KINDS: [&str; 3] = ["stock", "indicator", "group"];
 

@@ -361,6 +361,11 @@ comments:
       args: '計算に渡した入力引数を保持する JSON 値。'
       output: '自作指標が返した JSON 値。'
       evaluated_at: '計算が成功した時刻。'
+  - table: dashboard
+    tableComment: 'ユーザーが作成したダッシュボードの YAML 設定を保持する。'
+    columnComments:
+      key: 'ダッシュボードを識別する一意なキー。'
+      config: 'title と widgets を含むダッシュボード設定の YAML テキスト。'
   - table: financial_summary
     tableComment: '銘柄ごとの決算開示内容と業績予想を保持する。'
     columnComments:

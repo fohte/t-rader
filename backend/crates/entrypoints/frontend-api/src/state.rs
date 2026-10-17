@@ -13,6 +13,7 @@ use core_application::change_history::ChangeHistoryUseCases;
 use core_application::comment::{CommentReadUseCases, CommentUseCases};
 use core_application::custom_indicator::CustomIndicatorUseCases;
 use core_application::custom_indicator_evaluation::CustomIndicatorEvaluationUseCases;
+use core_application::dashboard::DashboardUseCases;
 use core_application::financial_summary::FinancialSummaryUseCases;
 use core_application::group_axis::GroupAxisUseCases;
 use core_application::indicator_observation::IndicatorObservationUseCases;
@@ -52,6 +53,7 @@ pub struct FrontendApiState {
     pub comment_use_cases: CommentUseCases,
     pub custom_indicator_use_cases: CustomIndicatorUseCases,
     pub custom_indicator_evaluation_use_cases: CustomIndicatorEvaluationUseCases,
+    pub dashboard_use_cases: DashboardUseCases,
     pub financial_summary_use_cases: FinancialSummaryUseCases,
     pub group_axis_use_cases: GroupAxisUseCases,
     pub indicator_observation_use_cases: IndicatorObservationUseCases,

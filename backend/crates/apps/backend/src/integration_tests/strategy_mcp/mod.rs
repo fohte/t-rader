@@ -43,6 +43,7 @@ mod tests_common;
 mod tool_router;
 mod trades;
 mod web_search;
+mod widgets;
 mod youtube;
 
 use test_server::{StrategyServer, ToolOutput};
