@@ -72,7 +72,6 @@ function errorMessage(error: unknown): string {
 
 export function parseWidgetQueryRequest(
   value: unknown,
-  options: { allowTimeAsOf?: boolean } = {},
 ): WidgetDefinitionResult {
   if (!isRecord(value)) {
     return {
@@ -138,18 +137,6 @@ export function parseWidgetQueryRequest(
       message: 'time.range は現在のウィジェットでは使えません。',
     }
   }
-  if (
-    options.allowTimeAsOf === false &&
-    time !== undefined &&
-    Object.hasOwn(time, 'as_of')
-  ) {
-    return {
-      ok: false,
-      path: 'time.as_of',
-      message: 'time.as_of はダッシュボードでは指定できません。',
-    }
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- enum 値と範囲は API に検証させるため、生成型にない値も保持する
   const request = value as unknown as WidgetQueryRequest
   const viz = request.viz

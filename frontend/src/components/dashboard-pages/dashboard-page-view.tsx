@@ -207,7 +207,7 @@ export function DashboardPageView({
       />
       <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
         <p className="font-mono text-xs text-muted-foreground">
-          基準日の初期値は最新です。日付を選ぶと全ウィジェットに適用します。
+          ウィジェット設定の日付を使い、未指定なら最新です。日付を選ぶと全ウィジェットに適用します。
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground-strong">

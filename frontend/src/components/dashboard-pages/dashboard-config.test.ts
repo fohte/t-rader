@@ -52,6 +52,36 @@ const expectedDashboardConfig = {
   },
 } as const
 
+const expectedDashboardConfigWithFixedAsOf = {
+  ok: true,
+  value: {
+    title: '市場の動き',
+    widgets: [
+      {
+        title: '値動き',
+        width: 'half',
+        definition: {
+          queries: {
+            movement: {
+              metric: 'change',
+              period: '1d',
+              by: 'stock',
+              universe: { stocks: ['DEMO-A'] },
+            },
+          },
+          viz: {
+            type: 'toplist',
+            value: 'movement',
+            order: 'desc',
+            limit: 5,
+          },
+          time: { as_of: '2099-01-05' },
+        },
+      },
+    ],
+  },
+} as const
+
 function encodeBase64Url(text: string): string {
   const bytes = new TextEncoder().encode(text)
   const binary = String.fromCharCode(...bytes)
@@ -108,17 +138,6 @@ describe('parseDashboardConfig', () => {
       },
     },
     {
-      name: 'YAML の固定基準日',
-      yaml: dashboardYaml.replace(
-        '    viz:',
-        "    time:\n      as_of: '2099-01-05'\n    viz:",
-      ),
-      issue: {
-        path: 'widgets[0].time.as_of',
-        message: 'time.as_of はダッシュボードでは指定できません。',
-      },
-    },
-    {
       name: '未知の基準日項目',
       yaml: dashboardYaml.replace(
         '    viz:',
@@ -153,6 +172,17 @@ describe('parseDashboardConfig', () => {
       ok: false,
       issues: [issue],
     })
+  })
+
+  it('YAML の固定基準日を読み取る', () => {
+    expect(
+      parseDashboardConfig(
+        dashboardYaml.replace(
+          '    viz:',
+          "    time:\n      as_of: '2099-01-05'\n    viz:",
+        ),
+      ),
+    ).toEqual(expectedDashboardConfigWithFixedAsOf)
   })
 
   it('プレビュー URL の URL-safe Base64 から設定を読み取る', () => {

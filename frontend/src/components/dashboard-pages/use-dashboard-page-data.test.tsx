@@ -13,6 +13,7 @@ function makeWidget(
   queryName: string,
   metric: 'change' | 'mkt_cap',
   stockId: string,
+  asOf?: string,
 ): DashboardConfig['widgets'][number] {
   return {
     title,
@@ -28,6 +29,7 @@ function makeWidget(
       },
       formulas: { doubled: `${queryName} * 2` },
       viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
+      ...(asOf == null ? {} : { time: { as_of: asOf } }),
     },
   }
 }
@@ -38,6 +40,22 @@ const dashboardConfig: DashboardConfig = {
     makeWidget('値動き', 'movement', 'change', 'DEMO-A'),
     makeWidget('時価総額', 'capitalization', 'mkt_cap', 'DEMO-B'),
   ],
+}
+
+const dashboardConfigWithFixedDate: DashboardConfig = {
+  title: '市場の動き',
+  widgets: [makeWidget('値動き', 'movement', 'change', 'DEMO-A', '2099-01-05')],
+}
+
+function createQueryClientWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+  }
 }
 
 function installWidgetQueryCapture() {
@@ -74,19 +92,9 @@ afterEach(() => {
 describe('useDashboardPageData', () => {
   it('初期表示では最新を使い、日付指定後に最新へ戻せる', async () => {
     activeMiddleware = installWidgetQueryCapture()
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-    function Wrapper({ children }: { children: ReactNode }) {
-      return (
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
-      )
-    }
     const hook = renderHook(
       () => useDashboardPageData(dashboardConfig, 'sample-market'),
-      { wrapper: Wrapper },
+      { wrapper: createQueryClientWrapper() },
     )
 
     await waitFor(() => {
@@ -201,6 +209,59 @@ describe('useDashboardPageData', () => {
           order: 'desc',
           limit: 5,
         },
+      },
+    ])
+  })
+
+  it('ウィジェットの固定基準日を使い、画面で選んだ日付を優先する', async () => {
+    activeMiddleware = installWidgetQueryCapture()
+    const hook = renderHook(
+      () => useDashboardPageData(dashboardConfigWithFixedDate, 'sample-market'),
+      { wrapper: createQueryClientWrapper() },
+    )
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 1) {
+        throw new Error('widget request is not complete')
+      }
+    })
+
+    act(() => {
+      hook.result.current.onAsOfChange('2099-03-01')
+    })
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 2) {
+        throw new Error('selected-date request is not complete')
+      }
+    })
+
+    expect(activeMiddleware.requests).toEqual([
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '1d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        formulas: { doubled: 'movement * 2' },
+        viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
+        time: { as_of: '2099-01-05' },
+      },
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '1d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        formulas: { doubled: 'movement * 2' },
+        viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
+        time: { as_of: '2099-03-01' },
       },
     ])
   })

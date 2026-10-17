@@ -9,7 +9,7 @@ import {
 } from '#lib/widget-definition'
 
 type WidgetQueryRequest = components['schemas']['WidgetQueryRequest']
-type DashboardWidgetDefinition = Omit<WidgetQueryRequest, 'viz' | 'time'> & {
+type DashboardWidgetDefinition = Omit<WidgetQueryRequest, 'viz'> & {
   viz: SupportedWidgetVisualization
 }
 
@@ -100,9 +100,7 @@ function validateDashboard(value: unknown): DashboardConfigResult {
         ([key]) => key !== 'title' && key !== 'width',
       ),
     )
-    const parsedDefinition = parseWidgetQueryRequest(definition, {
-      allowTimeAsOf: false,
-    })
+    const parsedDefinition = parseWidgetQueryRequest(definition)
     if (!parsedDefinition.ok) {
       issues.push({
         path:
@@ -125,13 +123,11 @@ function validateDashboard(value: unknown): DashboardConfigResult {
       typeof widgetTitle === 'string' &&
       (width === 'half' || width === 'full')
     ) {
-      const { queries, formulas } = parsedDefinition.request
       widgets.push({
         title: widgetTitle,
         width,
         definition: {
-          queries,
-          ...(formulas == null ? {} : { formulas }),
+          ...parsedDefinition.request,
           viz: parsedDefinition.viz,
         },
       })
