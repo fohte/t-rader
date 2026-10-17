@@ -373,11 +373,7 @@ fn validate_body_warning_dispositions(
     });
     let disposition_ids = warning_dispositions
         .iter()
-        .filter(|disposition| {
-            !disposition.reason.trim().is_empty()
-                && !disposition.reason.contains('\r')
-                && !disposition.reason.contains('\n')
-        })
+        .filter(|disposition| !disposition.reason.trim().is_empty())
         .filter_map(|disposition| {
             warning_id_group(&disposition.id)
                 .filter(|group_id| warning_counts.contains_key(*group_id))
@@ -1831,7 +1827,7 @@ mod tests {
             .into_iter()
             .map(|warning| NoteBodyWarningDisposition {
                 id: warning.id,
-                reason: "分析上の仮定として記載".into(),
+                reason: "分析上の仮定として記載\r\n補足理由".into(),
             })
             .collect();
         let result = use_cases
@@ -1903,10 +1899,8 @@ mod tests {
     #[rstest]
     #[case::empty_reason("")]
     #[case::whitespace_reason("  ")]
-    #[case::line_feed("理由の前半\n理由の後半")]
-    #[case::carriage_return("理由の前半\r理由の後半")]
     #[tokio::test]
-    async fn gated_write_requires_a_nonempty_single_line_reason(#[case] reason: &str) {
+    async fn gated_write_requires_a_nonempty_reason(#[case] reason: &str) {
         let body = "close 45,678円";
         let warning = scan_note_body_warnings_with_ids(body)
             .into_iter()

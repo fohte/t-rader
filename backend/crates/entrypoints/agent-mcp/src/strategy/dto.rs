@@ -63,7 +63,7 @@ pub struct WriteNoteParams {
     /// 図トークンは空行で区切られたブロック内に単独で置くこと。
     /// `value` (ノード/エッジのサイズ) を指定する場合は出典を示す `cite` も必須。
     pub graphs: Option<Vec<GraphDef>>,
-    /// 本文の警告を残す場合に、警告 ID と 1 行の理由を指定する。
+    /// 本文の警告を残す場合に、警告 ID と理由を指定する。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warning_dispositions: Vec<WriteNoteWarningDisposition>,
 }
