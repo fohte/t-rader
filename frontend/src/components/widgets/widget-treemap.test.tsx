@@ -2,7 +2,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { WidgetTreemap } from '#components/widgets/widget-treemap'
+import { WidgetTreemap } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
 import { createStoryRouter } from '#storybook/story-router'
 

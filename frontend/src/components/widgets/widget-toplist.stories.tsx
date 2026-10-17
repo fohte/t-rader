@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { WidgetToplist } from '#components/widgets/widget-toplist'
+import { WidgetToplist } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']

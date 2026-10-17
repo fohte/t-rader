@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { WidgetToplist } from '#components/widgets/widget-toplist'
+import { WidgetToplist } from '#components/widgets'
 import type { components } from '#lib/api/schema.gen'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
