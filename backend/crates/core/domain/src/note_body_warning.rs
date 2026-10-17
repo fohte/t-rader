@@ -124,6 +124,15 @@ fn warning_id(kind: WarningKind, value: &str, occurrence: usize) -> String {
     format!("{kind}:{encoded_value}:{occurrence}")
 }
 
+pub fn warning_id_group(id: &str) -> Option<&str> {
+    let (group_id, occurrence) = id.rsplit_once(':')?;
+    occurrence
+        .parse::<usize>()
+        .ok()
+        .filter(|count| *count > 0)?;
+    Some(group_id)
+}
+
 #[derive(Debug)]
 struct NumberRange {
     range: Range<usize>,

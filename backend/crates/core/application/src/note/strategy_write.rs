@@ -3,7 +3,9 @@ use serde_json::{Map, json};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use core_domain::note_body_warning::{NoteBodyWarning, scan_note_body_warnings_with_ids};
+use core_domain::note_body_warning::{
+    NoteBodyWarning, scan_note_body_warnings_with_ids, warning_id_group,
+};
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{
@@ -365,17 +367,21 @@ fn validate_body_warning_dispositions(
     let warnings = scan_note_body_warnings_with_ids(body_md);
     let warning_counts = warnings.iter().fold(HashMap::new(), |mut counts, warning| {
         if let Some(group_id) = warning_id_group(&warning.id) {
-            *counts.entry(group_id).or_insert(0_usize) += 1;
+            *counts.entry(group_id.to_string()).or_insert(0_usize) += 1;
         }
         counts
     });
     let disposition_ids = warning_dispositions
         .iter()
-        .filter(|disposition| !disposition.reason.trim().is_empty())
+        .filter(|disposition| {
+            !disposition.reason.trim().is_empty()
+                && !disposition.reason.contains('\r')
+                && !disposition.reason.contains('\n')
+        })
         .filter_map(|disposition| {
             warning_id_group(&disposition.id)
-                .filter(|group_id| warning_counts.contains_key(group_id))
-                .map(|group_id| (group_id, disposition.id.clone()))
+                .filter(|group_id| warning_counts.contains_key(*group_id))
+                .map(|group_id| (group_id.to_string(), disposition.id.clone()))
         })
         .fold(
             HashMap::<String, HashSet<String>>::new(),
@@ -390,14 +396,14 @@ fn validate_body_warning_dispositions(
             let Some(group_id) = warning_id_group(&warning.id) else {
                 return true;
             };
-            let Some(group_dispositions) = disposition_ids.get(&group_id) else {
+            let Some(group_dispositions) = disposition_ids.get(group_id) else {
                 return true;
             };
             if group_dispositions.contains(&warning.id) {
                 return false;
             }
             // 同一警告の先行出現が削除されると番号がずれるため、同じ警告群の理由数で照合する。
-            group_dispositions.len() < warning_counts[&group_id]
+            group_dispositions.len() < warning_counts[group_id]
         })
         .collect::<Vec<NoteBodyWarning>>();
     if unresolved_warnings.is_empty() {
@@ -407,15 +413,6 @@ fn validate_body_warning_dispositions(
             warnings: unresolved_warnings,
         })
     }
-}
-
-fn warning_id_group(id: &str) -> Option<String> {
-    let (group_id, occurrence) = id.rsplit_once(':')?;
-    occurrence
-        .parse::<usize>()
-        .ok()
-        .filter(|count| *count > 0)?;
-    Some(group_id.to_string())
 }
 
 #[cfg(all(test, feature = "test-support"))]
@@ -1881,11 +1878,35 @@ mod tests {
             .await;
     }
 
+    #[tokio::test]
+    async fn gated_write_rejects_a_disposition_for_a_different_warning() {
+        let body = "close 45,678円";
+        let mismatched_warning = scan_note_body_warnings_with_ids("close 98,765円")
+            .into_iter()
+            .next()
+            .expect("other body has a warning");
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command(body),
+                vec![NoteBodyWarningDisposition {
+                    id: mismatched_warning.id,
+                    reason: "分析上の仮定として記載".into(),
+                }],
+            )
+            .await;
+
+        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
+            .await;
+    }
+
     #[rstest]
     #[case::empty_reason("")]
     #[case::whitespace_reason("  ")]
+    #[case::line_feed("理由の前半\n理由の後半")]
+    #[case::carriage_return("理由の前半\r理由の後半")]
     #[tokio::test]
-    async fn gated_write_requires_a_nonempty_reason(#[case] reason: &str) {
+    async fn gated_write_requires_a_nonempty_single_line_reason(#[case] reason: &str) {
         let body = "close 45,678円";
         let warning = scan_note_body_warnings_with_ids(body)
             .into_iter()
