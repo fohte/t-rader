@@ -110,6 +110,8 @@ export const MenuOpen: Story = {
 export const DashboardPage: Story = {
   name: 'shows the dashboard navigation active on a saved dashboard page.',
   render: () => (
-    <RouterProvider router={createHeaderRouter('/dashboards/sample-market')} />
+    <RouterProvider
+      router={createHeaderRouter('/dashboards/sample-market', true)}
+    />
   ),
 }
