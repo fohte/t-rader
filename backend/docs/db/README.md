@@ -820,6 +820,12 @@ erDiagram
   text instrument_id FK
   timestamp_with_time_zone completed_through
 }
+"public.dashboard" {
+  text key
+  text config
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
 ```
 
 ---
