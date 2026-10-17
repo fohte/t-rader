@@ -11,6 +11,8 @@ permissions:
   packages: write
 
 env:
+  
+  queue: max
   COMPONENTS_FILE: .github/workflows/docker-publish-components.json
 
 jobs:
@@ -64,6 +66,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.components != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     strategy:
       matrix:

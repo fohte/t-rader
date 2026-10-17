@@ -20,6 +20,7 @@ jobs:
   test:
     needs: detect-changes
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: '0'
       SCCACHE_GHA_ENABLED: 'true'
@@ -293,6 +294,7 @@ jobs:
 
   detect-changes:
     runs-on: ubuntu-slim
+    timeout-minutes: 30
     outputs:
       frontend: ${{ steps.changes-frontend.outputs.any_changed }}
       backend: ${{ steps.changes-backend.outputs.any_changed }}
@@ -411,6 +413,7 @@ jobs:
       needs.detect-changes.outputs.agent == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -847,6 +850,7 @@ jobs:
   # required check の skip は成功として扱われる。
   unit-test:
     runs-on: ubuntu-slim
+    timeout-minutes: 30
     needs:
       - detect-changes
       - check-entity-sync
@@ -863,6 +867,7 @@ jobs:
 
   knip:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
