@@ -64,6 +64,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.components != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     strategy:
       matrix:
@@ -190,3 +191,4 @@ jobs:
 concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
