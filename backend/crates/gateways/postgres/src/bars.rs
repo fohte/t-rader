@@ -11,8 +11,8 @@ use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter, Set,
-    Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter,
+    QueryOrder, Set, Statement,
 };
 
 use crate::DatabaseHandle;
@@ -288,14 +288,18 @@ impl BarsRepository for PostgresBarsRepository {
             .map_err(repository_error)
     }
 
-    async fn find_us_stock_minute_bar_instruments(
-        &self,
-        from: DateTime<Utc>,
-        until: DateTime<Utc>,
-        cutoff: DateTime<Utc>,
-    ) -> Result<Vec<String>, BarsRepositoryError> {
-        us_stock_minute_bars_downsample::find_minute_bar_instruments(&self.db, from, until, cutoff)
+    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
+        instruments::Entity::find()
+            .filter(instruments::Column::Market.eq(Market::Us.to_string()))
+            .order_by_asc(instruments::Column::Id)
+            .all(&self.db)
             .await
+            .map(|instruments| {
+                instruments
+                    .into_iter()
+                    .map(|instrument| instrument.id)
+                    .collect()
+            })
             .map_err(repository_error)
     }
 
@@ -996,8 +1000,13 @@ mod tests {
     ) {
         let suffix = uuid::Uuid::new_v4().simple().to_string();
         let us_instrument_id = format!("US:DEMO-DOWNSAMPLE-{suffix}");
+        let empty_us_instrument_id = format!("US:DEMO-EMPTY-{suffix}");
         let foreign_instrument_id = format!("JP-DEMO-DOWNSAMPLE-{suffix}");
-        for (id, market) in [(&us_instrument_id, "US"), (&foreign_instrument_id, "OTHER")] {
+        for (id, market) in [
+            (&us_instrument_id, "US"),
+            (&empty_us_instrument_id, "US"),
+            (&foreign_instrument_id, "OTHER"),
+        ] {
             instruments::Entity::insert(instruments::ActiveModel {
                 id: Set(id.clone()),
                 name: Set(id.clone()),
@@ -1164,9 +1173,9 @@ mod tests {
             .await
             .expect("find earliest old US minute bar");
         let instrument_ids = repository
-            .find_us_stock_minute_bar_instruments(timestamp(6, 30), timestamp(10, 0), cutoff)
+            .find_us_stock_instrument_ids()
             .await
-            .expect("find old US minute bar instruments");
+            .expect("find US stock instruments");
         let transaction = unit_of_work.begin().await.expect("begin transaction");
         let stats = repository
             .downsample_us_stock_minute_bar_range(
@@ -1228,7 +1237,7 @@ mod tests {
             ),
             (
                 Some(timestamp(6, 30)),
-                vec![us_instrument_id.clone()],
+                vec![us_instrument_id.clone(), empty_us_instrument_id],
                 UsStockMinuteBarsDownsampleStats {
                     hourly_bars_inserted: 1,
                     minute_bars_deleted: 6,
@@ -1300,6 +1309,7 @@ mod tests {
             .expect("compressed chunk status row");
         let chunk_status = CompressedChunkStatus::from_query_result(&chunk_status, "")
             .expect("decode chunk compression status");
+        // このテストは上限 1 で圧縮済み chunk の DML 成功を確かめる。外側の rollback transaction では UoW の commit が savepoint になり、上限は DML 文単位で数えられる可能性もあるため、銘柄ごとの commit 境界は fake テストで固定する。
         db.execute_unprepared(
             "SET LOCAL timescaledb.max_tuples_decompressed_per_dml_transaction = 1",
         )

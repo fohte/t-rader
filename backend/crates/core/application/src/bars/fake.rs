@@ -20,6 +20,7 @@ pub struct FakeBarsRepository {
     pub bars: Mutex<Vec<Bar>>,
     pub ingested_dates: Mutex<HashSet<NaiveDate>>,
     pub instruments: Mutex<HashSet<String>>,
+    pub us_stock_instrument_ids: Mutex<HashSet<String>>,
     pub us_stock_targets: Mutex<HashSet<String>>,
     pub us_stock_daily_targets: Mutex<HashSet<String>>,
     pub us_stock_minute_targets: Mutex<HashSet<String>>,
@@ -31,6 +32,7 @@ pub struct FakeBarsRepository {
     pub minute_bar_downsample_instruments: Mutex<Vec<String>>,
     pub minute_bar_downsample_ranges: Mutex<Vec<(DateTime<Utc>, DateTime<Utc>)>>,
     pub minute_bar_downsample_cutoffs: Mutex<Vec<DateTime<Utc>>>,
+    minute_bar_downsample_failure: Mutex<Option<(String, String)>>,
     hourly_upsert_error: Mutex<Option<String>>,
     bar_compression_error: Mutex<Option<String>>,
 }
@@ -50,6 +52,13 @@ impl FakeBarsRepository {
 
     pub async fn seed_us_stock_targets(&self, instrument_ids: Vec<String>) {
         self.us_stock_targets.lock().await.extend(instrument_ids);
+    }
+
+    pub async fn seed_us_stock_instrument_ids(&self, instrument_ids: Vec<String>) {
+        self.us_stock_instrument_ids
+            .lock()
+            .await
+            .extend(instrument_ids);
     }
 
     pub async fn seed_us_stock_daily_targets(&self, instrument_ids: Vec<String>) {
@@ -81,6 +90,15 @@ impl FakeBarsRepository {
 
     pub async fn fail_hourly_upserts_with(&self, message: impl Into<String>) {
         *self.hourly_upsert_error.lock().await = Some(message.into());
+    }
+
+    pub async fn fail_minute_bar_downsampling_for(
+        &self,
+        instrument_id: impl Into<String>,
+        message: impl Into<String>,
+    ) {
+        *self.minute_bar_downsample_failure.lock().await =
+            Some((instrument_id.into(), message.into()));
     }
 
     pub async fn fail_bar_compression_with(&self, message: impl Into<String>) {
@@ -211,28 +229,15 @@ impl BarsRepository for FakeBarsRepository {
             .min())
     }
 
-    async fn find_us_stock_minute_bar_instruments(
-        &self,
-        from: DateTime<Utc>,
-        until: DateTime<Utc>,
-        cutoff: DateTime<Utc>,
-    ) -> Result<Vec<String>, BarsRepositoryError> {
+    async fn find_us_stock_instrument_ids(&self) -> Result<Vec<String>, BarsRepositoryError> {
         let mut instrument_ids = self
-            .bars
+            .us_stock_instrument_ids
             .lock()
             .await
             .iter()
-            .filter(|bar| {
-                bar.instrument_id.starts_with("US:")
-                    && bar.timeframe == Timeframe::Minute
-                    && bar.timestamp >= from
-                    && bar.timestamp < until
-                    && bar.timestamp < cutoff
-            })
-            .map(|bar| bar.instrument_id.clone())
+            .cloned()
             .collect::<Vec<_>>();
         instrument_ids.sort();
-        instrument_ids.dedup();
         Ok(instrument_ids)
     }
 
@@ -254,6 +259,18 @@ impl BarsRepository for FakeBarsRepository {
             .await
             .push((from, until));
         self.minute_bar_downsample_cutoffs.lock().await.push(cutoff);
+        let failure_message = self
+            .minute_bar_downsample_failure
+            .lock()
+            .await
+            .as_ref()
+            .filter(|(failed_instrument_id, _)| failed_instrument_id == instrument_id)
+            .map(|(_, message)| message.clone());
+        if let Some(message) = failure_message {
+            return Err(BarsRepositoryError::Database(PersistenceError::Database(
+                message,
+            )));
+        }
         Ok(UsStockMinuteBarsDownsampleStats::default())
     }
 

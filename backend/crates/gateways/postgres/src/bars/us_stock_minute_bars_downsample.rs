@@ -9,11 +9,6 @@ struct TimestampRow {
     timestamp: Option<DateTime<FixedOffset>>,
 }
 
-#[derive(Debug, FromQueryResult)]
-struct InstrumentIdRow {
-    instrument_id: String,
-}
-
 pub(super) async fn find_earliest_minute_bar_before(
     db: &impl ConnectionTrait,
     cutoff: DateTime<Utc>,
@@ -30,30 +25,6 @@ pub(super) async fn find_earliest_minute_bar_before(
     row.map(|row| TimestampRow::from_query_result(&row, ""))
         .transpose()
         .map(|row| row.and_then(|row| row.timestamp.map(|timestamp| timestamp.to_utc())))
-}
-
-pub(super) async fn find_minute_bar_instruments(
-    db: &impl ConnectionTrait,
-    from: DateTime<Utc>,
-    until: DateTime<Utc>,
-    cutoff: DateTime<Utc>,
-) -> Result<Vec<String>, sea_orm::DbErr> {
-    db.query_all_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "SELECT DISTINCT instrument_id FROM bars \
-         WHERE instrument_id LIKE 'US:%' AND timeframe = '1m' \
-           AND timestamp >= $1 AND timestamp < $2 AND timestamp < $3 \
-         ORDER BY instrument_id",
-        [
-            from.fixed_offset().into(),
-            until.fixed_offset().into(),
-            cutoff.fixed_offset().into(),
-        ],
-    ))
-    .await?
-    .iter()
-    .map(|row| InstrumentIdRow::from_query_result(row, "").map(|row| row.instrument_id))
-    .collect()
 }
 
 pub(super) async fn downsample_minute_bar_range(
