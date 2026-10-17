@@ -1823,11 +1823,15 @@ mod tests {
     async fn gated_write_accepts_a_reason_for_each_warning() {
         let body = "close 45,678円 and -3.5%";
         let (use_cases, repository) = make_note_use_cases(source_version());
+        let mut multiline_reason = String::from("分析上の仮定として記載");
+        multiline_reason.push('\r');
+        multiline_reason.push('\n');
+        multiline_reason.push_str("補足理由");
         let warning_dispositions = scan_note_body_warnings_with_ids(body)
             .into_iter()
             .map(|warning| NoteBodyWarningDisposition {
                 id: warning.id,
-                reason: "分析上の仮定として記載\r\n補足理由".into(),
+                reason: multiline_reason.clone(),
             })
             .collect();
         let result = use_cases
