@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::ops::Range;
+
+use serde::Serialize;
 
 use crate::note_reference::prose_segments;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum WarningKind {
     BarCount,
     Price,
@@ -16,14 +19,43 @@ struct Finding {
     kind: WarningKind,
 }
 
-pub fn scan_note_body_warnings(body: &str) -> Vec<String> {
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct NoteBodyWarning {
+    pub id: String,
+    pub message: String,
+}
+
+pub fn scan_note_body_warnings_with_ids(body: &str) -> Vec<NoteBodyWarning> {
+    let mut occurrences = HashMap::<(WarningKind, String), usize>::new();
     prose_segments(body)
         .into_iter()
         .flat_map(scan_prose_segment)
+        .map(|finding| {
+            let occurrence = occurrences
+                .entry((finding.kind, finding.value.clone()))
+                .and_modify(|count| *count += 1)
+                .or_insert(1);
+            let id = warning_id(finding.kind, &finding.value, *occurrence);
+            let message = match finding.kind {
+                WarningKind::BarCount => format!(
+                    "ローソク足の本数「{}」があります。本数ではなく、開始日と終了日で対象期間を記載してください。",
+                    finding.value
+                ),
+                WarningKind::Price => format!(
+                    "価格候補の数値「{}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。",
+                    finding.value
+                ),
+                WarningKind::Relative => format!(
+                    "相対表現「{}」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。",
+                    finding.value
+                ),
+            };
+            NoteBodyWarning { id, message }
+        })
         .collect()
 }
 
-fn scan_prose_segment(segment: &str) -> Vec<String> {
+fn scan_prose_segment(segment: &str) -> Vec<Finding> {
     let number_ranges = number_ranges(segment);
     let relative_ranges = relative_expression_ranges(segment, &number_ranges);
     let bar_count_ranges = number_ranges
@@ -70,22 +102,26 @@ fn scan_prose_segment(segment: &str) -> Vec<String> {
     findings.sort_unstable_by_key(|finding| finding.start);
 
     findings
-        .into_iter()
-        .map(|finding| match finding.kind {
-            WarningKind::BarCount => format!(
-                "ローソク足の本数「{}」があります。本数ではなく、開始日と終了日で対象期間を記載してください。",
-                finding.value
-            ),
-            WarningKind::Price => format!(
-                "価格候補の数値「{}」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。",
-                finding.value
-            ),
-            WarningKind::Relative => format!(
-                "相対表現「{}」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。",
-                finding.value
-            ),
-        })
-        .collect()
+}
+
+fn warning_id(kind: WarningKind, value: &str, occurrence: usize) -> String {
+    let kind = match kind {
+        WarningKind::BarCount => "bar-count",
+        WarningKind::Price => "price",
+        WarningKind::Relative => "relative",
+    };
+    let mut encoded_value = String::new();
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded_value.push(char::from(byte));
+        } else {
+            encoded_value.push('%');
+            encoded_value.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded_value.push(char::from(HEX[usize::from(byte & 0x0F)]));
+        }
+    }
+    format!("{kind}:{encoded_value}:{occurrence}")
 }
 
 #[derive(Debug)]
@@ -344,7 +380,7 @@ mod tests {
     use indoc::indoc;
     use rstest::rstest;
 
-    use super::scan_note_body_warnings;
+    use super::{NoteBodyWarning, scan_note_body_warnings_with_ids};
 
     #[rstest]
     #[case::price_and_relative_values(
@@ -452,6 +488,48 @@ mod tests {
         vec![],
     )]
     fn scans_unlinked_note_body_warnings(#[case] body: &str, #[case] expected: Vec<String>) {
-        assert_eq!(scan_note_body_warnings(body), expected);
+        assert_eq!(
+            scan_note_body_warnings_with_ids(body)
+                .into_iter()
+                .map(|warning| warning.message)
+                .collect::<Vec<_>>(),
+            expected,
+        );
+    }
+
+    #[test]
+    fn warning_ids_remain_stable_when_another_warning_is_added() {
+        assert_eq!(
+            (
+                scan_note_body_warnings_with_ids("45,678円、45,678円"),
+                scan_note_body_warnings_with_ids("-3.5%、45,678円、45,678円"),
+            ),
+            (
+                vec![
+                    NoteBodyWarning {
+                        id: "price:45%2C678%E5%86%86:1".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                    },
+                    NoteBodyWarning {
+                        id: "price:45%2C678%E5%86%86:2".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                    },
+                ],
+                vec![
+                    NoteBodyWarning {
+                        id: "relative:-3.5%25:1".into(),
+                        message: "相対表現「-3.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                    },
+                    NoteBodyWarning {
+                        id: "price:45%2C678%E5%86%86:1".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                    },
+                    NoteBodyWarning {
+                        id: "price:45%2C678%E5%86%86:2".into(),
+                        message: "価格候補の数値「45,678円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                    },
+                ],
+            ),
+        );
     }
 }

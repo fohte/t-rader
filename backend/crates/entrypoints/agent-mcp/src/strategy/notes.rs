@@ -2,12 +2,16 @@
 //!
 
 use core_application::change_history::{Actor, ChangeHistoryError};
-use core_application::note::{NoteRepositoryError, NoteUseCaseError, NoteWriteCommand};
+use core_application::note::{
+    NoteBodyWarningDisposition, NoteRepositoryError, NoteUseCaseError, NoteWriteCommand,
+};
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 
-use super::dto::{ListNoteKindsResult, NoteKindDto, WriteNoteParams, WriteNoteResult};
+use super::dto::{
+    ListNoteKindsResult, NoteKindDto, WriteNoteParams, WriteNoteResult, WriteNoteWarning,
+};
 use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, internal_error, internal_failure, invalid_params,
 };
@@ -19,6 +23,19 @@ pub(crate) use read::note_read_error_to_mcp;
 fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
     match error {
         NoteUseCaseError::Validation(message) => invalid_params(message),
+        NoteUseCaseError::UnresolvedBodyWarnings { warnings } => {
+            let warning_details = warnings
+                .iter()
+                .map(|warning| format!("{}: {}", warning.id, warning.message))
+                .collect::<Vec<_>>()
+                .join("\n");
+            McpError::invalid_params(
+                format!(
+                    "note body warnings must be fixed or dismissed with a reason:\n{warning_details}"
+                ),
+                Some(serde_json::json!({"warnings": warnings})),
+            )
+        }
         NoteUseCaseError::UnknownNoteKind(kind) => {
             invalid_params(format!("unknown note kind: {kind}"))
         }
@@ -92,6 +109,14 @@ impl StrategyServer {
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
+        let warning_dispositions = params
+            .warning_dispositions
+            .into_iter()
+            .map(|disposition| NoteBodyWarningDisposition {
+                id: disposition.id,
+                reason: disposition.reason,
+            })
+            .collect();
         let graphs_json = params
             .graphs
             .map(|graphs| {
@@ -104,32 +129,79 @@ impl StrategyServer {
         let result = self
             .dependencies
             .notes
-            .write(NoteWriteCommand {
-                execution_id,
-                note_id: params.note_id,
-                title: params.title,
-                body_md: params.body_md,
-                frontmatter_json: params.frontmatter_json.map(serde_json::Value::Object),
-                graphs_json,
-                kind: params.kind,
-                status: None,
-                trigger: None,
-                trigger_label: None,
-                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
-                change_reason: params.change_reason,
-                actor: Actor::Llm {
-                    label: STRATEGY_AGENT_ACTOR,
+            .write_with_warning_dispositions(
+                NoteWriteCommand {
+                    execution_id,
+                    note_id: params.note_id,
+                    title: params.title,
+                    body_md: params.body_md,
+                    frontmatter_json: params.frontmatter_json.map(serde_json::Value::Object),
+                    graphs_json,
+                    kind: params.kind,
+                    status: None,
+                    trigger: None,
+                    trigger_label: None,
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    change_reason: params.change_reason,
+                    actor: Actor::Llm {
+                        label: STRATEGY_AGENT_ACTOR,
+                    },
+                    change_diff: None,
                 },
-                change_diff: None,
-            })
+                warning_dispositions,
+            )
             .await
             .map_err(note_use_case_to_mcp)?;
         Ok(WriteNoteResult {
             note_id: result.note_id,
             created: result.created,
-            warnings: core_domain::note_body_warning::scan_note_body_warnings(
+            warnings: core_domain::note_body_warning::scan_note_body_warnings_with_ids(
                 &result.snapshot.version.body_md,
-            ),
+            )
+            .into_iter()
+            .map(|warning| WriteNoteWarning {
+                id: warning.id,
+                message: warning.message,
+            })
+            .collect(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rmcp::model::ErrorCode;
+    use serde_json::json;
+
+    use super::note_use_case_to_mcp;
+    use core_application::note::NoteUseCaseError;
+    use core_domain::note_body_warning::NoteBodyWarning;
+
+    #[test]
+    fn unresolved_warning_errors_include_warning_ids_in_data() {
+        let error = note_use_case_to_mcp(NoteUseCaseError::UnresolvedBodyWarnings {
+            warnings: vec![NoteBodyWarning {
+                id: "price:45%2C678%E5%86%86:1".into(),
+                message: "価格候補の数値「45,678円」がリンク外にあります。".into(),
+            }],
+        });
+
+        assert_eq!(
+            (error.code, error.message.to_string(), error.data),
+            (
+                ErrorCode::INVALID_PARAMS,
+                concat!(
+                    "note body warnings must be fixed or dismissed with a reason:\n",
+                    "price:45%2C678%E5%86%86:1: 価格候補の数値「45,678円」がリンク外にあります。"
+                )
+                .into(),
+                Some(json!({
+                    "warnings": [{
+                        "id": "price:45%2C678%E5%86%86:1",
+                        "message": "価格候補の数値「45,678円」がリンク外にあります。",
+                    }],
+                })),
+            ),
+        );
     }
 }

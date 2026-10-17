@@ -22,8 +22,9 @@ pub use query::{NoteReadQuery, NoteReadQueryError, SharedNoteReadQuery};
 pub use read::{NoteReadUseCaseError, NoteReadUseCases};
 pub use repository::{NoteRepository, NoteRepositoryError, SharedNoteRepository};
 pub use types::{
-    NewNote, NewNoteLink, NewNoteVersion, Note, NoteLink, NoteLinkTarget, NoteLinkView, NoteLinks,
-    NoteListCursor, NoteListPage, NoteListQuery, NoteMetadataUpdate, NoteSnapshot, NoteVersion,
-    NoteVersionUpdate, NoteWriteCommand, NoteWriteResult, PendingNoteVersion, UpdateNoteCommand,
+    NewNote, NewNoteLink, NewNoteVersion, Note, NoteBodyWarningDisposition, NoteLink,
+    NoteLinkTarget, NoteLinkView, NoteLinks, NoteListCursor, NoteListPage, NoteListQuery,
+    NoteMetadataUpdate, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand,
+    NoteWriteResult, PendingNoteVersion, UpdateNoteCommand,
 };
 pub use use_cases::NoteUseCases;

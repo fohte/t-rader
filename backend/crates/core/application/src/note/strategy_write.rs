@@ -1,10 +1,14 @@
 use chrono::Utc;
 use serde_json::{Map, json};
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
+
+use core_domain::note_body_warning::{NoteBodyWarning, scan_note_body_warnings_with_ids};
 
 use crate::note::frontmatter_validation::ensure_frontmatter_tags_are_strings;
 use crate::note::types::{
-    NewNote, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand, NoteWriteResult,
+    NewNote, NoteBodyWarningDisposition, NoteSnapshot, NoteVersion, NoteVersionUpdate,
+    NoteWriteCommand, NoteWriteResult,
 };
 use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
@@ -18,6 +22,22 @@ impl NoteUseCases {
     pub async fn write(
         &self,
         command: NoteWriteCommand,
+    ) -> Result<NoteWriteResult, NoteUseCaseError> {
+        self.write_inner(command, None).await
+    }
+
+    pub async fn write_with_warning_dispositions(
+        &self,
+        command: NoteWriteCommand,
+        warning_dispositions: Vec<NoteBodyWarningDisposition>,
+    ) -> Result<NoteWriteResult, NoteUseCaseError> {
+        self.write_inner(command, Some(warning_dispositions)).await
+    }
+
+    async fn write_inner(
+        &self,
+        command: NoteWriteCommand,
+        warning_dispositions: Option<Vec<NoteBodyWarningDisposition>>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         if let Some(frontmatter_json) = command.frontmatter_json.as_ref() {
             ensure_frontmatter_object(frontmatter_json)?;
@@ -40,7 +60,13 @@ impl NoteUseCases {
             let transaction = self.unit_of_work.begin().await?;
             let note = self.require_note(&transaction, note_id).await?;
             let result = self
-                .update_strategy_note(&transaction, note, command, resolved_market_data)
+                .update_strategy_note(
+                    &transaction,
+                    note,
+                    command,
+                    resolved_market_data,
+                    warning_dispositions.as_deref(),
+                )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -54,7 +80,13 @@ impl NoteUseCases {
                 .await?
         {
             let result = self
-                .update_strategy_note(&transaction, note, command, resolved_market_data)
+                .update_strategy_note(
+                    &transaction,
+                    note,
+                    command,
+                    resolved_market_data,
+                    warning_dispositions.as_deref(),
+                )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -78,6 +110,10 @@ impl NoteUseCases {
         if let Some(kind) = kind.as_deref() {
             self.ensure_note_kind_exists(&transaction, kind).await?;
         }
+        validate_body_warning_dispositions(
+            command.body_md.as_deref().unwrap_or_default(),
+            warning_dispositions.as_deref(),
+        )?;
 
         let note_id = Uuid::new_v4();
         let inserted = self
@@ -107,7 +143,13 @@ impl NoteUseCases {
                     )
                 })?;
             let result = self
-                .update_strategy_note(&transaction, note, command, resolved_market_data)
+                .update_strategy_note(
+                    &transaction,
+                    note,
+                    command,
+                    resolved_market_data,
+                    warning_dispositions.as_deref(),
+                )
                 .await?;
             self.unit_of_work.commit(transaction).await?;
             return Ok(result);
@@ -205,6 +247,7 @@ impl NoteUseCases {
         note: crate::note::types::Note,
         command: NoteWriteCommand,
         resolved_market_data: Option<Result<Map<String, serde_json::Value>, NoteUseCaseError>>,
+        warning_dispositions: Option<&[NoteBodyWarningDisposition]>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
         let current_version = self
             .repository
@@ -246,6 +289,7 @@ impl NoteUseCases {
             graphs_json = graphs;
             touched = true;
         }
+        validate_body_warning_dispositions(&body_md, warning_dispositions)?;
         if !touched {
             return Err(NoteUseCaseError::Validation(
                 "at least one of title / body_md / frontmatter_json / graphs must be provided"
@@ -309,6 +353,69 @@ impl NoteUseCases {
             },
         })
     }
+}
+
+fn validate_body_warning_dispositions(
+    body_md: &str,
+    warning_dispositions: Option<&[NoteBodyWarningDisposition]>,
+) -> Result<(), NoteUseCaseError> {
+    let Some(warning_dispositions) = warning_dispositions else {
+        return Ok(());
+    };
+    let warnings = scan_note_body_warnings_with_ids(body_md);
+    let warning_counts = warnings.iter().fold(HashMap::new(), |mut counts, warning| {
+        if let Some(group_id) = warning_id_group(&warning.id) {
+            *counts.entry(group_id).or_insert(0_usize) += 1;
+        }
+        counts
+    });
+    let disposition_ids = warning_dispositions
+        .iter()
+        .filter(|disposition| !disposition.reason.trim().is_empty())
+        .filter_map(|disposition| {
+            warning_id_group(&disposition.id)
+                .filter(|group_id| warning_counts.contains_key(group_id))
+                .map(|group_id| (group_id, disposition.id.clone()))
+        })
+        .fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut groups, (group_id, id)| {
+                groups.entry(group_id).or_default().insert(id);
+                groups
+            },
+        );
+    let unresolved_warnings = warnings
+        .into_iter()
+        .filter(|warning| {
+            let Some(group_id) = warning_id_group(&warning.id) else {
+                return true;
+            };
+            let Some(group_dispositions) = disposition_ids.get(&group_id) else {
+                return true;
+            };
+            if group_dispositions.contains(&warning.id) {
+                return false;
+            }
+            // 同一警告の先行出現が削除されると番号がずれるため、同じ警告群の理由数で照合する。
+            group_dispositions.len() < warning_counts[&group_id]
+        })
+        .collect::<Vec<NoteBodyWarning>>();
+    if unresolved_warnings.is_empty() {
+        Ok(())
+    } else {
+        Err(NoteUseCaseError::UnresolvedBodyWarnings {
+            warnings: unresolved_warnings,
+        })
+    }
+}
+
+fn warning_id_group(id: &str) -> Option<String> {
+    let (group_id, occurrence) = id.rsplit_once(':')?;
+    occurrence
+        .parse::<usize>()
+        .ok()
+        .filter(|count| *count > 0)?;
+    Some(group_id.to_string())
 }
 
 #[cfg(all(test, feature = "test-support"))]
@@ -1691,6 +1798,137 @@ mod tests {
             ),
             (Some(expected_error.into()), 0),
         );
+    }
+
+    #[tokio::test]
+    async fn gated_write_rejects_body_warnings_without_saving() {
+        let body = "close 45,678円";
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write_with_warning_dispositions(write_body_command(body), vec![])
+            .await;
+        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn gated_write_checks_the_existing_body_when_body_is_omitted() {
+        let body = "close 45,678円";
+        let mut current_version = source_version();
+        current_version.body_md = body.into();
+        let (use_cases, repository) = make_note_use_cases(current_version);
+        let mut command = write_body_command("ignored replacement");
+        command.body_md = None;
+        let result = use_cases
+            .write_with_warning_dispositions(command, vec![])
+            .await;
+        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn gated_write_accepts_a_reason_for_each_warning() {
+        let body = "close 45,678円 and -3.5%";
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let warning_dispositions = scan_note_body_warnings_with_ids(body)
+            .into_iter()
+            .map(|warning| NoteBodyWarningDisposition {
+                id: warning.id,
+                reason: "分析上の仮定として記載".into(),
+            })
+            .collect();
+        let result = use_cases
+            .write_with_warning_dispositions(write_body_command(body), warning_dispositions)
+            .await;
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!((result.is_ok(), inserted_version_count), (true, 1));
+    }
+
+    #[tokio::test]
+    async fn gated_write_accepts_prior_ids_when_earlier_identical_warnings_are_removed() {
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command("close 45,678円"),
+                vec![NoteBodyWarningDisposition {
+                    id: "price:45%2C678%E5%86%86:2".into(),
+                    reason: "分析上の仮定として記載".into(),
+                }],
+            )
+            .await;
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!((result.is_ok(), inserted_version_count), (true, 1));
+    }
+
+    #[tokio::test]
+    async fn gated_write_rejects_when_only_some_warnings_have_dispositions() {
+        let body = "close 45,678円 and -3.5%";
+        let warnings = scan_note_body_warnings_with_ids(body);
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command(body),
+                vec![NoteBodyWarningDisposition {
+                    id: warnings[0].id.clone(),
+                    reason: "分析上の仮定として記載".into(),
+                }],
+            )
+            .await;
+
+        assert_rejected_without_saving(result, &repository, warnings.into_iter().skip(1).collect())
+            .await;
+    }
+
+    #[rstest]
+    #[case::empty_reason("")]
+    #[case::whitespace_reason("  ")]
+    #[tokio::test]
+    async fn gated_write_requires_a_nonempty_reason(#[case] reason: &str) {
+        let body = "close 45,678円";
+        let warning = scan_note_body_warnings_with_ids(body)
+            .into_iter()
+            .next()
+            .expect("body has a warning");
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases
+            .write_with_warning_dispositions(
+                write_body_command(body),
+                vec![NoteBodyWarningDisposition {
+                    id: warning.id,
+                    reason: reason.into(),
+                }],
+            )
+            .await;
+        assert_rejected_without_saving(result, &repository, scan_note_body_warnings_with_ids(body))
+            .await;
+    }
+
+    async fn assert_rejected_without_saving(
+        result: Result<NoteWriteResult, NoteUseCaseError>,
+        repository: &LinkNoteRepository,
+        expected_warnings: Vec<NoteBodyWarning>,
+    ) {
+        let unresolved_warnings = result.err().and_then(|error| match error {
+            NoteUseCaseError::UnresolvedBodyWarnings { warnings } => Some(warnings),
+            _ => None,
+        });
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!(
+            (unresolved_warnings, inserted_version_count),
+            (Some(expected_warnings), 0),
+        );
+    }
+
+    #[tokio::test]
+    async fn ungated_write_keeps_existing_warning_behavior() {
+        let (use_cases, repository) = make_note_use_cases(source_version());
+        let result = use_cases.write(write_body_command("close 45,678円")).await;
+        let inserted_version_count = repository.inserted_versions.lock().await.len();
+
+        assert_eq!((result.is_ok(), inserted_version_count), (true, 1));
     }
 
     #[tokio::test]

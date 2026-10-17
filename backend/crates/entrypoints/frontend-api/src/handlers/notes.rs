@@ -270,6 +270,9 @@ pub async fn delete_note(
 pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
     match error {
         NoteUseCaseError::Validation(message) => AppError::Validation(message),
+        NoteUseCaseError::UnresolvedBodyWarnings { .. } => {
+            AppError::Validation("note body warnings require a disposition".into())
+        }
         NoteUseCaseError::UnknownNoteKind(kind) => {
             AppError::Validation(format!("unknown note kind: {kind}"))
         }

@@ -167,6 +167,12 @@ pub struct NoteWriteCommand {
     pub change_diff: Option<Value>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteBodyWarningDisposition {
+    pub id: String,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct UpdateNoteCommand {
     pub title: Option<String>,

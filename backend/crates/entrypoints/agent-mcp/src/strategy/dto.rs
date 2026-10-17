@@ -63,6 +63,23 @@ pub struct WriteNoteParams {
     /// 図トークンは空行で区切られたブロック内に単独で置くこと。
     /// `value` (ノード/エッジのサイズ) を指定する場合は出典を示す `cite` も必須。
     pub graphs: Option<Vec<GraphDef>>,
+    /// 本文の警告を残す場合に、警告 ID と 1 行の理由を指定する。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warning_dispositions: Vec<WriteNoteWarningDisposition>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WriteNoteWarningDisposition {
+    pub id: String,
+    pub reason: String,
+}
+
+#[cfg_attr(test, derive(serde::Deserialize))]
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct WriteNoteWarning {
+    pub id: String,
+    pub message: String,
 }
 
 #[cfg_attr(test, derive(serde::Deserialize))]
@@ -70,9 +87,8 @@ pub struct WriteNoteParams {
 pub struct WriteNoteResult {
     pub note_id: Uuid,
     pub created: bool,
-    /// 本文の価格候補、相対表現、ローソク足の本数に関する警告。
-    /// 誤検出を含む案内であり、ノートの保存は拒否されません。
-    pub warnings: Vec<String>,
+    /// 警告 ID は種類・該当文字列・出現順で決まる。同じ警告の先行出現を削除した場合は、旧 ID も理由数に含める。
+    pub warnings: Vec<WriteNoteWarning>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
