@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import {
-  type ComponentType,
+  Children,
   createContext,
+  isValidElement,
   type ReactNode,
   useCallback,
   useContext,
@@ -10,7 +11,7 @@ import {
   useState,
 } from 'react'
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
-import Markdown, { type Components, type ExtraProps } from 'react-markdown'
+import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
@@ -19,11 +20,15 @@ import { toGraphDef } from '#components/note-detail/markdown-body-graph-def'
 import { MarkdownBodyRangeBlock } from '#components/note-detail/markdown-body-range-block'
 import {
   MarkdownBodyRangeCommentContext,
-  type MarkdownBodyRangeCommentProps,
   MarkdownBodyTableCellGutterContext,
   NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdown-body-text-selection-action'
+import type {
+  MarkdownBodyProps,
+  NoteTokenComponents,
+} from '#components/note-detail/markdown-body-types'
+import { MarkdownBodyWidget } from '#components/note-detail/markdown-body-widget'
 import {
   NoteChangeReference,
   NoteEvaluationEvidenceReference,
@@ -34,62 +39,13 @@ import {
 import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { useMarkdownBodyCommentSelection } from '#components/note-detail/use-markdown-body-comment-selection'
 import { RefChip } from '#components/strategy-shell/ref-chip'
-import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import type { components } from '#lib/api/schema.gen'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
-import type { ParsedNotePriceReference } from '#lib/note-price-reference'
-import type {
-  ParsedNoteIndicatorObservationReference,
-  ParsedNoteValuationReference,
-} from '#lib/note-valuation-indicator-reference'
 
 type ApiGraphDef = components['schemas']['GraphDef']
 type NoteLinkItem = components['schemas']['NoteLinkItem']
-type MarkdownNode = NonNullable<ExtraProps['node']>
 
 const EMPTY_GRAPHS: ApiGraphDef[] = []
 const EMPTY_NOTE_LINKS: NoteLinkItem[] = []
-
-interface MarkdownBodyProps {
-  source: string
-  graphs?: ApiGraphDef[]
-  noteLinks?: NoteLinkItem[]
-  resolvedPriceReferences?: components['schemas']['Value']
-  onAnno?: (id: string) => void
-  onRef?: (token: string, resolved: ResolvedRef) => void
-  rangeComments?: MarkdownBodyRangeCommentProps
-}
-
-// remarkNoteTokens が data.hName で生成するタグ名に対応する。
-type NoteTokenComponents = {
-  'note-ref': ComponentType<{
-    token: string
-    commentTextHighlight?: string
-  }>
-  'note-anno': ComponentType<{ annoId: string }>
-  'note-graph': ComponentType<{ graphId: string; node?: MarkdownNode }>
-  'note-link': ComponentType<{ noteId: string; token: string }>
-  'note-price-reference': ComponentType<
-    ParsedNotePriceReference & { value: string }
-  >
-  'note-eval-reference': ComponentType<{
-    evaluationId: string
-    outputName: string
-    value: string
-  }>
-  'note-valuation-reference': ComponentType<
-    ParsedNoteValuationReference & { value: string }
-  >
-  'note-indicator-reference': ComponentType<
-    ParsedNoteIndicatorObservationReference & { value: string }
-  >
-  'note-change-reference': ComponentType<
-    ParsedNoteChangeReference & { token: string; value?: string }
-  >
-  'note-change-figure': ComponentType<
-    ParsedNoteChangeReference & { node?: MarkdownNode }
-  >
-}
 
 const MarkdownBodyListDepthContext = createContext(0)
 
@@ -280,24 +236,45 @@ export function MarkdownBody({
           }
         />
       ),
-      pre: ({ children, node }) => (
-        <MarkdownBodyRangeBlock
-          node={node}
-          element={
-            <pre className="my-3 overflow-x-auto border border-border bg-surface-strong p-3 font-mono text-xs leading-relaxed text-foreground [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-xs">
-              {children}
-            </pre>
-          }
-        />
-      ),
-      code: ({ children }) => (
-        // text-em-88 は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
-        // ため、周辺テキストに追従する相対値のまま残す。固定トークンに丸めると
-        // 見出し内で不自然に縮小する。
-        <code className="border border-border bg-surface-strong px-1 py-px font-mono text-em-88">
-          {children}
-        </code>
-      ),
+      pre: ({ children, node }) => {
+        const firstChild = Children.toArray(children)[0]
+        const isWidgetBlock =
+          isValidElement<{ className?: string }>(firstChild) &&
+          firstChild.props.className === 'language-widget'
+        return (
+          <MarkdownBodyRangeBlock
+            node={node}
+            element={
+              isWidgetBlock ? (
+                <div className="my-3">{children}</div>
+              ) : (
+                <pre className="my-3 overflow-x-auto border border-border bg-surface-strong p-3 font-mono text-xs leading-relaxed text-foreground [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-xs">
+                  {children}
+                </pre>
+              )
+            }
+          />
+        )
+      },
+      code: ({ children, className }) => {
+        if (className === 'language-widget') {
+          return (
+            <MarkdownBodyWidget
+              source={Children.toArray(children)
+                .map((child) => (typeof child === 'string' ? child : ''))
+                .join('')}
+            />
+          )
+        }
+        return (
+          // text-em-88 は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
+          // ため、周辺テキストに追従する相対値のまま残す。固定トークンに丸めると
+          // 見出し内で不自然に縮小する。
+          <code className="border border-border bg-surface-strong px-1 py-px font-mono text-em-88">
+            {children}
+          </code>
+        )
+      },
       strong: ({ children }) => (
         <strong className="font-semibold">{children}</strong>
       ),

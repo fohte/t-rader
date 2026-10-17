@@ -8,7 +8,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
 } from '@xyflow/react'
-import { useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 
 import { buildDagreLayout } from '#components/graph/dagre-layout'
 import type {
@@ -41,6 +41,14 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes: EdgeTypes = {
   graphEdge: GraphFlowEdgeView,
+}
+
+type ReactFlowStyle = CSSProperties & {
+  '--xy-attribution-background-color': string
+}
+
+const reactFlowStyle: ReactFlowStyle = {
+  '--xy-attribution-background-color': 'transparent',
 }
 
 export interface GraphRendererProps {
@@ -167,6 +175,7 @@ function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        style={reactFlowStyle}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
