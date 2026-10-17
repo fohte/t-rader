@@ -114,6 +114,11 @@ export const Latest: Story = {
   args: { state: { ...readyState, asOf: '' } },
 }
 
+export const ConfiguredDate: Story = {
+  name: 'ウィジェット設定の日付を初期値として表示します。',
+  args: { state: { ...readyState, asOf: null } },
+}
+
 export const Preview: Story = {
   name: '保存前の設定を一覧へのリンクなしで表示します。',
   args: { state: readyState, showDashboardListLink: false },

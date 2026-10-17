@@ -33,7 +33,7 @@ export type DashboardPageState =
   | {
       status: 'ready'
       title: string
-      asOf: string
+      asOf: string | null
       onAsOfChange: (date: string) => void
       widgets: DashboardWidgetPageState[]
     }
@@ -207,7 +207,7 @@ export function DashboardPageView({
       />
       <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
         <p className="font-mono text-xs text-muted-foreground">
-          ウィジェット設定の日付を使い、未指定なら最新です。日付を選ぶと全ウィジェットに適用します。
+          初期状態では設定日を使い、未指定なら最新です。日付指定や最新ボタンで全ウィジェットを切り替えます。
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground-strong">
@@ -219,7 +219,7 @@ export function DashboardPageView({
                 state.onAsOfChange(event.currentTarget.value)
               }}
               type="date"
-              value={state.asOf}
+              value={state.asOf ?? ''}
             />
           </label>
           <button

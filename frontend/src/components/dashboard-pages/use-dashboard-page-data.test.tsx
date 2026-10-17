@@ -236,6 +236,16 @@ describe('useDashboardPageData', () => {
       }
     })
 
+    act(() => {
+      hook.result.current.onAsOfChange('')
+    })
+
+    await waitFor(() => {
+      if (activeMiddleware?.requests.length !== 3) {
+        throw new Error('latest-date request is not complete')
+      }
+    })
+
     expect(activeMiddleware.requests).toEqual([
       {
         queries: {
@@ -262,6 +272,18 @@ describe('useDashboardPageData', () => {
         formulas: { doubled: 'movement * 2' },
         viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
         time: { as_of: '2099-03-01' },
+      },
+      {
+        queries: {
+          movement: {
+            metric: 'change',
+            period: '1d',
+            by: 'stock',
+            universe: { stocks: ['DEMO-A'] },
+          },
+        },
+        formulas: { doubled: 'movement * 2' },
+        viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
       },
     ])
   })

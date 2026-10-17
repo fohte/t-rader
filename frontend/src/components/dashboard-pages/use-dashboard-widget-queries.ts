@@ -7,10 +7,15 @@ import { getApiErrorMessage, getApiErrorStatus } from '#lib/api/error'
 
 function createWidgetQueryBody(
   definition: DashboardConfig['widgets'][number]['definition'],
-  asOf: string | null,
+  asOf: string | null | undefined,
 ) {
   const { queries, formulas, viz, time } = definition
-  const requestTime = asOf == null ? time : { ...time, as_of: asOf }
+  const requestTime =
+    asOf === undefined
+      ? time
+      : asOf === null
+        ? undefined
+        : { ...time, as_of: asOf }
   return {
     queries,
     ...(formulas == null ? {} : { formulas }),
@@ -21,7 +26,7 @@ function createWidgetQueryBody(
 
 export function useDashboardWidgetQueries(
   config: DashboardConfig | null,
-  asOf: string | null,
+  asOf: string | null | undefined,
 ): DashboardWidgetPageState[] {
   const queries = useQueries({
     queries:

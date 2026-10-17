@@ -13,19 +13,26 @@ export function useDashboardPageData(
   config: DashboardConfig | null,
   resetKey: string,
 ): {
-  asOf: string
+  asOf: string | null
   onAsOfChange: (date: string) => void
   widgets: DashboardWidgetPageState[]
 } {
   const [dateSelection, setDateSelection] =
     useState<DashboardDateSelection | null>(null)
   const selectedDate =
-    dateSelection?.resetKey === resetKey ? dateSelection.date : ''
-  const asOf = selectedDate
-  const widgets = useDashboardWidgetQueries(
-    config,
-    selectedDate === '' ? null : selectedDate,
-  )
+    dateSelection?.resetKey === resetKey ? dateSelection.date : null
+  const hasConfiguredAsOf =
+    config?.widgets.some(
+      (widget) => typeof widget.definition.time?.as_of === 'string',
+    ) ?? false
+  let asOf: string | null = selectedDate ?? ''
+  if (selectedDate === null && hasConfiguredAsOf) asOf = null
+
+  let queryAsOf: string | null | undefined = selectedDate
+  if (selectedDate === null) queryAsOf = hasConfiguredAsOf ? undefined : null
+  if (selectedDate === '') queryAsOf = null
+
+  const widgets = useDashboardWidgetQueries(config, queryAsOf)
 
   return {
     asOf,
