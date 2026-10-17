@@ -309,6 +309,7 @@ impl UsStockBarsIngestUseCases {
         splits: Vec<UsStockSplit>,
     ) -> Result<BTreeMap<NaiveDate, Decimal>, BarsUseCaseError> {
         let stored_bars = self
+            .bars
             .repository
             .find_bars(BarsQuery {
                 instrument_id: instrument_id.to_owned(),

@@ -18,7 +18,8 @@ impl UsStockBarsIngestUseCases {
             .cloned()
             .collect::<Vec<_>>();
         if !completed_instrument_ids.is_empty() {
-            self.repository
+            self.bars
+                .repository
                 .mark_us_stock_hourly_bar_history_completed(
                     &completed_instrument_ids,
                     completed_through,

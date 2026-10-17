@@ -138,11 +138,13 @@ impl UsStockBarsIngestUseCases {
     ) -> Result<UsStockBarsIngestStats, Box<(UsStockBarsIngestStats, BarsUseCaseError)>> {
         let targets = match timeframe {
             UsStockBarTimeframe::Daily | UsStockBarTimeframe::Hourly => self
+                .bars
                 .repository
                 .find_us_stock_daily_bar_targets()
                 .await
                 .map_err(|error| Box::new((UsStockBarsIngestStats::default(), error.into())))?,
             UsStockBarTimeframe::Minute => self
+                .bars
                 .repository
                 .find_us_stock_minute_bar_targets()
                 .await
@@ -753,13 +755,10 @@ mod tests {
         let unit_of_work = Arc::new(TestUnitOfWork::new(clock.clone(), events.clone()));
         let unit_of_work_shared: SharedUnitOfWork = unit_of_work.clone();
         Harness {
-            use_cases: UsStockBarsIngestUseCases::new(
-                BarsUseCases::with_clock(
-                    unit_of_work_shared,
-                    repository_shared_trait,
-                    clock.clone(),
-                ),
+            use_cases: UsStockBarsIngestUseCases::with_clock(
+                BarsUseCases::new(unit_of_work_shared, repository_shared_trait),
                 write_lock_shared,
+                clock.clone(),
             ),
             repository,
             source: FakeSource::default(),

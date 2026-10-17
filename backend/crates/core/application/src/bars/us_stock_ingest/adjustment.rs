@@ -33,6 +33,7 @@ impl UsStockBarsIngestUseCases {
             .max()
             .map(|timestamp| timestamp.fixed_offset());
         let stored_bars = self
+            .bars
             .repository
             .find_bars_by_instruments(BarsByInstrumentsQuery {
                 instrument_ids,

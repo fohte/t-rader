@@ -16,29 +16,13 @@ use super::write_lock::SharedUsStockBarsWriteLock;
 pub struct BarsUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) repository: SharedBarsRepository,
-    pub(super) clock: Arc<dyn BarsIngestClock>,
-    pub(super) ingest_run: Option<(Uuid, SharedIngestRunLog)>,
 }
 
 impl BarsUseCases {
     pub fn new(unit_of_work: SharedUnitOfWork, repository: SharedBarsRepository) -> Self {
-        Self::with_clock(
-            unit_of_work,
-            repository,
-            Arc::new(SystemBarsIngestClock::new()),
-        )
-    }
-
-    pub(super) fn with_clock(
-        unit_of_work: SharedUnitOfWork,
-        repository: SharedBarsRepository,
-        clock: Arc<dyn BarsIngestClock>,
-    ) -> Self {
         Self {
             unit_of_work,
             repository,
-            clock,
-            ingest_run: None,
         }
     }
 
@@ -61,27 +45,35 @@ impl BarsUseCases {
 pub struct UsStockBarsIngestUseCases {
     pub(super) bars: BarsUseCases,
     pub(super) us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
+    pub(super) clock: Arc<dyn BarsIngestClock>,
+    pub(super) ingest_run: Option<(Uuid, SharedIngestRunLog)>,
 }
 
 impl UsStockBarsIngestUseCases {
     pub fn new(bars: BarsUseCases, us_stock_bars_write_lock: SharedUsStockBarsWriteLock) -> Self {
+        Self::with_clock(
+            bars,
+            us_stock_bars_write_lock,
+            Arc::new(SystemBarsIngestClock::new()),
+        )
+    }
+
+    pub(super) fn with_clock(
+        bars: BarsUseCases,
+        us_stock_bars_write_lock: SharedUsStockBarsWriteLock,
+        clock: Arc<dyn BarsIngestClock>,
+    ) -> Self {
         Self {
             bars,
             us_stock_bars_write_lock,
+            clock,
+            ingest_run: None,
         }
     }
 
     pub fn for_ingest_run(&self, run_id: Uuid, ingest_run_log: SharedIngestRunLog) -> Self {
         let mut use_cases = self.clone();
-        use_cases.bars.ingest_run = Some((run_id, ingest_run_log));
+        use_cases.ingest_run = Some((run_id, ingest_run_log));
         use_cases
-    }
-}
-
-impl std::ops::Deref for UsStockBarsIngestUseCases {
-    type Target = BarsUseCases;
-
-    fn deref(&self) -> &Self::Target {
-        &self.bars
     }
 }

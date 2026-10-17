@@ -108,7 +108,11 @@ impl UsStockBarsIngestUseCases {
         stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
 
         if timeframe == UsStockBarTimeframe::Minute
-            && let Err(error) = self.repository.compress_bars_older_than_policy(now).await
+            && let Err(error) = self
+                .bars
+                .repository
+                .compress_bars_older_than_policy(now)
+                .await
         {
             let compression_error = error.to_string();
             stats.compression_error = Some(compression_error.clone());
