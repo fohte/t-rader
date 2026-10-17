@@ -1,13 +1,14 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use core_application::dashboard::{DashboardConfig, DashboardConfigError, DashboardWidgetWidth};
-use core_application::widget::{WidgetQueryError, WidgetUseCaseError};
+use core_application::widget::WidgetUseCaseError;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{
-    DashboardConfigIssue, DashboardWidgetPreview, PreviewDashboardParams, PreviewDashboardResult,
+    DashboardConfigIssue, DashboardWidgetPreview, DashboardWidgetRowPreview,
+    DashboardWidgetWidthPreview, PreviewDashboardParams, PreviewDashboardResult,
 };
-use super::{MgmtServer, internal_failure, invalid_params};
+use super::{MgmtServer, internal_failure};
 
 impl MgmtServer {
     pub(super) async fn preview_dashboard_inner(
@@ -40,57 +41,65 @@ impl MgmtServer {
                     widgets: Vec::new(),
                 });
             }
+            Err(DashboardConfigError::WidgetParse { index, message }) => {
+                return Ok(PreviewDashboardResult {
+                    errors: vec![DashboardConfigIssue {
+                        path: format!("widgets[{index}]"),
+                        message,
+                    }],
+                    preview_url: None,
+                    widgets: Vec::new(),
+                });
+            }
         };
 
         let mut widgets = Vec::with_capacity(config.widgets.len());
-        for widget in config.widgets {
-            let result = self
-                .dependencies
-                .widgets
-                .query(widget.definition)
-                .await
-                .map_err(map_widget_error)?;
-            widgets.push(DashboardWidgetPreview {
-                title: widget.title,
-                width: match widget.width {
-                    DashboardWidgetWidth::Half => "half",
-                    DashboardWidgetWidth::Full => "full",
+        let mut errors = Vec::new();
+        for (index, widget) in config.widgets.into_iter().enumerate() {
+            let result = self.dependencies.widgets.query(widget.definition).await;
+            match result {
+                Ok(result) => widgets.push(DashboardWidgetPreview {
+                    title: widget.title,
+                    width: match widget.width {
+                        DashboardWidgetWidth::Half => DashboardWidgetWidthPreview::Half,
+                        DashboardWidgetWidth::Full => DashboardWidgetWidthPreview::Full,
+                    },
+                    as_of: result.as_of,
+                    rows: result
+                        .rows
+                        .into_iter()
+                        .map(DashboardWidgetRowPreview::from)
+                        .collect(),
+                }),
+                Err(WidgetUseCaseError::Validation(widget_errors)) => {
+                    errors.extend(
+                        widget_errors
+                            .0
+                            .into_iter()
+                            .map(|error| DashboardConfigIssue {
+                                path: format!("widgets[{index}].{}", error.path),
+                                message: error.message,
+                            }),
+                    );
                 }
-                .to_owned(),
-                as_of: result.as_of,
-                rows: result
-                    .rows
-                    .into_iter()
-                    .map(|row| {
-                        serde_json::json!({
-                            "key": row.key.as_string(),
-                            "name": row.name,
-                            "values": row.values,
-                        })
-                    })
-                    .collect(),
-            });
+                Err(WidgetUseCaseError::NoData) => errors.push(DashboardConfigIssue {
+                    path: format!("widgets[{index}].time.as_of"),
+                    message: "no daily bar data is available on or before the requested date"
+                        .to_owned(),
+                }),
+                Err(WidgetUseCaseError::Query(error)) => {
+                    return Err(internal_failure(&error.to_string()));
+                }
+            }
         }
 
         Ok(PreviewDashboardResult {
-            errors: Vec::new(),
+            errors,
             preview_url: Some(format!(
                 "/dashboards/preview#{}",
                 URL_SAFE_NO_PAD.encode(params.yaml)
             )),
             widgets,
         })
-    }
-}
-
-fn map_widget_error(error: WidgetUseCaseError) -> McpError {
-    match error {
-        WidgetUseCaseError::Validation(errors) => invalid_params(errors.to_string()),
-        WidgetUseCaseError::NoData => {
-            invalid_params("no daily bar data is available on or before the requested date")
-        }
-        WidgetUseCaseError::Query(WidgetQueryError::Database(error)) => {
-            internal_failure(&error.to_string())
-        }
     }
 }

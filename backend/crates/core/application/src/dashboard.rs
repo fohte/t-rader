@@ -21,14 +21,13 @@ pub struct DashboardData {
     pub config: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DashboardConfig {
     pub title: String,
     pub widgets: Vec<DashboardWidget>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DashboardWidget {
     pub title: String,
     pub width: DashboardWidgetWidth,
@@ -70,19 +69,26 @@ impl std::error::Error for DashboardValidationErrors {}
 pub enum DashboardConfigError {
     #[error("invalid dashboard YAML: {0}")]
     Parse(#[from] serde_yaml_ng::Error),
+    #[error("invalid dashboard widget at widgets[{index}]: {message}")]
+    WidgetParse { index: usize, message: String },
     #[error("{0}")]
     Validation(#[from] DashboardValidationErrors),
 }
 
 impl DashboardConfig {
     pub fn from_yaml(input: &str) -> Result<Self, DashboardConfigError> {
-        let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(input)?;
-        let config: Self = serde_yaml_ng::from_value(value.clone())?;
+        let raw: RawDashboardConfig = serde_yaml_ng::from_str(input)?;
+        let widgets = raw
+            .widgets
+            .into_iter()
+            .enumerate()
+            .map(parse_dashboard_widget)
+            .collect::<Result<Vec<_>, _>>()?;
+        let config = Self {
+            title: raw.title,
+            widgets,
+        };
         config.validate()?;
-        let unknown_fields = unknown_widget_fields(&value);
-        if !unknown_fields.is_empty() {
-            return Err(DashboardValidationErrors(unknown_fields).into());
-        }
         Ok(config)
     }
 
@@ -124,39 +130,62 @@ impl DashboardConfig {
     }
 }
 
-fn unknown_widget_fields(value: &serde_yaml_ng::Value) -> Vec<DashboardValidationError> {
-    // Serde の flatten は内部型の deny_unknown_fields で余剰キーを拒否できないため、元の YAML を確認する。
-    let serde_yaml_ng::Value::Mapping(root) = value else {
-        return Vec::new();
-    };
-    let widgets_key = serde_yaml_ng::Value::String("widgets".to_owned());
-    let Some(serde_yaml_ng::Value::Sequence(widgets)) = root.get(&widgets_key) else {
-        return Vec::new();
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawDashboardConfig {
+    title: String,
+    widgets: Vec<serde_yaml_ng::Value>,
+}
+
+fn parse_dashboard_widget(
+    (index, value): (usize, serde_yaml_ng::Value),
+) -> Result<DashboardWidget, DashboardConfigError> {
+    let serde_yaml_ng::Value::Mapping(mut fields) = value else {
+        return Err(DashboardConfigError::WidgetParse {
+            index,
+            message: "expected a mapping".to_owned(),
+        });
     };
 
-    widgets
-        .iter()
-        .enumerate()
-        .flat_map(|(index, widget)| {
-            let serde_yaml_ng::Value::Mapping(fields) = widget else {
-                return Vec::new();
-            };
-            fields
-                .keys()
-                .filter_map(|key| {
-                    let field = key.as_str().unwrap_or("<non-string>");
-                    (!matches!(
-                        field,
-                        "title" | "width" | "queries" | "formulas" | "viz" | "time"
-                    ))
-                    .then(|| DashboardValidationError {
-                        path: format!("widgets[{index}].{field}"),
-                        message: "unknown field".to_owned(),
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
+    let title_key = serde_yaml_ng::Value::String("title".to_owned());
+    let title = fields
+        .remove(&title_key)
+        .ok_or_else(|| DashboardConfigError::WidgetParse {
+            index,
+            message: "missing field `title`".to_owned(),
+        })?;
+    let title =
+        serde_yaml_ng::from_value(title).map_err(|error| DashboardConfigError::WidgetParse {
+            index,
+            message: error.to_string(),
+        })?;
+
+    let width_key = serde_yaml_ng::Value::String("width".to_owned());
+    let width = fields
+        .remove(&width_key)
+        .ok_or_else(|| DashboardConfigError::WidgetParse {
+            index,
+            message: "missing field `width`".to_owned(),
+        })?;
+    let width =
+        serde_yaml_ng::from_value(width).map_err(|error| DashboardConfigError::WidgetParse {
+            index,
+            message: error.to_string(),
+        })?;
+
+    let definition =
+        serde_yaml_ng::from_value(serde_yaml_ng::Value::Mapping(fields)).map_err(|error| {
+            DashboardConfigError::WidgetParse {
+                index,
+                message: error.to_string(),
+            }
+        })?;
+
+    Ok(DashboardWidget {
+        title,
+        width,
+        definition,
+    })
 }
 
 #[derive(Debug, Error)]
@@ -272,9 +301,16 @@ fn map_repository_error(error: DashboardRepositoryError) -> DashboardUseCaseErro
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use indoc::indoc;
 
-    use super::{DashboardConfig, DashboardValidationError};
+    use crate::widget::{
+        WidgetBy, WidgetDefinition, WidgetMetric, WidgetPeriod, WidgetQuery, WidgetTime,
+        WidgetUniverse, WidgetVisualization, WidgetVisualizationOrder,
+    };
+
+    use super::{DashboardConfig, DashboardValidationError, DashboardWidget, DashboardWidgetWidth};
 
     #[test]
     fn parses_a_dashboard_with_flat_widget_definitions() {
@@ -297,9 +333,37 @@ mod tests {
                       order: desc
                       limit: 5
             "})
-            .map_err(|_| ())
-            .map(|config| config.widgets[0].title.clone()),
-            Ok("sample-widget".to_owned()),
+            .map_err(|_| ()),
+            Ok(DashboardConfig {
+                title: "sample-dashboard".to_owned(),
+                widgets: vec![DashboardWidget {
+                    title: "sample-widget".to_owned(),
+                    width: DashboardWidgetWidth::Half,
+                    definition: WidgetDefinition {
+                        queries: BTreeMap::from([(
+                            "movement".to_owned(),
+                            WidgetQuery {
+                                metric: WidgetMetric::Change,
+                                period: Some(WidgetPeriod::OneDay),
+                                by: WidgetBy::Stock,
+                                axis: None,
+                                indicator: None,
+                                universe: Some(WidgetUniverse::Stocks {
+                                    stocks: vec!["fictional-code".to_owned()],
+                                }),
+                                agg: None,
+                            },
+                        )]),
+                        formulas: BTreeMap::new(),
+                        viz: WidgetVisualization::Toplist {
+                            value: "movement".to_owned(),
+                            order: WidgetVisualizationOrder::Desc,
+                            limit: 5,
+                        },
+                        time: WidgetTime::default(),
+                    },
+                }],
+            }),
         );
     }
 
@@ -322,6 +386,12 @@ mod tests {
             .map_err(|error| match error {
                 super::DashboardConfigError::Validation(errors) => errors.0,
                 super::DashboardConfigError::Parse(_) => Vec::new(),
+                super::DashboardConfigError::WidgetParse { index, message } => {
+                    vec![DashboardValidationError {
+                        path: format!("widgets[{index}]"),
+                        message,
+                    }]
+                }
             }),
             Err(vec![
                 DashboardValidationError {
@@ -360,15 +430,18 @@ mod tests {
                       order: desc
                       limit: 5
             "})
-            .map(|_| Vec::<DashboardValidationError>::new())
             .map_err(|error| match error {
-                super::DashboardConfigError::Validation(errors) => errors.0,
-                super::DashboardConfigError::Parse(_) => Vec::new(),
+                super::DashboardConfigError::WidgetParse { index, message } => (index, message),
+                super::DashboardConfigError::Parse(error) => (usize::MAX, error.to_string()),
+                super::DashboardConfigError::Validation(errors) => {
+                    (usize::MAX, errors.to_string())
+                }
             }),
-            Err(vec![DashboardValidationError {
-                path: "widgets[0].unknown".to_owned(),
-                message: "unknown field".to_owned(),
-            }]),
+            Err((
+                0,
+                "unknown field `unknown`, expected one of `queries`, `formulas`, `viz`, `time`"
+                    .to_owned(),
+            )),
         );
     }
 }

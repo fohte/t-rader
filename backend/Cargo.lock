@@ -1397,6 +1397,7 @@ dependencies = [
  "core-application",
  "rmcp",
  "rstest",
+ "rust_decimal",
  "schemars 1.2.2",
  "serde",
  "serde_json",

@@ -1,7 +1,11 @@
 //! 管理 MCP tool の入出力スキーマ。
 
+use std::collections::BTreeMap;
+
 use chrono::NaiveDate;
 use chrono::{DateTime, FixedOffset};
+use core_application::widget::WidgetValueRow;
+use rust_decimal::Decimal;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -173,9 +177,34 @@ pub struct DashboardConfigIssue {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct DashboardWidgetPreview {
     pub title: String,
-    pub width: String,
+    pub width: DashboardWidgetWidthPreview,
     pub as_of: NaiveDate,
-    pub rows: Vec<serde_json::Value>,
+    pub rows: Vec<DashboardWidgetRowPreview>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DashboardWidgetWidthPreview {
+    Half,
+    Full,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardWidgetRowPreview {
+    pub key: String,
+    pub name: String,
+    #[schemars(with = "BTreeMap<String, Option<f64>>")]
+    pub values: BTreeMap<String, Option<Decimal>>,
+}
+
+impl From<WidgetValueRow> for DashboardWidgetRowPreview {
+    fn from(row: WidgetValueRow) -> Self {
+        Self {
+            key: row.key.as_string(),
+            name: row.name,
+            values: row.values,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, JsonSchema)]

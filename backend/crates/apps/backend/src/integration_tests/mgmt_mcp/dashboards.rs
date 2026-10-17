@@ -31,7 +31,9 @@ const DASHBOARD_YAML: &str = indoc! {"
           limit: 1
 "};
 
-struct FakeWidgetQuerySource;
+struct FakeWidgetQuerySource {
+    unavailable_date: Option<NaiveDate>,
+}
 
 #[async_trait]
 impl WidgetQuerySource for FakeWidgetQuerySource {
@@ -39,6 +41,12 @@ impl WidgetQuerySource for FakeWidgetQuerySource {
         &self,
         requested: Option<NaiveDate>,
     ) -> Result<Option<NaiveDate>, WidgetQueryError> {
+        if self
+            .unavailable_date
+            .is_some_and(|date| requested == Some(date))
+        {
+            return Ok(None);
+        }
         Ok(requested.or_else(|| NaiveDate::from_ymd_opt(2099, 2, 3)))
     }
 
@@ -56,8 +64,20 @@ impl WidgetQuerySource for FakeWidgetQuerySource {
 }
 
 fn test_server(db: gateway_postgres::DatabaseHandle) -> super::tests_common::MgmtTestServer {
+    test_server_with_source(
+        db,
+        FakeWidgetQuerySource {
+            unavailable_date: None,
+        },
+    )
+}
+
+fn test_server_with_source(
+    db: gateway_postgres::DatabaseHandle,
+    source: FakeWidgetQuerySource,
+) -> super::tests_common::MgmtTestServer {
     build_server(db, Arc::new(FakeAgentTaskClient::new()))
-        .with_widgets(WidgetUseCases::new(Arc::new(FakeWidgetQuerySource)))
+        .with_widgets(WidgetUseCases::new(Arc::new(source)))
 }
 
 #[backend_test_macros::database_test]
@@ -123,6 +143,91 @@ async fn preview_returns_validation_paths_without_widget_results(
             ],
             "preview_url": null,
             "widgets": [],
+        }),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn preview_reports_malformed_yaml(db: gateway_postgres::DatabaseHandle) {
+    let server = test_server(db);
+    let result = server
+        .preview_dashboard("title: 'unterminated")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        result.0,
+        json!({
+            "errors": [{
+                "path": "$",
+                "message": "found unexpected end of stream at line 1 column 21, while scanning a quoted scalar at line 1 column 8",
+            }],
+            "preview_url": null,
+            "widgets": [],
+        }),
+    );
+}
+
+#[backend_test_macros::database_test]
+async fn preview_continues_after_a_widget_has_no_data(db: gateway_postgres::DatabaseHandle) {
+    let unavailable_date = NaiveDate::from_ymd_opt(2099, 2, 2);
+    let server = test_server_with_source(db, FakeWidgetQuerySource { unavailable_date });
+    let yaml = indoc! {"
+        title: sample-dashboard
+        widgets:
+          - title: unavailable-widget
+            width: half
+            queries:
+              movement:
+                metric: change
+                period: 1d
+                by: none
+                agg: mean
+            time:
+              as_of: 2099-02-02
+            viz:
+              type: toplist
+              value: movement
+              order: desc
+              limit: 1
+          - title: available-widget
+            width: full
+            queries:
+              movement:
+                metric: change
+                period: 1d
+                by: none
+                agg: mean
+            viz:
+              type: toplist
+              value: movement
+              order: desc
+              limit: 1
+    "};
+    let result = server.preview_dashboard(yaml).await.unwrap();
+    let mut normalized_result = result.0;
+    if normalized_result["preview_url"].as_str().is_some() {
+        normalized_result["preview_url"] = json!("<preview_url>");
+    }
+
+    assert_eq!(
+        normalized_result,
+        json!({
+            "errors": [{
+                "path": "widgets[0].time.as_of",
+                "message": "no daily bar data is available on or before the requested date",
+            }],
+            "preview_url": "<preview_url>",
+            "widgets": [{
+                "title": "available-widget",
+                "width": "full",
+                "as_of": "2099-02-03",
+                "rows": [{
+                    "key": "market",
+                    "name": "Market Sample",
+                    "values": { "movement": 1.25 },
+                }],
+            }],
         }),
     );
 }

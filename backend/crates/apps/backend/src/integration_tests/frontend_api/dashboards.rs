@@ -81,6 +81,7 @@ async fn update_replaces_config_and_delete_removes_dashboard(db: gateway_postgre
         .put("/api/dashboards/sample-dashboard")
         .json(&json!({ "config": UPDATED_CONFIG }))
         .await;
+    let current = server.get("/api/dashboards/sample-dashboard").await;
     let deleted = server.delete("/api/dashboards/sample-dashboard").await;
     let missing = server.get("/api/dashboards/sample-dashboard").await;
 
@@ -88,11 +89,20 @@ async fn update_replaces_config_and_delete_removes_dashboard(db: gateway_postgre
         (
             updated.status_code(),
             normalize_dashboard(updated.json()),
+            current.status_code(),
+            normalize_dashboard(current.json()),
             deleted.status_code(),
             missing.status_code(),
             missing.json::<Value>(),
         ),
         (
+            StatusCode::OK,
+            json!({
+                "key": "sample-dashboard",
+                "config": UPDATED_CONFIG,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
             StatusCode::OK,
             json!({
                 "key": "sample-dashboard",
