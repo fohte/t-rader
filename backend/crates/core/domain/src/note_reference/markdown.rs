@@ -179,6 +179,76 @@ fn range_containing(ranges: &[Range<usize>], position: usize) -> Option<&Range<u
         .find(|range| position >= range.start && position < range.end)
 }
 
+fn url_ranges(body: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut search_from = 0;
+
+    while search_from < body.len() {
+        let Some(start) = next_url_start(body, search_from) else {
+            break;
+        };
+        let end = url_end(body, start);
+        if end > start {
+            ranges.push(start..end);
+            search_from = end;
+        } else {
+            search_from = start + 1;
+        }
+    }
+
+    ranges
+}
+
+fn next_url_start(body: &str, search_from: usize) -> Option<usize> {
+    body[search_from..].char_indices().find_map(|(offset, _)| {
+        let start = search_from + offset;
+        let has_url_prefix = ["https://", "http://", "www."].into_iter().any(|prefix| {
+            body[start..]
+                .get(..prefix.len())
+                .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+        });
+        let has_boundary = body[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_');
+
+        (has_url_prefix && has_boundary).then_some(start)
+    })
+}
+
+fn url_end(body: &str, start: usize) -> usize {
+    let mut end = start;
+    let mut parenthesis_depth = 0;
+
+    for (offset, character) in body[start..].char_indices() {
+        if character.is_whitespace() || matches!(character, '<' | '>' | '`' | '"' | '\'') {
+            break;
+        }
+        match character {
+            '(' => parenthesis_depth += 1,
+            ')' if parenthesis_depth == 0 => break,
+            ')' => parenthesis_depth -= 1,
+            _ => {}
+        }
+        end = start + offset + character.len_utf8();
+    }
+
+    trim_url_trailing_punctuation(body, start, end)
+}
+
+fn trim_url_trailing_punctuation(body: &str, start: usize, mut end: usize) -> usize {
+    while let Some((offset, character)) = body[start..end].char_indices().next_back() {
+        if !matches!(
+            character,
+            '.' | ',' | ';' | ':' | '!' | '?' | '。' | '、' | '…'
+        ) {
+            break;
+        }
+        end = start + offset;
+    }
+    end
+}
+
 pub(crate) fn tokens_outside_code(body: &str) -> Vec<NoteToken<'_>> {
     let code_ranges = markdown_code_ranges(body);
     extract_tokens(body)
@@ -193,6 +263,7 @@ pub(crate) fn tokens_outside_code(body: &str) -> Vec<NoteToken<'_>> {
 
 pub(crate) fn prose_segments(body: &str) -> Vec<&str> {
     let mut excluded_ranges = markdown_code_ranges(body);
+    excluded_ranges.extend(url_ranges(body));
     excluded_ranges.extend(
         extract_tokens(body)
             .into_iter()

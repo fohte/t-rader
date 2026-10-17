@@ -398,6 +398,15 @@ mod tests {
         ],
     )]
     #[case::date_followed_by_ashimoto("9/6 足元では", vec![])]
+    #[case::inline_link_url_is_not_scanned(
+        "[123456円](https://news.example.com/articles/(2030)/12345678)",
+        vec![
+            "価格候補の数値「123456円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".to_string(),
+        ],
+    )]
+    #[case::autolink_url_is_not_scanned("<https://news.example.com/change/6.0%25>", vec![])]
+    #[case::bare_url_is_not_scanned("https://news.example.com/73本/12345678.", vec![])]
+    #[case::www_url_is_not_scanned("www.news.example.com/12345678", vec![])]
     #[case::links_are_not_scanned(
         "[[price:fictional-code@2030-01-02:close]] [[change:fictional-code@2030-01-02..2030-01-03:close]]",
         vec![],
