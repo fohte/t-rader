@@ -149,8 +149,7 @@ export const InvalidConfig: Story = {
       issues: [
         {
           path: 'widgets[0].viz',
-          message:
-            'queries と treemap または toplist の viz を含むウィジェット定義が必要です。',
+          message: 'viz.type は treemap または toplist を指定してください。',
         },
       ],
     },

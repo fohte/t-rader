@@ -9,12 +9,12 @@ function createWidgetQueryBody(
   definition: DashboardConfig['widgets'][number]['definition'],
   asOf: string | null,
 ) {
-  const { queries, formulas, viz, time } = definition
+  const { queries, formulas, viz } = definition
   return {
     queries,
     ...(formulas == null ? {} : { formulas }),
     viz,
-    ...(asOf == null ? {} : { time: { ...time, as_of: asOf } }),
+    ...(asOf == null ? {} : { time: { as_of: asOf } }),
   }
 }
 

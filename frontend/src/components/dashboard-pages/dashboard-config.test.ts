@@ -21,8 +21,6 @@ widgets:
       value: movement
       order: desc
       limit: 5
-    time:
-      as_of: '2099-01-05'
 `
 
 const expectedDashboardConfig = {
@@ -48,7 +46,6 @@ const expectedDashboardConfig = {
             order: 'desc',
             limit: 5,
           },
-          time: { as_of: '2099-01-05' },
         },
       },
     ],
@@ -102,12 +99,45 @@ describe('parseDashboardConfig', () => {
     {
       name: '時間範囲',
       yaml: dashboardYaml.replace(
-        "      as_of: '2099-01-05'",
-        "      as_of: '2099-01-05'\n      range: 1d",
+        '    viz:',
+        '    time:\n      range: 1d\n    viz:',
       ),
       issue: {
-        path: 'widgets[0]',
+        path: 'widgets[0].time.range',
         message: 'time.range は現在のウィジェットでは使えません。',
+      },
+    },
+    {
+      name: 'YAML の固定基準日',
+      yaml: dashboardYaml.replace(
+        '    viz:',
+        "    time:\n      as_of: '2099-01-05'\n    viz:",
+      ),
+      issue: {
+        path: 'widgets[0].time.as_of',
+        message: 'time.as_of はダッシュボードでは指定できません。',
+      },
+    },
+    {
+      name: '未知の基準日項目',
+      yaml: dashboardYaml.replace(
+        '    viz:',
+        "    time:\n      asof: '2099-01-05'\n    viz:",
+      ),
+      issue: {
+        path: 'widgets[0].time.asof',
+        message: '未対応の項目です。',
+      },
+    },
+    {
+      name: '未知のウィジェット項目',
+      yaml: dashboardYaml.replace(
+        '    width: half',
+        '    width: half\n    formula: {}',
+      ),
+      issue: {
+        path: 'widgets[0].formula',
+        message: '未対応の項目です。',
       },
     },
     {

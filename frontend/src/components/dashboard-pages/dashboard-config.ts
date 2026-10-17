@@ -5,16 +5,11 @@ import type { components } from '#lib/api/schema.gen'
 import {
   isSupportedWidgetVisualization,
   parseWidgetQueryRequest,
+  type SupportedWidgetVisualization,
 } from '#lib/widget-definition'
 
 type WidgetQueryRequest = components['schemas']['WidgetQueryRequest']
-type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
-type SupportedWidgetVisualization = Extract<
-  WidgetVisualization,
-  { type: 'treemap' | 'toplist' }
->
-
-type DashboardWidgetDefinition = Omit<WidgetQueryRequest, 'viz'> & {
+type DashboardWidgetDefinition = Omit<WidgetQueryRequest, 'viz' | 'time'> & {
   viz: SupportedWidgetVisualization
 }
 
@@ -105,10 +100,15 @@ function validateDashboard(value: unknown): DashboardConfigResult {
         ([key]) => key !== 'title' && key !== 'width',
       ),
     )
-    const parsedDefinition = parseWidgetQueryRequest(definition)
+    const parsedDefinition = parseWidgetQueryRequest(definition, {
+      allowTimeAsOf: false,
+    })
     if (!parsedDefinition.ok) {
       issues.push({
-        path,
+        path:
+          parsedDefinition.path == null
+            ? path
+            : `${path}.${parsedDefinition.path}`,
         message: parsedDefinition.message,
       })
       return
@@ -125,10 +125,15 @@ function validateDashboard(value: unknown): DashboardConfigResult {
       typeof widgetTitle === 'string' &&
       (width === 'half' || width === 'full')
     ) {
+      const { queries, formulas } = parsedDefinition.request
       widgets.push({
         title: widgetTitle,
         width,
-        definition: { ...parsedDefinition.request, viz: parsedDefinition.viz },
+        definition: {
+          queries,
+          ...(formulas == null ? {} : { formulas }),
+          viz: parsedDefinition.viz,
+        },
       })
     }
   })

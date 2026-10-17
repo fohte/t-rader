@@ -118,10 +118,23 @@ describe('parseWidgetDefinition', () => {
     })
   })
 
+  it('reports unsupported widget fields with their path', () => {
+    expect(
+      parseWidgetDefinition(
+        VALID_WIDGET_DEFINITION.replace('formulas:', 'formula:'),
+      ),
+    ).toEqual({
+      ok: false,
+      path: 'formula',
+      message: '未対応の項目です。',
+    })
+  })
+
   it.each([
     {
       name: 'a query with a non-string metric',
       source: VALID_WIDGET_DEFINITION.replace('metric: change', 'metric: 1'),
+      path: undefined,
       message: 'queries.daily の形式が正しくありません。',
     },
     {
@@ -130,6 +143,7 @@ describe('parseWidgetDefinition', () => {
         '    agg: mean',
         '    agg: mean\n    universe:\n      group: demo-group\n      stocks:\n        - demo-code',
       ),
+      path: undefined,
       message: 'queries.daily の形式が正しくありません。',
     },
     {
@@ -138,6 +152,7 @@ describe('parseWidgetDefinition', () => {
         'doubled: daily * 2',
         'doubled: 2',
       ),
+      path: undefined,
       message: 'formulas は文字列のマップにしてください。',
     },
     {
@@ -146,6 +161,7 @@ describe('parseWidgetDefinition', () => {
         '  as_of: 2099-01-05',
         '  as_of: 1',
       ),
+      path: undefined,
       message: 'time.as_of は文字列で指定してください。',
     },
     {
@@ -154,6 +170,7 @@ describe('parseWidgetDefinition', () => {
         '  as_of: 2099-01-05',
         '  as_of: 2099-01-05\n  range: 1d',
       ),
+      path: 'time.range',
       message: 'time.range は現在のウィジェットでは使えません。',
     },
     {
@@ -162,10 +179,15 @@ describe('parseWidgetDefinition', () => {
         '  as_of: 2099-01-05',
         '  as_of: 2099-01-05\n  range: null',
       ),
+      path: 'time.range',
       message: 'time.range は現在のウィジェットでは使えません。',
     },
-  ])('rejects $name', ({ source, message }) => {
-    expect(parseWidgetDefinition(source)).toEqual({ ok: false, message })
+  ])('rejects $name', ({ source, path, message }) => {
+    expect(parseWidgetDefinition(source)).toEqual({
+      ok: false,
+      ...(path == null ? {} : { path }),
+      message,
+    })
   })
 
   it('reports YAML syntax errors', () => {

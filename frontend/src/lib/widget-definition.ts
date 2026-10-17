@@ -6,7 +6,7 @@ import type { components } from '#lib/api/schema.gen'
 type WidgetQueryRequest = components['schemas']['WidgetQueryRequest']
 type WidgetUniverse = components['schemas']['WidgetUniverseRequest']
 type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
-type SupportedWidgetVisualization = Extract<
+export type SupportedWidgetVisualization = Extract<
   WidgetVisualization,
   { type: 'treemap' | 'toplist' }
 >
@@ -18,7 +18,7 @@ export type WidgetDefinitionResult =
       viz: WidgetVisualization
       asOf?: string
     }
-  | { ok: false; message: string }
+  | { ok: false; message: string; path?: string }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -72,11 +72,22 @@ function errorMessage(error: unknown): string {
 
 export function parseWidgetQueryRequest(
   value: unknown,
+  options: { allowTimeAsOf?: boolean } = {},
 ): WidgetDefinitionResult {
   if (!isRecord(value)) {
     return {
       ok: false,
       message: 'ウィジェット定義は YAML オブジェクトにしてください。',
+    }
+  }
+  const unsupportedKey = Object.keys(value).find(
+    (key) => !['queries', 'formulas', 'viz', 'time'].includes(key),
+  )
+  if (unsupportedKey != null) {
+    return {
+      ok: false,
+      path: unsupportedKey,
+      message: '未対応の項目です。',
     }
   }
   if (!isRecord(value.queries)) {
@@ -106,13 +117,36 @@ export function parseWidgetQueryRequest(
     return { ok: false, message: 'time はオブジェクトにしてください。' }
   }
   const time = isRecord(value.time) ? value.time : undefined
+  const unsupportedTimeKey =
+    time == null
+      ? undefined
+      : Object.keys(time).find((key) => !['as_of', 'range'].includes(key))
+  if (unsupportedTimeKey != null) {
+    return {
+      ok: false,
+      path: `time.${unsupportedTimeKey}`,
+      message: '未対応の項目です。',
+    }
+  }
   if (time !== undefined && !isOptionalString(time.as_of)) {
     return { ok: false, message: 'time.as_of は文字列で指定してください。' }
   }
   if (time !== undefined && Object.hasOwn(time, 'range')) {
     return {
       ok: false,
+      path: 'time.range',
       message: 'time.range は現在のウィジェットでは使えません。',
+    }
+  }
+  if (
+    options.allowTimeAsOf === false &&
+    time !== undefined &&
+    Object.hasOwn(time, 'as_of')
+  ) {
+    return {
+      ok: false,
+      path: 'time.as_of',
+      message: 'time.as_of はダッシュボードでは指定できません。',
     }
   }
 

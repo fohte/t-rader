@@ -13,7 +13,6 @@ function makeWidget(
   queryName: string,
   metric: 'change' | 'mkt_cap',
   stockId: string,
-  asOf: string,
 ): DashboardConfig['widgets'][number] {
   return {
     title,
@@ -27,8 +26,8 @@ function makeWidget(
           universe: { stocks: [stockId] },
         },
       },
-      viz: { type: 'toplist', value: queryName, order: 'desc', limit: 5 },
-      time: { as_of: asOf },
+      formulas: { doubled: `${queryName} * 2` },
+      viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
     },
   }
 }
@@ -36,8 +35,8 @@ function makeWidget(
 const dashboardConfig: DashboardConfig = {
   title: '市場の動き',
   widgets: [
-    makeWidget('値動き', 'movement', 'change', 'DEMO-A', '2099-01-05'),
-    makeWidget('時価総額', 'capitalization', 'mkt_cap', 'DEMO-B', '2098-12-01'),
+    makeWidget('値動き', 'movement', 'change', 'DEMO-A'),
+    makeWidget('時価総額', 'capitalization', 'mkt_cap', 'DEMO-B'),
   ],
 }
 
@@ -126,7 +125,8 @@ describe('useDashboardPageData', () => {
             universe: { stocks: ['DEMO-A'] },
           },
         },
-        viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
+        formulas: { doubled: 'movement * 2' },
+        viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
       },
       {
         queries: {
@@ -136,9 +136,10 @@ describe('useDashboardPageData', () => {
             universe: { stocks: ['DEMO-B'] },
           },
         },
+        formulas: { doubled: 'capitalization * 2' },
         viz: {
           type: 'toplist',
-          value: 'capitalization',
+          value: 'doubled',
           order: 'desc',
           limit: 5,
         },
@@ -152,7 +153,8 @@ describe('useDashboardPageData', () => {
             universe: { stocks: ['DEMO-A'] },
           },
         },
-        viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
+        formulas: { doubled: 'movement * 2' },
+        viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
         time: { as_of: '2099-03-01' },
       },
       {
@@ -163,9 +165,10 @@ describe('useDashboardPageData', () => {
             universe: { stocks: ['DEMO-B'] },
           },
         },
+        formulas: { doubled: 'capitalization * 2' },
         viz: {
           type: 'toplist',
-          value: 'capitalization',
+          value: 'doubled',
           order: 'desc',
           limit: 5,
         },
@@ -180,7 +183,8 @@ describe('useDashboardPageData', () => {
             universe: { stocks: ['DEMO-A'] },
           },
         },
-        viz: { type: 'toplist', value: 'movement', order: 'desc', limit: 5 },
+        formulas: { doubled: 'movement * 2' },
+        viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
       },
       {
         queries: {
@@ -190,9 +194,10 @@ describe('useDashboardPageData', () => {
             universe: { stocks: ['DEMO-B'] },
           },
         },
+        formulas: { doubled: 'capitalization * 2' },
         viz: {
           type: 'toplist',
-          value: 'capitalization',
+          value: 'doubled',
           order: 'desc',
           limit: 5,
         },
