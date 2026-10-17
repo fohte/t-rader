@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseDocument } from 'yaml'
 
-import {
-  parseWidgetDefinition,
-  parseWidgetQueryRequest,
-} from '#lib/widget-definition'
+import { parseWidgetDefinition } from '#lib/widget-definition'
 
 const VALID_WIDGET_DEFINITION = [
   'queries:',
@@ -24,32 +21,6 @@ const VALID_WIDGET_DEFINITION = [
   'time:',
   '  as_of: 2099-01-05',
 ].join('\n')
-
-const VALID_WIDGET_VALUE = {
-  queries: {
-    daily: {
-      metric: 'change',
-      period: '1d',
-      by: 'group',
-      axis: 'demo-axis',
-      agg: 'mean',
-    },
-  },
-  formulas: { doubled: 'daily * 2' },
-  viz: { type: 'toplist', value: 'doubled', order: 'desc', limit: 5 },
-  time: { as_of: '2099-01-05' },
-}
-
-const VALID_WIDGET_VALUE_WITHOUT_TIME = {
-  queries: VALID_WIDGET_VALUE.queries,
-  formulas: VALID_WIDGET_VALUE.formulas,
-  viz: VALID_WIDGET_VALUE.viz,
-}
-
-const VALID_WIDGET_VALUE_WITHOUT_AS_OF = {
-  ...VALID_WIDGET_VALUE,
-  time: {},
-}
 
 const VALID_RESULT = {
   ok: true,
@@ -76,26 +47,29 @@ describe('parseWidgetDefinition', () => {
     expect(parseWidgetDefinition(VALID_WIDGET_DEFINITION)).toEqual(VALID_RESULT)
   })
 
-  it('converts an already parsed widget mapping into a query request', () => {
-    expect(parseWidgetQueryRequest(VALID_WIDGET_VALUE)).toEqual(VALID_RESULT)
-  })
-
   it.each([
     {
       name: 'time',
-      value: VALID_WIDGET_VALUE_WITHOUT_TIME,
-      request: VALID_WIDGET_VALUE_WITHOUT_TIME,
+      source: VALID_WIDGET_DEFINITION.replace('time:\n  as_of: 2099-01-05', ''),
+      request: {
+        queries: VALID_RESULT.request.queries,
+        formulas: VALID_RESULT.request.formulas,
+        viz: VALID_RESULT.request.viz,
+      },
     },
     {
       name: 'time.as_of',
-      value: VALID_WIDGET_VALUE_WITHOUT_AS_OF,
-      request: VALID_WIDGET_VALUE_WITHOUT_AS_OF,
+      source: VALID_WIDGET_DEFINITION.replace(
+        'time:\n  as_of: 2099-01-05',
+        'time: {}',
+      ),
+      request: { ...VALID_RESULT.request, time: {} },
     },
-  ])('allows omitted $name', ({ value, request }) => {
-    expect(parseWidgetQueryRequest(value)).toEqual({
+  ])('allows omitted $name', ({ source, request }) => {
+    expect(parseWidgetDefinition(source)).toEqual({
       ok: true,
       request,
-      viz: VALID_WIDGET_VALUE.viz,
+      viz: VALID_RESULT.viz,
       asOf: undefined,
     })
   })
