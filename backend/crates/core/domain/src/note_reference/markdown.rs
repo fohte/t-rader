@@ -1,5 +1,11 @@
 use std::ops::Range;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FencedCodeBlock<'a> {
+    pub info: &'a str,
+    pub content: &'a str,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct NoteToken<'a> {
     pub inner: &'a str,
@@ -35,6 +41,37 @@ pub fn extract_tokens(body: &str) -> Vec<NoteToken<'_>> {
     tokens
 }
 
+pub fn fenced_code_blocks(body: &str) -> Vec<FencedCodeBlock<'_>> {
+    let mut blocks = Vec::new();
+    let mut active_fence = None;
+    let mut offset = 0;
+
+    for line in body.split_inclusive('\n') {
+        let content = line_content(line);
+        if let Some((content_start, marker, minimum_length, info)) = active_fence {
+            if is_closing_fence(content, marker, minimum_length) {
+                blocks.push(FencedCodeBlock {
+                    info,
+                    content: &body[content_start..offset],
+                });
+                active_fence = None;
+            }
+        } else if let Some((marker, length, info)) = opening_fence(content) {
+            active_fence = Some((offset + line.len(), marker, length, info));
+        }
+        offset += line.len();
+    }
+
+    if let Some((content_start, _, _, info)) = active_fence {
+        blocks.push(FencedCodeBlock {
+            info,
+            content: &body[content_start..],
+        });
+    }
+
+    blocks
+}
+
 fn markdown_code_ranges(body: &str) -> Vec<Range<usize>> {
     let mut ranges = markdown_code_block_ranges(body);
     ranges.extend(inline_code_ranges(body, &ranges));
@@ -53,7 +90,7 @@ fn markdown_code_block_ranges(body: &str) -> Vec<Range<usize>> {
                 ranges.push(start..offset + line.len());
                 fence = None;
             }
-        } else if let Some((marker, length)) = opening_fence(content) {
+        } else if let Some((marker, length, _)) = opening_fence(content) {
             fence = Some((offset, marker, length));
         } else if indentation_columns(content) >= 4 && !content.trim().is_empty() {
             ranges.push(offset..offset + line.len());
@@ -74,7 +111,7 @@ fn line_content(line: &str) -> &str {
         .unwrap_or(without_newline)
 }
 
-fn opening_fence(line: &str) -> Option<(u8, usize)> {
+fn opening_fence(line: &str) -> Option<(u8, usize, &str)> {
     let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
     if indentation > 3 {
         return None;
@@ -88,7 +125,7 @@ fn opening_fence(line: &str) -> Option<(u8, usize)> {
     if length < 3 || (marker == b'`' && content[length..].contains('`')) {
         return None;
     }
-    Some((marker, length))
+    Some((marker, length, content[length..].trim()))
 }
 
 fn is_closing_fence(line: &str, marker: u8, minimum_length: usize) -> bool {

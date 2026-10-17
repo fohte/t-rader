@@ -112,3 +112,36 @@ async fn query_widget_returns_resolved_date_and_values_as_rows(db: DatabaseHandl
         }),
     );
 }
+
+#[backend_test_macros::database_test]
+async fn query_widget_rejects_when_no_daily_bar_date_can_be_resolved(db: DatabaseHandle) {
+    let strategy_id = insert_strategy(&db, "widget-no-data").await;
+    let server = build_server(db);
+    let definition_yaml = indoc::indoc! {"
+        queries:
+          cap:
+            metric: mkt_cap
+            by: stock
+            universe:
+              stocks:
+                - F001
+        viz:
+          type: toplist
+          value: cap
+          order: desc
+          limit: 5
+    "};
+
+    let error = server
+        .query_widget(strategy_id, definition_yaml)
+        .await
+        .expect_err("query without any daily bar data");
+
+    assert_eq!(
+        error,
+        rmcp::ErrorData::invalid_params(
+            "no daily bar data is available on or before the requested date".to_string(),
+            None,
+        ),
+    );
+}

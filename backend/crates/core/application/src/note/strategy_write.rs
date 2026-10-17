@@ -14,6 +14,7 @@ use crate::note::types::{
 };
 use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
+use crate::note::widget_blocks::validate_note_widget_blocks;
 use crate::note::{INITIAL_NOTE_STATUS, NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
 
@@ -41,6 +42,10 @@ impl NoteUseCases {
         command: NoteWriteCommand,
         warning_dispositions: Option<Vec<NoteBodyWarningDisposition>>,
     ) -> Result<NoteWriteResult, NoteUseCaseError> {
+        if let Some(body_md) = command.body_md.as_deref() {
+            validate_note_widget_blocks(body_md)?;
+        }
+
         if let Some(frontmatter_json) = command.frontmatter_json.as_ref() {
             ensure_frontmatter_object(frontmatter_json)?;
             ensure_frontmatter_tags_are_strings(frontmatter_json)?;

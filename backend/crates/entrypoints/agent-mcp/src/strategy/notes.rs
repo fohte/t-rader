@@ -7,7 +7,6 @@ use core_application::note::{
 };
 use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::unit_of_work::UnitOfWorkError;
-use core_application::widget::WidgetDefinition;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{
@@ -110,10 +109,6 @@ impl StrategyServer {
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
-        if let Some(body_md) = params.body_md.as_deref() {
-            validate_widget_fenced_blocks(body_md)?;
-        }
-
         let warning_dispositions = params
             .warning_dispositions
             .into_iter()
@@ -171,89 +166,6 @@ impl StrategyServer {
             .collect(),
         })
     }
-}
-
-fn validate_widget_fenced_blocks(body_md: &str) -> Result<(), McpError> {
-    let mut widget_block_count = 0;
-    let mut active_fence = None;
-    let mut widget_lines = Vec::new();
-
-    for line in body_md.lines() {
-        if let Some((marker, length, block_number)) = active_fence {
-            if is_fence_close(line, marker, length) {
-                if let Some(block_number) = block_number {
-                    validate_widget_block(block_number, &widget_lines.join("\n"))?;
-                    widget_lines.clear();
-                }
-                active_fence = None;
-            } else if block_number.is_some() {
-                widget_lines.push(line);
-            }
-            continue;
-        }
-
-        let Some((marker, length, info)) = parse_fence_marker(line) else {
-            continue;
-        };
-        if marker == '`' && info.contains('`') {
-            continue;
-        }
-
-        let block_number = if info == "widget" {
-            widget_block_count += 1;
-            Some(widget_block_count)
-        } else {
-            None
-        };
-        active_fence = Some((marker, length, block_number));
-    }
-
-    if let Some((_, _, Some(block_number))) = active_fence {
-        validate_widget_block(block_number, &widget_lines.join("\n"))?;
-    }
-
-    Ok(())
-}
-
-fn parse_fence_marker(line: &str) -> Option<(char, usize, &str)> {
-    let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
-    if indentation > 3 {
-        return None;
-    }
-
-    let candidate = &line[indentation..];
-    let marker = candidate.chars().next()?;
-    if !matches!(marker, '`' | '~') {
-        return None;
-    }
-
-    let length = candidate.chars().take_while(|char| *char == marker).count();
-    if length < 3 {
-        return None;
-    }
-
-    Some((marker, length, candidate[length..].trim()))
-}
-
-fn is_fence_close(line: &str, marker: char, minimum_length: usize) -> bool {
-    parse_fence_marker(line).is_some_and(|(found_marker, length, info)| {
-        found_marker == marker && length >= minimum_length && info.is_empty()
-    })
-}
-
-fn validate_widget_block(block_number: usize, yaml: &str) -> Result<(), McpError> {
-    let definition = WidgetDefinition::from_yaml(yaml)
-        .map_err(|error| invalid_params(format!("widget block {block_number}: {error}")))?;
-    definition
-        .validate()
-        .map_err(|error| invalid_params(format!("widget block {block_number}: {error}")))?;
-    if definition.time.as_of.is_none() {
-        return Err(invalid_params(format!(
-            "widget block {block_number}: time.as_of is required"
-        )));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

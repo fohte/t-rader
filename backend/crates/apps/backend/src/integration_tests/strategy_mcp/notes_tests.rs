@@ -293,6 +293,12 @@ mod tests {
             this is only documentation
             ```
             ````
+
+            Indented Markdown example:
+
+                ```widget
+                this is only documentation
+                ```
         "};
 
         let created = server
