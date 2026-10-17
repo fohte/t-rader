@@ -75,167 +75,148 @@ func TestDashboardResourceCreate(t *testing.T) {
 func TestDashboardResourceRead(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	requests := make(chan apiRequestObservation, 1)
-	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordAPIResourceRequest(t, requests, r) {
-			return
-		}
-		writeAPIResourceResponse(t, w, http.StatusOK, dashboardResponseJSON(t, testDashboardKey, testDashboardConfig))
-	})
-	state := dashboardTestState(t, dashboardTestModel(testDashboardKey, "title: stale-dashboard\nwidgets: []\n"))
-
-	response := resource.ReadResponse{State: state}
-	(&dashboardResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
-	observedRequest := receiveAPIResourceRequest(requests)
-	var resultState dashboardModel
-	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
-
-	got := struct {
-		Request     *apiRequestObservation
-		State       dashboardModel
-		Diagnostics []apiDiagnosticObservation
-	}{observedRequest, resultState, apiResourceDiagnosticsOutput(response.Diagnostics)}
-	want := struct {
-		Request     *apiRequestObservation
-		State       dashboardModel
-		Diagnostics []apiDiagnosticObservation
+	cases := []struct {
+		name          string
+		statusCode    int
+		body          string
+		wantState     dashboardModel
+		wantStateNull bool
 	}{
-		Request:     &apiRequestObservation{Method: http.MethodGet, Path: "/api/dashboards/" + testDashboardKey},
-		State:       dashboardTestModel(testDashboardKey, testDashboardConfig),
-		Diagnostics: nil,
+		{
+			name:       "refreshes state from the API",
+			statusCode: http.StatusOK,
+			body:       dashboardResponseJSON(t, testDashboardKey, testDashboardConfig),
+			wantState:  dashboardTestModel(testDashboardKey, testDashboardConfig),
+		},
+		{
+			name:          "removes a missing dashboard from state",
+			statusCode:    http.StatusNotFound,
+			body:          `{"error":"dashboard is missing"}`,
+			wantStateNull: true,
+		},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("read output mismatch: got=%#v want=%#v", got, want)
-	}
-}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestDashboardResourceReadRemovesMissingDashboard(t *testing.T) {
-	t.Parallel()
+			ctx := context.Background()
+			requests := make(chan apiRequestObservation, 1)
+			client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if !recordAPIResourceRequest(t, requests, r) {
+					return
+				}
+				writeAPIResourceResponse(t, w, testCase.statusCode, testCase.body)
+			})
+			state := dashboardTestState(t, dashboardTestModel(testDashboardKey, "title: stale-dashboard\nwidgets: []\n"))
 
-	ctx := context.Background()
-	requests := make(chan apiRequestObservation, 1)
-	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordAPIResourceRequest(t, requests, r) {
-			return
-		}
-		writeAPIResourceResponse(t, w, http.StatusNotFound, `{"error":"dashboard is missing"}`)
-	})
-	state := dashboardTestState(t, dashboardTestModel(testDashboardKey, testDashboardConfig))
+			response := resource.ReadResponse{State: state}
+			(&dashboardResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
+			observedRequest := receiveAPIResourceRequest(requests)
+			var resultState dashboardModel
+			if !response.State.Raw.IsNull() {
+				response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
+			}
 
-	response := resource.ReadResponse{State: state}
-	(&dashboardResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
-	observedRequest := receiveAPIResourceRequest(requests)
-
-	got := struct {
-		Request     *apiRequestObservation
-		StateIsNull bool
-		Diagnostics []apiDiagnosticObservation
-	}{observedRequest, response.State.Raw.IsNull(), apiResourceDiagnosticsOutput(response.Diagnostics)}
-	want := struct {
-		Request     *apiRequestObservation
-		StateIsNull bool
-		Diagnostics []apiDiagnosticObservation
-	}{
-		Request:     &apiRequestObservation{Method: http.MethodGet, Path: "/api/dashboards/" + testDashboardKey},
-		StateIsNull: true,
-		Diagnostics: nil,
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("missing read output mismatch: got=%#v want=%#v", got, want)
+			got := struct {
+				Request     *apiRequestObservation
+				State       dashboardModel
+				StateIsNull bool
+				Diagnostics []apiDiagnosticObservation
+			}{observedRequest, resultState, response.State.Raw.IsNull(), apiResourceDiagnosticsOutput(response.Diagnostics)}
+			want := struct {
+				Request     *apiRequestObservation
+				State       dashboardModel
+				StateIsNull bool
+				Diagnostics []apiDiagnosticObservation
+			}{
+				Request:     &apiRequestObservation{Method: http.MethodGet, Path: "/api/dashboards/" + testDashboardKey},
+				State:       testCase.wantState,
+				StateIsNull: testCase.wantStateNull,
+				Diagnostics: nil,
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("read output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
 	}
 }
 
 func TestDashboardResourceUpdate(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	requests := make(chan apiRequestObservation, 1)
-	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordAPIResourceRequest(t, requests, r) {
-			return
-		}
-		writeAPIResourceResponse(t, w, http.StatusOK, dashboardResponseJSON(t, testDashboardKey, testUpdatedConfig))
-	})
-	resourceSchema := dashboardTestSchema(t)
-	state := dashboardTestState(t, dashboardTestModel(testDashboardKey, testDashboardConfig))
-	plan := tfsdk.Plan{Schema: resourceSchema}
-	if diagnostics := plan.Set(ctx, dashboardTestModel(testDashboardKey, testUpdatedConfig)); diagnostics.HasError() {
-		t.Fatalf("build update plan: %v", diagnostics)
-	}
-
-	response := resource.UpdateResponse{State: state}
-	(&dashboardResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
-	observedRequest := receiveAPIResourceRequest(requests)
-	var resultState dashboardModel
-	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
-
-	got := struct {
-		Request     *apiRequestObservation
-		State       dashboardModel
-		Diagnostics []apiDiagnosticObservation
-	}{observedRequest, resultState, apiResourceDiagnosticsOutput(response.Diagnostics)}
-	want := struct {
-		Request     *apiRequestObservation
-		State       dashboardModel
-		Diagnostics []apiDiagnosticObservation
+	cases := []struct {
+		name            string
+		statusCode      int
+		body            string
+		wantState       dashboardModel
+		wantDiagnostics []apiDiagnosticObservation
 	}{
-		Request: &apiRequestObservation{
-			Method: http.MethodPut,
-			Path:   "/api/dashboards/" + testDashboardKey,
-			Body:   `{"config":"title: updated-dashboard\nwidgets: []\n"}`,
+		{
+			name:       "updates an existing dashboard",
+			statusCode: http.StatusOK,
+			body:       dashboardResponseJSON(t, testDashboardKey, testUpdatedConfig),
+			wantState:  dashboardTestModel(testDashboardKey, testUpdatedConfig),
 		},
-		State:       dashboardTestModel(testDashboardKey, testUpdatedConfig),
-		Diagnostics: nil,
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("update output mismatch: got=%#v want=%#v", got, want)
-	}
-}
-
-func TestDashboardResourceUpdateReportsMissingDashboard(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	requests := make(chan apiRequestObservation, 1)
-	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordAPIResourceRequest(t, requests, r) {
-			return
-		}
-		writeAPIResourceResponse(t, w, http.StatusNotFound, `{"error":"dashboard is missing"}`)
-	})
-	resourceSchema := dashboardTestSchema(t)
-	state := dashboardTestState(t, dashboardTestModel(testDashboardKey, testDashboardConfig))
-	plan := tfsdk.Plan{Schema: resourceSchema}
-	if diagnostics := plan.Set(ctx, dashboardTestModel(testDashboardKey, testUpdatedConfig)); diagnostics.HasError() {
-		t.Fatalf("build update plan: %v", diagnostics)
-	}
-
-	response := resource.UpdateResponse{State: state}
-	(&dashboardResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
-	observedRequest := receiveAPIResourceRequest(requests)
-
-	got := struct {
-		Request     *apiRequestObservation
-		Diagnostics []apiDiagnosticObservation
-	}{observedRequest, apiResourceDiagnosticsOutput(response.Diagnostics)}
-	want := struct {
-		Request     *apiRequestObservation
-		Diagnostics []apiDiagnosticObservation
-	}{
-		Request: &apiRequestObservation{
-			Method: http.MethodPut,
-			Path:   "/api/dashboards/" + testDashboardKey,
-			Body:   `{"config":"title: updated-dashboard\nwidgets: []\n"}`,
+		{
+			name:       "reports a missing dashboard",
+			statusCode: http.StatusNotFound,
+			body:       `{"error":"dashboard is missing"}`,
+			wantState:  dashboardTestModel(testDashboardKey, testDashboardConfig),
+			wantDiagnostics: []apiDiagnosticObservation{{
+				Severity: diag.SeverityError.String(),
+				Summary:  "Error updating dashboard",
+				Detail:   "The dashboard no longer exists.",
+			}},
 		},
-		Diagnostics: []apiDiagnosticObservation{{
-			Severity: diag.SeverityError.String(),
-			Summary:  "Error updating dashboard",
-			Detail:   "The dashboard no longer exists.",
-		}},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("missing update output mismatch: got=%#v want=%#v", got, want)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			requests := make(chan apiRequestObservation, 1)
+			client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if !recordAPIResourceRequest(t, requests, r) {
+					return
+				}
+				writeAPIResourceResponse(t, w, testCase.statusCode, testCase.body)
+			})
+			resourceSchema := dashboardTestSchema(t)
+			priorState := dashboardTestModel(testDashboardKey, testDashboardConfig)
+			state := dashboardTestState(t, priorState)
+			plan := tfsdk.Plan{Schema: resourceSchema}
+			if diagnostics := plan.Set(ctx, dashboardTestModel(testDashboardKey, testUpdatedConfig)); diagnostics.HasError() {
+				t.Fatalf("build update plan: %v", diagnostics)
+			}
+
+			response := resource.UpdateResponse{State: state}
+			(&dashboardResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
+			observedRequest := receiveAPIResourceRequest(requests)
+			var resultState dashboardModel
+			response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
+
+			got := struct {
+				Request     *apiRequestObservation
+				State       dashboardModel
+				Diagnostics []apiDiagnosticObservation
+			}{observedRequest, resultState, apiResourceDiagnosticsOutput(response.Diagnostics)}
+			want := struct {
+				Request     *apiRequestObservation
+				State       dashboardModel
+				Diagnostics []apiDiagnosticObservation
+			}{
+				Request: &apiRequestObservation{
+					Method: http.MethodPut,
+					Path:   "/api/dashboards/" + testDashboardKey,
+					Body:   `{"config":"title: updated-dashboard\nwidgets: []\n"}`,
+				},
+				State:       testCase.wantState,
+				Diagnostics: testCase.wantDiagnostics,
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("update output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
 	}
 }
 
