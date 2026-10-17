@@ -7,7 +7,7 @@ use core_application::{
 };
 
 use super::{
-    DAILY_TIMEOUT, refresh_screener_snapshot, require_source, run_with_ingest_run_log_state,
+    DAILY_TIMEOUT, require_source, run_and_refresh_screener_snapshot, run_with_ingest_run_log_state,
 };
 
 pub struct FinancialSummaryIngest;
@@ -26,13 +26,14 @@ impl super::SchedulerJob for FinancialSummaryIngest {
                         state.dependencies.financial_summary_source,
                         "J-Quants financial summary source",
                     )?;
-                    let stats = ingest_financial_summaries(
-                        &state.dependencies.financial_summaries,
-                        source.as_ref(),
+                    run_and_refresh_screener_snapshot(
+                        &state.dependencies.screener_snapshot,
+                        ingest_financial_summaries(
+                            &state.dependencies.financial_summaries,
+                            source.as_ref(),
+                        ),
                     )
-                    .await?;
-                    refresh_screener_snapshot(&state.dependencies.screener_snapshot).await?;
-                    Ok(stats)
+                    .await
                 },
             )
             .await

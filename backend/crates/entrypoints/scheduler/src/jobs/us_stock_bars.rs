@@ -4,8 +4,8 @@ use core_application::bars::{
 };
 
 use super::{
-    DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, require_source, run_with_ingest_run_log_state,
-    run_with_ingest_run_log_state_with_run_id_and_failure_stats,
+    DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, refresh_screener_snapshot, require_source,
+    run_with_ingest_run_log_state, run_with_ingest_run_log_state_with_run_id_and_failure_stats,
 };
 
 pub struct UsStockBarsIngest;
@@ -35,11 +35,15 @@ impl super::SchedulerJob for UsStockBarsIngest {
                         "Alpaca US stock bar source",
                     )
                     .map_err(|error| (Box::new(UsStockBarsIngestResult::empty()), error))?;
-                    log_ingest_stats(
+                    let stats = log_ingest_stats(
                         "1d",
                         bars.ingest_us_stock_daily_bars(source.as_ref(), Utc::now())
                             .await,
-                    )
+                    )?;
+                    match refresh_screener_snapshot(&state.dependencies.screener_snapshot).await {
+                        Ok(()) => Ok(stats),
+                        Err(error) => Err((Box::new(stats), error)),
+                    }
                 },
             )
             .await

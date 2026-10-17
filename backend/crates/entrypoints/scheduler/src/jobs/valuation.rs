@@ -5,8 +5,8 @@ use core_application::{
 };
 
 use super::{
-    DAILY_TIMEOUT, refresh_screener_snapshot, require_source, run_with_ingest_run_log_state,
-    today_in_tokyo,
+    DAILY_TIMEOUT, require_source, run_and_refresh_screener_snapshot,
+    run_with_ingest_run_log_state, today_in_tokyo,
 };
 
 pub struct ValuationIngest;
@@ -25,10 +25,11 @@ impl super::SchedulerJob for ValuationIngest {
                         state.dependencies.valuation_source,
                         "J-Quants valuation source",
                     )?;
-                    let stats =
-                        ingest_valuations(&state.dependencies.valuations, source.as_ref()).await?;
-                    refresh_screener_snapshot(&state.dependencies.screener_snapshot).await?;
-                    Ok(stats)
+                    run_and_refresh_screener_snapshot(
+                        &state.dependencies.screener_snapshot,
+                        ingest_valuations(&state.dependencies.valuations, source.as_ref()),
+                    )
+                    .await
                 },
             )
             .await

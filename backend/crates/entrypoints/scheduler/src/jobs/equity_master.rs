@@ -3,7 +3,9 @@ use core_application::{
     equity_master_source::EquityMasterSource,
 };
 
-use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
+use super::{
+    DAILY_TIMEOUT, require_source, run_and_refresh_screener_snapshot, run_with_ingest_run_log_state,
+};
 
 pub struct EquityMasterIngest;
 
@@ -21,7 +23,11 @@ impl super::SchedulerJob for EquityMasterIngest {
                         state.dependencies.equity_master_source,
                         "J-Quants equity master source",
                     )?;
-                    sync_equity_master(&state.dependencies.equity_master, source.as_ref()).await
+                    run_and_refresh_screener_snapshot(
+                        &state.dependencies.screener_snapshot,
+                        sync_equity_master(&state.dependencies.equity_master, source.as_ref()),
+                    )
+                    .await
                 },
             )
             .await

@@ -540,7 +540,7 @@ comments:
       filters: 'ScreenerFilters 形式の絞り込み条件。'
       sort: 'ScreenerSort 形式の並び順。'
   - table: screener_stock_snapshot
-    tableComment: 'スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。'
+    tableComment: 'スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。データと銘柄マスタの取り込み成功後に再生成し、個別登録銘柄は次回の再生成後に反映する。'
     columnComments:
       name: '銘柄名。'
       market: '市場区分名または外国株の取引所名。'

@@ -6,11 +6,13 @@ use gateway_postgres::entities::{
     bars, financial_summary, group_axis, instruments, stock, stock_group, stock_group_member,
 };
 use rust_decimal::Decimal;
+use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::EntityTrait;
-use sea_orm::{ActiveModelTrait, ConnectionTrait};
 use serde_json::{Value, json};
 use uuid::Uuid;
+
+use super::super::screener_test_support::refresh_screener_snapshot;
 
 use crate::testing::create_test_server;
 
@@ -355,13 +357,6 @@ async fn seed_screener_data(db: &gateway_postgres::DatabaseHandle) {
     seed_financial_summary(db, "D0030", "1", 2, 114.0).await;
 
     refresh_screener_snapshot(db).await;
-}
-
-async fn refresh_screener_snapshot(db: &gateway_postgres::DatabaseHandle) {
-    // database_test は rollback transaction 内で動くため、fixture の refresh では CONCURRENTLY を使えない。
-    db.execute_unprepared("REFRESH MATERIALIZED VIEW screener_stock_snapshot")
-        .await
-        .expect("refresh screener snapshot");
 }
 
 #[backend_test_macros::database_test]

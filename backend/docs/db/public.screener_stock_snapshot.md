@@ -2,7 +2,7 @@
 
 ## Description
 
-スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。
+スクリーナー検索に使う銘柄別の最新値を事前計算して保持する。データと銘柄マスタの取り込み成功後に再生成し、個別登録銘柄は次回の再生成後に反映する。
 
 <details>
 <summary><strong>Table Definition</strong></summary>
