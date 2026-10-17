@@ -9,7 +9,8 @@ import { err, ok, Result } from 'neverthrow'
 import type { GraphFlowEdge, GraphFlowNode } from '#components/graph/flow-types'
 import {
   buildFlowEdges,
-  NODE_HEIGHT,
+  estimateEdgeLabelSize,
+  nodeHeight,
   nodeWidth,
   validateGraphRefs,
 } from '#components/graph/graph-utils'
@@ -41,8 +42,12 @@ export function buildDagreLayout(
   const groupIds = new Set(
     def.nodes.map((n) => n.parent).filter((p): p is string => p != null),
   )
+  const edges = buildFlowEdges(def.edges, citeNumbers)
 
-  const g: DagreGraph = new dagre.graphlib.Graph({ compound: true })
+  const g: DagreGraph = new dagre.graphlib.Graph({
+    compound: true,
+    multigraph: true,
+  })
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({ rankdir, nodesep: 40, ranksep: 90 })
 
@@ -56,12 +61,16 @@ export function buildDagreLayout(
           node.id,
           isGroup
             ? { width: 0, height: 0 }
-            : { width: nodeWidth(node), height: NODE_HEIGHT },
+            : { width: nodeWidth(node), height: nodeHeight(node) },
         )
         if (node.parent != null) g.setParent(node.id, node.parent)
       }
-      for (const edge of def.edges) {
-        g.setEdge(edge.source, edge.target)
+      for (const [index, edge] of edges.entries()) {
+        const label: EdgeLabel =
+          typeof edge.label !== 'string' || edge.label === ''
+            ? {}
+            : { ...estimateEdgeLabelSize(edge.label), labelpos: 'c' }
+        g.setEdge(edge.source, edge.target, label, String(index))
       }
       dagre.layout(g)
     },
@@ -99,5 +108,25 @@ export function buildDagreLayout(
     }
   })
 
-  return ok({ nodes, edges: buildFlowEdges(def.edges, citeNumbers) })
+  const edgesWithLayout: GraphFlowEdge[] = edges.map((edge, index) => {
+    const dagreEdge = g.edge({
+      v: edge.source,
+      w: edge.target,
+      name: String(index),
+    })
+    return {
+      ...edge,
+      data: {
+        ...edge.data,
+        dagre: {
+          points: dagreEdge.points ?? [],
+          ...(dagreEdge.x == null || dagreEdge.y == null
+            ? {}
+            : { labelPosition: { x: dagreEdge.x, y: dagreEdge.y } }),
+        },
+      },
+    }
+  })
+
+  return ok({ nodes, edges: edgesWithLayout })
 }

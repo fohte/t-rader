@@ -76,6 +76,81 @@ export const Flow: Story = {
   args: { def: FLOW_DEF },
 }
 
+const FLOW_LABELS_DEF: GraphDef = {
+  id: 'demo-flow-label-spacing',
+  layout: 'flow',
+  title: '架空の値動き観察',
+  nodes: [
+    { id: 'a1', label: '9/10 高値 12,345', cite: '架空の根拠' },
+    {
+      id: 'a2',
+      label: 'AAAA 9/18 終値 11,111',
+      ref: 'stock:AAAA',
+      cite: '架空の根拠',
+    },
+    { id: 'a3', label: 'ギャップ帯下限 10,000', cite: '架空の根拠' },
+    { id: 'b1', label: '7/30 安値 2,222', cite: '架空の根拠' },
+    { id: 'b2', label: '供給ゾーン下端 3,000', cite: '架空の根拠' },
+    {
+      id: 'b3',
+      label: 'BBBB 9/18 終値 2,900',
+      ref: 'stock:BBBB',
+      cite: '架空の根拠',
+    },
+    { id: 'c1', label: '安値 3 日連続切り上げ', cite: '架空の根拠' },
+    {
+      id: 'c2',
+      label: 'CCCC 9/18 終値 1,500',
+      ref: 'stock:CCCC',
+      cite: '架空の根拠',
+    },
+    { id: 'c3', label: '9/15 安値 1,400', cite: '架空の根拠' },
+  ],
+  edges: [
+    {
+      source: 'a1',
+      target: 'a3',
+      label: '日続けて押し戻し済み',
+      cite: '架空の根拠',
+    },
+    {
+      source: 'a2',
+      target: 'a3',
+      label: '+1.13% で接近',
+      cite: '架空の根拠',
+    },
+    {
+      source: 'b1',
+      target: 'b3',
+      label: '下値確認後に接近',
+      cite: '架空の根拠',
+    },
+    {
+      source: 'b2',
+      target: 'b3',
+      label: '下抜未突破',
+      cite: '架空の根拠',
+    },
+    {
+      source: 'c1',
+      target: 'c2',
+      label: '安値切り上げ',
+      cite: '架空の根拠',
+    },
+    {
+      source: 'c2',
+      target: 'c3',
+      label: '未試験',
+      cite: '架空の根拠',
+    },
+  ],
+}
+
+export const FlowWithLongLabels: Story = {
+  name: 'keeps long labels and reference chips clear of nearby nodes.',
+  args: { def: FLOW_LABELS_DEF },
+}
+
 const TREE_DEF: GraphDef = {
   id: 'demo-tree',
   layout: 'tree',

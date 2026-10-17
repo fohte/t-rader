@@ -6,6 +6,7 @@ import {
   buildFlowEdges,
   computeCiteNumbers,
   handlePositions,
+  nodeHeight,
   nodeWidth,
   validateGraphRefs,
 } from '#components/graph/graph-utils'
@@ -22,6 +23,23 @@ describe('nodeWidth', () => {
     ],
   ])('%s', (_label, node, expected) => {
     expect(nodeWidth(node)).toBe(expected)
+  })
+})
+
+describe('nodeHeight', () => {
+  it.each([
+    ['1 行のラベル', { id: 'a', label: 'A' } satisfies GraphNode, 38],
+    [
+      '折り返しと参照チップがあるラベル',
+      {
+        id: 'b',
+        label: 'AAAA 9/18 終値 11,111',
+        ref: 'stock:AAAA',
+      } satisfies GraphNode,
+      84,
+    ],
+  ])('%s の高さを見積もる', (_label, node, expected) => {
+    expect(nodeHeight(node)).toBe(expected)
   })
 })
 
@@ -131,6 +149,7 @@ describe('buildFlowEdges', () => {
     expect(buildFlowEdges(edges, citeNumbers)).toEqual([
       {
         id: 'a-b-0',
+        type: 'graphEdge',
         source: 'a',
         target: 'b',
         label: '受託生産',
@@ -139,6 +158,7 @@ describe('buildFlowEdges', () => {
       },
       {
         id: 'b-c-1',
+        type: 'graphEdge',
         source: 'b',
         target: 'c',
         label: undefined,
@@ -147,6 +167,7 @@ describe('buildFlowEdges', () => {
       },
       {
         id: 'c-d-2',
+        type: 'graphEdge',
         source: 'c',
         target: 'd',
         label: '露光装置 [1]',
@@ -155,6 +176,7 @@ describe('buildFlowEdges', () => {
       },
       {
         id: 'd-e-3',
+        type: 'graphEdge',
         source: 'd',
         target: 'e',
         label: undefined,

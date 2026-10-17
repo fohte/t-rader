@@ -2,6 +2,7 @@ import '@xyflow/react/dist/style.css'
 
 import {
   Background,
+  type EdgeTypes,
   type NodeTypes,
   ReactFlow,
   ReactFlowProvider,
@@ -15,6 +16,7 @@ import type {
   GraphFlowNode,
   ScatterBackgroundFlowNode,
 } from '#components/graph/flow-types'
+import { GraphFlowEdgeView } from '#components/graph/graph-flow-edge'
 import { GraphGroupNodeView } from '#components/graph/graph-group-node'
 import {
   GRAPH_DIMMED_CLASS,
@@ -35,6 +37,10 @@ const nodeTypes: NodeTypes = {
   graphNode: GraphNodeView,
   graphGroup: GraphGroupNodeView,
   graphScatterBackground: GraphScatterBackgroundView,
+}
+
+const edgeTypes: EdgeTypes = {
+  graphEdge: GraphFlowEdgeView,
 }
 
 type ReactFlowStyle = CSSProperties & {
@@ -168,6 +174,7 @@ function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
         nodes={rawNodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         style={reactFlowStyle}
         nodesDraggable={false}
         nodesConnectable={false}

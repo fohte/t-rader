@@ -49,6 +49,10 @@ const preview: Preview = {
         '.react-flow',
         '.react-flow__renderer',
         '.react-flow__pane',
+        // fitView は dagre の座標を viewport transform で縮小するが、CSSOM の
+        // scrollWidth は縮小前の配置幅を返す。個別要素の表示は VRT で確認する。
+        '.react-flow__viewport',
+        '.react-flow__nodes',
         // react-flow のエッジラベルはブラウザのテキスト計測がサブピクセル単位で
         // 揺れ、scrollWidth が clientWidth をわずかに (数 px 未満) 上回ることがある。
         // 表示上はクリップされず読めているため実害のあるレイアウト崩れではない
