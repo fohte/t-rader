@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { hierarchy, treemap } from 'd3-hierarchy'
 
 import type { components } from '#lib/api/schema.gen'
+import { parseGroupRefId } from '#lib/ref-id'
 
 type WidgetQueryResponse = components['schemas']['WidgetQueryResponse']
 type WidgetRow = components['schemas']['WidgetQueryResultRow']
@@ -18,19 +19,6 @@ const LAYOUT_HEIGHT = 675
 const numberFormat = new Intl.NumberFormat('ja-JP', {
   maximumFractionDigits: 2,
 })
-
-function groupTarget(key: string) {
-  if (!key.startsWith('group:')) return null
-
-  const groupRef = key.slice('group:'.length)
-  const separator = groupRef.indexOf('/')
-  if (separator <= 0 || separator === groupRef.length - 1) return null
-
-  return {
-    axisKey: groupRef.slice(0, separator),
-    groupKey: groupRef.slice(separator + 1),
-  }
-}
 
 export function WidgetTreemap({
   result,
@@ -119,22 +107,25 @@ export function WidgetTreemap({
           height: `${String((tile.height / LAYOUT_HEIGHT) * 100)}%`,
           ...colorStyle,
         }
+        const showName = tile.width >= 64 && tile.height >= 28
+        const showValue = tile.width >= 48 && tile.height >= 48
         const contents = (
           <>
-            {tile.width >= LAYOUT_WIDTH / 3 &&
-              tile.height >= LAYOUT_HEIGHT / 3 && (
-                <>
-                  <span className="line-clamp-1 font-sans text-xs font-semibold text-foreground">
-                    {tile.row.name}
-                  </span>
-                  <span className="mt-auto font-mono text-2xs tabular-nums text-foreground/80">
-                    {numberFormat.format(tile.color)}
-                  </span>
-                </>
-              )}
+            {showName && (
+              <span className="line-clamp-1 font-sans text-xs font-semibold text-foreground">
+                {tile.row.name}
+              </span>
+            )}
+            {showValue && (
+              <span className="mt-auto font-mono text-2xs tabular-nums text-foreground/80">
+                {numberFormat.format(tile.color)}
+              </span>
+            )}
           </>
         )
-        const target = groupTarget(tile.row.key)
+        const target = tile.row.key.startsWith('group:')
+          ? parseGroupRefId(tile.row.key.slice('group:'.length))
+          : null
 
         return (
           <li

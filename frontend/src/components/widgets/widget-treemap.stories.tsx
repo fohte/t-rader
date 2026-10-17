@@ -49,6 +49,18 @@ const stockResult: WidgetQueryResponse = {
   ],
 }
 
+const manyGroupResult: WidgetQueryResponse = {
+  as_of: '2099-01-01',
+  rows: Array.from({ length: 12 }, (_, index) => {
+    const suffix = String(index + 1).padStart(2, '0')
+    return {
+      key: `group:demo-axis/demo-group-${suffix}`,
+      name: `デモグループ ${suffix}`,
+      values: { size: 1, change: index % 2 === 0 ? 1 : -1 },
+    }
+  }),
+}
+
 const groupViz: WidgetTreemapDefinition = {
   type: 'treemap',
   size: 'size',
@@ -88,6 +100,11 @@ export const GroupRows: Story = {
 export const StockRows: Story = {
   name: '銘柄別のタイルを表示し、グループへのリンクは付けない。',
   args: { result: stockResult },
+}
+
+export const ManyGroups: Story = {
+  name: 'タイルが多い場合も各タイルの広さに応じてラベルを表示する。',
+  args: { result: manyGroupResult },
 }
 
 export const Empty: Story = {

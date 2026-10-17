@@ -81,6 +81,22 @@ describe('WidgetTreemap', () => {
     ])
   })
 
+  it('銘柄行をグループページへリンクしない', () => {
+    const result: WidgetQueryResponse = {
+      as_of: '2099-01-01',
+      rows: [
+        {
+          key: 'stock:DEMO-A',
+          name: '架空銘柄 A',
+          values: { size: 7, change: 1.5 },
+        },
+      ],
+    }
+    render(<WidgetTreemap result={result} viz={viz} />)
+
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+
   it('有効なタイルがない場合に空状態を表示する', () => {
     const result: WidgetQueryResponse = {
       as_of: '2099-01-01',
