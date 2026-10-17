@@ -11,8 +11,6 @@ permissions:
   packages: write
 
 env:
-  
-  queue: max
   COMPONENTS_FILE: .github/workflows/docker-publish-components.json
 
 jobs:
@@ -193,3 +191,4 @@ jobs:
 concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
