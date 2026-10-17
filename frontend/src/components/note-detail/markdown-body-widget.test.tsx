@@ -33,14 +33,21 @@ const VALID_WIDGET_SOURCE = [
 
 const WIDGET_SOURCES_WITHOUT_AS_OF = [
   {
-    name: 'time',
+    name: 'time is omitted',
     source: VALID_WIDGET_SOURCE.replace('time:\n  as_of: 2099-01-05\n', ''),
   },
   {
-    name: 'time.as_of',
+    name: 'time.as_of is omitted',
     source: VALID_WIDGET_SOURCE.replace(
       'time:\n  as_of: 2099-01-05',
       'time: {}',
+    ),
+  },
+  {
+    name: 'time.as_of is null',
+    source: VALID_WIDGET_SOURCE.replace(
+      'time:\n  as_of: 2099-01-05',
+      'time:\n  as_of: null',
     ),
   },
 ]
