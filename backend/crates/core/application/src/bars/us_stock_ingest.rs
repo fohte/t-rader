@@ -1567,6 +1567,7 @@ mod tests {
                 .use_cases
                 .ingest_us_stock_minute_bars_with_budget(&harness.source, now, budget)
                 .await
+                .map(|result| result.stats)
         } else {
             harness
                 .use_cases
@@ -1704,7 +1705,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_minute_bars_with_budget(&harness.source, now, budget)
             .await
-            .expect("throttle deadline is reported in stats");
+            .expect("throttle deadline is reported in stats")
+            .stats;
         let actual = (
             stats,
             harness.source.calls.lock().await.len(),
@@ -1822,7 +1824,8 @@ mod tests {
                 ),
             )
             .await
-            .expect("probe waits finish or exhaust the run deadline");
+            .expect("probe waits finish or exhaust the run deadline")
+            .stats;
         let actual = (
             stats,
             harness.source.calls.lock().await.len(),

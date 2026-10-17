@@ -102,26 +102,6 @@ impl std::fmt::Debug for UsStockBarsIngestResult {
     }
 }
 
-impl PartialEq for UsStockBarsIngestResult {
-    fn eq(&self, other: &Self) -> bool {
-        self.stats == other.stats
-    }
-}
-
-impl Eq for UsStockBarsIngestResult {}
-
-impl PartialEq<UsStockBarsIngestStats> for UsStockBarsIngestResult {
-    fn eq(&self, other: &UsStockBarsIngestStats) -> bool {
-        self.stats == *other
-    }
-}
-
-impl PartialEq<UsStockBarsIngestResult> for UsStockBarsIngestStats {
-    fn eq(&self, other: &UsStockBarsIngestResult) -> bool {
-        *self == other.stats
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;

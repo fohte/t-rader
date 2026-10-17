@@ -50,7 +50,7 @@ impl super::SchedulerJob for UsStockBarsIngest {
                     )?;
                     log_ingest_stats(
                         "1d",
-                        bars.ingest_us_stock_daily_bars_with_write_lock(
+                        bars.ingest_us_stock_daily_bars_retaining_write_lock(
                             source.as_ref(),
                             Utc::now(),
                         )
@@ -92,7 +92,7 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
                     )?;
                     log_ingest_stats(
                         "1m",
-                        bars.ingest_us_stock_minute_bars_with_write_lock(
+                        bars.ingest_us_stock_minute_bars_retaining_write_lock(
                             source.as_ref(),
                             Utc::now(),
                         )
@@ -134,7 +134,7 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
                     )?;
                     log_ingest_stats(
                         "1h",
-                        bars.ingest_us_stock_hourly_bars_with_write_lock(
+                        bars.ingest_us_stock_hourly_bars_retaining_write_lock(
                             source.as_ref(),
                             Utc::now(),
                         )
