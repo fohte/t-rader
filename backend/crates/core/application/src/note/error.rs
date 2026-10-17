@@ -7,11 +7,14 @@ use crate::indicator_observation::IndicatorObservationUseCaseError;
 use crate::note::repository::NoteRepositoryError;
 use crate::unit_of_work::UnitOfWorkError;
 use crate::valuation::ValuationUseCaseError;
+use core_domain::note_body_warning::NoteBodyWarning;
 
 #[derive(Debug, Error)]
 pub enum NoteUseCaseError {
     #[error("{0}")]
     Validation(String),
+    #[error("note body contains unresolved warnings")]
+    UnresolvedBodyWarnings { warnings: Vec<NoteBodyWarning> },
     #[error("unknown note kind: {0}")]
     UnknownNoteKind(String),
     #[error("{0}")]

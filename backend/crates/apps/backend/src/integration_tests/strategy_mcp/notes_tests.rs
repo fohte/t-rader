@@ -8,6 +8,7 @@ mod tests {
 
     use super::super::dto::{
         ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
+        WriteNoteWarning,
     };
     use super::super::graph_dto::{GraphDef, GraphEdge, GraphNode, Layout};
     use super::super::tests_common::{
@@ -219,71 +220,99 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_returns_warnings_and_saves_bare_values(
+    async fn write_note_requires_and_reports_warning_dispositions(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         insert_note_kind(&db, "sample-kind", false).await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
+        let body_md = "close 67,890円, then -4.5%, with 73足";
 
-        let written = server
-            .write_note(
+        let error = server
+            .invoke::<_, serde_json::Value>(
+                "write_note",
                 strategy_id,
+                serde_json::json!({
+                    "title": "first note",
+                    "body_md": body_md,
+                    "kind": "sample-kind",
+                }),
                 None,
-                WriteNoteParams {
-                    note_id: None,
-                    title: Some("first note".into()),
-                    body_md: Some("close 12,345円 then -6.0%; 73足".into()),
-                    kind: Some(Some("sample-kind".into())),
-                    frontmatter_json: None,
-                    change_reason: None,
-                    graphs: None,
-                },
+                None,
             )
             .await
-            .expect("write_note");
-        assert_eq!(
-            written,
-            WriteNoteResult {
-                note_id: written.note_id,
-                created: true,
-                warnings: vec![
-                    "価格候補の数値「12,345円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
-                    "相対表現「-6.0%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
-                    "ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".into(),
-                ],
-            },
-        );
-
-        let read = server
-            .read_note(
+            .expect_err("unresolved warnings must reject the write");
+        let saved_notes_before_dispositions = note::Entity::find().all(&db).await.unwrap();
+        let written = server
+            .invoke::<_, WriteNoteResult>(
+                "write_note",
                 strategy_id,
-                ReadNoteParams {
-                    note_id: written.note_id,
-                    version_id: None,
-                },
+                serde_json::json!({
+                    "title": "first note",
+                    "body_md": body_md,
+                    "kind": "sample-kind",
+                    "warning_dispositions": [
+                        {
+                            "id": "price:67%2C890%E5%86%86:1",
+                            "reason": "参考値として記載",
+                        },
+                        {
+                            "id": "relative:-4.5%25:1",
+                            "reason": "変化率の目安として記載",
+                        },
+                        {
+                            "id": "bar-count:73%E8%B6%B3:1",
+                            "reason": "期間の概況を示すため記載",
+                        },
+                    ],
+                }),
+                None,
+                None,
             )
             .await
-            .expect("read_note");
+            .expect("reasons allow the write")
+            .into_value();
+        let written_note_id = written.note_id;
+        let saved_notes_after_dispositions = note::Entity::find().all(&db).await.unwrap();
 
         assert_eq!(
-            normalize_note(read),
-            NoteDto {
-                note_id: written.note_id,
-                version_id: Uuid::nil(),
-                version_no: 1,
-                title: "first note".into(),
-                body_md: Some("close 12,345円 then -6.0%; 73足".into()),
-                frontmatter_json: serde_json::Map::new(),
-                tags: vec![],
-                kind: Some("sample-kind".into()),
-                status: "unread".into(),
-                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
-                created_at: ts_sentinel(),
-                updated_at: ts_sentinel(),
-                graphs: vec![],
-                links: Some(vec![]),
-            },
+            (
+                error.code,
+                error.message.to_string(),
+                saved_notes_before_dispositions.len(),
+                written,
+                saved_notes_after_dispositions.len(),
+            ),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                concat!(
+                    "note body warnings must be fixed or dismissed with a reason:\n",
+                    "price:67%2C890%E5%86%86:1: 価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。\n",
+                    "relative:-4.5%25:1: 相対表現「-4.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。\n",
+                    "bar-count:73%E8%B6%B3:1: ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。"
+                )
+                .into(),
+                0,
+                WriteNoteResult {
+                    note_id: written_note_id,
+                    created: true,
+                    warnings: vec![
+                        WriteNoteWarning {
+                            id: "price:67%2C890%E5%86%86:1".into(),
+                            message: "価格候補の数値「67,890円」がリンク外にあります。株価であれば、銘柄・日付・項目を確認して `[[price:<id>@<date>:<field>]]` で参照してください。".into(),
+                        },
+                        WriteNoteWarning {
+                            id: "relative:-4.5%25:1".into(),
+                            message: "相対表現「-4.5%」があります。計算結果を手入力せず、対象期間の値を `[[change:<id>@<start>..<end>:<field>]]` で示してください。概念上の目安ならそのままで構いません。".into(),
+                        },
+                        WriteNoteWarning {
+                            id: "bar-count:73%E8%B6%B3:1".into(),
+                            message: "ローソク足の本数「73足」があります。本数ではなく、開始日と終了日で対象期間を記載してください。".into(),
+                        },
+                    ],
+                },
+                1,
+            ),
         );
     }
 
