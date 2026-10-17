@@ -135,7 +135,7 @@ describe('MarkdownBody widget blocks', () => {
     expect(
       screen.getByRole('region', { name: 'ノート内ウィジェット' }).textContent,
     ).toEqual(
-      'ウィジェットウィジェットの定義を表示できません: queries、対応する viz、time.as_of を含む定義が必要です。',
+      'ウィジェットウィジェットの定義を表示できません: time.as_of は文字列で指定してください。',
     )
   })
 

@@ -3,7 +3,10 @@ import { useMemo } from 'react'
 import { MarkdownBodyWidgetView } from '#components/note-detail/markdown-body-widget-view'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
-import { parseWidgetDefinition } from '#lib/widget-definition'
+import {
+  isSupportedWidgetVisualization,
+  parseWidgetDefinition,
+} from '#lib/widget-definition'
 
 type WidgetQueryRequest = components['schemas']['WidgetQueryRequest']
 
@@ -69,6 +72,17 @@ export function MarkdownBodyWidget({ source }: { source: string }) {
           kind: status === 400 ? 'definition-error' : 'data-error',
           asOf: parsed.asOf,
           message: messageOf(query.error),
+        }}
+      />
+    )
+  }
+  if (!isSupportedWidgetVisualization(parsed.viz)) {
+    return (
+      <MarkdownBodyWidgetView
+        state={{
+          kind: 'definition-error',
+          asOf: parsed.asOf,
+          message: 'この表示形式はノート内ウィジェットでは表示できません。',
         }}
       />
     )
