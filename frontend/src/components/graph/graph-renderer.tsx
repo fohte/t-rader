@@ -160,6 +160,7 @@ function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
         nodes={rawNodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        colorMode="dark"
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}

@@ -55,6 +55,14 @@ const SCATTER_DEF: GraphDef = {
 }
 
 describe('GraphRenderer', () => {
+  it('dark mode で描画する', () => {
+    render(<GraphRenderer def={FLOW_DEF} />)
+
+    expect(document.querySelector('.react-flow')?.className).toBe(
+      'react-flow dark',
+    )
+  })
+
   it.each<[string, GraphDef, string[]]>([
     ['flow', FLOW_DEF, ['ノードA', 'ノードB']],
     ['tree', TREE_DEF, ['ルート', '子1', '子2']],
