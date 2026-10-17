@@ -1309,7 +1309,8 @@ mod tests {
             .expect("compressed chunk status row");
         let chunk_status = CompressedChunkStatus::from_query_result(&chunk_status, "")
             .expect("decode chunk compression status");
-        // このテストは上限 1 で圧縮済み chunk の DML 成功を確かめる。外側の rollback transaction では UoW の commit が savepoint になり、上限は DML 文単位で数えられる可能性もあるため、銘柄ごとの commit 境界は fake テストで固定する。
+        // 外側の rollback transaction 内で実行するため、このテストでは commit 境界を検証しない。
+        // 銘柄ごとの commit 境界は fake のテストで固定する。
         db.execute_unprepared(
             "SET LOCAL timescaledb.max_tuples_decompressed_per_dml_transaction = 1",
         )
