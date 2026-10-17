@@ -34,6 +34,7 @@ tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 backend-test-macros = { path = "../../libs/test-macros" }
+indoc = { workspace = true }
 migration = { path = "../../../migration" }
 rstest = { workspace = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-native-tls", "postgres", "migrate"] }

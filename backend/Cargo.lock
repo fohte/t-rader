@@ -1980,6 +1980,7 @@ dependencies = [
  "chrono",
  "core-application",
  "core-domain",
+ "indoc",
  "migration",
  "rstest",
  "rust_decimal",
