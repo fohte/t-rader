@@ -1,6 +1,5 @@
 import { Link } from '@tanstack/react-router'
 import {
-  type ComponentType,
   createContext,
   type ReactNode,
   useCallback,
@@ -10,7 +9,7 @@ import {
   useState,
 } from 'react'
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
-import Markdown, { type Components, type ExtraProps } from 'react-markdown'
+import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
@@ -19,11 +18,14 @@ import { toGraphDef } from '#components/note-detail/markdown-body-graph-def'
 import { MarkdownBodyRangeBlock } from '#components/note-detail/markdown-body-range-block'
 import {
   MarkdownBodyRangeCommentContext,
-  type MarkdownBodyRangeCommentProps,
   MarkdownBodyTableCellGutterContext,
   NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
 import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdown-body-text-selection-action'
+import type {
+  MarkdownBodyProps,
+  NoteTokenComponents,
+} from '#components/note-detail/markdown-body-types'
 import {
   NoteChangeReference,
   NoteEvaluationEvidenceReference,
@@ -34,62 +36,13 @@ import {
 import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { useMarkdownBodyCommentSelection } from '#components/note-detail/use-markdown-body-comment-selection'
 import { RefChip } from '#components/strategy-shell/ref-chip'
-import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import type { components } from '#lib/api/schema.gen'
-import type { ParsedNoteChangeReference } from '#lib/note-change-reference'
-import type { ParsedNotePriceReference } from '#lib/note-price-reference'
-import type {
-  ParsedNoteIndicatorObservationReference,
-  ParsedNoteValuationReference,
-} from '#lib/note-valuation-indicator-reference'
 
 type ApiGraphDef = components['schemas']['GraphDef']
 type NoteLinkItem = components['schemas']['NoteLinkItem']
-type MarkdownNode = NonNullable<ExtraProps['node']>
 
 const EMPTY_GRAPHS: ApiGraphDef[] = []
 const EMPTY_NOTE_LINKS: NoteLinkItem[] = []
-
-interface MarkdownBodyProps {
-  source: string
-  graphs?: ApiGraphDef[]
-  noteLinks?: NoteLinkItem[]
-  resolvedPriceReferences?: components['schemas']['Value']
-  onAnno?: (id: string) => void
-  onRef?: (token: string, resolved: ResolvedRef) => void
-  rangeComments?: MarkdownBodyRangeCommentProps
-}
-
-// remarkNoteTokens が data.hName で生成するタグ名に対応する。
-type NoteTokenComponents = {
-  'note-ref': ComponentType<{
-    token: string
-    commentTextHighlight?: string
-  }>
-  'note-anno': ComponentType<{ annoId: string }>
-  'note-graph': ComponentType<{ graphId: string; node?: MarkdownNode }>
-  'note-link': ComponentType<{ noteId: string; token: string }>
-  'note-price-reference': ComponentType<
-    ParsedNotePriceReference & { value: string }
-  >
-  'note-eval-reference': ComponentType<{
-    evaluationId: string
-    outputName: string
-    value: string
-  }>
-  'note-valuation-reference': ComponentType<
-    ParsedNoteValuationReference & { value: string }
-  >
-  'note-indicator-reference': ComponentType<
-    ParsedNoteIndicatorObservationReference & { value: string }
-  >
-  'note-change-reference': ComponentType<
-    ParsedNoteChangeReference & { token: string; value?: string }
-  >
-  'note-change-figure': ComponentType<
-    ParsedNoteChangeReference & { node?: MarkdownNode }
-  >
-}
 
 const MarkdownBodyListDepthContext = createContext(0)
 
