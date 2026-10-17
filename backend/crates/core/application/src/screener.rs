@@ -151,6 +151,34 @@ pub trait ScreenerQuerySource: Send + Sync {
 
 pub type SharedScreenerQuerySource = Arc<dyn ScreenerQuerySource + Send + Sync>;
 
+#[async_trait]
+pub trait ScreenerSnapshotRefresher: Send + Sync {
+    async fn refresh_snapshot(&self) -> Result<(), PersistenceError>;
+}
+
+pub type SharedScreenerSnapshotRefresher = Arc<dyn ScreenerSnapshotRefresher + Send + Sync>;
+
+#[derive(Debug, Error)]
+pub enum ScreenerSnapshotRefreshError {
+    #[error(transparent)]
+    Persistence(#[from] PersistenceError),
+}
+
+#[derive(Clone)]
+pub struct ScreenerSnapshotUseCases {
+    refresher: SharedScreenerSnapshotRefresher,
+}
+
+impl ScreenerSnapshotUseCases {
+    pub fn new(refresher: SharedScreenerSnapshotRefresher) -> Self {
+        Self { refresher }
+    }
+
+    pub async fn refresh_snapshot(&self) -> Result<(), ScreenerSnapshotRefreshError> {
+        self.refresher.refresh_snapshot().await.map_err(Into::into)
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum ScreenerUseCaseError {
     #[error(transparent)]

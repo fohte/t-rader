@@ -6,8 +6,8 @@ use gateway_postgres::entities::{
     bars, financial_summary, group_axis, instruments, stock, stock_group, stock_group_member,
 };
 use rust_decimal::Decimal;
-use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ActiveModelTrait, ConnectionTrait};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -196,6 +196,15 @@ async fn seed_screener_stocks(db: &gateway_postgres::DatabaseHandle) {
         ])
         .await
         .expect("insert screener valuations");
+
+    refresh_screener_snapshot(db).await;
+}
+
+async fn refresh_screener_snapshot(db: &gateway_postgres::DatabaseHandle) {
+    // database_test は rollback transaction 内で動くため、fixture の refresh では CONCURRENTLY を使えない。
+    db.execute_unprepared("REFRESH MATERIALIZED VIEW screener_stock_snapshot")
+        .await
+        .expect("refresh screener snapshot");
 }
 
 #[backend_test_macros::database_test]
@@ -411,6 +420,7 @@ async fn screen_stocks_returns_hundred_rows_per_page(db: gateway_postgres::Datab
         .await
         .expect("insert screener page valuations");
 
+    refresh_screener_snapshot(&db).await;
     let server = build_server(db);
     let first_page = server
         .invoke::<_, Value>("screen_stocks", strategy_id, json!({}), None, None)

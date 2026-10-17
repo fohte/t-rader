@@ -7,6 +7,7 @@ use core_application::bars::{
     US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
 };
 use core_application::ingest_run_log::IngestRunLog;
+use core_application::screener::ScreenerSnapshotUseCases;
 use serde::Serialize;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -70,6 +71,15 @@ pub(super) fn today_in_tokyo(now: DateTime<Utc>) -> NaiveDate {
 
 pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, String> {
     source.ok_or_else(|| format!("{name} is not configured"))
+}
+
+pub(super) async fn refresh_screener_snapshot(
+    use_cases: &ScreenerSnapshotUseCases,
+) -> Result<(), String> {
+    use_cases
+        .refresh_snapshot()
+        .await
+        .map_err(|error| format!("failed to refresh screener snapshot: {error}"))
 }
 
 pub(super) async fn run_with_state<F, Fut>(
