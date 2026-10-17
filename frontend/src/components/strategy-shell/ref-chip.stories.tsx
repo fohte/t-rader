@@ -53,6 +53,11 @@ export const Pill: Story = {
   args: { token: 'stock:demo-code', pill: true },
 }
 
+export const Highlighted: Story = {
+  name: 'highlights a matching part of a resolved reference.',
+  args: { token: 'stock:demo-code', commentTextHighlight: 'Sample' },
+}
+
 export const Unknown: Story = {
   name: 'shows an unresolved stock reference.',
   args: { token: 'stock:missing-code', onOpenRef: () => undefined },

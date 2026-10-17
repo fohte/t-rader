@@ -1,3 +1,5 @@
+import { type ReactNode, useEffect } from 'react'
+
 import type { ResolvedRef } from '#hooks/use-resolve-ref'
 import { useResolveRef } from '#hooks/use-resolve-ref'
 import { parseGroupRefId } from '#lib/ref-id'
@@ -10,6 +12,8 @@ interface RefChipProps {
   showKind?: boolean
   // 画面遷移先がある参照に限って呼び出す。
   onOpenRef?: (token: string, resolved: ResolvedRef) => void
+  onTextContentChange?: (token: string, text: string) => void
+  commentTextHighlight?: string
 }
 
 export function RefChip({
@@ -17,6 +21,8 @@ export function RefChip({
   pill = false,
   showKind = true,
   onOpenRef,
+  onTextContentChange,
+  commentTextHighlight,
 }: RefChipProps) {
   const ref = useResolveRef(token)
   const kindJP = REF_KIND_JP[ref.kind]
@@ -24,6 +30,16 @@ export function RefChip({
   const displayName = ref.name ?? ref.id
   const sub =
     resolved && ref.kind === 'stock' && ref.id !== ref.name ? ref.id : undefined
+  const chipText = `${showKind ? kindJP : ''}${displayName}${sub ?? ''}`
+  useEffect(() => {
+    onTextContentChange?.(token, chipText)
+  }, [chipText, onTextContentChange, token])
+  const highlightStart =
+    commentTextHighlight == null ? -1 : chipText.indexOf(commentTextHighlight)
+  const highlightEnd =
+    highlightStart === -1
+      ? -1
+      : highlightStart + (commentTextHighlight?.length ?? 0)
   const canOpenRef =
     onOpenRef != null &&
     (ref.kind === 'stock' ||
@@ -41,18 +57,42 @@ export function RefChip({
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
   const title = resolved ? `[[${token}]]` : `[[${token}]] (未解決)`
 
+  const highlightedText = (text: string, segmentStart: number): ReactNode => {
+    const start = Math.max(highlightStart, segmentStart)
+    const end = Math.min(highlightEnd, segmentStart + text.length)
+    if (start >= end) return text
+    const localStart = start - segmentStart
+    const localEnd = end - segmentStart
+    return (
+      <>
+        {text.slice(0, localStart)}
+        <mark
+          data-comment-text-highlight="true"
+          className="bg-primary/20 text-inherit"
+        >
+          {text.slice(localStart, localEnd)}
+        </mark>
+        {text.slice(localEnd)}
+      </>
+    )
+  }
+  const nameStart = showKind ? kindJP.length : 0
+  const subStart = nameStart + displayName.length
+
   const inner = (
     <>
       {showKind && (
         <span className="text-em-78 tracking-wide text-muted-foreground">
-          {kindJP}
+          {highlightedText(kindJP, 0)}
         </span>
       )}
       <span className={resolved ? undefined : 'italic text-muted-foreground'}>
-        {displayName}
+        {highlightedText(displayName, nameStart)}
       </span>
       {sub != null && sub !== '' && (
-        <span className="text-em-85 text-muted-foreground">{sub}</span>
+        <span className="text-em-85 text-muted-foreground">
+          {highlightedText(sub, subStart)}
+        </span>
       )}
     </>
   )

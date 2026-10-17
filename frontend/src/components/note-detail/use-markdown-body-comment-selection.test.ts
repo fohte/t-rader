@@ -13,7 +13,7 @@ import { MarkdownBodyTextSelectionAction } from '#components/note-detail/markdow
 import type { DiffCommentAnchor } from '#components/note-detail/note-version-line-comment-group'
 import { useMarkdownBodyCommentSelection } from '#components/note-detail/use-markdown-body-comment-selection'
 
-const FIRST_LINE = '架空の本文です。'
+const FIRST_LINE = '架空の本文です。対象と対象。'
 const SECOND_LINE = '架空の次の行です。'
 const THIRD_LINE = '架空の末尾です。'
 const SOURCE = [FIRST_LINE, SECOND_LINE, THIRD_LINE].join('\n')
@@ -80,14 +80,14 @@ function latestSelection(capture: HookCapture): SelectionHook {
   return selection
 }
 
-function selectFirstLine(): Selection {
+function selectTextRange(start: number, end: number): Selection {
   const paragraph = screen.getByText(FIRST_LINE)
   const textNode = paragraph.firstChild
   if (textNode == null) throw new Error('本文にテキストがありません')
 
   const range = document.createRange()
-  range.setStart(textNode, 0)
-  range.setEnd(textNode, FIRST_LINE.length)
+  range.setStart(textNode, start)
+  range.setEnd(textNode, end)
   Object.defineProperty(range, 'getBoundingClientRect', {
     value: () => new DOMRect(20, 100, 120, 20),
   })
@@ -97,6 +97,10 @@ function selectFirstLine(): Selection {
   selection.addRange(range)
   fireEvent(document, new Event('selectionchange'))
   return selection
+}
+
+function selectFirstLine(): Selection {
+  return selectTextRange(0, FIRST_LINE.length)
 }
 
 afterEach(() => {
@@ -168,11 +172,34 @@ describe('useMarkdownBodyCommentSelection', () => {
     expect(getButtonPressResult()).toEqual({
       action: {
         text: FIRST_LINE,
+        textOffset: 0,
         range: { startLine: 1, endLine: 1 },
         position: { top: 60, left: 20 },
       },
       selectedText: FIRST_LINE,
       mouseDownPrevented: true,
+    })
+  })
+
+  it('stores the offset of a later repeated phrase in the block', () => {
+    const capture = vi.fn<(selection: SelectionHook) => void>()
+    const onStartComment = vi.fn<SelectionHarnessProps['onStartComment']>()
+    render(createElement(SelectionHarness, { capture, onStartComment }))
+    const start = FIRST_LINE.lastIndexOf('対象')
+    const selectedText = selectTextRange(start, start + '対象'.length)
+
+    const getSelectionResult = () => ({
+      action: latestSelection(capture).textSelectionAction,
+      selectedText: selectedText.toString(),
+    })
+    expect(getSelectionResult()).toEqual({
+      action: {
+        text: '対象',
+        textOffset: start,
+        range: { startLine: 1, endLine: 1 },
+        position: { top: 60, left: 20 },
+      },
+      selectedText: '対象',
     })
   })
 })

@@ -164,6 +164,9 @@ function commentBlockPresentation(
   const commentsOverlappingBlock = anchoredComments.filter((comment) =>
     overlapsBlock(rangeForComment(comment)),
   )
+  const commentsForTextHighlight = commentsOverlappingBlock.filter(
+    (comment) => !belongsToDescendant(rangeForComment(comment)),
+  )
   const anchor = isActive
     ? activeAnchor
     : threadTopLevelComments[0] == null
@@ -195,7 +198,7 @@ function commentBlockPresentation(
       ? activeAnchor.text
       : isActive
         ? null
-        : (commentsOverlappingBlock.find(
+        : (commentsForTextHighlight.find(
             (comment) =>
               comment.anchor_text != null && comment.anchor_text !== '',
           )?.anchor_text ?? null),
@@ -227,6 +230,7 @@ function RangeBlockGutterButton({
     <button
       type="button"
       aria-label={`行 ${String(range.startLine)}${range.endLine > range.startLine ? ` から ${String(range.endLine)}` : ''} にコメント`}
+      data-comment-text-ignore="true"
       onPointerDown={() => {
         onPointerDown(range)
       }}
@@ -307,7 +311,12 @@ export function MarkdownBodyRangeBlock({
   const textHighlight =
     presentation.highlightText == null || presentation.highlightText === ''
       ? null
-      : highlightFirstTextMatch(content, presentation.highlightText)
+      : highlightFirstTextMatch(content, presentation.highlightText, {
+          textOffset: presentation.isTextSelection
+            ? presentation.anchor.textOffset
+            : undefined,
+          refChipTexts: context.refChipTexts,
+        })
   const isTextHighlightPartial = textHighlight?.match === 'partial'
   const isBlockSelected =
     (presentation.isSelected &&
@@ -321,6 +330,7 @@ export function MarkdownBodyRangeBlock({
     presentation.isSelected || presentation.isCommented ? (
       <span
         aria-hidden="true"
+        data-comment-text-ignore="true"
         className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary"
         style={{
           left:

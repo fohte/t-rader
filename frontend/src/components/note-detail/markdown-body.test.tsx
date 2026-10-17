@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -295,22 +301,36 @@ describe('MarkdownBody', () => {
     }
     const source = `- 親項目
     - 入れ子の項目`
-    render(
+    const { container } = render(
       <MarkdownBody
         source={source}
         rangeComments={{ ...emptyRangeComments, comments: [comment] }}
       />,
     )
     const renderedComments = screen.getAllByText(comment.body)
+    const highlightedItems = [
+      ...container.querySelectorAll('li[data-source-block="true"]'),
+    ].map((item) => ({
+      line: item.getAttribute('data-source-start-line'),
+      highlighted: item.classList.contains('bg-primary/10'),
+    }))
 
-    expect(
-      renderedComments.map(
+    const getNestedCommentState = () => ({
+      commentLines: renderedComments.map(
         (renderedComment) =>
           renderedComment
             .closest('[data-source-block="true"]')
             ?.getAttribute('data-source-start-line') ?? null,
       ),
-    ).toEqual(['2'])
+      highlightedItems,
+    })
+    expect(getNestedCommentState()).toEqual({
+      commentLines: ['2'],
+      highlightedItems: [
+        { line: '1', highlighted: false },
+        { line: '2', highlighted: true },
+      ],
+    })
   })
 
   it('highlights only the first saved quote across inline markdown', () => {
@@ -339,6 +359,81 @@ describe('MarkdownBody', () => {
       segments: ['の', '対象', '箇所'],
       paragraphText: '前置きの対象箇所と次の対象箇所。',
       paragraphHasBlockHighlight: false,
+    })
+  })
+
+  it('uses the active text selection offset when the quote repeats', () => {
+    const source = '対象と、その後の対象です。'
+    const secondMatch = source.lastIndexOf('対象')
+    const activeCommentAnchor = {
+      side: 'new' as const,
+      lineNumber: 1,
+      endLineNumber: 1,
+      text: '対象',
+      isTextSelection: true,
+      textOffset: secondMatch,
+    }
+    const { container } = render(
+      <MarkdownBody
+        source={source}
+        rangeComments={{
+          ...emptyRangeComments,
+          activeCommentAnchor,
+          activeCommentKey: `${activeCommentAnchor.side}:1`,
+        }}
+      />,
+    )
+    const paragraph = container.querySelector('p')
+
+    const getHighlightState = () => ({
+      segments: [
+        ...(paragraph?.querySelectorAll(
+          'mark[data-comment-text-highlight="true"]',
+        ) ?? []),
+      ].map((mark) => mark.textContent),
+      prefix:
+        paragraph?.querySelector('mark[data-comment-text-highlight="true"]')
+          ?.previousSibling?.textContent ?? null,
+      paragraphHasBlockHighlight:
+        paragraph?.classList.contains('bg-primary/10') ?? false,
+    })
+    expect(getHighlightState()).toEqual({
+      segments: ['対象'],
+      prefix: '対象と、その後の',
+      paragraphHasBlockHighlight: false,
+    })
+  })
+
+  it('highlights text inside a rendered reference chip', async () => {
+    const { container } = render(
+      <MarkdownBody
+        source="参照 [[stock:demo-code]] を確認します。"
+        onRef={() => {}}
+        rangeComments={{
+          ...emptyRangeComments,
+          comments: [bodyComment('demo-code')],
+        }}
+      />,
+    )
+    const chip = container.querySelector('[data-kind="stock"]')
+
+    const getHighlightState = () => ({
+      chipText: chip?.textContent ?? null,
+      highlightedText: [
+        ...(chip?.querySelectorAll(
+          'mark[data-comment-text-highlight="true"]',
+        ) ?? []),
+      ].map((mark) => mark.textContent),
+      paragraphHasBlockHighlight:
+        container.querySelector('p')?.classList.contains('bg-primary/10') ??
+        false,
+    })
+    await waitFor(() => {
+      expect(getHighlightState()).toEqual({
+        chipText: '銘柄demo-code',
+        highlightedText: ['demo-code'],
+        paragraphHasBlockHighlight: false,
+      })
     })
   })
 

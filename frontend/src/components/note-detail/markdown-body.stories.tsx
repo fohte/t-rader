@@ -301,7 +301,7 @@ export const WithCommentComposer: Story = {
 }
 
 export const WithTextSelectionCommentComposer: Story = {
-  name: 'shows the selected quote while composing a body comment.',
+  name: 'highlights the selected text while composing a body comment.',
   decorators: [withNoteBodyCard],
   args: {
     source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
@@ -314,6 +314,7 @@ export const WithTextSelectionCommentComposer: Story = {
         endLineNumber: 4,
         text: '内容です。',
         isTextSelection: true,
+        textOffset: 3,
       },
       activeCommentKey: getDiffCommentAnchorKey({
         side: 'new',

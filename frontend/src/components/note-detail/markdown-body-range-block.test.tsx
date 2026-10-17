@@ -77,6 +77,7 @@ function renderNestedList(props: MarkdownBodyRangeCommentProps) {
       value={{
         props,
         selectedRange: null,
+        refChipTexts: {},
         onGutterPointerDown: () => {},
         onGutterClick: () => {},
       }}
@@ -144,6 +145,7 @@ describe('MarkdownBodyRangeBlock', () => {
         value={{
           props: rangeCommentProps,
           selectedRange: null,
+          refChipTexts: {},
           onGutterPointerDown: () => {},
           onGutterClick: () => {},
         }}

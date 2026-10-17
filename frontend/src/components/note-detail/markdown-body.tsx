@@ -3,9 +3,11 @@ import {
   type ComponentType,
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useState,
 } from 'react'
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import Markdown, { type Components, type ExtraProps } from 'react-markdown'
@@ -60,7 +62,10 @@ interface MarkdownBodyProps {
 
 // remarkNoteTokens が data.hName で生成するタグ名に対応する。
 type NoteTokenComponents = {
-  'note-ref': ComponentType<{ token: string }>
+  'note-ref': ComponentType<{
+    token: string
+    commentTextHighlight?: string
+  }>
   'note-anno': ComponentType<{ annoId: string }>
   'note-graph': ComponentType<{ graphId: string; node?: MarkdownNode }>
   'note-link': ComponentType<{ noteId: string; token: string }>
@@ -135,6 +140,12 @@ export function MarkdownBody({
   onRef,
   rangeComments,
 }: MarkdownBodyProps) {
+  const [refChipTexts, setRefChipTexts] = useState<Record<string, string>>({})
+  const registerRefChipText = useCallback((token: string, text: string) => {
+    setRefChipTexts((previous) =>
+      previous[token] === text ? previous : { ...previous, [token]: text },
+    )
+  }, [])
   const selection = useMarkdownBodyCommentSelection({
     enabled: rangeComments != null,
     source,
@@ -162,6 +173,7 @@ export function MarkdownBody({
       : {
           props: commentProps,
           selectedRange: selection.selectedRange,
+          refChipTexts,
           onGutterPointerDown: selection.onGutterPointerDown,
           onGutterClick: selection.onGutterClick,
         }
@@ -342,7 +354,16 @@ export function MarkdownBody({
           </td>
         )
       },
-      'note-ref': ({ token }) => <RefChip token={token} onOpenRef={onRef} />,
+      'note-ref': ({ token, commentTextHighlight }) => (
+        <RefChip
+          token={token}
+          onOpenRef={onRef}
+          commentTextHighlight={commentTextHighlight}
+          onTextContentChange={
+            hasRangeComments ? registerRefChipText : undefined
+          }
+        />
+      ),
       'note-link': ({ noteId, token }) => {
         const noteLink = noteLinks.find((link) => link.note_id === noteId)
         if (!noteLink) return <>{`[[${token}]]`}</>
@@ -439,6 +460,7 @@ export function MarkdownBody({
       noteLinks,
       onAnno,
       onRef,
+      registerRefChipText,
       resolvedPriceReferences,
     ],
   )

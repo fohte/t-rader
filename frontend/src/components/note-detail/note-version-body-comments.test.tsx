@@ -149,7 +149,9 @@ describe('NoteVersionBodyComments', () => {
     await user.click(screen.getByRole('button', { name: '送信' }))
 
     const getCommentResult = () => ({
-      quote: container.querySelector('blockquote')?.textContent ?? null,
+      composerQuote:
+        commentInput.parentElement?.querySelector('blockquote')?.textContent ??
+        null,
       placeholder: commentInput.getAttribute('placeholder'),
       highlightedText: [
         ...container.querySelectorAll(
@@ -160,7 +162,7 @@ describe('NoteVersionBodyComments', () => {
       requests: apiRequests,
     })
     expect(getCommentResult()).toEqual({
-      quote: selectedText,
+      composerQuote: null,
       placeholder: '選択した箇所へのコメント',
       highlightedText: [selectedText],
       paragraphHasBlockHighlight: false,

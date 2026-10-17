@@ -11,6 +11,7 @@ export interface DiffCommentAnchor {
   endLineNumber?: number
   text: string
   isTextSelection?: boolean
+  textOffset?: number
 }
 
 export function getDiffCommentAnchorKey(anchor: DiffCommentAnchor): string {
@@ -79,8 +80,19 @@ export function LineCommentGroup({
     onCreateComment(anchor, body)
   }
 
+  const isTextSelection = anchor?.isTextSelection === true
+  const composerLabel = isTextSelection
+    ? '選択した箇所へのコメント'
+    : '行コメント'
+  const composerPlaceholder = isTextSelection
+    ? '選択した箇所へのコメント'
+    : 'この行へのコメント'
+
   return (
-    <div className="space-y-2 border-l border-border py-2 pl-3 pr-2 text-xs">
+    <div
+      data-comment-text-ignore="true"
+      className="space-y-2 border-l border-border py-2 pl-3 pr-2 text-xs"
+    >
       {topLevel.map((comment) => (
         <div key={comment.id} className="space-y-2">
           <NoteVersionCommentBody
@@ -153,28 +165,15 @@ export function LineCommentGroup({
       ))}
       {anchorKey !== null && activeCommentKey === anchorKey ? (
         <div className="space-y-2">
-          {anchor?.isTextSelection === true && (
-            <blockquote className="border-l-2 border-primary/50 pl-2 font-mono text-2xs text-muted-foreground whitespace-pre-wrap">
-              {anchor.text}
-            </blockquote>
-          )}
           <textarea
-            aria-label={
-              anchor?.isTextSelection === true
-                ? '選択した箇所へのコメント'
-                : '行コメント'
-            }
+            aria-label={composerLabel}
             value={commentDraft}
             onChange={(event) => {
               setCommentDraft(event.target.value)
             }}
             rows={2}
             className="w-full border border-border bg-background px-2 py-1.5 font-mono text-2xs text-foreground outline-none focus:border-muted-foreground"
-            placeholder={
-              anchor?.isTextSelection === true
-                ? '選択した箇所へのコメント'
-                : 'この行へのコメント'
-            }
+            placeholder={composerPlaceholder}
           />
           <div className="flex gap-2">
             <button
