@@ -16,20 +16,23 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 外部のコントロールプレーンクライアントから呼ばれる。tool 単位の認可は持たず、ネットワーク境界 (VPN / Zero Trust proxy 等) と前段認証で担保する想定。
 
-| tool                            | 入力                                | 出力 (要約)                                                                                               |
-| ------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `list_strategies`               | (なし)                              | 戦略一覧 (`strategy_id`, `name`, `updated_at`)                                                            |
-| `submit_strategy_task`          | `strategy_id`, `prompt`, `purpose?` | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                 |
-| `resume_strategy_task`          | `task_id`                           | 再開したタスクの `task_id`, `a2a_task_id`                                                                 |
-| `get_strategy_task_status`      | `a2a_task_id`                       | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等 |
-| `get_strategy_config`           | `strategy_id`                       | 戦略設定 (`name`, `description`) と紐づく `triggers` 一覧                                                 |
-| `list_recent_notes`             | `limit?`                            | 現行バージョンがあるノートのメタデータ一覧                                                                |
-| `list_recent_annotations`       | `limit?`                            | 最新アノテーションのメタデータ一覧                                                                        |
-| `list_rss_feeds`                | `enabled_only?`                     | RSS フィード定義一覧                                                                                      |
-| `list_note_kinds`               | (なし)                              | ノート種別一覧 (`key`, `display_name`, `requires_approval`, `description`, `sort_order`)                  |
-| `get_note_status_change_counts` | `from`, `to` (RFC 3339)             | `[from, to)` におけるノートの `approved` / `rejected` 遷移件数                                            |
+| tool                            | 入力                                | 出力 (要約)                                                                                                                 |
+| ------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `list_strategies`               | (なし)                              | 戦略一覧 (`strategy_id`, `name`, `updated_at`)                                                                              |
+| `submit_strategy_task`          | `strategy_id`, `prompt`, `purpose?` | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                                   |
+| `resume_strategy_task`          | `task_id`                           | 再開したタスクの `task_id`, `a2a_task_id`                                                                                   |
+| `get_strategy_task_status`      | `a2a_task_id`                       | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等                   |
+| `get_strategy_config`           | `strategy_id`                       | 戦略設定 (`name`, `description`) と紐づく `triggers` 一覧                                                                   |
+| `list_recent_notes`             | `limit?`                            | 現行バージョンがあるノートのメタデータ一覧                                                                                  |
+| `list_recent_annotations`       | `limit?`                            | 最新アノテーションのメタデータ一覧                                                                                          |
+| `list_rss_feeds`                | `enabled_only?`                     | RSS フィード定義一覧                                                                                                        |
+| `list_note_kinds`               | (なし)                              | ノート種別一覧 (`key`, `display_name`, `requires_approval`, `description`, `sort_order`)                                    |
+| `get_note_status_change_counts` | `from`, `to` (RFC 3339)             | `[from, to)` におけるノートの `approved` / `rejected` 遷移件数                                                              |
+| `preview_dashboard`             | `yaml`                              | ダッシュボード YAML を検証し、エラー一覧、または各ウィジェットの計算結果と `/dashboards/preview#...` URL を返す。保存しない |
 
 `submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。port は `backend/crates/core/application/`、クライアント実装は `backend/crates/gateways/t-rader-agent/` を参照。投入処理は `backend/crates/core/application/src/strategy_task/submit.rs` と `backend/crates/entrypoints/control-plane-mcp/src/mgmt/strategies.rs`、決着照合は `backend/crates/entrypoints/scheduler/src/jobs/strategy_task_reconcile.rs` を参照。
+
+`preview_dashboard` は `title` と `widgets[]` を含む YAML を受け取り、各 widget を既存の定義型で検証する。入力 YAML や widget 定義が不正なら path と理由の一覧を返す。設定が有効なら、計算結果、widget ごとのエラー、および YAML を URL-safe Base64 でエンコードした `/dashboards/preview#...` を返す。preview URL は frontend origin から開く相対パスで、後続の画面から利用する。データがない widget は `errors` に記録し、他の widget の計算を続ける。データベースエラーは MCP エラーとして返す。ダッシュボードは保存しない。
 
 戦略設定を変更する HTTP API は Terraform provider が利用するため維持している。管理 MCP には設定を書き込む tool を登録しない。
 

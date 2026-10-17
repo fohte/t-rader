@@ -49,6 +49,7 @@ pub fn build_http_state(
         comment_use_cases: use_cases.comments(),
         custom_indicator_use_cases: use_cases.custom_indicators(),
         custom_indicator_evaluation_use_cases: use_cases.custom_indicator_evaluations(),
+        dashboard_use_cases: use_cases.dashboards(),
         financial_summary_use_cases: use_cases.financial_summaries(),
         group_axis_use_cases: use_cases.group_axes(),
         indicator_observation_use_cases: use_cases.indicator_observations(),

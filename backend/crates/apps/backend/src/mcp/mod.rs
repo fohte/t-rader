@@ -76,6 +76,7 @@ pub(crate) fn mgmt_dependencies(
         note_status_change_aggregate: use_cases.note_status_change_aggregate(),
         annotation_reads: use_cases.annotation_reads(),
         rss_feeds: use_cases.rss_feeds(),
+        widgets: use_cases.widgets(),
         agent_client,
     }
 }

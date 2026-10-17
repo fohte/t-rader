@@ -1,6 +1,6 @@
 //! 管理 MCP server の tool 実装
 //!
-//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 11 種:
+//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 12 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
@@ -13,6 +13,7 @@
 //! - `list_rss_feeds`
 //! - `update_rss_feed`
 //! - `list_note_kinds`
+//! - `preview_dashboard`
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -23,6 +24,7 @@
 //! - `strategy_config`: 戦略設定 (name/description) と trigger 一覧の取得
 //!   (`get_strategy_config_inner`)
 //! - `rss_feeds`: RSS フィード一覧・設定更新
+//! - `dashboards`: ダッシュボード設定の検証と preview
 //! - `note_kinds`: ノート種別一覧 (`list_note_kinds_inner`)
 //! - `notes_annotations`: 直近ノート・アノテーション一覧
 //!   (`list_recent_notes_inner` / `list_recent_annotations_inner`)
@@ -32,6 +34,7 @@
 //! 本モジュールは tool wrapper (`#[tool_router]` / `#[tool_handler]`) と
 //! 共通のエラー変換ヘルパを担う。
 
+mod dashboards;
 pub(super) mod dto;
 mod note_kinds;
 mod note_status_change_aggregate;
@@ -55,6 +58,7 @@ use core_application::strategy_scope::{
 use core_application::strategy_task::StrategyTaskUseCases;
 use core_application::trigger::{TriggerRepositoryError, TriggerUseCaseError, TriggerUseCases};
 use core_application::unit_of_work::UnitOfWorkError;
+use core_application::widget::WidgetUseCases;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
@@ -65,9 +69,9 @@ use dto::{
     GetNoteStatusChangeCountsParams, GetNoteStatusChangeCountsResult, GetStrategyConfigParams,
     GetStrategyConfigResult, GetStrategyTaskStatusParams, GetStrategyTaskStatusResult,
     ListNoteKindsResult, ListRecentAnnotationsResult, ListRecentNotesResult, ListRecentParams,
-    ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult, ResumeStrategyTaskParams,
-    ResumeStrategyTaskResult, SubmitStrategyTaskParams, SubmitStrategyTaskResult,
-    UpdateRssFeedParams,
+    ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult, PreviewDashboardParams,
+    PreviewDashboardResult, ResumeStrategyTaskParams, ResumeStrategyTaskResult,
+    SubmitStrategyTaskParams, SubmitStrategyTaskResult, UpdateRssFeedParams,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -89,6 +93,7 @@ pub struct MgmtDependencies {
     pub note_status_change_aggregate: NoteStatusChangeAggregateUseCases,
     pub annotation_reads: AnnotationReadUseCases,
     pub rss_feeds: RssFeedUseCases,
+    pub widgets: WidgetUseCases,
     pub agent_client: SharedAgentTaskClient,
 }
 
@@ -305,6 +310,19 @@ impl MgmtServer {
         self.list_note_kinds_inner().await.map(Json)
     }
 
+    /// ダッシュボード YAML を検証して、計算結果とプレビュー URL を返す。
+    #[tool(
+        name = "preview_dashboard",
+        description = "Validate dashboard YAML and return each widget's calculated data with a preview URL. This does not save the dashboard.",
+        annotations(read_only_hint = true)
+    )]
+    async fn preview_dashboard(
+        &self,
+        Parameters(params): Parameters<PreviewDashboardParams>,
+    ) -> Result<Json<PreviewDashboardResult>, McpError> {
+        self.preview_dashboard_inner(params).await.map(Json)
+    }
+
     /// 最新アノテーションメタを返す
     #[tool(
         name = "list_recent_annotations",
@@ -378,6 +396,7 @@ mod tests {
                 ("update_rss_feed", None),
                 ("list_note_kinds", Some(true)),
                 ("list_strategies", Some(true)),
+                ("preview_dashboard", Some(true)),
                 ("resume_strategy_task", None),
                 ("submit_strategy_task", None),
             ]
