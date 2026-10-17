@@ -245,9 +245,11 @@ describe('GraphRenderer', () => {
     }
     render(<GraphRenderer def={def} />)
 
-    const background =
-      document.querySelector('.react-flow__node-graphScatterBackground') ??
-      document.createElement('div')
+    const background = document.querySelector(
+      '.react-flow__node-graphScatterBackground',
+    )
+    expect(background).not.toBeNull()
+    if (background == null) return
     const nodeA = screen.getByText('点A').closest('[data-slot="graph-node"]')
     const nodeB = screen.getByText('点B').closest('[data-slot="graph-node"]')
 

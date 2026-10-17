@@ -20,12 +20,12 @@ describe('GraphGroupNodeView', () => {
       >
         <GraphGroupNodeView
           {...buildNodeProps(
-            { id: 'demo-group', label: 'デモグループ' },
+            { id: 'group1', label: 'グループ1' },
             'graphGroup',
           )}
         />
       </GraphRenderContextProvider>,
     )
-    expect(screen.getByText('デモグループ').textContent).toBe('デモグループ')
+    expect(screen.getByText('グループ1')).toBeInTheDocument()
   })
 })
