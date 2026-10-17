@@ -35,6 +35,7 @@ use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
 use gateway_postgres::{
     DatabaseHandle, PostgresStrategyTaskReconcileLock, PostgresTriggerChangeListener,
+    PostgresUsStockBarsWriteLock,
 };
 use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
@@ -336,6 +337,9 @@ async fn main() -> Result<(), StartupError> {
         .map(|client| Arc::clone(client) as SharedValuationSource);
     let dependencies = SchedulerDependencies {
         bars: use_cases.bars(),
+        us_stock_bars_ingest: use_cases.us_stock_bars_ingest(Arc::new(
+            PostgresUsStockBarsWriteLock::new(db.get_postgres_connection_pool().clone()),
+        )),
         calendar_events: use_cases.calendar_events(),
         boj_calendar_source,
         ecb_calendar_source,

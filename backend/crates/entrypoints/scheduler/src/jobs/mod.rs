@@ -104,29 +104,36 @@ pub(super) async fn run_with_ingest_run_log_state<F, Fut, Stats>(
 where
     F: FnOnce(SchedulerState) -> Fut,
     Fut: Future<Output = Result<Stats, String>>,
-    Stats: Serialize,
+    Stats: Serialize + Send + 'static,
 {
     let ingest_run_log = state.dependencies.ingest_run_log.clone();
     run_with_ingest_run_log(ingest_run_log.as_ref(), task_name, timeout, task(state)).await
 }
 
-pub(super) async fn run_with_ingest_run_log_state_with_run_id<F, Fut, Stats>(
+pub(super) async fn run_with_ingest_run_log_state_with_run_id_and_failure_stats<F, Fut, Stats>(
     state: SchedulerState,
     task_name: &'static str,
-    timeout: Duration,
+    duration: Duration,
     task: F,
 ) -> Result<(), String>
 where
     F: FnOnce(SchedulerState, Uuid) -> Fut,
-    Fut: Future<Output = Result<Stats, String>>,
-    Stats: Serialize,
+    Fut: Future<Output = Result<Stats, (Box<Stats>, String)>>,
+    Stats: Serialize + Send + 'static,
 {
     let ingest_run_log = state.dependencies.ingest_run_log.clone();
     run_with_ingest_run_log_inner(
         ingest_run_log.as_ref(),
         task_name,
-        timeout,
-        move |run_id| async move { task(state, run_id).await.map_err(IngestTaskFailure::Error) },
+        duration,
+        move |run_id| async move {
+            task(state, run_id)
+                .await
+                .map_err(|(stats, error)| IngestTaskFailure::ErrorWithStats {
+                    stats: *stats,
+                    error,
+                })
+        },
     )
     .await
 }
@@ -140,7 +147,7 @@ pub(super) async fn run_with_ingest_run_log_state_and_failure_stats<F, Fut, Stat
 where
     F: FnOnce(SchedulerState) -> Fut,
     Fut: Future<Output = Result<Stats, (Stats, String)>>,
-    Stats: Serialize,
+    Stats: Serialize + Send + 'static,
 {
     let ingest_run_log = state.dependencies.ingest_run_log.clone();
     run_with_ingest_run_log_with_failure_stats(
@@ -184,7 +191,7 @@ async fn run_with_ingest_run_log<F, Stats>(
 ) -> Result<(), String>
 where
     F: Future<Output = Result<Stats, String>>,
-    Stats: Serialize,
+    Stats: Serialize + Send + 'static,
 {
     run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, move |_| async move {
         task.await.map_err(IngestTaskFailure::Error)
@@ -200,7 +207,7 @@ async fn run_with_ingest_run_log_with_failure_stats<F, Stats>(
 ) -> Result<(), String>
 where
     F: Future<Output = Result<Stats, (Stats, String)>>,
-    Stats: Serialize,
+    Stats: Serialize + Send + 'static,
 {
     run_with_ingest_run_log_inner(ingest_run_log, task_name, duration, move |_| async move {
         task.await
@@ -223,7 +230,7 @@ async fn run_with_ingest_run_log_inner<F, Fut, Stats>(
 where
     F: FnOnce(Uuid) -> Fut,
     Fut: Future<Output = Result<Stats, IngestTaskFailure<Stats>>>,
-    Stats: Serialize,
+    Stats: Serialize + Send + 'static,
 {
     let run_id = match ingest_run_log.start(task_name).await {
         Ok(run_id) => run_id,
@@ -234,16 +241,17 @@ where
         }
     };
 
+    let mut completed_stats = None;
     let (recorded_result, failure_stats, timed_out) = match timeout(duration, task(run_id)).await {
-        Ok(Ok(stats)) => (
-            serde_json::to_value(stats)
-                .map_err(|error| format!("failed to serialize job stats: {error}")),
-            None,
-            false,
-        ),
+        Ok(Ok(stats)) => {
+            let recorded_result = serde_json::to_value(&stats)
+                .map_err(|error| format!("failed to serialize job stats: {error}"));
+            completed_stats = Some(stats);
+            (recorded_result, None, false)
+        }
         Ok(Err(IngestTaskFailure::Error(error))) => (Err(error), None, false),
         Ok(Err(IngestTaskFailure::ErrorWithStats { stats, error })) => {
-            match serde_json::to_value(stats) {
+            let recorded = match serde_json::to_value(&stats) {
                 Ok(stats) => (Err(error), Some(stats), false),
                 Err(serialization_error) => (
                     Err(format!(
@@ -252,7 +260,9 @@ where
                     None,
                     false,
                 ),
-            }
+            };
+            completed_stats = Some(stats);
+            recorded
         }
         Err(_) => {
             let error = format!("{task_name} timed out after {duration:?}");
@@ -269,6 +279,7 @@ where
         }
         _ => ingest_run_log.finish(run_id, recorded_result.clone()).await,
     };
+    drop(completed_stats);
     if let Err(log_error) = finish_result {
         match &recorded_result {
             Ok(_) => {
@@ -373,6 +384,23 @@ mod tests {
         fail_recovery: bool,
         fail_start: bool,
         fail_finish: bool,
+        guard_observation: Option<Arc<GuardObservation>>,
+    }
+
+    #[derive(Default)]
+    struct GuardObservation {
+        dropped: AtomicBool,
+        dropped_before_finish: AtomicBool,
+    }
+
+    impl FakeIngestRunLog {
+        fn observe_finish(&self) {
+            if let Some(observation) = &self.guard_observation {
+                observation
+                    .dropped_before_finish
+                    .store(observation.dropped.load(Ordering::SeqCst), Ordering::SeqCst);
+            }
+        }
     }
 
     #[async_trait]
@@ -399,6 +427,7 @@ mod tests {
             run_id: Uuid,
             result: Result<Value, String>,
         ) -> Result<(), PersistenceError> {
+            self.observe_finish();
             self.calls
                 .lock()
                 .await
@@ -418,6 +447,7 @@ mod tests {
             stats: Value,
             error: String,
         ) -> Result<(), PersistenceError> {
+            self.observe_finish();
             self.calls.lock().await.push(Call::FinishWithStats {
                 run_id,
                 stats,
@@ -450,6 +480,21 @@ mod tests {
     #[derive(Serialize)]
     struct IngestStats {
         rows: usize,
+    }
+
+    struct CompletionGuard(Arc<GuardObservation>);
+
+    impl Drop for CompletionGuard {
+        fn drop(&mut self) {
+            self.0.dropped.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[derive(Serialize)]
+    struct IngestStatsWithCompletionGuard {
+        rows: usize,
+        #[serde(skip)]
+        _guard: CompletionGuard,
     }
 
     #[rstest]
@@ -505,6 +550,100 @@ mod tests {
                     Call::Finish {
                         run_id: RUN_ID,
                         result: Ok(json!({ "rows": 3 })),
+                    },
+                ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_completion_guard_until_stats_are_persisted() {
+        let observation = Arc::new(GuardObservation::default());
+        let log = Arc::new(FakeIngestRunLog {
+            guard_observation: Some(observation.clone()),
+            ..FakeIngestRunLog::default()
+        });
+
+        let result = run_with_ingest_run_log(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(1),
+            async {
+                Ok(IngestStatsWithCompletionGuard {
+                    rows: 3,
+                    _guard: CompletionGuard(observation.clone()),
+                })
+            },
+        )
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                observation.dropped_before_finish.load(Ordering::SeqCst),
+                observation.dropped.load(Ordering::SeqCst),
+                log.calls.lock().await.clone(),
+            ),
+            (
+                Ok(()),
+                false,
+                true,
+                vec![
+                    Call::Start {
+                        job: "sample_ingest".to_string(),
+                    },
+                    Call::Finish {
+                        run_id: RUN_ID,
+                        result: Ok(json!({ "rows": 3 })),
+                    },
+                ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_failure_guard_until_partial_stats_are_persisted() {
+        let observation = Arc::new(GuardObservation::default());
+        let log = Arc::new(FakeIngestRunLog {
+            guard_observation: Some(observation.clone()),
+            ..FakeIngestRunLog::default()
+        });
+
+        let result = run_with_ingest_run_log_with_failure_stats(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(1),
+            async {
+                Err((
+                    IngestStatsWithCompletionGuard {
+                        rows: 3,
+                        _guard: CompletionGuard(observation.clone()),
+                    },
+                    "operation failed".to_owned(),
+                ))
+            },
+        )
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                observation.dropped_before_finish.load(Ordering::SeqCst),
+                observation.dropped.load(Ordering::SeqCst),
+                log.calls.lock().await.clone(),
+            ),
+            (
+                Err("operation failed".to_owned()),
+                false,
+                true,
+                vec![
+                    Call::Start {
+                        job: "sample_ingest".to_owned(),
+                    },
+                    Call::FinishWithStats {
+                        run_id: RUN_ID,
+                        stats: json!({ "rows": 3 }),
+                        error: "operation failed".to_owned(),
                     },
                 ],
             ),

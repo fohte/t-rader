@@ -11,10 +11,15 @@ pub(super) struct RequestBudget {
 
 impl RequestBudget {
     pub(super) fn new(max_requests: usize, max_duration: Duration, started_at: Instant) -> Self {
-        Self::with_deadline(max_requests, started_at + max_duration)
+        Self::with_deadline_internal(max_requests, started_at + max_duration)
     }
 
+    #[cfg(test)]
     pub(super) fn with_deadline(max_requests: usize, deadline: Instant) -> Self {
+        Self::with_deadline_internal(max_requests, deadline)
+    }
+
+    fn with_deadline_internal(max_requests: usize, deadline: Instant) -> Self {
         Self {
             remaining: max_requests,
             deadline,

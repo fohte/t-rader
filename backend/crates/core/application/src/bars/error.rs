@@ -4,6 +4,7 @@ use thiserror::Error;
 use crate::bars::us_stock_source::UsStockBarSourceError;
 use crate::daily_bar_source::DailyBarSourceError;
 use crate::market_daily_bar_source::MarketDailyBarSourceError;
+use crate::persistence::PersistenceError;
 use crate::unit_of_work::UnitOfWorkError;
 
 use super::repository::BarsRepositoryError;
@@ -16,6 +17,8 @@ pub enum BarsUseCaseError {
     BusinessDayIngestFailed(NaiveDate),
     #[error(transparent)]
     Repository(#[from] BarsRepositoryError),
+    #[error("米国株 bars の書き込みロックを取得できませんでした: {0}")]
+    UsStockBarsWriteLock(#[from] PersistenceError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
     #[error("米国株バーの commit probe に必要な取り込み実行コンテキストがありません")]
@@ -27,3 +30,33 @@ pub enum BarsUseCaseError {
     #[error(transparent)]
     UsStockBarSource(#[from] UsStockBarSourceError),
 }
+
+#[derive(Debug)]
+pub struct UsStockBarsIngestError {
+    stats: Box<super::types::UsStockBarsIngestResult>,
+    error: BarsUseCaseError,
+}
+
+impl UsStockBarsIngestError {
+    pub(crate) fn new(
+        stats: super::types::UsStockBarsIngestResult,
+        error: BarsUseCaseError,
+    ) -> Self {
+        Self {
+            stats: Box::new(stats),
+            error,
+        }
+    }
+
+    pub fn into_parts(self) -> (super::types::UsStockBarsIngestResult, BarsUseCaseError) {
+        (*self.stats, self.error)
+    }
+}
+
+impl std::fmt::Display for UsStockBarsIngestError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl std::error::Error for UsStockBarsIngestError {}

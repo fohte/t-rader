@@ -6,9 +6,9 @@ use rust_decimal::Decimal;
 
 use super::super::error::BarsUseCaseError;
 use super::super::types::BarsByInstrumentsQuery;
-use super::super::use_cases::BarsUseCases;
+use super::super::use_cases::UsStockBarsIngestUseCases;
 
-impl BarsUseCases {
+impl UsStockBarsIngestUseCases {
     pub(super) async fn preserve_adjustment_factors(
         &self,
         bars: &mut [Bar],
@@ -33,6 +33,7 @@ impl BarsUseCases {
             .max()
             .map(|timestamp| timestamp.fixed_offset());
         let stored_bars = self
+            .bars
             .repository
             .find_bars_by_instruments(BarsByInstrumentsQuery {
                 instrument_ids,

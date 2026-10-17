@@ -8,22 +8,25 @@ mod us_stock_ingest;
 mod us_stock_minute_bars_downsample;
 mod us_stock_source;
 mod use_cases;
+mod write_lock;
 mod write_throttle;
 
 #[cfg(feature = "test-support")]
 mod fake;
 
-pub use error::BarsUseCaseError;
+pub use error::{BarsUseCaseError, UsStockBarsIngestError};
 pub use repository::{BarsRepository, BarsRepositoryError, SharedBarsRepository};
 pub use types::{
     BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, IngestStats, LatestPrices,
-    UsStockBarTarget, UsStockBarsIngestStats, UsStockMinuteBarsDownsampleStats,
+    UsStockBarTarget, UsStockBarsIngestResult, UsStockBarsIngestStats,
+    UsStockMinuteBarsDownsampleStats,
 };
 pub use us_stock_source::{
     SharedUsStockBarSource, SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery,
     UsStockBarSource, UsStockBarSourceError, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
 };
-pub use use_cases::BarsUseCases;
+pub use use_cases::{BarsUseCases, UsStockBarsIngestUseCases};
+pub use write_lock::{SharedUsStockBarsWriteLock, UsStockBarsWriteLock, UsStockBarsWriteLockGuard};
 
 use chrono::{DateTime, Months, Timelike, Utc};
 

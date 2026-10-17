@@ -2,13 +2,13 @@ use core_domain::bar::Bar;
 
 use crate::bars::error::BarsUseCaseError;
 use crate::bars::types::UsStockBarsIngestStats;
-use crate::bars::use_cases::BarsUseCases;
+use crate::bars::use_cases::UsStockBarsIngestUseCases;
 use crate::bars::write_throttle::WriteThrottle;
 
 use super::UsStockBarTimeframe;
 use super::request_budget::RequestBudget;
 
-impl BarsUseCases {
+impl UsStockBarsIngestUseCases {
     pub(super) async fn persist_bars(
         &self,
         bars: Vec<Bar>,
@@ -28,16 +28,16 @@ impl BarsUseCases {
             return Ok(false);
         }
         let count = bars.len();
-        let transaction = self.unit_of_work.begin().await?;
+        let transaction = self.bars.unit_of_work.begin().await?;
         let write_started_at = self.clock.instant();
-        self.repository.upsert_bars(&transaction, bars).await?;
+        self.bars.repository.upsert_bars(&transaction, bars).await?;
         let commit_started_at = self.clock.instant();
         match timeframe {
             UsStockBarTimeframe::Daily => stats.daily_bars_upserted += count,
             UsStockBarTimeframe::Minute => stats.minute_bars_upserted += count,
             UsStockBarTimeframe::Hourly => stats.hourly_bars_upserted += count,
         }
-        self.unit_of_work.commit(transaction).await?;
+        self.bars.unit_of_work.commit(transaction).await?;
         let completed_at = self.clock.instant();
         let write_duration = completed_at.saturating_duration_since(write_started_at);
         let commit_duration = completed_at.saturating_duration_since(commit_started_at);

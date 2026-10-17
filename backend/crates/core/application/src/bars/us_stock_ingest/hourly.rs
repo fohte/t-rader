@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 
 use super::super::error::BarsUseCaseError;
-use super::super::use_cases::BarsUseCases;
+use super::super::use_cases::UsStockBarsIngestUseCases;
 
-impl BarsUseCases {
+impl UsStockBarsIngestUseCases {
     pub(super) async fn mark_hourly_history_completed(
         &self,
         instrument_ids: &[String],
@@ -18,7 +18,8 @@ impl BarsUseCases {
             .cloned()
             .collect::<Vec<_>>();
         if !completed_instrument_ids.is_empty() {
-            self.repository
+            self.bars
+                .repository
                 .mark_us_stock_hourly_bar_history_completed(
                     &completed_instrument_ids,
                     completed_through,

@@ -30,6 +30,7 @@ sqlx = { workspace = true, features = [
 tracing = { workspace = true }
 rust_decimal = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 backend-test-macros = { path = "../../libs/test-macros" }
