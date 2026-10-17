@@ -222,6 +222,34 @@ describe('NoteVersionBodyComments', () => {
     ])
   })
 
+  it('does not start a comment when a touch pointer taps the gutter', () => {
+    const source = `# サンプル見出し
+
+対象の段落です。`
+    renderNoteBodyComments(source)
+
+    const gutter = screen.getByRole('button', { name: '行 3 にコメント' })
+    fireEvent.pointerDown(gutter, { pointerType: 'touch' })
+    fireEvent.pointerUp(gutter, { pointerType: 'touch' })
+    fireEvent.click(gutter, { detail: 1 })
+
+    const getTouchGutterResult = () => ({
+      label: gutter.getAttribute('aria-label'),
+      marker: gutter.firstElementChild?.textContent ?? null,
+      buttonIsHighlighted: gutter.classList.contains('text-primary'),
+      composerCount: screen.queryAllByRole('textbox', { name: '行コメント' })
+        .length,
+      requests: apiRequests,
+    })
+    expect(getTouchGutterResult()).toEqual({
+      label: '行 3 にコメント',
+      marker: '+',
+      buttonIsHighlighted: false,
+      composerCount: 0,
+      requests: [],
+    })
+  })
+
   it('sends the union of gutter rows selected with Shift-click', async () => {
     const user = userEvent.setup()
     const source = '# サンプル見出し\n\n最初の段落\n\n次の段落'

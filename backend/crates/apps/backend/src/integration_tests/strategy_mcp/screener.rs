@@ -11,6 +11,8 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::super::screener_test_support::refresh_screener_snapshot;
+
 use super::test_server::StrategyServer;
 use super::tests_common::{build_server, insert_strategy};
 
@@ -196,6 +198,8 @@ async fn seed_screener_stocks(db: &gateway_postgres::DatabaseHandle) {
         ])
         .await
         .expect("insert screener valuations");
+
+    refresh_screener_snapshot(db).await;
 }
 
 #[backend_test_macros::database_test]
@@ -411,6 +415,7 @@ async fn screen_stocks_returns_hundred_rows_per_page(db: gateway_postgres::Datab
         .await
         .expect("insert screener page valuations");
 
+    refresh_screener_snapshot(&db).await;
     let server = build_server(db);
     let first_page = server
         .invoke::<_, Value>("screen_stocks", strategy_id, json!({}), None, None)

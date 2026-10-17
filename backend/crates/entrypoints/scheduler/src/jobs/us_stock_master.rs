@@ -3,7 +3,9 @@ use core_application::{
     us_stock_master_source::UsStockMasterSource,
 };
 
-use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
+use super::{
+    DAILY_TIMEOUT, require_source, run_and_refresh_screener_snapshot, run_with_ingest_run_log_state,
+};
 
 pub struct UsStockMasterIngest;
 
@@ -21,7 +23,11 @@ impl super::SchedulerJob for UsStockMasterIngest {
                         state.dependencies.us_stock_master_source,
                         "SEC US stock master source",
                     )?;
-                    sync_us_stock_master(&state.dependencies.us_stock_master, source.as_ref()).await
+                    run_and_refresh_screener_snapshot(
+                        &state.dependencies.screener_snapshot,
+                        sync_us_stock_master(&state.dependencies.us_stock_master, source.as_ref()),
+                    )
+                    .await
                 },
             )
             .await

@@ -12,6 +12,8 @@ use sea_orm::EntityTrait;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::super::screener_test_support::refresh_screener_snapshot;
+
 use crate::testing::create_test_server;
 
 fn normalize_result(mut result: Value) -> Value {
@@ -353,6 +355,8 @@ async fn seed_screener_data(db: &gateway_postgres::DatabaseHandle) {
     seed_financial_summary(db, "D0010", "2", 2, 123.5).await;
     seed_financial_summary(db, "D0020", "1", 2, 52.36).await;
     seed_financial_summary(db, "D0030", "1", 2, 114.0).await;
+
+    refresh_screener_snapshot(db).await;
 }
 
 #[backend_test_macros::database_test]
@@ -563,6 +567,78 @@ async fn screener_endpoint_keeps_missing_values_unless_their_metric_is_filtered(
 }
 
 #[backend_test_macros::database_test]
+async fn screener_endpoint_reads_updated_valuation_after_snapshot_refresh(
+    db: gateway_postgres::DatabaseHandle,
+) {
+    seed_screener_data(&db).await;
+    let server = create_test_server(db.clone()).await;
+    let before_refresh = server.get("/api/screener?min_per=11&max_per=11").await;
+
+    PostgresValuationRepository::new(db.clone())
+        .upsert(vec![valuation_at(
+            "D001",
+            date(3),
+            Some(Decimal::from(11)),
+            Some(Decimal::new(8, 1)),
+            Some(Decimal::new(102, 3)),
+            Some(Decimal::from(600_000)),
+        )])
+        .await
+        .expect("update screener valuation");
+
+    let stale_snapshot = server.get("/api/screener?min_per=11&max_per=11").await;
+    refresh_screener_snapshot(&db).await;
+    let refreshed_snapshot = server.get("/api/screener?min_per=11&max_per=11").await;
+
+    assert_eq!(
+        (
+            before_refresh.status_code(),
+            normalize_result(before_refresh.json::<Value>()),
+            stale_snapshot.status_code(),
+            normalize_result(stale_snapshot.json::<Value>()),
+            refreshed_snapshot.status_code(),
+            normalize_result(refreshed_snapshot.json::<Value>()),
+        ),
+        (
+            axum::http::StatusCode::OK,
+            json!({
+                "items": [],
+                "total_count": 0,
+                "as_of": "2098-01-03",
+                "page": 1,
+            }),
+            axum::http::StatusCode::OK,
+            json!({
+                "items": [],
+                "total_count": 0,
+                "as_of": "2098-01-03",
+                "page": 1,
+            }),
+            axum::http::StatusCode::OK,
+            json!({
+                "items": [
+                    {
+                        "id": "D001",
+                        "name": "Alpha Demo",
+                        "market": "market-a",
+                        "sector": "Sector Alpha",
+                        "close": 3250,
+                        "per": 11,
+                        "pbr": 0.8,
+                        "roe": 10.2,
+                        "dividend_yield": 3.8,
+                        "market_cap": 6000,
+                    },
+                ],
+                "total_count": 1,
+                "as_of": "2098-01-03",
+                "page": 1,
+            }),
+        ),
+    );
+}
+
+#[backend_test_macros::database_test]
 async fn screener_endpoint_limits_latest_metrics_to_thirty_days(
     db: gateway_postgres::DatabaseHandle,
 ) {
@@ -608,6 +684,7 @@ async fn screener_endpoint_limits_latest_metrics_to_thirty_days(
         .await
         .expect("insert screener window valuations");
 
+    refresh_screener_snapshot(&db).await;
     let server = create_test_server(db).await;
     let response = server.get("/api/screener").await;
 
@@ -687,6 +764,7 @@ async fn screener_endpoint_preserves_as_of_when_all_valuations_are_outside_the_w
         .await
         .expect("insert screener stale valuation");
 
+    refresh_screener_snapshot(&db).await;
     let server = create_test_server(db).await;
     let response = server.get("/api/screener").await;
 
@@ -743,6 +821,7 @@ async fn screener_endpoint_uses_next_year_forecast_after_fy_disclosures(
     seed_financial_summary_row(&db, "D0050", "2", 2, Some("FY"), None, Some(80.0)).await;
     seed_financial_summary_row(&db, "D0050", "3", 3, Some("FY"), None, None).await;
 
+    refresh_screener_snapshot(&db).await;
     let server = create_test_server(db).await;
     let response = server.get("/api/screener?min_dividend_yield=3.9").await;
 
@@ -822,6 +901,7 @@ async fn screener_endpoint_sorts_and_returns_one_hundred_rows_per_page(
         .await
         .expect("insert screener page valuations");
 
+    refresh_screener_snapshot(&db).await;
     let server = create_test_server(db).await;
     let first_page = server
         .get("/api/screener?sort_by=market_cap&sort_order=desc")

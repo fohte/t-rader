@@ -1,10 +1,14 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import type { GraphDef } from '#components/graph/types'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 const FLOW_DEF: GraphDef = {
   id: 'g-flow',
@@ -96,52 +100,137 @@ describe('GraphRenderer', () => {
     id: 'g-hover',
     layout: 'flow',
     nodes: [
-      { id: 'a', label: 'A' },
+      { id: 'group', label: 'Group' },
+      { id: 'a', label: 'A', parent: 'group' },
       { id: 'b', label: 'B' },
       { id: 'c', label: 'C' },
     ],
     edges: [{ source: 'a', target: 'b' }],
   }
 
+  function highlightClasses(node: Element | null) {
+    return Array.from(node?.classList ?? []).filter((className) =>
+      ['opacity-100', 'opacity-30', 'transition-opacity'].includes(className),
+    )
+  }
+
+  function highlightState(...nodes: (Element | null)[]) {
+    return nodes.map(highlightClasses)
+  }
+
   function renderHoverNodes() {
     render(<GraphRenderer def={HOVER_DEF} />)
     return {
-      nodeA: screen.getByText('A').closest('.react-flow__node'),
-      nodeB: screen.getByText('B').closest('.react-flow__node'),
-      nodeC: screen.getByText('C').closest('.react-flow__node'),
+      nodeA: screen.getByText('A').closest('[data-slot="graph-node"]'),
+      nodeB: screen.getByText('B').closest('[data-slot="graph-node"]'),
+      nodeC: screen.getByText('C').closest('[data-slot="graph-node"]'),
+      nodeGroup: document.querySelector('.react-flow__node-graphGroup > div'),
+      nodeAWrapper: screen.getByTestId('rf__node-a'),
     }
   }
 
   it('hover した node の 1 hop 隣接ノードだけハイライトする', () => {
-    const { nodeA, nodeB, nodeC } = renderHoverNodes()
-    expect(nodeA).not.toBeNull()
-    expect(nodeB).not.toBeNull()
-    expect(nodeC).not.toBeNull()
-    if (nodeA == null || nodeB == null || nodeC == null) return
+    const { nodeA, nodeB, nodeC, nodeGroup, nodeAWrapper } = renderHoverNodes()
 
-    fireEvent.mouseEnter(nodeA)
-    // b は a と edge で繋がる 1 hop 隣接、c は非隣接
-    expect(nodeA).toHaveClass('opacity-100')
-    expect(nodeA).not.toHaveClass('opacity-30')
-    expect(nodeB).toHaveClass('opacity-100')
-    expect(nodeB).not.toHaveClass('opacity-30')
-    expect(nodeC).toHaveClass('opacity-30', 'transition-opacity')
-    expect(nodeC).not.toHaveClass('opacity-100')
+    fireEvent.mouseEnter(nodeAWrapper)
+
+    expect(highlightState(nodeA, nodeB, nodeC, nodeGroup)).toEqual([
+      ['opacity-100'],
+      ['opacity-100'],
+      ['opacity-30', 'transition-opacity'],
+      ['opacity-30', 'transition-opacity'],
+    ])
+  })
+
+  it('hover した group node 自身をハイライトする', () => {
+    const { nodeA, nodeB, nodeC, nodeGroup } = renderHoverNodes()
+
+    fireEvent.mouseEnter(screen.getByTestId('rf__node-group'))
+
+    expect(highlightState(nodeA, nodeB, nodeC, nodeGroup)).toEqual([
+      ['opacity-30', 'transition-opacity'],
+      ['opacity-30', 'transition-opacity'],
+      ['opacity-30', 'transition-opacity'],
+      ['opacity-100'],
+    ])
   })
 
   it('mouseLeave で元のハイライトに戻す', () => {
-    const { nodeA, nodeB, nodeC } = renderHoverNodes()
-    expect(nodeA).not.toBeNull()
-    expect(nodeB).not.toBeNull()
-    expect(nodeC).not.toBeNull()
-    if (nodeA == null || nodeB == null || nodeC == null) return
+    const { nodeA, nodeB, nodeC, nodeGroup, nodeAWrapper } = renderHoverNodes()
+
+    fireEvent.mouseEnter(nodeAWrapper)
+    fireEvent.mouseLeave(nodeAWrapper)
+
+    expect(highlightState(nodeA, nodeB, nodeC, nodeGroup)).toEqual([
+      ['opacity-100'],
+      ['opacity-100'],
+      ['opacity-100'],
+      ['opacity-100'],
+    ])
+  })
+
+  it('hover しても計測済みの node は visible のまま', () => {
+    const width = 240
+    const height = 80
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(width)
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(
+      height,
+    )
+    // 初回だけ同期計測し、再登録時の通知前に hover 直後の状態を確認する
+    const measuredNodes = new WeakSet<Element>()
+    const contentRect: DOMRectReadOnly = {
+      x: 0,
+      y: 0,
+      width,
+      height,
+      top: 0,
+      right: width,
+      bottom: height,
+      left: 0,
+      toJSON: () => ({}),
+    }
+    const size: ResizeObserverSize = { inlineSize: width, blockSize: height }
+
+    class ImmediateResizeObserver implements ResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+
+      observe(target: Element): void {
+        if (!target.hasAttribute('data-id') || measuredNodes.has(target)) return
+        measuredNodes.add(target)
+        this.callback(
+          [
+            {
+              target,
+              contentRect,
+              borderBoxSize: [size],
+              contentBoxSize: [size],
+              devicePixelContentBoxSize: [size],
+            },
+          ],
+          this,
+        )
+      }
+
+      unobserve() {}
+
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', ImmediateResizeObserver)
+    vi.stubGlobal(
+      'DOMMatrixReadOnly',
+      class IdentityDOMMatrixReadOnly {
+        readonly m22 = 1
+      },
+    )
+
+    render(<GraphRenderer def={HOVER_DEF} />)
+    const nodeA = screen.getByTestId('rf__node-a')
+    const visibilityStates = [nodeA.style.visibility]
 
     fireEvent.mouseEnter(nodeA)
-    fireEvent.mouseLeave(nodeA)
-    expect(nodeA).toHaveClass('opacity-100')
-    expect(nodeB).toHaveClass('opacity-100')
-    expect(nodeC).toHaveClass('opacity-100')
-    expect(nodeC).not.toHaveClass('opacity-30')
+    visibilityStates.push(nodeA.style.visibility)
+
+    expect(visibilityStates).toEqual(['visible', 'visible'])
   })
 
   it('scatter layout の背景ノードは pointer-events-none で hover 判定から除外される', () => {
@@ -159,21 +248,29 @@ describe('GraphRenderer', () => {
     const background = document.querySelector(
       '.react-flow__node-graphScatterBackground',
     )
-    const nodeA = screen.getByText('点A').closest('.react-flow__node')
-    const nodeB = screen.getByText('点B').closest('.react-flow__node')
     expect(background).not.toBeNull()
-    expect(nodeA).not.toBeNull()
-    expect(nodeB).not.toBeNull()
-    if (background == null || nodeA == null || nodeB == null) return
-
-    expect(background).toHaveClass('pointer-events-none')
+    if (background == null) return
+    const nodeA = screen.getByText('点A').closest('[data-slot="graph-node"]')
+    const nodeB = screen.getByText('点B').closest('[data-slot="graph-node"]')
 
     // データノードが無い領域 (= 背景ノード) を hover しても、実データノードは
     // dim されない (hoveredId が背景ノードの id になってしまうバグの回帰確認)
     fireEvent.mouseEnter(background)
-    expect(nodeA).toHaveClass('opacity-100')
-    expect(nodeA).not.toHaveClass('opacity-30')
-    expect(nodeB).toHaveClass('opacity-100')
-    expect(nodeB).not.toHaveClass('opacity-30')
+    expect(backgroundHoverState(background, nodeA, nodeB)).toEqual([
+      true,
+      ['opacity-100'],
+      ['opacity-100'],
+    ])
   })
+
+  function backgroundHoverState(
+    background: Element,
+    nodeA: Element | null,
+    nodeB: Element | null,
+  ) {
+    return [
+      background.classList.contains('pointer-events-none'),
+      ...highlightState(nodeA, nodeB),
+    ]
+  }
 })

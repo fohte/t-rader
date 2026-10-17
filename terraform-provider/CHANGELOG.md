@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.5...terraform-provider-v0.1.6) (2026-10-17)
+
+
+### Features
+
+* **terraform-provider:** ダッシュボード管理を追加 ([#936](https://github.com/fohte/t-rader/issues/936)) ([0b39178](https://github.com/fohte/t-rader/commit/0b39178e0764ec542987da05929a7c5497a38a6f))
+
 ## [0.1.5](https://github.com/fohte/t-rader/compare/terraform-provider-v0.1.4...terraform-provider-v0.1.5) (2026-10-15)
 
 
