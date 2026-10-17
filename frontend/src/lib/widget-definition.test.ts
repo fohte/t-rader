@@ -120,6 +120,14 @@ describe('parseWidgetDefinition', () => {
       message: 'queries.daily の形式が正しくありません。',
     },
     {
+      name: 'a universe with both group and stocks',
+      source: VALID_WIDGET_DEFINITION.replace(
+        '    agg: mean',
+        '    agg: mean\n    universe:\n      group: demo-group\n      stocks:\n        - demo-code',
+      ),
+      message: 'queries.daily の形式が正しくありません。',
+    },
+    {
       name: 'a formula with a non-string value',
       source: VALID_WIDGET_DEFINITION.replace(
         'doubled: daily * 2',

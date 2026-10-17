@@ -155,6 +155,22 @@ describe('MarkdownBody widget blocks', () => {
     )
   })
 
+  it('shows a request-shape error as a definition error', () => {
+    useApiQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: { status: 422, error: 'invalid request body' },
+    })
+    render(<MarkdownBody source={VALID_WIDGET_SOURCE} />)
+
+    expect(
+      screen.getByRole('region', { name: 'ノート内ウィジェット' }).textContent,
+    ).toEqual(
+      'ウィジェット基準日 2099-01-05ウィジェットの定義を表示できません: invalid request body',
+    )
+  })
+
   it('shows an unavailable-data error when the requested date has no data', () => {
     useApiQuery.mockReturnValue({
       data: undefined,

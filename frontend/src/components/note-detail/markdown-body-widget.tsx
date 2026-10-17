@@ -69,7 +69,10 @@ export function MarkdownBodyWidget({ source }: { source: string }) {
     return (
       <MarkdownBodyWidgetView
         state={{
-          kind: status === 400 ? 'definition-error' : 'data-error',
+          kind:
+            status === 400 || status === 422
+              ? 'definition-error'
+              : 'data-error',
           asOf: parsed.asOf,
           message: messageOf(query.error),
         }}

@@ -4,8 +4,6 @@ import { parseDocument } from 'yaml'
 import type { components } from '#lib/api/schema.gen'
 
 type WidgetQueryRequest = components['schemas']['WidgetQueryRequest']
-type WidgetQueryRequestDefinition =
-  components['schemas']['WidgetQueryRequestDefinition']
 type WidgetUniverse = components['schemas']['WidgetUniverseRequest']
 type WidgetVisualization = components['schemas']['WidgetVisualizationRequest']
 type SupportedWidgetVisualization = Extract<
@@ -49,7 +47,7 @@ function isUniverse(value: unknown): value is WidgetUniverse {
   )
 }
 
-function isWidgetQuery(value: unknown): value is WidgetQueryRequestDefinition {
+function isWidgetQuery(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.metric === 'string' &&
