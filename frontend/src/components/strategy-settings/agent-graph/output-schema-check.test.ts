@@ -56,6 +56,96 @@ describe('checkOutputSchemaText', () => {
     })
   })
 
+  it('type-less なネストした object とその required を有効として扱う', () => {
+    const text = `record:
+  required: [details]
+  details:
+    required: [items]
+    items:
+      type: array
+      items:
+        type: string
+`
+
+    expect(checkOutputSchemaText(text)).toEqual({
+      issues: [],
+      output: {
+        record: {
+          required: ['details'],
+          details: {
+            required: ['items'],
+            items: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('ネストした object 内で items に書かれた required を有効として扱う', () => {
+    const text = `packet:
+  entries:
+    type: array
+    items:
+      required: [code, quantity]
+      code:
+        type: string
+      quantity:
+        type: number
+`
+
+    expect(checkOutputSchemaText(text)).toEqual({
+      issues: [],
+      output: {
+        packet: {
+          entries: {
+            type: 'array',
+            items: {
+              required: ['code', 'quantity'],
+              code: { type: 'string' },
+              quantity: { type: 'number' },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('items 内の不正な required は issue を 1 件だけ返す', () => {
+    const text = `packet:
+  entries:
+    type: array
+    items:
+      required: code
+      code:
+        type: string
+`
+
+    expect(checkOutputSchemaText(text)).toEqual({
+      issues: [
+        {
+          message:
+            'packet.entries.items.required は文字列の配列である必要があります',
+          line: 5,
+          column: 17,
+        },
+      ],
+      output: {
+        packet: {
+          entries: {
+            type: 'array',
+            items: {
+              required: 'code',
+              code: { type: 'string' },
+            },
+          },
+        },
+      },
+    })
+  })
+
   it('enum フィールドが配列でなければ issue を出すが output は commit される', () => {
     const text = `verdict:
   enum: supported

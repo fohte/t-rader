@@ -66,14 +66,30 @@ function checkRequired(
   }
 }
 
-// items がプリミティブ配列要素のスキーマ (`items: { type: string }`) かどうか。
-// own `type` を持つかどうかで toItemsSchema (output-schema.ts) と同じ判定をする
-function isPrimitiveItemsMap(node: {
+function hasStringType(node: {
   items: { key: unknown; value: unknown }[]
 }): boolean {
   const typePair = node.items.find((p) => scalarKey(p) === 'type')
   const typeValue: unknown = typePair?.value
   return isScalar(typeValue) && typeof typeValue.value === 'string'
+}
+
+// agent 側が type-less なフィールドマップとして扱う条件を再現する
+function isFieldSchemaMap(node: {
+  items: { key: unknown; value: unknown }[]
+}): boolean {
+  if (hasStringType(node)) return false
+
+  const requiredPair = node.items.find((pair) => scalarKey(pair) === 'required')
+  const requiredIsMetadata =
+    requiredPair !== undefined && !isMap(requiredPair.value)
+  const fieldPairs = node.items.filter(
+    (pair) => !(requiredIsMetadata && pair === requiredPair),
+  )
+  return (
+    (fieldPairs.length > 0 || requiredIsMetadata) &&
+    fieldPairs.every((pair) => isMap(pair.value))
+  )
 }
 
 // フィールド 1 件のスキーマ断片 (type/description/enum/items/required など) を検査する
@@ -92,14 +108,21 @@ function checkFieldSchema(
     )
     return
   }
-  // agent/src/strategy-agent/agent-graph/output-schema.ts の toFieldSchema は
-  // `required` を items がオブジェクト配列 (own type を持たない) のときにしか
-  // 使わない。items が無い、またはプリミティブ配列のときの required は実行時に
-  // 黙って無視されるため、その場合は構文チェックせず「無効」の issue を出す
+
+  if (isFieldSchemaMap(node)) {
+    const requiredPair = node.items.find(
+      (pair) => scalarKey(pair) === 'required',
+    )
+    const requiredIsMetadata =
+      requiredPair !== undefined && !isMap(requiredPair.value)
+    checkFieldsMap(lineCounter, node, requiredIsMetadata, issues, label)
+    return
+  }
+
+  // 配列フィールドの required は、items がフィールドマップの場合にだけ有効
   const itemsPair = node.items.find((p) => scalarKey(p) === 'items')
   const itemsValue: unknown = itemsPair?.value
-  const requiredIsEffective =
-    isMap(itemsValue) && !isPrimitiveItemsMap(itemsValue)
+  const requiredIsEffective = isMap(itemsValue) && isFieldSchemaMap(itemsValue)
 
   for (const pair of node.items) {
     const key = scalarKey(pair)
@@ -136,25 +159,7 @@ function checkItems(
   fieldLabel: string,
   issues: OutputSchemaIssue[],
 ): void {
-  const label = `${fieldLabel}.items`
-  if (!isMap(node)) {
-    pushIssue(
-      lineCounter,
-      node,
-      `${label} はオブジェクトである必要があります`,
-      issues,
-    )
-    return
-  }
-  if (isPrimitiveItemsMap(node)) {
-    checkFieldSchema(lineCounter, node, label, issues)
-  } else {
-    // オブジェクト配列要素のフィールドマップ。
-    // agent/src/strategy-agent/agent-graph/output-schema.ts の toObjectSchema は
-    // このマップから `required` を一切 strip しないため、ここでの `required` は
-    // 特別扱いされずただのフィールド名として扱われる (トップレベルとの非対称性)。
-    checkFieldsMap(lineCounter, node, false, issues)
-  }
+  checkFieldSchema(lineCounter, node, `${fieldLabel}.items`, issues)
 }
 
 // フィールド名 -> フィールドスキーマのマップ (output 自身、または object 配列の items) を検査する
@@ -163,15 +168,25 @@ function checkFieldsMap(
   map: { items: { key: unknown; value: unknown }[] },
   reserveRequired: boolean,
   issues: OutputSchemaIssue[],
+  label = '',
 ): void {
   for (const pair of map.items) {
     const key = scalarKey(pair)
     const value = pair.value
+    const fieldLabel =
+      label === ''
+        ? (key ?? '(フィールド)')
+        : `${label}.${key ?? '(フィールド)'}`
     if (reserveRequired && key === 'required') {
-      checkRequired(lineCounter, value, 'required', issues)
+      checkRequired(
+        lineCounter,
+        value,
+        label === '' ? 'required' : `${label}.required`,
+        issues,
+      )
       continue
     }
-    checkFieldSchema(lineCounter, value, key ?? '(フィールド)', issues)
+    checkFieldSchema(lineCounter, value, fieldLabel, issues)
   }
 }
 

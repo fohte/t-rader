@@ -63,6 +63,132 @@ describe('buildOutputJsonSchema', () => {
     })
   })
 
+  it('recursively converts type-less object fields and object array items', () => {
+    const output = {
+      record: {
+        required: ['label', 'details'],
+        label: { type: 'string' },
+        details: {
+          required: ['entries', 'items'],
+          items: { type: 'array', items: { type: 'string' } },
+          entries: {
+            type: 'array',
+            items: {
+              code: { type: 'string' },
+              attributes: {
+                enabled: { type: 'boolean' },
+                scores: { type: 'array', items: { type: 'number' } },
+              },
+            },
+            required: ['code', 'attributes'],
+          },
+        },
+      },
+    }
+
+    expect(buildOutputJsonSchema(output)).toEqual({
+      type: 'object',
+      properties: {
+        record: {
+          type: 'object',
+          properties: {
+            label: { type: 'string' },
+            details: {
+              type: 'object',
+              properties: {
+                items: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                entries: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      code: { type: 'string' },
+                      attributes: {
+                        type: 'object',
+                        properties: {
+                          enabled: { type: 'boolean' },
+                          scores: {
+                            type: 'array',
+                            items: { type: 'number' },
+                          },
+                        },
+                      },
+                    },
+                    required: ['code', 'attributes'],
+                  },
+                },
+              },
+              required: ['entries', 'items'],
+            },
+          },
+          required: ['label', 'details'],
+        },
+      },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+    })
+  })
+
+  it('uses required from object array items inside a nested object field', () => {
+    const output = {
+      packet: {
+        entries: {
+          type: 'array',
+          items: {
+            required: ['code', 'quantity'],
+            code: { type: 'string' },
+            quantity: { type: 'number' },
+          },
+        },
+      },
+    }
+
+    expect(buildOutputJsonSchema(output)).toEqual({
+      type: 'object',
+      properties: {
+        packet: {
+          type: 'object',
+          properties: {
+            entries: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string' },
+                  quantity: { type: 'number' },
+                },
+                required: ['code', 'quantity'],
+              },
+            },
+          },
+        },
+      },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+    })
+  })
+
+  it('preserves a type-less enum schema in array items', () => {
+    const output = {
+      labels: {
+        type: 'array',
+        items: { enum: ['north', 'south'] },
+      },
+    }
+
+    expect(buildOutputJsonSchema(output)).toEqual({
+      type: 'object',
+      properties: {
+        labels: {
+          type: 'array',
+          items: { enum: ['north', 'south'] },
+        },
+      },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+    })
+  })
+
   it('applies a top-level required list sibling to the output fields themselves', () => {
     const output = {
       verdict: { type: 'string' },
