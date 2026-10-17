@@ -24,16 +24,16 @@ const comment: NoteVersionComment = {
 
 afterEach(cleanup)
 
-function getRenderedOutput(container: HTMLElement) {
-  const body = screen.getByText(comment.body)
+function getRenderedOutput(container: HTMLElement, target: NoteVersionComment) {
+  const body = screen.getByText(target.body)
   return {
     authorLine: screen.getByText('あなた').parentElement?.textContent ?? null,
-    authorLabel: screen.queryByText(comment.author_label)?.textContent ?? null,
+    authorLabel: screen.queryByText(target.author_label)?.textContent ?? null,
     initialBadge: container.querySelector('span.size-4')?.textContent ?? null,
     anchorText:
-      comment.anchor_text == null
+      target.anchor_text == null
         ? null
-        : (screen.queryByText(comment.anchor_text)?.textContent ?? null),
+        : (screen.queryByText(target.anchor_text)?.textContent ?? null),
     resolutionStatus: screen.queryByText('✓ 解決済み')?.textContent ?? null,
     resolutionStatusIsButton:
       screen.queryByRole('button', { name: '✓ 解決済み' }) !== null,
@@ -49,86 +49,72 @@ function getRenderedOutput(container: HTMLElement) {
 }
 
 describe('NoteVersionCommentBody', () => {
-  it('shows an unresolved human comment without its stored author label or quote', () => {
-    const { container } = render(
-      <NoteVersionCommentBody
-        comment={comment}
-        isResolving={false}
-        onToggleResolved={() => {}}
-      />,
-    )
-
-    expect(getRenderedOutput(container)).toEqual({
-      authorLine: `あなた· ${formatRelative(comment.created_at)}`,
-      authorLabel: null,
-      initialBadge: null,
-      anchorText: null,
+  it.each([
+    {
+      name: 'shows an unresolved comment without its stored author label or quote',
+      resolved: false,
       resolutionStatus: null,
-      resolutionStatusIsButton: false,
-      actions: [{ label: '解決する', disabled: false }],
-      body: {
-        text: comment.body,
-        className: 'whitespace-pre-wrap leading-relaxed text-foreground',
-      },
-    })
-  })
-
-  it('requests resolving an unresolved comment', async () => {
-    const user = userEvent.setup()
-    const onToggleResolved = vi.fn()
-    render(
-      <NoteVersionCommentBody
-        comment={comment}
-        isResolving={false}
-        onToggleResolved={onToggleResolved}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: '解決する' }))
-
-    expect(onToggleResolved.mock.calls).toEqual([[comment]])
-  })
-
-  it('shows the resolved status separately from its reset action', () => {
-    const resolvedComment = { ...comment, resolved: true }
+      action: '解決する',
+      bodyClassName: 'whitespace-pre-wrap leading-relaxed text-foreground',
+    },
+    {
+      name: 'shows the resolved status separately from its reset action',
+      resolved: true,
+      resolutionStatus: '✓ 解決済み',
+      action: '未解決に戻す',
+      bodyClassName:
+        'whitespace-pre-wrap leading-relaxed text-muted-foreground line-through decoration-border',
+    },
+  ])('$name', ({ resolved, resolutionStatus, action, bodyClassName }) => {
+    const target = { ...comment, resolved }
     const { container } = render(
       <NoteVersionCommentBody
-        comment={resolvedComment}
+        comment={target}
         isResolving={false}
         onToggleResolved={() => {}}
       />,
     )
 
-    expect(getRenderedOutput(container)).toEqual({
-      authorLine: `あなた· ${formatRelative(comment.created_at)}`,
+    expect(getRenderedOutput(container, target)).toEqual({
+      authorLine: `あなた· ${formatRelative(target.created_at)}`,
       authorLabel: null,
       initialBadge: null,
       anchorText: null,
-      resolutionStatus: '✓ 解決済み',
+      resolutionStatus,
       resolutionStatusIsButton: false,
-      actions: [{ label: '未解決に戻す', disabled: false }],
+      actions: [{ label: action, disabled: false }],
       body: {
-        text: comment.body,
-        className:
-          'whitespace-pre-wrap leading-relaxed text-muted-foreground line-through decoration-border',
+        text: target.body,
+        className: bodyClassName,
       },
     })
   })
 
-  it('requests reopening a resolved comment', async () => {
+  it.each([
+    {
+      name: 'requests resolving an unresolved comment',
+      resolved: false,
+      action: '解決する',
+    },
+    {
+      name: 'requests reopening a resolved comment',
+      resolved: true,
+      action: '未解決に戻す',
+    },
+  ])('$name', async ({ resolved, action }) => {
     const user = userEvent.setup()
     const onToggleResolved = vi.fn()
-    const resolvedComment = { ...comment, resolved: true }
+    const target = { ...comment, resolved }
     render(
       <NoteVersionCommentBody
-        comment={resolvedComment}
+        comment={target}
         isResolving={false}
         onToggleResolved={onToggleResolved}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '未解決に戻す' }))
+    await user.click(screen.getByRole('button', { name: action }))
 
-    expect(onToggleResolved.mock.calls).toEqual([[resolvedComment]])
+    expect(onToggleResolved.mock.calls).toEqual([[target]])
   })
 })

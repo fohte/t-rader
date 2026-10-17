@@ -13,31 +13,26 @@ export function NoteVersionCommentBody({
   onToggleResolved,
 }: NoteVersionCommentBodyProps) {
   const isLLM = comment.author_kind === 'llm'
-  const resolutionControls = comment.resolved ? (
+  const resolutionControls = (
     <>
-      <span className="text-status-approved">✓ 解決済み</span>
+      {comment.resolved && (
+        <span className="text-status-approved">✓ 解決済み</span>
+      )}
       <button
         type="button"
         onClick={() => {
           onToggleResolved(comment)
         }}
         disabled={isResolving}
-        className="text-muted-foreground underline-offset-2 hover:text-primary hover:underline disabled:opacity-50"
+        className={
+          comment.resolved
+            ? 'text-muted-foreground underline-offset-2 hover:text-primary hover:underline disabled:opacity-50'
+            : 'border border-border px-1.5 py-0.5 text-2xs text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50'
+        }
       >
-        未解決に戻す
+        {comment.resolved ? '未解決に戻す' : '解決する'}
       </button>
     </>
-  ) : (
-    <button
-      type="button"
-      onClick={() => {
-        onToggleResolved(comment)
-      }}
-      disabled={isResolving}
-      className="border border-border px-1.5 py-0.5 text-2xs text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
-    >
-      解決する
-    </button>
   )
 
   return (
