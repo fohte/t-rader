@@ -65,6 +65,14 @@ const contextValue = {
   onGutterPointerDown: () => {},
   onGutterClick: () => {},
 }
+const emptyContextValue = {
+  ...contextValue,
+  props: { ...rangeComments, comments: [] },
+}
+const selectedContextValue = {
+  ...emptyContextValue,
+  selectedRange: { startLine: 3, endLine: 4 },
+}
 
 const meta = {
   title: 'NoteDetail/MarkdownBodyRangeBlock',
@@ -85,11 +93,45 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const BlockShowsItsCommentThread: Story = {
-  name: 'shows the thread below the last line in the block range.',
+  name: 'the gutter marks the block and shows its comment thread.',
   args: {
     node,
     children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
   },
+}
+
+export const GutterIsEmptyWithoutComments: Story = {
+  name: 'the gutter stays empty when no comment is attached.',
+  args: {
+    node,
+    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
+  },
+  decorators: [
+    (Story) => (
+      <MarkdownBodyRangeCommentContext.Provider value={emptyContextValue}>
+        <div className="max-w-3xl border border-border bg-background p-4 text-foreground">
+          <Story />
+        </div>
+      </MarkdownBodyRangeCommentContext.Provider>
+    ),
+  ],
+}
+
+export const GutterMarksSelectedBlock: Story = {
+  name: 'the gutter marks the selected source range.',
+  args: {
+    node,
+    children: <p className="my-2.5 text-sm">対象の段落です。次の行です。</p>,
+  },
+  decorators: [
+    (Story) => (
+      <MarkdownBodyRangeCommentContext.Provider value={selectedContextValue}>
+        <div className="max-w-3xl border border-border bg-background p-4 text-foreground">
+          <Story />
+        </div>
+      </MarkdownBodyRangeCommentContext.Provider>
+    ),
+  ],
 }
 
 export const BlockShowsItsCommentThreadWithoutGutter: Story = {

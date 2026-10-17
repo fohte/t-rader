@@ -27,6 +27,17 @@ const nestedComment: NoteVersionComment = {
   end_line: 2,
   created_at: '2026-01-12T03:00:00Z',
 }
+const gutterComment: NoteVersionComment = {
+  ...nestedComment,
+  start_line: 3,
+  end_line: 4,
+  anchor_text: '対象の段落です。',
+}
+
+interface GutterState {
+  comments?: NoteVersionComment[]
+  selectedRange?: { startLine: number; endLine: number } | null
+}
 
 const rangeCommentProps: MarkdownBodyRangeCommentProps = {
   comments: [nestedComment],
@@ -99,7 +110,80 @@ function renderNestedList(props: MarkdownBodyRangeCommentProps) {
   )
 }
 
+function renderGutterBlock({
+  comments = [],
+  selectedRange = null,
+}: GutterState = {}) {
+  return render(
+    <MarkdownBodyRangeCommentContext.Provider
+      value={{
+        props: { ...rangeCommentProps, comments },
+        selectedRange,
+        refChipTexts: {},
+        onGutterPointerDown: () => {},
+        onGutterClick: () => {},
+      }}
+    >
+      <MarkdownBodyRangeBlock
+        node={markdownNode('p', 3, 4)}
+        element={<p>対象の段落です。</p>}
+      />
+    </MarkdownBodyRangeCommentContext.Provider>,
+  )
+}
+
+function getGutterState() {
+  const button = screen.getByRole('button', {
+    name: '行 3 から 4 にコメント',
+  })
+  const marker = button.firstElementChild
+  return {
+    label: button.getAttribute('aria-label'),
+    marker: marker?.textContent ?? null,
+    markerAccessible: marker?.getAttribute('aria-hidden') ?? null,
+    markerClassName: marker?.className ?? null,
+    buttonIsHighlighted: button.classList.contains('text-primary'),
+  }
+}
+
 describe('MarkdownBodyRangeBlock', () => {
+  it('keeps the gutter visually empty and retains its accessible label', () => {
+    renderGutterBlock()
+
+    expect(getGutterState()).toEqual({
+      label: '行 3 から 4 にコメント',
+      marker: '+',
+      markerAccessible: 'true',
+      markerClassName:
+        'opacity-0 group-hover:opacity-100 group-hover:text-primary',
+      buttonIsHighlighted: false,
+    })
+  })
+
+  it('shows a marker instead of a line number for a commented block', () => {
+    renderGutterBlock({ comments: [gutterComment] })
+
+    expect(getGutterState()).toEqual({
+      label: '行 3 から 4 にコメント',
+      marker: '●',
+      markerAccessible: 'true',
+      markerClassName: '',
+      buttonIsHighlighted: true,
+    })
+  })
+
+  it('shows a marker instead of a line number for a selected block', () => {
+    renderGutterBlock({ selectedRange: { startLine: 3, endLine: 4 } })
+
+    expect(getGutterState()).toEqual({
+      label: '行 3 から 4 にコメント',
+      marker: '●',
+      markerAccessible: 'true',
+      markerClassName: '',
+      buttonIsHighlighted: true,
+    })
+  })
+
   it('renders a nested list comment only below its innermost item', () => {
     renderNestedList(rangeCommentProps)
 

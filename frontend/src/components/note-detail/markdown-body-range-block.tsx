@@ -5,6 +5,7 @@ import {
   isValidElement,
   type ReactNode,
   useContext,
+  useRef,
 } from 'react'
 import { type ExtraProps } from 'react-markdown'
 
@@ -101,6 +102,7 @@ function descendantSourceBlockRanges(
 interface RangeBlockGutterButtonProps {
   range: SourceLineRange
   isSelected: boolean
+  isCommented: boolean
   onPointerDown: (range: SourceLineRange) => void
   onClick: (range: SourceLineRange, shiftKey: boolean) => void
   className: string
@@ -110,26 +112,52 @@ interface RangeBlockGutterButtonProps {
 function RangeBlockGutterButton({
   range,
   isSelected,
+  isCommented,
   onPointerDown,
   onClick,
   className,
   style,
 }: RangeBlockGutterButtonProps) {
+  const pointerTypeRef = useRef<string | null>(null)
+
   return (
     <button
       type="button"
       aria-label={`行 ${String(range.startLine)}${range.endLine > range.startLine ? ` から ${String(range.endLine)}` : ''} にコメント`}
       data-comment-text-ignore="true"
-      onPointerDown={() => {
+      onPointerDown={(event) => {
+        pointerTypeRef.current = event.pointerType
+        if (event.pointerType === 'touch') return
         onPointerDown(range)
       }}
+      onPointerCancel={() => {
+        pointerTypeRef.current = null
+      }}
       onClick={(event) => {
+        const pointerType =
+          'pointerType' in event.nativeEvent
+            ? event.nativeEvent.pointerType
+            : null
+        const isTouchClick =
+          pointerType === 'touch' ||
+          (event.detail > 0 && pointerTypeRef.current === 'touch')
+        pointerTypeRef.current = null
+        if (isTouchClick) return
         onClick(range, event.shiftKey)
       }}
       className={className}
       style={style}
     >
-      {isSelected ? '+' : String(range.startLine)}
+      {isSelected || isCommented ? (
+        <span aria-hidden="true">●</span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="opacity-0 group-hover:opacity-100 group-hover:text-primary"
+        >
+          +
+        </span>
+      )}
     </button>
   )
 }
@@ -241,6 +269,7 @@ export function MarkdownBodyRangeBlock({
         <RangeBlockGutterButton
           range={range}
           isSelected={presentation.isSelected}
+          isCommented={presentation.isCommented}
           onPointerDown={context.onGutterPointerDown}
           onClick={context.onGutterClick}
           className={`absolute -left-11 top-1.5 ${gutterButtonClassName}`}
@@ -266,7 +295,7 @@ export function MarkdownBodyRangeBlock({
             data-source-block="true"
             data-source-start-line={range.startLine}
             data-source-end-line={range.endLine}
-            className={`${rowClassName} ${isBlockSelected ? 'bg-primary/10' : ''}`}
+            className={`${rowClassName} group ${isBlockSelected ? 'bg-primary/10' : ''}`}
           >
             {rowCells}
           </tr>
@@ -316,6 +345,7 @@ export function MarkdownBodyRangeBlock({
     <RangeBlockGutterButton
       range={range}
       isSelected={presentation.isSelected}
+      isCommented={presentation.isCommented}
       onPointerDown={context.onGutterPointerDown}
       onClick={context.onGutterClick}
       className={`absolute ${gutterButtonClassName}`}
@@ -328,7 +358,7 @@ export function MarkdownBodyRangeBlock({
     typeof renderedContent.type === 'string'
   if (isIntrinsicElement && sourceBlockTag === 'li') {
     const hostElement = cloneElement(renderedContent, {
-      className: `${renderedContent.props.className ?? ''} relative ${isBlockSelected ? 'bg-primary/10' : ''}`,
+      className: `${renderedContent.props.className ?? ''} group relative ${isBlockSelected ? 'bg-primary/10' : ''}`,
       'data-source-block': 'true',
       'data-source-start-line': range.startLine,
       'data-source-end-line': range.endLine,
@@ -360,7 +390,7 @@ export function MarkdownBodyRangeBlock({
         data-source-block="true"
         data-source-start-line={range.startLine}
         data-source-end-line={range.endLine}
-        className="relative min-w-0"
+        className="group relative min-w-0"
       >
         {gutterButton}
         {commentMarker}
