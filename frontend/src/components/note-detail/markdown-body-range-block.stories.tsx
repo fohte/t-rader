@@ -61,6 +61,7 @@ const rangeComments: MarkdownBodyRangeCommentProps = {
 const contextValue = {
   props: rangeComments,
   selectedRange: null,
+  refChipTexts: {},
   onGutterPointerDown: () => {},
   onGutterClick: () => {},
 }

@@ -32,6 +32,7 @@ export interface MarkdownBodyRangeCommentProps {
 export interface MarkdownBodyRangeCommentContextValue {
   props: MarkdownBodyRangeCommentProps
   selectedRange: SourceLineRange | null
+  refChipTexts: Record<string, string>
   onGutterPointerDown: (range: SourceLineRange) => void
   onGutterClick: (range: SourceLineRange, shiftKey: boolean) => void
 }

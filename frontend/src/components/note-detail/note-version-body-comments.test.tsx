@@ -110,9 +110,12 @@ function selectParagraphText(text: string): HTMLElement {
   if (textNode == null) {
     throw new Error('本文の段落にテキストがありません')
   }
+  const textContent = textNode.textContent ?? ''
+  const start = textContent.indexOf(text)
+  if (start === -1) throw new Error('選択する文字列が段落にありません')
   const range = document.createRange()
-  range.setStart(textNode, 0)
-  range.setEnd(textNode, text.length)
+  range.setStart(textNode, start)
+  range.setEnd(textNode, start + text.length)
   Object.defineProperty(range, 'getBoundingClientRect', {
     value: () => new DOMRect(20, 100, 140, 20),
   })
@@ -129,36 +132,56 @@ describe('NoteVersionBodyComments', () => {
 
 対象の段落です。
 次の行です。`
-    renderNoteBodyComments(source)
+    const { container } = renderNoteBodyComments(source)
 
-    const paragraph = selectParagraphText('対象の段落です。')
+    const selectedText = '段落です。'
+    const paragraph = selectParagraphText(selectedText)
     fireEvent.mouseUp(paragraph)
     fireEvent(document, new Event('selectionchange'))
 
     await user.click(
       screen.getByRole('button', { name: '選択した本文にコメント' }),
     )
-    await user.type(
-      await screen.findByRole('textbox', { name: '行コメント' }),
-      '根拠を補足してください。',
-    )
+    const commentInput = await screen.findByRole('textbox', {
+      name: '選択した箇所へのコメント',
+    })
+    await user.type(commentInput, '根拠を補足してください。')
     await user.click(screen.getByRole('button', { name: '送信' }))
 
-    expect(apiRequests).toEqual([
-      {
-        method: 'POST',
-        path: '/api/comments',
-        body: {
-          target_kind: 'note_version',
-          target_id: 'sample-version',
-          body: '根拠を補足してください。',
-          anchor_text: '対象の段落です。',
-          anchor_side: 'new',
-          start_line: 3,
-          end_line: 4,
+    const getCommentResult = () => ({
+      composerQuote:
+        commentInput.parentElement?.querySelector('blockquote')?.textContent ??
+        null,
+      placeholder: commentInput.getAttribute('placeholder'),
+      highlightedText: [
+        ...container.querySelectorAll(
+          'mark[data-comment-text-highlight="true"]',
+        ),
+      ].map((mark) => mark.textContent),
+      paragraphHasBlockHighlight: paragraph.classList.contains('bg-primary/10'),
+      requests: apiRequests,
+    })
+    expect(getCommentResult()).toEqual({
+      composerQuote: null,
+      placeholder: '選択した箇所へのコメント',
+      highlightedText: [selectedText],
+      paragraphHasBlockHighlight: false,
+      requests: [
+        {
+          method: 'POST',
+          path: '/api/comments',
+          body: {
+            target_kind: 'note_version',
+            target_id: 'sample-version',
+            body: '根拠を補足してください。',
+            anchor_text: selectedText,
+            anchor_side: 'new',
+            start_line: 3,
+            end_line: 4,
+          },
         },
-      },
-    ])
+      ],
+    })
   })
 
   it('shows the comment action for a text selection after touch ends', async () => {
@@ -175,7 +198,9 @@ describe('NoteVersionBodyComments', () => {
       screen.getByRole('button', { name: '選択した本文にコメント' }),
     )
     await user.type(
-      await screen.findByRole('textbox', { name: '行コメント' }),
+      await screen.findByRole('textbox', {
+        name: '選択した箇所へのコメント',
+      }),
       'タッチ選択の指摘です。',
     )
     await user.click(screen.getByRole('button', { name: '送信' }))
@@ -209,27 +234,34 @@ describe('NoteVersionBodyComments', () => {
     fireEvent.pointerDown(secondGutter)
     fireEvent.pointerUp(secondGutter)
     fireEvent.click(secondGutter, { shiftKey: true })
-    await user.type(
-      screen.getByRole('textbox', { name: '行コメント' }),
-      '段落をまとめて確認してください。',
-    )
+    const lineCommentInput = screen.getByRole('textbox', {
+      name: '行コメント',
+    })
+    await user.type(lineCommentInput, '段落をまとめて確認してください。')
     await user.click(screen.getByRole('button', { name: '送信' }))
 
-    expect(apiRequests).toEqual([
-      {
-        method: 'POST',
-        path: '/api/comments',
-        body: {
-          target_kind: 'note_version',
-          target_id: 'sample-version',
-          body: '段落をまとめて確認してください。',
-          anchor_text: '最初の段落\n\n次の段落',
-          anchor_side: 'new',
-          start_line: 3,
-          end_line: 5,
+    const getLineCommentResult = () => ({
+      placeholder: lineCommentInput.getAttribute('placeholder'),
+      requests: apiRequests,
+    })
+    expect(getLineCommentResult()).toEqual({
+      placeholder: 'この行へのコメント',
+      requests: [
+        {
+          method: 'POST',
+          path: '/api/comments',
+          body: {
+            target_kind: 'note_version',
+            target_id: 'sample-version',
+            body: '段落をまとめて確認してください。',
+            anchor_text: '最初の段落\n\n次の段落',
+            anchor_side: 'new',
+            start_line: 3,
+            end_line: 5,
+          },
         },
-      },
-    ])
+      ],
+    })
   })
 
   it('sends the source range dragged across body blocks', async () => {

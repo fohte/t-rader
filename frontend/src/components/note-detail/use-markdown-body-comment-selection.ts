@@ -16,6 +16,7 @@ export interface SourceLineRange {
 
 export interface TextSelectionAction {
   text: string
+  textOffset?: number
   range: SourceLineRange
   position: { top: number; left: number }
 }
@@ -74,6 +75,27 @@ function rangesEqual(
   return a?.startLine === b?.startLine && a?.endLine === b?.endLine
 }
 
+function textOffsetWithinBlock(
+  block: HTMLElement,
+  range: Range,
+): number | null {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.parentElement?.closest('[data-comment-text-ignore="true"]')
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT
+    },
+  })
+  let offset = 0
+  let node = walker.nextNode()
+  while (node != null) {
+    if (node === range.startContainer) return offset + range.startOffset
+    offset += node.textContent?.length ?? 0
+    node = walker.nextNode()
+  }
+  return null
+}
+
 export function useMarkdownBodyCommentSelection({
   enabled,
   source,
@@ -105,12 +127,19 @@ export function useMarkdownBodyCommentSelection({
   )
 
   const startComment = useCallback(
-    (range: SourceLineRange, text = blockText(range)): void => {
+    (
+      range: SourceLineRange,
+      text = blockText(range),
+      isTextSelection = false,
+      textOffset?: number,
+    ): void => {
       onStartComment({
         side: 'new',
         lineNumber: range.startLine,
         endLineNumber: range.endLine,
         text,
+        ...(isTextSelection ? { isTextSelection: true } : {}),
+        ...(textOffset == null ? {} : { textOffset }),
       })
       updateSelectedRange(range)
       setTextSelectionAction(null)
@@ -143,9 +172,17 @@ export function useMarkdownBodyCommentSelection({
         setTextSelectionAction(null)
         return
       }
+      const startBlock = elementForNode(
+        selected.startContainer,
+      )?.closest<HTMLElement>('[data-source-block="true"]')
+      const textOffset =
+        startBlock == null
+          ? undefined
+          : textOffsetWithinBlock(startBlock, selected)
       const rect = selected.getBoundingClientRect()
       setTextSelectionAction({
         text: selection.toString(),
+        ...(textOffset == null ? {} : { textOffset }),
         range: mergeRanges(startRange, endRange),
         position: {
           top: rect.top < 44 ? rect.bottom + 8 : rect.top - 40,
@@ -271,7 +308,12 @@ export function useMarkdownBodyCommentSelection({
 
   const startTextComment = useCallback((): void => {
     if (textSelectionAction == null) return
-    startComment(textSelectionAction.range, textSelectionAction.text)
+    startComment(
+      textSelectionAction.range,
+      textSelectionAction.text,
+      true,
+      textSelectionAction.textOffset,
+    )
   }, [startComment, textSelectionAction])
 
   const clearBlockSelection = useCallback((): void => {

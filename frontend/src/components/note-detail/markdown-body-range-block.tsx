@@ -17,6 +17,7 @@ import {
   NOTE_BODY_GUTTER_GAP_REM,
   NOTE_BODY_INDENT_REM,
 } from '#components/note-detail/markdown-body-range-comment-context'
+import { highlightFirstTextMatch } from '#components/note-detail/markdown-body-text-highlight'
 import { NOTE_BODY_GUTTER_CARD_PADDING_REM } from '#components/note-detail/note-body-card'
 import {
   commentsForThreads,
@@ -36,6 +37,8 @@ interface CommentBlockPresentation {
   isActive: boolean
   isCommented: boolean
   isSelected: boolean
+  isTextSelection: boolean
+  highlightText: string | null
   comments: NoteVersionComment[]
 }
 
@@ -157,6 +160,13 @@ function commentBlockPresentation(
     activeRange.endLine >= range.startLine &&
     activeRange.endLine <= range.endLine &&
     !belongsToDescendant(activeRange)
+  const isTextSelection = isActive && activeAnchor.isTextSelection === true
+  const commentsOverlappingBlock = anchoredComments.filter((comment) =>
+    overlapsBlock(rangeForComment(comment)),
+  )
+  const commentsForTextHighlight = commentsOverlappingBlock.filter(
+    (comment) => !belongsToDescendant(rangeForComment(comment)),
+  )
   const anchor = isActive
     ? activeAnchor
     : threadTopLevelComments[0] == null
@@ -182,9 +192,16 @@ function commentBlockPresentation(
       : getDiffCommentAnchorKey(anchor),
     activeCommentKey: isActive ? props.activeCommentKey : null,
     isActive,
-    isCommented: anchoredComments.some((comment) =>
-      overlapsBlock(rangeForComment(comment)),
-    ),
+    isCommented: commentsOverlappingBlock.length > 0,
+    isTextSelection,
+    highlightText: isTextSelection
+      ? activeAnchor.text
+      : isActive
+        ? null
+        : (commentsForTextHighlight.find(
+            (comment) =>
+              comment.anchor_text != null && comment.anchor_text !== '',
+          )?.anchor_text ?? null),
     isSelected:
       (selectedRange != null && overlapsBlock(selectedRange)) ||
       (activeRange != null && overlapsBlock(activeRange)),
@@ -213,6 +230,7 @@ function RangeBlockGutterButton({
     <button
       type="button"
       aria-label={`行 ${String(range.startLine)}${range.endLine > range.startLine ? ` から ${String(range.endLine)}` : ''} にコメント`}
+      data-comment-text-ignore="true"
       onPointerDown={() => {
         onPointerDown(range)
       }}
@@ -290,6 +308,19 @@ export function MarkdownBodyRangeBlock({
     sourceBlockTag === 'li',
   )
   const presentation = commentBlockPresentation(range, context, childRanges)
+  const textHighlight =
+    presentation.highlightText == null || presentation.highlightText === ''
+      ? null
+      : highlightFirstTextMatch(content, presentation.highlightText, {
+          textOffset: presentation.isTextSelection
+            ? presentation.anchor.textOffset
+            : undefined,
+          refChipTexts: context.refChipTexts,
+        })
+  const isBlockSelected =
+    (presentation.isSelected && !presentation.isTextSelection) ||
+    textHighlight?.match === 'missing'
+  const renderedContent = textHighlight?.children ?? content
   const { props } = context
   const showThread = presentation.isActive || presentation.comments.length > 0
   const gutterButtonClassName = `z-10 min-h-7 w-11 select-none text-right font-mono text-2xs ${presentation.isSelected || presentation.isCommented ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`
@@ -297,6 +328,7 @@ export function MarkdownBodyRangeBlock({
     presentation.isSelected || presentation.isCommented ? (
       <span
         aria-hidden="true"
+        data-comment-text-ignore="true"
         className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary"
         style={{
           left:
@@ -314,7 +346,7 @@ export function MarkdownBodyRangeBlock({
 
   if (variant === 'table-row') {
     const cells = Children.count(content)
-    const rowCells = Children.toArray(content)
+    const rowCells = Children.toArray(renderedContent)
     const tableCellGutter = (
       <>
         <RangeBlockGutterButton
@@ -345,7 +377,7 @@ export function MarkdownBodyRangeBlock({
             data-source-block="true"
             data-source-start-line={range.startLine}
             data-source-end-line={range.endLine}
-            className={`${rowClassName} ${presentation.isSelected ? 'bg-primary/10' : ''}`}
+            className={`${rowClassName} ${isBlockSelected ? 'bg-primary/10' : ''}`}
           >
             {rowCells}
           </tr>
@@ -364,13 +396,13 @@ export function MarkdownBodyRangeBlock({
   if (!showGutter) {
     return (
       <MarkdownBodySourceBlockContext.Provider value={sourceBlockTag}>
-        <div className="min-w-0">
+        <div className={`min-w-0 ${isBlockSelected ? 'bg-primary/10' : ''}`}>
           <div
             data-source-block="true"
             data-source-start-line={range.startLine}
             data-source-end-line={range.endLine}
           >
-            {content}
+            {renderedContent}
           </div>
           {commentThread}
         </div>
@@ -403,17 +435,17 @@ export function MarkdownBodyRangeBlock({
   )
 
   const isIntrinsicElement =
-    isValidElement<RangeBlockElementProps>(content) &&
-    typeof content.type === 'string'
+    isValidElement<RangeBlockElementProps>(renderedContent) &&
+    typeof renderedContent.type === 'string'
   if (isIntrinsicElement && sourceBlockTag === 'li') {
-    const hostElement = cloneElement(content, {
-      className: `${content.props.className ?? ''} relative ${presentation.isSelected ? 'bg-primary/10' : ''}`,
+    const hostElement = cloneElement(renderedContent, {
+      className: `${renderedContent.props.className ?? ''} relative ${isBlockSelected ? 'bg-primary/10' : ''}`,
       'data-source-block': 'true',
       'data-source-start-line': range.startLine,
       'data-source-end-line': range.endLine,
       children: (
         <>
-          {content.props.children}
+          {renderedContent.props.children}
           {gutterButton}
           {commentMarker}
           {indentedCommentThread}
@@ -428,10 +460,10 @@ export function MarkdownBodyRangeBlock({
   }
 
   const hostElement = isIntrinsicElement
-    ? cloneElement(content, {
-        className: `${content.props.className ?? ''} ${presentation.isSelected ? 'bg-primary/10' : ''}`,
+    ? cloneElement(renderedContent, {
+        className: `${renderedContent.props.className ?? ''} ${isBlockSelected ? 'bg-primary/10' : ''}`,
       })
-    : content
+    : renderedContent
 
   return (
     <MarkdownBodySourceBlockContext.Provider value={sourceBlockTag}>

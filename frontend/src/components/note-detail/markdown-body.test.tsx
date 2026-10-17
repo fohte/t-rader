@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -49,6 +55,24 @@ function QueryClientWrapper({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
+}
+
+function bodyComment(anchorText: string): NoteVersionComment {
+  return {
+    id: 'sample-text-comment',
+    target_kind: 'note_version',
+    target_id: 'sample-version',
+    parent_id: null,
+    body: 'この引用を確認してください。',
+    author_kind: 'human',
+    author_label: '架空の担当者',
+    resolved: false,
+    anchor_text: anchorText,
+    anchor_side: 'new',
+    start_line: 1,
+    end_line: 1,
+    created_at: '2026-01-12T03:00:00Z',
+  }
 }
 
 beforeEach(() => {
@@ -259,40 +283,189 @@ describe('MarkdownBody', () => {
     ])
   })
 
-  it('renders a nested list comment once below its anchored item', () => {
+  it('highlights a nested list quote without highlighting its comment thread', () => {
+    const anchorText = '試験用の子項目'
     const comment: NoteVersionComment = {
       id: 'nested-list-comment',
       target_kind: 'note_version',
       target_id: 'sample-version',
       parent_id: null,
-      body: '入れ子項目へのコメントです。',
+      body: '試験用のコメントです。',
       author_kind: 'human',
       author_label: 'レビュー担当者',
       resolved: false,
-      anchor_text: '入れ子の項目',
+      anchor_text: anchorText,
       anchor_side: 'new',
       start_line: 2,
       end_line: 2,
       created_at: '2026-01-12T03:00:00Z',
     }
     const source = `- 親項目
-    - 入れ子の項目`
-    render(
+    - ${anchorText}`
+    const { container } = render(
       <MarkdownBody
         source={source}
         rangeComments={{ ...emptyRangeComments, comments: [comment] }}
       />,
     )
     const renderedComments = screen.getAllByText(comment.body)
+    const highlightedItems = [
+      ...container.querySelectorAll('li[data-source-block="true"]'),
+    ].map((item) => ({
+      line: item.getAttribute('data-source-start-line'),
+      highlighted: item.classList.contains('bg-primary/10'),
+    }))
+    const highlightedText = [
+      ...container.querySelectorAll('mark[data-comment-text-highlight="true"]'),
+    ].map((mark) => mark.textContent)
 
-    expect(
-      renderedComments.map(
+    const getNestedCommentState = () => ({
+      commentLines: renderedComments.map(
         (renderedComment) =>
           renderedComment
             .closest('[data-source-block="true"]')
             ?.getAttribute('data-source-start-line') ?? null,
       ),
-    ).toEqual(['2'])
+      highlightedItems,
+      highlightedText,
+    })
+    expect(getNestedCommentState()).toEqual({
+      commentLines: ['2'],
+      highlightedItems: [
+        { line: '1', highlighted: false },
+        { line: '2', highlighted: false },
+      ],
+      highlightedText: [anchorText],
+    })
+  })
+
+  it('highlights only the first saved quote across inline markdown', () => {
+    const { container } = render(
+      <MarkdownBody
+        source="前置きの**対象**箇所と次の**対象**箇所。"
+        rangeComments={{
+          ...emptyRangeComments,
+          comments: [bodyComment('の対象箇所')],
+        }}
+      />,
+    )
+    const paragraph = container.querySelector('p')
+
+    const getHighlightState = () => ({
+      segments: [
+        ...(paragraph?.querySelectorAll(
+          'mark[data-comment-text-highlight="true"]',
+        ) ?? []),
+      ].map((mark) => mark.textContent),
+      paragraphText: paragraph?.textContent ?? null,
+      paragraphHasBlockHighlight:
+        paragraph?.classList.contains('bg-primary/10') ?? false,
+    })
+    expect(getHighlightState()).toEqual({
+      segments: ['の', '対象', '箇所'],
+      paragraphText: '前置きの対象箇所と次の対象箇所。',
+      paragraphHasBlockHighlight: false,
+    })
+  })
+
+  it('uses the active text selection offset when the quote repeats', () => {
+    const source = '対象と、その後の対象です。'
+    const secondMatch = source.lastIndexOf('対象')
+    const activeCommentAnchor = {
+      side: 'new' as const,
+      lineNumber: 1,
+      endLineNumber: 1,
+      text: '対象',
+      isTextSelection: true,
+      textOffset: secondMatch,
+    }
+    const { container } = render(
+      <MarkdownBody
+        source={source}
+        rangeComments={{
+          ...emptyRangeComments,
+          activeCommentAnchor,
+          activeCommentKey: `${activeCommentAnchor.side}:1`,
+        }}
+      />,
+    )
+    const paragraph = container.querySelector('p')
+
+    const getHighlightState = () => ({
+      segments: [
+        ...(paragraph?.querySelectorAll(
+          'mark[data-comment-text-highlight="true"]',
+        ) ?? []),
+      ].map((mark) => mark.textContent),
+      prefix:
+        paragraph?.querySelector('mark[data-comment-text-highlight="true"]')
+          ?.previousSibling?.textContent ?? null,
+      paragraphHasBlockHighlight:
+        paragraph?.classList.contains('bg-primary/10') ?? false,
+    })
+    expect(getHighlightState()).toEqual({
+      segments: ['対象'],
+      prefix: '対象と、その後の',
+      paragraphHasBlockHighlight: false,
+    })
+  })
+
+  it('highlights text inside a rendered reference chip', async () => {
+    const { container } = render(
+      <MarkdownBody
+        source="参照 [[stock:demo-code]] を確認します。"
+        onRef={() => {}}
+        rangeComments={{
+          ...emptyRangeComments,
+          comments: [bodyComment('demo-code')],
+        }}
+      />,
+    )
+    const chip = container.querySelector('[data-kind="stock"]')
+
+    const getHighlightState = () => ({
+      chipText: chip?.textContent ?? null,
+      highlightedText: [
+        ...(chip?.querySelectorAll(
+          'mark[data-comment-text-highlight="true"]',
+        ) ?? []),
+      ].map((mark) => mark.textContent),
+      paragraphHasBlockHighlight:
+        container.querySelector('p')?.classList.contains('bg-primary/10') ??
+        false,
+    })
+    await waitFor(() => {
+      expect(getHighlightState()).toEqual({
+        chipText: '銘柄demo-code',
+        highlightedText: ['demo-code'],
+        paragraphHasBlockHighlight: false,
+      })
+    })
+  })
+
+  it('highlights the whole block when a saved quote is not found', () => {
+    const { container } = render(
+      <MarkdownBody
+        source="本文が残っています。"
+        rangeComments={{
+          ...emptyRangeComments,
+          comments: [bodyComment('見つからない引用')],
+        }}
+      />,
+    )
+    const paragraph = container.querySelector('p')
+
+    const getFallbackState = () => ({
+      textHighlightCount:
+        paragraph?.querySelectorAll('mark[data-comment-text-highlight="true"]')
+          .length ?? 0,
+      paragraphHasBlockHighlight:
+        paragraph?.classList.contains('bg-primary/10') ?? false,
+    })
+    expect(getFallbackState()).toEqual({
+      textHighlightCount: 0,
+      paragraphHasBlockHighlight: true,
+    })
   })
 
   it.each([
