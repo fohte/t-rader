@@ -17,5 +17,6 @@ output-options:
     - strategies
     - triggers
     - refs
+    - dashboards
   nullable-type: true
   response-type-suffix: Result

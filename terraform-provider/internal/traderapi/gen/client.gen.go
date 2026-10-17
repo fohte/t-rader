@@ -142,6 +142,12 @@ type CreateCustomIndicatorRequest struct {
 	OutputSchema map[string]interface{}    `json:"output_schema"`
 }
 
+// CreateDashboardRequest defines model for CreateDashboardRequest.
+type CreateDashboardRequest struct {
+	Config string `json:"config"`
+	Key    string `json:"key"`
+}
+
 // CreateGroupAxisRequest defines model for CreateGroupAxisRequest.
 type CreateGroupAxisRequest struct {
 	DeriveFrom  nullable.Nullable[string] `json:"derive_from,omitempty"`
@@ -252,6 +258,14 @@ type CustomIndicatorEvaluationResponse struct {
 	Id            openapi_types.UUID `json:"id"`
 	IndicatorName string             `json:"indicator_name"`
 	Output        interface{}        `json:"output"`
+}
+
+// Dashboard defines model for Dashboard.
+type Dashboard struct {
+	Config    string    `json:"config"`
+	CreatedAt time.Time `json:"created_at"`
+	Key       string    `json:"key"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ErrorResponse API エラーレスポンスの JSON 構造
@@ -712,6 +726,11 @@ type UpdateCustomIndicatorRequest struct {
 	OutputSchema nullable.Nullable[map[string]interface{}] `json:"output_schema,omitempty"`
 }
 
+// UpdateDashboardRequest defines model for UpdateDashboardRequest.
+type UpdateDashboardRequest struct {
+	Config string `json:"config"`
+}
+
 // UpdateGroupAxisRequest defines model for UpdateGroupAxisRequest.
 type UpdateGroupAxisRequest struct {
 	DeriveFrom  nullable.Nullable[string] `json:"derive_from,omitempty"`
@@ -859,6 +878,12 @@ type AgentConfigPutSkillJSONRequestBody = SkillBody
 
 // ReceiveAgentTaskNotificationJSONRequestBody defines body for ReceiveAgentTaskNotification for application/json ContentType.
 type ReceiveAgentTaskNotificationJSONRequestBody = ReceiveAgentTaskNotificationJSONBody
+
+// CreateDashboardJSONRequestBody defines body for CreateDashboard for application/json ContentType.
+type CreateDashboardJSONRequestBody = CreateDashboardRequest
+
+// UpdateDashboardJSONRequestBody defines body for UpdateDashboard for application/json ContentType.
+type UpdateDashboardJSONRequestBody = UpdateDashboardRequest
 
 // CreateGroupAxisJSONRequestBody defines body for CreateGroupAxis for application/json ContentType.
 type CreateGroupAxisJSONRequestBody = CreateGroupAxisRequest
@@ -1145,6 +1170,49 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/custom-indicator-evaluations/{evaluation_id} (the `GetCustomIndicatorEvaluation` operationId).
 	GetCustomIndicatorEvaluation(ctx context.Context, evaluationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDashboards ダッシュボード一覧を取得する。
+	//
+	// Corresponds with GET /api/dashboards (the `ListDashboards` operationId).
+	ListDashboards(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDashboardWithBody ダッシュボードを作成する。
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+	CreateDashboardWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateDashboard ダッシュボードを作成する。
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+	CreateDashboard(ctx context.Context, body CreateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteDashboard ダッシュボードを削除する。
+	//
+	// Corresponds with DELETE /api/dashboards/{key} (the `DeleteDashboard` operationId).
+	DeleteDashboard(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetDashboard 指定 key のダッシュボードを取得する。
+	//
+	// Corresponds with GET /api/dashboards/{key} (the `GetDashboard` operationId).
+	GetDashboard(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDashboardWithBody ダッシュボード設定を置き換える。
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+	UpdateDashboardWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDashboard ダッシュボード設定を置き換える。
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+	UpdateDashboard(ctx context.Context, key string, body UpdateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListGroupAxes 分類軸一覧
 	//
@@ -2026,6 +2094,119 @@ func (c *OpenAPIClient) ReceiveAgentTaskNotification(ctx context.Context, body R
 // Corresponds with GET /api/custom-indicator-evaluations/{evaluation_id} (the `GetCustomIndicatorEvaluation` operationId).
 func (c *OpenAPIClient) GetCustomIndicatorEvaluation(ctx context.Context, evaluationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetCustomIndicatorEvaluationRequest(c.Server, evaluationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDashboards ダッシュボード一覧を取得する。
+//
+// Corresponds with GET /api/dashboards (the `ListDashboards` operationId).
+func (c *OpenAPIClient) ListDashboards(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDashboardsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDashboardWithBody ダッシュボードを作成する。
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+func (c *OpenAPIClient) CreateDashboardWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDashboardRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateDashboard ダッシュボードを作成する。
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+func (c *OpenAPIClient) CreateDashboard(ctx context.Context, body CreateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateDashboardRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteDashboard ダッシュボードを削除する。
+//
+// Corresponds with DELETE /api/dashboards/{key} (the `DeleteDashboard` operationId).
+func (c *OpenAPIClient) DeleteDashboard(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteDashboardRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDashboard 指定 key のダッシュボードを取得する。
+//
+// Corresponds with GET /api/dashboards/{key} (the `GetDashboard` operationId).
+func (c *OpenAPIClient) GetDashboard(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDashboardRequest(c.Server, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDashboardWithBody ダッシュボード設定を置き換える。
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+func (c *OpenAPIClient) UpdateDashboardWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDashboardRequestWithBody(c.Server, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDashboard ダッシュボード設定を置き換える。
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+func (c *OpenAPIClient) UpdateDashboard(ctx context.Context, key string, body UpdateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDashboardRequest(c.Server, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3980,6 +4161,188 @@ func NewGetCustomIndicatorEvaluationRequest(server string, evaluationId openapi_
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListDashboardsRequest constructs an http.Request for the ListDashboards method
+func NewListDashboardsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/dashboards")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateDashboardRequest calls the generic CreateDashboard builder with application/json body
+func NewCreateDashboardRequest(server string, body CreateDashboardJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateDashboardRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateDashboardRequestWithBody constructs an http.Request for the CreateDashboard method, with any body, and a specified content type
+func NewCreateDashboardRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/dashboards")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteDashboardRequest constructs an http.Request for the DeleteDashboard method
+func NewDeleteDashboardRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/dashboards/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDashboardRequest constructs an http.Request for the GetDashboard method
+func NewGetDashboardRequest(server string, key string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/dashboards/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateDashboardRequest calls the generic UpdateDashboard builder with application/json body
+func NewUpdateDashboardRequest(server string, key string, body UpdateDashboardJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateDashboardRequestWithBody(server, key, "application/json", bodyReader)
+}
+
+// NewUpdateDashboardRequestWithBody constructs an http.Request for the UpdateDashboard method, with any body, and a specified content type
+func NewUpdateDashboardRequestWithBody(server string, key string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/dashboards/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -6611,6 +6974,55 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/custom-indicator-evaluations/{evaluation_id} (the `GetCustomIndicatorEvaluation` operationId).
 	GetCustomIndicatorEvaluationWithResponse(ctx context.Context, evaluationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetCustomIndicatorEvaluationResult, error)
 
+	// ListDashboardsWithResponse ダッシュボード一覧を取得する。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/dashboards (the `ListDashboards` operationId).
+	ListDashboardsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDashboardsResult, error)
+
+	// CreateDashboardWithBodyWithResponse ダッシュボードを作成する。
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+	CreateDashboardWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDashboardResult, error)
+
+	// CreateDashboardWithResponse ダッシュボードを作成する。
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+	CreateDashboardWithResponse(ctx context.Context, body CreateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDashboardResult, error)
+
+	// DeleteDashboardWithResponse ダッシュボードを削除する。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/dashboards/{key} (the `DeleteDashboard` operationId).
+	DeleteDashboardWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteDashboardResult, error)
+
+	// GetDashboardWithResponse 指定 key のダッシュボードを取得する。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/dashboards/{key} (the `GetDashboard` operationId).
+	GetDashboardWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetDashboardResult, error)
+
+	// UpdateDashboardWithBodyWithResponse ダッシュボード設定を置き換える。
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+	UpdateDashboardWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDashboardResult, error)
+
+	// UpdateDashboardWithResponse ダッシュボード設定を置き換える。
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+	UpdateDashboardWithResponse(ctx context.Context, key string, body UpdateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDashboardResult, error)
+
 	// ListGroupAxesWithResponse 分類軸一覧
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -8208,6 +8620,323 @@ func (r GetCustomIndicatorEvaluationResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetCustomIndicatorEvaluationResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListDashboardsResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Dashboard
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDashboardsResult) GetJSON200() *[]Dashboard {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListDashboardsResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDashboardsResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDashboardsResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDashboardsResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDashboardsResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateDashboardResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Dashboard
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateDashboardResult) GetJSON201() *Dashboard {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateDashboardResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateDashboardResult) GetJSON409() *ErrorResponse {
+	return r.JSON409
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r CreateDashboardResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateDashboardResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateDashboardResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateDashboardResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateDashboardResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateDashboardResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateDashboardResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteDashboardResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteDashboardResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteDashboardResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteDashboardResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteDashboardResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteDashboardResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteDashboardResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteDashboardResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDashboardResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Dashboard
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDashboardResult) GetJSON200() *Dashboard {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetDashboardResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetDashboardResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetDashboardResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDashboardResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDashboardResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDashboardResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDashboardResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateDashboardResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Dashboard
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *ErrorResponse
+	// JSON415 the response for an HTTP 415 `application/json` response
+	JSON415 *ErrorResponse
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateDashboardResult) GetJSON200() *Dashboard {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateDashboardResult) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateDashboardResult) GetJSON404() *ErrorResponse {
+	return r.JSON404
+}
+
+// GetJSON415 returns the response for an HTTP 415 `application/json` response
+func (r UpdateDashboardResult) GetJSON415() *ErrorResponse {
+	return r.JSON415
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateDashboardResult) GetJSON422() *ErrorResponse {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UpdateDashboardResult) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateDashboardResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateDashboardResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateDashboardResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateDashboardResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12297,6 +13026,97 @@ func (c *ClientWithResponses) GetCustomIndicatorEvaluationWithResponse(ctx conte
 	return ParseGetCustomIndicatorEvaluationResult(rsp)
 }
 
+// ListDashboardsWithResponse ダッシュボード一覧を取得する。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/dashboards (the `ListDashboards` operationId).
+func (c *ClientWithResponses) ListDashboardsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListDashboardsResult, error) {
+	rsp, err := c.ListDashboards(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDashboardsResult(rsp)
+}
+
+// CreateDashboardWithBodyWithResponse ダッシュボードを作成する。
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+func (c *ClientWithResponses) CreateDashboardWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDashboardResult, error) {
+	rsp, err := c.CreateDashboardWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDashboardResult(rsp)
+}
+
+// CreateDashboardWithResponse ダッシュボードを作成する。
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/dashboards (the `CreateDashboard` operationId).
+func (c *ClientWithResponses) CreateDashboardWithResponse(ctx context.Context, body CreateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateDashboardResult, error) {
+	rsp, err := c.CreateDashboard(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateDashboardResult(rsp)
+}
+
+// DeleteDashboardWithResponse ダッシュボードを削除する。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/dashboards/{key} (the `DeleteDashboard` operationId).
+func (c *ClientWithResponses) DeleteDashboardWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*DeleteDashboardResult, error) {
+	rsp, err := c.DeleteDashboard(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteDashboardResult(rsp)
+}
+
+// GetDashboardWithResponse 指定 key のダッシュボードを取得する。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/dashboards/{key} (the `GetDashboard` operationId).
+func (c *ClientWithResponses) GetDashboardWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetDashboardResult, error) {
+	rsp, err := c.GetDashboard(ctx, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDashboardResult(rsp)
+}
+
+// UpdateDashboardWithBodyWithResponse ダッシュボード設定を置き換える。
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+func (c *ClientWithResponses) UpdateDashboardWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDashboardResult, error) {
+	rsp, err := c.UpdateDashboardWithBody(ctx, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDashboardResult(rsp)
+}
+
+// UpdateDashboardWithResponse ダッシュボード設定を置き換える。
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/dashboards/{key} (the `UpdateDashboard` operationId).
+func (c *ClientWithResponses) UpdateDashboardWithResponse(ctx context.Context, key string, body UpdateDashboardJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDashboardResult, error) {
+	rsp, err := c.UpdateDashboard(ctx, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDashboardResult(rsp)
+}
+
 // ListGroupAxesWithResponse 分類軸一覧
 //
 // Returns a wrapper object for the known response body format(s).
@@ -14120,6 +14940,251 @@ func ParseGetCustomIndicatorEvaluationResult(rsp *http.Response) (*GetCustomIndi
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListDashboardsResult parses an HTTP response from a ListDashboardsWithResponse call
+func ParseListDashboardsResult(rsp *http.Response) (*ListDashboardsResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDashboardsResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Dashboard
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateDashboardResult parses an HTTP response from a CreateDashboardWithResponse call
+func ParseCreateDashboardResult(rsp *http.Response) (*CreateDashboardResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateDashboardResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Dashboard
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteDashboardResult parses an HTTP response from a DeleteDashboardWithResponse call
+func ParseDeleteDashboardResult(rsp *http.Response) (*DeleteDashboardResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteDashboardResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDashboardResult parses an HTTP response from a GetDashboardWithResponse call
+func ParseGetDashboardResult(rsp *http.Response) (*GetDashboardResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDashboardResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Dashboard
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateDashboardResult parses an HTTP response from a UpdateDashboardWithResponse call
+func ParseUpdateDashboardResult(rsp *http.Response) (*UpdateDashboardResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateDashboardResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Dashboard
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ErrorResponse
