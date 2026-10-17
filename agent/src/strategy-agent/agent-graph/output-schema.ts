@@ -22,6 +22,17 @@ export interface ObjectJsonSchema {
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((v) => typeof v === 'string')
 
+// enum など type を持たないスキーマ断片を保つため、値がすべてフィールド用
+// スキーマ断片のマップである場合だけオブジェクトとして扱う。
+const isFieldSchemaMap = (value: Record<string, unknown>): boolean => {
+  const { required, ...fields } = value
+  const fieldSchemas = Object.values(fields)
+  return (
+    (fieldSchemas.length > 0 || isStringArray(required)) &&
+    fieldSchemas.every(isPlainObject)
+  )
+}
+
 // `required` はフィールド名 -> スキーマ断片のマップを値として持つキー
 // (フェーズの `output` 自身、または配列フィールドの `items`) と同階層に置く
 // 予約キー。マップの値そのものではなく、そのマップを保持するキーの兄弟として
@@ -44,7 +55,9 @@ const toObjectSchema = (
 const toFieldSchema = (fieldSchema: unknown): JsonSchemaObject => {
   if (!isPlainObject(fieldSchema)) return {}
   const { items, required, ...rest } = fieldSchema
-  if (items === undefined) return rest
+  if (items === undefined) {
+    return isFieldSchemaMap(fieldSchema) ? toObjectSchema(rest, required) : rest
+  }
   return { ...rest, items: toItemsSchema(items, required) }
 }
 

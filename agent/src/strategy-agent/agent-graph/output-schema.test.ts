@@ -63,6 +63,69 @@ describe('buildOutputJsonSchema', () => {
     })
   })
 
+  it('recursively converts type-less object fields and object array items', () => {
+    const output = {
+      record: {
+        required: ['label', 'details'],
+        label: { type: 'string' },
+        details: {
+          required: ['entries'],
+          entries: {
+            type: 'array',
+            items: {
+              code: { type: 'string' },
+              attributes: {
+                enabled: { type: 'boolean' },
+                scores: { type: 'array', items: { type: 'number' } },
+              },
+            },
+            required: ['code', 'attributes'],
+          },
+        },
+      },
+    }
+
+    expect(buildOutputJsonSchema(output)).toEqual({
+      type: 'object',
+      properties: {
+        record: {
+          type: 'object',
+          properties: {
+            label: { type: 'string' },
+            details: {
+              type: 'object',
+              properties: {
+                entries: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      code: { type: 'string' },
+                      attributes: {
+                        type: 'object',
+                        properties: {
+                          enabled: { type: 'boolean' },
+                          scores: {
+                            type: 'array',
+                            items: { type: 'number' },
+                          },
+                        },
+                      },
+                    },
+                    required: ['code', 'attributes'],
+                  },
+                },
+              },
+              required: ['entries'],
+            },
+          },
+          required: ['label', 'details'],
+        },
+      },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+    })
+  })
+
   it('applies a top-level required list sibling to the output fields themselves', () => {
     const output = {
       verdict: { type: 'string' },
