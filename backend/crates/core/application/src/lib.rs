@@ -9,6 +9,7 @@ pub mod comment;
 pub mod custom_indicator;
 pub mod custom_indicator_evaluation;
 pub mod daily_bar_source;
+pub mod dashboard;
 pub mod earnings_schedule;
 pub mod earnings_schedule_source;
 pub mod equity_master;

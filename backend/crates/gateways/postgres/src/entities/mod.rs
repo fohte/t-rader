@@ -13,6 +13,7 @@ pub mod comment;
 pub mod cross_shareholding_documents;
 pub mod custom_indicator;
 pub mod custom_indicator_evaluation;
+pub mod dashboard;
 pub mod earnings_schedule_ingested_date;
 pub mod event;
 pub mod event_firing;

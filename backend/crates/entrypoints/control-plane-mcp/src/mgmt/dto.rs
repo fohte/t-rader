@@ -1,5 +1,6 @@
 //! 管理 MCP tool の入出力スキーマ。
 
+use chrono::NaiveDate;
 use chrono::{DateTime, FixedOffset};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -156,6 +157,32 @@ impl From<RssFeed> for RssFeedSummary {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ListRssFeedsResult {
     pub feeds: Vec<RssFeedSummary>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PreviewDashboardParams {
+    pub yaml: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardConfigIssue {
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DashboardWidgetPreview {
+    pub title: String,
+    pub width: String,
+    pub as_of: NaiveDate,
+    pub rows: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct PreviewDashboardResult {
+    pub errors: Vec<DashboardConfigIssue>,
+    pub preview_url: Option<String>,
+    pub widgets: Vec<DashboardWidgetPreview>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]

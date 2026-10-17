@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use core_application::agent_task_client::SharedAgentTaskClient;
+use core_application::widget::WidgetUseCases;
 use gateway_postgres::DatabaseHandle;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
@@ -71,6 +72,24 @@ async fn invoke<TInput: Serialize, TOutput: DeserializeOwned>(
 }
 
 impl MgmtTestServer {
+    pub(crate) fn with_widgets(mut self, widgets: WidgetUseCases) -> Self {
+        self.dependencies.widgets = widgets;
+        self.server = MgmtServer::new(self.dependencies.clone());
+        self
+    }
+
+    pub(crate) async fn preview_dashboard(
+        &self,
+        yaml: &str,
+    ) -> Result<Json<serde_json::Value>, McpError> {
+        invoke(
+            &self.server,
+            "preview_dashboard",
+            serde_json::json!({ "yaml": yaml }),
+        )
+        .await
+    }
+
     pub(crate) async fn list_strategies(&self) -> Result<Json<ListStrategiesResult>, McpError> {
         invoke(&self.server, "list_strategies", serde_json::json!({})).await
     }

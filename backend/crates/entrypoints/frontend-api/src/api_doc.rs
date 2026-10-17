@@ -7,6 +7,7 @@ use utoipa::OpenApi;
         (name = "bars", description = "バーデータ (OHLCV)"),
         (name = "screener", description = "条件による銘柄検索"),
         (name = "saved_screens", description = "保存したスクリーナー条件"),
+        (name = "dashboards", description = "保存済みダッシュボード"),
         (name = "calendar", description = "週間イベントカレンダー"),
         (name = "strategies", description = "戦略 (ワークスペース)"),
         (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),

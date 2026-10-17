@@ -1,3 +1,4 @@
+mod dashboards;
 mod dto;
 mod note_status_changes;
 mod notes_annotations;
