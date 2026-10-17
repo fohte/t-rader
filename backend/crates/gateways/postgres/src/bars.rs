@@ -1287,12 +1287,12 @@ mod tests {
         let chunk_status = db
             .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                r#"SELECT is_compressed
+                indoc::indoc! { r#"SELECT is_compressed
                 FROM timescaledb_information.chunks
                 WHERE hypertable_schema = current_schema()
                   AND hypertable_name = 'bars'
                   AND range_start <= $1
-                  AND range_end > $1"#,
+                  AND range_end > $1"# },
                 [minute_timestamp.fixed_offset().into()],
             ))
             .await
