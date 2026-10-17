@@ -10,7 +10,7 @@ use super::clock::{BarsIngestClock, SystemBarsIngestClock};
 use super::error::BarsUseCaseError;
 use super::repository::SharedBarsRepository;
 use super::types::{BarsByInstrumentsQuery, BarsQuery};
-use super::write_lock::{SharedUsStockBarsWriteLock, no_op_write_lock};
+use super::write_lock::SharedUsStockBarsWriteLock;
 
 #[derive(Clone)]
 pub struct BarsUseCases {
@@ -22,11 +22,7 @@ pub struct BarsUseCases {
 }
 
 impl BarsUseCases {
-    pub fn new(unit_of_work: SharedUnitOfWork, repository: SharedBarsRepository) -> Self {
-        Self::new_with_us_stock_bars_write_lock(unit_of_work, repository, no_op_write_lock())
-    }
-
-    pub fn new_with_us_stock_bars_write_lock(
+    pub fn new(
         unit_of_work: SharedUnitOfWork,
         repository: SharedBarsRepository,
         us_stock_bars_write_lock: SharedUsStockBarsWriteLock,

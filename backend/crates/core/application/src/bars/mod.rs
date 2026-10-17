@@ -11,10 +11,13 @@ mod use_cases;
 mod write_lock;
 mod write_throttle;
 
+#[cfg(test)]
+pub(crate) use write_lock::test_write_lock;
+
 #[cfg(feature = "test-support")]
 mod fake;
 
-pub use error::BarsUseCaseError;
+pub use error::{BarsUseCaseError, UsStockBarsIngestError};
 pub use repository::{BarsRepository, BarsRepositoryError, SharedBarsRepository};
 pub use types::{
     BarsByInstrumentsQuery, BarsQuery, DailyBarAdjustmentFactor, IngestStats, LatestPrices,

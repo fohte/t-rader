@@ -63,8 +63,7 @@ pub struct UsStockBarsIngestStats {
     pub write_throttle_wait_ms: u64,
     pub skipped_instruments: Vec<super::us_stock_source::SkippedUsStockInstrument>,
     pub interrupted_reason: Option<String>,
-    /// 分足取り込みに成功した場合だけ、古い chunk の圧縮失敗を記録する。
-    /// 取り込み自体が失敗した場合は stats を返さない。
+    /// 分足取り込み後の古い chunk 圧縮失敗を記録する。
     pub compression_error: Option<String>,
 }
 
@@ -85,6 +84,10 @@ impl UsStockBarsIngestResult {
             stats,
             _write_lock_guard: write_lock_guard,
         }
+    }
+
+    pub fn empty() -> Self {
+        Self::new(UsStockBarsIngestStats::default(), None)
     }
 }
 

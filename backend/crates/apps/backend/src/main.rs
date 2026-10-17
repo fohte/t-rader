@@ -7,7 +7,6 @@ use backend::{
 };
 use clap::Parser;
 use core_application::agent_task_client::{AgentTaskClient, SharedAgentTaskClient};
-use core_application::bars::SharedUsStockBarsWriteLock;
 use core_application::calendar::source::SharedCalendarEventSource;
 use core_application::daily_bar_source::SharedDailyBarSource;
 use core_application::earnings_schedule_source::SharedEarningsScheduleSource;
@@ -36,7 +35,6 @@ use gateway_kata_exec::{HttpKataExecutor, KataExecutorConfig};
 use gateway_litellm::LiteLlmClient as LlmGatewayClient;
 use gateway_postgres::{
     DatabaseHandle, PostgresStrategyTaskReconcileLock, PostgresTriggerChangeListener,
-    PostgresUsStockBarsWriteLock,
 };
 use gateway_rss::RssNewsAggregator;
 use gateway_t_rader_agent::{
@@ -262,9 +260,6 @@ async fn main() -> Result<(), StartupError> {
         })?);
     let use_cases =
         backend::services::use_cases::build_use_cases(db.clone(), agent_task_client.clone());
-    let us_stock_bars_write_lock: SharedUsStockBarsWriteLock = Arc::new(
-        PostgresUsStockBarsWriteLock::new(db.get_postgres_connection_pool().clone()),
-    );
     let strategy_task_reconcile =
         use_cases.strategy_task_reconcile(StrategyTaskReconcileLockUseCases::new(Arc::new(
             PostgresStrategyTaskReconcileLock::new(db.get_postgres_connection_pool().clone()),
@@ -360,7 +355,7 @@ async fn main() -> Result<(), StartupError> {
         .as_ref()
         .map(|client| Arc::clone(client) as SharedValuationSource);
     let dependencies = SchedulerDependencies {
-        bars: use_cases.bars_with_write_lock(us_stock_bars_write_lock),
+        bars: use_cases.bars(),
         calendar_events: use_cases.calendar_events(),
         boj_calendar_source,
         ecb_calendar_source,

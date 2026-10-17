@@ -89,7 +89,11 @@ mod tests {
             ])
             .await;
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
-        let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
+        let use_cases = BarsUseCases::new(
+            shared_unit_of_work,
+            repository.clone(),
+            crate::bars::test_write_lock(),
+        );
 
         let result = use_cases
             .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"))

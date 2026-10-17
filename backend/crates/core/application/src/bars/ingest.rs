@@ -375,7 +375,11 @@ mod tests {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakeBarsRepository::new());
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
-        let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
+        let use_cases = BarsUseCases::new(
+            shared_unit_of_work,
+            repository.clone(),
+            crate::bars::test_write_lock(),
+        );
         BarsFixture {
             use_cases,
             unit_of_work,

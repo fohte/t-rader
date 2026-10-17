@@ -30,3 +30,33 @@ pub enum BarsUseCaseError {
     #[error(transparent)]
     UsStockBarSource(#[from] UsStockBarSourceError),
 }
+
+#[derive(Debug)]
+pub struct UsStockBarsIngestError {
+    stats: Box<super::types::UsStockBarsIngestResult>,
+    error: BarsUseCaseError,
+}
+
+impl UsStockBarsIngestError {
+    pub(crate) fn new(
+        stats: super::types::UsStockBarsIngestResult,
+        error: BarsUseCaseError,
+    ) -> Self {
+        Self {
+            stats: Box::new(stats),
+            error,
+        }
+    }
+
+    pub fn into_parts(self) -> (super::types::UsStockBarsIngestResult, String) {
+        (*self.stats, self.error.to_string())
+    }
+}
+
+impl std::fmt::Display for UsStockBarsIngestError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl std::error::Error for UsStockBarsIngestError {}

@@ -1,13 +1,13 @@
 use chrono::Utc;
 use core_application::bars::{
-    BarsUseCaseError, UsStockBarsIngestResult, UsStockMinuteBarsDownsampleStats,
+    UsStockBarsIngestError, UsStockBarsIngestResult, UsStockMinuteBarsDownsampleStats,
 };
 use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
 use serde::{Deserialize, Serialize};
 
 use super::{
     DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, require_source, run_with_ingest_run_log_state,
-    run_with_ingest_run_log_state_with_run_id,
+    run_with_ingest_run_log_state_with_run_id_and_failure_stats,
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -35,7 +35,7 @@ impl super::SchedulerJob for UsStockBarsIngest {
 
     fn run(state: crate::state::SchedulerState) -> super::JobFuture {
         Box::pin(async move {
-            run_with_ingest_run_log_state_with_run_id(
+            run_with_ingest_run_log_state_with_run_id_and_failure_stats(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
                 US_STOCK_BARS_TIMEOUT,
@@ -47,14 +47,12 @@ impl super::SchedulerJob for UsStockBarsIngest {
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
                         "Alpaca US stock bar source",
-                    )?;
+                    )
+                    .map_err(|error| (Box::new(UsStockBarsIngestResult::empty()), error))?;
                     log_ingest_stats(
                         "1d",
-                        bars.ingest_us_stock_daily_bars_retaining_write_lock(
-                            source.as_ref(),
-                            Utc::now(),
-                        )
-                        .await,
+                        bars.ingest_us_stock_daily_bars(source.as_ref(), Utc::now())
+                            .await,
                     )
                 },
             )
@@ -77,7 +75,7 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
 
     fn run(state: crate::state::SchedulerState) -> super::JobFuture {
         Box::pin(async move {
-            run_with_ingest_run_log_state_with_run_id(
+            run_with_ingest_run_log_state_with_run_id_and_failure_stats(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
                 US_STOCK_BARS_TIMEOUT,
@@ -89,14 +87,12 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
                         "Alpaca US stock bar source",
-                    )?;
+                    )
+                    .map_err(|error| (Box::new(UsStockBarsIngestResult::empty()), error))?;
                     log_ingest_stats(
                         "1m",
-                        bars.ingest_us_stock_minute_bars_retaining_write_lock(
-                            source.as_ref(),
-                            Utc::now(),
-                        )
-                        .await,
+                        bars.ingest_us_stock_minute_bars(source.as_ref(), Utc::now())
+                            .await,
                     )
                 },
             )
@@ -119,7 +115,7 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
 
     fn run(state: crate::state::SchedulerState) -> super::JobFuture {
         Box::pin(async move {
-            run_with_ingest_run_log_state_with_run_id(
+            run_with_ingest_run_log_state_with_run_id_and_failure_stats(
                 state,
                 <Self as super::SchedulerJob>::IDENTIFIER,
                 US_STOCK_BARS_TIMEOUT,
@@ -131,14 +127,12 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
                     let source = require_source(
                         state.dependencies.us_stock_bar_source,
                         "Alpaca US stock bar source",
-                    )?;
+                    )
+                    .map_err(|error| (Box::new(UsStockBarsIngestResult::empty()), error))?;
                     log_ingest_stats(
                         "1h",
-                        bars.ingest_us_stock_hourly_bars_retaining_write_lock(
-                            source.as_ref(),
-                            Utc::now(),
-                        )
-                        .await,
+                        bars.ingest_us_stock_hourly_bars(source.as_ref(), Utc::now())
+                            .await,
                     )
                 },
             )
@@ -182,9 +176,12 @@ impl super::SchedulerJob for UsStockMinuteBarsDownsample {
 
 fn log_ingest_stats(
     bar_timeframe: &'static str,
-    result: Result<UsStockBarsIngestResult, BarsUseCaseError>,
-) -> Result<UsStockBarsIngestResult, String> {
-    let stats = result.map_err(|error| error.to_string())?;
+    result: Result<UsStockBarsIngestResult, UsStockBarsIngestError>,
+) -> Result<UsStockBarsIngestResult, (Box<UsStockBarsIngestResult>, String)> {
+    let stats = result.map_err(|error| {
+        let (stats, error) = error.into_parts();
+        (Box::new(stats), error)
+    })?;
     if let Some(error) = &stats.compression_error {
         tracing::error!(bar_timeframe, %error, "failed to compress old bars chunks after ingest");
     }

@@ -739,7 +739,11 @@ mod tests {
             unit_of_work.clone(),
             repository.clone(),
             Arc::new(FakeChangeHistory::new()),
-            BarsUseCases::new(unit_of_work, bars_repository),
+            BarsUseCases::new(
+                unit_of_work,
+                bars_repository,
+                crate::bars::test_write_lock(),
+            ),
             valuations,
             indicator_observations,
             custom_indicator_evaluations,

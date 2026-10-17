@@ -417,10 +417,10 @@ mod tests {
 
     use crate::bars::clock::BarsIngestClock;
     use crate::bars::{
-        BarsUseCaseError, BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock,
-        SkippedUsStockInstrument, UsStockBarPage, UsStockBarQuery, UsStockBarSource,
-        UsStockBarSourceError, UsStockBarsIngestStats, UsStockBarsWriteLock,
-        UsStockBarsWriteLockGuard, UsStockSplit, UsStockSplitBatch, UsStockSplitQuery,
+        BarsUseCases, FakeBarsRepository, SharedUsStockBarsWriteLock, SkippedUsStockInstrument,
+        UsStockBarPage, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
+        UsStockBarsIngestStats, UsStockBarsWriteLock, UsStockBarsWriteLockGuard, UsStockSplit,
+        UsStockSplitBatch, UsStockSplitQuery,
     };
     use crate::ingest_run_log::{IngestRunLog, SharedIngestRunLog};
     use crate::persistence::PersistenceError;
@@ -509,6 +509,7 @@ mod tests {
     struct TestUsStockBarsWriteLock {
         clock: Arc<TestClock>,
         wait_before_acquire: StdMutex<Duration>,
+        guard_released: Arc<StdMutex<bool>>,
     }
 
     impl TestUsStockBarsWriteLock {
@@ -516,6 +517,7 @@ mod tests {
             Self {
                 clock,
                 wait_before_acquire: StdMutex::default(),
+                guard_released: Arc::new(StdMutex::new(false)),
             }
         }
 
@@ -525,11 +527,27 @@ mod tests {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) = duration;
         }
+
+        fn guard_released(&self) -> bool {
+            *self
+                .guard_released
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
     }
 
-    struct TestUsStockBarsWriteLockGuard;
+    struct TestUsStockBarsWriteLockGuard(Arc<StdMutex<bool>>);
 
     impl UsStockBarsWriteLockGuard for TestUsStockBarsWriteLockGuard {}
+
+    impl Drop for TestUsStockBarsWriteLockGuard {
+        fn drop(&mut self) {
+            *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+        }
+    }
 
     #[async_trait]
     impl UsStockBarsWriteLock for TestUsStockBarsWriteLock {
@@ -548,7 +566,13 @@ mod tests {
             if !wait_duration.is_zero() {
                 self.clock.sleep(wait_duration).await;
             }
-            Ok(Some(Box::new(TestUsStockBarsWriteLockGuard)))
+            *self
+                .guard_released
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = false;
+            Ok(Some(Box::new(TestUsStockBarsWriteLockGuard(
+                self.guard_released.clone(),
+            ))))
         }
     }
 
@@ -983,7 +1007,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, date("2040-01-02T00:00:00Z"))
             .await
-            .expect("daily ingestion succeeds");
+            .expect("daily ingestion succeeds")
+            .stats;
 
         assert_eq!(
             (stats, harness.clock.sleeps()),
@@ -1036,7 +1061,8 @@ mod tests {
         let stats = use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
-            .expect("minute ingestion succeeds");
+            .expect("minute ingestion succeeds")
+            .stats;
 
         assert_eq!(
             (stats, harness.clock.sleeps()),
@@ -1109,7 +1135,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("split history refetch succeeds");
+            .expect("split history refetch succeeds")
+            .stats;
 
         let expected_sleeps = vec![Duration::from_millis(300); 5];
         assert_eq!(
@@ -1188,7 +1215,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("split history refetch succeeds");
+            .expect("split history refetch succeeds")
+            .stats;
 
         assert_eq!(
             (stats, harness.clock.sleeps()),
@@ -1274,14 +1302,16 @@ mod tests {
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, first_now)
             .await
-            .expect("hourly backfill succeeds");
+            .expect("hourly backfill succeeds")
+            .stats;
         let first_calls = harness.source.calls.lock().await.clone();
         harness.source.calls.lock().await.clear();
         let later_stats = harness
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, date("2040-03-02T13:00:00Z"))
             .await
-            .expect("completed hourly backfill is skipped");
+            .expect("completed hourly backfill is skipped")
+            .stats;
         let later_calls = harness.source.calls.lock().await.clone();
         let completed_through = harness
             .repository
@@ -1346,7 +1376,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, now)
             .await
-            .expect("rejected and skipped symbols do not fail hourly ingestion");
+            .expect("rejected and skipped symbols do not fail hourly ingestion")
+            .stats;
         let first_calls = harness.source.calls.lock().await.clone();
         let first_progress = harness
             .repository
@@ -1359,7 +1390,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, now)
             .await
-            .expect("rejected and skipped symbols remain retryable");
+            .expect("rejected and skipped symbols remain retryable")
+            .stats;
         let retry_calls = harness.source.calls.lock().await.clone();
         let retry_progress = harness
             .repository
@@ -1459,12 +1491,14 @@ mod tests {
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, now)
             .await
-            .expect("request budget exhaustion is reported in stats");
+            .expect("request budget exhaustion is reported in stats")
+            .stats;
         let second_stats = harness
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, now)
             .await
-            .expect("hourly backfill resumes from the saved bar");
+            .expect("hourly backfill resumes from the saved bar")
+            .stats;
         let calls = summarize_query_runs(&harness.source.calls.lock().await);
         let completed_through = harness
             .repository
@@ -1567,14 +1601,15 @@ mod tests {
                 .use_cases
                 .ingest_us_stock_minute_bars_with_budget(&harness.source, now, budget)
                 .await
-                .map(|result| result.stats)
+                .expect("time budget exhaustion is reported in stats")
+                .stats
         } else {
             harness
                 .use_cases
                 .ingest_us_stock_bars_for_timeframe(&harness.source, now, timeframe, budget)
                 .await
-        }
-        .expect("time budget exhaustion is reported in stats");
+                .expect("time budget exhaustion is reported in stats")
+        };
         let actual = (
             stats,
             harness.source.calls.lock().await.len(),
@@ -1603,6 +1638,51 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
+    async fn preserves_lock_wait_stats_and_holds_the_guard_when_ingestion_fails(
+        mut harness: Harness,
+    ) {
+        let wait = Duration::from_millis(1_500);
+        harness
+            .repository
+            .seed_us_stock_targets(vec!["US:DEMO-INGEST-FAILURE".to_owned()])
+            .await;
+        harness.write_lock.wait_before_acquire(wait);
+        harness.source.fetch_error = Some("synthetic source failure".to_owned());
+
+        let failure = harness
+            .use_cases
+            .ingest_us_stock_daily_bars(&harness.source, date("2040-01-02T12:00:00Z"))
+            .await
+            .expect_err("source error is returned with failure stats");
+        let (result, error) = failure.into_parts();
+        let actual_before_release = (
+            result.stats.clone(),
+            error,
+            harness.write_lock.guard_released(),
+            harness.clock.sleeps(),
+        );
+        drop(result);
+        let released_after_stats_drop = harness.write_lock.guard_released();
+
+        assert_eq!(
+            (actual_before_release, released_after_stats_drop),
+            (
+                (
+                    UsStockBarsIngestStats {
+                        write_lock_wait_ms: 1_500,
+                        ..UsStockBarsIngestStats::default()
+                    },
+                    "US stock bar source error: synthetic source failure".to_owned(),
+                    false,
+                    vec![wait],
+                ),
+                true,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
     async fn records_time_spent_acquiring_the_shared_write_lock(harness: Harness) {
         let wait = Duration::from_millis(1_500);
         harness.write_lock.wait_before_acquire(wait);
@@ -1611,7 +1691,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, date("2040-01-02T12:00:00Z"))
             .await
-            .expect("daily ingestion succeeds");
+            .expect("daily ingestion succeeds")
+            .stats;
         let actual = (stats, harness.clock.sleeps());
 
         assert_eq!(
@@ -1642,7 +1723,7 @@ mod tests {
             .await
             .expect("lock timeout is reported in stats");
         let actual = (
-            result,
+            result.stats,
             harness.source.calls.lock().await.len(),
             harness
                 .repository
@@ -1889,7 +1970,7 @@ mod tests {
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await;
         let actual = (
-            matches!(result, Err(BarsUseCaseError::IngestRunContextRequired)),
+            matches!(result, Err(error) if error.to_string() == "米国株バーの commit probe に必要な取り込み実行コンテキストがありません"),
             harness.source.calls.lock().await.len(),
             harness.repository.bars.lock().await.clone(),
             harness
@@ -1917,7 +1998,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
-            .expect("source deadline is reported in stats");
+            .expect("source deadline is reported in stats")
+            .stats;
         let actual = (
             stats,
             harness.source.calls.lock().await.clone(),
@@ -1971,7 +2053,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("split deadline is reported in stats");
+            .expect("split deadline is reported in stats")
+            .stats;
         let actual = (
             stats,
             harness.source.calls.lock().await.len(),
@@ -2024,7 +2107,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("split refetch deadline is reported in stats");
+            .expect("split refetch deadline is reported in stats")
+            .stats;
         let actual = (
             stats,
             harness.source.calls.lock().await.len(),
@@ -2071,12 +2155,14 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("US stock daily bar ingestion succeeds");
+            .expect("US stock daily bar ingestion succeeds")
+            .stats;
         let minute_stats = harness
             .use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
-            .expect("US stock minute bar ingestion succeeds");
+            .expect("US stock minute bar ingestion succeeds")
+            .stats;
         let calls = harness.source.calls.lock().await.clone();
         let (daily_bars, minute_bars) =
             partition_daily_bars(harness.repository.bars.lock().await.clone());
@@ -2182,17 +2268,20 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("US stock daily bar ingestion succeeds");
+            .expect("US stock daily bar ingestion succeeds")
+            .stats;
         let minute_stats = harness
             .use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
-            .expect("US stock minute bar ingestion succeeds");
+            .expect("US stock minute bar ingestion succeeds")
+            .stats;
         let hourly_stats = harness
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, now)
             .await
-            .expect("US stock hourly bar ingestion succeeds");
+            .expect("US stock hourly bar ingestion succeeds")
+            .stats;
         let calls = harness.source.calls.lock().await.clone();
 
         assert_eq!(
@@ -2263,7 +2352,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
-            .expect("compression failure does not mask minute ingestion stats");
+            .expect("compression failure does not mask minute ingestion stats")
+            .stats;
 
         assert_eq!(
             stats,
@@ -2327,7 +2417,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("one rejected symbol does not fail daily ingestion");
+            .expect("one rejected symbol does not fail daily ingestion")
+            .stats;
         let actual = (
             stats,
             harness.source.calls.lock().await.clone(),
@@ -2484,13 +2575,15 @@ mod tests {
             .use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
-            .expect("bounded ingestion succeeds");
+            .expect("bounded ingestion succeeds")
+            .stats;
         harness.source.pagination = None;
         let second_stats = harness
             .use_cases
             .ingest_us_stock_minute_bars(&harness.source, now)
             .await
-            .expect("resumed ingestion succeeds");
+            .expect("resumed ingestion succeeds")
+            .stats;
 
         let expected_calls = vec![
             BarQueryRun {
@@ -2611,7 +2704,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("partial split ingestion succeeds");
+            .expect("partial split ingestion succeeds")
+            .stats;
         let (mut stored_daily_bars, minute_bars) =
             partition_daily_bars(harness.repository.bars.lock().await.clone());
         stored_daily_bars.sort_by_key(|bar| bar.timestamp);
@@ -2709,7 +2803,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("one rejected split symbol does not fail daily ingestion");
+            .expect("one rejected split symbol does not fail daily ingestion")
+            .stats;
         let actual = (
             stats,
             harness.source.calls.lock().await.clone(),
@@ -2829,7 +2924,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("US stock split refetch succeeds");
+            .expect("US stock split refetch succeeds")
+            .stats;
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
         let (mut daily_bars, mut minute_bars) =
@@ -2945,7 +3041,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("hourly persistence failure leaves the split pending");
+            .expect("hourly persistence failure leaves the split pending")
+            .stats;
         let failed_progress = harness
             .repository
             .us_stock_hourly_bar_history_completed_through
@@ -2977,7 +3074,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("the pending split is retried after hourly persistence recovers");
+            .expect("the pending split is retried after hourly persistence recovers")
+            .stats;
         let calls = harness.source.calls.lock().await.clone();
         let mut daily_bars = harness
             .repository
@@ -3113,7 +3211,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("split refetch can skip unsupported hourly symbols");
+            .expect("split refetch can skip unsupported hourly symbols")
+            .stats;
         let split_calls = harness.source.calls.lock().await.clone();
         let progress_after_split = harness
             .repository
@@ -3127,7 +3226,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_hourly_bars(&harness.source, now)
             .await
-            .expect("hourly job retries history skipped during split refetch");
+            .expect("hourly job retries history skipped during split refetch")
+            .stats;
         let retry_calls = harness.source.calls.lock().await.clone();
         let progress_after_retry = harness
             .repository
@@ -3229,7 +3329,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("US stock bars ingestion succeeds");
+            .expect("US stock bars ingestion succeeds")
+            .stats;
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
         let (daily_bars, minute_bars) =
@@ -3307,7 +3408,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("US stock split refetch succeeds without an ex-date bar");
+            .expect("US stock split refetch succeeds without an ex-date bar")
+            .stats;
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
         let (mut daily_bars, mut minute_bars) =
@@ -3393,7 +3495,8 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
-            .expect("US stock bars ingestion succeeds");
+            .expect("US stock bars ingestion succeeds")
+            .stats;
         let calls = harness.source.calls.lock().await.clone();
         let split_calls = harness.source.split_calls.lock().await.clone();
         let (daily_bars, minute_bars) =
@@ -3449,6 +3552,7 @@ mod tests {
             .use_cases
             .ingest_us_stock_daily_bars(&harness.source, now)
             .await
+            .map(|result| result.stats)
             .map_err(|error| error.to_string());
         let calls = harness.source.calls.lock().await.clone();
 

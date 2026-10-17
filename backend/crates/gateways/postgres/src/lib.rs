@@ -172,6 +172,17 @@ impl std::fmt::Debug for DatabaseHandle {
     }
 }
 
+impl DatabaseHandle {
+    pub fn postgres_connection_pool(&self) -> Option<sqlx::PgPool> {
+        match &self.inner {
+            DatabaseHandleInner::Connection(connection) if !connection.is_mock_connection() => {
+                Some(connection.get_postgres_connection_pool().clone())
+            }
+            DatabaseHandleInner::Connection(_) | DatabaseHandleInner::Transaction(_) => None,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl ConnectionTrait for DatabaseHandle {
     fn get_database_backend(&self) -> DbBackend {

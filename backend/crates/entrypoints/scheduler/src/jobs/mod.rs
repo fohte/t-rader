@@ -128,23 +128,30 @@ where
     run_with_ingest_run_log(ingest_run_log.as_ref(), task_name, timeout, task(state)).await
 }
 
-pub(super) async fn run_with_ingest_run_log_state_with_run_id<F, Fut, Stats>(
+pub(super) async fn run_with_ingest_run_log_state_with_run_id_and_failure_stats<F, Fut, Stats>(
     state: SchedulerState,
     task_name: &'static str,
-    timeout: Duration,
+    duration: Duration,
     task: F,
 ) -> Result<(), String>
 where
     F: FnOnce(SchedulerState, Uuid) -> Fut,
-    Fut: Future<Output = Result<Stats, String>>,
+    Fut: Future<Output = Result<Stats, (Box<Stats>, String)>>,
     Stats: Serialize + Send + 'static,
 {
     let ingest_run_log = state.dependencies.ingest_run_log.clone();
     run_with_ingest_run_log_inner(
         ingest_run_log.as_ref(),
         task_name,
-        timeout,
-        move |run_id| async move { task(state, run_id).await.map_err(IngestTaskFailure::Error) },
+        duration,
+        move |run_id| async move {
+            task(state, run_id)
+                .await
+                .map_err(|(stats, error)| IngestTaskFailure::ErrorWithStats {
+                    stats: *stats,
+                    error,
+                })
+        },
     )
     .await
 }
@@ -606,6 +613,55 @@ mod tests {
                     Call::Finish {
                         run_id: RUN_ID,
                         result: Ok(json!({ "rows": 3 })),
+                    },
+                ],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_failure_guard_until_partial_stats_are_persisted() {
+        let observation = Arc::new(GuardObservation::default());
+        let log = Arc::new(FakeIngestRunLog {
+            guard_observation: Some(observation.clone()),
+            ..FakeIngestRunLog::default()
+        });
+
+        let result = run_with_ingest_run_log_with_failure_stats(
+            log.as_ref(),
+            "sample_ingest",
+            Duration::from_secs(1),
+            async {
+                Err((
+                    IngestStatsWithCompletionGuard {
+                        rows: 3,
+                        _guard: CompletionGuard(observation.clone()),
+                    },
+                    "operation failed".to_owned(),
+                ))
+            },
+        )
+        .await;
+
+        assert_eq!(
+            (
+                result,
+                observation.dropped_before_finish.load(Ordering::SeqCst),
+                observation.dropped.load(Ordering::SeqCst),
+                log.calls.lock().await.clone(),
+            ),
+            (
+                Err("operation failed".to_owned()),
+                false,
+                true,
+                vec![
+                    Call::Start {
+                        job: "sample_ingest".to_owned(),
+                    },
+                    Call::FinishWithStats {
+                        run_id: RUN_ID,
+                        stats: json!({ "rows": 3 }),
+                        error: "operation failed".to_owned(),
                     },
                 ],
             ),

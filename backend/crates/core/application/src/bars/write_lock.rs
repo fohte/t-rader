@@ -16,22 +16,27 @@ pub trait UsStockBarsWriteLockGuard: Send {}
 
 pub type SharedUsStockBarsWriteLock = std::sync::Arc<dyn UsStockBarsWriteLock>;
 
-pub(super) fn no_op_write_lock() -> SharedUsStockBarsWriteLock {
-    std::sync::Arc::new(NoopUsStockBarsWriteLock)
+#[cfg(test)]
+pub(crate) fn test_write_lock() -> SharedUsStockBarsWriteLock {
+    std::sync::Arc::new(TestUsStockBarsWriteLock)
 }
 
-struct NoopUsStockBarsWriteLock;
+#[cfg(test)]
+struct TestUsStockBarsWriteLock;
 
-struct NoopUsStockBarsWriteLockGuard;
+#[cfg(test)]
+struct TestUsStockBarsWriteLockGuard;
 
-impl UsStockBarsWriteLockGuard for NoopUsStockBarsWriteLockGuard {}
+#[cfg(test)]
+impl UsStockBarsWriteLockGuard for TestUsStockBarsWriteLockGuard {}
 
+#[cfg(test)]
 #[async_trait]
-impl UsStockBarsWriteLock for NoopUsStockBarsWriteLock {
+impl UsStockBarsWriteLock for TestUsStockBarsWriteLock {
     async fn acquire(
         &self,
         _wait_timeout: Duration,
     ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, PersistenceError> {
-        Ok(Some(Box::new(NoopUsStockBarsWriteLockGuard)))
+        Ok(Some(Box::new(TestUsStockBarsWriteLockGuard)))
     }
 }
