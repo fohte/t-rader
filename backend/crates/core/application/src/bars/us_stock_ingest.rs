@@ -4,15 +4,13 @@ use chrono::{DateTime, TimeZone, Utc};
 use core_domain::bar::Timeframe;
 
 use super::error::BarsUseCaseError;
-use super::types::{UsStockBarTarget, UsStockBarsIngestResult, UsStockBarsIngestStats};
+use super::types::{UsStockBarTarget, UsStockBarsIngestStats};
 use super::us_stock_hourly_history_cutoff;
 use super::us_stock_source::{
     SkippedUsStockInstrument, UsStockBarQuery, UsStockBarSource, UsStockBarSourceError,
 };
 use super::use_cases::BarsUseCases;
-use super::write_lock::UsStockBarsWriteLockGuard;
 use super::write_throttle::WriteThrottle;
-use super::{US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION};
 use request_budget::RequestBudget;
 
 mod adjustment;
@@ -20,6 +18,7 @@ mod hourly;
 mod page_write;
 mod request_budget;
 mod split;
+mod write_lock;
 
 const SYMBOLS_PER_REQUEST: usize = 100;
 const MAX_REQUESTS_PER_RUN: usize = 5_000;
@@ -130,182 +129,6 @@ impl UsStockBarTimeframe {
 }
 
 impl BarsUseCases {
-    pub async fn ingest_us_stock_daily_bars(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-    ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_daily_bars_with_write_lock(source, now)
-            .await
-            .map(|result| result.stats)
-    }
-
-    pub async fn ingest_us_stock_daily_bars_with_write_lock(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
-        let mut budget = RequestBudget::new(
-            MAX_REQUESTS_PER_RUN,
-            US_STOCK_DAILY_BARS_MAX_RUN_DURATION,
-            self.clock.instant(),
-        );
-        let mut lock_wait_stats = UsStockBarsIngestStats::default();
-        let Some(write_lock_guard) = self
-            .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
-            .await?
-        else {
-            return Ok(UsStockBarsIngestResult::new(lock_wait_stats, None));
-        };
-        let mut stats = self
-            .ingest_us_stock_bars_for_timeframe(source, now, UsStockBarTimeframe::Daily, budget)
-            .await?;
-        stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
-        Ok(UsStockBarsIngestResult::new(stats, Some(write_lock_guard)))
-    }
-
-    pub async fn ingest_us_stock_minute_bars(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-    ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_minute_bars_with_budget(
-            source,
-            now,
-            RequestBudget::new(
-                MAX_REQUESTS_PER_RUN,
-                US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
-                self.clock.instant(),
-            ),
-        )
-        .await
-    }
-
-    pub async fn ingest_us_stock_minute_bars_with_write_lock(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
-        self.ingest_us_stock_minute_bars_with_budget_and_write_lock(
-            source,
-            now,
-            RequestBudget::new(
-                MAX_REQUESTS_PER_RUN,
-                US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
-                self.clock.instant(),
-            ),
-        )
-        .await
-    }
-
-    async fn ingest_us_stock_minute_bars_with_budget(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-        budget: RequestBudget,
-    ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_minute_bars_with_budget_and_write_lock(source, now, budget)
-            .await
-            .map(|result| result.stats)
-    }
-
-    async fn ingest_us_stock_minute_bars_with_budget_and_write_lock(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-        mut budget: RequestBudget,
-    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
-        let mut lock_wait_stats = UsStockBarsIngestStats::default();
-        let Some(write_lock_guard) = self
-            .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
-            .await?
-        else {
-            return Ok(UsStockBarsIngestResult::new(lock_wait_stats, None));
-        };
-        let mut ingest_result = self
-            .ingest_us_stock_bars_for_timeframe(source, now, UsStockBarTimeframe::Minute, budget)
-            .await;
-        if let Ok(stats) = &mut ingest_result {
-            stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
-        }
-        if let Err(error) = self.repository.compress_bars_older_than_policy(now).await {
-            let compression_error = error.to_string();
-            if let Ok(stats) = &mut ingest_result {
-                stats.compression_error = Some(compression_error);
-            } else {
-                tracing::error!(error = %compression_error, "米国株の分足取り込み後に古い bars chunk を圧縮できませんでした");
-            }
-        }
-        ingest_result.map(|stats| UsStockBarsIngestResult::new(stats, Some(write_lock_guard)))
-    }
-
-    pub async fn ingest_us_stock_hourly_bars(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-    ) -> Result<UsStockBarsIngestStats, BarsUseCaseError> {
-        self.ingest_us_stock_hourly_bars_with_write_lock(source, now)
-            .await
-            .map(|result| result.stats)
-    }
-
-    pub async fn ingest_us_stock_hourly_bars_with_write_lock(
-        &self,
-        source: &dyn UsStockBarSource,
-        now: DateTime<Utc>,
-    ) -> Result<UsStockBarsIngestResult, BarsUseCaseError> {
-        let mut budget = RequestBudget::new(
-            MAX_REQUESTS_PER_RUN,
-            US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
-            self.clock.instant(),
-        );
-        let mut lock_wait_stats = UsStockBarsIngestStats::default();
-        let Some(write_lock_guard) = self
-            .acquire_us_stock_bars_write_lock(&mut budget, &mut lock_wait_stats)
-            .await?
-        else {
-            return Ok(UsStockBarsIngestResult::new(lock_wait_stats, None));
-        };
-        let mut stats = self
-            .ingest_us_stock_bars_for_timeframe(source, now, UsStockBarTimeframe::Hourly, budget)
-            .await?;
-        stats.write_lock_wait_ms = lock_wait_stats.write_lock_wait_ms;
-        Ok(UsStockBarsIngestResult::new(stats, Some(write_lock_guard)))
-    }
-
-    async fn acquire_us_stock_bars_write_lock(
-        &self,
-        budget: &mut RequestBudget,
-        stats: &mut UsStockBarsIngestStats,
-    ) -> Result<Option<Box<dyn UsStockBarsWriteLockGuard>>, BarsUseCaseError> {
-        let acquire_started_at = self.clock.instant();
-        if !budget.can_start_request(acquire_started_at) {
-            stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
-            return Ok(None);
-        }
-
-        let wait_timeout = budget
-            .deadline()
-            .saturating_duration_since(acquire_started_at);
-        let lock = self.us_stock_bars_write_lock.acquire(wait_timeout).await?;
-        let completed_at = self.clock.instant();
-        let waited = completed_at.saturating_duration_since(acquire_started_at);
-        stats.write_lock_wait_ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
-
-        match lock {
-            Some(guard) if budget.can_start_request(completed_at) => Ok(Some(guard)),
-            Some(_) => {
-                stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
-                Ok(None)
-            }
-            None => {
-                budget.mark_time_budget_exhausted();
-                stats.interrupted_reason = budget.interrupted_reason.map(str::to_owned);
-                Ok(None)
-            }
-        }
-    }
-
     async fn ingest_us_stock_bars_for_timeframe(
         &self,
         source: &dyn UsStockBarSource,
