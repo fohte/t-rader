@@ -13,7 +13,7 @@ import type {
 
 type ApiGraphDef = components['schemas']['GraphDef']
 type NoteLinkItem = components['schemas']['NoteLinkItem']
-export type MarkdownNode = NonNullable<ExtraProps['node']>
+type MarkdownNode = NonNullable<ExtraProps['node']>
 
 export interface MarkdownBodyProps {
   source: string
