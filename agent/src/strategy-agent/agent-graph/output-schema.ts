@@ -24,13 +24,24 @@ const isStringArray = (value: unknown): value is string[] =>
 
 // enum など type を持たないスキーマ断片を保つため、値がすべてフィールド用
 // スキーマ断片のマップである場合だけオブジェクトとして扱う。
-const isFieldSchemaMap = (value: Record<string, unknown>): boolean => {
-  const { required, ...fields } = value
+const toFieldSchemaMap = (
+  value: Record<string, unknown>,
+): { fields: Record<string, unknown>; required: unknown } | undefined => {
+  if (typeof value['type'] === 'string') return undefined
+
+  const requiredIsMetadata =
+    Object.hasOwn(value, 'required') && !isPlainObject(value['required'])
+  const required = requiredIsMetadata ? value['required'] : undefined
+  const fields = requiredIsMetadata
+    ? Object.fromEntries(
+        Object.entries(value).filter(([key]) => key !== 'required'),
+      )
+    : value
   const fieldSchemas = Object.values(fields)
-  return (
-    (fieldSchemas.length > 0 || isStringArray(required)) &&
+  return (fieldSchemas.length > 0 || requiredIsMetadata) &&
     fieldSchemas.every(isPlainObject)
-  )
+    ? { fields, required }
+    : undefined
 }
 
 // `required` はフィールド名 -> スキーマ断片のマップを値として持つキー
@@ -54,21 +65,22 @@ const toObjectSchema = (
 
 const toFieldSchema = (fieldSchema: unknown): JsonSchemaObject => {
   if (!isPlainObject(fieldSchema)) return {}
-  const { items, required, ...rest } = fieldSchema
-  if (items === undefined) {
-    return isFieldSchemaMap(fieldSchema) ? toObjectSchema(rest, required) : rest
+  const fieldMap = toFieldSchemaMap(fieldSchema)
+  if (fieldMap !== undefined) {
+    return toObjectSchema(fieldMap.fields, fieldMap.required)
   }
+
+  const { items, required, ...rest } = fieldSchema
+  if (items === undefined) return rest
   return { ...rest, items: toItemsSchema(items, required) }
 }
 
 const toItemsSchema = (items: unknown, required: unknown): JsonSchemaObject => {
   if (!isPlainObject(items)) return {}
-  // プリミティブ配列要素のスキーマ (例: `{ type: string }`) は自身の `type`
-  // を持つが、オブジェクト配列要素のスキーマはフィールド名 -> スキーマ断片の
-  // マップであり、`type` キー自体は持たない。
-  return typeof items['type'] === 'string'
+  const fieldMap = toFieldSchemaMap(items)
+  return fieldMap === undefined
     ? toFieldSchema(items)
-    : toObjectSchema(items, required)
+    : toObjectSchema(fieldMap.fields, required)
 }
 
 // toolStrategy は raw JSON Schema に description を自動補完しないため、

@@ -69,7 +69,8 @@ describe('buildOutputJsonSchema', () => {
         required: ['label', 'details'],
         label: { type: 'string' },
         details: {
-          required: ['entries'],
+          required: ['entries', 'items'],
+          items: { type: 'array', items: { type: 'string' } },
           entries: {
             type: 'array',
             items: {
@@ -95,6 +96,10 @@ describe('buildOutputJsonSchema', () => {
             details: {
               type: 'object',
               properties: {
+                items: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
                 entries: {
                   type: 'array',
                   items: {
@@ -116,10 +121,30 @@ describe('buildOutputJsonSchema', () => {
                   },
                 },
               },
-              required: ['entries'],
+              required: ['entries', 'items'],
             },
           },
           required: ['label', 'details'],
+        },
+      },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+    })
+  })
+
+  it('preserves a type-less enum schema in array items', () => {
+    const output = {
+      labels: {
+        type: 'array',
+        items: { enum: ['north', 'south'] },
+      },
+    }
+
+    expect(buildOutputJsonSchema(output)).toEqual({
+      type: 'object',
+      properties: {
+        labels: {
+          type: 'array',
+          items: { enum: ['north', 'south'] },
         },
       },
       description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,

@@ -56,6 +56,34 @@ describe('checkOutputSchemaText', () => {
     })
   })
 
+  it('type-less なネストした object とその required を有効として扱う', () => {
+    const text = `record:
+  required: [details]
+  details:
+    required: [items]
+    items:
+      type: array
+      items:
+        type: string
+`
+
+    expect(checkOutputSchemaText(text)).toEqual({
+      issues: [],
+      output: {
+        record: {
+          required: ['details'],
+          details: {
+            required: ['items'],
+            items: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+        },
+      },
+    })
+  })
+
   it('enum フィールドが配列でなければ issue を出すが output は commit される', () => {
     const text = `verdict:
   enum: supported
