@@ -55,12 +55,14 @@ const SCATTER_DEF: GraphDef = {
 }
 
 describe('GraphRenderer', () => {
-  it('dark mode で描画する', () => {
+  it('帰属表記の背景を透明にする', () => {
     render(<GraphRenderer def={FLOW_DEF} />)
 
-    expect(document.querySelector('.react-flow')?.className).toBe(
-      'react-flow dark',
-    )
+    expect(
+      document
+        .querySelector<HTMLElement>('.react-flow')
+        ?.style.getPropertyValue('--xy-attribution-background-color'),
+    ).toBe('transparent')
   })
 
   it.each<[string, GraphDef, string[]]>([
