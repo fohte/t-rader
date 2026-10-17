@@ -10,6 +10,7 @@ export interface DiffCommentAnchor {
   lineNumber: number
   endLineNumber?: number
   text: string
+  isTextSelection?: boolean
 }
 
 export function getDiffCommentAnchorKey(anchor: DiffCommentAnchor): string {
@@ -152,15 +153,28 @@ export function LineCommentGroup({
       ))}
       {anchorKey !== null && activeCommentKey === anchorKey ? (
         <div className="space-y-2">
+          {anchor?.isTextSelection === true && (
+            <blockquote className="border-l-2 border-primary/50 pl-2 font-mono text-2xs text-muted-foreground whitespace-pre-wrap">
+              {anchor.text}
+            </blockquote>
+          )}
           <textarea
-            aria-label="行コメント"
+            aria-label={
+              anchor?.isTextSelection === true
+                ? '選択した箇所へのコメント'
+                : '行コメント'
+            }
             value={commentDraft}
             onChange={(event) => {
               setCommentDraft(event.target.value)
             }}
             rows={2}
             className="w-full border border-border bg-background px-2 py-1.5 font-mono text-2xs text-foreground outline-none focus:border-muted-foreground"
-            placeholder="この行へのコメント"
+            placeholder={
+              anchor?.isTextSelection === true
+                ? '選択した箇所へのコメント'
+                : 'この行へのコメント'
+            }
           />
           <div className="flex gap-2">
             <button

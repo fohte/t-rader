@@ -107,7 +107,7 @@ const rangeComment: NoteVersionComment = {
   author_kind: 'human',
   author_label: 'レビュー担当者',
   resolved: false,
-  anchor_text: '段落の内容です。',
+  anchor_text: '内容です。',
   anchor_side: 'new',
   start_line: 3,
   end_line: 4,
@@ -268,7 +268,7 @@ export const WithUnresolvedDatedReferences: Story = {
 }
 
 export const WithRangeCommentThread: Story = {
-  name: 'shows a comment thread below the final block in its range.',
+  name: 'shows a saved comment with its matching text highlighted.',
   decorators: [withNoteBodyCard],
   args: {
     source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
@@ -296,6 +296,31 @@ export const WithCommentComposer: Story = {
         text: '',
       }),
       comments: [],
+    },
+  },
+}
+
+export const WithTextSelectionCommentComposer: Story = {
+  name: 'shows the selected quote while composing a body comment.',
+  decorators: [withNoteBodyCard],
+  args: {
+    source: '# 範囲コメント\n\n段落の内容です。\n次の行に続きます。',
+    rangeComments: {
+      ...rangeCommentProps,
+      comments: [],
+      activeCommentAnchor: {
+        side: 'new',
+        lineNumber: 3,
+        endLineNumber: 4,
+        text: '内容です。',
+        isTextSelection: true,
+      },
+      activeCommentKey: getDiffCommentAnchorKey({
+        side: 'new',
+        lineNumber: 3,
+        endLineNumber: 4,
+        text: '',
+      }),
     },
   },
 }

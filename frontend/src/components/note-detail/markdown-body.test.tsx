@@ -51,6 +51,24 @@ function QueryClientWrapper({ children }: { children: ReactNode }) {
   )
 }
 
+function bodyComment(anchorText: string): NoteVersionComment {
+  return {
+    id: 'sample-text-comment',
+    target_kind: 'note_version',
+    target_id: 'sample-version',
+    parent_id: null,
+    body: 'この引用を確認してください。',
+    author_kind: 'human',
+    author_label: '架空の担当者',
+    resolved: false,
+    anchor_text: anchorText,
+    anchor_side: 'new',
+    start_line: 1,
+    end_line: 1,
+    created_at: '2026-01-12T03:00:00Z',
+  }
+}
+
 beforeEach(() => {
   useBarsQuery.mockReturnValue({ data: [], isPending: false, isError: false })
 })
@@ -293,6 +311,60 @@ describe('MarkdownBody', () => {
             ?.getAttribute('data-source-start-line') ?? null,
       ),
     ).toEqual(['2'])
+  })
+
+  it('highlights only the first saved quote across inline markdown', () => {
+    const { container } = render(
+      <MarkdownBody
+        source="前置きの**対象**箇所と次の**対象**箇所。"
+        rangeComments={{
+          ...emptyRangeComments,
+          comments: [bodyComment('の対象箇所')],
+        }}
+      />,
+    )
+    const paragraph = container.querySelector('p')
+
+    const getHighlightState = () => ({
+      segments: [
+        ...(paragraph?.querySelectorAll(
+          'mark[data-comment-text-highlight="true"]',
+        ) ?? []),
+      ].map((mark) => mark.textContent),
+      paragraphText: paragraph?.textContent ?? null,
+      paragraphHasBlockHighlight:
+        paragraph?.classList.contains('bg-primary/10') ?? false,
+    })
+    expect(getHighlightState()).toEqual({
+      segments: ['の', '対象', '箇所'],
+      paragraphText: '前置きの対象箇所と次の対象箇所。',
+      paragraphHasBlockHighlight: false,
+    })
+  })
+
+  it('highlights the whole block when a saved quote is not found', () => {
+    const { container } = render(
+      <MarkdownBody
+        source="本文が残っています。"
+        rangeComments={{
+          ...emptyRangeComments,
+          comments: [bodyComment('見つからない引用')],
+        }}
+      />,
+    )
+    const paragraph = container.querySelector('p')
+
+    const getFallbackState = () => ({
+      textHighlightCount:
+        paragraph?.querySelectorAll('mark[data-comment-text-highlight="true"]')
+          .length ?? 0,
+      paragraphHasBlockHighlight:
+        paragraph?.classList.contains('bg-primary/10') ?? false,
+    })
+    expect(getFallbackState()).toEqual({
+      textHighlightCount: 0,
+      paragraphHasBlockHighlight: true,
+    })
   })
 
   it.each([

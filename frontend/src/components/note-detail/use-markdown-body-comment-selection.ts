@@ -105,12 +105,17 @@ export function useMarkdownBodyCommentSelection({
   )
 
   const startComment = useCallback(
-    (range: SourceLineRange, text = blockText(range)): void => {
+    (
+      range: SourceLineRange,
+      text = blockText(range),
+      isTextSelection = false,
+    ): void => {
       onStartComment({
         side: 'new',
         lineNumber: range.startLine,
         endLineNumber: range.endLine,
         text,
+        ...(isTextSelection ? { isTextSelection: true } : {}),
       })
       updateSelectedRange(range)
       setTextSelectionAction(null)
@@ -271,7 +276,7 @@ export function useMarkdownBodyCommentSelection({
 
   const startTextComment = useCallback((): void => {
     if (textSelectionAction == null) return
-    startComment(textSelectionAction.range, textSelectionAction.text)
+    startComment(textSelectionAction.range, textSelectionAction.text, true)
   }, [startComment, textSelectionAction])
 
   const clearBlockSelection = useCallback((): void => {
