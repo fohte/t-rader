@@ -30,18 +30,33 @@ impl BarsUseCases {
                 .checked_add_signed(Duration::days(DOWNSAMPLE_BATCH_DAYS))
                 .unwrap_or(cutoff);
             for instrument_id in &instrument_ids {
-                let transaction = self.unit_of_work.begin().await?;
-                let batch_stats = self
-                    .repository
-                    .downsample_us_stock_minute_bar_range(
-                        &transaction,
-                        instrument_id,
-                        batch_from,
-                        batch_until,
-                        cutoff,
-                    )
-                    .await?;
-                self.unit_of_work.commit(transaction).await?;
+                let batch_result = async {
+                    let transaction = self.unit_of_work.begin().await?;
+                    let batch_stats = self
+                        .repository
+                        .downsample_us_stock_minute_bar_range(
+                            &transaction,
+                            instrument_id,
+                            batch_from,
+                            batch_until,
+                            cutoff,
+                        )
+                        .await?;
+                    self.unit_of_work.commit(transaction).await?;
+                    Ok::<_, BarsUseCaseError>(batch_stats)
+                }
+                .await;
+                let batch_stats = match batch_result {
+                    Ok(batch_stats) => batch_stats,
+                    Err(error) => {
+                        tracing::error!(
+                            instrument_id = %instrument_id,
+                            error = %error,
+                            "米国株の分足を集計できませんでした"
+                        );
+                        return Err(error);
+                    }
+                };
 
                 stats.hourly_bars_inserted += batch_stats.hourly_bars_inserted;
                 stats.minute_bars_deleted += batch_stats.minute_bars_deleted;
@@ -59,6 +74,7 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use core_domain::bar::{Bar, Timeframe};
+    use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
 
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
@@ -85,8 +101,14 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn downsample_processes_aged_minutes_in_hour_aligned_weekly_transactions() {
+    struct DownsampleFixture {
+        use_cases: BarsUseCases,
+        unit_of_work: Arc<FakeUnitOfWork>,
+        repository: Arc<FakeBarsRepository>,
+    }
+
+    #[fixture]
+    async fn downsample_fixture() -> DownsampleFixture {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakeBarsRepository::new());
         repository
@@ -95,6 +117,22 @@ mod tests {
                 "US:DEMO-BETA".to_owned(),
             ])
             .await;
+        let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
+        let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
+        DownsampleFixture {
+            use_cases,
+            unit_of_work,
+            repository,
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    #[awt]
+    async fn downsample_processes_aged_minutes_in_hour_aligned_weekly_transactions(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
         repository
             .seed_bars(vec![
                 minute_bar("US:DEMO-ALPHA", date("2038-12-20T03:05:00Z")),
@@ -104,10 +142,9 @@ mod tests {
                 minute_bar("JP-DEMO", date("2038-12-20T03:05:00Z")),
             ])
             .await;
-        let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
-        let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
 
-        let result = use_cases
+        let result = downsample_fixture
+            .use_cases
             .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"))
             .await;
         let downsample_instruments = repository
@@ -122,8 +159,13 @@ mod tests {
             .await
             .clone();
         let write_transaction_ids = repository.write_transaction_ids.lock().await.clone();
-        let begun = unit_of_work.begun.lock().await.clone();
-        let committed = unit_of_work.committed.lock().await.clone();
+        let begun = downsample_fixture.unit_of_work.begun.lock().await.clone();
+        let committed = downsample_fixture
+            .unit_of_work
+            .committed
+            .lock()
+            .await
+            .clone();
 
         assert_eq!(
             (
@@ -162,16 +204,13 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn downsample_failure_keeps_prior_instrument_commits() {
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
-        let repository = Arc::new(FakeBarsRepository::new());
-        repository
-            .seed_us_stock_instrument_ids(vec![
-                "US:DEMO-ALPHA".to_owned(),
-                "US:DEMO-BETA".to_owned(),
-            ])
-            .await;
+    #[awt]
+    async fn downsample_failure_keeps_prior_instrument_commits(
+        #[future] downsample_fixture: DownsampleFixture,
+    ) {
+        let repository = &downsample_fixture.repository;
         repository
             .seed_bars(vec![
                 minute_bar("US:DEMO-ALPHA", date("2038-12-20T03:05:00Z")),
@@ -181,10 +220,9 @@ mod tests {
         repository
             .fail_minute_bar_downsampling_for("US:DEMO-BETA", "injected database failure")
             .await;
-        let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
-        let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
 
-        let result = use_cases
+        let result = downsample_fixture
+            .use_cases
             .downsample_old_us_stock_minute_bars(date("2040-01-01T12:00:00Z"))
             .await
             .map_err(|_| ());
@@ -193,8 +231,13 @@ mod tests {
             .lock()
             .await
             .clone();
-        let begun = unit_of_work.begun.lock().await.clone();
-        let committed = unit_of_work.committed.lock().await.clone();
+        let begun = downsample_fixture.unit_of_work.begun.lock().await.clone();
+        let committed = downsample_fixture
+            .unit_of_work
+            .committed
+            .lock()
+            .await
+            .clone();
         let write_transaction_ids = repository.write_transaction_ids.lock().await.clone();
         let transaction_results = begun
             .iter()
