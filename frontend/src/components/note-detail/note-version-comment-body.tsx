@@ -13,41 +13,66 @@ export function NoteVersionCommentBody({
   onToggleResolved,
 }: NoteVersionCommentBodyProps) {
   const isLLM = comment.author_kind === 'llm'
+  const resolutionControls = comment.resolved ? (
+    <>
+      <span className="text-status-approved">✓ 解決済み</span>
+      <button
+        type="button"
+        onClick={() => {
+          onToggleResolved(comment)
+        }}
+        disabled={isResolving}
+        className="text-muted-foreground underline-offset-2 hover:text-primary hover:underline disabled:opacity-50"
+      >
+        未解決に戻す
+      </button>
+    </>
+  ) : (
+    <button
+      type="button"
+      onClick={() => {
+        onToggleResolved(comment)
+      }}
+      disabled={isResolving}
+      className="border border-border px-1.5 py-0.5 text-2xs text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50"
+    >
+      解決する
+    </button>
+  )
+
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2 font-mono text-2xs">
-        <span
-          className={`inline-flex size-4 items-center justify-center border text-2xs font-bold ${isLLM ? 'border-primary text-primary' : 'border-muted-foreground text-foreground'}`}
-        >
-          {isLLM ? '>' : comment.author_label.slice(0, 1).toUpperCase()}
-        </span>
-        <span className="font-bold text-foreground">
-          {comment.author_label}
-        </span>
-        {isLLM && <span className="text-muted-foreground">LLM</span>}
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              onToggleResolved(comment)
-            }}
-            disabled={isResolving}
-            className={`border px-1.5 py-0.5 text-2xs disabled:opacity-50 ${comment.resolved ? 'border-status-approved text-status-approved' : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}`}
-          >
-            {comment.resolved ? '✓ 解決済み' : '未解決'}
-          </button>
-          <span className="text-muted-foreground">
-            {formatRelative(comment.created_at)}
-          </span>
-        </div>
+        {isLLM ? (
+          <>
+            <span className="inline-flex size-4 items-center justify-center border border-primary text-2xs font-bold text-primary">
+              &gt;
+            </span>
+            <span className="font-bold text-foreground">
+              {comment.author_label}
+            </span>
+            <span className="text-muted-foreground">LLM</span>
+            <div className="ml-auto flex items-center gap-2">
+              {resolutionControls}
+              <span className="text-muted-foreground">
+                {formatRelative(comment.created_at)}
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-foreground">あなた</span>
+              <span className="text-muted-foreground">
+                · {formatRelative(comment.created_at)}
+              </span>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              {resolutionControls}
+            </div>
+          </>
+        )}
       </div>
-      {comment.anchor_text != null && (
-        <blockquote className="border-l-2 border-border pl-2 text-muted-foreground">
-          <p className="whitespace-pre-wrap leading-relaxed">
-            {comment.anchor_text}
-          </p>
-        </blockquote>
-      )}
       <p
         className={`whitespace-pre-wrap leading-relaxed ${comment.resolved ? 'text-muted-foreground line-through decoration-border' : 'text-foreground'}`}
       >
