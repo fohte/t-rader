@@ -6,7 +6,6 @@ import {
 } from '#lib/format-ingest-status'
 
 type IngestJob = components['schemas']['IngestJobStatusResponse']
-type IngestWorkerJob = components['schemas']['IngestWorkerJobResponse']
 
 export interface IngestStatusTableProps {
   jobs: IngestJob[]
@@ -19,8 +18,6 @@ const RUN_STATUS_LABELS: Record<string, string> = {
 }
 
 export function IngestStatusTable({ jobs }: IngestStatusTableProps) {
-  const waitingJobs = selectWorkerJobs(jobs, 'waiting')
-  const failedJobs = selectWorkerJobs(jobs, 'failed')
   return (
     <div className="space-y-6">
       <section className="space-y-2">
@@ -96,69 +93,7 @@ export function IngestStatusTable({ jobs }: IngestStatusTableProps) {
           </div>
         )}
       </section>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <WorkerJobsSection
-          title="待機中のジョブ"
-          emptyMessage="待機中のジョブはありません。"
-          jobs={waitingJobs}
-          showError={false}
-        />
-        <WorkerJobsSection
-          title="失敗したジョブ"
-          emptyMessage="失敗したジョブはありません。"
-          jobs={failedJobs}
-          showError
-        />
-      </div>
     </div>
-  )
-}
-
-function WorkerJobsSection({
-  title,
-  emptyMessage,
-  jobs,
-  showError,
-}: {
-  title: string
-  emptyMessage: string
-  jobs: IngestWorkerJob[]
-  showError: boolean
-}) {
-  return (
-    <section className="space-y-2">
-      <h2 className="font-mono text-sm font-semibold">{title}</h2>
-      {jobs.length === 0 ? (
-        <p className="border border-dashed border-border p-4 font-mono text-xs text-muted-foreground">
-          {emptyMessage}
-        </p>
-      ) : (
-        <ul className="divide-y divide-border border border-border bg-card">
-          {jobs.map((job) => (
-            <li key={job.id} className="space-y-1 px-3 py-2 font-mono text-xs">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="text-foreground">{job.task_identifier}</span>
-                {job.queue_name != null && (
-                  <span className="text-muted-foreground">
-                    キュー {job.queue_name}
-                  </span>
-                )}
-                <span className="text-muted-foreground-strong">
-                  実行予定 {formatIngestDateTime(job.run_at)}
-                </span>
-                <span className="text-muted-foreground-strong">
-                  試行 {job.attempts}/{job.max_attempts}
-                </span>
-              </div>
-              {showError && job.last_error != null && (
-                <p className="break-words text-primary">{job.last_error}</p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   )
 }
 
@@ -166,13 +101,4 @@ function statusClass(status: string | undefined): string {
   if (status === 'failed') return 'text-primary'
   if (status === 'succeeded') return 'text-up'
   return 'text-muted-foreground-strong'
-}
-
-function selectWorkerJobs(
-  jobs: IngestJob[],
-  state: 'waiting' | 'failed',
-): IngestWorkerJob[] {
-  return jobs.flatMap((job) =>
-    job.worker_jobs.filter((workerJob) => workerJob.state === state),
-  )
 }

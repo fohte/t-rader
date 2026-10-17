@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use backend::cli::{Cli, RunMode};
+use backend::cli::Cli;
 use backend::{
     build_agent_webhook_state, build_external_webhook_state, build_http_state, create_router,
 };
@@ -24,7 +24,7 @@ use core_application::strategy_task::StrategyTaskReconcileLockUseCases;
 use core_application::valuation_source::SharedValuationSource;
 use core_application::web_search::SharedWebSearchClient;
 use entrypoint_frontend_api::FrontendApiState;
-use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
+use entrypoint_scheduler::SchedulerDependencies;
 use futures_util::future::BoxFuture;
 use gateway_alpha_vantage::AlphaVantageClient;
 use gateway_e_stat::EStatCalendarEventSource;
@@ -46,7 +46,6 @@ use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 use tokio::sync::watch;
 
-mod admin_ui;
 mod logging;
 mod runtime;
 mod signals;
@@ -59,7 +58,7 @@ use startup::{
     NewsAndCentralBankSources, StartupError, alpaca_us_stock_bar_source_from_env,
     cron_trigger_timer_enabled_from_env, eoddata_kospi_source_from_env,
     initialize_news_and_central_bank_sources, jquants_config_from_env, required_redis_url,
-    us_stock_master_source, worker_admin_ui_settings_from_env,
+    us_stock_master_source,
 };
 
 #[tokio::main]
@@ -70,11 +69,7 @@ async fn main() -> Result<(), StartupError> {
     {
         return Err(StartupError::Config(format!("unknown job: {job_name}")));
     }
-    let run_mode = if cli.run_job.is_some() {
-        RunMode::Worker
-    } else {
-        cli.run_mode
-    };
+    let is_run_job = cli.run_job.is_some();
 
     // --dump-openapi: OpenAPI スペックを JSON で標準出力に出力して終了する
     if cli.dump_openapi {
@@ -116,13 +111,6 @@ async fn main() -> Result<(), StartupError> {
     if !cli.skip_migration {
         tracing::info!("running database migrations");
         Migrator::up(&db, None).await?;
-        backend::migrations::migrate_graphile_worker_schema(
-            db.get_postgres_connection_pool().clone(),
-        )
-        .await
-        .map_err(|error| {
-            StartupError::Config(format!("failed to migrate Graphile Worker schema: {error}"))
-        })?;
         tracing::info!("database migrations completed");
     } else {
         tracing::info!("skipping database migrations (--skip-migration)");
@@ -133,13 +121,6 @@ async fn main() -> Result<(), StartupError> {
         tracing::info!("migration completed, exiting (--migrate-only)");
         return Ok(());
     }
-
-    let admin_ui_settings =
-        if cli.run_job.is_none() && run_mode.starts_worker() && !cli.backfill_twse_indices {
-            Some(worker_admin_ui_settings_from_env()?)
-        } else {
-            None
-        };
 
     let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
 
@@ -318,14 +299,13 @@ async fn main() -> Result<(), StartupError> {
                 None
             }
         };
-    let sec_user_agent = if run_mode.starts_worker() {
+    let sec_user_agent = if is_run_job {
         std::env::var("SEC_USER_AGENT").ok()
     } else {
         None
     };
-    let us_stock_master_source = us_stock_master_source(run_mode.starts_worker(), sec_user_agent)?;
-    let us_stock_bar_source =
-        alpaca_us_stock_bar_source_from_env(run_mode.starts_worker(), &redis_url)?;
+    let us_stock_master_source = us_stock_master_source(is_run_job, sec_user_agent)?;
+    let us_stock_bar_source = alpaca_us_stock_bar_source_from_env(is_run_job, &redis_url)?;
     let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
         .as_ref()
         .map(|client| Arc::clone(client) as SharedShortSellingSource);
@@ -383,7 +363,7 @@ async fn main() -> Result<(), StartupError> {
         ingest_run_log: Arc::new(use_cases.ingest_run_log()),
         fred_source,
         eoddata_kospi_source,
-        twse_source: twse::worker_source(run_mode, &redis_url)?,
+        twse_source: twse::source_for_run_job(is_run_job, &redis_url)?,
         e_stat_calendar_source: Some(e_stat_calendar_source),
         alpha_vantage_calendar_source,
         fred_calendar_event_source,
@@ -396,7 +376,6 @@ async fn main() -> Result<(), StartupError> {
         margin_source,
         strategy_task_reconcile: strategy_task_reconcile.clone(),
         event_dispatch: use_cases.event_dispatch(),
-        triggers: use_cases.triggers(),
         agent_task_client: agent_task_client.clone(),
         strategy_task_reconcile_enabled,
     };
@@ -409,7 +388,7 @@ async fn main() -> Result<(), StartupError> {
         return Ok(());
     }
 
-    let cron_trigger_timer = if run_mode.starts_api() && cron_trigger_timer_enabled_from_env()? {
+    let cron_trigger_timer = if cron_trigger_timer_enabled_from_env()? {
         let listener = PostgresTriggerChangeListener::connect(&database_url)
             .await
             .map_err(|error| {
@@ -422,7 +401,7 @@ async fn main() -> Result<(), StartupError> {
         None
     };
 
-    let app = if run_mode.starts_api() {
+    let app = if !is_run_job {
         // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
         // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
         // 合わさって空文字同士の一致で認証をすり抜けてしまう。
@@ -492,28 +471,6 @@ async fn main() -> Result<(), StartupError> {
         let _ = signal_tx.send(true);
     });
 
-    let worker = if run_mode.starts_worker() {
-        let worker = Scheduler::initialize(
-            db.get_postgres_connection_pool().clone(),
-            dependencies,
-            wait_for_shutdown(shutdown_rx.clone()),
-        )
-        .await
-        .map_err(|error| {
-            StartupError::Config(format!("failed to initialize Graphile Worker: {error}"))
-        })?;
-        tracing::info!("Graphile Worker initialized");
-        Some(worker)
-    } else {
-        None
-    };
-
-    let admin_server_run = if let Some(settings) = admin_ui_settings {
-        Some(admin_ui::server(settings, &db, shutdown_rx.clone()).await?)
-    } else {
-        None
-    };
-
     let server_run: Option<BoxFuture<'static, Result<(), std::io::Error>>> = if let Some(app) = app
     {
         let port: u16 = std::env::var("BACKEND_PORT")
@@ -540,14 +497,6 @@ async fn main() -> Result<(), StartupError> {
     };
 
     let mut run_futures: Vec<BoxFuture<'static, Result<(), StartupError>>> = Vec::new();
-    if let Some(worker) = worker {
-        run_futures.push(Box::pin(async move {
-            worker
-                .run()
-                .await
-                .map_err(|error| StartupError::Runtime(format!("Graphile Worker failed: {error}")))
-        }));
-    }
     if let Some(server_run) = server_run {
         run_futures.push(Box::pin(async move {
             server_run
@@ -562,9 +511,6 @@ async fn main() -> Result<(), StartupError> {
                 .await;
             Ok(())
         }));
-    }
-    if let Some(admin_server_run) = admin_server_run {
-        run_futures.push(admin_server_run);
     }
     runtime::supervise(run_futures, shutdown_tx).await
 }

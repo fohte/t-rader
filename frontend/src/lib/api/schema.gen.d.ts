@@ -2119,7 +2119,6 @@ export interface components {
       last_succeeded_at?: string | null
       /** Format: date */
       latest_data_date?: string | null
-      worker_jobs: components['schemas']['IngestWorkerJobResponse'][]
     }
     IngestRunResponse: {
       error?: string | null
@@ -2134,20 +2133,6 @@ export interface components {
     }
     IngestStatusResponse: {
       jobs: components['schemas']['IngestJobStatusResponse'][]
-    }
-    IngestWorkerJobResponse: {
-      /** Format: int32 */
-      attempts: number
-      /** Format: int64 */
-      id: number
-      last_error?: string | null
-      /** Format: int32 */
-      max_attempts: number
-      queue_name?: string | null
-      /** Format: date-time */
-      run_at: string
-      state: string
-      task_identifier: string
     }
     /**
      * @description 戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。

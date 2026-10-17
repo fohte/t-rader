@@ -10828,8 +10828,7 @@
       "IngestJobStatusResponse": {
         "type": "object",
         "required": [
-          "job",
-          "worker_jobs"
+          "job"
         ],
         "properties": {
           "expected_data_date": {
@@ -10865,12 +10864,6 @@
               "null"
             ],
             "format": "date"
-          },
-          "worker_jobs": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/IngestWorkerJobResponse"
-            }
           }
         }
       },
@@ -10920,53 +10913,6 @@
             "items": {
               "$ref": "#/components/schemas/IngestJobStatusResponse"
             }
-          }
-        }
-      },
-      "IngestWorkerJobResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "task_identifier",
-          "state",
-          "run_at",
-          "attempts",
-          "max_attempts"
-        ],
-        "properties": {
-          "attempts": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "last_error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "max_attempts": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "queue_name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "run_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "state": {
-            "type": "string"
-          },
-          "task_identifier": {
-            "type": "string"
           }
         }
       },

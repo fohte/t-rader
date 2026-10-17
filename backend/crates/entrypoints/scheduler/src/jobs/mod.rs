@@ -7,7 +7,6 @@ use core_application::bars::{
     US_STOCK_DAILY_BARS_MAX_RUN_DURATION, US_STOCK_INTRADAY_BARS_MAX_RUN_DURATION,
 };
 use core_application::ingest_run_log::IngestRunLog;
-use graphile_worker::WorkerContext;
 use serde::Serialize;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -24,19 +23,16 @@ pub mod ecb_calendar;
 pub mod edinet_holdings;
 pub mod eoddata_kospi;
 pub mod equity_master;
-pub mod event_dispatch;
 pub mod fed_calendar;
 pub mod financial_summary;
 pub mod fred;
 pub mod fred_release_dates;
-pub mod ingest_run_recovery;
 pub mod jquants;
 pub mod news;
 pub mod news_content;
 pub mod paper_order_filling;
 pub mod prediction;
 pub mod strategy_task_reconcile;
-pub mod trigger_evaluation;
 pub mod twse;
 pub mod us_stock_bars;
 pub mod us_stock_master;
@@ -45,6 +41,7 @@ pub mod valuation;
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(12 * 60 * 60);
 pub(super) const US_STOCK_BARS_TIMEOUT: Duration = DAILY_TIMEOUT;
+pub(crate) const NEWS_CONTENT_JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 // 分足・時間足 CronJob の activeDeadlineSeconds: 3300 は
 // fohte/infra/kubernetes/home/manifests/t-rader/values.yaml に定義。
@@ -73,21 +70,6 @@ pub(super) fn today_in_tokyo(now: DateTime<Utc>) -> NaiveDate {
 
 pub(super) fn require_source<T>(source: Option<T>, name: &str) -> Result<T, String> {
     source.ok_or_else(|| format!("{name} is not configured"))
-}
-
-pub(super) fn scheduler_state(context: &WorkerContext) -> Result<SchedulerState, String> {
-    context
-        .get_ext::<SchedulerState>()
-        .cloned()
-        .ok_or_else(|| "scheduler state is not configured".to_string())
-}
-
-pub(super) async fn run_from_worker_context(
-    context: WorkerContext,
-    run: fn(SchedulerState) -> JobFuture,
-) -> Result<(), String> {
-    let state = scheduler_state(&context)?;
-    run(state).await
 }
 
 pub(super) async fn run_with_state<F, Fut>(

@@ -7,11 +7,8 @@ edition = "2024"
 chrono = { workspace = true, features = ["clock"] }
 chrono-tz = { workspace = true }
 core-application = { workspace = true }
-graphile_worker = { workspace = true }
-futures-util = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sqlx = { workspace = true, features = ["postgres"] }
 tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
 uuid = { workspace = true }

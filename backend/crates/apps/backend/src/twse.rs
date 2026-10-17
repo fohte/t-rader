@@ -9,13 +9,12 @@ use core_application::indicator_observation_batch_source::SharedIndicatorObserva
 use gateway_twse::TwseClient;
 
 use crate::startup::StartupError;
-use backend::cli::RunMode;
 
-pub(super) fn worker_source(
-    run_mode: RunMode,
+pub(super) fn source_for_run_job(
+    for_job: bool,
     redis_url: &str,
 ) -> Result<Option<SharedIndicatorObservationBatchSource>, StartupError> {
-    if !run_mode.starts_worker() {
+    if !for_job {
         return Ok(None);
     }
 

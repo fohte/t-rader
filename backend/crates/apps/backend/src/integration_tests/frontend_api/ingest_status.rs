@@ -7,11 +7,11 @@ mod tests {
     use core_domain::IndicatorObservation;
     use rust_decimal::Decimal;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, Statement};
+    use sea_orm::EntityTrait;
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    use crate::testing::create_test_server_with_graphile_worker;
+    use crate::testing::create_test_server_with_db;
     use gateway_postgres::PostgresIndicatorObservationRepository;
     use gateway_postgres::entities::{
         earnings_schedule_ingested_date, ingest_run, jquants_daily_bars_ingested_date,
@@ -35,63 +35,8 @@ mod tests {
             if !job["expected_data_date"].is_null() {
                 job["expected_data_date"] = Value::String("<expected-data-date>".into());
             }
-            for worker_job in job["worker_jobs"]
-                .as_array_mut()
-                .expect("worker jobs array")
-            {
-                worker_job["id"] = json!(-1);
-                worker_job["run_at"] = Value::String("<run-at>".into());
-            }
         }
         response
-    }
-
-    async fn enqueue_job(
-        db: &gateway_postgres::DatabaseHandle,
-        run_at: DateTime<FixedOffset>,
-    ) -> i64 {
-        let rows = db
-            .query_all_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT id FROM graphile_worker.add_job(\
-                    $1::text, '{}'::json, $2::text, $3::timestamptz, $4::int\
-                )",
-                [
-                    "daily_bars_ingest".to_string().into(),
-                    "sample-queue".to_string().into(),
-                    run_at.into(),
-                    3_i32.into(),
-                ],
-            ))
-            .await
-            .expect("enqueue graphile job");
-        rows[0].try_get("", "id").expect("graphile job id")
-    }
-
-    async fn mark_job_failed(db: &gateway_postgres::DatabaseHandle, job_id: i64) {
-        db.execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "UPDATE graphile_worker._private_jobs \
-             SET attempts = max_attempts, last_error = 'sample queue failure' \
-             WHERE id = $1",
-            [job_id.into()],
-        ))
-        .await
-        .expect("mark graphile job failed");
-    }
-
-    async fn mark_job_running(
-        db: &gateway_postgres::DatabaseHandle,
-        job_id: i64,
-        locked_at: DateTime<FixedOffset>,
-    ) {
-        db.execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "UPDATE graphile_worker._private_jobs SET locked_at = $2 WHERE id = $1",
-            [job_id.into(), locked_at.into()],
-        ))
-        .await
-        .expect("mark graphile job running");
     }
 
     async fn seed_indicator_observations(db: &gateway_postgres::DatabaseHandle) {
@@ -136,10 +81,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_returns_latest_run_data_date_and_graphile_queue_states(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let server = create_test_server_with_graphile_worker(db.clone()).await;
+    async fn get_returns_latest_run_history_and_data_dates(db: gateway_postgres::DatabaseHandle) {
+        let (_, server) = create_test_server_with_db(db.clone()).await;
         let earlier_id = Uuid::from_u128(1);
         let latest_id = Uuid::from_u128(2);
         let earlier_started_at = timestamp("2030-06-05T12:00:00Z");
@@ -190,12 +133,6 @@ mod tests {
         .await
         .expect("insert earnings schedule date");
         seed_indicator_observations(&db).await;
-        let _waiting_id = enqueue_job(&db, timestamp("2030-06-06T12:02:00Z")).await;
-        let failed_id = enqueue_job(&db, timestamp("2030-06-06T12:03:00Z")).await;
-        mark_job_failed(&db, failed_id).await;
-        let running_id = enqueue_job(&db, timestamp("2030-06-06T12:04:00Z")).await;
-        mark_job_running(&db, running_id, timestamp("2030-06-06T12:04:00Z")).await;
-
         let response = server.get("/api/ingest-status").await;
         let actual = (response.status_code(), normalize(response.json::<Value>()));
         let expected_last_succeeded_at =
@@ -219,215 +156,161 @@ mod tests {
                             },
                             "last_succeeded_at": expected_last_succeeded_at,
                             "latest_data_date": "2030-06-06",
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": [
-                                {
-                                    "id": -1,
-                                    "task_identifier": "daily_bars_ingest",
-                                    "state": "waiting",
-                                    "queue_name": "sample-queue",
-                                    "run_at": "<run-at>",
-                                    "attempts": 0,
-                                    "max_attempts": 3,
-                                    "last_error": null
-                                },
-                                {
-                                    "id": -1,
-                                    "task_identifier": "daily_bars_ingest",
-                                    "state": "failed",
-                                    "queue_name": "sample-queue",
-                                    "run_at": "<run-at>",
-                                    "attempts": 3,
-                                    "max_attempts": 3,
-                                    "last_error": "sample queue failure"
-                                },
-                                {
-                                    "id": -1,
-                                    "task_identifier": "daily_bars_ingest",
-                                    "state": "running",
-                                    "queue_name": "sample-queue",
-                                    "run_at": "<run-at>",
-                                    "attempts": 0,
-                                    "max_attempts": 3,
-                                    "last_error": null
-                                }
-                            ]
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "earnings_schedule_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": "2030-06-04",
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "financial_summary_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "valuation_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "equity_master_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "us_stock_master_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "shareholding_structure_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "fred_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "eoddata_kospi_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": "2030-06-07",
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "twse_index_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "fred_release_dates_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "e_stat_calendar_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "alpha_vantage_calendar_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "boj_calendar_event_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "ecb_calendar_event_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "fed_calendar_event_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "short_ratio_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "short_sale_report_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "margin_ingest",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "news_aggregation",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": "<expected-data-date>",
-                            "worker_jobs": []
+                            "expected_data_date": "<expected-data-date>"
                         },
                         {
                             "job": "news_content_fetch",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "prediction_grading",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         },
                         {
                             "job": "paper_order_filling",
                             "last_run": null,
                             "last_succeeded_at": null,
                             "latest_data_date": null,
-                            "expected_data_date": null,
-                            "worker_jobs": []
+                            "expected_data_date": null
                         }
                     ]
                 }),

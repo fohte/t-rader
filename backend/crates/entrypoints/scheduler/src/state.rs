@@ -29,7 +29,6 @@ use core_application::{
     short_sale_report::ShortSaleReportUseCases,
     short_selling_source::SharedShortSellingSource,
     strategy_task::StrategyTaskReconcileUseCases,
-    trigger::TriggerUseCases,
     us_stock_master::UsStockMasterUseCases,
     us_stock_master_source::SharedUsStockMasterSource,
     valuation::ValuationUseCases,
@@ -79,7 +78,6 @@ pub struct SchedulerDependencies {
     pub margin_source: Option<SharedMarginSource>,
     pub strategy_task_reconcile: StrategyTaskReconcileUseCases,
     pub event_dispatch: EventDispatchUseCases,
-    pub triggers: TriggerUseCases,
     pub agent_task_client: SharedAgentTaskClient,
     pub strategy_task_reconcile_enabled: bool,
 }

@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::ingest_status::{
     IngestJobStatus, IngestRun, IngestRunHistory, IngestStatus, IngestStatusData,
-    IngestStatusJobDate, IngestStatusRepository, IngestStatusUseCase, IngestWorkerJob,
+    IngestStatusJobDate, IngestStatusRepository, IngestStatusUseCase,
 };
 use crate::persistence::PersistenceError;
 
@@ -29,7 +29,7 @@ fn timestamp(value: &str) -> DateTime<FixedOffset> {
 }
 
 #[tokio::test]
-async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
+async fn get_returns_registered_jobs_with_run_data_and_dates() {
     let repository = Arc::new(FakeIngestStatusRepository(IngestStatusData {
         run_histories: vec![IngestRunHistory {
             job: "daily_bars_ingest".into(),
@@ -46,16 +46,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
         latest_data_dates: vec![IngestStatusJobDate {
             job: "daily_bars_ingest".into(),
             latest_data_date: Some(date(2030, 6, 5)),
-        }],
-        worker_jobs: vec![IngestWorkerJob {
-            id: 2,
-            job: "daily_bars_ingest".into(),
-            state: "failed".into(),
-            queue_name: Some("sample-queue".into()),
-            run_at: timestamp("2030-06-06T12:02:00Z"),
-            attempts: 3,
-            max_attempts: 3,
-            last_error: Some("sample failure".into()),
         }],
     }));
     let use_case = IngestStatusUseCase::new(repository);
@@ -82,16 +72,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: Some(timestamp("2030-06-06T12:01:00Z")),
                     latest_data_date: Some(date(2030, 6, 5)),
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: vec![IngestWorkerJob {
-                        id: 2,
-                        job: "daily_bars_ingest".into(),
-                        state: "failed".into(),
-                        queue_name: Some("sample-queue".into()),
-                        run_at: timestamp("2030-06-06T12:02:00Z"),
-                        attempts: 3,
-                        max_attempts: 3,
-                        last_error: Some("sample failure".into()),
-                    }],
                 },
                 IngestJobStatus {
                     job: "earnings_schedule_ingest".into(),
@@ -99,7 +79,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "financial_summary_ingest".into(),
@@ -107,7 +86,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "valuation_ingest".into(),
@@ -115,7 +93,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "equity_master_ingest".into(),
@@ -123,7 +100,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "us_stock_master_ingest".into(),
@@ -131,7 +107,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "shareholding_structure_ingest".into(),
@@ -139,7 +114,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "fred_ingest".into(),
@@ -147,7 +121,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "eoddata_kospi_ingest".into(),
@@ -155,7 +128,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "twse_index_ingest".into(),
@@ -163,7 +135,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "fred_release_dates_ingest".into(),
@@ -171,7 +142,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "e_stat_calendar_ingest".into(),
@@ -179,7 +149,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "alpha_vantage_calendar_ingest".into(),
@@ -187,7 +156,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "boj_calendar_event_ingest".into(),
@@ -195,7 +163,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "ecb_calendar_event_ingest".into(),
@@ -203,7 +170,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "fed_calendar_event_ingest".into(),
@@ -211,7 +177,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "short_ratio_ingest".into(),
@@ -219,7 +184,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "short_sale_report_ingest".into(),
@@ -227,7 +191,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "margin_ingest".into(),
@@ -235,7 +198,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "news_aggregation".into(),
@@ -243,7 +205,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: Some(date(2030, 6, 7)),
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "news_content_fetch".into(),
@@ -251,7 +212,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "prediction_grading".into(),
@@ -259,7 +219,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
                 IngestJobStatus {
                     job: "paper_order_filling".into(),
@@ -267,7 +226,6 @@ async fn get_returns_registered_jobs_with_run_data_dates_and_queue_jobs() {
                     last_succeeded_at: None,
                     latest_data_date: None,
                     expected_data_date: None,
-                    worker_jobs: Vec::new(),
                 },
             ],
         },

@@ -3,21 +3,11 @@ use core_application::{
     margin::MarginUseCases, margin_source::MarginSource, short_ratio::ShortRatioUseCases,
     short_sale_report::ShortSaleReportUseCases, short_selling_source::ShortSellingSource,
 };
-use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use super::{DAILY_TIMEOUT, require_source, run_with_ingest_run_log_state};
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct ShortRatioIngest;
-
-impl TaskHandler for ShortRatioIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
 
 impl super::SchedulerJob for ShortRatioIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_RATIO_INGEST_JOB;
@@ -57,16 +47,7 @@ async fn ingest_short_ratio(
     Ok(stats)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct ShortSaleReportIngest;
-
-impl TaskHandler for ShortSaleReportIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
 
 impl super::SchedulerJob for ShortSaleReportIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::SHORT_SALE_REPORT_INGEST_JOB;
@@ -110,21 +91,12 @@ async fn ingest_short_sale_reports(
     Ok(stats)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct MarginIngest;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct MarginIngestStats {
     interest: core_application::margin::IngestStats,
     alerts: core_application::margin::IngestStats,
-}
-
-impl TaskHandler for MarginIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
 }
 
 impl super::SchedulerJob for MarginIngest {

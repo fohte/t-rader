@@ -2,9 +2,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-pub const EVENT_DISPATCH_JOB_IDENTIFIER: &str = "event_dispatch";
-pub const EVENT_DISPATCH_QUEUE_NAME: &str = "event_dispatch";
-
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[error("failed to enqueue event dispatch job: {message}")]
 pub struct EventDispatchJobQueueError {

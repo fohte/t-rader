@@ -2,33 +2,19 @@ use chrono::Utc;
 use core_application::bars::{
     BarsUseCaseError, UsStockBarsIngestStats, UsStockMinuteBarsDownsampleStats,
 };
-use graphile_worker::{IntoTaskHandlerResult, TaskHandler, WorkerContext};
-use serde::{Deserialize, Serialize};
 
 use super::{
     DAILY_TIMEOUT, US_STOCK_BARS_TIMEOUT, require_source, run_with_ingest_run_log_state,
     run_with_ingest_run_log_state_with_run_id,
 };
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct UsStockBarsIngest;
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct UsStockMinuteBarsIngest;
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct UsStockHourlyBarsIngest;
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct UsStockMinuteBarsDownsample;
-
-impl TaskHandler for UsStockBarsIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
 
 impl super::SchedulerJob for UsStockBarsIngest {
     const IDENTIFIER: &'static str = core_application::ingest_status::US_STOCK_BARS_INGEST_JOB;
@@ -57,14 +43,6 @@ impl super::SchedulerJob for UsStockBarsIngest {
             )
             .await
         })
-    }
-}
-
-impl TaskHandler for UsStockMinuteBarsIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
     }
 }
 
@@ -99,14 +77,6 @@ impl super::SchedulerJob for UsStockMinuteBarsIngest {
     }
 }
 
-impl TaskHandler for UsStockHourlyBarsIngest {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
-    }
-}
-
 impl super::SchedulerJob for UsStockHourlyBarsIngest {
     const IDENTIFIER: &'static str =
         core_application::ingest_status::US_STOCK_HOURLY_BARS_INGEST_JOB;
@@ -135,14 +105,6 @@ impl super::SchedulerJob for UsStockHourlyBarsIngest {
             )
             .await
         })
-    }
-}
-
-impl TaskHandler for UsStockMinuteBarsDownsample {
-    const IDENTIFIER: &'static str = <Self as super::SchedulerJob>::IDENTIFIER;
-
-    async fn run(self, context: WorkerContext) -> impl IntoTaskHandlerResult {
-        super::run_from_worker_context(context, <Self as super::SchedulerJob>::run).await
     }
 }
 

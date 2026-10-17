@@ -3,7 +3,6 @@ pub mod cli;
 mod integration_tests;
 pub mod mcp;
 pub mod middleware;
-pub mod migrations;
 pub mod services;
 #[cfg(test)]
 pub mod testing;

@@ -59,21 +59,19 @@ mod tests {
     use crate::signals::wait_for_shutdown;
 
     #[tokio::test]
-    async fn admin_server_error_shuts_down_the_worker_and_exits() {
+    async fn component_error_shuts_down_other_components_and_exits() {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let worker: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async move {
-            wait_for_shutdown(shutdown_rx).await;
-            Ok(())
-        });
-        let admin_server: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async {
-            Err(StartupError::Runtime(
-                "Graphile Worker admin UI server error: listener closed".to_string(),
-            ))
-        });
+        let long_running_component: BoxFuture<'static, Result<(), StartupError>> =
+            Box::pin(async move {
+                wait_for_shutdown(shutdown_rx).await;
+                Ok(())
+            });
+        let failing_component: BoxFuture<'static, Result<(), StartupError>> =
+            Box::pin(async { Err(StartupError::Runtime("listener closed".to_string())) });
 
         let actual = timeout(
             Duration::from_secs(1),
-            supervise(vec![worker, admin_server], shutdown_tx),
+            supervise(vec![long_running_component, failing_component], shutdown_tx),
         )
         .await
         .map_err(|_| "supervision timed out".to_string())
@@ -81,25 +79,27 @@ mod tests {
 
         assert_eq!(
             actual,
-            Err(
-                "configuration error: Graphile Worker admin UI server error: listener closed"
-                    .to_string()
-            ),
+            Err("configuration error: listener closed".to_string()),
         );
     }
 
     #[tokio::test]
-    async fn successful_component_completion_shuts_down_the_worker() {
+    async fn successful_component_completion_shuts_down_other_components() {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let worker: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async move {
-            wait_for_shutdown(shutdown_rx).await;
-            Ok(())
-        });
-        let admin_server: BoxFuture<'static, Result<(), StartupError>> = Box::pin(async { Ok(()) });
+        let long_running_component: BoxFuture<'static, Result<(), StartupError>> =
+            Box::pin(async move {
+                wait_for_shutdown(shutdown_rx).await;
+                Ok(())
+            });
+        let completing_component: BoxFuture<'static, Result<(), StartupError>> =
+            Box::pin(async { Ok(()) });
 
         let actual = timeout(
             Duration::from_secs(1),
-            supervise(vec![worker, admin_server], shutdown_tx),
+            supervise(
+                vec![long_running_component, completing_component],
+                shutdown_tx,
+            ),
         )
         .await
         .map_err(|_| "supervision timed out".to_string())

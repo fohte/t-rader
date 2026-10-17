@@ -15,12 +15,10 @@ use crate::{
         edinet_holdings::ShareholdingStructureIngest,
         eoddata_kospi::EodDataKospiIngest,
         equity_master::EquityMasterIngest,
-        event_dispatch::EventDispatch,
         fed_calendar::FedCalendarEventIngest,
         financial_summary::FinancialSummaryIngest,
         fred::FredIngest,
         fred_release_dates::FredReleaseDatesIngest,
-        ingest_run_recovery::recover_interrupted_run,
         jquants::{MarginIngest, ShortRatioIngest, ShortSaleReportIngest},
         news::NewsAggregation,
         news_content::NewsContentFetch,
@@ -35,7 +33,6 @@ use crate::{
         us_stock_master::UsStockMasterIngest,
         valuation::ValuationIngest,
     },
-    scheduler::RECOVERABLE_INGEST_JOBS,
     state::{SchedulerDependencies, SchedulerState},
 };
 
@@ -44,44 +41,53 @@ type JobRunner = fn(SchedulerState) -> JobFuture;
 struct SupportedJob {
     identifier: &'static str,
     run: JobRunner,
+    recovery_timeout: Option<Duration>,
 }
 
-const SUPPORTED_JOBS: [SupportedJob; 29] = [
-    supported_job::<AlphaVantageCalendarIngest>(),
-    supported_job::<BojCalendarEventIngest>(),
-    supported_job::<DailyBarsIngest>(),
-    supported_job::<EStatCalendarIngest>(),
-    supported_job::<EarningsScheduleIngest>(),
-    supported_job::<EcbCalendarEventIngest>(),
-    supported_job::<ShareholdingStructureIngest>(),
-    supported_job::<EodDataKospiIngest>(),
-    supported_job::<EquityMasterIngest>(),
-    supported_job::<EventDispatch>(),
-    supported_job::<FedCalendarEventIngest>(),
-    supported_job::<FinancialSummaryIngest>(),
-    supported_job::<FredIngest>(),
-    supported_job::<FredReleaseDatesIngest>(),
-    supported_job::<MarginIngest>(),
-    supported_job::<NewsAggregation>(),
-    supported_job::<NewsContentFetch>(),
-    supported_job::<PaperOrderFilling>(),
-    supported_job::<PredictionGrading>(),
-    supported_job::<ShortRatioIngest>(),
-    supported_job::<ShortSaleReportIngest>(),
+const SUPPORTED_JOBS: [SupportedJob; 28] = [
+    supported_ingest_job::<AlphaVantageCalendarIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<BojCalendarEventIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<DailyBarsIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<EStatCalendarIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<EarningsScheduleIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<EcbCalendarEventIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<ShareholdingStructureIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<EodDataKospiIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<EquityMasterIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<FedCalendarEventIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<FinancialSummaryIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<FredIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<FredReleaseDatesIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<MarginIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<NewsAggregation>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<NewsContentFetch>(crate::jobs::NEWS_CONTENT_JOB_TIMEOUT),
+    supported_ingest_job::<PaperOrderFilling>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<PredictionGrading>(crate::jobs::WEEKLY_TIMEOUT),
+    supported_ingest_job::<ShortRatioIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<ShortSaleReportIngest>(crate::jobs::DAILY_TIMEOUT),
     supported_job::<StrategyTaskReconcile>(),
-    supported_job::<TwseIndexIngest>(),
-    supported_job::<UsStockBarsIngest>(),
-    supported_job::<UsStockHourlyBarsIngest>(),
-    supported_job::<UsStockMinuteBarsIngest>(),
-    supported_job::<UsStockMinuteBarsDownsample>(),
-    supported_job::<UsStockMasterIngest>(),
-    supported_job::<ValuationIngest>(),
+    supported_ingest_job::<TwseIndexIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<UsStockBarsIngest>(crate::jobs::US_STOCK_BARS_TIMEOUT),
+    supported_ingest_job::<UsStockHourlyBarsIngest>(crate::jobs::US_STOCK_BARS_TIMEOUT),
+    supported_ingest_job::<UsStockMinuteBarsIngest>(crate::jobs::US_STOCK_BARS_TIMEOUT),
+    supported_ingest_job::<UsStockMinuteBarsDownsample>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<UsStockMasterIngest>(crate::jobs::DAILY_TIMEOUT),
+    supported_ingest_job::<ValuationIngest>(crate::jobs::DAILY_TIMEOUT),
 ];
 
 const fn supported_job<T: SchedulerJob>() -> SupportedJob {
     SupportedJob {
         identifier: T::IDENTIFIER,
         run: T::run,
+        recovery_timeout: None,
+    }
+}
+
+const fn supported_ingest_job<T: SchedulerJob>(timeout: Duration) -> SupportedJob {
+    SupportedJob {
+        identifier: T::IDENTIFIER,
+        run: T::run,
+        recovery_timeout: Some(timeout),
     }
 }
 
@@ -95,23 +101,31 @@ pub async fn run_job(job_name: &str, dependencies: SchedulerDependencies) -> Res
     };
 
     let state = SchedulerState { dependencies };
-    let run = job.run;
-    if let Some((_, timeout)) = RECOVERABLE_INGEST_JOBS
-        .iter()
-        .find(|(identifier, _)| *identifier == job_name)
-    {
-        let ingest_run_log = state.dependencies.ingest_run_log.clone();
-        return run_after_recovery(
-            ingest_run_log.as_ref(),
-            job_name,
-            *timeout,
-            Utc::now().fixed_offset(),
-            move || run(state),
-        )
-        .await;
-    }
+    let ingest_run_log = state.dependencies.ingest_run_log.clone();
+    run_registered_job(
+        job,
+        ingest_run_log.as_ref(),
+        Utc::now().fixed_offset(),
+        move || (job.run)(state),
+    )
+    .await
+}
 
-    run(state).await
+async fn run_registered_job<F, Fut>(
+    job: &SupportedJob,
+    log: &dyn IngestRunLog,
+    now: DateTime<FixedOffset>,
+    run: F,
+) -> Result<(), String>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    let Some(timeout) = job.recovery_timeout else {
+        return run().await;
+    };
+
+    run_after_recovery(log, job.identifier, timeout, now, run).await
 }
 
 async fn run_after_recovery<F, Fut>(
@@ -137,6 +151,18 @@ where
     run().await
 }
 
+async fn recover_interrupted_run(
+    log: &dyn IngestRunLog,
+    job: &str,
+    timeout: Duration,
+    now: DateTime<FixedOffset>,
+) -> Result<u64, String> {
+    let cutoff = crate::jobs::run_started_before(now, timeout)?;
+    log.fail_interrupted_before(job, cutoff)
+        .await
+        .map_err(|error| format!("failed to recover interrupted ingest runs: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -156,7 +182,7 @@ mod tests {
     use tokio::sync::Mutex;
     use uuid::Uuid;
 
-    use super::{SUPPORTED_JOBS, is_supported_job, recover_interrupted_run, run_after_recovery};
+    use super::{SUPPORTED_JOBS, is_supported_job, recover_interrupted_run, run_registered_job};
 
     #[test]
     fn supported_job_table_is_unique_and_queryable() {
@@ -177,12 +203,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn only_strategy_task_reconcile_skips_interrupted_ingest_recovery() {
+        assert_eq!(
+            SUPPORTED_JOBS
+                .iter()
+                .filter(|job| job.recovery_timeout.is_none())
+                .map(|job| job.identifier)
+                .collect::<Vec<_>>(),
+            vec!["strategy_task_reconcile"],
+        );
+    }
+
     #[rstest]
     #[case::us_stock_minute_bars_ingest("us_stock_minute_bars_ingest", true)]
     #[case::us_stock_hourly_bars_ingest("us_stock_hourly_bars_ingest", true)]
     #[case::us_stock_minute_bars_downsample("us_stock_minute_bars_downsample", true)]
-    #[case::trigger_evaluation("trigger_evaluation", false)]
-    #[case::ingest_run_recovery("ingest_run_recovery", false)]
+    #[case::event_dispatch("event_dispatch", false)]
     #[case::unknown("unknown_job", false)]
     fn rejects_jobs_outside_the_one_shot_contract(#[case] job_name: &str, #[case] expected: bool) {
         assert_eq!(is_supported_job(job_name), expected);
@@ -255,9 +292,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn does_not_run_the_job_when_interrupted_run_recovery_fails() {
+    async fn registered_ingest_job_recovers_before_running_and_stops_on_recovery_failure() {
         let now = DateTime::parse_from_rfc3339("2039-05-10T16:00:00+00:00")
             .expect("valid fixed timestamp");
+        let job = SUPPORTED_JOBS
+            .iter()
+            .find(|job| job.identifier == "daily_bars_ingest")
+            .expect("daily bars job is supported");
         let log = Arc::new(FakeIngestRunLog {
             fail_recovery: true,
             ..Default::default()
@@ -265,16 +306,10 @@ mod tests {
         let job_started = Arc::new(AtomicBool::new(false));
         let job_started_in_future = Arc::clone(&job_started);
 
-        let result = run_after_recovery(
-            log.as_ref(),
-            "sample_ingest",
-            Duration::from_secs(2 * 60 * 60),
-            now,
-            move || async move {
-                job_started_in_future.store(true, Ordering::SeqCst);
-                Ok(())
-            },
-        )
+        let result = run_registered_job(job, log.as_ref(), now, move || async move {
+            job_started_in_future.store(true, Ordering::SeqCst);
+            Ok(())
+        })
         .await;
 
         assert_eq!(
@@ -285,7 +320,10 @@ mod tests {
             ),
             (
                 Err("failed to recover interrupted ingest runs: database unavailable".to_string()),
-                vec![("sample_ingest".to_owned(), now - ChronoDuration::hours(2),)],
+                vec![(
+                    "daily_bars_ingest".to_owned(),
+                    now - ChronoDuration::hours(2),
+                )],
                 false,
             ),
         );
