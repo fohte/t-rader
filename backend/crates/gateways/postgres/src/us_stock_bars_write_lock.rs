@@ -172,4 +172,17 @@ mod tests {
             (true, true, true),
         );
     }
+
+    #[backend_test_macros::database_test]
+    async fn waiting_for_session_lock_returns_none_after_lock_timeout(_db: crate::DatabaseHandle) {
+        let pool = crate::test_support::create_test_pool_with_max_connections(2).await;
+        let lock = PostgresUsStockBarsWriteLock::new(pool);
+        let first = lock.acquire(Duration::from_secs(5)).await;
+        let first_acquired = matches!(&first, Ok(Some(_)));
+        let timed_out = matches!(lock.acquire(Duration::from_secs(1)).await, Ok(None));
+        drop(first);
+        let reacquired = matches!(lock.acquire(Duration::from_secs(5)).await, Ok(Some(_)));
+
+        assert_eq!((first_acquired, timed_out, reacquired), (true, true, true));
+    }
 }
